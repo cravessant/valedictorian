@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Job App icon">
+  <rect width="512" height="512" rx="108" fill="#1f2937"/>
+  <rect x="124" y="154" width="264" height="224" rx="30" fill="#f8fafc"/>
+  <path d="M208 154v-24c0-22 18-40 40-40h16c22 0 40 18 40 40v24h-34v-24c0-3-3-6-6-6h-16c-3 0-6 3-6 6v24h-34z" fill="#f8fafc"/>
+  <path d="M124 229h264v48H124z" fill="#2563eb"/>
+  <circle cx="256" cy="253" r="17" fill="#f8fafc"/>
+  <path d="M168 319h176v24H168z" fill="#cbd5e1"/>
+</svg>
