@@ -8,6 +8,13 @@
       "when": 1780592801515,
       "tag": "0000_open_maria_hill",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1780706656718,
+      "tag": "0001_narrow_ultimo",
+      "breakpoints": true
     }
   ]
 }

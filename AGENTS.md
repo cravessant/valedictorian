@@ -29,3 +29,9 @@ The theme is based on Catppuccin Blur colors and official Zed structure sources:
 - Tailwind CSS Vite setup: https://tailwindcss.com/docs/installation/using-vite
 
 Use Catppuccin Blur Mocha as the default color source unless the user explicitly asks for another Catppuccin flavor.
+
+## Harness Boundary
+
+`job-app` is the deterministic app surface and policy source of truth for external coding harnesses such as Codex or Claude Code. Do not build an embedded OpenRouter loop, browser agent, cron runner, auto-submitter, or automatic database unlocker into the desktop app for v1.
+
+Policy configuration changes should only affect app decisions: queue buckets, validation gates, required evidence, displayed reasons, and scheduler-ready run-window recommendations. External harnesses remain responsible for executing actions through explicit app APIs.

@@ -1,13 +1,66 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { eq } from 'drizzle-orm'
 import {
   applicationLinks,
   applicationScores,
   applications,
   companies,
+  sourcingFindings,
   sources,
+  workflowRuns,
+  workflowRunSteps,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 
 const createdAt = '2026-06-04T16:00:00.000Z'
+const referenceSeedCreatedAt = '2026-06-05T00:00:00.000Z'
+const seedApplicationStatuses = [
+  'queued',
+  'in_progress',
+  'ready_for_review',
+  'needs_user_info',
+  'submitted',
+  'already_applied',
+  'manual_captcha',
+  'security_gate',
+  'login_needed',
+  'platform_error',
+  'closed',
+  'not_fit',
+  'not_pursued',
+] as const
+
+type SeedApplicationStatus = (typeof seedApplicationStatuses)[number]
+type SeedWorkMode = 'remote' | 'onsite' | 'hybrid' | 'unclear'
+
+interface ReferenceTrackerApplication {
+  id: string
+  companyId: string
+  companyName: string
+  sourceId: string
+  sourceName: string
+  roleTitle: string
+  roleKind: string
+  term: string | null
+  city: string | null
+  region: string | null
+  country: string
+  workMode: SeedWorkMode
+  locationRaw: string | null
+  status: SeedApplicationStatus
+  hasApplied: boolean
+  currentPriorityScore: number | null
+  currentPriorityBand: string | null
+  notes: string | null
+  linkId: string
+  linkKind: string
+  linkLabel: string
+  linkUrl: string
+  externalId: string | null
+  createdAt: string
+  updatedAt: string
+}
 
 export function seedSampleApplications(database: DrizzleDatabase) {
   database
@@ -41,6 +94,7 @@ export function seedSampleApplications(database: DrizzleDatabase) {
         deletedAt: null,
       },
     ])
+    .onConflictDoNothing()
     .run()
 
   database
@@ -63,6 +117,7 @@ export function seedSampleApplications(database: DrizzleDatabase) {
         deletedAt: null,
       },
     ])
+    .onConflictDoNothing()
     .run()
 
   database
@@ -135,6 +190,7 @@ export function seedSampleApplications(database: DrizzleDatabase) {
         deletedAt: null,
       },
     ])
+    .onConflictDoNothing()
     .run()
 
   database
@@ -180,6 +236,7 @@ export function seedSampleApplications(database: DrizzleDatabase) {
         deletedAt: null,
       },
     ])
+    .onConflictDoNothing()
     .run()
 
   database
@@ -228,5 +285,700 @@ export function seedSampleApplications(database: DrizzleDatabase) {
         createdAt,
       },
     ])
+    .onConflictDoNothing()
     .run()
+
+  seedSampleApplicationAttempts(database)
+}
+
+export function seedReferenceTrackerApplications(
+  database: DrizzleDatabase,
+  trackerMarkdown = readReferenceTrackerMarkdown(),
+) {
+  const trackerApplications = parseReferenceTrackerApplications(trackerMarkdown)
+
+  if (trackerApplications.length === 0) {
+    seedSampleApplications(database)
+    seedSampleSourcingFindings(database)
+    return
+  }
+
+  const companiesById = new Map(
+    trackerApplications.map((application) => [
+      application.companyId,
+      {
+        id: application.companyId,
+        name: application.companyName,
+        normalizedName: normalizeName(application.companyName),
+        websiteUrl: null,
+        createdAt: application.createdAt,
+        updatedAt: application.updatedAt,
+        deletedAt: null,
+      },
+    ]),
+  )
+  const sourcesById = new Map(
+    trackerApplications.map((application) => [
+      application.sourceId,
+      {
+        id: application.sourceId,
+        name: application.sourceName,
+        accountHint: application.sourceName === 'Reference Tracker' ? null : 'Imported from Reference/TRACKER.md',
+        createdAt: application.createdAt,
+        updatedAt: application.updatedAt,
+        deletedAt: null,
+      },
+    ]),
+  )
+
+  database.insert(companies).values([...companiesById.values()]).run()
+  database.insert(sources).values([...sourcesById.values()]).run()
+  database
+    .insert(applications)
+    .values(
+      trackerApplications.map((application) => ({
+        id: application.id,
+        companyId: application.companyId,
+        sourceId: application.sourceId,
+        roleTitle: application.roleTitle,
+        roleKind: application.roleKind,
+        term: application.term,
+        city: application.city,
+        region: application.region,
+        country: application.country,
+        workMode: application.workMode,
+        locationRaw: application.locationRaw,
+        status: application.status,
+        hasApplied: application.hasApplied,
+        currentPriorityScore: application.currentPriorityScore,
+        currentPriorityBand: application.currentPriorityBand,
+        currentResumeVariant: null,
+        notes: application.notes,
+        createdAt: application.createdAt,
+        updatedAt: application.updatedAt,
+        deletedAt: null,
+      })),
+    )
+    .run()
+  database
+    .insert(applicationLinks)
+    .values(
+      trackerApplications.map((application) => ({
+        id: application.linkId,
+        applicationId: application.id,
+        kind: application.linkKind,
+        label: application.linkLabel,
+        url: application.linkUrl,
+        externalId: application.externalId,
+        isPrimary: true,
+        discoveredAt: application.createdAt,
+        createdAt: application.createdAt,
+        updatedAt: application.updatedAt,
+        deletedAt: null,
+      })),
+    )
+    .run()
+
+  const scoredApplications = trackerApplications.filter(
+    (application) => application.currentPriorityScore !== null,
+  )
+  if (scoredApplications.length > 0) {
+    database
+      .insert(applicationScores)
+      .values(
+        scoredApplications.map((application) => ({
+          id: `score-${application.id}`,
+          applicationId: application.id,
+          score: application.currentPriorityScore ?? 0,
+          band: application.currentPriorityBand ?? scoreBand(application.currentPriorityScore),
+          roleRelevance: 0,
+          careerSignal: 0,
+          cityWorkMode: 0,
+          compensationLogistics: 0,
+          penaltiesJson: '[]',
+          rationale: application.notes ?? 'Imported from Reference/TRACKER.md.',
+          rubricVersion: 'reference-tracker-import',
+          createdAt: application.createdAt,
+        })),
+      )
+      .run()
+  }
+
+  seedSampleApplicationAttempts(database)
+  seedSampleSourcingFindings(database)
+}
+
+export function seedSampleSourcingFindings(database: DrizzleDatabase) {
+  if (database.select().from(sourcingFindings).limit(1).get()) {
+    return
+  }
+
+  ensureSeedSource(database)
+
+  const runId = 'workflow-run-sourcing-sample-linkedin'
+  const existingRun = database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).get()
+
+  if (!existingRun) {
+    database
+      .insert(workflowRuns)
+      .values({
+        id: runId,
+        runType: 'sourcing',
+        status: 'completed',
+        actorType: 'agent',
+        actorName: 'codex',
+        sourceId: 'source-linkedin',
+        subjectApplicationId: null,
+        startedAt: '2026-06-05T14:00:00.000Z',
+        completedAt: '2026-06-05T14:24:00.000Z',
+        coverageStartedAt: '2026-06-05T14:00:00.000Z',
+        coverageEndedAt: '2026-06-05T14:24:00.000Z',
+        timezone: 'America/Denver',
+        inputJson: JSON.stringify({
+          query: 'software engineering intern remote backend',
+          source: 'LinkedIn',
+        }),
+        summary: 'Seeded sourcing run for UI review.',
+        outcome: 'full_coverage',
+        blocker: null,
+        metadataJson: '{}',
+        createdAt: referenceSeedCreatedAt,
+        updatedAt: referenceSeedCreatedAt,
+        deletedAt: null,
+      })
+      .run()
+
+    database
+      .insert(workflowRunSteps)
+      .values([
+        {
+          id: 'workflow-run-step-sourcing-sample-started',
+          workflowRunId: runId,
+          sequence: 1,
+          type: 'run_started',
+          message: 'Started seeded LinkedIn sourcing run.',
+          payloadJson: '{}',
+          actor: 'agent:codex',
+          createdAt: '2026-06-05T14:00:00.000Z',
+        },
+        {
+          id: 'workflow-run-step-sourcing-sample-frontier',
+          workflowRunId: runId,
+          sequence: 2,
+          type: 'frontier_reached',
+          message: 'Reached remote/backend internship search frontier.',
+          payloadJson: '{}',
+          actor: 'agent:codex',
+          createdAt: '2026-06-05T14:12:00.000Z',
+        },
+        {
+          id: 'workflow-run-step-sourcing-sample-completed',
+          workflowRunId: runId,
+          sequence: 3,
+          type: 'run_completed',
+          message: 'Completed seeded sourcing run.',
+          payloadJson: '{}',
+          actor: 'agent:codex',
+          createdAt: '2026-06-05T14:24:00.000Z',
+        },
+      ])
+      .run()
+  }
+
+  database
+    .insert(sourcingFindings)
+    .values([
+      {
+        id: 'sourcing-finding-delta-labs',
+        workflowRunId: runId,
+        sourceId: 'source-linkedin',
+        companyName: 'Delta Labs',
+        roleTitle: 'Software Engineering Intern',
+        roleKind: 'internship',
+        term: 'Fall 2026',
+        city: null,
+        region: null,
+        country: 'US',
+        workMode: 'remote',
+        locationRaw: 'Remote',
+        officialUrl: 'https://jobs.example.com/delta/software-engineering-intern',
+        sourceUrl: 'https://jobs.example.test/remediated/800beadad8d8fe56',
+        postedAge: '2d',
+        priorityScore: 7,
+        priorityBand: 'high',
+        fitNotes: 'Good backend internship fit; ready for review and promotion.',
+        duplicateNotes: null,
+        blocker: null,
+        mergeStatus: 'new',
+        mergedApplicationId: null,
+        mergeNotes: null,
+        discoveredAt: '2026-06-05T14:08:00.000Z',
+        createdAt: referenceSeedCreatedAt,
+        updatedAt: referenceSeedCreatedAt,
+        deletedAt: null,
+      },
+      {
+        id: 'sourcing-finding-northstar-robotics',
+        workflowRunId: runId,
+        sourceId: 'source-linkedin',
+        companyName: 'Northstar Robotics',
+        roleTitle: 'Automation Analyst Intern',
+        roleKind: 'internship',
+        term: 'Summer 2026',
+        city: 'Denver',
+        region: 'CO',
+        country: 'US',
+        workMode: 'hybrid',
+        locationRaw: 'Denver, CO / Hybrid',
+        officialUrl: 'https://jobs.example.com/northstar/automation-analyst-intern',
+        sourceUrl: 'https://jobs.example.test/remediated/483e57cd96b4f928',
+        postedAge: '5d',
+        priorityScore: 4,
+        priorityBand: 'skip',
+        fitNotes: 'Adjacent automation role, but not enough SWE signal.',
+        duplicateNotes: null,
+        blocker: null,
+        mergeStatus: 'below_cutoff',
+        mergedApplicationId: null,
+        mergeNotes: 'Below current sourcing cutoff.',
+        discoveredAt: '2026-06-05T14:14:00.000Z',
+        createdAt: referenceSeedCreatedAt,
+        updatedAt: referenceSeedCreatedAt,
+        deletedAt: null,
+      },
+      {
+        id: 'sourcing-finding-summit-cloud',
+        workflowRunId: runId,
+        sourceId: 'source-linkedin',
+        companyName: 'Summit Cloud',
+        roleTitle: 'Platform Engineering Intern',
+        roleKind: 'internship',
+        term: 'Academic Year 2026',
+        city: 'Boulder',
+        region: 'CO',
+        country: 'US',
+        workMode: 'onsite',
+        locationRaw: 'Boulder, CO / Onsite',
+        officialUrl: null,
+        sourceUrl: 'https://jobs.example.test/remediated/9e6343f97fe98207',
+        postedAge: '1w',
+        priorityScore: 6,
+        priorityBand: 'medium',
+        fitNotes: 'Solid platform signal, but official posting is missing.',
+        duplicateNotes: null,
+        blocker: 'Official application URL not found.',
+        mergeStatus: 'blocked',
+        mergedApplicationId: null,
+        mergeNotes: 'Needs official URL before promotion.',
+        discoveredAt: '2026-06-05T14:19:00.000Z',
+        createdAt: referenceSeedCreatedAt,
+        updatedAt: referenceSeedCreatedAt,
+        deletedAt: null,
+      },
+    ])
+    .run()
+}
+
+export function seedSampleApplicationAttempts(database: DrizzleDatabase) {
+  const applicationId = selectAstranisAttemptSeedApplicationId(database)
+
+  if (!applicationId) {
+    return
+  }
+
+  const runId = 'workflow-run-application-attempt-astranis-verification'
+  const existingRun = database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).get()
+
+  if (existingRun) {
+    return
+  }
+
+  database
+    .insert(workflowRuns)
+    .values({
+      id: runId,
+      runType: 'application_attempt',
+      status: 'completed',
+      actorType: 'agent',
+      actorName: 'codex',
+      sourceId: null,
+      subjectApplicationId: applicationId,
+      startedAt: '2026-06-04T16:00:00.000Z',
+      completedAt: '2026-06-04T16:05:00.000Z',
+      coverageStartedAt: null,
+      coverageEndedAt: null,
+      timezone: 'America/Denver',
+      inputJson: JSON.stringify({
+        entryUrl: 'https://jobs.example.test/remediated/f60a3102c158cd7c',
+        applicationId,
+      }),
+      summary: 'Needs exact Fall 2026 availability answers.',
+      outcome: 'needs_user_info',
+      blocker: null,
+      metadataJson: JSON.stringify({
+        entryUrl: 'https://jobs.example.test/remediated/f60a3102c158cd7c',
+        resumeVariant: 'bachelor_dec_2027',
+        resumeArtifactPath: 'tailored_resumes/astranis/backend-fall-2026.pdf',
+        stopReason: 'missing_user_info',
+        confirmationUrl: null,
+        confirmationText: null,
+      }),
+      createdAt,
+      updatedAt: '2026-06-04T16:05:00.000Z',
+      deletedAt: null,
+    })
+    .run()
+
+  database
+    .insert(workflowRunSteps)
+    .values([
+      {
+        id: 'workflow-run-step-astranis-attempt-started',
+        workflowRunId: runId,
+        sequence: 1,
+        type: 'attempt_started',
+        message: 'Started Astranis Greenhouse application.',
+        payloadJson: JSON.stringify({
+          entryUrl: 'https://jobs.example.test/remediated/f60a3102c158cd7c',
+        }),
+        actor: 'agent:codex',
+        createdAt: '2026-06-04T16:00:00.000Z',
+      },
+      {
+        id: 'workflow-run-step-astranis-resume-uploaded',
+        workflowRunId: runId,
+        sequence: 2,
+        type: 'resume_uploaded',
+        message: 'Uploaded tailored resume.',
+        payloadJson: JSON.stringify({
+          resumeVariant: 'bachelor_dec_2027',
+          resumeArtifactPath: 'tailored_resumes/astranis/backend-fall-2026.pdf',
+        }),
+        actor: 'agent:codex',
+        createdAt: '2026-06-04T16:02:00.000Z',
+      },
+      {
+        id: 'workflow-run-step-astranis-verification-receipt',
+        workflowRunId: runId,
+        sequence: 3,
+        type: 'verification_receipt',
+        message: 'Final review failed because Fall availability answers are still missing.',
+        payloadJson: JSON.stringify({
+          version: 1,
+          scope: 'final_review',
+          status: 'failed',
+          verified: ['resume_attachment', 'contact_info', 'education', 'work_authorization'],
+          unresolved: [
+            'Fall 2026 exact start date',
+            'Fall 2026 exact end date',
+            'Astranis onsite 5 days/week availability',
+          ],
+          evidence:
+            'Application was reviewed up to the submit boundary; availability answers were still missing.',
+        }),
+        actor: 'agent:codex',
+        createdAt: '2026-06-04T16:04:00.000Z',
+      },
+      {
+        id: 'workflow-run-step-astranis-attempt-completed',
+        workflowRunId: runId,
+        sequence: 4,
+        type: 'attempt_completed',
+        message: 'Stopped before submission to request Fall availability details.',
+        payloadJson: JSON.stringify({
+          outcome: 'needs_user_info',
+          missingUserInfo:
+            'Fall 2026 start date, end date, and onsite 5 days/week availability.',
+        }),
+        actor: 'agent:codex',
+        createdAt: '2026-06-04T16:05:00.000Z',
+      },
+    ])
+    .run()
+}
+
+function selectAstranisAttemptSeedApplicationId(database: DrizzleDatabase) {
+  const application = database
+    .select({
+      id: applications.id,
+      companyName: companies.name,
+      roleTitle: applications.roleTitle,
+      status: applications.status,
+    })
+    .from(applications)
+    .innerJoin(companies, eq(applications.companyId, companies.id))
+    .all()
+    .find(
+      (row) =>
+        row.companyName === 'Astranis Space Technologies' &&
+        row.roleTitle === 'Software Engineer- Backend Intern (Fall 2026)' &&
+        row.status === 'needs_user_info',
+    )
+
+  return application?.id ?? null
+}
+
+function ensureSeedSource(database: DrizzleDatabase) {
+  if (database.select().from(sources).where(eq(sources.id, 'source-linkedin')).get()) {
+    return
+  }
+
+  database
+    .insert(sources)
+    .values({
+      id: 'source-linkedin',
+      name: 'LinkedIn',
+      accountHint: 'Seeded sourcing sample',
+      createdAt: referenceSeedCreatedAt,
+      updatedAt: referenceSeedCreatedAt,
+      deletedAt: null,
+    })
+    .run()
+}
+
+export function parseReferenceTrackerApplications(markdown: string): ReferenceTrackerApplication[] {
+  const seenIds = new Map<string, number>()
+
+  return markdown
+    .split(/\r?\n/)
+    .map((line) => parseTrackerLine(line, seenIds))
+    .filter((application): application is ReferenceTrackerApplication => application !== null)
+}
+
+function parseTrackerLine(
+  line: string,
+  seenIds: Map<string, number>,
+): ReferenceTrackerApplication | null {
+  if (!line.startsWith('| ')) {
+    return null
+  }
+
+  const cells = line
+    .slice(1, line.endsWith('|') ? -1 : undefined)
+    .split('|')
+    .map((cell) => cell.trim())
+
+  if (cells.length < 10 || !/^\d{4}-\d{2}-\d{2}$/.test(cells[0])) {
+    return null
+  }
+
+  const [date, companyName, roleTitle, locationRaw, term, linkCell, appliedCell, appliedDate] =
+    cells
+  const rawStatus = cells[8]
+  const note = cells.slice(9).join(' | ').trim()
+
+  if (companyName === 'CompanyName' || roleTitle === 'Role Title') {
+    return null
+  }
+
+  const idBase = slugify(`${date}-${companyName}-${roleTitle}`)
+  const seenCount = seenIds.get(idBase) ?? 0
+  seenIds.set(idBase, seenCount + 1)
+  const id = seenCount === 0 ? `application-${idBase}` : `application-${idBase}-${seenCount + 1}`
+  const companyId = `company-${slugify(companyName)}`
+  const sourceName = deriveSourceName(companyName, linkCell, note)
+  const sourceId = `source-${slugify(sourceName)}`
+  const link = parseMarkdownLink(linkCell)
+  const score = parsePriorityScore(note)
+  const status = normalizeTrackerStatus(rawStatus, appliedCell)
+  const originalStatusNote = isApplicationStatus(rawStatus) ? null : `Original tracker status: ${rawStatus}`
+  const notes = [originalStatusNote, note].filter(Boolean).join('\n')
+  const location = parseLocation(locationRaw)
+
+  return {
+    id,
+    companyId,
+    companyName,
+    sourceId,
+    sourceName,
+    roleTitle,
+    roleKind: deriveRoleKind(term, roleTitle),
+    term: term || null,
+    ...location,
+    status,
+    hasApplied: appliedCell.toLowerCase() === 'y' || Boolean(appliedDate),
+    currentPriorityScore: score,
+    currentPriorityBand: score === null ? null : scoreBand(score, note),
+    notes: notes || null,
+    linkId: `link-${idBase}${seenCount === 0 ? '' : `-${seenCount + 1}`}`,
+    linkKind: link.label === 'official' || link.label === 'link' ? 'official' : 'source',
+    linkLabel: link.label,
+    linkUrl: link.url,
+    externalId: deriveExternalId(link.url),
+    createdAt: `${date}T00:00:00.000Z`,
+    updatedAt: referenceSeedCreatedAt,
+  }
+}
+
+function readReferenceTrackerMarkdown() {
+  for (const candidate of referenceTrackerPathCandidates()) {
+    if (fs.existsSync(candidate)) {
+      return fs.readFileSync(candidate, 'utf8')
+    }
+  }
+
+  return ''
+}
+
+function referenceTrackerPathCandidates() {
+  if (process.env.JOB_APP_REFERENCE_TRACKER_PATH) {
+    return [process.env.JOB_APP_REFERENCE_TRACKER_PATH]
+  }
+
+  return [
+    path.resolve(process.cwd(), '../Reference/TRACKER.md'),
+    path.resolve(process.cwd(), 'Reference/TRACKER.md'),
+  ]
+}
+
+function parseMarkdownLink(value: string) {
+  const match = value.match(/^\[([^\]]+)\]\((.+)\)$/)
+  if (match) {
+    return {
+      label: match[1],
+      url: match[2],
+    }
+  }
+
+  return {
+    label: 'source',
+    url: value || 'about:blank',
+  }
+}
+
+function parsePriorityScore(notes: string) {
+  const match = notes.match(/Priority score:\s*(?:(?:high|medium|skip|low)\/)?(\d{1,2})/i)
+  if (!match) {
+    return null
+  }
+
+  const score = Number.parseInt(match[1], 10)
+  return Number.isFinite(score) ? score : null
+}
+
+function scoreBand(score: number | null, notes = '') {
+  const explicitBand = notes.match(/Priority score:\s*(high|medium|skip|low)\//i)?.[1]?.toLowerCase()
+  if (explicitBand) {
+    return explicitBand
+  }
+
+  if (score === null) {
+    return 'unknown'
+  }
+
+  if (score >= 7) {
+    return 'high'
+  }
+
+  if (score >= 6) {
+    return 'medium'
+  }
+
+  return 'skip'
+}
+
+function normalizeTrackerStatus(rawStatus: string, appliedCell: string): SeedApplicationStatus {
+  if (isApplicationStatus(rawStatus)) {
+    return rawStatus
+  }
+
+  const normalized = rawStatus.trim().toLowerCase()
+  if (normalized === 'rejected' || normalized === 'withdrew') {
+    return 'closed'
+  }
+
+  if (normalized === 'todo') {
+    return 'queued'
+  }
+
+  if (appliedCell.toLowerCase() === 'y') {
+    return 'submitted'
+  }
+
+  return 'not_pursued'
+}
+
+function deriveSourceName(companyName: string, linkCell: string, notes: string) {
+  const sourceMatch = notes.match(/Source:\s*(?:\[([^\]]+)\]|([A-Za-z][A-Za-z ]+))/)
+  const noteSource = sourceMatch?.[1] ?? sourceMatch?.[2]
+  if (noteSource) {
+    return noteSource.trim()
+  }
+
+  if (['LinkedIn', 'Jobright', 'Handshake'].includes(companyName)) {
+    return companyName
+  }
+
+  const url = parseMarkdownLink(linkCell).url.toLowerCase()
+  if (url.includes('linkedin.com')) {
+    return 'LinkedIn'
+  }
+  if (url.includes('jobright.ai')) {
+    return 'Jobright'
+  }
+  if (url.includes('joinhandshake.com')) {
+    return 'Handshake'
+  }
+
+  return 'Reference Tracker'
+}
+
+function deriveRoleKind(term: string, roleTitle: string) {
+  const value = `${term} ${roleTitle}`.toLowerCase()
+  if (value.includes('intern')) {
+    return 'internship'
+  }
+
+  if (value.includes('new grad')) {
+    return 'new_grad'
+  }
+
+  return 'full_time'
+}
+
+function parseLocation(locationRaw: string) {
+  const lowerLocation = locationRaw.toLowerCase()
+  const workMode: SeedWorkMode = lowerLocation.includes('remote')
+    ? 'remote'
+    : lowerLocation.includes('hybrid')
+      ? 'hybrid'
+      : lowerLocation.includes('onsite') || lowerLocation.includes('on-site')
+        ? 'onsite'
+        : 'unclear'
+
+  const locationWithoutMode = locationRaw
+    .replace(/\s*\/\s*(remote|onsite|on-site|hybrid)\s*$/i, '')
+    .trim()
+  const [cityPart, regionPart] = locationWithoutMode.split(',').map((part) => part.trim())
+
+  return {
+    city: cityPart && !['remote', 'united states'].includes(cityPart.toLowerCase()) ? cityPart : null,
+    region: regionPart || null,
+    country: 'US',
+    workMode,
+    locationRaw: locationRaw || null,
+  }
+}
+
+function deriveExternalId(url: string) {
+  const match = url.match(/(?:jobs|job|careers|view|info|gh_jid|jr_id)[=/]([A-Za-z0-9-]+)/)
+  return match?.[1] ?? null
+}
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function slugify(value: string) {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 120) || 'unknown'
+  )
+}
+
+function isApplicationStatus(value: string): value is SeedApplicationStatus {
+  return (seedApplicationStatuses as readonly string[]).includes(value)
 }

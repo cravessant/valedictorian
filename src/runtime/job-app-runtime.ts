@@ -4,7 +4,7 @@ import {
   defaultJobAppApiBaseUrl,
   type HttpJobAppClientOptions,
   type JobAppClient,
-} from 'job-app-sdk'
+} from 'sparxie'
 import {
   createJobAppHttpServer,
   type CreateJobAppHttpServerOptions,

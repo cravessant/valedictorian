@@ -1,66 +1,846 @@
-import { and, asc, count, desc, eq, gte, like, lte, or, type SQL } from 'drizzle-orm'
-import { applicationLinks, applications, companies, sources } from '../../db/schema'
+import { randomUUID } from 'node:crypto'
+import { and, count, desc, eq, isNull } from 'drizzle-orm'
+import {
+  applicationEvents,
+  applicationLinks,
+  applications,
+  applicationWorkflowStates,
+  companies,
+  sources,
+  workflowRunSteps,
+  workflowRuns,
+} from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import {
-  DEFAULT_APPLICATION_LIST_LIMIT,
   DEFAULT_APPLICATION_LIST_OFFSET,
-  MAX_APPLICATION_LIST_LIMIT,
   isApplicationListSort,
   isApplicationStatus,
-  type ApplicationListItem,
   type ApplicationListQuery,
+  type ApplicationLinksListInput,
   type ApplicationRepository,
-  type WorkMode,
 } from './application.types'
+import {
+  applicationLinkPatch,
+  attemptActor,
+  applicationPatch,
+  applicationSelection,
+  assertNonEmptyPatch,
+  buildApplicationListOrder,
+  buildApplicationListWhere,
+  clearPrimaryApplicationLinks,
+  findOrCreateCompany,
+  findOrCreateSource,
+  hasActiveApplicationAttempt,
+  hasActiveApplicationFingerprint,
+  hasActiveOfficialUrl,
+  insertApplicationEvent,
+  insertApplicationLink,
+  insertWorkflowRunStep,
+  mapApplicationAttempt,
+  mapApplicationAttemptStep,
+  mapApplicationLinkRecord,
+  mapApplicationRow,
+  normalizeApplicationLinkInput,
+  normalizeApplicationLinkUpdateInput,
+  normalizeApplicationUpdateInput,
+  normalizeCompleteApplicationAttemptInput,
+  normalizeCreateApplicationAttemptStepInput,
+  normalizeCreateApplicationInput,
+  normalizeStartApplicationAttemptInput,
+  parseAttemptMetadata,
+  requiredText,
+  selectApplicationAttemptById,
+  selectApplicationAttemptSteps,
+  selectApplicationById,
+  upsertApplicationWorkflowState,
+  validateListLimit,
+  validateVerificationReceiptForOutcome,
+  validateWorkflowInput,
+  workflowPatch,
+  workflowPatchForAttemptOutcome,
+} from './application.repository.helpers'
+import {
+  evaluateApplicationPolicy,
+  readPolicyConfig,
+} from '../policy/policy.repository'
 
-const applicationSelection = {
-  id: applications.id,
-  companyName: companies.name,
-  roleTitle: applications.roleTitle,
-  sourceName: sources.name,
-  status: applications.status,
-  term: applications.term,
-  locationRaw: applications.locationRaw,
-  city: applications.city,
-  region: applications.region,
-  country: applications.country,
-  workMode: applications.workMode,
-  hasApplied: applications.hasApplied,
-  currentPriorityScore: applications.currentPriorityScore,
-  currentPriorityBand: applications.currentPriorityBand,
-  primaryLinkLabel: applicationLinks.label,
-  primaryLinkUrl: applicationLinks.url,
-  notes: applications.notes,
-  createdAt: applications.createdAt,
-  updatedAt: applications.updatedAt,
-}
 
-interface ApplicationRow {
-  id: string
-  companyName: string
-  roleTitle: string
-  sourceName: string
-  status: string
-  term: string | null
-  locationRaw: string | null
-  city: string | null
-  region: string | null
-  country: string
-  workMode: string
-  hasApplied: boolean
-  currentPriorityScore: number | null
-  currentPriorityBand: string | null
-  primaryLinkLabel: string | null
-  primaryLinkUrl: string | null
-  notes: string | null
-  createdAt: string
-  updatedAt: string
-}
-
+const DEFAULT_EVENT_LIST_LIMIT = 50
+const DEFAULT_ATTEMPT_LIST_LIMIT = 50
+const DEFAULT_LINK_LIST_LIMIT = 50
+const FIRST_ATTEMPT_STEP_SEQUENCE = 1
 export function createSqliteApplicationRepository(
   database: DrizzleDatabase,
 ): ApplicationRepository {
   return {
+    async createApplication(input) {
+      const now = new Date().toISOString()
+      const normalizedInput = normalizeCreateApplicationInput(input)
+      const applicationId = randomUUID()
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+        const company = findOrCreateCompany(tx, normalizedInput.companyName, now)
+        const source = findOrCreateSource(tx, normalizedInput.sourceName, now)
+
+        if (normalizedInput.primaryLink?.kind === 'official' || normalizedInput.sourceLink?.kind === 'official') {
+          const officialUrl =
+            normalizedInput.primaryLink?.kind === 'official'
+              ? normalizedInput.primaryLink.url
+              : normalizedInput.sourceLink?.url
+
+          if (officialUrl && hasActiveOfficialUrl(tx, officialUrl)) {
+            throw new Error('Duplicate application official URL')
+          }
+        }
+
+        if (hasActiveApplicationFingerprint(tx, company.id, source.id, normalizedInput.roleTitle)) {
+          throw new Error('Duplicate application fingerprint')
+        }
+
+        tx
+          .insert(applications)
+          .values({
+            id: applicationId,
+            companyId: company.id,
+            sourceId: source.id,
+            roleTitle: normalizedInput.roleTitle,
+            roleKind: normalizedInput.roleKind,
+            term: normalizedInput.term ?? null,
+            city: normalizedInput.city ?? null,
+            region: normalizedInput.region ?? null,
+            country: normalizedInput.country,
+            workMode: normalizedInput.workMode,
+            locationRaw: normalizedInput.locationRaw ?? null,
+            status: normalizedInput.status,
+            hasApplied: normalizedInput.hasApplied ?? false,
+            currentPriorityScore: null,
+            currentPriorityBand: null,
+            currentResumeVariant: normalizedInput.currentResumeVariant ?? null,
+            notes: normalizedInput.initialNote ?? null,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+          })
+          .run()
+
+        if (normalizedInput.primaryLink) {
+          insertApplicationLink(tx, {
+            applicationId,
+            discoveredAt: now,
+            isPrimary: true,
+            link: normalizedInput.primaryLink,
+            now,
+          })
+        }
+
+        if (normalizedInput.sourceLink) {
+          insertApplicationLink(tx, {
+            applicationId,
+            discoveredAt: now,
+            isPrimary: !normalizedInput.primaryLink,
+            link: normalizedInput.sourceLink,
+            now,
+          })
+        }
+
+        insertApplicationEvent(tx, {
+          applicationId,
+          message: 'Application created.',
+          payload: normalizedInput,
+          type: 'application_created',
+          now,
+        })
+
+        if (normalizedInput.initialNote) {
+          insertApplicationEvent(tx, {
+            applicationId,
+            message: normalizedInput.initialNote,
+            payload: {},
+            type: 'note',
+            now,
+          })
+        }
+
+        const created = selectApplicationById(tx, applicationId)
+
+        if (!created) {
+          throw new Error(`Application not found: ${applicationId}`)
+        }
+
+        return created
+      })
+    },
+    async updateApplication(input) {
+      const now = new Date().toISOString()
+      const normalizedInput = normalizeApplicationUpdateInput(input)
+      const patch = applicationPatch(normalizedInput)
+
+      assertNonEmptyPatch(patch, 'Application metadata update requires at least one field')
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+
+        tx
+          .update(applications)
+          .set({
+            ...patch,
+            updatedAt: now,
+          })
+          .where(and(eq(applications.id, normalizedInput.applicationId), isNull(applications.deletedAt)))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: normalizedInput.applicationId,
+          message: 'Application metadata updated.',
+          payload: normalizedInput,
+          type: 'application_updated',
+          now,
+        })
+
+        const updated = selectApplicationById(tx, normalizedInput.applicationId)
+
+        if (!updated) {
+          throw new Error(`Application not found: ${normalizedInput.applicationId}`)
+        }
+
+        return updated
+      })
+    },
+    async appendApplicationNote(input) {
+      const now = new Date().toISOString()
+      const message = requiredText(input.message, 'note message')
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+
+        tx
+          .update(applications)
+          .set({
+            notes: message,
+            updatedAt: now,
+          })
+          .where(eq(applications.id, input.applicationId))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: input.applicationId,
+          message,
+          payload: {},
+          type: 'note',
+          now,
+        })
+
+        const updated = selectApplicationById(tx, input.applicationId)
+
+        if (!updated) {
+          throw new Error(`Application not found: ${input.applicationId}`)
+        }
+
+        return updated
+      })
+    },
+    async archiveApplication(input) {
+      const now = new Date().toISOString()
+      const message =
+        input.note !== undefined ? requiredText(input.note, 'archive note') : 'Application archived.'
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+        const existing = tx
+          .select({ id: applications.id })
+          .from(applications)
+          .where(and(eq(applications.id, input.applicationId), isNull(applications.deletedAt)))
+          .get()
+
+        if (!existing) {
+          throw new Error(`Application not found: ${input.applicationId}`)
+        }
+
+        tx
+          .update(applications)
+          .set({
+            deletedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(applications.id, input.applicationId))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: input.applicationId,
+          message,
+          payload: {
+            ...input,
+            ...(input.note !== undefined ? { note: message } : {}),
+          },
+          type: 'application_archived',
+          now,
+        })
+      })
+    },
+    async updateApplicationWorkflow(input) {
+      const now = new Date().toISOString()
+      const patch = workflowPatch(input)
+
+      assertNonEmptyPatch(patch, 'Workflow update requires at least one field')
+
+      validateWorkflowInput(input)
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+        const existing = tx
+          .select()
+          .from(applicationWorkflowStates)
+          .where(eq(applicationWorkflowStates.applicationId, input.applicationId))
+          .get()
+
+        if (existing) {
+          tx
+            .update(applicationWorkflowStates)
+            .set({
+              ...patch,
+              updatedAt: now,
+            })
+            .where(eq(applicationWorkflowStates.applicationId, input.applicationId))
+            .run()
+        } else {
+          tx
+            .insert(applicationWorkflowStates)
+            .values({
+              applicationId: input.applicationId,
+              lockStartedAt: patch.lockStartedAt ?? null,
+              holdStartedAt: patch.holdStartedAt ?? null,
+              manualReviewKind: patch.manualReviewKind ?? null,
+              missingUserInfo: patch.missingUserInfo ?? null,
+              blockerReason: patch.blockerReason ?? null,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run()
+        }
+
+        tx
+          .update(applications)
+          .set({ updatedAt: now })
+          .where(eq(applications.id, input.applicationId))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: input.applicationId,
+          message: 'Workflow state updated.',
+          payload: input,
+          type: 'workflow_updated',
+          now,
+        })
+
+        const updated = selectApplicationById(tx, input.applicationId)
+
+        if (!updated) {
+          throw new Error(`Application not found: ${input.applicationId}`)
+        }
+
+        return updated
+      })
+    },
+    async startApplicationAttempt(input) {
+      const now = new Date().toISOString()
+      const normalizedInput = normalizeStartApplicationAttemptInput(input)
+      const attemptId = randomUUID()
+      const message = normalizedInput.summary ?? 'Application attempt started.'
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+        const existingApplication = tx
+          .select({ id: applications.id })
+          .from(applications)
+          .where(and(eq(applications.id, normalizedInput.applicationId), isNull(applications.deletedAt)))
+          .get()
+
+        if (!existingApplication) {
+          throw new Error(`Application not found: ${normalizedInput.applicationId}`)
+        }
+
+        if (hasActiveApplicationAttempt(tx, normalizedInput.applicationId)) {
+          throw new Error(`Application attempt already in progress: ${normalizedInput.applicationId}`)
+        }
+
+        tx
+          .insert(workflowRuns)
+          .values({
+            id: attemptId,
+            runType: 'application_attempt',
+            status: 'in_progress',
+            actorType: normalizedInput.actorType,
+            actorName: normalizedInput.actorName ?? null,
+            sourceId: null,
+            subjectApplicationId: normalizedInput.applicationId,
+            summary: normalizedInput.summary ?? null,
+            outcome: null,
+            blocker: null,
+            coverageStartedAt: null,
+            coverageEndedAt: null,
+            timezone: null,
+            inputJson: JSON.stringify(normalizedInput),
+            metadataJson: JSON.stringify({
+              entryUrl: normalizedInput.entryUrl ?? null,
+              resumeVariant: normalizedInput.resumeVariant ?? null,
+              resumeArtifactPath: normalizedInput.resumeArtifactPath ?? null,
+              stopReason: null,
+              confirmationUrl: null,
+              confirmationText: null,
+            }),
+            startedAt: now,
+            completedAt: null,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+          })
+          .run()
+
+        insertWorkflowRunStep(tx, {
+          workflowRunId: attemptId,
+          actor: attemptActor(normalizedInput.actorType, normalizedInput.actorName),
+          message,
+          now,
+          payload: normalizedInput,
+          sequence: FIRST_ATTEMPT_STEP_SEQUENCE,
+          type: 'attempt_started',
+        })
+
+        upsertApplicationWorkflowState(tx, {
+          applicationId: normalizedInput.applicationId,
+          now,
+          patch: {
+            lockStartedAt: now,
+          },
+        })
+
+        tx
+          .update(applications)
+          .set({
+            status: 'in_progress',
+            updatedAt: now,
+          })
+          .where(eq(applications.id, normalizedInput.applicationId))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: normalizedInput.applicationId,
+          message,
+          payload: {
+            attemptId,
+          },
+          type: 'attempt_started',
+          now,
+        })
+
+        const attempt = selectApplicationAttemptById(tx, attemptId)
+
+        if (!attempt) {
+          throw new Error(`Application attempt not found: ${attemptId}`)
+        }
+
+        return attempt
+      })
+    },
+    async createApplicationAttemptStep(input) {
+      const now = new Date().toISOString()
+      const normalizedInput = normalizeCreateApplicationAttemptStepInput(input)
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+        const attempt = tx
+          .select({ id: workflowRuns.id })
+          .from(workflowRuns)
+          .where(
+            and(
+              eq(workflowRuns.id, normalizedInput.attemptId),
+              eq(workflowRuns.subjectApplicationId, normalizedInput.applicationId),
+              eq(workflowRuns.runType, 'application_attempt'),
+              eq(workflowRuns.status, 'in_progress'),
+            ),
+          )
+          .get()
+
+        if (!attempt) {
+          throw new Error(`Active application attempt not found: ${normalizedInput.attemptId}`)
+        }
+
+        const previousStep = tx
+          .select({ sequence: workflowRunSteps.sequence })
+          .from(workflowRunSteps)
+          .where(eq(workflowRunSteps.workflowRunId, normalizedInput.attemptId))
+          .orderBy(desc(workflowRunSteps.sequence))
+          .get()
+        const sequence = (previousStep?.sequence ?? 0) + 1
+
+        insertWorkflowRunStep(tx, {
+          workflowRunId: normalizedInput.attemptId,
+          actor: normalizedInput.actor ?? 'agent',
+          message: normalizedInput.message,
+          now,
+          payload: normalizedInput.payload ?? {},
+          sequence,
+          type: normalizedInput.type,
+        })
+
+        const step = tx
+          .select()
+          .from(workflowRunSteps)
+          .where(
+            and(
+              eq(workflowRunSteps.workflowRunId, normalizedInput.attemptId),
+              eq(workflowRunSteps.sequence, sequence),
+            ),
+          )
+          .get()
+
+        if (!step) {
+          throw new Error(`Application attempt step not found: ${normalizedInput.attemptId}`)
+        }
+
+        return mapApplicationAttemptStep(step, normalizedInput.applicationId)
+      })
+    },
+    async completeApplicationAttempt(input) {
+      const now = new Date().toISOString()
+      const normalizedInput = normalizeCompleteApplicationAttemptInput(input)
+      const message =
+        normalizedInput.summary ??
+        `Application attempt completed with outcome ${normalizedInput.outcome}.`
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+        const existingAttempt = tx
+          .select()
+          .from(workflowRuns)
+          .where(
+            and(
+              eq(workflowRuns.id, normalizedInput.attemptId),
+              eq(workflowRuns.subjectApplicationId, normalizedInput.applicationId),
+              eq(workflowRuns.runType, 'application_attempt'),
+              eq(workflowRuns.status, 'in_progress'),
+            ),
+          )
+          .get()
+
+        if (!existingAttempt) {
+          throw new Error(`Active application attempt not found: ${normalizedInput.attemptId}`)
+        }
+
+        validateVerificationReceiptForOutcome(
+          tx,
+          normalizedInput.attemptId,
+          normalizedInput.outcome,
+        )
+
+        const policyDecision = evaluateApplicationPolicy(tx, readPolicyConfig(tx), {
+          applicationId: normalizedInput.applicationId,
+          attemptId: normalizedInput.attemptId,
+          outcome: normalizedInput.outcome,
+        })
+
+        if (policyDecision.status !== 'allow') {
+          throw new Error(policyDecision.reasons[0]?.message ?? 'Policy blocked application outcome')
+        }
+
+        const previousStep = tx
+          .select({ sequence: workflowRunSteps.sequence })
+          .from(workflowRunSteps)
+          .where(eq(workflowRunSteps.workflowRunId, normalizedInput.attemptId))
+          .orderBy(desc(workflowRunSteps.sequence))
+          .get()
+        const existingMetadata = parseAttemptMetadata(existingAttempt.metadataJson)
+
+        tx
+          .update(workflowRuns)
+          .set({
+            status: 'completed',
+            outcome: normalizedInput.outcome,
+            summary: normalizedInput.summary ?? existingAttempt.summary,
+            blocker: normalizedInput.blockerReason ?? null,
+            metadataJson: JSON.stringify({
+              ...existingMetadata,
+              stopReason: normalizedInput.stopReason ?? null,
+              confirmationUrl: normalizedInput.confirmationUrl ?? null,
+              confirmationText: normalizedInput.confirmationText ?? null,
+            }),
+            completedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(workflowRuns.id, normalizedInput.attemptId))
+          .run()
+
+        insertWorkflowRunStep(tx, {
+          workflowRunId: normalizedInput.attemptId,
+          actor: attemptActor(existingAttempt.actorType, existingAttempt.actorName),
+          message,
+          now,
+          payload: normalizedInput,
+          sequence: (previousStep?.sequence ?? 0) + 1,
+          type: 'attempt_completed',
+        })
+
+        upsertApplicationWorkflowState(tx, {
+          applicationId: normalizedInput.applicationId,
+          now,
+          patch: workflowPatchForAttemptOutcome(normalizedInput, now),
+        })
+
+        tx
+          .update(applications)
+          .set({
+            status: normalizedInput.outcome,
+            updatedAt: now,
+            ...(normalizedInput.outcome === 'submitted' || normalizedInput.outcome === 'already_applied'
+              ? { hasApplied: true }
+              : {}),
+          })
+          .where(eq(applications.id, normalizedInput.applicationId))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: normalizedInput.applicationId,
+          message,
+          payload: {
+            attemptId: normalizedInput.attemptId,
+            outcome: normalizedInput.outcome,
+          },
+          type: 'attempt_completed',
+          now,
+        })
+
+        const attempt = selectApplicationAttemptById(tx, normalizedInput.attemptId)
+
+        if (!attempt) {
+          throw new Error(`Application attempt not found: ${normalizedInput.attemptId}`)
+        }
+
+        return attempt
+      })
+    },
+    async createApplicationLink(input) {
+      const now = new Date().toISOString()
+      const normalizedInput = normalizeApplicationLinkInput(input)
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+
+        if (normalizedInput.kind === 'official' && hasActiveOfficialUrl(tx, normalizedInput.url)) {
+          throw new Error('Duplicate application official URL')
+        }
+
+        if (normalizedInput.isPrimary) {
+          clearPrimaryApplicationLinks(tx, normalizedInput.applicationId, now)
+        }
+
+        const link = insertApplicationLink(tx, {
+          applicationId: normalizedInput.applicationId,
+          discoveredAt: now,
+          isPrimary: normalizedInput.isPrimary ?? false,
+          link: normalizedInput,
+          now,
+        })
+
+        tx
+          .update(applications)
+          .set({ updatedAt: now })
+          .where(eq(applications.id, normalizedInput.applicationId))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: normalizedInput.applicationId,
+          message: 'Application link created.',
+          payload: normalizedInput,
+          type: 'link_created',
+          now,
+        })
+
+        return link
+      })
+    },
+    async updateApplicationLink(input) {
+      const now = new Date().toISOString()
+      const normalizedInput = normalizeApplicationLinkUpdateInput(input)
+      const patch = applicationLinkPatch(normalizedInput)
+
+      assertNonEmptyPatch(
+        {
+          ...patch,
+          ...(normalizedInput.archived !== undefined ? { archived: normalizedInput.archived } : {}),
+        },
+        'Application link update requires at least one field',
+      )
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+        const existing = tx
+          .select()
+          .from(applicationLinks)
+          .where(
+            and(
+              eq(applicationLinks.id, normalizedInput.linkId),
+              eq(applicationLinks.applicationId, normalizedInput.applicationId),
+            ),
+          )
+          .get()
+
+        if (!existing) {
+          throw new Error(`Application link not found: ${normalizedInput.linkId}`)
+        }
+
+        const nextKind = normalizedInput.kind ?? existing.kind
+        const nextUrl = normalizedInput.url ?? existing.url
+
+        if (
+          !normalizedInput.archived &&
+          nextKind === 'official' &&
+          hasActiveOfficialUrl(tx, nextUrl, existing.id)
+        ) {
+          throw new Error('Duplicate application official URL')
+        }
+
+        if (normalizedInput.isPrimary) {
+          clearPrimaryApplicationLinks(tx, normalizedInput.applicationId, now)
+        }
+
+        tx
+          .update(applicationLinks)
+          .set({
+            ...patch,
+            ...(normalizedInput.archived ? { deletedAt: now, isPrimary: false } : {}),
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(applicationLinks.id, normalizedInput.linkId),
+              eq(applicationLinks.applicationId, normalizedInput.applicationId),
+            ),
+          )
+          .run()
+
+        tx
+          .update(applications)
+          .set({ updatedAt: now })
+          .where(eq(applications.id, normalizedInput.applicationId))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: normalizedInput.applicationId,
+          message: 'Application link updated.',
+          payload: normalizedInput,
+          type: 'link_updated',
+          now,
+        })
+
+        const updated = tx
+          .select()
+          .from(applicationLinks)
+          .where(eq(applicationLinks.id, normalizedInput.linkId))
+          .get()
+
+        if (!updated) {
+          throw new Error(`Application link not found: ${normalizedInput.linkId}`)
+        }
+
+        return mapApplicationLinkRecord(updated)
+      })
+    },
+    async listApplicationLinks(input: ApplicationLinksListInput) {
+      const applicationId = requiredText(input.applicationId, 'applicationId')
+      const limit = input.limit ?? DEFAULT_LINK_LIST_LIMIT
+      const offset = input.offset ?? 0
+      const where = and(
+        eq(applicationLinks.applicationId, applicationId),
+        isNull(applicationLinks.deletedAt),
+      )
+      const totalRow = database
+        .select({ value: count() })
+        .from(applicationLinks)
+        .where(where)
+        .get()
+      const items = database
+        .select()
+        .from(applicationLinks)
+        .where(where)
+        .orderBy(desc(applicationLinks.isPrimary), desc(applicationLinks.discoveredAt))
+        .limit(limit)
+        .offset(offset)
+        .all()
+        .map(mapApplicationLinkRecord)
+      const total = totalRow?.value ?? 0
+
+      return {
+        items,
+        total,
+        limit,
+        offset,
+        hasMore: offset + items.length < total,
+      }
+    },
+    async listApplicationEvents(input) {
+      const limit = input.limit ?? DEFAULT_EVENT_LIST_LIMIT
+      const offset = input.offset ?? 0
+      const where = eq(applicationEvents.applicationId, input.applicationId)
+      const totalRow = database
+        .select({ value: count() })
+        .from(applicationEvents)
+        .where(where)
+        .get()
+      const items = database
+        .select()
+        .from(applicationEvents)
+        .where(where)
+        .orderBy(desc(applicationEvents.createdAt))
+        .limit(limit)
+        .offset(offset)
+        .all()
+
+      const total = totalRow?.value ?? 0
+
+      return {
+        items,
+        total,
+        limit,
+        offset,
+        hasMore: offset + items.length < total,
+      }
+    },
+    async listApplicationAttempts(input) {
+      const applicationId = requiredText(input.applicationId, 'applicationId')
+      const limit = input.limit ?? DEFAULT_ATTEMPT_LIST_LIMIT
+      const offset = input.offset ?? 0
+      const where = and(
+        eq(workflowRuns.subjectApplicationId, applicationId),
+        eq(workflowRuns.runType, 'application_attempt'),
+        isNull(workflowRuns.deletedAt),
+      )
+      const totalRow = database
+        .select({ value: count() })
+        .from(workflowRuns)
+        .where(where)
+        .get()
+      const rows = database
+        .select()
+        .from(workflowRuns)
+        .where(where)
+        .orderBy(desc(workflowRuns.startedAt))
+        .limit(limit)
+        .offset(offset)
+        .all()
+      const items = rows.map((row) =>
+        mapApplicationAttempt(row, selectApplicationAttemptSteps(database, row.id)),
+      )
+      const total = totalRow?.value ?? 0
+
+      return {
+        items,
+        total,
+        limit,
+        offset,
+        hasMore: offset + items.length < total,
+      }
+    },
     async listApplications(query: ApplicationListQuery = {}) {
       if (query.sort && !isApplicationListSort(query.sort)) {
         throw new Error(`Invalid application list sort: ${query.sort}`)
@@ -78,7 +858,11 @@ export function createSqliteApplicationRepository(
         .innerJoin(sources, eq(applications.sourceId, sources.id))
         .leftJoin(
           applicationLinks,
-          eq(applicationLinks.applicationId, applications.id),
+          and(
+            eq(applicationLinks.applicationId, applications.id),
+            eq(applicationLinks.isPrimary, true),
+            isNull(applicationLinks.deletedAt),
+          ),
         )
         .where(where)
         .get()
@@ -89,7 +873,11 @@ export function createSqliteApplicationRepository(
         .innerJoin(sources, eq(applications.sourceId, sources.id))
         .leftJoin(
           applicationLinks,
-          eq(applicationLinks.applicationId, applications.id),
+          and(
+            eq(applicationLinks.applicationId, applications.id),
+            eq(applicationLinks.isPrimary, true),
+            isNull(applicationLinks.deletedAt),
+          ),
         )
         .where(where)
         .orderBy(...buildApplicationListOrder(query))
@@ -117,199 +905,52 @@ export function createSqliteApplicationRepository(
         throw new Error(`Invalid application status: ${input.status}`)
       }
 
-      database
-        .update(applications)
-        .set({
-          status: input.status,
-          updatedAt: new Date().toISOString(),
-          ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      const now = new Date().toISOString()
+      const noteMessage =
+        input.notes !== undefined ? requiredText(input.notes, 'note message') : undefined
+
+      return database.transaction((transaction) => {
+        const tx = transaction
+
+        tx
+          .update(applications)
+          .set({
+            status: input.status,
+            updatedAt: now,
+            ...(noteMessage !== undefined ? { notes: noteMessage } : {}),
+          })
+          .where(eq(applications.id, input.applicationId))
+          .run()
+
+        insertApplicationEvent(tx, {
+          applicationId: input.applicationId,
+          message: `Application status updated to ${input.status}.`,
+          payload: {
+            ...input,
+            ...(noteMessage !== undefined ? { notes: noteMessage } : {}),
+          },
+          type: 'status_updated',
+          now,
         })
-        .where(eq(applications.id, input.applicationId))
-        .run()
 
-      const updated = selectApplicationById(database, input.applicationId)
+        if (noteMessage !== undefined) {
+          insertApplicationEvent(tx, {
+            applicationId: input.applicationId,
+            message: noteMessage,
+            payload: {},
+            type: 'note',
+            now,
+          })
+        }
 
-      if (!updated) {
-        throw new Error(`Application not found: ${input.applicationId}`)
-      }
+        const updated = selectApplicationById(tx, input.applicationId)
 
-      return updated
+        if (!updated) {
+          throw new Error(`Application not found: ${input.applicationId}`)
+        }
+
+        return updated
+      })
     },
   }
-}
-
-function validateListLimit(limit = DEFAULT_APPLICATION_LIST_LIMIT) {
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_APPLICATION_LIST_LIMIT) {
-    throw new Error(
-      `Application list limit must be between 1 and ${MAX_APPLICATION_LIST_LIMIT}`,
-    )
-  }
-
-  return limit
-}
-
-function selectApplicationById(database: DrizzleDatabase, id: string) {
-  const row = database
-    .select(applicationSelection)
-    .from(applications)
-    .innerJoin(companies, eq(applications.companyId, companies.id))
-    .innerJoin(sources, eq(applications.sourceId, sources.id))
-    .leftJoin(
-      applicationLinks,
-      eq(applicationLinks.applicationId, applications.id),
-    )
-    .where(and(eq(applications.id, id), eq(applicationLinks.isPrimary, true)))
-    .get()
-
-  return row ? mapApplicationRow(row) : null
-}
-
-function mapApplicationRow(row: ApplicationRow): ApplicationListItem {
-  const location =
-    row.locationRaw ?? [row.city, row.region, row.country].filter(Boolean).join(', ')
-
-  return {
-    id: row.id,
-    companyName: row.companyName,
-    roleTitle: row.roleTitle,
-    sourceName: row.sourceName,
-    status: row.status as ApplicationListItem['status'],
-    term: row.term,
-    location,
-    workMode: row.workMode as WorkMode,
-    hasApplied: row.hasApplied,
-    currentPriorityScore: row.currentPriorityScore,
-    currentPriorityBand: row.currentPriorityBand,
-    primaryLink:
-      row.primaryLinkLabel && row.primaryLinkUrl
-        ? {
-            label: row.primaryLinkLabel,
-            url: row.primaryLinkUrl,
-          }
-        : null,
-    notes: row.notes,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  }
-}
-
-function buildApplicationListOrder(query: ApplicationListQuery) {
-  if (query.sort === 'company_asc') {
-    return [asc(companies.name), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'company_desc') {
-    return [desc(companies.name), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'role_asc') {
-    return [asc(applications.roleTitle), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'role_desc') {
-    return [desc(applications.roleTitle), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'source_asc') {
-    return [asc(sources.name), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'source_desc') {
-    return [desc(sources.name), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'status_asc') {
-    return [asc(applications.status), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'status_desc') {
-    return [desc(applications.status), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'priority_asc') {
-    return [asc(applications.currentPriorityScore), desc(applications.updatedAt)]
-  }
-
-  if (query.sort === 'updated_asc') {
-    return [asc(applications.updatedAt), desc(applications.currentPriorityScore)]
-  }
-
-  if (query.sort === 'updated_desc') {
-    return [desc(applications.updatedAt), desc(applications.currentPriorityScore)]
-  }
-
-  return [desc(applications.currentPriorityScore), desc(applications.updatedAt)]
-}
-
-function buildApplicationListWhere(query: ApplicationListQuery) {
-  const filters: SQL[] = [eq(applicationLinks.isPrimary, true)]
-
-  if (query.status) {
-    filters.push(eq(applications.status, query.status))
-  }
-
-  if (query.hasApplied !== undefined) {
-    filters.push(eq(applications.hasApplied, query.hasApplied))
-  }
-
-  if (query.priorityBand) {
-    filters.push(eq(applications.currentPriorityBand, query.priorityBand))
-  }
-
-  if (query.minScore !== undefined) {
-    filters.push(gte(applications.currentPriorityScore, query.minScore))
-  }
-
-  if (query.maxScore !== undefined) {
-    filters.push(lte(applications.currentPriorityScore, query.maxScore))
-  }
-
-  if (query.company) {
-    filters.push(like(companies.name, `%${query.company}%`))
-  }
-
-  if (query.role) {
-    filters.push(like(applications.roleTitle, `%${query.role}%`))
-  }
-
-  if (query.source) {
-    filters.push(like(sources.name, `%${query.source}%`))
-  }
-
-  if (query.search) {
-    const pattern = `%${query.search}%`
-    const searchFilter = or(
-      like(companies.name, pattern),
-      like(applications.roleTitle, pattern),
-      like(sources.name, pattern),
-      like(applications.locationRaw, pattern),
-      like(applications.notes, pattern),
-    )
-
-    if (searchFilter) {
-      filters.push(searchFilter)
-    }
-  }
-
-  if (query.workMode) {
-    filters.push(eq(applications.workMode, query.workMode))
-  }
-
-  if (query.createdFrom) {
-    filters.push(gte(applications.createdAt, query.createdFrom))
-  }
-
-  if (query.createdTo) {
-    filters.push(lte(applications.createdAt, query.createdTo))
-  }
-
-  if (query.updatedFrom) {
-    filters.push(gte(applications.updatedAt, query.updatedFrom))
-  }
-
-  if (query.updatedTo) {
-    filters.push(lte(applications.updatedAt, query.updatedTo))
-  }
-
-  return and(...filters)
 }

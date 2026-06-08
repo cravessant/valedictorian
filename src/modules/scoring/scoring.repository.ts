@@ -1,27 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import type { ScoreInput } from 'job-app-sdk'
+import type { ScoreInput } from 'sparxie'
 import { applicationScores, applications } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 
-export type { ScoreInput } from 'job-app-sdk'
+export type { ScoreInput } from 'sparxie'
 
 export interface ScoringRepository {
   recordScore(input: ScoreInput): Promise<void>
 }
-
-export const scoreInputKeys = [
-  'applicationId',
-  'score',
-  'band',
-  'roleRelevance',
-  'careerSignal',
-  'cityWorkMode',
-  'compensationLogistics',
-  'penalties',
-  'rationale',
-  'rubricVersion',
-]
 
 export function createSqliteScoringRepository(database: DrizzleDatabase): ScoringRepository {
   return {

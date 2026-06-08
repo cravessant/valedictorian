@@ -8,22 +8,29 @@ import {
 } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import type { SettingsPreloadApi } from './ipc/settings.preload'
-import type {
-  ApplicationListItem,
-  ApplicationListQuery,
-  ApplicationListResult,
-} from './modules/applications/application.types'
+import type { ApplicationListQuery } from './modules/applications/application.types'
+import type { QueueListQuery } from './modules/queue/queue.repository'
+import type { SourcingFindingsListInput } from 'sparxie'
 import {
-  defaultAppSettings,
-  type AppSettings,
-  type AppSettingsPatch,
-} from './settings/app-settings'
+  createApplication,
+  createApplicationDetail,
+  createAttemptResult,
+  createEventsResult,
+  createLinksResult,
+  createListResult,
+  createQueueItem,
+  createQueueResult,
+  createSettingsApi,
+  createSourcingFinding,
+  createSourcingResult,
+} from './App.test-helpers'
 
 afterEach(() => {
   cleanup()
   delete (window as Window & { applications?: unknown }).applications
+  delete (window as Window & { sourcing?: unknown }).sourcing
   delete (window as Window & { settings?: unknown }).settings
+  delete (window as Window & { profile?: unknown }).profile
 })
 
 describe('App', () => {
@@ -56,6 +63,478 @@ describe('App', () => {
       'href',
       'https://jobs.example.test/remediated/f60a3102c158cd7c',
     )
+    expect(screen.getByRole('link', { name: 'official' })).toHaveAttribute('target', '_blank')
+    expect(screen.getByRole('link', { name: 'official' })).toHaveAttribute(
+      'rel',
+      'noreferrer',
+    )
+  })
+
+  it('lets users add application rows from a modal and reloads the list', async () => {
+    const created = createApplication({
+      id: 'application-delta',
+      companyName: 'Delta Labs',
+      roleTitle: 'Software Engineering Intern',
+      status: 'queued',
+    })
+    const createApplicationRow = vi.fn(async () => created)
+    const applicationLoader = vi
+      .fn()
+      .mockResolvedValueOnce(createListResult([createApplication()]))
+      .mockResolvedValueOnce(createListResult([createApplication(), created]))
+
+    render(
+      <App
+        applicationCreator={createApplicationRow}
+        applicationLoader={applicationLoader}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add application' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Add application' })
+    fireEvent.change(within(dialog).getByLabelText('Company'), {
+      target: { value: 'Delta Labs' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Role'), {
+      target: { value: 'Software Engineering Intern' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Source'), {
+      target: { value: 'LinkedIn' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Country'), {
+      target: { value: 'US' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Primary URL'), {
+      target: { value: 'https://jobs.example.com/delta' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Source URL'), {
+      target: { value: 'https://linkedin.com/jobs/delta' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
+
+    await waitFor(() => {
+      expect(createApplicationRow).toHaveBeenCalledWith({
+        companyName: 'Delta Labs',
+        country: 'US',
+        primaryLink: {
+          kind: 'official',
+          label: 'official',
+          url: 'https://jobs.example.com/delta',
+        },
+        sourceLink: {
+          kind: 'source',
+          label: 'source',
+          url: 'https://linkedin.com/jobs/delta',
+        },
+        roleKind: 'internship',
+        roleTitle: 'Software Engineering Intern',
+        sourceName: 'LinkedIn',
+        status: 'queued',
+        workMode: 'remote',
+      })
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Add application' })).not.toBeInTheDocument()
+      expect(applicationLoader).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('opens an application edit modal from a row action without opening detail', async () => {
+    const updateApplication = vi.fn(async () =>
+      createApplicationDetail({ roleTitle: 'Backend Platform Intern' }),
+    )
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationUpdater={updateApplication}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Astranis Space Technologies' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit application' })
+    expect(screen.queryByRole('dialog', { name: 'Application detail' })).not.toBeInTheDocument()
+
+    fireEvent.change(within(dialog).getByLabelText('Role'), {
+      target: { value: 'Backend Platform Intern' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
+
+    await waitFor(() => {
+      expect(updateApplication).toHaveBeenCalledWith({
+        applicationId: 'application-1',
+        country: 'US',
+        hasApplied: false,
+        locationRaw: 'San Francisco, CA / Onsite',
+        roleKind: 'internship',
+        roleTitle: 'Backend Platform Intern',
+        term: 'Fall 2026 internship',
+        workMode: 'onsite',
+      })
+    })
+  })
+
+  it('lets users update application status, workflow, and notes from the edit modal', async () => {
+    const updateApplication = vi.fn(async () => createApplicationDetail())
+    const updateStatus = vi.fn(async () => createApplicationDetail({ status: 'ready_for_review' }))
+    const updateWorkflow = vi.fn(async () => createApplicationDetail({ status: 'ready_for_review' }))
+    const appendNote = vi.fn(async () =>
+      createApplicationDetail({ notes: 'Recruiter replied with next steps.' }),
+    )
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationNoteAppender={appendNote}
+        applicationStatusUpdater={updateStatus}
+        applicationUpdater={updateApplication}
+        applicationWorkflowUpdater={updateWorkflow}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Astranis Space Technologies' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Edit application' })
+    fireEvent.change(within(dialog).getByLabelText('Status'), {
+      target: { value: 'ready_for_review' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Status note'), {
+      target: { value: 'Ready for human review.' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Manual review kind'), {
+      target: { value: 'overridable' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Missing user info'), {
+      target: { value: 'Portfolio URL' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Blocker reason'), {
+      target: { value: 'Captcha requires user session.' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Application note'), {
+      target: { value: 'Recruiter replied with next steps.' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
+
+    await waitFor(() => {
+      expect(updateStatus).toHaveBeenCalledWith({
+        applicationId: 'application-1',
+        notes: 'Ready for human review.',
+        status: 'ready_for_review',
+      })
+      expect(updateWorkflow).toHaveBeenCalledWith({
+        applicationId: 'application-1',
+        blockerReason: 'Captcha requires user session.',
+        manualReviewKind: 'overridable',
+        missingUserInfo: 'Portfolio URL',
+      })
+      expect(appendNote).toHaveBeenCalledWith({
+        applicationId: 'application-1',
+        message: 'Recruiter replied with next steps.',
+      })
+    })
+  })
+
+  it('keeps application edit modals open when saving fails', async () => {
+    render(
+      <App
+        applicationCreator={vi.fn(async () => {
+          throw new Error('Duplicate application official URL')
+        })}
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add application' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Add application' })
+    fireEvent.change(within(dialog).getByLabelText('Company'), {
+      target: { value: 'Delta Labs' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Role'), {
+      target: { value: 'Software Engineering Intern' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Source'), {
+      target: { value: 'LinkedIn' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Country'), {
+      target: { value: 'US' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Primary URL'), {
+      target: { value: 'https://jobs.example.com/delta' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
+
+    expect(await within(dialog).findByText('Duplicate application official URL')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Add application' })).toBeInTheDocument()
+  })
+
+  it('opens a shared application detail modal from an application row', async () => {
+    const attempts = createAttemptResult()
+    const detailQueries: string[] = []
+    const linkQueries: string[] = []
+    const eventQueries: string[] = []
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationDetailLoader={(applicationId) => {
+          detailQueries.push(applicationId)
+          return Promise.resolve(createApplicationDetail())
+        }}
+        applicationEventsLoader={(input) => {
+          eventQueries.push(input.applicationId)
+          return Promise.resolve(createEventsResult())
+        }}
+        applicationLinksLoader={(input) => {
+          linkQueries.push(input.applicationId)
+          return Promise.resolve(createLinksResult())
+        }}
+        attemptLoader={() => Promise.resolve(attempts)}
+      />,
+    )
+
+    fireEvent.click(await screen.findByText('Astranis Space Technologies'))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Application detail' })
+
+    expect(detailQueries).toContain('application-1')
+    expect(linkQueries).toContain('application-1')
+    expect(eventQueries).toContain('application-1')
+    expect(dialog).toHaveClass('backdrop-blur-sm')
+    expect(within(dialog).getByText('Application detail')).toBeInTheDocument()
+    expect(within(dialog).getByText('Software Engineer- Backend Intern (Fall 2026)')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('needs_user_info')).toHaveLength(2)
+    expect(within(dialog).getByText('Source context')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('LinkedIn').length).toBeGreaterThan(0)
+    expect(within(dialog).getByText('Links')).toBeInTheDocument()
+    expect(within(dialog).getByRole('link', { name: 'source' })).toHaveAttribute(
+      'href',
+      'https://linkedin.com/jobs/astranis',
+    )
+    expect(within(dialog).getByText('Events')).toBeInTheDocument()
+    expect(within(dialog).getByText('Application created from sourcing.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Attempts')).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('link', { name: 'official' })[0]).toHaveAttribute(
+      'target',
+      '_blank',
+    )
+    expect(within(dialog).getByText('Started SmartRecruiters application.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Uploaded tailored resume.')).toBeInTheDocument()
+  })
+
+  it('lets users add application links and record scores from the detail modal', async () => {
+    const createLink = vi.fn(async () => ({
+      id: 'link-new',
+      applicationId: 'application-1',
+      kind: 'source',
+      label: 'source',
+      url: 'https://linkedin.com/jobs/new',
+      externalId: null,
+      isPrimary: false,
+      discoveredAt: '2026-06-04T16:00:00.000Z',
+      createdAt: '2026-06-04T16:00:00.000Z',
+      updatedAt: '2026-06-04T16:00:00.000Z',
+      deletedAt: null,
+    }))
+    const recordScore = vi.fn(async () => undefined)
+
+    render(
+      <App
+        applicationLinkCreator={createLink}
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationDetailLoader={() => Promise.resolve(createApplicationDetail())}
+        applicationEventsLoader={() => Promise.resolve(createEventsResult())}
+        applicationLinksLoader={() => Promise.resolve(createLinksResult())}
+        attemptLoader={() => Promise.resolve(createAttemptResult())}
+        scoreRecorder={recordScore}
+      />,
+    )
+
+    fireEvent.click(await screen.findByText('Astranis Space Technologies'))
+    const detailDialog = await screen.findByRole('dialog', { name: 'Application detail' })
+
+    fireEvent.click(within(detailDialog).getByRole('button', { name: 'Add link' }))
+    const linkDialog = await screen.findByRole('dialog', { name: 'Add application link' })
+    fireEvent.change(within(linkDialog).getByLabelText('Link label'), {
+      target: { value: 'source' },
+    })
+    fireEvent.change(within(linkDialog).getByLabelText('Link URL'), {
+      target: { value: 'https://linkedin.com/jobs/new' },
+    })
+    fireEvent.click(within(linkDialog).getByRole('button', { name: 'Save link' }))
+
+    await waitFor(() => {
+      expect(createLink).toHaveBeenCalledWith({
+        applicationId: 'application-1',
+        kind: 'source',
+        label: 'source',
+        url: 'https://linkedin.com/jobs/new',
+      })
+    })
+
+    fireEvent.click(within(detailDialog).getByRole('button', { name: 'Record score' }))
+    const scoreDialog = await screen.findByRole('dialog', { name: 'Record application score' })
+    fireEvent.change(within(scoreDialog).getByLabelText('Score'), { target: { value: '9' } })
+    fireEvent.change(within(scoreDialog).getByLabelText('Rationale'), {
+      target: { value: 'Excellent platform fit.' },
+    })
+    fireEvent.click(within(scoreDialog).getByRole('button', { name: 'Save score' }))
+
+    await waitFor(() => {
+      expect(recordScore).toHaveBeenCalledWith({
+        applicationId: 'application-1',
+        band: 'high',
+        careerSignal: 9,
+        cityWorkMode: 9,
+        compensationLogistics: 9,
+        penalties: [],
+        rationale: 'Excellent platform fit.',
+        roleRelevance: 9,
+        rubricVersion: 'human-modal-v1',
+        score: 9,
+      })
+    })
+  })
+
+  it('renders verification receipt attempt steps as receipt blocks', async () => {
+    const attempts = createAttemptResult([
+      {
+        ...createAttemptResult().items[0],
+        steps: [
+          ...createAttemptResult().items[0].steps,
+          {
+            id: 'step-3',
+            attemptId: 'attempt-1',
+            applicationId: 'application-1',
+            sequence: 3,
+            type: 'verification_receipt',
+            message: 'Final review verification passed.',
+            payloadJson: JSON.stringify({
+              version: 1,
+              scope: 'final_review',
+              status: 'passed',
+              verified: ['resume attachment', 'contact info'],
+              unresolved: [],
+              evidence: 'Final review page showed the attached resume and contact info.',
+            }),
+            actor: 'agent:codex',
+            createdAt: '2026-06-04T16:03:00.000Z',
+          },
+          {
+            id: 'step-4',
+            attemptId: 'attempt-1',
+            applicationId: 'application-1',
+            sequence: 4,
+            type: 'verification_receipt',
+            message: 'Final review verification failed.',
+            payloadJson: JSON.stringify({
+              version: 1,
+              scope: 'final_review',
+              status: 'failed',
+              verified: ['resume attachment'],
+              unresolved: ['Fall availability dates', 'onsite availability'],
+              evidence: 'Submit was paused because the availability fields were unanswered.',
+            }),
+            actor: 'agent:codex',
+            createdAt: '2026-06-04T16:04:00.000Z',
+          },
+        ],
+      },
+    ])
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationDetailLoader={() => Promise.resolve(createApplicationDetail())}
+        applicationEventsLoader={() => Promise.resolve(createEventsResult())}
+        applicationLinksLoader={() => Promise.resolve(createLinksResult())}
+        attemptLoader={() => Promise.resolve(attempts)}
+      />,
+    )
+
+    fireEvent.click(await screen.findByText('Astranis Space Technologies'))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Application detail' })
+
+    expect(within(dialog).getByText('Uploaded tailored resume.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Final review verification passed.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Final review verification failed.')).toBeInTheDocument()
+    expect(within(dialog).getByText('passed')).toBeInTheDocument()
+    expect(within(dialog).getByText('failed')).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Final review page showed the attached resume and contact info.'),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Submit was paused because the availability fields were unanswered.'),
+    ).toBeInTheDocument()
+    expect(within(dialog).getAllByText('resume attachment')).toHaveLength(2)
+    expect(within(dialog).getByText('contact info')).toBeInTheDocument()
+    expect(within(dialog).getByText('Fall availability dates')).toBeInTheDocument()
+    expect(within(dialog).getByText('onsite availability')).toBeInTheDocument()
+  })
+
+  it('opens the same application detail modal from a queue row', async () => {
+    const attemptQueries: string[] = []
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationDetailLoader={(applicationId) =>
+          Promise.resolve(
+            createApplicationDetail({
+              id: applicationId,
+              companyName: 'Versant Media',
+              roleTitle: 'Academic Year Internships: Platform Engineering',
+            }),
+          )
+        }
+        attemptLoader={(applicationId) => {
+          attemptQueries.push(applicationId)
+          return Promise.resolve(createAttemptResult())
+        }}
+        queueLoader={() => Promise.resolve(createQueueResult([createQueueItem()]))}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }))
+    fireEvent.click(await screen.findByText('Versant Media'))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Application detail' })
+
+    expect(attemptQueries).toContain('application-versant-platform')
+    expect(within(dialog).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
+    expect(within(dialog).getByText('Attempts')).toBeInTheDocument()
+    expect(within(dialog).getByText('Started SmartRecruiters application.')).toBeInTheDocument()
+  })
+
+  it('renders empty application detail sections', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationLinksLoader={() => Promise.resolve(createLinksResult([]))}
+        applicationEventsLoader={() => Promise.resolve(createEventsResult([]))}
+        attemptLoader={() => Promise.resolve(createAttemptResult([]))}
+      />,
+    )
+
+    fireEvent.click(await screen.findByText('Astranis Space Technologies'))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Application detail' })
+
+    expect(within(dialog).getByText('No links recorded.')).toBeInTheDocument()
+    expect(within(dialog).getByText('No events recorded.')).toBeInTheDocument()
+    expect(within(dialog).getByText('No attempts recorded.')).toBeInTheDocument()
   })
 
   it('renders the virtualized table without lifecycle warnings', async () => {
@@ -117,387 +596,428 @@ describe('App', () => {
     })
   })
 
-  it('renders the home page inside a left app sidebar with settings at the bottom', async () => {
+  it('renders queue rows from the configured loader', async () => {
+    const queueQueries: QueueListQuery[] = []
+
     render(
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        queueLoader={(query) => {
+          queueQueries.push(query)
+          return Promise.resolve(createQueueResult([createQueueItem()]))
+        }}
         settingsApi={createSettingsApi()}
       />,
     )
 
     await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }))
 
-    const sidebar = screen.getByRole('complementary', { name: 'Application navigation' })
-    const shell = sidebar.parentElement
+    const table = await screen.findByRole('table', { name: 'Queue' })
 
-    expect(shell).toHaveClass('grid-cols-[280px_1fr]')
-    expect(sidebar).toHaveClass('border-r')
-    expect(within(sidebar).getByRole('button', { name: 'Applications' })).toBeInTheDocument()
-    expect(within(sidebar).getByRole('button', { name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Queue' })).toBeInTheDocument()
+    expect(within(table).getByText('Versant Media')).toBeInTheDocument()
+    expect(within(table).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
+    expect(within(table).getByText('apply_now')).toBeInTheDocument()
+    expect(within(table).getByText('Queued score 6 meets policy cutoff 6.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Apply now 1' })).toBeInTheDocument()
 
-    fireEvent.click(within(sidebar).getByRole('button', { name: 'Settings' }))
-
-    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
-  })
-
-  it('renders custom app chrome around the home view', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    const chrome = screen.getByRole('banner', { name: 'App chrome' })
-    const sidebarToggle = within(chrome).getByRole('button', { name: 'Collapse sidebar' })
-
-    expect(chrome).toHaveClass('app-drag')
-    expect(chrome).toHaveClass('pl-20')
-    expect(chrome).not.toHaveClass('pl-24')
-    expect(sidebarToggle).toHaveClass('app-no-drag')
-    expect(sidebarToggle).toHaveClass('h-8', 'w-8')
-    expect(within(chrome).getByText('Applications')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Forward' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
-  })
-
-  it('collapses the sidebar from the topbar and persists the pinned state', async () => {
-    const settingsApi = createSettingsApi()
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={settingsApi}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply now 1' }))
 
     await waitFor(() => {
-      expect(settingsApi.update).toHaveBeenCalledWith({ sidebarCollapsed: true })
-    })
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'collapsed')
-    expect(screen.queryByRole('complementary', { name: 'Application navigation' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
-  })
-
-  it('keeps the applications table in the content column when the sidebar is collapsed', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi({ sidebarCollapsed: true })}
-      />,
-    )
-
-    const table = await screen.findByRole('table', { name: 'Applications' })
-    const main = table.closest('main')
-
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'collapsed')
-    expect(screen.queryByRole('complementary', { name: 'Application navigation' })).not.toBeInTheDocument()
-    expect(main).toHaveClass('col-start-2')
-  })
-
-  it('temporarily expands a collapsed sidebar on hover and hides it on mouse leave', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi({ sidebarCollapsed: true })}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'collapsed')
-    expect(screen.queryByRole('complementary', { name: 'Application navigation' })).not.toBeInTheDocument()
-
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Show sidebar temporarily' }))
-
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'hover')
-    expect(screen.getByRole('complementary', { name: 'Application navigation' })).toBeInTheDocument()
-
-    fireEvent.mouseLeave(screen.getByRole('complementary', { name: 'Application navigation' }))
-
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'collapsed')
-    expect(screen.queryByRole('complementary', { name: 'Application navigation' })).not.toBeInTheDocument()
-  })
-
-  it('pins a hover-expanded sidebar open from the topbar toggle', async () => {
-    const settingsApi = createSettingsApi({ sidebarCollapsed: true })
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={settingsApi}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Show sidebar temporarily' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
-
-    await waitFor(() => {
-      expect(settingsApi.update).toHaveBeenCalledWith({ sidebarCollapsed: false })
-    })
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'expanded')
-    expect(screen.getByRole('complementary', { name: 'Application navigation' })).toBeInTheDocument()
-  })
-
-  it('opens a compact settings popover for important runtime controls', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
-
-    const settingsTrigger = screen.getByRole('button', { name: 'Settings' })
-
-    expect(settingsTrigger).not.toHaveClass('border')
-    expect(settingsTrigger).not.toHaveClass('border-border')
-    expect(settingsTrigger).not.toHaveClass('bg-card/95')
-    expect(settingsTrigger).not.toHaveClass('shadow-xl')
-    expect(settingsTrigger).toHaveClass('hover:bg-accent', 'hover:text-accent-foreground')
-
-    fireEvent.click(settingsTrigger)
-
-    const dialog = screen.getByRole('dialog', { name: 'Settings' })
-
-    expect(within(dialog).getByText('Job App')).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Use remote backend')).not.toBeChecked()
-    expect(within(dialog).getByLabelText('Local API sharing')).not.toBeChecked()
-    expect(within(dialog).getByLabelText('Show advanced filters')).not.toBeChecked()
-    expect(within(dialog).getByLabelText('Remote API URL')).toBeDisabled()
-    expect(within(dialog).getByRole('button', { name: 'Open settings' })).toBeInTheDocument()
-    expect(within(dialog).getByText('Backend changes apply after restart.')).toBeInTheDocument()
-  })
-
-  it('toggles settings from the compact popover', async () => {
-    const settingsApi = createSettingsApi()
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={settingsApi}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-
-    const dialog = screen.getByRole('dialog', { name: 'Settings' })
-
-    fireEvent.click(within(dialog).getByLabelText('Local API sharing'))
-
-    await waitFor(() => {
-      expect(settingsApi.update).toHaveBeenCalledWith({ runtimeMode: 'local-shared' })
-    })
-    expect(within(dialog).getByText('local-shared')).toBeInTheDocument()
-
-    fireEvent.click(within(dialog).getByLabelText('Use remote backend'))
-
-    await waitFor(() => {
-      expect(settingsApi.update).toHaveBeenCalledWith({ runtimeMode: 'remote' })
-    })
-    expect(within(dialog).getByLabelText('Remote API URL')).not.toBeDisabled()
-    expect(within(dialog).getByText('remote')).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Local API sharing')).not.toBeChecked()
-
-    fireEvent.change(within(dialog).getByLabelText('Remote API URL'), {
-      target: { value: 'https://job-app.test' },
-    })
-
-    await waitFor(() => {
-      expect(settingsApi.update).toHaveBeenCalledWith({
-        remoteApiUrl: 'https://job-app.test',
+      expect(queueQueries.at(-1)).toMatchObject({
+        bucket: 'apply_now',
+        limit: 50,
+        offset: 0,
       })
     })
-    expect(within(dialog).getByDisplayValue('https://job-app.test')).toBeInTheDocument()
-
-    fireEvent.click(within(dialog).getByLabelText('Show advanced filters'))
-
-    await waitFor(() => {
-      expect(settingsApi.update).toHaveBeenCalledWith({ showAdvancedFilters: true })
-    })
-    expect(screen.getByLabelText('Status')).toBeInTheDocument()
   })
 
-  it('closes the compact settings popover', async () => {
+  it('lets users edit the underlying application from a queue row and reloads queue', async () => {
+    const queueItem = createQueueItem()
+    const queueLoader = vi
+      .fn()
+      .mockResolvedValueOnce(createQueueResult([queueItem]))
+      .mockResolvedValueOnce(
+        createQueueResult([
+          createQueueItem({ roleTitle: 'Backend Platform Engineering Intern' }),
+        ]),
+      )
+    const applicationDetailLoader = vi.fn(async (applicationId: string) =>
+      createApplicationDetail({
+        id: applicationId,
+        companyName: 'Versant Media',
+        roleTitle: 'Academic Year Internships: Platform Engineering',
+        sourceName: 'LinkedIn',
+        status: 'queued',
+        term: 'Academic Year internship',
+        location: 'Universal City, CA / Remote',
+        workMode: 'remote',
+        primaryLink: queueItem.primaryLink,
+      }),
+    )
+    const updateApplication = vi.fn(async () =>
+      createApplicationDetail({ roleTitle: 'Backend Platform Engineering Intern' }),
+    )
+
     render(
       <App
+        applicationDetailLoader={applicationDetailLoader}
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationUpdater={updateApplication}
+        queueLoader={queueLoader}
         settingsApi={createSettingsApi()}
       />,
     )
 
     await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }))
+    await screen.findByRole('table', { name: 'Queue' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Close settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Versant Media' }))
 
-    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'Edit application' })
+
+    expect(applicationDetailLoader).toHaveBeenCalledWith('application-versant-platform')
+    expect(screen.queryByRole('dialog', { name: 'Application detail' })).not.toBeInTheDocument()
+
+    fireEvent.change(within(dialog).getByLabelText('Role'), {
+      target: { value: 'Backend Platform Engineering Intern' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
+
+    await waitFor(() => {
+      expect(updateApplication).toHaveBeenCalledWith({
+        applicationId: 'application-versant-platform',
+        country: 'US',
+        hasApplied: false,
+        locationRaw: 'Universal City, CA / Remote',
+        roleKind: 'internship',
+        roleTitle: 'Backend Platform Engineering Intern',
+        term: 'Academic Year internship',
+        workMode: 'remote',
+      })
+      expect(queueLoader).toHaveBeenCalledTimes(2)
+    })
   })
 
-  it('opens the full settings page from the compact popover and returns to the app', async () => {
+  it('renders sourcing findings with merge-status filtering and promote action', async () => {
+    const queries: SourcingFindingsListInput[] = []
+    const attemptQueries: string[] = []
+    const detailQueries: string[] = []
+    const promoteFinding = vi.fn(async () =>
+      createSourcingFinding({ mergeStatus: 'merged', mergedApplicationId: 'application-1' }),
+    )
+
     render(
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        applicationDetailLoader={(applicationId) => {
+          detailQueries.push(applicationId)
+          return Promise.resolve(
+            createApplicationDetail({
+              id: applicationId,
+              companyName: 'Versant Media',
+              roleTitle: 'Academic Year Internships: Platform Engineering',
+              status: 'queued',
+            }),
+          )
+        }}
+        attemptLoader={(applicationId) => {
+          attemptQueries.push(applicationId)
+          return Promise.resolve(createAttemptResult())
+        }}
+        sourcingLoader={(query) => {
+          queries.push(query)
+          return Promise.resolve(
+            createSourcingResult([
+              createSourcingFinding(),
+              createSourcingFinding({
+                id: 'finding-duplicate',
+                companyName: 'Versant Media',
+                roleTitle: 'Academic Year Internships: Platform Engineering',
+                mergeStatus: 'duplicate',
+                mergedApplicationId: 'application-versant-platform',
+                mergedApplicationCompanyName: 'Versant Media',
+                mergedApplicationRoleTitle: 'Academic Year Internships: Platform Engineering',
+                mergeNotes: 'Duplicate official URL matched an existing application.',
+              }),
+            ]),
+          )
+        }}
+        promoteSourcingFinding={promoteFinding}
         settingsApi={createSettingsApi()}
       />,
     )
 
     await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
+    const table = await screen.findByRole('table', { name: 'Sourcing findings' })
 
-    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Back to app' })).toBeInTheDocument()
-    expect(screen.queryByRole('table', { name: 'Applications' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sourcing' })).toBeInTheDocument()
+    expect(within(table).getByText('Delta Labs')).toBeInTheDocument()
+    expect(within(table).getByText('Software Engineering Intern')).toBeInTheDocument()
+    expect(within(table).getAllByText('LinkedIn')).toHaveLength(2)
+    expect(within(table).getAllByText('run-1')).toHaveLength(2)
+    expect(within(table).getByText('new')).toBeInTheDocument()
+    expect(within(table).getByText('Ready to review')).toBeInTheDocument()
+    expect(within(table).getAllByText('7/10')).toHaveLength(2)
+    expect(within(table).getByText('application-versant-platform')).toBeInTheDocument()
+    expect(
+      within(table).getByText('Versant Media - Academic Year Internships: Platform Engineering'),
+    ).toBeInTheDocument()
+    expect(within(table).getByText('Duplicate')).toBeInTheDocument()
+    expect(within(table).getByText('Linked to existing application')).toBeInTheDocument()
+    expect(
+      within(table).getByRole('button', { name: 'Open app Versant Media' }),
+    ).toBeInTheDocument()
+    for (const officialLink of within(table).getAllByRole('link', { name: 'official' })) {
+      expect(officialLink).toHaveAttribute('target', '_blank')
+    }
+    for (const sourceLink of within(table).getAllByRole('link', { name: 'source' })) {
+      expect(sourceLink).toHaveAttribute('target', '_blank')
+    }
+    expect(screen.getByRole('button', { name: 'Review new' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review blocked' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back to app' }))
+    const sourceFilter = screen.getByRole('combobox', { name: 'Source' })
 
-    expect(await screen.findByRole('table', { name: 'Applications' })).toBeInTheDocument()
-  })
-
-  it('uses the same app chrome shell for the settings view', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
+    expect(within(sourceFilter).getByRole('option', { name: 'Any source' })).toBeInTheDocument()
+    expect(within(sourceFilter).getByRole('option', { name: 'LinkedIn' })).toHaveValue(
+      'source-linkedin',
     )
+    expect(sourceFilter).toHaveDisplayValue('Any source')
 
-    await openSettingsPage()
-
-    const chrome = screen.getByRole('banner', { name: 'App chrome' })
-
-    expect(within(chrome).getByText('Settings')).toBeInTheDocument()
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'settings')
-    expect(screen.getByRole('complementary', { name: 'Settings navigation' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Back to app' })).toBeInTheDocument()
-  })
-
-  it('renders grouped settings navigation and filters the sidebar search', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-
-    expect(within(navigation).getByText('Personal')).toBeInTheDocument()
-    expect(within(navigation).getByText('Integrations')).toBeInTheDocument()
-    expect(within(navigation).getByText('Automation')).toBeInTheDocument()
-    expect(within(navigation).getByText('Advanced')).toBeInTheDocument()
-
-    fireEvent.change(within(navigation).getByLabelText('Search settings'), {
-      target: { value: 'agent' },
-    })
-
-    expect(within(navigation).queryByRole('button', { name: 'General' })).not.toBeInTheDocument()
-    expect(within(navigation).getByRole('button', { name: 'Agent access' })).toBeInTheDocument()
-  })
-
-  it('keeps settings navigation in a real left sidebar layout', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    const shell = navigation.parentElement
-
-    expect(shell).toHaveClass('grid-cols-[280px_1fr]')
-    expect(navigation).toHaveClass('border-r')
-    expect(navigation).not.toHaveClass('border-b')
-  })
-
-  it('renders functional settings panels and coming-later sidebar items', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-
-    expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: 'Local desktop' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Show advanced filters')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Configuration' }))
-
-    expect(screen.getByLabelText('Remote API URL')).toBeInTheDocument()
-    expect(screen.getByLabelText('Local API host')).toBeInTheDocument()
-    expect(screen.getByLabelText('Local API port')).toBeInTheDocument()
-    expect(screen.getByLabelText('API token')).toBeInTheDocument()
-    expect(screen.getByLabelText('SQLite path')).toHaveValue('Managed by Electron userData')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Agent access' }))
-
-    expect(screen.getByText('Local API is available in local-shared mode.')).toBeInTheDocument()
-    expect(screen.getByText(/JOB_APP_API_URL=http:\/\/127\.0\.0\.1:4317/)).toBeInTheDocument()
-    expect(screen.getByText(/Tailscale/)).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
-
-    expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Show advanced filters')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
-
-    expect(screen.getByRole('heading', { name: 'Profile' })).toBeInTheDocument()
-    expect(screen.getByText('Coming later')).toBeInTheDocument()
-  })
-
-  it('persists full-page settings changes and marks backend changes for restart', async () => {
-    const settingsApi = createSettingsApi()
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={settingsApi}
-      />,
-    )
-
-    await openSettingsPage()
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Remote' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Review blocked' }))
 
     await waitFor(() => {
-      expect(settingsApi.update).toHaveBeenCalledWith({ runtimeMode: 'remote' })
+      expect(queries.at(-1)).toMatchObject({
+        limit: 50,
+        mergeStatus: 'blocked',
+        offset: 0,
+      })
     })
-    expect(screen.getByText('Restart required')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByLabelText('Show advanced filters'))
+    fireEvent.change(screen.getByLabelText('Merge status'), { target: { value: 'new' } })
 
     await waitFor(() => {
-      expect(settingsApi.update).toHaveBeenCalledWith({ showAdvancedFilters: true })
+      expect(queries.at(-1)).toMatchObject({
+        limit: 50,
+        mergeStatus: 'new',
+        offset: 0,
+      })
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back to app' }))
+    fireEvent.change(sourceFilter, { target: { value: 'source-linkedin' } })
 
-    expect(await screen.findByLabelText('Status')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(queries.at(-1)).toMatchObject({
+        limit: 50,
+        mergeStatus: 'new',
+        offset: 0,
+        sourceId: 'source-linkedin',
+      })
+    })
+
+    fireEvent.click(within(table).getByRole('button', { name: 'Promote Delta Labs' }))
+
+    await waitFor(() => {
+      expect(promoteFinding).toHaveBeenCalledWith({ findingId: 'finding-1' })
+    })
+
+    fireEvent.click(within(table).getByRole('button', { name: 'Open app Versant Media' }))
+
+    await waitFor(() => {
+      expect(detailQueries).toContain('application-versant-platform')
+      expect(attemptQueries).toContain('application-versant-platform')
+    })
+    const dialog = await screen.findByRole('dialog', { name: 'Application detail' })
+
+    expect(within(dialog).getByText('Versant Media')).toBeInTheDocument()
+    expect(within(dialog).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
+  })
+
+  it('lets users add and edit sourcing findings from modals', async () => {
+    const createFinding = vi.fn(async () => createSourcingFinding({ id: 'finding-new' }))
+    const updateFinding = vi.fn(async () =>
+      createSourcingFinding({ fitNotes: 'Below current sourcing cutoff.', mergeStatus: 'below_cutoff' }),
+    )
+    const sourcingLoader = vi.fn(async () => createSourcingResult([createSourcingFinding()]))
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        createSourcingFinding={createFinding}
+        sourcingLoader={sourcingLoader}
+        settingsApi={createSettingsApi()}
+        updateSourcingFinding={updateFinding}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
+    await screen.findByRole('table', { name: 'Sourcing findings' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add finding' }))
+    const addDialog = await screen.findByRole('dialog', { name: 'Add sourcing finding' })
+    fireEvent.change(within(addDialog).getByLabelText('Workflow run'), {
+      target: { value: 'run-human' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('Company'), {
+      target: { value: 'Human Labs' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('Role'), {
+      target: { value: 'Frontend Engineering Intern' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('Source URL'), {
+      target: { value: 'https://linkedin.com/jobs/view/human-labs' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('Priority score'), {
+      target: { value: '7' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('Priority band'), {
+      target: { value: 'high' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('Fit notes'), {
+      target: { value: 'Strong frontend internship fit.' },
+    })
+    fireEvent.click(within(addDialog).getByRole('button', { name: 'Save finding' }))
+
+    await waitFor(() => {
+      expect(createFinding).toHaveBeenCalledWith({
+        companyName: 'Human Labs',
+        fitNotes: 'Strong frontend internship fit.',
+        priorityBand: 'high',
+        priorityScore: 7,
+        roleKind: 'internship',
+        roleTitle: 'Frontend Engineering Intern',
+        sourceName: 'Manual',
+        sourceUrl: 'https://linkedin.com/jobs/view/human-labs',
+        workflowRunId: 'run-human',
+        workMode: 'remote',
+      })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit finding Delta Labs' }))
+    const editDialog = await screen.findByRole('dialog', { name: 'Edit sourcing finding' })
+    expect(within(editDialog).queryByLabelText('Merge status')).not.toBeInTheDocument()
+    fireEvent.change(within(editDialog).getByLabelText('Official URL'), {
+      target: { value: 'https://jobs.example.com/delta-updated' },
+    })
+    fireEvent.change(within(editDialog).getByLabelText('Source URL'), {
+      target: { value: 'https://linkedin.com/jobs/view/delta-updated' },
+    })
+    fireEvent.change(within(editDialog).getByLabelText('Priority score'), {
+      target: { value: '4' },
+    })
+    fireEvent.change(within(editDialog).getByLabelText('Priority band'), {
+      target: { value: 'skip' },
+    })
+    fireEvent.change(within(editDialog).getByLabelText('Fit notes'), {
+      target: { value: 'Below current sourcing cutoff.' },
+    })
+    fireEvent.click(within(editDialog).getByRole('button', { name: 'Save finding' }))
+
+    await waitFor(() => {
+      const updatePayload = updateFinding.mock.calls[0][0]
+
+      expect(updatePayload).toMatchObject({
+        fitNotes: 'Below current sourcing cutoff.',
+        findingId: 'finding-1',
+        officialUrl: 'https://jobs.example.com/delta-updated',
+        priorityBand: 'skip',
+        priorityScore: 4,
+        sourceUrl: 'https://linkedin.com/jobs/view/delta-updated',
+      })
+      expect(updatePayload).not.toHaveProperty('mergeStatus')
+      expect(sourcingLoader).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  it('uses an explicit decision dialog for manual sourcing dispositions', async () => {
+    const decideFinding = vi.fn(async () =>
+      createSourcingFinding({
+        mergeStatus: 'not_fit',
+        mergeNotes: 'Requires a non-student schedule.',
+      }),
+    )
+    const sourcingLoader = vi.fn(async () => createSourcingResult([createSourcingFinding()]))
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        decideSourcingFinding={decideFinding}
+        sourcingLoader={sourcingLoader}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
+    await screen.findByRole('table', { name: 'Sourcing findings' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set disposition Delta Labs' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Set sourcing disposition' })
+    fireEvent.change(within(dialog).getByLabelText('Disposition'), {
+      target: { value: 'not_fit' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Disposition notes'), {
+      target: { value: 'Requires a non-student schedule.' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save disposition' }))
+
+    await waitFor(() => {
+      expect(decideFinding).toHaveBeenCalledWith({
+        findingId: 'finding-1',
+        mergeNotes: 'Requires a non-student schedule.',
+        mergeStatus: 'not_fit',
+      })
+      expect(sourcingLoader).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('separates promoted and blocked sourcing findings in review', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        sourcingLoader={() =>
+          Promise.resolve(
+            createSourcingResult([
+              createSourcingFinding({
+                id: 'finding-merged',
+                companyName: 'Merged Co',
+                mergeStatus: 'merged',
+                mergedApplicationId: 'application-merged',
+                mergedApplicationCompanyName: 'Merged Co',
+                mergedApplicationRoleTitle: 'Software Engineering Intern',
+                mergeNotes: 'Merged into application queue.',
+              }),
+              createSourcingFinding({
+                id: 'finding-blocked',
+                companyName: 'Blocked Co',
+                officialUrl: null,
+                sourceUrl: null,
+                mergeStatus: 'blocked',
+                blocker: 'Missing official URL.',
+                mergeNotes: 'Missing official URL.',
+              }),
+            ]),
+          )
+        }
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
+
+    const table = await screen.findByRole('table', { name: 'Sourcing findings' })
+
+    expect(within(table).getByText('Promoted')).toBeInTheDocument()
+    expect(within(table).getByText('In application queue')).toBeInTheDocument()
+    expect(within(table).getByText('Blocked')).toBeInTheDocument()
+    expect(within(table).getByText('Needs source data before promotion')).toBeInTheDocument()
   })
 
   it('keeps the current table visible while refreshed rows are loading', async () => {
@@ -767,69 +1287,31 @@ describe('App', () => {
       expect(within(table).getByText('Company 40')).toBeInTheDocument()
     })
   })
+
+  it('lets the applications table viewport fill the available page height', async () => {
+    const applications = Array.from({ length: 80 }, (_, index) =>
+      createApplication({
+        id: `application-${index}`,
+        companyName: `Company ${index}`,
+        roleTitle: `Role ${index}`,
+        primaryLink: null,
+      }),
+    )
+
+    render(<App applicationLoader={() => Promise.resolve(createListResult(applications))} />)
+
+    const viewport = await screen.findByRole('region', {
+      name: 'Applications table viewport',
+    })
+    const tableCard = viewport.parentElement
+    const pageSection = tableCard?.parentElement
+    const main = viewport.closest('main')
+
+    expect(main).toHaveClass('flex', 'h-[calc(100vh-3rem)]')
+    expect(main).not.toHaveClass('min-h-[calc(100vh-3rem)]')
+    expect(pageSection).toHaveClass('flex-1', 'min-h-0')
+    expect(tableCard).toHaveClass('flex-1', 'min-h-0')
+    expect(viewport).toHaveClass('flex-1', 'min-h-0')
+    expect(viewport).not.toHaveClass('max-h-[420px]')
+  })
 })
-
-function createApplication(
-  overrides: Partial<ApplicationListItem> = {},
-): ApplicationListItem {
-  return {
-    id: 'application-1',
-    companyName: 'Astranis Space Technologies',
-    roleTitle: 'Software Engineer- Backend Intern (Fall 2026)',
-    sourceName: 'LinkedIn',
-    status: 'needs_user_info',
-    term: 'Fall 2026 internship',
-    location: 'San Francisco, CA / Onsite',
-    workMode: 'onsite',
-    hasApplied: false,
-    currentPriorityScore: 8,
-    currentPriorityBand: 'high',
-    primaryLink: {
-      label: 'official',
-      url: 'https://jobs.example.test/remediated/f60a3102c158cd7c',
-    },
-    notes: 'Needs availability answers.',
-    createdAt: '2026-06-04T16:00:00.000Z',
-    updatedAt: '2026-06-04T16:00:00.000Z',
-    ...overrides,
-  }
-}
-
-function createListResult(items: ApplicationListItem[]): ApplicationListResult {
-  return {
-    items,
-    total: items.length,
-    limit: 50,
-    offset: 0,
-    hasMore: false,
-  }
-}
-
-async function openSettingsPage() {
-  await screen.findByRole('table', { name: 'Applications' })
-  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
-}
-
-function createSettingsApi(overrides: Partial<AppSettings> = {}): SettingsPreloadApi {
-  let currentSettings: AppSettings = {
-    ...defaultAppSettings,
-    ...overrides,
-  }
-
-  return {
-    get: vi.fn(async () => currentSettings),
-    reset: vi.fn(async () => {
-      currentSettings = { ...defaultAppSettings }
-      return currentSettings
-    }),
-    update: vi.fn(async (patch: AppSettingsPatch) => {
-      currentSettings = {
-        ...currentSettings,
-        ...patch,
-      }
-
-      return currentSettings
-    }),
-  }
-}

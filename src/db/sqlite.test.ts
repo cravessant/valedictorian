@@ -20,6 +20,36 @@ describe('SQLite database', () => {
     expect(tables).toContain('applications')
     expect(tables).toContain('application_links')
     expect(tables).toContain('application_scores')
+    expect(tables).toContain('application_attempts')
+    expect(tables).toContain('application_attempt_steps')
+    expect(tables).toContain('workflow_runs')
+    expect(tables).toContain('workflow_run_steps')
+    expect(tables).toContain('sourcing_findings')
+  })
+
+  it('creates source indexes for workflow run and sourcing filters', () => {
+    const database = createInMemoryDatabase()
+
+    migrateDatabase(database)
+
+    const workflowRunIndexes = database
+      .prepare("pragma index_list('workflow_runs')")
+      .all()
+      .map((row) => (row as { name: string }).name)
+    const sourcingFindingIndexes = database
+      .prepare("pragma index_list('sourcing_findings')")
+      .all()
+      .map((row) => (row as { name: string }).name)
+    const sourceIndexes = database
+      .prepare("pragma index_list('sources')")
+      .all()
+      .map((row) => (row as { name: string }).name)
+
+    expect(workflowRunIndexes).toContain('idx_workflow_runs_source_id')
+    expect(workflowRunIndexes).toContain('idx_workflow_runs_source_type_status_started')
+    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_id')
+    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_status_discovered')
+    expect(sourceIndexes).toContain('idx_sources_name')
   })
 
   it('enables local file database pragmas for agent access', () => {

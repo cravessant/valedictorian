@@ -9,7 +9,7 @@ describe('application runtime factory', () => {
     const service = createApplicationServiceFromSqlite(sqlite)
     const result = await service.listApplications()
 
-    expect(result.items).toHaveLength(3)
-    expect(result.total).toBe(3)
+    expect(result.items).toHaveLength(50)
+    expect(result.total).toBeGreaterThan(100)
   })
 })

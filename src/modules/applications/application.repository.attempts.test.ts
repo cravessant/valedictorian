@@ -1,0 +1,838 @@
+import {
+  applicationAttemptSteps,
+  applicationAttempts,
+  applicationEvents,
+  applicationWorkflowStates,
+  applications,
+  workflowRuns,
+  workflowRunSteps,
+} from '../../db/schema'
+import { eq } from 'drizzle-orm'
+import { describe, expect, it } from 'vitest'
+import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
+import { seedSampleApplications } from './application.fixtures'
+import { createSqliteApplicationRepository } from './application.repository'
+import { createSqliteQueueRepository } from '../queue/queue.repository'
+import { createSqlitePolicyRepository } from '../policy/policy.repository'
+
+type ApplicationRepositoryInstance = ReturnType<typeof createSqliteApplicationRepository>
+
+const passedVerificationReceiptPayload = {
+  version: 1,
+  scope: 'final_review',
+  status: 'passed',
+  verified: [
+    'resume_attachment',
+    'contact_info',
+    'education',
+    'work_authorization',
+    'required_answers',
+  ],
+  unresolved: [],
+  evidence:
+    'Final review page showed the tailored resume, contact info, education, authorization, and required answers.',
+}
+
+const failedVerificationReceiptPayload = {
+  version: 1,
+  scope: 'final_review',
+  status: 'failed',
+  verified: ['resume_attachment', 'contact_info'],
+  unresolved: ['Confirm Fall 2026 exact start date', 'Confirm onsite availability'],
+  evidence: 'Application was reviewed up to the submit boundary with unresolved availability questions.',
+}
+
+async function recordVerificationReceipt(
+  repository: ApplicationRepositoryInstance,
+  applicationId: string,
+  attemptId: string,
+  payload: typeof passedVerificationReceiptPayload | typeof failedVerificationReceiptPayload,
+) {
+  return repository.createApplicationAttemptStep({
+    applicationId,
+    attemptId,
+    type: 'verification_receipt',
+    message:
+      payload.status === 'passed'
+        ? 'Final review verification passed.'
+        : 'Final review verification failed.',
+    payload,
+    actor: 'agent:codex',
+  })
+}
+
+describe('SQLite application repository workflow attempts', () => {
+  it('starts an application attempt with a lock, first step, and audit event', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database) as ReturnType<
+      typeof createSqliteApplicationRepository
+    > & {
+      startApplicationAttempt(input: {
+        applicationId: string
+        actorType: string
+        actorName?: string
+        entryUrl?: string
+        resumeVariant?: string
+        resumeArtifactPath?: string
+        summary?: string
+      }): Promise<{
+        id: string
+        applicationId: string
+        status: string
+        actorType: string
+        actorName: string | null
+        steps: Array<{ sequence: number; type: string; message: string }>
+      }>
+    }
+
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      entryUrl: 'https://jobs.example.test/remediated/41581ba03bdcb93e',
+      resumeVariant: 'bachelor_dec_2027',
+      resumeArtifactPath:
+        'tailored_resumes/2026-06-04-versant-platform-engineering/Kenny_Lin_Versant_Platform_Engineering_Resume.pdf',
+      summary: 'Started SmartRecruiters application.',
+    })
+
+    expect(attempt).toMatchObject({
+      applicationId: 'application-versant-platform',
+      status: 'in_progress',
+      actorType: 'agent',
+      actorName: 'codex',
+      steps: [
+        {
+          sequence: 1,
+          type: 'attempt_started',
+          message: 'Started SmartRecruiters application.',
+        },
+      ],
+    })
+    expect(database.select().from(applicationAttempts).all()).toHaveLength(0)
+    expect(database.select().from(applicationAttemptSteps).all()).toHaveLength(0)
+    expect(
+      database.select().from(workflowRuns).where(eq(workflowRuns.id, attempt.id)).get(),
+    ).toMatchObject({
+      id: attempt.id,
+      subjectApplicationId: 'application-versant-platform',
+      runType: 'application_attempt',
+      status: 'in_progress',
+      outcome: null,
+    })
+    expect(
+      database
+        .select()
+        .from(workflowRunSteps)
+        .where(eq(workflowRunSteps.workflowRunId, attempt.id))
+        .all(),
+    ).toEqual([
+      expect.objectContaining({
+        sequence: 1,
+        type: 'attempt_started',
+        message: 'Started SmartRecruiters application.',
+      }),
+    ])
+    expect(
+      database
+        .select()
+        .from(applications)
+        .where(eq(applications.id, 'application-versant-platform'))
+        .get(),
+    ).toMatchObject({
+      status: 'in_progress',
+    })
+    expect(
+      database
+        .select()
+        .from(applicationWorkflowStates)
+        .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
+        .get(),
+    ).toMatchObject({
+      applicationId: 'application-versant-platform',
+      lockStartedAt: expect.any(String),
+    })
+    expect(
+      database
+        .select()
+        .from(applicationEvents)
+        .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
+        .all()
+        .map((event) => event.type),
+    ).toEqual(['attempt_started'])
+  })
+
+  it('rejects a second active attempt for the same application', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+
+    await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started first application attempt.',
+    })
+
+    await expect(
+      repository.startApplicationAttempt({
+        applicationId: 'application-versant-platform',
+        actorType: 'agent',
+        actorName: 'codex',
+        summary: 'Started second application attempt.',
+      }),
+    ).rejects.toThrow('Application attempt already in progress')
+    expect(
+      database
+        .select()
+        .from(workflowRuns)
+        .where(eq(workflowRuns.subjectApplicationId, 'application-versant-platform'))
+        .all(),
+    ).toHaveLength(1)
+  })
+
+  it('appends attempt steps in sequence order', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database) as ReturnType<
+      typeof createSqliteApplicationRepository
+    > & {
+      startApplicationAttempt(input: {
+        applicationId: string
+        actorType: string
+        actorName?: string
+        summary?: string
+      }): Promise<{ id: string }>
+      createApplicationAttemptStep(input: {
+        applicationId: string
+        attemptId: string
+        type: string
+        message: string
+        payload?: unknown
+        actor?: string
+      }): Promise<{ sequence: number; type: string; message: string; payloadJson: string }>
+    }
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+
+    const step = await repository.createApplicationAttemptStep({
+      applicationId: 'application-versant-platform',
+      attemptId: attempt.id,
+      type: 'resume_uploaded',
+      message: 'Uploaded tailored resume.',
+      payload: {
+        artifactPath: 'tailored_resumes/versant/resume.pdf',
+      },
+      actor: 'agent:codex',
+    })
+
+    expect(step).toMatchObject({
+      sequence: 2,
+      type: 'resume_uploaded',
+      message: 'Uploaded tailored resume.',
+      payloadJson: '{"artifactPath":"tailored_resumes/versant/resume.pdf"}',
+    })
+    expect(
+      database
+        .select()
+        .from(workflowRunSteps)
+        .where(eq(workflowRunSteps.workflowRunId, attempt.id))
+        .all()
+        .map((attemptStep) => attemptStep.type),
+    ).toEqual(['attempt_started', 'resume_uploaded'])
+  })
+
+  it('completes a submitted attempt and clears workflow blockers in one transaction', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+
+    await repository.updateApplicationWorkflow({
+      applicationId: 'application-versant-platform',
+      missingUserInfo: 'Previous missing answer',
+      blockerReason: 'Previous blocker',
+      manualReviewKind: 'overridable',
+      holdStartedAt: '2026-06-04T10:00:00.000Z',
+    })
+    await recordVerificationReceipt(
+      repository,
+      'application-versant-platform',
+      attempt.id,
+      passedVerificationReceiptPayload,
+    )
+    const completed = await repository.completeApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      attemptId: attempt.id,
+      outcome: 'submitted',
+      summary: 'Submitted and verified confirmation.',
+      confirmationUrl: 'https://jobs.smartrecruiters.com/confirmation/versant',
+      confirmationText: 'Application submitted',
+    })
+
+    expect(completed).toMatchObject({
+      id: attempt.id,
+      status: 'completed',
+      outcome: 'submitted',
+      completedAt: expect.any(String),
+      confirmationUrl: 'https://jobs.smartrecruiters.com/confirmation/versant',
+      confirmationText: 'Application submitted',
+    })
+    expect(completed.steps.at(-1)).toMatchObject({
+      sequence: 3,
+      type: 'attempt_completed',
+      message: 'Submitted and verified confirmation.',
+    })
+    expect(
+      database
+        .select()
+        .from(applications)
+        .where(eq(applications.id, 'application-versant-platform'))
+        .get(),
+    ).toMatchObject({
+      status: 'submitted',
+      hasApplied: true,
+    })
+    expect(
+      database
+        .select()
+        .from(applicationWorkflowStates)
+        .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
+        .get(),
+    ).toMatchObject({
+      lockStartedAt: null,
+      holdStartedAt: null,
+      manualReviewKind: null,
+      missingUserInfo: null,
+      blockerReason: null,
+    })
+    expect(
+      database
+        .select()
+        .from(applicationEvents)
+        .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
+        .all()
+        .map((event) => event.type),
+    ).toEqual(['attempt_started', 'workflow_updated', 'attempt_completed'])
+  })
+
+  it('rejects submitted completion without a passed final-review verification receipt', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+
+    await expect(
+      repository.completeApplicationAttempt({
+        applicationId: 'application-versant-platform',
+        attemptId: attempt.id,
+        outcome: 'submitted',
+        summary: 'Submitted and verified confirmation.',
+      }),
+    ).rejects.toThrow('submitted attempts require a passed final-review verification receipt')
+  })
+
+  it('rejects submitted completion with a failed final-review verification receipt', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+    await recordVerificationReceipt(
+      repository,
+      'application-versant-platform',
+      attempt.id,
+      failedVerificationReceiptPayload,
+    )
+
+    await expect(
+      repository.completeApplicationAttempt({
+        applicationId: 'application-versant-platform',
+        attemptId: attempt.id,
+        outcome: 'submitted',
+        summary: 'Submitted and verified confirmation.',
+      }),
+    ).rejects.toThrow('submitted attempts require a passed final-review verification receipt')
+  })
+
+  it('rejects explicit-approval company submission until policy evidence is recorded', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const policyRepository = createSqlitePolicyRepository(database)
+    const application = await repository.createApplication({
+      companyName: 'ByteDance',
+      roleTitle: 'Software Engineer Intern',
+      sourceName: 'LinkedIn',
+      roleKind: 'internship',
+      country: 'US',
+      workMode: 'remote',
+      status: 'queued',
+      primaryLink: {
+        kind: 'official',
+        label: 'official',
+        url: 'https://jobs.bytedance.com/en/position/123',
+      },
+    })
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: application.id,
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started ByteDance application.',
+    })
+    await recordVerificationReceipt(
+      repository,
+      application.id,
+      attempt.id,
+      passedVerificationReceiptPayload,
+    )
+
+    await expect(
+      repository.completeApplicationAttempt({
+        applicationId: application.id,
+        attemptId: attempt.id,
+        outcome: 'submitted',
+        summary: 'Submitted and verified confirmation.',
+      }),
+    ).rejects.toThrow('Policy requires explicit user approval before submitted')
+
+    await policyRepository.recordEvidence({
+      subjectType: 'application',
+      subjectId: application.id,
+      tag: 'explicit_user_approval',
+      source: 'user',
+      note: 'Approved this ByteDance application slot.',
+    })
+    await expect(
+      repository.completeApplicationAttempt({
+        applicationId: application.id,
+        attemptId: attempt.id,
+        outcome: 'submitted',
+        summary: 'Submitted and verified confirmation.',
+      }),
+    ).resolves.toMatchObject({
+      outcome: 'submitted',
+      status: 'completed',
+    })
+  })
+
+  it('rejects ready-for-review completion without a final-review verification receipt', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+
+    await expect(
+      repository.completeApplicationAttempt({
+        applicationId: 'application-versant-platform',
+        attemptId: attempt.id,
+        outcome: 'ready_for_review',
+        summary: 'Stopped at submit boundary for manual review.',
+        holdStartedAt: '2026-06-04T16:05:00.000Z',
+        manualReviewKind: 'overridable',
+      }),
+    ).rejects.toThrow('ready_for_review attempts require a final-review verification receipt')
+  })
+
+  it('completes ready-for-review with a failed receipt and unresolved items', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+    await recordVerificationReceipt(
+      repository,
+      'application-versant-platform',
+      attempt.id,
+      failedVerificationReceiptPayload,
+    )
+
+    const completed = await repository.completeApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      attemptId: attempt.id,
+      outcome: 'ready_for_review',
+      summary: 'Stopped at submit boundary for manual review.',
+      holdStartedAt: '2026-06-04T16:05:00.000Z',
+      manualReviewKind: 'overridable',
+    })
+
+    expect(completed).toMatchObject({
+      id: attempt.id,
+      status: 'completed',
+      outcome: 'ready_for_review',
+    })
+  })
+
+  it('completes blocker outcomes without a verification receipt when blocker details are present', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const policyRepository = createSqlitePolicyRepository(database)
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+    await policyRepository.recordEvidence({
+      subjectType: 'application',
+      subjectId: 'application-versant-platform',
+      tag: 'profile_retry_completed',
+      source: 'agent',
+      note: 'Retried with Profile 2.',
+    })
+    await policyRepository.recordEvidence({
+      subjectType: 'application',
+      subjectId: 'application-versant-platform',
+      tag: 'headed_profile_retry_completed',
+      source: 'agent',
+      note: 'Retried headed with Profile 2.',
+    })
+
+    const completed = await repository.completeApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      attemptId: attempt.id,
+      outcome: 'platform_error',
+      summary: 'Portal stayed disabled after verified retries.',
+      blockerReason: 'SmartRecruiters submit stayed disabled after Profile 2 retry.',
+    })
+
+    expect(completed).toMatchObject({
+      id: attempt.id,
+      status: 'completed',
+      outcome: 'platform_error',
+    })
+  })
+
+  it('completes a needs-user-info attempt and moves the row into the queue bucket', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const queueRepository = createSqliteQueueRepository(database)
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+
+    const completed = await repository.completeApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      attemptId: attempt.id,
+      outcome: 'needs_user_info',
+      summary: 'Stopped for user-provided work authorization details.',
+      missingUserInfo: 'Confirm work authorization answer.',
+    })
+
+    expect(completed).toMatchObject({
+      id: attempt.id,
+      status: 'completed',
+      outcome: 'needs_user_info',
+    })
+    expect(
+      database
+        .select()
+        .from(applicationWorkflowStates)
+        .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
+        .get(),
+    ).toMatchObject({
+      lockStartedAt: null,
+      missingUserInfo: 'Confirm work authorization answer.',
+      blockerReason: null,
+    })
+    const queue = await queueRepository.listQueue({ bucket: 'needs_user_info' })
+    expect(queue.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'application-versant-platform',
+          bucket: 'needs_user_info',
+          nextAction: 'needs_user_info',
+        }),
+      ]),
+    )
+  })
+
+  it('rolls back attempt mutations when step or audit insertion fails', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database)
+    const seededWorkflowRunCount = database.select().from(workflowRuns).all().length
+    const seededWorkflowRunStepCount = database.select().from(workflowRunSteps).all().length
+
+    sqlite.exec(`
+      CREATE TRIGGER fail_attempt_started_event
+      BEFORE INSERT ON application_events
+      WHEN NEW.type = 'attempt_started'
+      BEGIN
+        SELECT RAISE(ABORT, 'audit insert failed');
+      END;
+    `)
+
+    await expect(
+      repository.startApplicationAttempt({
+        applicationId: 'application-versant-platform',
+        actorType: 'agent',
+        actorName: 'codex',
+        summary: 'Started application.',
+      }),
+    ).rejects.toThrow('audit insert failed')
+    expect(database.select().from(workflowRuns).all()).toHaveLength(seededWorkflowRunCount)
+    expect(database.select().from(workflowRunSteps).all()).toHaveLength(seededWorkflowRunStepCount)
+    expect(
+      database
+        .select()
+        .from(applications)
+        .where(eq(applications.id, 'application-versant-platform'))
+        .get(),
+    ).toMatchObject({
+      status: 'queued',
+    })
+
+    sqlite.exec('DROP TRIGGER fail_attempt_started_event;')
+    const attempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Started application.',
+    })
+    await recordVerificationReceipt(
+      repository,
+      'application-versant-platform',
+      attempt.id,
+      passedVerificationReceiptPayload,
+    )
+    sqlite.exec(`
+      CREATE TRIGGER fail_attempt_completed_step
+      BEFORE INSERT ON workflow_run_steps
+      WHEN NEW.type = 'attempt_completed'
+      BEGIN
+        SELECT RAISE(ABORT, 'attempt step insert failed');
+      END;
+    `)
+
+    await expect(
+      repository.completeApplicationAttempt({
+        applicationId: 'application-versant-platform',
+        attemptId: attempt.id,
+        outcome: 'submitted',
+        summary: 'Submitted application.',
+      }),
+    ).rejects.toThrow('attempt step insert failed')
+    expect(
+      database
+        .select()
+        .from(workflowRuns)
+        .where(eq(workflowRuns.id, attempt.id))
+        .get(),
+    ).toMatchObject({
+      status: 'in_progress',
+      outcome: null,
+      completedAt: null,
+    })
+    expect(
+      database
+        .select()
+        .from(workflowRunSteps)
+        .where(eq(workflowRunSteps.workflowRunId, attempt.id))
+        .all()
+        .map((step) => step.type),
+    ).toEqual(['attempt_started', 'verification_receipt'])
+    expect(
+      database
+        .select()
+        .from(applications)
+        .where(eq(applications.id, 'application-versant-platform'))
+        .get(),
+    ).toMatchObject({
+      status: 'in_progress',
+      hasApplied: false,
+    })
+    expect(
+      database
+        .select()
+        .from(applicationEvents)
+        .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
+        .all()
+        .map((event) => event.type),
+    ).toEqual(['attempt_started'])
+  })
+
+  it('lists application attempts newest first with their ordered steps', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+
+    const repository = createSqliteApplicationRepository(database) as ReturnType<
+      typeof createSqliteApplicationRepository
+    > & {
+      startApplicationAttempt(input: {
+        applicationId: string
+        actorType: string
+        actorName?: string
+        summary?: string
+      }): Promise<{ id: string }>
+      createApplicationAttemptStep(input: {
+        applicationId: string
+        attemptId: string
+        type: string
+        message: string
+      }): Promise<unknown>
+      completeApplicationAttempt(input: {
+        applicationId: string
+        attemptId: string
+        outcome: string
+        summary?: string
+      }): Promise<unknown>
+      listApplicationAttempts(input: {
+        applicationId: string
+        limit?: number
+        offset?: number
+      }): Promise<{
+        total: number
+        limit: number
+        offset: number
+        hasMore: boolean
+        items: Array<{ id: string; summary: string | null; steps: Array<{ type: string }> }>
+      }>
+    }
+    const policyRepository = createSqlitePolicyRepository(database)
+    const firstAttempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'First attempt.',
+    })
+    await policyRepository.recordEvidence({
+      subjectType: 'application',
+      subjectId: 'application-versant-platform',
+      tag: 'profile_retry_completed',
+      source: 'agent',
+      note: 'Retried with Profile 2.',
+    })
+    await policyRepository.recordEvidence({
+      subjectType: 'application',
+      subjectId: 'application-versant-platform',
+      tag: 'headed_profile_retry_completed',
+      source: 'agent',
+      note: 'Retried headed with Profile 2.',
+    })
+    await repository.completeApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      attemptId: firstAttempt.id,
+      outcome: 'platform_error',
+      summary: 'Stopped on platform error.',
+      blockerReason: 'SmartRecruiters validation loop',
+    } as never)
+    database
+      .update(workflowRuns)
+      .set({ startedAt: '2026-06-04T16:00:00.000Z' })
+      .where(eq(workflowRuns.id, firstAttempt.id))
+      .run()
+    const secondAttempt = await repository.startApplicationAttempt({
+      applicationId: 'application-versant-platform',
+      actorType: 'agent',
+      actorName: 'codex',
+      summary: 'Second attempt.',
+    })
+    await repository.createApplicationAttemptStep({
+      applicationId: 'application-versant-platform',
+      attemptId: secondAttempt.id,
+      type: 'page_verified',
+      message: 'Verified contact page.',
+    })
+    database
+      .update(workflowRuns)
+      .set({ startedAt: '2026-06-04T17:00:00.000Z' })
+      .where(eq(workflowRuns.id, secondAttempt.id))
+      .run()
+
+    await expect(
+      repository.listApplicationAttempts({
+        applicationId: 'application-versant-platform',
+        limit: 1,
+        offset: 0,
+      }),
+    ).resolves.toMatchObject({
+      total: 2,
+      limit: 1,
+      offset: 0,
+      hasMore: true,
+      items: [
+        {
+          id: secondAttempt.id,
+          summary: 'Second attempt.',
+          steps: [
+            { type: 'attempt_started' },
+            { type: 'page_verified' },
+          ],
+        },
+      ],
+    })
+  })
+
+})

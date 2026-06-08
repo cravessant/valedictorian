@@ -12,6 +12,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import {
   Table,
   TableBody,
@@ -20,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Pencil } from 'lucide-react'
 import type {
   ApplicationListItem,
   ApplicationListResult,
@@ -33,6 +34,8 @@ const ROW_OVERSCAN = 4
 interface ApplicationTableProps {
   result: ApplicationListResult
   sort: ApplicationListSort
+  onEditApplication?(application: ApplicationListItem): void
+  onOpenApplication?(application: ApplicationListItem): void
   onSortChange(sort: ApplicationListSort): void
   onPreviousPage(): void
   onNextPage(): void
@@ -127,12 +130,13 @@ const applicationColumns: ColumnDef<ApplicationListItem>[] = [
     header: 'Link',
     cell: ({ row }) =>
       row.original.primaryLink ? (
-        <Button asChild variant="ghost" size="sm" className="gap-1.5 px-2">
-          <a href={row.original.primaryLink.url}>
-            {row.original.primaryLink.label}
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-          </a>
-        </Button>
+        <ExternalLinkButton
+          className="gap-1.5 px-2"
+          href={row.original.primaryLink.url}
+          icon={<ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />}
+        >
+          {row.original.primaryLink.label}
+        </ExternalLinkButton>
       ) : (
         <span className="text-muted-foreground">None</span>
       ),
@@ -142,6 +146,8 @@ const applicationColumns: ColumnDef<ApplicationListItem>[] = [
 function ApplicationTable({
   result,
   sort,
+  onEditApplication,
+  onOpenApplication,
   onSortChange,
   onPreviousPage,
   onNextPage,
@@ -159,9 +165,39 @@ function ApplicationTable({
     setRowSelection({})
   }, [rowIds])
 
+  const columns = useMemo(() => {
+    if (!onEditApplication) {
+      return applicationColumns
+    }
+
+    return [
+      ...applicationColumns,
+      {
+        id: 'actions',
+        enableHiding: false,
+        enableSorting: false,
+        header: 'Actions',
+        cell: ({ row }) => (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Edit ${row.original.companyName}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onEditApplication(row.original)
+            }}
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        ),
+      } satisfies ColumnDef<ApplicationListItem>,
+    ]
+  }, [onEditApplication])
+
   const table = useReactTable({
     data: result.items,
-    columns: applicationColumns,
+    columns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (row) => row.id,
     manualPagination: true,
@@ -189,14 +225,33 @@ function ApplicationTable({
       height: 420,
       width: 1000,
     },
-    observeElementRect: (_instance, callback) => {
+    observeElementRect: (instance, callback) => {
+      const scrollElement = instance.scrollElement
       let isActive = true
 
-      queueMicrotask(() => {
+      const notifyRect = () => {
         if (isActive) {
-          callback({ height: 420, width: 1000 })
+          const rect = scrollElement?.getBoundingClientRect()
+          callback({
+            height: rect?.height || 420,
+            width: rect?.width || 1000,
+          })
         }
+      }
+
+      queueMicrotask(() => {
+        notifyRect()
       })
+
+      if (scrollElement && typeof ResizeObserver !== 'undefined') {
+        const observer = new ResizeObserver(() => notifyRect())
+        observer.observe(scrollElement)
+
+        return () => {
+          isActive = false
+          observer.disconnect()
+        }
+      }
 
       return () => {
         isActive = false
@@ -248,7 +303,7 @@ function ApplicationTable({
   const visibleColumnCount = table.getVisibleLeafColumns().length
 
   return (
-    <div className="rounded-md border border-border bg-card">
+    <div className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-card">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-medium text-foreground">Application queue</p>
@@ -323,7 +378,7 @@ function ApplicationTable({
         ref={tableContainerRef}
         role="region"
         aria-label="Applications table viewport"
-        className="max-h-[420px] overflow-auto"
+        className="min-h-0 flex-1 overflow-auto"
       >
         <Table aria-label="Applications" className="min-w-[940px]">
           <TableHeader>
@@ -370,7 +425,12 @@ function ApplicationTable({
                   const row = rows[virtualRow.index]
 
                   return (
-                    <TableRow key={row.id} data-state={row.getIsSelected() ? 'selected' : undefined}>
+                    <TableRow
+                      key={row.id}
+                      className={onOpenApplication ? 'cursor-pointer' : undefined}
+                      data-state={row.getIsSelected() ? 'selected' : undefined}
+                      onClick={() => onOpenApplication?.(row.original)}
+                    >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { JobAppClient } from 'job-app-sdk'
+import type { JobAppClient } from 'sparxie'
 import { createJobAppRuntime, resolveJobAppRuntimeConfig } from './job-app-runtime'
 
 function createClient(name: string): JobAppClient {
@@ -20,7 +20,7 @@ function createClient(name: string): JobAppClient {
     scores: {
       record: vi.fn(async () => undefined),
     },
-  }
+  } as unknown as JobAppClient
 }
 
 describe('job app runtime config', () => {
