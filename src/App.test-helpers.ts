@@ -2,6 +2,7 @@ import { fireEvent, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
+import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type {
   ApplicationAttempt,
   ApplicationAttemptsListResult,
@@ -15,8 +16,18 @@ import type {
 } from './modules/applications/application.types'
 import type { QueueListItem, QueueListResult } from './modules/queue/queue.repository'
 import type { ProfileSensitiveDetails } from './modules/profile/profile.repository'
-import type { SourcingFinding, SourcingFindingsListResult } from 'sparxie'
-import { defaultUserProfile } from 'sparxie'
+import {
+  defaultPolicyConfig,
+  defaultUserProfile,
+  normalizePolicyConfig,
+  type PolicyConfig,
+  type PolicyConfigPatch,
+  type PolicyDecision,
+  type PolicyEvidenceRecord,
+  type PolicyRunWindowDecision,
+  type SourcingFinding,
+  type SourcingFindingsListResult,
+} from 'sparxie'
 import {
   defaultAppSettings,
   type AppSettings,
@@ -304,6 +315,71 @@ export function createSettingsApi(overrides: Partial<AppSettings> = {}): Setting
   }
 }
 
+export function createPolicyApi(initialConfig: PolicyConfig = defaultPolicyConfig): PolicyPreloadApi {
+  let currentConfig = clonePolicyConfig(initialConfig)
+  let evidenceRecords: PolicyEvidenceRecord[] = []
+  const allowDecision: PolicyDecision = {
+    action: 'allow',
+    configVersion: 1,
+    reasons: [],
+    requiredEvidence: [],
+    status: 'allow',
+    tags: [],
+  }
+  const runWindowDecision: PolicyRunWindowDecision = {
+    ...allowDecision,
+    cadenceHours: currentConfig.sourcing.weekdayNormalCadenceHours,
+    overlapMinutes: currentConfig.sourcing.overlapMinutes,
+    recommendedCoverageStartedAt: '2026-06-08T12:00:00.000Z',
+    recommendedCoverageEndedAt: '2026-06-08T13:00:00.000Z',
+    timezone: currentConfig.sourcing.timezone,
+  }
+
+  return {
+    config: {
+      get: vi.fn(async () => clonePolicyConfig(currentConfig)),
+      reset: vi.fn(async () => {
+        currentConfig = clonePolicyConfig(defaultPolicyConfig)
+        return clonePolicyConfig(currentConfig)
+      }),
+      update: vi.fn(async (patch: PolicyConfigPatch) => {
+        currentConfig = mergePolicyConfig(currentConfig, patch)
+        return clonePolicyConfig(currentConfig)
+      }),
+    },
+    evidence: {
+      list: vi.fn(async (query) => {
+        const limit = query?.limit ?? evidenceRecords.length
+        const offset = query?.offset ?? 0
+        return evidenceRecords
+          .filter((record) => (query?.subjectType ? record.subjectType === query.subjectType : true))
+          .filter((record) => (query?.subjectId ? record.subjectId === query.subjectId : true))
+          .filter((record) => (query?.tag ? record.tag === query.tag : true))
+          .slice(offset, offset + limit)
+      }),
+      record: vi.fn(async (input) => {
+        const record: PolicyEvidenceRecord = {
+          id: `evidence-${evidenceRecords.length + 1}`,
+          subjectType: input.subjectType,
+          subjectId: input.subjectId,
+          tag: input.tag,
+          source: input.source ?? 'test',
+          note: input.note ?? null,
+          payloadJson: JSON.stringify(input.payload ?? {}),
+          createdAt: '2026-06-08T12:00:00.000Z',
+        }
+        evidenceRecords = [record, ...evidenceRecords]
+        return record
+      }),
+    },
+    evaluate: {
+      application: vi.fn(async () => allowDecision),
+      runWindow: vi.fn(async () => runWindowDecision),
+      sourcingCandidate: vi.fn(async () => allowDecision),
+    },
+  }
+}
+
 export function createProfileApi(): ProfilePreloadApi {
   let currentProfile = { ...defaultUserProfile }
   let currentSensitiveDetails: ProfileSensitiveDetails = {
@@ -381,4 +457,47 @@ export function createProfileApi(): ProfilePreloadApi {
       return currentProfile
     }),
   }
+}
+
+function clonePolicyConfig(config: PolicyConfig): PolicyConfig {
+  return JSON.parse(JSON.stringify(config)) as PolicyConfig
+}
+
+function mergePolicyConfig(currentConfig: PolicyConfig, patch: PolicyConfigPatch): PolicyConfig {
+  return normalizePolicyConfig({
+    ...currentConfig,
+    ...patch,
+    manualReview: {
+      ...currentConfig.manualReview,
+      ...patch.manualReview,
+      daytimeWindow: {
+        ...currentConfig.manualReview.daytimeWindow,
+        ...patch.manualReview?.daytimeWindow,
+      },
+    },
+    officialPath: {
+      ...currentConfig.officialPath,
+      ...patch.officialPath,
+    },
+    queue: {
+      ...currentConfig.queue,
+      ...patch.queue,
+    },
+    retries: {
+      ...currentConfig.retries,
+      ...patch.retries,
+    },
+    scoring: {
+      ...currentConfig.scoring,
+      ...patch.scoring,
+    },
+    sourcing: {
+      ...currentConfig.sourcing,
+      ...patch.sourcing,
+    },
+    verification: {
+      ...currentConfig.verification,
+      ...patch.verification,
+    },
+  })
 }

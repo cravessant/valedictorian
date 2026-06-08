@@ -68,7 +68,7 @@ function SourcingPage({
   ).map(([sourceId, sourceName]) => ({ sourceId, sourceName }))
 
   return (
-    <main className={`flex h-[calc(100vh-3rem)] min-w-0 flex-col overflow-hidden px-4 py-5 text-foreground sm:px-6 lg:px-8 ${contentColumnClass}`}>
+    <main className={`flex h-full min-w-0 flex-col overflow-hidden px-4 py-5 text-foreground md:h-[calc(100vh-3rem)] sm:px-6 lg:px-8 ${contentColumnClass}`}>
       <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
         <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>

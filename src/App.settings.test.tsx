@@ -11,18 +11,36 @@ import App from './App'
 import {
   createApplication,
   createListResult,
+  createPolicyApi,
   createProfileApi,
   createSettingsApi,
   openSettingsPage,
 } from './App.test-helpers'
+import { defaultPolicyConfig } from 'sparxie'
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
   delete (window as Window & { applications?: unknown }).applications
   delete (window as Window & { sourcing?: unknown }).sourcing
   delete (window as Window & { settings?: unknown }).settings
   delete (window as Window & { profile?: unknown }).profile
 })
+
+function mockNarrowViewport() {
+  const mediaQueryList = {
+    matches: true,
+    media: '(max-width: 767px)',
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  } as unknown as MediaQueryList
+
+  vi.stubGlobal('matchMedia', vi.fn(() => mediaQueryList))
+}
 
 describe('App settings and chrome', () => {
   it('renders the home page inside a left app sidebar with settings at the bottom', async () => {
@@ -38,10 +56,23 @@ describe('App settings and chrome', () => {
     const sidebar = screen.getByRole('complementary', { name: 'Application navigation' })
     const shell = sidebar.parentElement
 
-    expect(shell).toHaveClass('grid-cols-[280px_1fr]')
+    expect(shell).toHaveClass(
+      'grid-cols-1',
+      'grid-rows-1',
+      'md:grid-cols-[280px_1fr]',
+    )
+    expect(shell).not.toHaveClass('grid-rows-[auto_1fr]')
     expect(shell).toHaveClass('h-[calc(100vh-3rem)]')
-    expect(sidebar).toHaveClass('border-r')
-    expect(sidebar).toHaveClass('h-[calc(100vh-3rem)]')
+    expect(sidebar).toHaveClass('absolute', 'left-0', 'top-0', 'z-40', 'border-r')
+    expect(sidebar).toHaveClass(
+      'h-full',
+      'w-[280px]',
+      'max-w-[85vw]',
+      'md:static',
+      'md:h-[calc(100vh-3rem)]',
+      'md:max-w-none',
+    )
+    expect(sidebar).not.toHaveClass('h-auto', 'max-h-72', 'w-full', 'border-b')
     expect(sidebar).not.toHaveClass('min-h-[calc(100vh-3rem)]')
     expect(within(sidebar).getByRole('button', { name: 'Applications' })).toBeInTheDocument()
     expect(within(sidebar).getByRole('button', { name: 'Settings' })).toBeInTheDocument()
@@ -143,7 +174,7 @@ describe('App settings and chrome', () => {
 
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'collapsed')
     expect(screen.queryByRole('complementary', { name: 'Application navigation' })).not.toBeInTheDocument()
-    expect(main).toHaveClass('col-start-2')
+    expect(main).toHaveClass('md:col-start-2')
   })
 
   it('temporarily expands a collapsed sidebar on hover and hides it on mouse leave', async () => {
@@ -190,6 +221,82 @@ describe('App settings and chrome', () => {
     })
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'expanded')
     expect(screen.getByRole('complementary', { name: 'Application navigation' })).toBeInTheDocument()
+  })
+
+  it('opens the application navigation as a narrow drawer without stacking it above content', async () => {
+    mockNarrowViewport()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    const layout = screen.getByTestId('app-layout')
+
+    expect(layout).toHaveClass('grid-cols-1', 'grid-rows-1')
+    expect(layout).not.toHaveClass('grid-rows-[auto_1fr]')
+    expect(screen.getByTestId('app-shell')).toHaveAttribute(
+      'data-sidebar-state',
+      'drawer-closed',
+    )
+    expect(
+      screen.queryByRole('complementary', { name: 'Application navigation' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
+
+    const sidebar = screen.getByRole('complementary', { name: 'Application navigation' })
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'drawer-open')
+    expect(sidebar).toHaveClass(
+      'absolute',
+      'left-0',
+      'top-0',
+      'z-40',
+      'h-full',
+      'w-[280px]',
+      'max-w-[85vw]',
+    )
+    expect(screen.getByRole('button', { name: 'Close sidebar drawer' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close sidebar drawer' }))
+
+    expect(screen.getByTestId('app-shell')).toHaveAttribute(
+      'data-sidebar-state',
+      'drawer-closed',
+    )
+    expect(
+      screen.queryByRole('complementary', { name: 'Application navigation' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('closes the narrow application drawer after changing views', async () => {
+    mockNarrowViewport()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Queue' }))
+
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'queue')
+    expect(screen.getByTestId('app-shell')).toHaveAttribute(
+      'data-sidebar-state',
+      'drawer-closed',
+    )
+    expect(
+      screen.queryByRole('complementary', { name: 'Application navigation' }),
+    ).not.toBeInTheDocument()
+    expect(within(screen.getByRole('banner', { name: 'App chrome' })).getByText('Queue')).toBeInTheDocument()
   })
 
   it('opens a compact settings popover for important runtime controls', async () => {
@@ -352,7 +459,7 @@ describe('App settings and chrome', () => {
     expect(within(navigation).getByRole('button', { name: 'Agent access' })).toBeInTheDocument()
   })
 
-  it('keeps settings navigation in a real left sidebar layout', async () => {
+  it('keeps settings navigation responsive without squeezing the content column', async () => {
     render(
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
@@ -365,9 +472,75 @@ describe('App settings and chrome', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     const shell = navigation.parentElement
 
-    expect(shell).toHaveClass('grid-cols-[280px_1fr]')
-    expect(navigation).toHaveClass('border-r')
-    expect(navigation).not.toHaveClass('border-b')
+    expect(shell).toHaveClass(
+      'grid-cols-1',
+      'grid-rows-1',
+      'md:grid-cols-[280px_1fr]',
+    )
+    expect(shell).not.toHaveClass('grid-rows-[auto_1fr]')
+    expect(navigation).toHaveClass(
+      'absolute',
+      'left-0',
+      'top-0',
+      'z-40',
+      'h-full',
+      'w-[280px]',
+      'max-w-[85vw]',
+      'border-r',
+      'md:static',
+      'md:h-[calc(100vh-3rem)]',
+      'md:max-w-none',
+    )
+    expect(navigation).not.toHaveClass('h-auto', 'max-h-72', 'w-full', 'border-b')
+  })
+
+  it('opens settings navigation as the same narrow drawer and closes it after panel changes', async () => {
+    mockNarrowViewport()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
+
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'settings')
+    expect(screen.getByTestId('app-shell')).toHaveAttribute(
+      'data-sidebar-state',
+      'drawer-closed',
+    )
+    expect(
+      screen.queryByRole('complementary', { name: 'Settings navigation' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    expect(navigation).toHaveClass(
+      'absolute',
+      'left-0',
+      'top-0',
+      'z-40',
+      'h-full',
+      'w-[280px]',
+      'max-w-[85vw]',
+    )
+
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Appearance' }))
+
+    expect(screen.getByTestId('app-shell')).toHaveAttribute(
+      'data-sidebar-state',
+      'drawer-closed',
+    )
+    expect(
+      screen.queryByRole('complementary', { name: 'Settings navigation' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Appearance' })).toBeInTheDocument()
   })
 
   it('renders functional settings panels and coming-later sidebar items', async () => {
@@ -978,6 +1151,200 @@ describe('App settings and chrome', () => {
     expect(workAuthorization.querySelector('fieldset')).not.toBeInTheDocument()
     expect(within(workAuthorization).getByRole('group', { name: 'Willing to relocate' })).toBeInTheDocument()
     expect(within(workAuthorization).getByRole('group', { name: 'Willing to travel' })).toBeInTheDocument()
+  })
+
+  it('renders complete policy controls and saves section drafts with toast feedback', async () => {
+    const policyApi = createPolicyApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        policyApi={policyApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Policy' }))
+    expect(await screen.findByRole('heading', { name: 'Policy' })).toBeInTheDocument()
+
+    const settingsSidebar = screen.getByRole('complementary', { name: 'Settings navigation' })
+    const settingsShell = settingsSidebar.parentElement
+    expect(settingsShell).toHaveClass(
+      'grid-cols-1',
+      'grid-rows-1',
+      'md:grid-cols-[280px_1fr]',
+    )
+    expect(settingsShell).not.toHaveClass('grid-rows-[auto_1fr]')
+    expect(settingsSidebar).toHaveClass(
+      'absolute',
+      'left-0',
+      'top-0',
+      'z-40',
+      'h-full',
+      'w-[280px]',
+      'max-w-[85vw]',
+      'border-r',
+      'md:static',
+      'md:h-[calc(100vh-3rem)]',
+      'md:max-w-none',
+    )
+    expect(settingsSidebar).not.toHaveClass('h-auto', 'max-h-72', 'w-full', 'border-b')
+
+    for (const sectionName of [
+      'Queue decisions',
+      'Manual review',
+      'Evidence requirements',
+      'Application gates',
+      'Retry recovery',
+      'Sourcing windows',
+    ]) {
+      expect(screen.getByRole('heading', { name: sectionName })).toBeInTheDocument()
+    }
+
+    for (const fieldName of [
+      'Apply cutoff',
+      'Stale lock hours',
+      'Manual pickup delay',
+      'Pickup window start',
+      'Pickup window end',
+      'Pickup window timezone',
+      'Non-overridable evidence tags',
+      'Manual review companies',
+      'Explicit approval companies',
+      'Allowed native platforms',
+      'High-risk form builders',
+      'Require employer-domain verification',
+      'Require final review receipt',
+      'Require second pass verification',
+      'Captcha/security retries',
+      'Platform error retries',
+      'Login recovery required',
+      'Sourcing timezone',
+      'Overlap minutes',
+      'Weekday cadence',
+      'Overnight cadence',
+      'Weekend cadence',
+      'Minimum lookback',
+      'Overnight start hour',
+      'Overnight end hour',
+    ]) {
+      expect(screen.getByLabelText(fieldName)).toBeInTheDocument()
+    }
+
+    expect(screen.queryByRole('button', { name: 'Save policy' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument()
+
+    const queueDecisions = screen.getByRole('region', { name: 'Queue decisions' })
+    const manualReview = screen.getByRole('region', { name: 'Manual review' })
+    const queueSaveButton = within(queueDecisions).getByRole('button', {
+      name: 'Save queue decisions',
+    })
+    const manualReviewSaveButton = within(manualReview).getByRole('button', {
+      name: 'Save manual review',
+    })
+
+    for (const sectionName of [
+      'Queue decisions',
+      'Manual review',
+      'Evidence requirements',
+      'Application gates',
+      'Retry recovery',
+      'Sourcing windows',
+    ]) {
+      expect(
+        within(screen.getByRole('region', { name: sectionName })).getByRole('button', {
+          name: `Save ${sectionName.toLowerCase()}`,
+        }),
+      ).toBeDisabled()
+    }
+
+    fireEvent.change(screen.getByLabelText('Apply cutoff'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Manual pickup delay'), { target: { value: '8' } })
+    fireEvent.change(screen.getByLabelText('Explicit approval companies'), {
+      target: { value: 'TikTok\nByteDance\nOpenAI' },
+    })
+
+    expect(policyApi.config.update).not.toHaveBeenCalled()
+    expect(queueSaveButton).toBeEnabled()
+    expect(manualReviewSaveButton).toBeEnabled()
+
+    fireEvent.click(queueSaveButton)
+
+    await waitFor(() => {
+      expect(policyApi.config.update).toHaveBeenCalledTimes(1)
+    })
+
+    expect(vi.mocked(policyApi.config.update).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        queue: expect.objectContaining({
+          staleLockHours: defaultPolicyConfig.queue.staleLockHours,
+        }),
+        scoring: expect.objectContaining({
+          applyCutoff: 7,
+        }),
+      }),
+    )
+    expect(await screen.findByText('Queue decisions saved.')).toBeInTheDocument()
+    expect(queueSaveButton).toBeDisabled()
+    expect(manualReviewSaveButton).toBeEnabled()
+    expect(screen.getByLabelText('Manual pickup delay')).toHaveValue(8)
+
+    fireEvent.click(manualReviewSaveButton)
+
+    await waitFor(() => {
+      expect(policyApi.config.update).toHaveBeenCalledTimes(2)
+    })
+
+    expect(vi.mocked(policyApi.config.update).mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        manualReview: expect.objectContaining({
+          explicitApprovalCompanyPatterns: ['TikTok', 'ByteDance', 'OpenAI'],
+          pickupDelayHours: 8,
+        }),
+      }),
+    )
+    expect(await screen.findByText('Manual review saved.')).toBeInTheDocument()
+    expect(manualReviewSaveButton).toBeDisabled()
+  })
+
+  it('resets policy defaults and clears pending section saves', async () => {
+    const policyApi = createPolicyApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        policyApi={policyApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Policy' }))
+    expect(await screen.findByRole('heading', { name: 'Policy' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Apply cutoff'), { target: { value: '9' } })
+    expect(screen.getByLabelText('Apply cutoff')).toHaveValue(9)
+
+    expect(
+      within(screen.getByRole('region', { name: 'Queue decisions' })).getByRole('button', {
+        name: 'Save queue decisions',
+      }),
+    ).toBeEnabled()
+    expect(policyApi.config.update).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset policy' }))
+
+    await waitFor(() => {
+      expect(policyApi.config.reset).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.getByLabelText('Apply cutoff')).toHaveValue(defaultPolicyConfig.scoring.applyCutoff)
+    expect(
+      within(screen.getByRole('region', { name: 'Queue decisions' })).getByRole('button', {
+        name: 'Save queue decisions',
+      }),
+    ).toBeDisabled()
+    expect(await screen.findByText('Policy reset.')).toBeInTheDocument()
   })
 
 })

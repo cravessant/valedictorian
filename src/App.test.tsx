@@ -1307,7 +1307,7 @@ describe('App', () => {
     const pageSection = tableCard?.parentElement
     const main = viewport.closest('main')
 
-    expect(main).toHaveClass('flex', 'h-[calc(100vh-3rem)]')
+    expect(main).toHaveClass('flex', 'h-full', 'md:h-[calc(100vh-3rem)]')
     expect(main).not.toHaveClass('min-h-[calc(100vh-3rem)]')
     expect(pageSection).toHaveClass('flex-1', 'min-h-0')
     expect(tableCard).toHaveClass('flex-1', 'min-h-0')

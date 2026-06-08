@@ -101,6 +101,34 @@ import {
   type SettingsPanelId,
 } from './app/types'
 
+const narrowSidebarMediaQuery = '(max-width: 767px)'
+
+function getMediaQueryMatches(query: string) {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia(query).matches
+    : false
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => getMediaQueryMatches(query))
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined
+    }
+
+    const mediaQueryList = window.matchMedia(query)
+    const updateMatches = (event: MediaQueryListEvent) => setMatches(event.matches)
+
+    setMatches(mediaQueryList.matches)
+    mediaQueryList.addEventListener('change', updateMatches)
+
+    return () => mediaQueryList.removeEventListener('change', updateMatches)
+  }, [query])
+
+  return matches
+}
+
 interface AppProps {
   applicationLoader?: (query: ApplicationListQuery) => Promise<ApplicationListResult>
   applicationDetailLoader?: (applicationId: string) => Promise<ApplicationDetail | null>
@@ -161,6 +189,8 @@ function App({
   )
   const [settingsRestartRequired, setSettingsRestartRequired] = useState(false)
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
+  const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false)
+  const isNarrowViewport = useMediaQuery(narrowSidebarMediaQuery)
   const [offset, setOffset] = useState(0)
   const [applicationReloadKey, setApplicationReloadKey] = useState(0)
   const [result, setResult] = useState<ApplicationListResult>(emptyApplicationResult)
@@ -570,12 +600,27 @@ function App({
       })
   }
 
-  const sidebarState = settings.sidebarCollapsed
+  useEffect(() => {
+    if (isNarrowViewport) {
+      setSidebarHoverExpanded(false)
+    } else {
+      setNarrowSidebarOpen(false)
+    }
+  }, [isNarrowViewport])
+
+  const desktopSidebarState = settings.sidebarCollapsed
     ? sidebarHoverExpanded
       ? 'hover'
       : 'collapsed'
     : 'expanded'
-  const sidebarVisible = sidebarState !== 'collapsed'
+  const sidebarState = isNarrowViewport
+    ? narrowSidebarOpen
+      ? 'drawer-open'
+      : 'drawer-closed'
+    : desktopSidebarState
+  const sidebarVisible = isNarrowViewport
+    ? narrowSidebarOpen
+    : desktopSidebarState !== 'collapsed'
   const viewTitle =
     appView === APP_VIEWS.SETTINGS
       ? 'Settings'
@@ -586,9 +631,21 @@ function App({
           : appView === APP_VIEWS.SOURCING
             ? 'Sourcing'
             : 'Applications'
-  const contentColumnClass = settings.sidebarCollapsed ? 'col-start-2' : ''
+  const contentColumnClass = settings.sidebarCollapsed ? 'md:col-start-2' : ''
+  const sidebarToggleCollapsed = isNarrowViewport ? !narrowSidebarOpen : settings.sidebarCollapsed
+  const temporaryDesktopSidebar = !isNarrowViewport && desktopSidebarState === 'hover'
+
+  function closeTransientSidebar() {
+    setSidebarHoverExpanded(false)
+    setNarrowSidebarOpen(false)
+  }
 
   function togglePinnedSidebar() {
+    if (isNarrowViewport) {
+      setNarrowSidebarOpen((open) => !open)
+      return
+    }
+
     const nextCollapsed = !settings.sidebarCollapsed
 
     if (!nextCollapsed) {
@@ -606,11 +663,11 @@ function App({
       data-view={appView}
     >
       <AppTopbar
-        sidebarCollapsed={settings.sidebarCollapsed}
+        sidebarCollapsed={sidebarToggleCollapsed}
         title={viewTitle}
         onToggleSidebar={togglePinnedSidebar}
       />
-      {settings.sidebarCollapsed && !sidebarHoverExpanded ? (
+      {!isNarrowViewport && settings.sidebarCollapsed && !sidebarHoverExpanded ? (
         <button
           type="button"
           aria-label="Show sidebar temporarily"
@@ -619,49 +676,62 @@ function App({
         />
       ) : null}
       <div
-        className={`relative grid h-[calc(100vh-3rem)] overflow-hidden ${
-          settings.sidebarCollapsed ? 'grid-cols-[0px_1fr]' : 'grid-cols-[280px_1fr]'
+        className={`relative grid h-[calc(100vh-3rem)] grid-cols-1 grid-rows-1 overflow-hidden ${
+          settings.sidebarCollapsed ? 'md:grid-cols-[0px_1fr]' : 'md:grid-cols-[280px_1fr]'
         }`}
+        data-testid="app-layout"
       >
+        {isNarrowViewport && narrowSidebarOpen ? (
+          <button
+            type="button"
+            aria-label="Close sidebar drawer"
+            className="absolute inset-0 z-30 bg-background/70 md:hidden"
+            onClick={() => setNarrowSidebarOpen(false)}
+          />
+        ) : null}
+
         {sidebarVisible ? (
           appView === APP_VIEWS.SETTINGS ? (
             <SettingsSidebar
               selectedPanel={selectedSettingsPanel}
-              temporary={sidebarState === 'hover'}
+              temporary={temporaryDesktopSidebar}
               onBack={() => {
                 setAppView(APP_VIEWS.APPLICATIONS)
-                setSidebarHoverExpanded(false)
+                closeTransientSidebar()
               }}
               onMouseLeave={() => {
-                if (settings.sidebarCollapsed) {
+                if (!isNarrowViewport && settings.sidebarCollapsed) {
                   setSidebarHoverExpanded(false)
                 }
               }}
-              onPanelChange={setSelectedSettingsPanel}
+              onPanelChange={(panel) => {
+                setSelectedSettingsPanel(panel)
+                closeTransientSidebar()
+              }}
             />
           ) : (
             <AppSidebar
               currentView={appView}
               settings={settings}
               settingsOpen={settingsOpen}
-              temporary={sidebarState === 'hover'}
+              temporary={temporaryDesktopSidebar}
               onMouseLeave={() => {
-                if (settings.sidebarCollapsed) {
+                if (!isNarrowViewport && settings.sidebarCollapsed) {
                   setSidebarHoverExpanded(false)
                 }
               }}
               onOpenSettingsPage={() => {
                 setSettingsOpen(false)
-                setSidebarHoverExpanded(false)
+                closeTransientSidebar()
                 setAppView(APP_VIEWS.SETTINGS)
               }}
               onOpenProfilePage={() => {
                 setSettingsOpen(false)
-                setSidebarHoverExpanded(false)
+                closeTransientSidebar()
                 setAppView(APP_VIEWS.PROFILE)
               }}
               onViewChange={(view) => {
-                setSidebarHoverExpanded(false)
+                closeTransientSidebar()
                 setAppView(view)
               }}
               onSettingsOpenChange={setSettingsOpen}
@@ -682,7 +752,7 @@ function App({
           />
         ) : appView === APP_VIEWS.PROFILE ? (
           <main
-            className={`h-[calc(100vh-3rem)] min-w-0 overflow-auto px-5 py-6 text-foreground sm:px-8 lg:px-12 ${contentColumnClass}`}
+            className={`h-full min-w-0 overflow-auto px-5 py-6 text-foreground md:h-[calc(100vh-3rem)] sm:px-8 lg:px-12 ${contentColumnClass}`}
           >
             <div className="mx-auto max-w-4xl">
               <ProfileSettingsPanel profileApi={profileApi} />
@@ -733,7 +803,7 @@ function App({
             }}
           />
         ) : (
-          <main className={`flex h-[calc(100vh-3rem)] min-w-0 flex-col overflow-hidden px-4 py-5 text-foreground sm:px-6 lg:px-8 ${contentColumnClass}`}>
+          <main className={`flex h-full min-w-0 flex-col overflow-hidden px-4 py-5 text-foreground md:h-[calc(100vh-3rem)] sm:px-6 lg:px-8 ${contentColumnClass}`}>
             <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
               <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>

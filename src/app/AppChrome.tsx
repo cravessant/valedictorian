@@ -59,8 +59,8 @@ function AppSidebar({
   return (
     <aside
       aria-label="Application navigation"
-      className={`flex h-[calc(100vh-3rem)] w-[280px] flex-col overflow-visible border-r border-border bg-card/80 p-4 ${
-        temporary ? 'absolute left-0 top-0 z-40 shadow-2xl' : ''
+      className={`absolute left-0 top-0 z-40 flex h-full w-[280px] max-w-[85vw] flex-col overflow-auto border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible ${
+        temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
       }`}
       role="complementary"
       onMouseLeave={onMouseLeave}
