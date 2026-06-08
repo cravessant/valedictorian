@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
-import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import {
   defaultPolicyConfig,
   isPolicyEvidenceTag,
@@ -12,11 +12,13 @@ import {
 } from 'sparxie'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
+import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { AppSettings, AppSettingsPatch } from './app-settings'
 import { SETTINGS_PANELS, type SettingsPanelId } from '../app/types'
 import { SettingsToggleRow } from '../app/AppChrome'
 import { ProfileSettingsPanel } from '../modules/profile/ProfileSettingsPanel'
 import { SettingsTextInput } from './SettingsTextInput'
+import type { WorkspaceSummary } from '../workspace/workspace.initializer'
 
 interface SettingsPageProps {
   contentColumnClass: string
@@ -25,6 +27,8 @@ interface SettingsPageProps {
   restartRequired: boolean
   selectedPanel: SettingsPanelId
   settings: AppSettings
+  workspace: WorkspaceSummary | null
+  workspaceApi: WorkspacePreloadApi
   onSettingsPatch: (patch: AppSettingsPatch) => void
 }
 
@@ -200,6 +204,8 @@ function SettingsPage({
   restartRequired,
   selectedPanel,
   settings,
+  workspace,
+  workspaceApi,
   onSettingsPatch,
 }: SettingsPageProps) {
   const selectedItem = settingsNavGroups
@@ -236,6 +242,9 @@ function SettingsPage({
           ) : null}
           {selectedPanel === SETTINGS_PANELS.APPEARANCE ? (
             <AppearanceSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
+          ) : null}
+          {selectedPanel === SETTINGS_PANELS.DATA ? (
+            <DataSettingsPanel workspace={workspace} workspaceApi={workspaceApi} />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.PROFILE ? (
             <ProfileSettingsPanel profileApi={profileApi} />
@@ -399,6 +408,62 @@ function AgentAccessSettingsPanel({
           Use local shared mode, bind to the reachable host when needed, and keep the API token
           private.
         </p>
+      </div>
+    </section>
+  )
+}
+
+function DataSettingsPanel({
+  workspace,
+  workspaceApi,
+}: {
+  workspace: WorkspaceSummary | null
+  workspaceApi: WorkspacePreloadApi
+}) {
+  return (
+    <section aria-labelledby="data-settings-title" className="space-y-7">
+      <div>
+        <h2 id="data-settings-title" className="text-xl font-semibold text-foreground">
+          Data
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Workspace files and local database paths.
+        </p>
+      </div>
+
+      <div className="divide-y divide-border rounded-md border border-border bg-card">
+        <SettingsTextInput
+          label="Workspace path"
+          readOnly
+          value={workspace?.rootPath ?? 'No workspace selected'}
+        />
+        <SettingsTextInput
+          label="Workspace data path"
+          readOnly
+          value={workspace?.dataPath ?? 'No workspace selected'}
+        />
+        <SettingsTextInput
+          label="SQLite path"
+          readOnly
+          value={workspace?.sqlitePath ?? 'No workspace selected'}
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <Button type="button" variant="outline" className="gap-2" onClick={() => void workspaceApi.chooseFolder()}>
+          <FolderOpen className="h-4 w-4" aria-hidden="true" />
+          Choose workspace
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2"
+          disabled={!workspace}
+          onClick={() => void workspaceApi.revealCurrent()}
+        >
+          <FolderOpen className="h-4 w-4" aria-hidden="true" />
+          Reveal workspace
+        </Button>
       </div>
     </section>
   )
@@ -1241,7 +1306,8 @@ function isFunctionalSettingsPanel(panel: SettingsPanelId) {
     panel === SETTINGS_PANELS.CONFIGURATION ||
     panel === SETTINGS_PANELS.AGENT_ACCESS ||
     panel === SETTINGS_PANELS.APPEARANCE ||
-    panel === SETTINGS_PANELS.POLICY
+    panel === SETTINGS_PANELS.POLICY ||
+    panel === SETTINGS_PANELS.DATA
   )
 }
 

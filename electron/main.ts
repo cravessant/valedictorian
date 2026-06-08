@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
@@ -9,6 +9,7 @@ import { registerQueueIpc } from '../src/ipc/queue.ipc'
 import { registerScoresIpc } from '../src/ipc/scores.ipc'
 import { registerSettingsIpc } from '../src/ipc/settings.ipc'
 import { registerSourcingIpc } from '../src/ipc/sourcing.ipc'
+import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
 import {
   createSqliteProfileRepository,
   type ProfileSecretCodec,
@@ -19,6 +20,14 @@ import {
   type JobAppRuntime,
 } from '../src/runtime/job-app-runtime'
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
+import { type WorkspaceSummary } from '../src/workspace/workspace.initializer'
+import { getDefaultWorkspaceRegistryPath } from '../src/workspace/workspace.paths'
+import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.registry'
+import {
+  createWorkspaceService,
+  resolveInitialWorkspace,
+  type WorkspaceService,
+} from '../src/workspace/workspace.service'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -43,13 +52,15 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 let win: BrowserWindow | null
 let runtime: JobAppRuntime | null = null
 
-async function registerRuntimeServices() {
-  const settingsStore = createFileAppSettingsStore(
-    path.join(app.getPath('userData'), 'settings.json'),
-  )
+async function registerRuntimeServices(
+  workspace: WorkspaceSummary,
+  workspaceService: WorkspaceService,
+) {
+  const settingsStore = createFileAppSettingsStore(workspace.appSettingsPath)
   const config = resolveJobAppRuntimeConfig({
     settings: await settingsStore.get(),
     userDataPath: app.getPath('userData'),
+    workspaceDataPath: workspace.dataPath,
   })
 
   runtime = await createJobAppRuntime({
@@ -69,6 +80,7 @@ async function registerRuntimeServices() {
   registerScoresIpc(runtime.client, ipcMain)
   registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain)
+  registerWorkspaceIpc(workspaceService, ipcMain)
 }
 
 function createElectronSecretCodec(): ProfileSecretCodec {
@@ -160,7 +172,35 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
-  await registerRuntimeServices()
+  const registryStore = createFileWorkspaceRegistryStore(
+    getDefaultWorkspaceRegistryPath(app.getPath('userData')),
+  )
+  const workspace = await resolveInitialWorkspace({
+    chooseWorkspaceRoot,
+    registryStore,
+  })
+
+  if (!workspace) {
+    app.quit()
+    return
+  }
+
+  const workspaceService = createWorkspaceService({
+    chooseWorkspaceRoot,
+    currentWorkspace: workspace,
+    registryStore,
+    relaunchApp() {
+      setTimeout(() => {
+        app.relaunch()
+        app.exit(0)
+      }, 0)
+    },
+    revealPath(workspacePath) {
+      return shell.openPath(workspacePath).then(() => undefined)
+    },
+  })
+
+  await registerRuntimeServices(workspace, workspaceService)
   createWindow()
 }).catch((error: unknown) => {
   console.error(error)
@@ -188,4 +228,18 @@ function isExternalHttpUrl(value: string) {
   } catch {
     return false
   }
+}
+
+async function chooseWorkspaceRoot() {
+  const result = await dialog.showOpenDialog({
+    buttonLabel: 'Open workspace',
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Choose Job App workspace',
+  })
+
+  if (result.canceled) {
+    return null
+  }
+
+  return result.filePaths[0] ?? null
 }

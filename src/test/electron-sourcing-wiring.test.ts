@@ -30,12 +30,25 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("sourcing: import('../src/ipc/sourcing.preload').SourcingPreloadApi")
   })
 
+  it('exposes workspace preload APIs and registers workspace IPC handlers', () => {
+    const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const envSource = fs.readFileSync(path.resolve('electron/electron-env.d.ts'), 'utf8')
+
+    expect(preloadSource).toContain('createWorkspacePreloadApi')
+    expect(preloadSource).toContain(
+      "contextBridge.exposeInMainWorld('workspace', createWorkspacePreloadApi(ipcRenderer))",
+    )
+    expect(mainSource).toContain('registerWorkspaceIpc(workspaceService, ipcMain)')
+    expect(envSource).toContain("workspace: import('../src/ipc/workspace.preload').WorkspacePreloadApi")
+  })
+
   it('opens external application links outside the Electron app window', () => {
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
 
-    expect(mainSource).toContain(
-      "import { app, BrowserWindow, ipcMain, safeStorage, shell } from 'electron'",
-    )
+    expect(mainSource).toContain("from 'electron'")
+    expect(mainSource).toContain('BrowserWindow')
+    expect(mainSource).toContain('shell')
     expect(mainSource).toContain('setWindowOpenHandler')
     expect(mainSource).toContain('will-navigate')
     expect(mainSource).toContain('shell.openExternal')
