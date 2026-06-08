@@ -14,11 +14,11 @@ interface QueuePageProps {
   error: string | null
   isLoading: boolean
   result: QueueListResult
-  onBucketChange(bucket: QueueBucket | undefined): void
-  onEditApplication(application: ApplicationDetailSeed): void
-  onOpenApplication(application: ApplicationDetailSeed): void
-  onPreviousPage(): void
-  onNextPage(): void
+  onBucketChange: (bucket: QueueBucket | undefined) => void
+  onEditApplication: (application: ApplicationDetailSeed) => void
+  onOpenApplication: (application: ApplicationDetailSeed) => void
+  onPreviousPage: () => void
+  onNextPage: () => void
 }
 
 function QueuePage({
@@ -166,8 +166,8 @@ function QueueRow({
   onOpenApplication,
 }: {
   item: QueueListItem
-  onEditApplication(application: ApplicationDetailSeed): void
-  onOpenApplication(application: ApplicationDetailSeed): void
+  onEditApplication: (application: ApplicationDetailSeed) => void
+  onOpenApplication: (application: ApplicationDetailSeed) => void
 }) {
   return (
     <TableRow className="cursor-pointer" onClick={() => onOpenApplication(item)}>

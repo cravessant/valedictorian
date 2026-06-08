@@ -9,7 +9,7 @@ function SettingsTextInput({
   readOnly?: boolean
   type?: string
   value: string
-  onChange?(value: string): void
+  onChange?: (value: string) => void
 }) {
   return (
     <label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">

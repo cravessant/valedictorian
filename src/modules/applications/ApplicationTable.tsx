@@ -34,11 +34,11 @@ const ROW_OVERSCAN = 4
 interface ApplicationTableProps {
   result: ApplicationListResult
   sort: ApplicationListSort
-  onEditApplication?(application: ApplicationListItem): void
-  onOpenApplication?(application: ApplicationListItem): void
-  onSortChange(sort: ApplicationListSort): void
-  onPreviousPage(): void
-  onNextPage(): void
+  onEditApplication?: (application: ApplicationListItem) => void
+  onOpenApplication?: (application: ApplicationListItem) => void
+  onSortChange: (sort: ApplicationListSort) => void
+  onPreviousPage: () => void
+  onNextPage: () => void
 }
 
 const applicationColumns: ColumnDef<ApplicationListItem>[] = [

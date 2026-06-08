@@ -1,13 +1,13 @@
 import type { AppSettings, AppSettingsPatch } from '../settings/app-settings'
 
 interface IpcRendererLike {
-  invoke(channel: string, payload?: unknown): Promise<unknown>
+  invoke: (channel: string, payload?: unknown) => Promise<unknown>
 }
 
 export interface SettingsPreloadApi {
-  get(): Promise<AppSettings>
-  reset(): Promise<AppSettings>
-  update(patch: AppSettingsPatch): Promise<AppSettings>
+  get: () => Promise<AppSettings>
+  reset: () => Promise<AppSettings>
+  update: (patch: AppSettingsPatch) => Promise<AppSettings>
 }
 
 export function createSettingsPreloadApi(ipcRenderer: IpcRendererLike): SettingsPreloadApi {

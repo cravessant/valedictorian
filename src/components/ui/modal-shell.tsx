@@ -5,7 +5,7 @@ import { Button } from './button'
 interface ModalShellProps {
   children: ReactNode
   title: string
-  onClose(): void
+  onClose: () => void
 }
 
 function ModalShell({ children, onClose, title }: ModalShellProps) {

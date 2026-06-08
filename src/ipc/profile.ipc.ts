@@ -8,7 +8,7 @@ import type {
 interface IpcMainLike {
   handle(
     channel: string,
-    handler: (event: unknown, payload?: unknown) => Promise<unknown> | unknown,
+    handler: (event: unknown, payload?: unknown) => unknown,
   ): void
 }
 

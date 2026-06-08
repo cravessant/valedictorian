@@ -7,7 +7,7 @@ import type { DrizzleDatabase } from '../../db/sqlite'
 export type { ScoreInput } from 'sparxie'
 
 export interface ScoringRepository {
-  recordScore(input: ScoreInput): Promise<void>
+  recordScore: (input: ScoreInput) => Promise<void>
 }
 
 export function createSqliteScoringRepository(database: DrizzleDatabase): ScoringRepository {

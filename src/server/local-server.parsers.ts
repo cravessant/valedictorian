@@ -737,12 +737,14 @@ export function parseWorkflowUpdateInput(
   validateWorkflowTimestampInput(input, 'lockStartedAt')
   validateWorkflowTimestampInput(input, 'holdStartedAt')
 
+  const manualReviewKind = input.manualReviewKind
+
   if (
-    input.manualReviewKind !== undefined &&
-    input.manualReviewKind !== null &&
-    !isManualReviewKind(String(input.manualReviewKind))
+    manualReviewKind !== undefined &&
+    manualReviewKind !== null &&
+    (typeof manualReviewKind !== 'string' || !isManualReviewKind(manualReviewKind))
   ) {
-    throw new Error(`Invalid manualReviewKind: ${input.manualReviewKind}`)
+    throw new Error(`Invalid manualReviewKind: ${JSON.stringify(manualReviewKind)}`)
   }
 
   return input as unknown as Parameters<JobAppClient['applications']['workflow']['update']>[0]

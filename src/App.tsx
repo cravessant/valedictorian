@@ -212,7 +212,7 @@ function App({
   useEffect(() => {
     let isMounted = true
 
-    settingsApi.get().then((savedSettings) => {
+    void settingsApi.get().then((savedSettings) => {
       if (isMounted) {
         setSettings(savedSettings)
         setFiltersExpanded(savedSettings.showAdvancedFilters)
@@ -997,7 +997,7 @@ function App({
 interface FilterInputProps {
   label: string
   value: string
-  onChange(value: string): void
+  onChange: (value: string) => void
 }
 
 function FilterTextInput({ label, value, onChange }: FilterInputProps) {

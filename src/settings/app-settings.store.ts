@@ -18,7 +18,7 @@ export function createFileAppSettingsStore(settingsPath: string): AppSettingsSto
     },
     async update(patch) {
       const nextSettings = normalizeAppSettings({
-        ...(await readSettings(settingsPath)),
+        ...readSettings(settingsPath),
         ...patch,
       })
 

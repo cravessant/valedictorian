@@ -51,7 +51,7 @@ export function createSqlitePolicyRepository(database: DrizzleDatabase) {
 
       if (input.subjectType) {
         if (!isPolicySubjectType(input.subjectType)) {
-          throw new Error(`Invalid policy subject type: ${input.subjectType}`)
+          throw new Error(`Invalid policy subject type: ${String(input.subjectType)}`)
         }
 
         filters.push(eq(policyEvidence.subjectType, input.subjectType))
@@ -63,7 +63,7 @@ export function createSqlitePolicyRepository(database: DrizzleDatabase) {
 
       if (input.tag) {
         if (!isPolicyEvidenceTag(input.tag)) {
-          throw new Error(`Invalid policy evidence tag: ${input.tag}`)
+          throw new Error(`Invalid policy evidence tag: ${String(input.tag)}`)
         }
 
         filters.push(eq(policyEvidence.tag, input.tag))
@@ -81,11 +81,11 @@ export function createSqlitePolicyRepository(database: DrizzleDatabase) {
     },
     async recordEvidence(input: PolicyEvidenceInput): Promise<PolicyEvidenceRecord> {
       if (!isPolicySubjectType(input.subjectType)) {
-        throw new Error(`Invalid policy subject type: ${input.subjectType}`)
+        throw new Error(`Invalid policy subject type: ${String(input.subjectType)}`)
       }
 
       if (!isPolicyEvidenceTag(input.tag)) {
-        throw new Error(`Invalid policy evidence tag: ${input.tag}`)
+        throw new Error(`Invalid policy evidence tag: ${String(input.tag)}`)
       }
 
       const now = new Date().toISOString()

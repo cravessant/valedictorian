@@ -26,24 +26,24 @@ import type {
 } from './application.types'
 
 export interface ApplicationService {
-  createApplication(input: CreateApplicationInput): Promise<ApplicationDetail>
-  updateApplication(input: UpdateApplicationInput): Promise<ApplicationDetail>
-  listApplications(query?: ApplicationListQuery): Promise<ApplicationListResult>
-  getApplication(id: string): Promise<ApplicationDetail | null>
-  updateApplicationStatus(input: StatusUpdateInput): Promise<ApplicationDetail>
-  archiveApplication(input: ArchiveApplicationInput): Promise<void>
-  updateApplicationWorkflow(input: UpdateApplicationWorkflowInput): Promise<ApplicationDetail>
-  appendApplicationNote(input: AppendApplicationNoteInput): Promise<ApplicationDetail>
-  createApplicationLink(input: CreateApplicationLinkInput): Promise<ApplicationLinkRecord>
-  updateApplicationLink(input: UpdateApplicationLinkInput): Promise<ApplicationLinkRecord>
-  listApplicationLinks(input: ApplicationLinksListInput): Promise<ApplicationLinksListResult>
-  listApplicationEvents(input: ApplicationEventsListInput): Promise<ApplicationEventsListResult>
-  listApplicationAttempts(input: ApplicationAttemptsListInput): Promise<ApplicationAttemptsListResult>
-  startApplicationAttempt(input: StartApplicationAttemptInput): Promise<ApplicationAttempt>
+  createApplication: (input: CreateApplicationInput) => Promise<ApplicationDetail>
+  updateApplication: (input: UpdateApplicationInput) => Promise<ApplicationDetail>
+  listApplications: (query?: ApplicationListQuery) => Promise<ApplicationListResult>
+  getApplication: (id: string) => Promise<ApplicationDetail | null>
+  updateApplicationStatus: (input: StatusUpdateInput) => Promise<ApplicationDetail>
+  archiveApplication: (input: ArchiveApplicationInput) => Promise<void>
+  updateApplicationWorkflow: (input: UpdateApplicationWorkflowInput) => Promise<ApplicationDetail>
+  appendApplicationNote: (input: AppendApplicationNoteInput) => Promise<ApplicationDetail>
+  createApplicationLink: (input: CreateApplicationLinkInput) => Promise<ApplicationLinkRecord>
+  updateApplicationLink: (input: UpdateApplicationLinkInput) => Promise<ApplicationLinkRecord>
+  listApplicationLinks: (input: ApplicationLinksListInput) => Promise<ApplicationLinksListResult>
+  listApplicationEvents: (input: ApplicationEventsListInput) => Promise<ApplicationEventsListResult>
+  listApplicationAttempts: (input: ApplicationAttemptsListInput) => Promise<ApplicationAttemptsListResult>
+  startApplicationAttempt: (input: StartApplicationAttemptInput) => Promise<ApplicationAttempt>
   createApplicationAttemptStep(
     input: CreateApplicationAttemptStepInput,
   ): Promise<ApplicationAttemptStep>
-  completeApplicationAttempt(input: CompleteApplicationAttemptInput): Promise<ApplicationAttempt>
+  completeApplicationAttempt: (input: CompleteApplicationAttemptInput) => Promise<ApplicationAttempt>
 }
 
 export function createApplicationService(repository: ApplicationRepository): ApplicationService {

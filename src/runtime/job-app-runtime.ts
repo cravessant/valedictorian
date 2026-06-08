@@ -32,7 +32,7 @@ export interface JobAppRuntimeConfig {
 
 export interface JobAppRuntime {
   client: JobAppClient
-  close(): Promise<void>
+  close: () => Promise<void>
   server: Pick<StartedJobAppHttpServer, 'close' | 'url'> | null
 }
 

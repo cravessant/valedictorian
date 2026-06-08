@@ -207,7 +207,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
       if (input.roleKind !== undefined) {
         if (!isRoleKind(input.roleKind)) {
-          throw new Error(`Invalid roleKind: ${input.roleKind}`)
+          throw new Error(`Invalid roleKind: ${String(input.roleKind)}`)
         }
 
         patch.roleKind = input.roleKind
@@ -231,7 +231,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
       if (input.workMode !== undefined) {
         if (!isWorkMode(input.workMode)) {
-          throw new Error(`Invalid workMode: ${input.workMode}`)
+          throw new Error(`Invalid workMode: ${String(input.workMode)}`)
         }
 
         patch.workMode = input.workMode
@@ -275,7 +275,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
       if (input.mergeStatus !== undefined) {
         if (!isSourcingMergeStatus(input.mergeStatus)) {
-          throw new Error(`Invalid sourcing merge status: ${input.mergeStatus}`)
+          throw new Error(`Invalid sourcing merge status: ${String(input.mergeStatus)}`)
         }
 
         patch.mergeStatus = input.mergeStatus
@@ -297,7 +297,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
     },
     async decideFinding(input: SetSourcingFindingDecisionInput): Promise<SourcingFinding> {
       if (!isManualSourcingDecisionStatus(input.mergeStatus)) {
-        throw new Error(`Invalid manual sourcing decision: ${input.mergeStatus}`)
+        throw new Error(`Invalid manual sourcing decision: ${String(input.mergeStatus)}`)
       }
 
       const now = new Date().toISOString()
@@ -518,17 +518,17 @@ function classifySourcingFinding(
 
 function normalizeCreateFindingInput(input: CreateSourcingFindingInput, now: string) {
   if (!isRoleKind(input.roleKind)) {
-    throw new Error(`Invalid roleKind: ${input.roleKind}`)
+    throw new Error(`Invalid roleKind: ${String(input.roleKind)}`)
   }
 
   if (!isWorkMode(input.workMode)) {
-    throw new Error(`Invalid workMode: ${input.workMode}`)
+    throw new Error(`Invalid workMode: ${String(input.workMode)}`)
   }
 
   const mergeStatus = input.mergeStatus ?? 'new'
 
   if (!isSourcingMergeStatus(mergeStatus)) {
-    throw new Error(`Invalid sourcing merge status: ${mergeStatus}`)
+    throw new Error(`Invalid sourcing merge status: ${String(mergeStatus)}`)
   }
 
   return {

@@ -135,7 +135,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   useEffect(() => {
     let active = true
 
-    Promise.all([profileApi.get(), profileApi.sensitive.get(), profileApi.secrets.list()])
+    void Promise.all([profileApi.get(), profileApi.sensitive.get(), profileApi.secrets.list()])
       .then(([savedProfile, savedSensitiveDetails, savedSecrets]) => {
         if (!active) {
           return
@@ -1076,7 +1076,7 @@ function ProfileRowModal({
   title,
 }: {
   children: ReactNode
-  onClose(): void
+  onClose: () => void
   title: string
 }) {
   return (
@@ -1133,9 +1133,9 @@ function BirthDateSelectRow({
 }: {
   day: string
   month: string
-  onDayChange(value: string): void
-  onMonthChange(value: string): void
-  onYearChange(value: string): void
+  onDayChange: (value: string) => void
+  onMonthChange: (value: string) => void
+  onYearChange: (value: string) => void
   year: string
 }) {
   return (
@@ -1181,7 +1181,7 @@ function SettingsSelectInput({
   label: string
   options: string[]
   value: string
-  onChange(value: string): void
+  onChange: (value: string) => void
 }) {
   return (
     <label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
@@ -1216,7 +1216,7 @@ function CompactSelect({
   options: Array<{ label: string; value: string }>
   placeholder: string
   value: string
-  onChange(value: string): void
+  onChange: (value: string) => void
 }) {
   return (
     <select
@@ -1242,8 +1242,8 @@ function InlineEditorActions({
   saveLabel,
 }: {
   cancelLabel: string
-  onCancel(): void
-  onSave(): void
+  onCancel: () => void
+  onSave: () => void
   saveLabel: string
 }) {
   return (
@@ -1264,8 +1264,8 @@ function ProfileAnswerRow({
   onRemove,
 }: {
   answer: ProfileAnswer
-  onEdit(answer: ProfileAnswer): void
-  onRemove(key: string): void
+  onEdit: (answer: ProfileAnswer) => void
+  onRemove: (key: string) => void
 }) {
   return (
     <tr>
@@ -1298,8 +1298,8 @@ function ProfileEducationRow({
   onRemove,
 }: {
   education: ProfileEducation
-  onEdit(education: ProfileEducation): void
-  onRemove(id: string): void
+  onEdit: (education: ProfileEducation) => void
+  onRemove: (id: string) => void
 }) {
   const details = [
     education.degree,
@@ -1342,7 +1342,7 @@ function BooleanPreferenceControl({
 }: {
   label: string
   value: boolean | null
-  onChange(value: boolean): void
+  onChange: (value: boolean) => void
 }) {
   return (
     <div
@@ -1388,7 +1388,7 @@ function CompactInput({
   label: string
   type?: string
   value: string
-  onChange(value: string): void
+  onChange: (value: string) => void
 }) {
   return (
     <label className="grid gap-1 text-xs font-medium text-muted-foreground">

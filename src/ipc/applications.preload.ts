@@ -20,32 +20,32 @@ import type {
 } from '../modules/applications/application.types'
 
 interface IpcRendererLike {
-  invoke(channel: string, query?: unknown): Promise<unknown>
+  invoke: (channel: string, query?: unknown) => Promise<unknown>
 }
 
 export interface ApplicationsPreloadApi {
-  list(query?: ApplicationListQuery): Promise<ApplicationListResult>
-  get(applicationId: string): Promise<ApplicationDetail | null>
-  create(input: CreateApplicationInput): Promise<ApplicationDetail>
-  update(input: UpdateApplicationInput): Promise<ApplicationDetail>
-  updateStatus(input: StatusUpdateInput): Promise<ApplicationDetail>
-  archive(input: ArchiveApplicationInput): Promise<void>
+  list: (query?: ApplicationListQuery) => Promise<ApplicationListResult>
+  get: (applicationId: string) => Promise<ApplicationDetail | null>
+  create: (input: CreateApplicationInput) => Promise<ApplicationDetail>
+  update: (input: UpdateApplicationInput) => Promise<ApplicationDetail>
+  updateStatus: (input: StatusUpdateInput) => Promise<ApplicationDetail>
+  archive: (input: ArchiveApplicationInput) => Promise<void>
   workflow: {
-    update(input: UpdateApplicationWorkflowInput): Promise<ApplicationDetail>
+    update: (input: UpdateApplicationWorkflowInput) => Promise<ApplicationDetail>
   }
   notes: {
-    append(input: AppendApplicationNoteInput): Promise<ApplicationDetail>
+    append: (input: AppendApplicationNoteInput) => Promise<ApplicationDetail>
   }
   events: {
-    list(input: ApplicationEventsListInput): Promise<ApplicationEventsListResult>
+    list: (input: ApplicationEventsListInput) => Promise<ApplicationEventsListResult>
   }
   links: {
-    list(input: ApplicationLinksListInput): Promise<ApplicationLinksListResult>
-    create(input: CreateApplicationLinkInput): Promise<ApplicationLinkRecord>
-    update(input: UpdateApplicationLinkInput): Promise<ApplicationLinkRecord>
+    list: (input: ApplicationLinksListInput) => Promise<ApplicationLinksListResult>
+    create: (input: CreateApplicationLinkInput) => Promise<ApplicationLinkRecord>
+    update: (input: UpdateApplicationLinkInput) => Promise<ApplicationLinkRecord>
   }
   attempts: {
-    list(input: ApplicationAttemptsListInput): Promise<ApplicationAttemptsListResult>
+    list: (input: ApplicationAttemptsListInput) => Promise<ApplicationAttemptsListResult>
   }
 }
 

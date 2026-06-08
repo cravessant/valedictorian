@@ -172,12 +172,20 @@ export function validateWorkflowTimestampInput(
     !/^\d{4}-\d{2}-\d{2}T/.test(value) ||
     Number.isNaN(new Date(value).getTime())
   ) {
-    throw new Error(`Invalid ${fieldName}: ${value}`)
+    throw new Error(`Invalid ${fieldName}: ${formatUnknownValue(value)}`)
   }
 }
 
 export function readRecord(body: unknown): Record<string, unknown> {
   return body && typeof body === 'object' ? (body as Record<string, unknown>) : {}
+}
+
+function formatUnknownValue(value: unknown) {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  return JSON.stringify(value)
 }
 
 export function writeJson(response: http.ServerResponse, statusCode: number, body: unknown) {

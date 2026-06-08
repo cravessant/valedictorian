@@ -16,13 +16,13 @@ type ApplicationEditorMode = 'add' | 'edit'
 interface ApplicationEditorModalProps {
   application?: ApplicationListItem | ApplicationDetail
   mode: ApplicationEditorMode
-  onClose(): void
-  onAppendNote(input: AppendApplicationNoteInput): Promise<ApplicationDetail>
-  onCreate(input: CreateApplicationInput): Promise<ApplicationDetail>
-  onSaved(): void
-  onUpdate(input: UpdateApplicationInput): Promise<ApplicationDetail>
-  onUpdateStatus(input: StatusUpdateInput): Promise<ApplicationDetail>
-  onUpdateWorkflow(input: UpdateApplicationWorkflowInput): Promise<ApplicationDetail>
+  onClose: () => void
+  onAppendNote: (input: AppendApplicationNoteInput) => Promise<ApplicationDetail>
+  onCreate: (input: CreateApplicationInput) => Promise<ApplicationDetail>
+  onSaved: () => void
+  onUpdate: (input: UpdateApplicationInput) => Promise<ApplicationDetail>
+  onUpdateStatus: (input: StatusUpdateInput) => Promise<ApplicationDetail>
+  onUpdateWorkflow: (input: UpdateApplicationWorkflowInput) => Promise<ApplicationDetail>
 }
 
 const roleKindOptions = ['internship', 'new_grad', 'full_time', 'contract', 'part_time', 'other'] as const
@@ -237,7 +237,7 @@ function EditorOptionalSelect({
   value,
 }: {
   label: string
-  onChange(value: string): void
+  onChange: (value: string) => void
   options: readonly string[]
   value: string
 }) {
@@ -267,7 +267,7 @@ function EditorTextarea({
   value,
 }: {
   label: string
-  onChange(value: string): void
+  onChange: (value: string) => void
   value: string
 }) {
   return (
@@ -291,7 +291,7 @@ function EditorInput({
 }: {
   disabled?: boolean
   label: string
-  onChange(value: string): void
+  onChange: (value: string) => void
   value: string
 }) {
   return (
@@ -317,7 +317,7 @@ function EditorSelect({
 }: {
   disabled?: boolean
   label: string
-  onChange(value: string): void
+  onChange: (value: string) => void
   options: readonly string[]
   value: string
 }) {

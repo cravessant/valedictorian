@@ -27,8 +27,8 @@ const profileId = 'default'
 const profileSensitiveDetailsId = 'default'
 
 export interface ProfileSecretCodec {
-  decrypt(value: string): string
-  encrypt(value: string): string
+  decrypt: (value: string) => string
+  encrypt: (value: string) => string
 }
 
 export interface ProfileSecretSummary {
@@ -65,15 +65,15 @@ export interface ProfileSensitiveDetails {
 export type ProfileSensitiveDetailsInput = Partial<ProfileSensitiveDetails>
 
 export interface ProfileRepository {
-  deleteSecret(key: string): Promise<void>
-  getAgentContext(): Promise<ProfileAgentContext>
-  getProfile(): Promise<UserProfile>
-  getSensitiveDetails(): Promise<ProfileSensitiveDetails>
-  listSecrets(): Promise<ProfileSecretSummary[]>
-  revealSecret(key: string): Promise<ProfileSecretValue | null>
-  updateSensitiveDetails(input: ProfileSensitiveDetailsInput): Promise<ProfileSensitiveDetails>
-  updateProfile(input: ProfileUpdateInput): Promise<UserProfile>
-  upsertSecret(input: UpsertProfileSecretInput): Promise<ProfileSecretSummary>
+  deleteSecret: (key: string) => Promise<void>
+  getAgentContext: () => Promise<ProfileAgentContext>
+  getProfile: () => Promise<UserProfile>
+  getSensitiveDetails: () => Promise<ProfileSensitiveDetails>
+  listSecrets: () => Promise<ProfileSecretSummary[]>
+  revealSecret: (key: string) => Promise<ProfileSecretValue | null>
+  updateSensitiveDetails: (input: ProfileSensitiveDetailsInput) => Promise<ProfileSensitiveDetails>
+  updateProfile: (input: ProfileUpdateInput) => Promise<UserProfile>
+  upsertSecret: (input: UpsertProfileSecretInput) => Promise<ProfileSecretSummary>
 }
 
 const defaultSensitiveDetails: ProfileSensitiveDetails = {

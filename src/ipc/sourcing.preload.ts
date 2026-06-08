@@ -9,16 +9,16 @@ import type {
 } from 'sparxie'
 
 interface IpcRendererLike {
-  invoke(channel: string, input?: unknown): Promise<unknown>
+  invoke: (channel: string, input?: unknown) => Promise<unknown>
 }
 
 export interface SourcingPreloadApi {
   findings: {
-    list(query?: SourcingFindingsListInput): Promise<SourcingFindingsListResult>
-    create(input: CreateSourcingFindingInput): Promise<SourcingFinding>
-    update(input: UpdateSourcingFindingInput): Promise<SourcingFinding>
-    decide(input: SetSourcingFindingDecisionInput): Promise<SourcingFinding>
-    promote(input: PromoteSourcingFindingInput): Promise<SourcingFinding>
+    list: (query?: SourcingFindingsListInput) => Promise<SourcingFindingsListResult>
+    create: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
+    update: (input: UpdateSourcingFindingInput) => Promise<SourcingFinding>
+    decide: (input: SetSourcingFindingDecisionInput) => Promise<SourcingFinding>
+    promote: (input: PromoteSourcingFindingInput) => Promise<SourcingFinding>
   }
 }
 

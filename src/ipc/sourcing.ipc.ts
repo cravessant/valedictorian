@@ -8,7 +8,7 @@ import type {
 } from 'sparxie'
 
 interface IpcMainLike {
-  handle(channel: string, handler: (_event: unknown, input?: unknown) => Promise<unknown>): void
+  handle: (channel: string, handler: (_event: unknown, input?: unknown) => Promise<unknown>) => void
 }
 
 export function registerSourcingIpc(client: JobAppClient, ipcMain: IpcMainLike) {

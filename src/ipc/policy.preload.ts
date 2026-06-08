@@ -12,23 +12,23 @@ import type {
 } from 'sparxie'
 
 interface IpcRendererLike {
-  invoke(channel: string, payload?: unknown): Promise<unknown>
+  invoke: (channel: string, payload?: unknown) => Promise<unknown>
 }
 
 export interface PolicyPreloadApi {
   config: {
-    get(): Promise<PolicyConfig>
-    reset(): Promise<PolicyConfig>
-    update(patch: PolicyConfigPatch): Promise<PolicyConfig>
+    get: () => Promise<PolicyConfig>
+    reset: () => Promise<PolicyConfig>
+    update: (patch: PolicyConfigPatch) => Promise<PolicyConfig>
   }
   evidence: {
-    list(query?: PolicyEvidenceListInput): Promise<PolicyEvidenceRecord[]>
-    record(input: PolicyEvidenceInput): Promise<PolicyEvidenceRecord>
+    list: (query?: PolicyEvidenceListInput) => Promise<PolicyEvidenceRecord[]>
+    record: (input: PolicyEvidenceInput) => Promise<PolicyEvidenceRecord>
   }
   evaluate: {
-    application(input: EvaluateApplicationPolicyInput): Promise<PolicyDecision>
-    sourcingCandidate(input: EvaluateSourcingCandidatePolicyInput): Promise<PolicyDecision>
-    runWindow(input: EvaluateRunWindowPolicyInput): Promise<PolicyRunWindowDecision>
+    application: (input: EvaluateApplicationPolicyInput) => Promise<PolicyDecision>
+    sourcingCandidate: (input: EvaluateSourcingCandidatePolicyInput) => Promise<PolicyDecision>
+    runWindow: (input: EvaluateRunWindowPolicyInput) => Promise<PolicyRunWindowDecision>
   }
 }
 

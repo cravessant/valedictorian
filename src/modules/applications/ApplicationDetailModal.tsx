@@ -31,10 +31,10 @@ interface ApplicationDetailModalProps {
   isLinksLoading: boolean
   links: ApplicationLinkRecord[]
   linksError: string | null
-  onCreateLink?(input: CreateApplicationLinkInput): Promise<ApplicationLinkRecord>
-  onRecordScore?(input: ScoreInput): Promise<void>
-  onUpdateLink?(input: UpdateApplicationLinkInput): Promise<ApplicationLinkRecord>
-  onClose(): void
+  onCreateLink?: (input: CreateApplicationLinkInput) => Promise<ApplicationLinkRecord>
+  onRecordScore?: (input: ScoreInput) => Promise<void>
+  onUpdateLink?: (input: UpdateApplicationLinkInput) => Promise<ApplicationLinkRecord>
+  onClose: () => void
 }
 
 function ApplicationDetailModal({
@@ -303,9 +303,9 @@ function ApplicationLinkEditorModal({
   applicationId: string
   link?: ApplicationLinkRecord
   mode: 'add' | 'edit'
-  onClose(): void
-  onCreate?(input: CreateApplicationLinkInput): Promise<ApplicationLinkRecord>
-  onUpdate?(input: UpdateApplicationLinkInput): Promise<ApplicationLinkRecord>
+  onClose: () => void
+  onCreate?: (input: CreateApplicationLinkInput) => Promise<ApplicationLinkRecord>
+  onUpdate?: (input: UpdateApplicationLinkInput) => Promise<ApplicationLinkRecord>
 }) {
   const [label, setLabel] = useState(link?.label ?? 'source')
   const [kind, setKind] = useState(link?.kind ?? 'source')
@@ -383,8 +383,8 @@ function ScoreEditorModal({
   onRecordScore,
 }: {
   applicationId: string
-  onClose(): void
-  onRecordScore(input: ScoreInput): Promise<void>
+  onClose: () => void
+  onRecordScore: (input: ScoreInput) => Promise<void>
 }) {
   const [score, setScore] = useState('8')
   const [band, setBand] = useState('high')
@@ -445,7 +445,7 @@ function CompactModalInput({
   value,
 }: {
   label: string
-  onChange(value: string): void
+  onChange: (value: string) => void
   type?: string
   value: string
 }) {

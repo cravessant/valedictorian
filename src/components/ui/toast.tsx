@@ -22,7 +22,7 @@ ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const Toast = React.forwardRef<
   React.ElementRef<typeof ToastPrimitives.Root>,
-  React.ComponentPropsWithoutRef<typeof ToastPrimitives.Root> & {
+  ToastPrimitives.ToastProps & {
     variant?: 'default' | 'destructive' | 'success'
   }
 >(({ className, variant = 'default', ...props }, ref) => (

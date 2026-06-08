@@ -29,15 +29,15 @@ interface SourcingPageProps {
   promotingFindingId: string | null
   result: SourcingFindingsListResult
   sourceId: string
-  onCreateFinding(input: CreateSourcingFindingInput): Promise<SourcingFinding>
-  onDecideFinding(input: SetSourcingFindingDecisionInput): Promise<SourcingFinding>
-  onMergeStatusChange(mergeStatus: SourcingMergeStatus | undefined): void
-  onOpenApplication(application: ApplicationDetailSeed): void
-  onPreviousPage(): void
-  onNextPage(): void
-  onPromoteFinding(findingId: string): void
-  onSourceChange(sourceId: string): void
-  onUpdateFinding(input: UpdateSourcingFindingInput): Promise<SourcingFinding>
+  onCreateFinding: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
+  onDecideFinding: (input: SetSourcingFindingDecisionInput) => Promise<SourcingFinding>
+  onMergeStatusChange: (mergeStatus: SourcingMergeStatus | undefined) => void
+  onOpenApplication: (application: ApplicationDetailSeed) => void
+  onPreviousPage: () => void
+  onNextPage: () => void
+  onPromoteFinding: (findingId: string) => void
+  onSourceChange: (sourceId: string) => void
+  onUpdateFinding: (input: UpdateSourcingFindingInput) => Promise<SourcingFinding>
 }
 
 function SourcingPage({
@@ -272,10 +272,10 @@ function SourcingFindingRow({
 }: {
   item: SourcingFinding
   isPromoting: boolean
-  onDecideFinding(finding: SourcingFinding): void
-  onEditFinding(finding: SourcingFinding): void
-  onOpenApplication(application: ApplicationDetailSeed): void
-  onPromoteFinding(findingId: string): void
+  onDecideFinding: (finding: SourcingFinding) => void
+  onEditFinding: (finding: SourcingFinding) => void
+  onOpenApplication: (application: ApplicationDetailSeed) => void
+  onPromoteFinding: (findingId: string) => void
 }) {
   const canPromote = item.mergeStatus === 'new'
   const decision = getSourcingDecision(item)
@@ -399,8 +399,8 @@ function SourcingFindingDispositionModal({
   onDecide,
 }: {
   finding: SourcingFinding
-  onClose(): void
-  onDecide(input: SetSourcingFindingDecisionInput): Promise<SourcingFinding>
+  onClose: () => void
+  onDecide: (input: SetSourcingFindingDecisionInput) => Promise<SourcingFinding>
 }) {
   const initialStatus = manualSourcingDecisionStatuses.includes(
     finding.mergeStatus as ManualSourcingDecisionStatus,
@@ -472,9 +472,9 @@ function SourcingFindingEditorModal({
 }: {
   finding?: SourcingFinding
   mode: 'add' | 'edit'
-  onClose(): void
-  onCreate?(input: CreateSourcingFindingInput): Promise<SourcingFinding>
-  onUpdate?(input: UpdateSourcingFindingInput): Promise<SourcingFinding>
+  onClose: () => void
+  onCreate?: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
+  onUpdate?: (input: UpdateSourcingFindingInput) => Promise<SourcingFinding>
 }) {
   const [workflowRunId, setWorkflowRunId] = useState(finding?.workflowRunId ?? '')
   const [sourceName, setSourceName] = useState(finding?.sourceName ?? 'Manual')
@@ -616,7 +616,7 @@ function FindingInput({
   value,
 }: {
   label: string
-  onChange(value: string): void
+  onChange: (value: string) => void
   value: string
 }) {
   return (
@@ -706,7 +706,7 @@ function FindingSelect({
   value,
 }: {
   label: string
-  onChange(value: string): void
+  onChange: (value: string) => void
   options: readonly string[]
   value: string
 }) {

@@ -13,9 +13,9 @@ export interface AppSettings {
 export type AppSettingsPatch = Partial<AppSettings>
 
 export interface AppSettingsStore {
-  get(): Promise<AppSettings>
-  reset(): Promise<AppSettings>
-  update(patch: AppSettingsPatch): Promise<AppSettings>
+  get: () => Promise<AppSettings>
+  reset: () => Promise<AppSettings>
+  update: (patch: AppSettingsPatch) => Promise<AppSettings>
 }
 
 export const defaultAppSettings: AppSettings = {

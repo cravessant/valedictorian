@@ -18,15 +18,15 @@ interface SettingsPageProps {
   restartRequired: boolean
   selectedPanel: SettingsPanelId
   settings: AppSettings
-  onSettingsPatch(patch: AppSettingsPatch): void
+  onSettingsPatch: (patch: AppSettingsPatch) => void
 }
 
 interface SettingsSidebarProps {
   selectedPanel: SettingsPanelId
   temporary: boolean
-  onBack(): void
-  onMouseLeave(): void
-  onPanelChange(panel: SettingsPanelId): void
+  onBack: () => void
+  onMouseLeave: () => void
+  onPanelChange: (panel: SettingsPanelId) => void
 }
 
 interface SettingsNavItem {
@@ -250,7 +250,7 @@ function GeneralSettingsPanel({
   onSettingsPatch,
 }: {
   settings: AppSettings
-  onSettingsPatch(patch: AppSettingsPatch): void
+  onSettingsPatch: (patch: AppSettingsPatch) => void
 }) {
   return (
     <section aria-labelledby="general-settings-title" className="space-y-7">
@@ -307,7 +307,7 @@ function ConfigurationSettingsPanel({
   onSettingsPatch,
 }: {
   settings: AppSettings
-  onSettingsPatch(patch: AppSettingsPatch): void
+  onSettingsPatch: (patch: AppSettingsPatch) => void
 }) {
   return (
     <section aria-labelledby="configuration-settings-title" className="space-y-7">
@@ -402,7 +402,7 @@ function AppearanceSettingsPanel({
   onSettingsPatch,
 }: {
   settings: AppSettings
-  onSettingsPatch(patch: AppSettingsPatch): void
+  onSettingsPatch: (patch: AppSettingsPatch) => void
 }) {
   return (
     <section aria-labelledby="appearance-settings-title" className="space-y-7">
@@ -604,7 +604,7 @@ function RuntimeModeOption({
   description: string
   icon: ReactNode
   label: string
-  onChange(): void
+  onChange: () => void
 }) {
   return (
     <label className="flex cursor-pointer gap-3 rounded-md border border-border bg-card p-3 text-sm text-foreground">

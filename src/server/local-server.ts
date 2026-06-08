@@ -10,7 +10,7 @@ export interface CreateJobAppHttpServerOptions {
 }
 
 export interface StartedJobAppHttpServer {
-  close(): Promise<void>
+  close: () => Promise<void>
   host: string
   port: number
   url: string

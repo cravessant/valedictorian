@@ -8,25 +8,25 @@ import type {
 } from '../modules/profile/profile.repository'
 
 interface IpcRendererLike {
-  invoke(channel: string, payload?: unknown): Promise<unknown>
+  invoke: (channel: string, payload?: unknown) => Promise<unknown>
 }
 
 export interface ProfilePreloadApi {
   agentContext: {
-    get(): Promise<ProfileAgentContext>
+    get: () => Promise<ProfileAgentContext>
   }
-  get(): Promise<UserProfile>
+  get: () => Promise<UserProfile>
   sensitive: {
-    get(): Promise<ProfileSensitiveDetails>
-    update(input: ProfileSensitiveDetailsInput): Promise<ProfileSensitiveDetails>
+    get: () => Promise<ProfileSensitiveDetails>
+    update: (input: ProfileSensitiveDetailsInput) => Promise<ProfileSensitiveDetails>
   }
   secrets: {
-    delete(key: string): Promise<void>
-    list(): Promise<ProfileSecretSummary[]>
-    reveal(key: string): Promise<ProfileSecretValue | null>
-    upsert(input: UpsertProfileSecretInput): Promise<ProfileSecretSummary>
+    delete: (key: string) => Promise<void>
+    list: () => Promise<ProfileSecretSummary[]>
+    reveal: (key: string) => Promise<ProfileSecretValue | null>
+    upsert: (input: UpsertProfileSecretInput) => Promise<ProfileSecretSummary>
   }
-  update(input: ProfileUpdateInput): Promise<UserProfile>
+  update: (input: ProfileUpdateInput) => Promise<UserProfile>
 }
 
 export function createProfilePreloadApi(ipcRenderer: IpcRendererLike): ProfilePreloadApi {

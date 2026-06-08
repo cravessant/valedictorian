@@ -843,7 +843,7 @@ export function createSqliteApplicationRepository(
     },
     async listApplications(query: ApplicationListQuery = {}) {
       if (query.sort && !isApplicationListSort(query.sort)) {
-        throw new Error(`Invalid application list sort: ${query.sort}`)
+        throw new Error(`Invalid application list sort: ${String(query.sort)}`)
       }
 
       const limit = validateListLimit(query.limit)
@@ -902,7 +902,7 @@ export function createSqliteApplicationRepository(
     },
     async updateApplicationStatus(input) {
       if (!isApplicationStatus(input.status)) {
-        throw new Error(`Invalid application status: ${input.status}`)
+        throw new Error(`Invalid application status: ${String(input.status)}`)
       }
 
       const now = new Date().toISOString()

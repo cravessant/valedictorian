@@ -215,7 +215,7 @@ export function normalizeCompleteApplicationAttemptInput(
     input.manualReviewKind !== null &&
     !isManualReviewKind(input.manualReviewKind)
   ) {
-    throw new Error(`Invalid manualReviewKind: ${input.manualReviewKind}`)
+    throw new Error(`Invalid manualReviewKind: ${String(input.manualReviewKind)}`)
   }
 
   validateIsoTimestampField(input, 'holdStartedAt')
@@ -257,11 +257,11 @@ export function normalizeCreateApplicationInput(input: CreateApplicationInput): 
   }
 
   if (!isWorkMode(workMode)) {
-    throw new Error(`Invalid workMode: ${workMode}`)
+    throw new Error(`Invalid workMode: ${String(workMode)}`)
   }
 
   if (!isApplicationStatus(status)) {
-    throw new Error(`Invalid application status: ${status}`)
+    throw new Error(`Invalid application status: ${String(status)}`)
   }
 
   if (!input.primaryLink && !input.sourceLink) {

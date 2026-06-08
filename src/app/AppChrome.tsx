@@ -7,7 +7,7 @@ import { APP_VIEWS, type MainAppView } from './types'
 interface AppTopbarProps {
   sidebarCollapsed: boolean
   title: string
-  onToggleSidebar(): void
+  onToggleSidebar: () => void
 }
 
 function AppTopbar({ sidebarCollapsed, title, onToggleSidebar }: AppTopbarProps) {
@@ -36,12 +36,12 @@ interface AppSidebarProps {
   settings: AppSettings
   settingsOpen: boolean
   temporary: boolean
-  onMouseLeave(): void
-  onOpenProfilePage(): void
-  onOpenSettingsPage(): void
-  onViewChange(view: Exclude<MainAppView, typeof APP_VIEWS.PROFILE>): void
-  onSettingsOpenChange(open: boolean): void
-  onSettingsPatch(patch: AppSettingsPatch): void
+  onMouseLeave: () => void
+  onOpenProfilePage: () => void
+  onOpenSettingsPage: () => void
+  onViewChange: (view: Exclude<MainAppView, typeof APP_VIEWS.PROFILE>) => void
+  onSettingsOpenChange: (open: boolean) => void
+  onSettingsPatch: (patch: AppSettingsPatch) => void
 }
 
 function AppSidebar({
@@ -134,10 +134,10 @@ function applicationNavClass(active: boolean) {
 interface SettingsPopoverProps {
   open: boolean
   settings: AppSettings
-  onClose(): void
-  onOpenChange(open: boolean): void
-  onOpenSettingsPage(): void
-  onSettingsPatch(patch: AppSettingsPatch): void
+  onClose: () => void
+  onOpenChange: (open: boolean) => void
+  onOpenSettingsPage: () => void
+  onSettingsPatch: (patch: AppSettingsPatch) => void
 }
 
 function SettingsPopover({
@@ -251,7 +251,7 @@ interface SettingsToggleRowProps {
   disabled?: boolean
   icon: ReactNode
   label: string
-  onChange(checked: boolean): void
+  onChange: (checked: boolean) => void
 }
 
 function SettingsToggleRow({
