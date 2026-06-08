@@ -14,6 +14,7 @@ import {
   createPolicyApi,
   createProfileApi,
   createSettingsApi,
+  createWorkspaceApi,
   openSettingsPage,
 } from './App.test-helpers'
 import { defaultPolicyConfig } from 'sparxie'
@@ -25,6 +26,7 @@ afterEach(() => {
   delete (window as Window & { sourcing?: unknown }).sourcing
   delete (window as Window & { settings?: unknown }).settings
   delete (window as Window & { profile?: unknown }).profile
+  delete (window as Window & { workspace?: unknown }).workspace
 })
 
 function mockNarrowViewport() {
@@ -48,6 +50,7 @@ describe('App settings and chrome', () => {
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         settingsApi={createSettingsApi()}
+        workspaceApi={createWorkspaceApi()}
       />,
     )
 
@@ -120,6 +123,7 @@ describe('App settings and chrome', () => {
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         settingsApi={createSettingsApi()}
+        workspaceApi={createWorkspaceApi()}
       />,
     )
 
@@ -548,6 +552,7 @@ describe('App settings and chrome', () => {
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         settingsApi={createSettingsApi()}
+        workspaceApi={createWorkspaceApi()}
       />,
     )
 
@@ -574,7 +579,16 @@ describe('App settings and chrome', () => {
     expect(screen.getByLabelText('Local API host')).toBeInTheDocument()
     expect(screen.getByLabelText('Local API port')).toBeInTheDocument()
     expect(screen.getByLabelText('API token')).toBeInTheDocument()
-    expect(screen.getByLabelText('SQLite path')).toHaveValue('Managed by Electron userData')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Data' }))
+
+    expect(screen.getByRole('heading', { name: 'Data' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByLabelText('Workspace path')).toHaveValue('/Users/keni/Job Search')
+    })
+    expect(screen.getByLabelText('SQLite path')).toHaveValue('/Users/keni/Job Search/.job-automation/job-app.sqlite')
+    expect(screen.getByRole('button', { name: 'Choose workspace' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reveal workspace' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Agent access' }))
 

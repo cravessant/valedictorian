@@ -8,6 +8,7 @@ import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
+import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
 import { ApplicationEditorModal } from './modules/applications/ApplicationEditorModal'
@@ -80,6 +81,7 @@ import {
   defaultQueueLoader,
   defaultScoreRecorder,
   defaultSettingsApi,
+  defaultWorkspaceApi,
   defaultSourcingLoader,
   defaultUpdateSourcingFinding,
   emptyApplicationEventsResult,
@@ -100,6 +102,7 @@ import {
   type FilterState,
   type SettingsPanelId,
 } from './app/types'
+import type { WorkspaceSummary } from './workspace/workspace.initializer'
 
 const narrowSidebarMediaQuery = '(max-width: 767px)'
 
@@ -153,6 +156,7 @@ interface AppProps {
   profileApi?: ProfilePreloadApi
   policyApi?: PolicyPreloadApi
   settingsApi?: SettingsPreloadApi
+  workspaceApi?: WorkspacePreloadApi
 }
 
 function App({
@@ -178,10 +182,12 @@ function App({
   policyApi = defaultPolicyApi,
   profileApi = defaultProfileApi,
   settingsApi = defaultSettingsApi,
+  workspaceApi = defaultWorkspaceApi,
 }: AppProps) {
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
   const [filtersExpanded, setFiltersExpanded] = useState(false)
   const [settings, setSettings] = useState<AppSettings>(defaultAppSettings)
+  const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [appView, setAppView] = useState<AppView>(APP_VIEWS.APPLICATIONS)
   const [selectedSettingsPanel, setSelectedSettingsPanel] = useState<SettingsPanelId>(
@@ -253,6 +259,24 @@ function App({
       isMounted = false
     }
   }, [settingsApi])
+
+  useEffect(() => {
+    let isMounted = true
+
+    void workspaceApi.getCurrent().then((currentWorkspace) => {
+      if (isMounted) {
+        setWorkspace(currentWorkspace)
+      }
+    }).catch(() => {
+      if (isMounted) {
+        setWorkspace(null)
+      }
+    })
+
+    return () => {
+      isMounted = false
+    }
+  }, [workspaceApi])
 
   useEffect(() => {
     let isMounted = true
@@ -748,6 +772,8 @@ function App({
             restartRequired={settingsRestartRequired}
             selectedPanel={selectedSettingsPanel}
             settings={settings}
+            workspace={workspace}
+            workspaceApi={workspaceApi}
             onSettingsPatch={updateSettings}
           />
         ) : appView === APP_VIEWS.PROFILE ? (

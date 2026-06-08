@@ -40,6 +40,18 @@ describe('job app runtime config', () => {
     })
   })
 
+  it('defaults the SQLite database path to the workspace data folder when present', () => {
+    expect(
+      resolveJobAppRuntimeConfig({
+        env: {},
+        userDataPath: '/Users/test/Library/Application Support/Job App',
+        workspaceDataPath: '/Users/test/Job Search/.job-automation',
+      }),
+    ).toMatchObject({
+      sqlitePath: '/Users/test/Job Search/.job-automation/job-app.sqlite',
+    })
+  })
+
   it('honors local shared, remote, and path overrides', () => {
     expect(
       resolveJobAppRuntimeConfig({

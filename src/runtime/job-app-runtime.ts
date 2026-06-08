@@ -19,6 +19,7 @@ export interface JobAppRuntimeConfigInput {
   env?: Record<string, string | undefined>
   settings?: AppSettings
   userDataPath: string
+  workspaceDataPath?: string
 }
 
 export interface JobAppRuntimeConfig {
@@ -49,6 +50,7 @@ export function resolveJobAppRuntimeConfig({
   env = process.env,
   settings = defaultAppSettings,
   userDataPath,
+  workspaceDataPath,
 }: JobAppRuntimeConfigInput): JobAppRuntimeConfig {
   const mode = readRuntimeMode(env.JOB_APP_MODE ?? settings.runtimeMode)
   const apiHost = env.JOB_APP_API_HOST ?? settings.localApiHost
@@ -63,7 +65,7 @@ export function resolveJobAppRuntimeConfig({
       env.JOB_APP_API_URL ??
       (mode === 'remote' ? settings.remoteApiUrl || defaultJobAppApiBaseUrl : defaultApiUrl),
     mode,
-    sqlitePath: env.JOB_APP_SQLITE_PATH ?? path.join(userDataPath, 'job-app.sqlite'),
+    sqlitePath: env.JOB_APP_SQLITE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'job-app.sqlite'),
   }
 }
 

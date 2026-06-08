@@ -6,6 +6,7 @@ import {
   type AppSettings,
   type AppSettingsStore,
 } from './app-settings'
+import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 
 export function createFileAppSettingsStore(settingsPath: string): AppSettingsStore {
   return {
@@ -26,6 +27,10 @@ export function createFileAppSettingsStore(settingsPath: string): AppSettingsSto
       return nextSettings
     },
   }
+}
+
+export function createWorkspaceAppSettingsStore(workspaceRootPath: string): AppSettingsStore {
+  return createFileAppSettingsStore(resolveWorkspaceLayout(workspaceRootPath).appSettingsPath)
 }
 
 function readSettings(settingsPath: string): AppSettings {

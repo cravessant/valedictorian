@@ -1,8 +1,10 @@
 import { fireEvent, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
+import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
+import type { WorkspaceSummary } from './workspace/workspace.initializer'
 import type {
   ApplicationAttempt,
   ApplicationAttemptsListResult,
@@ -312,6 +314,44 @@ export function createSettingsApi(overrides: Partial<AppSettings> = {}): Setting
 
       return currentSettings
     }),
+  }
+}
+
+export function createWorkspaceSummary(
+  overrides: Partial<WorkspaceSummary> = {},
+): WorkspaceSummary {
+  return {
+    id: 'workspace-1',
+    name: 'Job Search',
+    rootPath: '/Users/keni/Job Search',
+    dataPath: '/Users/keni/Job Search/.job-automation',
+    manifestPath: '/Users/keni/Job Search/.job-automation/manifest.json',
+    appSettingsPath: '/Users/keni/Job Search/.job-automation/app.json',
+    sqlitePath: '/Users/keni/Job Search/.job-automation/job-app.sqlite',
+    automationsPath: '/Users/keni/Job Search/.job-automation/automations',
+    promptsPath: '/Users/keni/Job Search/.job-automation/prompts',
+    templatesPath: '/Users/keni/Job Search/.job-automation/templates',
+    notesPath: '/Users/keni/Job Search/.job-automation/notes',
+    ...overrides,
+  }
+}
+
+export function createWorkspaceApi(
+  currentWorkspace: WorkspaceSummary | null = createWorkspaceSummary(),
+): WorkspacePreloadApi {
+  return {
+    chooseFolder: vi.fn(async () => currentWorkspace),
+    getCurrent: vi.fn(async () => currentWorkspace),
+    listRecent: vi.fn(async () => (currentWorkspace ? [
+      {
+        id: currentWorkspace.id,
+        name: currentWorkspace.name,
+        path: currentWorkspace.rootPath,
+        lastOpenedAt: '2026-06-08T12:00:00.000Z',
+        open: true,
+      },
+    ] : [])),
+    revealCurrent: vi.fn(async () => undefined),
   }
 }
 

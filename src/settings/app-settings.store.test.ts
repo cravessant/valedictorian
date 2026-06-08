@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { defaultAppSettings } from './app-settings'
-import { createFileAppSettingsStore } from './app-settings.store'
+import { createFileAppSettingsStore, createWorkspaceAppSettingsStore } from './app-settings.store'
+import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 
 function createTempSettingsPath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-settings-')), 'settings.json')
@@ -68,5 +69,18 @@ describe('file app settings store', () => {
     await expect(createFileAppSettingsStore(settingsPath).get()).resolves.toEqual(
       defaultAppSettings,
     )
+  })
+
+  it('persists workspace settings to .job-automation/app.json', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-workspace-settings-'))
+    const layout = resolveWorkspaceLayout(workspaceRoot)
+    const store = createWorkspaceAppSettingsStore(workspaceRoot)
+
+    await store.update({ sidebarCollapsed: true })
+
+    expect(JSON.parse(fs.readFileSync(layout.appSettingsPath, 'utf8'))).toMatchObject({
+      sidebarCollapsed: true,
+    })
+    expect(fs.existsSync(path.join(workspaceRoot, 'settings.json'))).toBe(false)
   })
 })

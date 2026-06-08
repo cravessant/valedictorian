@@ -3,6 +3,7 @@ import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import type { QueuePreloadApi } from '../ipc/queue.preload'
 import type { SettingsPreloadApi } from '../ipc/settings.preload'
+import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { ProfileSensitiveDetails } from '../modules/profile/profile.repository'
 import type {
   ApplicationAttemptsListResult,
@@ -261,6 +262,10 @@ function getWindowProfileApi() {
   return (window as Window & { profile?: ProfilePreloadApi }).profile
 }
 
+function getWindowWorkspaceApi() {
+  return (window as Window & { workspace?: WorkspacePreloadApi }).workspace
+}
+
 export const defaultSettingsApi: SettingsPreloadApi = {
   get() {
     return getWindowSettingsApi()?.get() ?? Promise.resolve(defaultAppSettings)
@@ -273,6 +278,21 @@ export const defaultSettingsApi: SettingsPreloadApi = {
       getWindowSettingsApi()?.update(patch) ??
       Promise.resolve(normalizeAppSettings({ ...defaultAppSettings, ...patch }))
     )
+  },
+}
+
+export const defaultWorkspaceApi: WorkspacePreloadApi = {
+  chooseFolder() {
+    return getWindowWorkspaceApi()?.chooseFolder() ?? Promise.resolve(null)
+  },
+  getCurrent() {
+    return getWindowWorkspaceApi()?.getCurrent() ?? Promise.resolve(null)
+  },
+  listRecent() {
+    return getWindowWorkspaceApi()?.listRecent() ?? Promise.resolve([])
+  },
+  revealCurrent() {
+    return getWindowWorkspaceApi()?.revealCurrent() ?? Promise.resolve()
   },
 }
 
