@@ -73,7 +73,14 @@ describe('AppRoot workspace gate', () => {
     expect(screen.getByRole('button', { name: 'Open folder' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create workspace' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open Job Search' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Open Job Search' })).toHaveTextContent('Open')
+    expect(screen.getByRole('button', { name: 'Open Job Search' })).not.toHaveTextContent(
+      'Job Search',
+    )
     expect(screen.getByRole('button', { name: 'Missing Search unavailable' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Missing Search unavailable' })).toHaveTextContent(
+      'Unavailable',
+    )
   })
 
   it('renders the workspace launcher in a compact Obsidian-style shell', async () => {
@@ -91,6 +98,24 @@ describe('AppRoot workspace gate', () => {
     expect(shell).toHaveClass('max-w-xl')
     expect(shell).not.toHaveClass('max-w-5xl')
     expect(screen.getByRole('heading', { name: 'Open a workspace' })).toHaveClass('text-xl')
+  })
+
+  it('uses mobile-safe compact launcher actions', async () => {
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi({
+          recentWorkspaces: [],
+          status: 'needs-workspace',
+        })}
+      />,
+    )
+
+    expect(await screen.findByRole('button', { name: 'Open folder' })).toHaveClass('w-full')
+    expect(screen.getByLabelText('Workspace name')).toHaveAttribute(
+      'placeholder',
+      'New workspace name',
+    )
+    expect(screen.getByRole('button', { name: 'Create workspace' })).toHaveClass('h-8')
   })
 
   it('opens a folder from the launcher and enters the main app', async () => {
