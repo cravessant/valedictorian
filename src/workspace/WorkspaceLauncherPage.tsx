@@ -24,26 +24,29 @@ function WorkspaceLauncherPage({
   const canCreate = workspaceName.trim().length > 0
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-10">
-        <header className="border-b border-border pb-6">
-          <p className="text-sm font-medium text-muted-foreground">Job App</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-normal text-foreground">
+    <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8 text-foreground">
+      <div
+        data-testid="workspace-launcher-shell"
+        className="w-full max-w-xl rounded-md border border-border bg-card shadow-sm"
+      >
+        <header className="border-b border-border px-5 py-4">
+          <p className="text-xs font-medium text-muted-foreground">Job App</p>
+          <h1 className="mt-1 text-xl font-semibold tracking-normal text-foreground">
             Open a workspace
           </h1>
         </header>
 
-        <div className="grid flex-1 gap-8 py-8 lg:grid-cols-[1fr_320px]">
-          <section aria-labelledby="recent-workspaces-title">
-            <h2 id="recent-workspaces-title" className="text-sm font-semibold text-foreground">
+        <div className="px-5 py-4">
+          <section aria-labelledby="recent-workspaces-title" className="min-h-32">
+            <h2 id="recent-workspaces-title" className="text-xs font-semibold text-foreground">
               Recent workspaces
             </h2>
-            <div className="mt-3 space-y-2">
+            <div className="mt-2 max-h-64 overflow-y-auto rounded-md border border-border">
               {launchState.recentWorkspaces.length > 0 ? (
                 launchState.recentWorkspaces.map((workspace) => (
                   <div
                     key={workspace.id}
-                    className="grid gap-3 rounded-md border border-border bg-card p-3 sm:grid-cols-[1fr_auto]"
+                    className="grid gap-2 border-b border-border px-3 py-2 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto]"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground">
@@ -56,19 +59,22 @@ function WorkspaceLauncherPage({
                         <p className="mt-2 text-xs font-medium text-destructive">Missing folder</p>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={workspace.missing ? 'ghost' : 'outline'}
+                        className="h-8 px-2 text-xs"
                         disabled={workspace.missing}
                         onClick={() => onOpenRecent(workspace.id)}
                       >
-                        {workspace.missing ? `${workspace.name} unavailable` : `Open ${workspace.name}`}
+                        {workspace.missing
+                          ? `${workspace.name} unavailable`
+                          : `Open ${workspace.name}`}
                       </Button>
                       <Button
                         type="button"
                         variant="ghost"
-                        className="h-9 w-9 p-0"
+                        className="h-8 w-8 p-0"
                         aria-label={`Reveal ${workspace.name}`}
                         disabled={workspace.missing}
                         onClick={() => onReveal(workspace.path)}
@@ -78,7 +84,7 @@ function WorkspaceLauncherPage({
                       <Button
                         type="button"
                         variant="ghost"
-                        className="h-9 w-9 p-0"
+                        className="h-8 w-8 p-0"
                         aria-label={`Remove ${workspace.name}`}
                         onClick={() => onRemoveRecent(workspace.id)}
                       >
@@ -88,48 +94,40 @@ function WorkspaceLauncherPage({
                   </div>
                 ))
               ) : (
-                <div className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
                   No recent workspaces
                 </div>
               )}
             </div>
           </section>
-
-          <aside className="space-y-6">
-            <section aria-labelledby="open-workspace-title" className="rounded-md border border-border bg-card p-4">
-              <h2 id="open-workspace-title" className="text-sm font-semibold text-foreground">
-                Open
-              </h2>
-              <Button type="button" className="mt-3 w-full gap-2" onClick={onOpenFolder}>
-                <FolderOpen className="h-4 w-4" aria-hidden="true" />
-                Open folder
-              </Button>
-            </section>
-
-            <section aria-labelledby="create-workspace-title" className="rounded-md border border-border bg-card p-4">
-              <h2 id="create-workspace-title" className="text-sm font-semibold text-foreground">
-                Create
-              </h2>
-              <label className="mt-3 block text-xs font-medium text-muted-foreground">
-                Workspace name
-                <input
-                  className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                  value={workspaceName}
-                  onChange={(event) => setWorkspaceName(event.target.value)}
-                />
-              </label>
-              <Button
-                type="button"
-                className="mt-3 w-full gap-2"
-                disabled={!canCreate}
-                onClick={() => onCreateWorkspace({ name: workspaceName.trim() })}
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Create workspace
-              </Button>
-            </section>
-          </aside>
         </div>
+
+        <footer className="space-y-3 border-t border-border px-5 py-4">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="button" className="gap-2 sm:w-40" onClick={onOpenFolder}>
+              <FolderOpen className="h-4 w-4" aria-hidden="true" />
+              Open folder
+            </Button>
+            <label className="min-w-0 flex-1 text-xs font-medium text-muted-foreground">
+              Workspace name
+              <input
+                className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                value={workspaceName}
+                onChange={(event) => setWorkspaceName(event.target.value)}
+              />
+            </label>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            disabled={!canCreate}
+            onClick={() => onCreateWorkspace({ name: workspaceName.trim() })}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Create workspace
+          </Button>
+        </footer>
       </div>
     </main>
   )

@@ -76,6 +76,23 @@ describe('AppRoot workspace gate', () => {
     expect(screen.getByRole('button', { name: 'Missing Search unavailable' })).toBeDisabled()
   })
 
+  it('renders the workspace launcher in a compact Obsidian-style shell', async () => {
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi({
+          recentWorkspaces: [],
+          status: 'needs-workspace',
+        })}
+      />,
+    )
+
+    const shell = await screen.findByTestId('workspace-launcher-shell')
+
+    expect(shell).toHaveClass('max-w-xl')
+    expect(shell).not.toHaveClass('max-w-5xl')
+    expect(screen.getByRole('heading', { name: 'Open a workspace' })).toHaveClass('text-xl')
+  })
+
   it('opens a folder from the launcher and enters the main app', async () => {
     const workspace = createWorkspaceSummary()
     const openFolder = vi.fn(async () => ({
