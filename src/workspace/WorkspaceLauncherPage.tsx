@@ -53,7 +53,7 @@ function WorkspaceLauncherPage({
       >
         <aside
           aria-label="Recent workspaces"
-          className="border-r border-border bg-card px-6 pb-6 pt-16"
+          className="border-r border-border bg-card px-6 pb-6 pt-32"
         >
           <h2 className="sr-only">Recent workspaces</h2>
           <div className="space-y-2">
@@ -106,27 +106,29 @@ function WorkspaceLauncherPage({
         </aside>
 
         <section className="flex h-screen items-center justify-center bg-background px-10 py-8">
-          <div className="w-full max-w-[450px]">
+          <div className="w-full max-w-[430px]">
             <div className="text-center">
-              <h1 className="text-3xl font-bold tracking-normal text-foreground">
+              <h1 className="text-2xl font-bold tracking-normal text-foreground">
                 Job Automation
               </h1>
-              <p className="mt-2 text-sm font-medium text-muted-foreground">Workspace launcher</p>
+              <p className="mt-1.5 text-xs font-medium text-muted-foreground">
+                Workspace launcher
+              </p>
             </div>
 
             {view === 'home' ? (
-              <div className="mt-7 rounded-lg border border-border bg-card px-6 py-4 shadow-lg">
+              <div className="mt-6 rounded-lg border border-border bg-card px-5 py-3.5 shadow-lg">
                 <div className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-5 py-1">
                   <div className="min-w-0">
-                    <h2 className="text-base font-semibold text-foreground">Create workspace</h2>
-                    <p className="mt-1 text-sm font-medium text-muted-foreground">
+                    <h2 className="text-sm font-semibold text-foreground">Create workspace</h2>
+                    <p className="mt-1 text-xs font-medium text-muted-foreground">
                       Create a new workspace under a folder.
                     </p>
                   </div>
                   <Button
                     type="button"
                     aria-label="Create workspace"
-                    className="h-9 rounded-md text-sm"
+                    className="h-8 rounded-md text-xs"
                     onClick={() => setView('create')}
                   >
                     Create
@@ -137,10 +139,10 @@ function WorkspaceLauncherPage({
 
                 <div className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-5 py-1">
                   <div className="min-w-0">
-                    <h2 className="text-base font-semibold text-foreground">
+                    <h2 className="text-sm font-semibold text-foreground">
                       Open folder as workspace
                     </h2>
-                    <p className="mt-1 text-sm font-medium text-muted-foreground">
+                    <p className="mt-1 text-xs font-medium text-muted-foreground">
                       Open an existing workspace folder.
                     </p>
                   </div>
@@ -148,7 +150,7 @@ function WorkspaceLauncherPage({
                     type="button"
                     aria-label="Open folder"
                     variant="outline"
-                    className="h-9 rounded-md text-sm"
+                    className="h-8 rounded-md text-xs"
                     onClick={onOpenFolder}
                   >
                     Open
@@ -156,34 +158,34 @@ function WorkspaceLauncherPage({
                 </div>
               </div>
             ) : (
-              <div className="mt-7">
+              <div className="mt-6">
                 <button
                   type="button"
                   aria-label="Back"
-                  className="text-sm font-medium text-muted-foreground hover:text-foreground"
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
                   onClick={() => setView('home')}
                 >
                   Back
                 </button>
-                <h2 className="mt-5 text-xl font-semibold text-foreground">
+                <h2 className="mt-4 text-lg font-semibold text-foreground">
                   Create local workspace
                 </h2>
 
-                <div className="mt-5 rounded-lg border border-border bg-card px-6 py-5 shadow-lg">
+                <div className="mt-4 rounded-lg border border-border bg-card px-5 py-4 shadow-lg">
                   <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-5">
                     <div className="min-w-0">
                       <label
-                        className="text-base font-semibold text-foreground"
+                        className="text-sm font-semibold text-foreground"
                         htmlFor="workspace-name"
                       >
                         Workspace name
                       </label>
-                      <p className="mt-1 text-sm font-medium text-muted-foreground">
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">
                         Name this workspace.
                       </p>
                     </div>
                     <input
-                      className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground"
+                      className="h-8 rounded-md border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground"
                       id="workspace-name"
                       placeholder="New workspace name"
                       value={workspaceName}
@@ -195,8 +197,8 @@ function WorkspaceLauncherPage({
 
                   <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-5">
                     <div className="min-w-0">
-                      <h3 className="text-base font-semibold text-foreground">Location</h3>
-                      <p className="mt-1 text-sm font-medium text-muted-foreground">
+                      <h3 className="text-sm font-semibold text-foreground">Location</h3>
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">
                         Choose a parent folder.
                       </p>
                       {workspaceParentPath ? (
@@ -209,7 +211,7 @@ function WorkspaceLauncherPage({
                       type="button"
                       aria-label="Browse"
                       variant="outline"
-                      className="h-9 rounded-md text-sm"
+                      className="h-8 rounded-md text-xs"
                       onClick={chooseParentFolder}
                     >
                       Browse
@@ -236,7 +238,7 @@ function WorkspaceLauncherPage({
                   <Button
                     type="button"
                     aria-label="Create workspace"
-                    className="h-9 rounded-md px-6 text-sm"
+                    className="h-8 rounded-md px-5 text-xs"
                     disabled={!canCreate}
                     onClick={submitCreateWorkspace}
                   >

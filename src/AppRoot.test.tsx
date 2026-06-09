@@ -109,8 +109,11 @@ describe('AppRoot workspace gate', () => {
     expect(shell).toHaveClass('grid-cols-[250px_minmax(0,1fr)]')
     expect(shell).toHaveClass('bg-card')
     expect(screen.getByRole('main')).toHaveClass('bg-background')
-    expect(screen.getByRole('complementary', { name: 'Recent workspaces' })).toHaveClass('bg-card')
-    expect(screen.getByRole('heading', { name: 'Job Automation' })).toHaveClass('text-3xl')
+    expect(screen.getByRole('complementary', { name: 'Recent workspaces' })).toHaveClass(
+      'bg-card',
+      'pt-32',
+    )
+    expect(screen.getByRole('heading', { name: 'Job Automation' })).toHaveClass('text-2xl')
     expect(screen.getByText('No recent workspaces')).not.toHaveClass('border')
     expect(container.querySelector('.lucide-gem')).toBeNull()
   })
@@ -162,6 +165,7 @@ describe('AppRoot workspace gate', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }))
 
     expect(await screen.findByRole('heading', { name: 'Create local workspace' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Create local workspace' })).toHaveClass('text-lg')
     expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
     expect(screen.getByLabelText('Workspace name')).toHaveAttribute(
       'placeholder',
