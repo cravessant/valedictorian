@@ -35,6 +35,7 @@ export type WorkspaceLaunchState =
     }
 
 export interface WorkspaceService {
+  chooseCreateParentFolder: () => Promise<string | null>
   chooseFolder: () => Promise<WorkspaceSummary | null>
   createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceLaunchState>
   getCurrent: () => Promise<WorkspaceSummary | null>
@@ -170,6 +171,9 @@ export function createWorkspaceService({
   const selectWorkspaceParentRoot = chooseWorkspaceParentRoot ?? chooseWorkspaceRoot
 
   return {
+    chooseCreateParentFolder() {
+      return selectWorkspaceParentRoot()
+    },
     async chooseFolder() {
       const selectedWorkspacePath = await chooseWorkspaceRoot()
 

@@ -19,6 +19,7 @@ const currentWorkspace = {
 describe('workspace IPC registration', () => {
   it('registers workspace handlers', async () => {
     const service: WorkspaceService = {
+      chooseCreateParentFolder: vi.fn(async () => '/Users/keni/Documents'),
       chooseFolder: vi.fn(async () => currentWorkspace),
       createWorkspace: vi.fn(async () => ({
         devOptions: {
@@ -77,6 +78,9 @@ describe('workspace IPC registration', () => {
       status: 'active',
     })
     await expect(handlers.get('workspace:list-recent')?.({})).resolves.toEqual([])
+    await expect(handlers.get('workspace:choose-create-parent-folder')?.({})).resolves.toBe(
+      '/Users/keni/Documents',
+    )
     await expect(handlers.get('workspace:choose-folder')?.({})).resolves.toEqual(currentWorkspace)
     await expect(handlers.get('workspace:open-folder')?.({})).resolves.toMatchObject({
       status: 'active',
@@ -101,6 +105,7 @@ describe('workspace IPC registration', () => {
     expect(service.getCurrent).toHaveBeenCalled()
     expect(service.getLaunchState).toHaveBeenCalled()
     expect(service.listRecent).toHaveBeenCalled()
+    expect(service.chooseCreateParentFolder).toHaveBeenCalled()
     expect(service.chooseFolder).toHaveBeenCalled()
     expect(service.openFolder).toHaveBeenCalled()
     expect(service.openRecent).toHaveBeenCalledWith('workspace-1')

@@ -282,6 +282,9 @@ export const defaultSettingsApi: SettingsPreloadApi = {
 }
 
 export const defaultWorkspaceApi: WorkspacePreloadApi = {
+  chooseCreateParentFolder() {
+    return getWindowWorkspaceApi()?.chooseCreateParentFolder() ?? Promise.resolve(null)
+  },
   chooseFolder() {
     return getWindowWorkspaceApi()?.chooseFolder() ?? Promise.resolve(null)
   },

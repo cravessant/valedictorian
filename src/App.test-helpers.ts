@@ -357,6 +357,7 @@ export function createWorkspaceApi(
       }
 
   return {
+    chooseCreateParentFolder: vi.fn(async () => null),
     chooseFolder: vi.fn(async () => currentWorkspace),
     createWorkspace: vi.fn(async () => activeLaunchState),
     getCurrent: vi.fn(async () => currentWorkspace),
