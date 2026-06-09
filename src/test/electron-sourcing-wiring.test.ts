@@ -43,6 +43,18 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("workspace: import('../src/ipc/workspace.preload').WorkspacePreloadApi")
   })
 
+  it('uses launch-state workspace startup instead of opening Finder before the window exists', () => {
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const rendererEntrySource = fs.readFileSync(path.resolve('src/main.tsx'), 'utf8')
+
+    expect(rendererEntrySource).toContain("import AppRoot from './AppRoot.tsx'")
+    expect(rendererEntrySource).toContain('<AppRoot />')
+    expect(mainSource).toContain('resolveWorkspaceLaunchState')
+    expect(mainSource).not.toContain('resolveInitialWorkspace')
+    expect(mainSource).toContain('registerWorkspaceIpc(workspaceService, ipcMain)')
+    expect(mainSource).toContain('createWindow()')
+  })
+
   it('opens external application links outside the Electron app window', () => {
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
 

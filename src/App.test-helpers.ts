@@ -339,9 +339,22 @@ export function createWorkspaceSummary(
 export function createWorkspaceApi(
   currentWorkspace: WorkspaceSummary | null = createWorkspaceSummary(),
 ): WorkspacePreloadApi {
+  const activeLaunchState = currentWorkspace
+    ? {
+        recentWorkspaces: [],
+        status: 'active' as const,
+        workspace: currentWorkspace,
+      }
+    : {
+        recentWorkspaces: [],
+        status: 'needs-workspace' as const,
+      }
+
   return {
     chooseFolder: vi.fn(async () => currentWorkspace),
+    createWorkspace: vi.fn(async () => activeLaunchState),
     getCurrent: vi.fn(async () => currentWorkspace),
+    getLaunchState: vi.fn(async () => activeLaunchState),
     listRecent: vi.fn(async () => (currentWorkspace ? [
       {
         id: currentWorkspace.id,
@@ -351,6 +364,13 @@ export function createWorkspaceApi(
         open: true,
       },
     ] : [])),
+    openFolder: vi.fn(async () => activeLaunchState),
+    openRecent: vi.fn(async () => activeLaunchState),
+    removeRecent: vi.fn(async () => ({
+      recentWorkspaces: [],
+      status: 'needs-workspace' as const,
+    })),
+    reveal: vi.fn(async () => undefined),
     revealCurrent: vi.fn(async () => undefined),
   }
 }

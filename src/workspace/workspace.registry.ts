@@ -27,6 +27,7 @@ export interface WorkspaceRegistryStore {
     workspace: WorkspaceRegistryUpsertInput,
     openedAt?: Date,
   ) => Promise<WorkspaceRegistry>
+  remove: (workspaceId: string) => Promise<WorkspaceRegistry>
 }
 
 export const emptyWorkspaceRegistry: WorkspaceRegistry = {
@@ -66,6 +67,20 @@ export function createFileWorkspaceRegistryStore(registryPath: string): Workspac
 
       const nextRegistry = {
         lastOpenedWorkspaceId: workspace.id,
+        workspaces: nextWorkspaces,
+      }
+
+      writeRegistry(registryPath, nextRegistry)
+      return nextRegistry
+    },
+    async remove(workspaceId) {
+      const currentRegistry = readRegistry(registryPath)
+      const { [workspaceId]: _removedWorkspace, ...nextWorkspaces } = currentRegistry.workspaces
+      const nextRegistry = {
+        lastOpenedWorkspaceId:
+          currentRegistry.lastOpenedWorkspaceId === workspaceId
+            ? null
+            : currentRegistry.lastOpenedWorkspaceId,
         workspaces: nextWorkspaces,
       }
 

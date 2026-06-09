@@ -25,8 +25,7 @@ import { getDefaultWorkspaceRegistryPath } from '../src/workspace/workspace.path
 import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.registry'
 import {
   createWorkspaceService,
-  resolveInitialWorkspace,
-  type WorkspaceService,
+  resolveWorkspaceLaunchState,
 } from '../src/workspace/workspace.service'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -51,11 +50,21 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 let win: BrowserWindow | null
 let runtime: JobAppRuntime | null = null
+let currentWorkspace: WorkspaceSummary | null = null
+let runtimeServicesRegistered = false
 
-async function registerRuntimeServices(
-  workspace: WorkspaceSummary,
-  workspaceService: WorkspaceService,
-) {
+async function activateWorkspace(workspace: WorkspaceSummary) {
+  currentWorkspace = workspace
+
+  if (runtimeServicesRegistered) {
+    return
+  }
+
+  await registerRuntimeServices(workspace)
+  runtimeServicesRegistered = true
+}
+
+async function registerRuntimeServices(workspace: WorkspaceSummary) {
   const settingsStore = createFileAppSettingsStore(workspace.appSettingsPath)
   const config = resolveJobAppRuntimeConfig({
     settings: await settingsStore.get(),
@@ -80,7 +89,6 @@ async function registerRuntimeServices(
   registerScoresIpc(runtime.client, ipcMain)
   registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain)
-  registerWorkspaceIpc(workspaceService, ipcMain)
 }
 
 function createElectronSecretCodec(): ProfileSecretCodec {
@@ -175,19 +183,11 @@ app.whenReady().then(async () => {
   const registryStore = createFileWorkspaceRegistryStore(
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
-  const workspace = await resolveInitialWorkspace({
-    chooseWorkspaceRoot,
-    registryStore,
-  })
-
-  if (!workspace) {
-    app.quit()
-    return
-  }
-
   const workspaceService = createWorkspaceService({
+    activateWorkspace,
+    chooseWorkspaceParentRoot,
     chooseWorkspaceRoot,
-    currentWorkspace: workspace,
+    currentWorkspace: () => currentWorkspace,
     registryStore,
     relaunchApp() {
       setTimeout(() => {
@@ -199,8 +199,16 @@ app.whenReady().then(async () => {
       return shell.openPath(workspacePath).then(() => undefined)
     },
   })
+  registerWorkspaceIpc(workspaceService, ipcMain)
 
-  await registerRuntimeServices(workspace, workspaceService)
+  const launchState = await resolveWorkspaceLaunchState({
+    registryStore,
+  })
+
+  if (launchState.status === 'active') {
+    await activateWorkspace(launchState.workspace)
+  }
+
   createWindow()
 }).catch((error: unknown) => {
   console.error(error)
@@ -210,6 +218,7 @@ app.whenReady().then(async () => {
 async function closeRuntime() {
   await runtime?.close()
   runtime = null
+  runtimeServicesRegistered = false
 }
 
 function isExternalHttpUrl(value: string) {
@@ -235,6 +244,20 @@ async function chooseWorkspaceRoot() {
     buttonLabel: 'Open workspace',
     properties: ['openDirectory', 'createDirectory'],
     title: 'Choose Job App workspace',
+  })
+
+  if (result.canceled) {
+    return null
+  }
+
+  return result.filePaths[0] ?? null
+}
+
+async function chooseWorkspaceParentRoot() {
+  const result = await dialog.showOpenDialog({
+    buttonLabel: 'Create workspace here',
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Choose parent folder',
   })
 
   if (result.canceled) {
