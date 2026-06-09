@@ -9,7 +9,6 @@ interface WorkspaceLauncherPageProps {
   onOpenFolder: () => void
   onOpenRecent: (workspaceId: string) => void
   onRemoveRecent: (workspaceId: string) => void
-  onReveal: (workspacePath: string) => void
 }
 
 function WorkspaceLauncherPage({
@@ -18,127 +17,133 @@ function WorkspaceLauncherPage({
   onOpenFolder,
   onOpenRecent,
   onRemoveRecent,
-  onReveal,
 }: WorkspaceLauncherPageProps) {
   const [workspaceName, setWorkspaceName] = useState('')
   const canCreate = workspaceName.trim().length > 0
 
   return (
-    <main className="flex min-h-screen items-start justify-center overflow-x-hidden bg-background py-10 text-foreground sm:items-center sm:py-8">
+    <main className="h-screen overflow-hidden bg-background text-foreground">
       <div
         data-testid="workspace-launcher-shell"
-        className="w-[calc(100vw-2rem)] max-w-xl rounded-md border border-border bg-card shadow-sm"
+        className="grid h-screen grid-cols-[250px_minmax(0,1fr)] bg-card"
       >
-        <header className="border-b border-border px-5 py-4">
-          <p className="text-xs font-medium text-muted-foreground">Job App</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-normal text-foreground">
-            Open a workspace
-          </h1>
-        </header>
-
-        <div className="px-5 py-4">
-          <section aria-labelledby="recent-workspaces-title">
-            <h2 id="recent-workspaces-title" className="text-xs font-semibold text-foreground">
-              Recent workspaces
-            </h2>
-            <div className="mt-2 max-h-52 overflow-y-auto rounded-md border border-border">
-              {launchState.recentWorkspaces.length > 0 ? (
-                launchState.recentWorkspaces.map((workspace) => (
-                  <div
-                    key={workspace.id}
-                    className="grid gap-2 border-b border-border px-3 py-2 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto]"
+        <aside
+          aria-label="Recent workspaces"
+          className="border-r border-border bg-card px-6 pb-6 pt-16"
+        >
+          <h2 className="sr-only">Recent workspaces</h2>
+          <div className="space-y-2">
+            {launchState.recentWorkspaces.length > 0 ? (
+              launchState.recentWorkspaces.map((workspace) => (
+                <div
+                  key={workspace.id}
+                  className="group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md px-2 hover:bg-accent/40"
+                >
+                  <button
+                    type="button"
+                    aria-label={
+                      workspace.missing
+                        ? `${workspace.name} unavailable`
+                        : `Open ${workspace.name}`
+                    }
+                    className="min-w-0 rounded-md py-2 text-left disabled:cursor-default"
+                    disabled={workspace.missing}
+                    onClick={() => onOpenRecent(workspace.id)}
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {workspace.name}
-                      </p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {workspace.path}
-                      </p>
-                      {workspace.missing ? (
-                        <p className="mt-2 text-xs font-medium text-destructive">Missing folder</p>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant={workspace.missing ? 'ghost' : 'outline'}
-                        aria-label={
-                          workspace.missing
-                            ? `${workspace.name} unavailable`
-                            : `Open ${workspace.name}`
-                        }
-                        className="h-8 px-2 text-xs"
-                        disabled={workspace.missing}
-                        onClick={() => onOpenRecent(workspace.id)}
-                      >
-                        {workspace.missing ? 'Unavailable' : 'Open'}
-                      </Button>
-                      {workspace.missing ? null : (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-8 w-8 p-0"
-                          aria-label={`Reveal ${workspace.name}`}
-                          onClick={() => onReveal(workspace.path)}
-                        >
-                          <FolderOpen className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="h-8 w-8 p-0"
-                        aria-label={`Remove ${workspace.name}`}
-                        onClick={() => onRemoveRecent(workspace.id)}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                  No recent workspaces
+                    <span className="block truncate text-lg font-semibold text-foreground">
+                      {workspace.name}
+                    </span>
+                    <span className="mt-1 block truncate text-sm font-medium text-muted-foreground">
+                      {workspace.path}
+                    </span>
+                    {workspace.missing ? (
+                      <span className="mt-2 block text-xs font-medium text-destructive">
+                        Missing folder
+                      </span>
+                    ) : null}
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-2 h-8 w-8 p-0 text-muted-foreground opacity-80"
+                    aria-label={`Remove ${workspace.name}`}
+                    onClick={() => onRemoveRecent(workspace.id)}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </Button>
                 </div>
-              )}
-            </div>
-          </section>
-        </div>
-
-        <footer className="border-t border-border px-5 py-4">
-          <div className="grid gap-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-end">
-            <Button
-              type="button"
-              size="sm"
-              className="w-full gap-2 sm:w-auto"
-              onClick={onOpenFolder}
-            >
-              <FolderOpen className="h-4 w-4" aria-hidden="true" />
-              Open folder
-            </Button>
-            <label className="min-w-0 flex-1 text-xs font-medium text-muted-foreground">
-              Workspace name
-              <input
-                className="mt-1 h-8 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="New workspace name"
-                value={workspaceName}
-                onChange={(event) => setWorkspaceName(event.target.value)}
-              />
-            </label>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full gap-2 sm:w-auto"
-              disabled={!canCreate}
-              onClick={() => onCreateWorkspace({ name: workspaceName.trim() })}
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Create workspace
-            </Button>
+              ))
+            ) : (
+              <div className="px-2 py-2 text-sm text-muted-foreground">
+                No recent workspaces
+              </div>
+            )}
           </div>
-        </footer>
+        </aside>
+
+        <section className="flex h-screen items-center justify-center bg-background px-10 py-8">
+          <div className="w-full max-w-[470px]">
+            <div className="text-center">
+              <h1 className="text-4xl font-bold tracking-normal text-foreground">
+                Job Automation
+              </h1>
+              <p className="mt-2 text-sm font-medium text-muted-foreground">Workspace launcher</p>
+            </div>
+
+            <div className="mt-8 rounded-lg border border-border bg-card px-6 py-5 shadow-lg">
+              <div className="grid grid-cols-[minmax(0,1fr)_128px] items-center gap-5">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-foreground">Create workspace</h2>
+                  <p className="mt-1 text-sm font-medium text-muted-foreground">
+                    Create a new workspace under a folder.
+                  </p>
+                  <label className="mt-3 block text-xs font-medium text-muted-foreground">
+                    Workspace name
+                    <input
+                      className="mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground"
+                      placeholder="New workspace name"
+                      value={workspaceName}
+                      onChange={(event) => setWorkspaceName(event.target.value)}
+                    />
+                  </label>
+                </div>
+                <Button
+                  type="button"
+                  aria-label="Create workspace"
+                  className="h-10 gap-2 rounded-md text-sm"
+                  disabled={!canCreate}
+                  onClick={() => onCreateWorkspace({ name: workspaceName.trim() })}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Create
+                </Button>
+              </div>
+
+              <div className="my-5 h-px bg-border" />
+
+              <div className="grid grid-cols-[minmax(0,1fr)_128px] items-center gap-5">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Open folder as workspace
+                  </h2>
+                  <p className="mt-1 text-sm font-medium text-muted-foreground">
+                    Choose an existing folder of job data files.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  aria-label="Open folder"
+                  variant="outline"
+                  className="h-10 gap-2 rounded-md text-sm"
+                  onClick={onOpenFolder}
+                >
+                  <FolderOpen className="h-4 w-4" aria-hidden="true" />
+                  Open
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   )

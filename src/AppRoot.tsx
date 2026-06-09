@@ -57,9 +57,6 @@ function AppRoot({
       onRemoveRecent={(workspaceId) => {
         void workspaceApi.removeRecent(workspaceId).then(setLaunchState)
       }}
-      onReveal={(workspacePath) => {
-        void workspaceApi.reveal(workspacePath)
-      }}
     />
   )
 }

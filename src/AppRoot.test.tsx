@@ -69,22 +69,19 @@ describe('AppRoot workspace gate', () => {
       />,
     )
 
-    expect(await screen.findByRole('heading', { name: 'Open a workspace' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Job Automation' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open folder' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create workspace' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open Job Search' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Open Job Search' })).toHaveTextContent('Open')
-    expect(screen.getByRole('button', { name: 'Open Job Search' })).not.toHaveTextContent(
-      'Job Search',
-    )
+    expect(screen.getByRole('button', { name: 'Open Job Search' })).toHaveTextContent('Job Search')
     expect(screen.getByRole('button', { name: 'Missing Search unavailable' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Missing Search unavailable' })).toHaveTextContent(
-      'Unavailable',
+      'Missing Search',
     )
   })
 
-  it('renders the workspace launcher in a compact Obsidian-style shell', async () => {
-    render(
+  it('renders the workspace launcher in an Obsidian-style two-pane shell', async () => {
+    const { container } = render(
       <AppRoot
         workspaceApi={createLauncherWorkspaceApi({
           recentWorkspaces: [],
@@ -95,12 +92,46 @@ describe('AppRoot workspace gate', () => {
 
     const shell = await screen.findByTestId('workspace-launcher-shell')
 
-    expect(shell).toHaveClass('max-w-xl')
-    expect(shell).not.toHaveClass('max-w-5xl')
-    expect(screen.getByRole('heading', { name: 'Open a workspace' })).toHaveClass('text-xl')
+    expect(shell).toHaveClass('grid')
+    expect(shell).toHaveClass('grid-cols-[250px_minmax(0,1fr)]')
+    expect(shell).toHaveClass('bg-card')
+    expect(screen.getByRole('main')).toHaveClass('bg-background')
+    expect(screen.getByRole('complementary', { name: 'Recent workspaces' })).toHaveClass('bg-card')
+    expect(screen.getByRole('heading', { name: 'Job Automation' })).toHaveClass('text-4xl')
+    expect(screen.getByText('No recent workspaces')).not.toHaveClass('border')
+    expect(container.querySelector('.lucide-gem')).toBeNull()
   })
 
-  it('uses mobile-safe compact launcher actions', async () => {
+  it('renders an Obsidian-style launcher with a recent sidebar and action panel', async () => {
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi({
+          recentWorkspaces: [
+            {
+              id: 'workspace-recent',
+              lastOpenedAt: '2026-06-08T13:00:00.000Z',
+              missing: false,
+              name: 'Mango',
+              open: true,
+              path: '/Users/keni/Documents',
+            },
+          ],
+          status: 'needs-workspace',
+        })}
+      />,
+    )
+
+    expect(await screen.findByTestId('workspace-launcher-shell')).toHaveClass(
+      'grid-cols-[250px_minmax(0,1fr)]',
+    )
+    expect(screen.getByRole('complementary', { name: 'Recent workspaces' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open Mango' })).toHaveTextContent('Mango')
+    expect(screen.getByRole('heading', { name: 'Job Automation' })).toBeInTheDocument()
+    expect(screen.getByText('Create workspace')).toBeInTheDocument()
+    expect(screen.getByText('Open folder as workspace')).toBeInTheDocument()
+  })
+
+  it('uses concise Obsidian-style launcher actions', async () => {
     render(
       <AppRoot
         workspaceApi={createLauncherWorkspaceApi({
@@ -110,12 +141,12 @@ describe('AppRoot workspace gate', () => {
       />,
     )
 
-    expect(await screen.findByRole('button', { name: 'Open folder' })).toHaveClass('w-full')
+    expect(await screen.findByRole('button', { name: 'Open folder' })).toHaveTextContent('Open')
     expect(screen.getByLabelText('Workspace name')).toHaveAttribute(
       'placeholder',
       'New workspace name',
     )
-    expect(screen.getByRole('button', { name: 'Create workspace' })).toHaveClass('h-8')
+    expect(screen.getByRole('button', { name: 'Create workspace' })).toHaveTextContent('Create')
   })
 
   it('opens a folder from the launcher and enters the main app', async () => {
@@ -162,7 +193,7 @@ describe('AppRoot workspace gate', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open folder' }))
 
     await waitFor(() => expect(openFolder).toHaveBeenCalled())
-    expect(screen.getByRole('heading', { name: 'Open a workspace' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Job Automation' })).toBeInTheDocument()
   })
 
   it('creates a workspace from the launcher and enters the main app', async () => {

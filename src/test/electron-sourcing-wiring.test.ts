@@ -52,7 +52,22 @@ describe('Electron sourcing wiring', () => {
     expect(mainSource).toContain('resolveWorkspaceLaunchState')
     expect(mainSource).not.toContain('resolveInitialWorkspace')
     expect(mainSource).toContain('registerWorkspaceIpc(workspaceService, ipcMain)')
-    expect(mainSource).toContain('createWindow()')
+    expect(mainSource).toContain('createMainWindow()')
+  })
+
+  it('uses a fixed launcher window instead of the normal app window when a workspace is needed', () => {
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+
+    expect(mainSource).toContain('function createWorkspaceLauncherWindow()')
+    expect(mainSource).toContain('createWorkspaceLauncherWindow()')
+    expect(mainSource).toContain("title: 'Job Automation - Workspace Launcher'")
+    expect(mainSource).toContain('width: 820')
+    expect(mainSource).toContain('height: 560')
+    expect(mainSource).toContain('useContentSize: true')
+    expect(mainSource).toContain('resizable: false')
+    expect(mainSource).toContain('maximizable: false')
+    expect(mainSource).toContain('fullscreenable: false')
+    expect(mainSource).toContain('openWorkspaceInMainWindow')
   })
 
   it('opens external application links outside the Electron app window', () => {
