@@ -48,10 +48,22 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
-let win: BrowserWindow | null
+let mainWindow: BrowserWindow | null = null
+let workspaceLauncherWindow: BrowserWindow | null = null
 let runtime: JobAppRuntime | null = null
 let currentWorkspace: WorkspaceSummary | null = null
 let runtimeServicesRegistered = false
+
+async function openWorkspaceInMainWindow(workspace: WorkspaceSummary) {
+  await activateWorkspace(workspace)
+
+  if (!mainWindow) {
+    createMainWindow()
+  }
+
+  workspaceLauncherWindow?.close()
+  workspaceLauncherWindow = null
+}
 
 async function activateWorkspace(workspace: WorkspaceSummary) {
   currentWorkspace = workspace
@@ -110,8 +122,8 @@ function createElectronSecretCodec(): ProfileSecretCodec {
   }
 }
 
-function createWindow() {
-  win = new BrowserWindow({
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     titleBarOverlay: {
       color: '#181825',
@@ -127,7 +139,11 @@ function createWindow() {
     },
   })
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isExternalHttpUrl(url)) {
       void shell.openExternal(url)
       return { action: 'deny' }
@@ -136,7 +152,7 @@ function createWindow() {
     return { action: 'allow' }
   })
 
-  win.webContents.on('will-navigate', (event, url) => {
+  mainWindow.webContents.on('will-navigate', (event, url) => {
     if (isExternalHttpUrl(url)) {
       event.preventDefault()
       void shell.openExternal(url)
@@ -144,15 +160,55 @@ function createWindow() {
   })
 
   // Test active push message to Renderer-process.
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', (new Date).toLocaleString())
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow?.webContents.send('main-process-message', (new Date).toLocaleString())
   })
 
+  loadRenderer(mainWindow)
+}
+
+function createWorkspaceLauncherWindow() {
+  workspaceLauncherWindow = new BrowserWindow({
+    autoHideMenuBar: true,
+    center: true,
+    fullscreenable: false,
+    height: 560,
+    maximizable: false,
+    minimizable: true,
+    resizable: false,
+    show: false,
+    title: 'Job Automation - Workspace Launcher',
+    titleBarOverlay: {
+      color: '#181825',
+      symbolColor: '#cdd6f4',
+    },
+    titleBarStyle: 'hidden',
+    trafficLightPosition: {
+      x: 14,
+      y: 15,
+    },
+    useContentSize: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.mjs'),
+    },
+    width: 820,
+  })
+
+  workspaceLauncherWindow.on('closed', () => {
+    workspaceLauncherWindow = null
+  })
+  workspaceLauncherWindow.once('ready-to-show', () => {
+    workspaceLauncherWindow?.show()
+  })
+
+  loadRenderer(workspaceLauncherWindow)
+}
+
+function loadRenderer(window: BrowserWindow) {
   if (VITE_DEV_SERVER_URL) {
-    void win.loadURL(VITE_DEV_SERVER_URL)
+    void window.loadURL(VITE_DEV_SERVER_URL)
   } else {
-    // win.loadFile('dist/index.html')
-    void win.loadFile(path.join(RENDERER_DIST, 'index.html'))
+    void window.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
 }
 
@@ -163,7 +219,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     void closeRuntime()
     app.quit()
-    win = null
+    mainWindow = null
+    workspaceLauncherWindow = null
   }
 })
 
@@ -174,9 +231,16 @@ app.on('before-quit', () => {
 app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
+  if (BrowserWindow.getAllWindows().length > 0) {
+    return
   }
+
+  if (currentWorkspace) {
+    createMainWindow()
+    return
+  }
+
+  createWorkspaceLauncherWindow()
 })
 
 app.whenReady().then(async () => {
@@ -184,7 +248,7 @@ app.whenReady().then(async () => {
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
   const workspaceService = createWorkspaceService({
-    activateWorkspace,
+    activateWorkspace: openWorkspaceInMainWindow,
     chooseWorkspaceParentRoot,
     chooseWorkspaceRoot,
     currentWorkspace: () => currentWorkspace,
@@ -207,9 +271,11 @@ app.whenReady().then(async () => {
 
   if (launchState.status === 'active') {
     await activateWorkspace(launchState.workspace)
+    createMainWindow()
+    return
   }
 
-  createWindow()
+  createWorkspaceLauncherWindow()
 }).catch((error: unknown) => {
   console.error(error)
   app.quit()
