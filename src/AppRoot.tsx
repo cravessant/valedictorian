@@ -45,6 +45,7 @@ function AppRoot({
   return (
     <WorkspaceLauncherPage
       launchState={launchState}
+      onChooseCreateParentFolder={() => workspaceApi.chooseCreateParentFolder()}
       onCreateWorkspace={(input) => {
         void workspaceApi.createWorkspace(input).then(setLaunchState)
       }}

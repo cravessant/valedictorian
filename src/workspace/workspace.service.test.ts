@@ -365,6 +365,25 @@ describe('workspace service', () => {
     )
   })
 
+  it('chooses a create parent folder without opening a workspace', async () => {
+    const chooseWorkspaceParentRoot = vi.fn(async () => '/Users/keni/Documents')
+    const registryStore = createTempRegistryStore('job-app-create-parent-picker-registry-')
+    const activateWorkspace = vi.fn(async () => undefined)
+    const service = createWorkspaceService({
+      activateWorkspace,
+      chooseWorkspaceParentRoot,
+      chooseWorkspaceRoot: vi.fn(async () => null),
+      currentWorkspace: null,
+      registryStore,
+      relaunchApp: vi.fn(),
+      revealPath: vi.fn(),
+    })
+
+    await expect(service.chooseCreateParentFolder()).resolves.toBe('/Users/keni/Documents')
+    await expect(registryStore.listRecent()).resolves.toEqual([])
+    expect(activateWorkspace).not.toHaveBeenCalled()
+  })
+
   it('passes sample seed intent only when dev seeding is enabled', async () => {
     const parentPath = createTempPath('job-app-create-dev-parent-')
     const registryStore = createTempRegistryStore('job-app-create-dev-registry-')

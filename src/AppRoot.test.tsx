@@ -110,7 +110,7 @@ describe('AppRoot workspace gate', () => {
     expect(shell).toHaveClass('bg-card')
     expect(screen.getByRole('main')).toHaveClass('bg-background')
     expect(screen.getByRole('complementary', { name: 'Recent workspaces' })).toHaveClass('bg-card')
-    expect(screen.getByRole('heading', { name: 'Job Automation' })).toHaveClass('text-4xl')
+    expect(screen.getByRole('heading', { name: 'Job Automation' })).toHaveClass('text-3xl')
     expect(screen.getByText('No recent workspaces')).not.toHaveClass('border')
     expect(container.querySelector('.lucide-gem')).toBeNull()
   })
@@ -144,7 +144,7 @@ describe('AppRoot workspace gate', () => {
     expect(screen.getByText('Open folder as workspace')).toBeInTheDocument()
   })
 
-  it('uses concise Obsidian-style launcher actions', async () => {
+  it('keeps create details on a compact secondary create screen', async () => {
     render(
       <AppRoot
         workspaceApi={createLauncherWorkspaceApi({
@@ -155,11 +155,18 @@ describe('AppRoot workspace gate', () => {
     )
 
     expect(await screen.findByRole('button', { name: 'Open folder' })).toHaveTextContent('Open')
+    expect(screen.getByRole('button', { name: 'Create workspace' })).toHaveTextContent('Create')
+    expect(screen.queryByLabelText('Workspace name')).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Seed demo data' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }))
+
+    expect(await screen.findByRole('heading', { name: 'Create local workspace' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
     expect(screen.getByLabelText('Workspace name')).toHaveAttribute(
       'placeholder',
       'New workspace name',
     )
-    expect(screen.getByRole('button', { name: 'Create workspace' })).toHaveTextContent('Create')
   })
 
   it('shows an unchecked dev-only seed checkbox when sample seeding is available', async () => {
@@ -174,6 +181,8 @@ describe('AppRoot workspace gate', () => {
         })}
       />,
     )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create workspace' }))
 
     const seedCheckbox = await screen.findByRole('checkbox', { name: 'Seed demo data' })
 
@@ -193,11 +202,14 @@ describe('AppRoot workspace gate', () => {
       />,
     )
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Create workspace' }))
+
     expect(await screen.findByLabelText('Workspace name')).toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: 'Seed demo data' })).not.toBeInTheDocument()
   })
 
   it('creates a workspace without seed data when the dev seed checkbox stays unchecked', async () => {
+    const chooseCreateParentFolder = vi.fn(async () => '/Users/keni/Documents')
     const createWorkspace = vi.fn(async () => ({
       devOptions: {
         canSeedSampleData: true,
@@ -216,20 +228,29 @@ describe('AppRoot workspace gate', () => {
             recentWorkspaces: [],
             status: 'needs-workspace',
           },
-          { createWorkspace },
+          { chooseCreateParentFolder, createWorkspace },
         )}
       />,
     )
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Create workspace' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Browse' }))
+    expect(await screen.findByText('/Users/keni/Documents')).toBeInTheDocument()
     fireEvent.change(await screen.findByLabelText('Workspace name'), {
       target: { value: 'Fresh Search' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }))
 
-    await waitFor(() => expect(createWorkspace).toHaveBeenCalledWith({ name: 'Fresh Search' }))
+    await waitFor(() =>
+      expect(createWorkspace).toHaveBeenCalledWith({
+        name: 'Fresh Search',
+        parentPath: '/Users/keni/Documents',
+      }),
+    )
   })
 
   it('creates a workspace with sample seed data when the dev seed checkbox is checked', async () => {
+    const chooseCreateParentFolder = vi.fn(async () => '/Users/keni/Documents')
     const createWorkspace = vi.fn(async () => ({
       devOptions: {
         canSeedSampleData: true,
@@ -248,11 +269,14 @@ describe('AppRoot workspace gate', () => {
             recentWorkspaces: [],
             status: 'needs-workspace',
           },
-          { createWorkspace },
+          { chooseCreateParentFolder, createWorkspace },
         )}
       />,
     )
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Create workspace' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Browse' }))
+    expect(await screen.findByText('/Users/keni/Documents')).toBeInTheDocument()
     fireEvent.change(await screen.findByLabelText('Workspace name'), {
       target: { value: 'Seeded Search' },
     })
@@ -262,6 +286,7 @@ describe('AppRoot workspace gate', () => {
     await waitFor(() =>
       expect(createWorkspace).toHaveBeenCalledWith({
         name: 'Seeded Search',
+        parentPath: '/Users/keni/Documents',
         seedData: 'sample',
       }),
     )
@@ -322,6 +347,7 @@ describe('AppRoot workspace gate', () => {
 
   it('creates a workspace from the launcher and enters the main app', async () => {
     const workspace = createWorkspaceSummary({ name: 'Summer Search' })
+    const chooseCreateParentFolder = vi.fn(async () => '/Users/keni/Documents')
     const createWorkspace = vi.fn(async () => ({
       devOptions: {
         canSeedSampleData: false,
@@ -338,17 +364,25 @@ describe('AppRoot workspace gate', () => {
         }}
         workspaceApi={createLauncherWorkspaceApi(
           { recentWorkspaces: [], status: 'needs-workspace' },
-          { createWorkspace },
+          { chooseCreateParentFolder, createWorkspace },
         )}
       />,
     )
 
+    fireEvent.click(await screen.findByRole('button', { name: 'Create workspace' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Browse' }))
+    expect(await screen.findByText('/Users/keni/Documents')).toBeInTheDocument()
     fireEvent.change(await screen.findByLabelText('Workspace name'), {
       target: { value: 'Summer Search' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }))
 
-    await waitFor(() => expect(createWorkspace).toHaveBeenCalledWith({ name: 'Summer Search' }))
+    await waitFor(() =>
+      expect(createWorkspace).toHaveBeenCalledWith({
+        name: 'Summer Search',
+        parentPath: '/Users/keni/Documents',
+      }),
+    )
     expect(await screen.findByRole('table', { name: 'Applications' })).toBeInTheDocument()
   })
 })

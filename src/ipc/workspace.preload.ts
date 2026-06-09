@@ -7,6 +7,7 @@ interface IpcRendererLike {
 }
 
 export interface WorkspacePreloadApi {
+  chooseCreateParentFolder: () => Promise<string | null>
   chooseFolder: () => Promise<WorkspaceSummary | null>
   createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceLaunchState>
   getCurrent: () => Promise<WorkspaceSummary | null>
@@ -21,6 +22,8 @@ export interface WorkspacePreloadApi {
 
 export function createWorkspacePreloadApi(ipcRenderer: IpcRendererLike): WorkspacePreloadApi {
   return {
+    chooseCreateParentFolder: () =>
+      ipcRenderer.invoke('workspace:choose-create-parent-folder') as Promise<string | null>,
     chooseFolder: () =>
       ipcRenderer.invoke('workspace:choose-folder') as Promise<WorkspaceSummary | null>,
     createWorkspace: (input) =>

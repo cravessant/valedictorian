@@ -14,6 +14,7 @@ describe('workspace preload API', () => {
     await api.getCurrent()
     await api.getLaunchState()
     await api.listRecent()
+    await api.chooseCreateParentFolder()
     await api.chooseFolder()
     await api.openFolder()
     await api.openRecent('workspace-1')
@@ -26,6 +27,7 @@ describe('workspace preload API', () => {
       ['workspace:get-current'],
       ['workspace:get-launch-state'],
       ['workspace:list-recent'],
+      ['workspace:choose-create-parent-folder'],
       ['workspace:choose-folder'],
       ['workspace:open-folder'],
       ['workspace:open-recent', 'workspace-1'],

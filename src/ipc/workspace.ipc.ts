@@ -5,6 +5,7 @@ interface IpcMainLike {
 }
 
 export function registerWorkspaceIpc(service: WorkspaceService, ipcMain: IpcMainLike) {
+  ipcMain.handle('workspace:choose-create-parent-folder', () => service.chooseCreateParentFolder())
   ipcMain.handle('workspace:get-current', () => service.getCurrent())
   ipcMain.handle('workspace:get-launch-state', () => service.getLaunchState())
   ipcMain.handle('workspace:list-recent', () => service.listRecent())
