@@ -12,14 +12,26 @@ describe('workspace preload API', () => {
     })
 
     await api.getCurrent()
+    await api.getLaunchState()
     await api.listRecent()
     await api.chooseFolder()
+    await api.openFolder()
+    await api.openRecent('workspace-1')
+    await api.createWorkspace({ name: 'Summer Search', parentPath: '/Users/keni' })
+    await api.removeRecent('workspace-1')
+    await api.reveal('/Users/keni/Job Search')
     await api.revealCurrent()
 
     expect(invocations).toEqual([
       ['workspace:get-current'],
+      ['workspace:get-launch-state'],
       ['workspace:list-recent'],
       ['workspace:choose-folder'],
+      ['workspace:open-folder'],
+      ['workspace:open-recent', 'workspace-1'],
+      ['workspace:create-workspace', { name: 'Summer Search', parentPath: '/Users/keni' }],
+      ['workspace:remove-recent', 'workspace-1'],
+      ['workspace:reveal', '/Users/keni/Job Search'],
       ['workspace:reveal-current'],
     ])
   })

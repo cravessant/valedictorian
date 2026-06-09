@@ -285,11 +285,59 @@ export const defaultWorkspaceApi: WorkspacePreloadApi = {
   chooseFolder() {
     return getWindowWorkspaceApi()?.chooseFolder() ?? Promise.resolve(null)
   },
+  createWorkspace(input) {
+    return (
+      getWindowWorkspaceApi()?.createWorkspace(input) ??
+      Promise.resolve({
+        recentWorkspaces: [],
+        status: 'needs-workspace',
+      })
+    )
+  },
   getCurrent() {
     return getWindowWorkspaceApi()?.getCurrent() ?? Promise.resolve(null)
   },
+  getLaunchState() {
+    return (
+      getWindowWorkspaceApi()?.getLaunchState() ??
+      Promise.resolve({
+        recentWorkspaces: [],
+        status: 'needs-workspace',
+      })
+    )
+  },
   listRecent() {
     return getWindowWorkspaceApi()?.listRecent() ?? Promise.resolve([])
+  },
+  openFolder() {
+    return (
+      getWindowWorkspaceApi()?.openFolder() ??
+      Promise.resolve({
+        recentWorkspaces: [],
+        status: 'needs-workspace',
+      })
+    )
+  },
+  openRecent(workspaceId) {
+    return (
+      getWindowWorkspaceApi()?.openRecent(workspaceId) ??
+      Promise.resolve({
+        recentWorkspaces: [],
+        status: 'needs-workspace',
+      })
+    )
+  },
+  removeRecent(workspaceId) {
+    return (
+      getWindowWorkspaceApi()?.removeRecent(workspaceId) ??
+      Promise.resolve({
+        recentWorkspaces: [],
+        status: 'needs-workspace',
+      })
+    )
+  },
+  reveal(workspacePath) {
+    return getWindowWorkspaceApi()?.reveal(workspacePath) ?? Promise.resolve()
   },
   revealCurrent() {
     return getWindowWorkspaceApi()?.revealCurrent() ?? Promise.resolve()
