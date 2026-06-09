@@ -3,11 +3,18 @@ import os from 'node:os'
 import path from 'node:path'
 import type { JobAppClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createLocalJobAppClient } from '../runtime/local-job-app-client'
+import { createLocalJobAppClient as createRuntimeLocalJobAppClient } from '../runtime/local-job-app-client'
 import { createJobAppHttpServer, type StartedJobAppHttpServer } from './local-server'
 
 function createTempSqlitePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-server-')), 'job-app.sqlite')
+}
+
+function createLocalJobAppClient(options: Parameters<typeof createRuntimeLocalJobAppClient>[0]) {
+  return createRuntimeLocalJobAppClient({
+    seedDataMode: 'sample',
+    ...options,
+  })
 }
 
 async function readJson(response: Response) {

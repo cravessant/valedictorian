@@ -1,7 +1,10 @@
+import fs from 'node:fs'
 import type { JobAppClient } from 'sparxie'
+import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import {
-  seedSampleApplicationAttempts,
+  seedReferenceTrackerApplications,
+  seedSampleApplications,
   seedSampleSourcingFindings,
 } from '../modules/applications/application.fixtures'
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
@@ -14,8 +17,12 @@ import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.rep
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
 export interface LocalJobAppClientOptions {
+  referenceTrackerPath?: string
+  seedDataMode?: JobAppSeedDataMode
   sqlitePath: string
 }
+
+export type JobAppSeedDataMode = 'none' | 'sample' | 'reference-tracker'
 
 const unavailableSecretCodec: ProfileSecretCodec = {
   decrypt() {
@@ -26,13 +33,21 @@ const unavailableSecretCodec: ProfileSecretCodec = {
   },
 }
 
-export function createLocalJobAppClient({ sqlitePath }: LocalJobAppClientOptions): JobAppClient {
+export function createLocalJobAppClient({
+  referenceTrackerPath,
+  seedDataMode = 'none',
+  sqlitePath,
+}: LocalJobAppClientOptions): JobAppClient {
+  assertSeedOptions({ referenceTrackerPath, seedDataMode })
+
   const sqlite = createFileDatabase(sqlitePath)
   const applicationService = createApplicationServiceFromSqlite(sqlite)
   const database = createDrizzleDatabase(sqlite)
 
-  seedSampleApplicationAttempts(database)
-  seedSampleSourcingFindings(database)
+  seedLocalData(database, {
+    referenceTrackerPath,
+    seedDataMode,
+  })
 
   const scoringRepository = createSqliteScoringRepository(database)
   const profileRepository = createSqliteProfileRepository(database, unavailableSecretCodec)
@@ -119,4 +134,52 @@ export function createLocalJobAppClient({ sqlitePath }: LocalJobAppClientOptions
       },
     },
   }
+}
+
+function seedLocalData(
+  database: ReturnType<typeof createDrizzleDatabase>,
+  {
+    referenceTrackerPath,
+    seedDataMode,
+  }: Pick<LocalJobAppClientOptions, 'referenceTrackerPath' | 'seedDataMode'>,
+) {
+  if (seedDataMode === 'none') {
+    return
+  }
+
+  if (database.select().from(applications).limit(1).get()) {
+    return
+  }
+
+  if (seedDataMode === 'sample') {
+    seedSampleApplications(database)
+    seedSampleSourcingFindings(database)
+    return
+  }
+
+  seedReferenceTrackerApplications(
+    database,
+    fs.readFileSync(requireReferenceTrackerPath(referenceTrackerPath), 'utf8'),
+  )
+}
+
+function assertSeedOptions({
+  referenceTrackerPath,
+  seedDataMode,
+}: Pick<LocalJobAppClientOptions, 'referenceTrackerPath' | 'seedDataMode'>) {
+  if (seedDataMode === 'reference-tracker' && !referenceTrackerPath) {
+    throw new Error(
+      'JOB_APP_REFERENCE_TRACKER_PATH is required when JOB_APP_SEED_DATA=reference-tracker',
+    )
+  }
+}
+
+function requireReferenceTrackerPath(referenceTrackerPath: string | undefined) {
+  if (!referenceTrackerPath) {
+    throw new Error(
+      'JOB_APP_REFERENCE_TRACKER_PATH is required when JOB_APP_SEED_DATA=reference-tracker',
+    )
+  }
+
+  return referenceTrackerPath
 }

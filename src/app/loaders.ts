@@ -289,6 +289,9 @@ export const defaultWorkspaceApi: WorkspacePreloadApi = {
     return (
       getWindowWorkspaceApi()?.createWorkspace(input) ??
       Promise.resolve({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'needs-workspace',
       })
@@ -301,6 +304,9 @@ export const defaultWorkspaceApi: WorkspacePreloadApi = {
     return (
       getWindowWorkspaceApi()?.getLaunchState() ??
       Promise.resolve({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'needs-workspace',
       })
@@ -313,6 +319,9 @@ export const defaultWorkspaceApi: WorkspacePreloadApi = {
     return (
       getWindowWorkspaceApi()?.openFolder() ??
       Promise.resolve({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'needs-workspace',
       })
@@ -322,6 +331,9 @@ export const defaultWorkspaceApi: WorkspacePreloadApi = {
     return (
       getWindowWorkspaceApi()?.openRecent(workspaceId) ??
       Promise.resolve({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'needs-workspace',
       })
@@ -331,6 +343,9 @@ export const defaultWorkspaceApi: WorkspacePreloadApi = {
     return (
       getWindowWorkspaceApi()?.removeRecent(workspaceId) ??
       Promise.resolve({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'needs-workspace',
       })

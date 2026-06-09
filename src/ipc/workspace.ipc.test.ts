@@ -21,28 +21,43 @@ describe('workspace IPC registration', () => {
     const service: WorkspaceService = {
       chooseFolder: vi.fn(async () => currentWorkspace),
       createWorkspace: vi.fn(async () => ({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'active',
         workspace: currentWorkspace,
       })),
       getCurrent: vi.fn(async () => currentWorkspace),
       getLaunchState: vi.fn(async () => ({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'active',
         workspace: currentWorkspace,
       })),
       listRecent: vi.fn(async () => []),
       openFolder: vi.fn(async () => ({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'active',
         workspace: currentWorkspace,
       })),
       openRecent: vi.fn(async () => ({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'active',
         workspace: currentWorkspace,
       })),
       removeRecent: vi.fn(async () => ({
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'needs-workspace',
       })),

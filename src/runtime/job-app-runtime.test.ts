@@ -36,6 +36,8 @@ describe('job app runtime config', () => {
       apiToken: undefined,
       apiUrl: 'http://127.0.0.1:4317',
       mode: 'local-desktop',
+      referenceTrackerPath: undefined,
+      seedDataMode: 'none',
       sqlitePath: '/Users/test/Library/Application Support/Job App/job-app.sqlite',
     })
   })
@@ -60,6 +62,7 @@ describe('job app runtime config', () => {
           JOB_APP_API_PORT: '9999',
           JOB_APP_API_TOKEN: 'local-token',
           JOB_APP_MODE: 'local-shared',
+          JOB_APP_SEED_DATA: 'sample',
           JOB_APP_SQLITE_PATH: '/tmp/job-app.sqlite',
         },
         userDataPath: '/unused',
@@ -70,6 +73,8 @@ describe('job app runtime config', () => {
       apiToken: 'local-token',
       apiUrl: 'http://0.0.0.0:9999',
       mode: 'local-shared',
+      referenceTrackerPath: undefined,
+      seedDataMode: 'sample',
       sqlitePath: '/tmp/job-app.sqlite',
     })
 
@@ -86,6 +91,7 @@ describe('job app runtime config', () => {
       apiToken: 'remote-token',
       apiUrl: 'https://hosted.job-app.test',
       mode: 'remote',
+      seedDataMode: 'none',
     })
   })
 
@@ -109,6 +115,8 @@ describe('job app runtime config', () => {
       apiToken: 'saved-token',
       apiUrl: 'http://0.0.0.0:7777',
       mode: 'local-shared',
+      referenceTrackerPath: undefined,
+      seedDataMode: 'none',
       sqlitePath: '/Users/test/Library/Application Support/Job App/job-app.sqlite',
     })
 
@@ -129,6 +137,7 @@ describe('job app runtime config', () => {
       apiToken: 'remote-token',
       apiUrl: 'https://remote.job-app.test',
       mode: 'remote',
+      seedDataMode: 'none',
     })
   })
 
@@ -158,6 +167,7 @@ describe('job app runtime config', () => {
       apiToken: 'env-token',
       apiUrl: 'https://env.job-app.test',
       mode: 'remote',
+      seedDataMode: 'none',
     })
   })
 })
@@ -181,6 +191,8 @@ describe('job app runtime creation', () => {
 
     expect(runtime.client).toBe(localClient)
     expect(createLocalClient).toHaveBeenCalledWith({
+      referenceTrackerPath: undefined,
+      seedDataMode: 'none',
       sqlitePath: '/tmp/job-app-user-data/job-app.sqlite',
     })
     expect(createHttpClient).not.toHaveBeenCalled()

@@ -26,6 +26,7 @@ import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.reg
 import {
   createWorkspaceService,
   resolveWorkspaceLaunchState,
+  type WorkspaceActivationOptions,
 } from '../src/workspace/workspace.service'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -54,8 +55,11 @@ let runtime: JobAppRuntime | null = null
 let currentWorkspace: WorkspaceSummary | null = null
 let runtimeServicesRegistered = false
 
-async function openWorkspaceInMainWindow(workspace: WorkspaceSummary) {
-  await activateWorkspace(workspace)
+async function openWorkspaceInMainWindow(
+  workspace: WorkspaceSummary,
+  options: WorkspaceActivationOptions,
+) {
+  await activateWorkspace(workspace, options)
 
   if (!mainWindow) {
     createMainWindow()
@@ -65,18 +69,24 @@ async function openWorkspaceInMainWindow(workspace: WorkspaceSummary) {
   workspaceLauncherWindow = null
 }
 
-async function activateWorkspace(workspace: WorkspaceSummary) {
+async function activateWorkspace(
+  workspace: WorkspaceSummary,
+  options?: WorkspaceActivationOptions,
+) {
   currentWorkspace = workspace
 
   if (runtimeServicesRegistered) {
     return
   }
 
-  await registerRuntimeServices(workspace)
+  await registerRuntimeServices(workspace, options)
   runtimeServicesRegistered = true
 }
 
-async function registerRuntimeServices(workspace: WorkspaceSummary) {
+async function registerRuntimeServices(
+  workspace: WorkspaceSummary,
+  options?: WorkspaceActivationOptions,
+) {
   const settingsStore = createFileAppSettingsStore(workspace.appSettingsPath)
   const config = resolveJobAppRuntimeConfig({
     settings: await settingsStore.get(),
@@ -85,7 +95,10 @@ async function registerRuntimeServices(workspace: WorkspaceSummary) {
   })
 
   runtime = await createJobAppRuntime({
-    config,
+    config: {
+      ...config,
+      seedDataMode: options?.seedData ?? config.seedDataMode,
+    },
   })
   const profileSqlite = createFileDatabase(config.sqlitePath)
   migrateDatabase(profileSqlite)
@@ -247,8 +260,10 @@ app.whenReady().then(async () => {
   const registryStore = createFileWorkspaceRegistryStore(
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
+  const canSeedSampleData = Boolean(VITE_DEV_SERVER_URL)
   const workspaceService = createWorkspaceService({
     activateWorkspace: openWorkspaceInMainWindow,
+    canSeedSampleData,
     chooseWorkspaceParentRoot,
     chooseWorkspaceRoot,
     currentWorkspace: () => currentWorkspace,
@@ -266,6 +281,7 @@ app.whenReady().then(async () => {
   registerWorkspaceIpc(workspaceService, ipcMain)
 
   const launchState = await resolveWorkspaceLaunchState({
+    canSeedSampleData,
     registryStore,
   })
 
