@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'
+import type { MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
@@ -21,12 +22,14 @@ import {
 } from '../src/runtime/job-app-runtime'
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
 import { type WorkspaceSummary } from '../src/workspace/workspace.initializer'
+import { createWorkspaceMenuTemplate } from '../src/workspace/workspace.menu'
 import { getDefaultWorkspaceRegistryPath } from '../src/workspace/workspace.paths'
 import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.registry'
 import {
   createWorkspaceService,
   resolveWorkspaceLaunchState,
   type WorkspaceActivationOptions,
+  type WorkspaceService,
 } from '../src/workspace/workspace.service'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -48,6 +51,12 @@ export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
+
+app.setName('Job App')
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.jobautomation.jobapp')
+}
 
 let mainWindow: BrowserWindow | null = null
 let workspaceLauncherWindow: BrowserWindow | null = null
@@ -138,6 +147,7 @@ function createElectronSecretCodec(): ProfileSecretCodec {
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    title: 'Job App',
     titleBarOverlay: {
       color: '#181825',
       symbolColor: '#cdd6f4',
@@ -217,6 +227,20 @@ function createWorkspaceLauncherWindow() {
   loadRenderer(workspaceLauncherWindow)
 }
 
+function showWorkspaceLauncherWindow() {
+  if (workspaceLauncherWindow) {
+    if (workspaceLauncherWindow.isMinimized()) {
+      workspaceLauncherWindow.restore()
+    }
+
+    workspaceLauncherWindow.show()
+    workspaceLauncherWindow.focus()
+    return
+  }
+
+  createWorkspaceLauncherWindow()
+}
+
 function loadRenderer(window: BrowserWindow) {
   if (VITE_DEV_SERVER_URL) {
     void window.loadURL(VITE_DEV_SERVER_URL)
@@ -253,7 +277,7 @@ app.on('activate', () => {
     return
   }
 
-  createWorkspaceLauncherWindow()
+  showWorkspaceLauncherWindow()
 })
 
 app.whenReady().then(async () => {
@@ -261,12 +285,16 @@ app.whenReady().then(async () => {
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
   const canSeedSampleData = Boolean(VITE_DEV_SERVER_URL)
-  const workspaceService = createWorkspaceService({
+  let workspaceService: WorkspaceService
+  workspaceService = createWorkspaceService({
     activateWorkspace: openWorkspaceInMainWindow,
     canSeedSampleData,
     chooseWorkspaceParentRoot,
     chooseWorkspaceRoot,
     currentWorkspace: () => currentWorkspace,
+    onWorkspaceRegistryChanged() {
+      void installWorkspaceMenu(workspaceService)
+    },
     registryStore,
     relaunchApp() {
       setTimeout(() => {
@@ -277,8 +305,10 @@ app.whenReady().then(async () => {
     revealPath(workspacePath) {
       return shell.openPath(workspacePath).then(() => undefined)
     },
+    showWorkspaceSwitcher: () => Boolean(workspaceLauncherWindow && currentWorkspace),
   })
   registerWorkspaceIpc(workspaceService, ipcMain)
+  await installWorkspaceMenu(workspaceService)
 
   const launchState = await resolveWorkspaceLaunchState({
     canSeedSampleData,
@@ -301,6 +331,22 @@ async function closeRuntime() {
   await runtime?.close()
   runtime = null
   runtimeServicesRegistered = false
+}
+
+async function installWorkspaceMenu(workspaceService: WorkspaceService) {
+  const launchState = await workspaceService.getLaunchState()
+  const menuTemplate = createWorkspaceMenuTemplate({
+    onOpenRecentWorkspace(workspaceId) {
+      void workspaceService.openRecent(workspaceId).then(() => installWorkspaceMenu(workspaceService))
+    },
+    onOpenWorkspace: showWorkspaceLauncherWindow,
+    platform: process.platform,
+    recentWorkspaces: launchState.recentWorkspaces,
+  })
+
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(menuTemplate as MenuItemConstructorOptions[]),
+  )
 }
 
 function isExternalHttpUrl(value: string) {
