@@ -30,6 +30,27 @@ describe('workspace launch state', () => {
         registryStore,
       }),
     ).resolves.toEqual({
+      devOptions: {
+        canSeedSampleData: false,
+      },
+      recentWorkspaces: [],
+      status: 'needs-workspace',
+    })
+  })
+
+  it('includes dev-only seed capability in launcher state when enabled', async () => {
+    const registryStore = createTempRegistryStore('job-app-dev-registry-')
+
+    await expect(
+      resolveWorkspaceLaunchState({
+        canSeedSampleData: true,
+        env: {},
+        registryStore,
+      }),
+    ).resolves.toEqual({
+      devOptions: {
+        canSeedSampleData: true,
+      },
       recentWorkspaces: [],
       status: 'needs-workspace',
     })
@@ -95,6 +116,9 @@ describe('workspace launch state', () => {
         registryStore,
       }),
     ).resolves.toEqual({
+      devOptions: {
+        canSeedSampleData: false,
+      },
       recentWorkspaces: [
         {
           id: 'workspace-missing',
@@ -175,6 +199,7 @@ describe('workspace service', () => {
     })
     expect(activateWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({ rootPath: nextRoot }),
+      { seedData: 'none' },
     )
     expect(relaunchApp).not.toHaveBeenCalled()
   })
@@ -231,6 +256,7 @@ describe('workspace service', () => {
     })
     expect(activateWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({ id: workspace.id }),
+      { seedData: 'none' },
     )
   })
 
@@ -262,6 +288,59 @@ describe('workspace service', () => {
     })
     expect(activateWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({ rootPath }),
+      { seedData: 'none' },
+    )
+  })
+
+  it('passes sample seed intent only when dev seeding is enabled', async () => {
+    const parentPath = createTempPath('job-app-create-dev-parent-')
+    const registryStore = createTempRegistryStore('job-app-create-dev-registry-')
+    const activateWorkspace = vi.fn(async () => undefined)
+    const service = createWorkspaceService({
+      activateWorkspace,
+      canSeedSampleData: true,
+      chooseWorkspaceRoot: vi.fn(async () => null),
+      currentWorkspace: null,
+      registryStore,
+      relaunchApp: vi.fn(),
+      revealPath: vi.fn(),
+    })
+
+    await service.createWorkspace({
+      name: 'Seeded Search',
+      parentPath,
+      seedData: 'sample',
+    })
+
+    expect(activateWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ rootPath: path.join(parentPath, 'Seeded Search') }),
+      { seedData: 'sample' },
+    )
+  })
+
+  it('ignores sample seed requests when dev seeding is disabled', async () => {
+    const parentPath = createTempPath('job-app-create-packaged-parent-')
+    const registryStore = createTempRegistryStore('job-app-create-packaged-registry-')
+    const activateWorkspace = vi.fn(async () => undefined)
+    const service = createWorkspaceService({
+      activateWorkspace,
+      canSeedSampleData: false,
+      chooseWorkspaceRoot: vi.fn(async () => null),
+      currentWorkspace: null,
+      registryStore,
+      relaunchApp: vi.fn(),
+      revealPath: vi.fn(),
+    })
+
+    await service.createWorkspace({
+      name: 'Fresh Search',
+      parentPath,
+      seedData: 'sample',
+    })
+
+    expect(activateWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ rootPath: path.join(parentPath, 'Fresh Search') }),
+      { seedData: 'none' },
     )
   })
 
@@ -283,6 +362,9 @@ describe('workspace service', () => {
     })
 
     await expect(service.removeRecent(workspace.id)).resolves.toEqual({
+      devOptions: {
+        canSeedSampleData: false,
+      },
       recentWorkspaces: [],
       status: 'needs-workspace',
     })

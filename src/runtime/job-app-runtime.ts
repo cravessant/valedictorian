@@ -11,7 +11,11 @@ import {
   type StartedJobAppHttpServer,
 } from '../server/local-server'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
-import { createLocalJobAppClient, type LocalJobAppClientOptions } from './local-job-app-client'
+import {
+  createLocalJobAppClient,
+  type JobAppSeedDataMode,
+  type LocalJobAppClientOptions,
+} from './local-job-app-client'
 
 export type JobAppRuntimeMode = 'local-desktop' | 'local-shared' | 'remote'
 
@@ -28,6 +32,8 @@ export interface JobAppRuntimeConfig {
   apiToken?: string
   apiUrl: string
   mode: JobAppRuntimeMode
+  referenceTrackerPath?: string
+  seedDataMode: JobAppSeedDataMode
   sqlitePath: string
 }
 
@@ -65,6 +71,8 @@ export function resolveJobAppRuntimeConfig({
       env.JOB_APP_API_URL ??
       (mode === 'remote' ? settings.remoteApiUrl || defaultJobAppApiBaseUrl : defaultApiUrl),
     mode,
+    referenceTrackerPath: env.JOB_APP_REFERENCE_TRACKER_PATH,
+    seedDataMode: readSeedDataMode(env.JOB_APP_SEED_DATA),
     sqlitePath: env.JOB_APP_SQLITE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'job-app.sqlite'),
   }
 }
@@ -86,7 +94,11 @@ export async function createJobAppRuntime({
     }
   }
 
-  const client = createLocalClient({ sqlitePath: config.sqlitePath })
+  const client = createLocalClient({
+    referenceTrackerPath: config.referenceTrackerPath,
+    seedDataMode: config.seedDataMode,
+    sqlitePath: config.sqlitePath,
+  })
 
   if (config.mode === 'local-desktop') {
     return {
@@ -120,6 +132,18 @@ function readRuntimeMode(value: string | undefined): JobAppRuntimeMode {
   }
 
   throw new Error(`Unsupported Job App runtime mode: ${value}`)
+}
+
+function readSeedDataMode(value: string | undefined): JobAppSeedDataMode {
+  if (!value) {
+    return 'none'
+  }
+
+  if (value === 'none' || value === 'sample' || value === 'reference-tracker') {
+    return value
+  }
+
+  throw new Error(`Unsupported JOB_APP_SEED_DATA mode: ${value}`)
 }
 
 function parsePort(value: string | undefined) {

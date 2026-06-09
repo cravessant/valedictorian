@@ -341,11 +341,17 @@ export function createWorkspaceApi(
 ): WorkspacePreloadApi {
   const activeLaunchState = currentWorkspace
     ? {
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'active' as const,
         workspace: currentWorkspace,
       }
     : {
+        devOptions: {
+          canSeedSampleData: false,
+        },
         recentWorkspaces: [],
         status: 'needs-workspace' as const,
       }
@@ -367,6 +373,9 @@ export function createWorkspaceApi(
     openFolder: vi.fn(async () => activeLaunchState),
     openRecent: vi.fn(async () => activeLaunchState),
     removeRecent: vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
       recentWorkspaces: [],
       status: 'needs-workspace' as const,
     })),

@@ -8,20 +8,33 @@ import {
   createWorkspaceSummary,
 } from './App.test-helpers'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
-import type { WorkspaceLaunchState } from './workspace/workspace.service'
+import type { WorkspaceDevOptions, WorkspaceLaunchState } from './workspace/workspace.service'
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
 })
 
+type WorkspaceLaunchStateInput =
+  | (Omit<Extract<WorkspaceLaunchState, { status: 'active' }>, 'devOptions'> & {
+      devOptions?: WorkspaceDevOptions
+    })
+  | (Omit<Extract<WorkspaceLaunchState, { status: 'needs-workspace' }>, 'devOptions'> & {
+      devOptions?: WorkspaceDevOptions
+    })
+
 function createLauncherWorkspaceApi(
-  initialState: WorkspaceLaunchState,
+  initialState: WorkspaceLaunchStateInput,
   overrides: Partial<WorkspacePreloadApi> = {},
 ): WorkspacePreloadApi {
   return {
     ...createWorkspaceApi(null),
-    getLaunchState: vi.fn(async () => initialState),
+    getLaunchState: vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
+      ...initialState,
+    } as WorkspaceLaunchState)),
     ...overrides,
   }
 }
@@ -149,9 +162,117 @@ describe('AppRoot workspace gate', () => {
     expect(screen.getByRole('button', { name: 'Create workspace' })).toHaveTextContent('Create')
   })
 
+  it('shows an unchecked dev-only seed checkbox when sample seeding is available', async () => {
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi({
+          devOptions: {
+            canSeedSampleData: true,
+          },
+          recentWorkspaces: [],
+          status: 'needs-workspace',
+        })}
+      />,
+    )
+
+    const seedCheckbox = await screen.findByRole('checkbox', { name: 'Seed demo data' })
+
+    expect(seedCheckbox).not.toBeChecked()
+  })
+
+  it('does not show the seed checkbox when sample seeding is unavailable', async () => {
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi({
+          devOptions: {
+            canSeedSampleData: false,
+          },
+          recentWorkspaces: [],
+          status: 'needs-workspace',
+        })}
+      />,
+    )
+
+    expect(await screen.findByLabelText('Workspace name')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Seed demo data' })).not.toBeInTheDocument()
+  })
+
+  it('creates a workspace without seed data when the dev seed checkbox stays unchecked', async () => {
+    const createWorkspace = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: true,
+      },
+      recentWorkspaces: [],
+      status: 'needs-workspace' as const,
+    }))
+
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi(
+          {
+            devOptions: {
+              canSeedSampleData: true,
+            },
+            recentWorkspaces: [],
+            status: 'needs-workspace',
+          },
+          { createWorkspace },
+        )}
+      />,
+    )
+
+    fireEvent.change(await screen.findByLabelText('Workspace name'), {
+      target: { value: 'Fresh Search' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }))
+
+    await waitFor(() => expect(createWorkspace).toHaveBeenCalledWith({ name: 'Fresh Search' }))
+  })
+
+  it('creates a workspace with sample seed data when the dev seed checkbox is checked', async () => {
+    const createWorkspace = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: true,
+      },
+      recentWorkspaces: [],
+      status: 'needs-workspace' as const,
+    }))
+
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi(
+          {
+            devOptions: {
+              canSeedSampleData: true,
+            },
+            recentWorkspaces: [],
+            status: 'needs-workspace',
+          },
+          { createWorkspace },
+        )}
+      />,
+    )
+
+    fireEvent.change(await screen.findByLabelText('Workspace name'), {
+      target: { value: 'Seeded Search' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Seed demo data' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }))
+
+    await waitFor(() =>
+      expect(createWorkspace).toHaveBeenCalledWith({
+        name: 'Seeded Search',
+        seedData: 'sample',
+      }),
+    )
+  })
+
   it('opens a folder from the launcher and enters the main app', async () => {
     const workspace = createWorkspaceSummary()
     const openFolder = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
       recentWorkspaces: [],
       status: 'active' as const,
       workspace,
@@ -177,6 +298,9 @@ describe('AppRoot workspace gate', () => {
 
   it('stays on the launcher when opening a folder is canceled', async () => {
     const openFolder = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
       recentWorkspaces: [],
       status: 'needs-workspace' as const,
     }))
@@ -199,6 +323,9 @@ describe('AppRoot workspace gate', () => {
   it('creates a workspace from the launcher and enters the main app', async () => {
     const workspace = createWorkspaceSummary({ name: 'Summer Search' })
     const createWorkspace = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
       recentWorkspaces: [],
       status: 'active' as const,
       workspace,

@@ -12,7 +12,14 @@ import {
   workflowRunSteps,
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
-import { createLocalJobAppClient } from './local-job-app-client'
+import { createLocalJobAppClient as createRuntimeLocalJobAppClient } from './local-job-app-client'
+
+function createLocalJobAppClient(options: Parameters<typeof createRuntimeLocalJobAppClient>[0]) {
+  return createRuntimeLocalJobAppClient({
+    seedDataMode: 'sample',
+    ...options,
+  })
+}
 
 function createTempSqlitePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-client-')), 'job-app.sqlite')
@@ -34,6 +41,24 @@ describe('runtime local job app client', () => {
     } else {
       process.env.JOB_APP_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
     }
+  })
+
+  it('starts with an empty application list by default', async () => {
+    const client = createRuntimeLocalJobAppClient({ sqlitePath: createTempSqlitePath() })
+
+    await expect(client.applications.list()).resolves.toMatchObject({
+      items: [],
+      total: 0,
+    })
+  })
+
+  it('requires an explicit path for reference tracker seeding', () => {
+    expect(() =>
+      createRuntimeLocalJobAppClient({
+        seedDataMode: 'reference-tracker',
+        sqlitePath: createTempSqlitePath(),
+      }),
+    ).toThrow('JOB_APP_REFERENCE_TRACKER_PATH')
   })
 
   it('lists seeded applications with query filters and pagination', async () => {
@@ -275,7 +300,7 @@ describe('runtime local job app client', () => {
     })
   })
 
-  it('seeds sourcing findings when an existing local database has applications but no findings', async () => {
+  it('does not seed sourcing findings when an existing local database already has applications', async () => {
     const sqlitePath = createTempSqlitePath()
     const sqlite = createFileDatabase(sqlitePath)
     migrateDatabase(sqlite)
@@ -336,18 +361,11 @@ describe('runtime local job app client', () => {
 
     const findings = await client.sourcing.findings.list()
 
-    expect(findings.total).toBe(3)
-    expect(findings.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          companyName: 'Delta Labs',
-          mergeStatus: 'new',
-        }),
-      ]),
-    )
+    expect(findings.total).toBe(0)
+    expect(findings.items).toEqual([])
   })
 
-  it('backfills the Astranis verification receipt attempt into an existing local database', async () => {
+  it('does not backfill sample attempts into an existing local database', async () => {
     const sqlitePath = createTempSqlitePath()
     const sqlite = createFileDatabase(sqlitePath)
     migrateDatabase(sqlite)
@@ -413,18 +431,8 @@ describe('runtime local job app client', () => {
     const seededDatabase = createDrizzleDatabase(seededSqlite)
 
     expect(attempts).toMatchObject({
-      total: 1,
-      items: [
-        {
-          outcome: 'needs_user_info',
-          steps: [
-            { type: 'attempt_started' },
-            { type: 'resume_uploaded' },
-            { type: 'verification_receipt' },
-            { type: 'attempt_completed' },
-          ],
-        },
-      ],
+      items: [],
+      total: 0,
     })
     expect(
       seededDatabase
@@ -432,7 +440,7 @@ describe('runtime local job app client', () => {
         .from(workflowRuns)
         .where(eq(workflowRuns.id, 'workflow-run-application-attempt-astranis-verification'))
         .all(),
-    ).toHaveLength(1)
+    ).toHaveLength(0)
     expect(
       seededDatabase
         .select()
@@ -444,7 +452,7 @@ describe('runtime local job app client', () => {
           ),
         )
         .all(),
-    ).toHaveLength(4)
+    ).toHaveLength(0)
     seededSqlite.close()
   })
 })

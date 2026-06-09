@@ -19,7 +19,9 @@ function WorkspaceLauncherPage({
   onRemoveRecent,
 }: WorkspaceLauncherPageProps) {
   const [workspaceName, setWorkspaceName] = useState('')
+  const [seedSampleData, setSeedSampleData] = useState(false)
   const canCreate = workspaceName.trim().length > 0
+  const canSeedSampleData = launchState.devOptions.canSeedSampleData
 
   return (
     <main className="h-screen overflow-hidden bg-background text-foreground">
@@ -106,13 +108,29 @@ function WorkspaceLauncherPage({
                       onChange={(event) => setWorkspaceName(event.target.value)}
                     />
                   </label>
+                  {canSeedSampleData ? (
+                    <label className="mt-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <input
+                        checked={seedSampleData}
+                        className="h-4 w-4 rounded border-border bg-background text-primary"
+                        onChange={(event) => setSeedSampleData(event.target.checked)}
+                        type="checkbox"
+                      />
+                      Seed demo data
+                    </label>
+                  ) : null}
                 </div>
                 <Button
                   type="button"
                   aria-label="Create workspace"
                   className="h-10 gap-2 rounded-md text-sm"
                   disabled={!canCreate}
-                  onClick={() => onCreateWorkspace({ name: workspaceName.trim() })}
+                  onClick={() =>
+                    onCreateWorkspace({
+                      name: workspaceName.trim(),
+                      ...(canSeedSampleData && seedSampleData ? { seedData: 'sample' } : {}),
+                    })
+                  }
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   Create

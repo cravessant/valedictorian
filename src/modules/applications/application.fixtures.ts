@@ -1,5 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import {
   applicationLinks,
@@ -293,7 +291,7 @@ export function seedSampleApplications(database: DrizzleDatabase) {
 
 export function seedReferenceTrackerApplications(
   database: DrizzleDatabase,
-  trackerMarkdown = readReferenceTrackerMarkdown(),
+  trackerMarkdown: string,
 ) {
   const trackerApplications = parseReferenceTrackerApplications(trackerMarkdown)
 
@@ -808,27 +806,6 @@ function parseTrackerLine(
     createdAt: `${date}T00:00:00.000Z`,
     updatedAt: referenceSeedCreatedAt,
   }
-}
-
-function readReferenceTrackerMarkdown() {
-  for (const candidate of referenceTrackerPathCandidates()) {
-    if (fs.existsSync(candidate)) {
-      return fs.readFileSync(candidate, 'utf8')
-    }
-  }
-
-  return ''
-}
-
-function referenceTrackerPathCandidates() {
-  if (process.env.JOB_APP_REFERENCE_TRACKER_PATH) {
-    return [process.env.JOB_APP_REFERENCE_TRACKER_PATH]
-  }
-
-  return [
-    path.resolve(process.cwd(), '../Reference/TRACKER.md'),
-    path.resolve(process.cwd(), 'Reference/TRACKER.md'),
-  ]
 }
 
 function parseMarkdownLink(value: string) {

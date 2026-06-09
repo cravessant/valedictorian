@@ -11,13 +11,25 @@ export interface WorkspaceLaunchRecord extends WorkspaceRecord {
   missing: boolean
 }
 
+export interface WorkspaceDevOptions {
+  canSeedSampleData: boolean
+}
+
+export type WorkspaceCreateSeedData = 'none' | 'sample'
+
+export interface WorkspaceActivationOptions {
+  seedData: WorkspaceCreateSeedData
+}
+
 export type WorkspaceLaunchState =
   | {
+      devOptions: WorkspaceDevOptions
       status: 'active'
       recentWorkspaces: WorkspaceLaunchRecord[]
       workspace: WorkspaceSummary
     }
   | {
+      devOptions: WorkspaceDevOptions
       status: 'needs-workspace'
       recentWorkspaces: WorkspaceLaunchRecord[]
     }
@@ -38,6 +50,7 @@ export interface WorkspaceService {
 export interface CreateWorkspaceInput {
   name: string
   parentPath?: string
+  seedData?: WorkspaceCreateSeedData
 }
 
 export interface ResolveInitialWorkspaceOptions {
@@ -48,13 +61,18 @@ export interface ResolveInitialWorkspaceOptions {
 }
 
 export interface ResolveWorkspaceLaunchStateOptions {
+  canSeedSampleData?: boolean
   env?: Record<string, string | undefined>
   pathExists?: (workspacePath: string) => boolean
   registryStore: WorkspaceRegistryStore
 }
 
 export interface CreateWorkspaceServiceOptions {
-  activateWorkspace?: (workspace: WorkspaceSummary) => Promise<void> | void
+  activateWorkspace?: (
+    workspace: WorkspaceSummary,
+    options: WorkspaceActivationOptions,
+  ) => Promise<void> | void
+  canSeedSampleData?: boolean
   chooseWorkspaceParentRoot?: () => Promise<string | null>
   chooseWorkspaceRoot: () => Promise<string | null>
   currentWorkspace: WorkspaceSummary | null | (() => WorkspaceSummary | null)
@@ -92,6 +110,7 @@ export async function resolveInitialWorkspace({
 }
 
 export async function resolveWorkspaceLaunchState({
+  canSeedSampleData = false,
   env = process.env,
   pathExists = fs.existsSync,
   registryStore,
@@ -99,6 +118,9 @@ export async function resolveWorkspaceLaunchState({
   if (env.JOB_APP_WORKSPACE_PATH) {
     const workspace = await openWorkspace(env.JOB_APP_WORKSPACE_PATH, registryStore)
     return {
+      devOptions: {
+        canSeedSampleData,
+      },
       recentWorkspaces: await listLaunchRecords(registryStore, pathExists),
       status: 'active',
       workspace,
@@ -112,6 +134,9 @@ export async function resolveWorkspaceLaunchState({
   if (lastWorkspace && pathExists(lastWorkspace.path)) {
     const workspace = await openWorkspace(lastWorkspace.path, registryStore)
     return {
+      devOptions: {
+        canSeedSampleData,
+      },
       recentWorkspaces: await listLaunchRecords(registryStore, pathExists),
       status: 'active',
       workspace,
@@ -119,6 +144,9 @@ export async function resolveWorkspaceLaunchState({
   }
 
   return {
+    devOptions: {
+      canSeedSampleData,
+    },
     recentWorkspaces: await listLaunchRecords(registryStore, pathExists),
     status: 'needs-workspace',
   }
@@ -126,6 +154,7 @@ export async function resolveWorkspaceLaunchState({
 
 export function createWorkspaceService({
   activateWorkspace = async () => undefined,
+  canSeedSampleData = false,
   chooseWorkspaceRoot,
   chooseWorkspaceParentRoot,
   currentWorkspace,
@@ -152,7 +181,7 @@ export function createWorkspaceService({
       const parentPath = input.parentPath ?? await selectWorkspaceParentRoot()
 
       if (!parentPath) {
-        return resolveWorkspaceLaunchState({ pathExists, registryStore })
+        return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
       }
 
       const workspaceRootPath = join(parentPath, input.name)
@@ -162,9 +191,10 @@ export function createWorkspaceService({
         activateWorkspace,
         currentWorkspace: readCurrentWorkspace(currentWorkspace),
         relaunchApp,
+        seedData: readCreateSeedData(input, canSeedSampleData),
         workspace,
       })
-      return resolveWorkspaceLaunchState({ pathExists, registryStore })
+      return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
     },
     async getCurrent() {
       return readCurrentWorkspace(currentWorkspace)
@@ -179,7 +209,7 @@ export function createWorkspaceService({
       const selectedWorkspacePath = await chooseWorkspaceRoot()
 
       if (!selectedWorkspacePath) {
-        return resolveWorkspaceLaunchState({ pathExists, registryStore })
+        return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
       }
 
       const workspace = await openWorkspace(selectedWorkspacePath, registryStore)
@@ -187,16 +217,17 @@ export function createWorkspaceService({
         activateWorkspace,
         currentWorkspace: readCurrentWorkspace(currentWorkspace),
         relaunchApp,
+        seedData: 'none',
         workspace,
       })
-      return resolveWorkspaceLaunchState({ pathExists, registryStore })
+      return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
     },
     async openRecent(workspaceId) {
       const registry = await registryStore.get()
       const workspaceRecord = registry.workspaces[workspaceId]
 
       if (!workspaceRecord || !pathExists(workspaceRecord.path)) {
-        return resolveWorkspaceLaunchState({ pathExists, registryStore })
+        return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
       }
 
       const workspace = await openWorkspace(workspaceRecord.path, registryStore)
@@ -204,13 +235,14 @@ export function createWorkspaceService({
         activateWorkspace,
         currentWorkspace: readCurrentWorkspace(currentWorkspace),
         relaunchApp,
+        seedData: 'none',
         workspace,
       })
-      return resolveWorkspaceLaunchState({ pathExists, registryStore })
+      return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
     },
     async removeRecent(workspaceId) {
       await registryStore.remove(workspaceId)
-      return resolveWorkspaceLaunchState({ pathExists, registryStore })
+      return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
     },
     async reveal(workspacePath) {
       await revealPath(workspacePath)
@@ -264,11 +296,16 @@ async function activateOrRelaunch({
   activateWorkspace,
   currentWorkspace,
   relaunchApp,
+  seedData,
   workspace,
 }: {
-  activateWorkspace: (workspace: WorkspaceSummary) => Promise<void> | void
+  activateWorkspace: (
+    workspace: WorkspaceSummary,
+    options: WorkspaceActivationOptions,
+  ) => Promise<void> | void
   currentWorkspace: WorkspaceSummary | null
   relaunchApp: () => void
+  seedData: WorkspaceCreateSeedData
   workspace: WorkspaceSummary
 }) {
   if (currentWorkspace) {
@@ -276,5 +313,16 @@ async function activateOrRelaunch({
     return
   }
 
-  await activateWorkspace(workspace)
+  await activateWorkspace(workspace, { seedData })
+}
+
+function readCreateSeedData(
+  input: CreateWorkspaceInput,
+  canSeedSampleData: boolean,
+): WorkspaceCreateSeedData {
+  if (canSeedSampleData && input.seedData === 'sample') {
+    return 'sample'
+  }
+
+  return 'none'
 }
