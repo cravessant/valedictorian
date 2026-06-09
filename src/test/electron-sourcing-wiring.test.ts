@@ -55,6 +55,21 @@ describe('Electron sourcing wiring', () => {
     expect(mainSource).toContain('createMainWindow()')
   })
 
+  it('configures native app identity and workspace menu actions', () => {
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const indexSource = fs.readFileSync(path.resolve('index.html'), 'utf8')
+
+    expect(mainSource).toContain("import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'")
+    expect(mainSource).toContain("app.setName('Job App')")
+    expect(mainSource).toContain("app.setAppUserModelId('com.jobautomation.jobapp')")
+    expect(mainSource).toContain("title: 'Job App'")
+    expect(indexSource).toContain('<title>Job App</title>')
+    expect(mainSource).toContain('createWorkspaceMenuTemplate')
+    expect(mainSource).toContain('Menu.setApplicationMenu')
+    expect(mainSource).toContain('showWorkspaceLauncherWindow')
+    expect(mainSource).toContain('workspaceService.openRecent(workspaceId)')
+  })
+
   it('uses a fixed launcher window instead of the normal app window when a workspace is needed', () => {
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
 

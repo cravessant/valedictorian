@@ -260,6 +260,79 @@ describe('workspace service', () => {
     )
   })
 
+  it('shows launcher state instead of the active workspace when switcher mode is requested', async () => {
+    const workspaceRoot = createTempPath('job-app-switcher-workspace-')
+    const workspace = initializeWorkspace(workspaceRoot, { createId: () => 'workspace-switcher' })
+    const registryStore = createTempRegistryStore('job-app-switcher-registry-')
+    await registryStore.markOpened({
+      id: workspace.id,
+      name: workspace.name,
+      path: workspace.rootPath,
+    })
+    const service = createWorkspaceService({
+      chooseWorkspaceRoot: vi.fn(async () => null),
+      currentWorkspace: workspace,
+      registryStore,
+      relaunchApp: vi.fn(),
+      revealPath: vi.fn(),
+      showWorkspaceSwitcher: () => true,
+    })
+
+    await expect(service.getLaunchState()).resolves.toMatchObject({
+      recentWorkspaces: [
+        expect.objectContaining({
+          id: workspace.id,
+          missing: false,
+        }),
+      ],
+      status: 'needs-workspace',
+    })
+  })
+
+  it('marks a recent workspace open and relaunches when switching from an active workspace', async () => {
+    const currentRoot = createTempPath('job-app-current-recent-workspace-')
+    const nextRoot = createTempPath('job-app-next-recent-workspace-')
+    const currentWorkspace = initializeWorkspace(currentRoot, { createId: () => 'workspace-current' })
+    const nextWorkspace = initializeWorkspace(nextRoot, { createId: () => 'workspace-next' })
+    const registryStore = createTempRegistryStore('job-app-recent-switch-registry-')
+    await registryStore.markOpened({
+      id: currentWorkspace.id,
+      name: currentWorkspace.name,
+      path: currentWorkspace.rootPath,
+    })
+    await registryStore.markOpened({
+      id: nextWorkspace.id,
+      name: nextWorkspace.name,
+      path: nextWorkspace.rootPath,
+    })
+    await registryStore.markOpened({
+      id: currentWorkspace.id,
+      name: currentWorkspace.name,
+      path: currentWorkspace.rootPath,
+    })
+    const activateWorkspace = vi.fn(async () => undefined)
+    const relaunchApp = vi.fn()
+    const onWorkspaceRegistryChanged = vi.fn()
+    const service = createWorkspaceService({
+      activateWorkspace,
+      chooseWorkspaceRoot: vi.fn(async () => null),
+      currentWorkspace,
+      onWorkspaceRegistryChanged,
+      registryStore,
+      relaunchApp,
+      revealPath: vi.fn(),
+    })
+
+    await service.openRecent(nextWorkspace.id)
+
+    await expect(registryStore.get()).resolves.toMatchObject({
+      lastOpenedWorkspaceId: nextWorkspace.id,
+    })
+    expect(activateWorkspace).not.toHaveBeenCalled()
+    expect(onWorkspaceRegistryChanged).toHaveBeenCalled()
+    expect(relaunchApp).toHaveBeenCalled()
+  })
+
   it('creates a named workspace under a parent folder from the launcher', async () => {
     const parentPath = createTempPath('job-app-create-parent-')
     const registryStore = createTempRegistryStore('job-app-create-registry-')
