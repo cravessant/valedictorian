@@ -48,7 +48,7 @@ describe('CLI release workflow', () => {
     expect(workflow).toContain('Valedictorian CLI $GITHUB_REF_NAME')
   })
 
-  it('publishes the CLI package to npm with trusted publishing provenance', () => {
+  it('publishes the CLI package to npm with trusted publishing from the private repository', () => {
     expect(fs.existsSync(publishWorkflowPath)).toBe(true)
 
     const workflow = fs.readFileSync(publishWorkflowPath, 'utf8')
@@ -69,6 +69,7 @@ describe('CLI release workflow', () => {
     expect(workflow).toContain('pnpm test')
     expect(workflow).toContain('pnpm build')
     expect(workflow).toContain('npm pack --dry-run')
-    expect(workflow).toContain('npm publish --access public --tag alpha --provenance')
+    expect(workflow).toContain('npm publish --access public --tag alpha')
+    expect(workflow).not.toContain('--provenance')
   })
 })

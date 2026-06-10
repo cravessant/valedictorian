@@ -41,5 +41,10 @@ git push --tags
 
 The tag must be `vX.Y.Z-alpha.N` and match `package.json`.
 
-Tagged GitHub Actions releases publish with npm provenance. The first local publish
-uses `--provenance=false` because local shells do not have a GitHub OIDC provider.
+Tagged GitHub Actions releases publish through npm Trusted Publishing. Because the
+GitHub repository is private, the workflow omits npm provenance; npm provenance
+currently requires a public GitHub source repository. If this repository becomes
+public, add `--provenance` back to `.github/workflows/publish.yml`.
+
+The first local publish uses `--provenance=false` because local shells do not have
+a GitHub OIDC provider.
