@@ -34,6 +34,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "prepare": "pnpm build",
+    "prepublishOnly": "pnpm lint && pnpm test && pnpm build",
     "prepack": "pnpm build",
     "test": "vitest run",
     "test:watch": "vitest"
