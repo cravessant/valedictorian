@@ -2,15 +2,28 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const workflowPath = path.resolve('.github/workflows/release-cli.yml')
+const ciWorkflowPath = path.resolve('.github/workflows/ci.yml')
+const releaseWorkflowPath = path.resolve('.github/workflows/release-cli.yml')
 
 describe('CLI release workflow', () => {
-  it('builds, packs, and uploads the CLI package from the standalone repository', () => {
-    expect(fs.existsSync(workflowPath)).toBe(true)
+  it('opts JavaScript actions into Node 24 for CI', () => {
+    expect(fs.existsSync(ciWorkflowPath)).toBe(true)
 
-    const workflow = fs.readFileSync(workflowPath, 'utf8')
+    const workflow = fs.readFileSync(ciWorkflowPath, 'utf8')
+
+    expect(workflow).toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true')
+    expect(workflow).toContain('pnpm test')
+    expect(workflow).toContain('pnpm lint')
+    expect(workflow).toContain('pnpm build')
+  })
+
+  it('builds, packs, and uploads the CLI package from the standalone repository', () => {
+    expect(fs.existsSync(releaseWorkflowPath)).toBe(true)
+
+    const workflow = fs.readFileSync(releaseWorkflowPath, 'utf8')
 
     expect(workflow).toContain('workflow_dispatch:')
+    expect(workflow).toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true')
     expect(workflow).toContain('tags:')
     expect(workflow).toContain("'v*'")
     expect(workflow).toContain('runs-on: ubuntu-latest')
