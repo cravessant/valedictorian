@@ -395,10 +395,10 @@ function AgentAccessSettingsPanel({
       <div className="rounded-md border border-border bg-card p-4">
         <h3 className="text-sm font-semibold text-foreground">CLI examples</h3>
         <pre className="mt-3 overflow-auto rounded-md bg-background p-3 text-xs text-foreground">
-          <code>{`JOB_APP_API_URL=${apiBaseUrl} job-app applications list --json`}</code>
+          <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli applications list --json`}</code>
         </pre>
         <pre className="mt-2 overflow-auto rounded-md bg-background p-3 text-xs text-foreground">
-          <code>{`JOB_APP_API_TOKEN=<token> job-app applications get <id> --json`}</code>
+          <code>{`VALEDICTORIAN_API_TOKEN=<token> valedictorian-cli applications get <id> --json`}</code>
         </pre>
       </div>
 

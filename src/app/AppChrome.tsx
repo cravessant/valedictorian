@@ -66,7 +66,7 @@ function AppSidebar({
       onMouseLeave={onMouseLeave}
     >
       <div className="mb-5">
-        <p className="text-sm font-semibold text-foreground">Job App</p>
+        <p className="text-sm font-semibold text-foreground">Valedictorian</p>
         <p className="mt-1 text-xs text-muted-foreground">
           <code className="rounded-md bg-secondary px-1.5 py-0.5 text-secondary-foreground">
             {settings.runtimeMode}
@@ -165,7 +165,7 @@ function SettingsPopover({
         >
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-foreground">Job App</p>
+              <p className="text-sm font-semibold text-foreground">Valedictorian</p>
               <p className="text-xs text-muted-foreground">
                 <code className="rounded-md bg-secondary px-1.5 py-0.5 text-secondary-foreground">
                   {settings.runtimeMode}

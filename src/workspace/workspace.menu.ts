@@ -86,7 +86,7 @@ export function createWorkspaceMenuTemplate({
 
   return [
     {
-      label: 'Job App',
+      label: 'Valedictorian',
       submenu: [
         { role: 'about' },
         { type: 'separator' },

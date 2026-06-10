@@ -54,7 +54,7 @@ jobs:
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: job-app-mac-dmg
+          name: valedictorian-app-mac-dmg
           path: release/*/*.dmg
           if-no-files-found: error
 
@@ -67,7 +67,7 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" release/*/*.dmg --clobber
           else
             gh release create "$GITHUB_REF_NAME" release/*/*.dmg \
-              --title "Job App $GITHUB_REF_NAME" \
+              --title "Valedictorian $GITHUB_REF_NAME" \
               --notes "Unsigned private Mac alpha build." \
               --prerelease
           fi

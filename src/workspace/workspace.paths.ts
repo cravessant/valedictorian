@@ -1,10 +1,10 @@
 import envPaths from 'env-paths'
 import { join } from 'pathe'
 
-export const workspaceDataDirectoryName = '.job-automation'
+export const workspaceDataDirectoryName = '.valedictorian'
 export const workspaceManifestFileName = 'manifest.json'
 export const workspaceAppSettingsFileName = 'app.json'
-export const workspaceSqliteFileName = 'job-app.sqlite'
+export const workspaceSqliteFileName = 'valedictorian.sqlite'
 
 export interface WorkspaceLayout {
   rootPath: string
@@ -35,5 +35,5 @@ export function resolveWorkspaceLayout(rootPath: string): WorkspaceLayout {
 }
 
 export function getDefaultWorkspaceRegistryPath(appDataPath?: string) {
-  return join(appDataPath ?? envPaths('job-automation', { suffix: '' }).data, 'workspaces.json')
+  return join(appDataPath ?? envPaths('valedictorian', { suffix: '' }).data, 'workspaces.json')
 }

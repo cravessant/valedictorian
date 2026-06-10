@@ -5,7 +5,7 @@ import { defaultAppSettings } from '../settings/app-settings'
 import { resolveWorkspaceLayout, type WorkspaceLayout } from './workspace.paths'
 
 export interface WorkspaceManifest {
-  app: 'job-automation'
+  app: 'valedictorian'
   workspaceVersion: 1
   id: string
   name: string
@@ -29,7 +29,7 @@ export function initializeWorkspace(
 ): WorkspaceSummary {
   const layout = resolveWorkspaceLayout(rootPath)
   const manifest = readManifest(layout.manifestPath) ?? {
-    app: 'job-automation',
+    app: 'valedictorian',
     workspaceVersion: 1,
     id: createId(),
     name: path.basename(rootPath),
@@ -70,7 +70,7 @@ function readManifest(manifestPath: string): WorkspaceManifest | null {
     const candidate = value as Record<string, unknown>
 
     if (
-      candidate.app !== 'job-automation' ||
+      candidate.app !== 'valedictorian' ||
       candidate.workspaceVersion !== 1 ||
       typeof candidate.id !== 'string' ||
       typeof candidate.name !== 'string' ||

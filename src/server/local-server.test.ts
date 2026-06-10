@@ -3,15 +3,15 @@ import os from 'node:os'
 import path from 'node:path'
 import type { JobAppClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createLocalJobAppClient as createRuntimeLocalJobAppClient } from '../runtime/local-job-app-client'
-import { createJobAppHttpServer, type StartedJobAppHttpServer } from './local-server'
+import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
 
 function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-server-')), 'job-app.sqlite')
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-')), 'valedictorian.sqlite')
 }
 
-function createLocalJobAppClient(options: Parameters<typeof createRuntimeLocalJobAppClient>[0]) {
-  return createRuntimeLocalJobAppClient({
+function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
+  return createRuntimeLocalValedictorianClient({
     seedDataMode: 'sample',
     ...options,
   })
@@ -160,14 +160,14 @@ function createBoundaryTestClient(onCreate: () => void): JobAppClient {
   } as unknown as JobAppClient
 }
 
-describe('local Job App HTTP server', () => {
-  let server: StartedJobAppHttpServer | null = null
-  const originalReferenceTrackerPath = process.env.JOB_APP_REFERENCE_TRACKER_PATH
+describe('local Valedictorian HTTP server', () => {
+  let server: StartedValedictorianHttpServer | null = null
+  const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
 
   beforeEach(() => {
-    process.env.JOB_APP_REFERENCE_TRACKER_PATH = path.join(
+    process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = path.join(
       os.tmpdir(),
-      'job-app-missing-reference-tracker.md',
+      'valedictorian-missing-reference-tracker.md',
     )
   })
 
@@ -175,15 +175,15 @@ describe('local Job App HTTP server', () => {
     await server?.close()
     server = null
     if (originalReferenceTrackerPath === undefined) {
-      delete process.env.JOB_APP_REFERENCE_TRACKER_PATH
+      delete process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
     } else {
-      process.env.JOB_APP_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
+      process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
     }
   })
 
   it('serves health and local capabilities', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -196,8 +196,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('lists and gets applications with auth, filters, and pagination', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -230,8 +230,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('lists queue rows with auth, bucket filtering, and pagination', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -256,8 +256,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('serves profile update, read, and non-secret agent context routes', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -333,8 +333,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('serves workflow runs and sourcing findings routes', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -500,8 +500,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('returns a bad request for invalid queue buckets', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -518,8 +518,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('serves policy config, evidence, and scheduler-ready evaluation endpoints', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -603,7 +603,7 @@ describe('local Job App HTTP server', () => {
 
   it('rejects invalid create mutation input before calling the client', async () => {
     let createCalls = 0
-    server = await createJobAppHttpServer({
+    server = await createValedictorianHttpServer({
       client: createBoundaryTestClient(() => {
         createCalls += 1
       }),
@@ -683,7 +683,7 @@ describe('local Job App HTTP server', () => {
       workflowCalls += 1
       throw new Error('client workflow should not be called')
     }
-    server = await createJobAppHttpServer({
+    server = await createValedictorianHttpServer({
       client,
       host: '127.0.0.1',
       port: 0,
@@ -711,7 +711,7 @@ describe('local Job App HTTP server', () => {
       completeCalls += 1
       throw new Error('client attempt completion should not be called')
     }
-    server = await createJobAppHttpServer({
+    server = await createValedictorianHttpServer({
       client,
       host: '127.0.0.1',
       port: 0,
@@ -736,8 +736,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('updates application status and records scores through the API', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -787,8 +787,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('runs application mutation commands through the API', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -927,8 +927,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('runs application attempt commands through the API', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -1012,8 +1012,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('accepts verification receipt attempt steps and completes submitted attempts through the API', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -1082,8 +1082,8 @@ describe('local Job App HTTP server', () => {
   })
 
   it('returns useful HTTP statuses for unauthorized and missing resources', async () => {
-    server = await createJobAppHttpServer({
-      client: createLocalJobAppClient({ sqlitePath: createTempSqlitePath() }),
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',

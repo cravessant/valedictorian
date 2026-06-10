@@ -16,10 +16,10 @@ import {
   type ProfileSecretCodec,
 } from '../src/modules/profile/profile.repository'
 import {
-  createJobAppRuntime,
-  resolveJobAppRuntimeConfig,
-  type JobAppRuntime,
-} from '../src/runtime/job-app-runtime'
+  createValedictorianRuntime,
+  resolveValedictorianRuntimeConfig,
+  type ValedictorianRuntime,
+} from '../src/runtime/valedictorian-runtime'
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
 import { type WorkspaceSummary } from '../src/workspace/workspace.initializer'
 import { createWorkspaceMenuTemplate } from '../src/workspace/workspace.menu'
@@ -52,15 +52,15 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
-app.setName('Job App')
+app.setName('Valedictorian')
 
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.jobautomation.jobapp')
+  app.setAppUserModelId('com.valedictorian.app')
 }
 
 let mainWindow: BrowserWindow | null = null
 let workspaceLauncherWindow: BrowserWindow | null = null
-let runtime: JobAppRuntime | null = null
+let runtime: ValedictorianRuntime | null = null
 let currentWorkspace: WorkspaceSummary | null = null
 let runtimeServicesRegistered = false
 
@@ -97,13 +97,13 @@ async function registerRuntimeServices(
   options?: WorkspaceActivationOptions,
 ) {
   const settingsStore = createFileAppSettingsStore(workspace.appSettingsPath)
-  const config = resolveJobAppRuntimeConfig({
+  const config = resolveValedictorianRuntimeConfig({
     settings: await settingsStore.get(),
     userDataPath: app.getPath('userData'),
     workspaceDataPath: workspace.dataPath,
   })
 
-  runtime = await createJobAppRuntime({
+  runtime = await createValedictorianRuntime({
     config: {
       ...config,
       seedDataMode: options?.seedData ?? config.seedDataMode,
@@ -147,7 +147,7 @@ function createElectronSecretCodec(): ProfileSecretCodec {
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
-    title: 'Job App',
+    title: 'Valedictorian',
     titleBarOverlay: {
       color: '#181825',
       symbolColor: '#cdd6f4',
@@ -200,7 +200,7 @@ function createWorkspaceLauncherWindow() {
     minimizable: true,
     resizable: false,
     show: false,
-    title: 'Job Automation - Workspace Launcher',
+    title: 'Valedictorian - Workspace Launcher',
     titleBarOverlay: {
       color: '#181825',
       symbolColor: '#cdd6f4',
@@ -371,7 +371,7 @@ async function chooseWorkspaceRoot() {
   const result = await dialog.showOpenDialog({
     buttonLabel: 'Open workspace',
     properties: ['openDirectory', 'createDirectory'],
-    title: 'Choose Job App workspace',
+    title: 'Choose Valedictorian workspace',
   })
 
   if (result.canceled) {

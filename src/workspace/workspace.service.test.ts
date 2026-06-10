@@ -22,7 +22,7 @@ function createTempRegistryStore(prefix: string) {
 
 describe('workspace launch state', () => {
   it('returns launcher state without asking the user to choose a folder when no workspace exists', async () => {
-    const registryStore = createTempRegistryStore('job-app-empty-registry-')
+    const registryStore = createTempRegistryStore('valedictorian-empty-registry-')
 
     await expect(
       resolveWorkspaceLaunchState({
@@ -39,7 +39,7 @@ describe('workspace launch state', () => {
   })
 
   it('includes dev-only seed capability in launcher state when enabled', async () => {
-    const registryStore = createTempRegistryStore('job-app-dev-registry-')
+    const registryStore = createTempRegistryStore('valedictorian-dev-registry-')
 
     await expect(
       resolveWorkspaceLaunchState({
@@ -56,12 +56,12 @@ describe('workspace launch state', () => {
     })
   })
 
-  it('opens JOB_APP_WORKSPACE_PATH as active launch state', async () => {
-    const workspaceRoot = createTempPath('job-app-env-workspace-')
-    const registryStore = createTempRegistryStore('job-app-env-registry-')
+  it('opens VALEDICTORIAN_WORKSPACE_PATH as active launch state', async () => {
+    const workspaceRoot = createTempPath('valedictorian-env-workspace-')
+    const registryStore = createTempRegistryStore('valedictorian-env-registry-')
 
     const launchState = await resolveWorkspaceLaunchState({
-      env: { JOB_APP_WORKSPACE_PATH: workspaceRoot },
+      env: { VALEDICTORIAN_WORKSPACE_PATH: workspaceRoot },
       registryStore,
     })
 
@@ -77,9 +77,9 @@ describe('workspace launch state', () => {
   })
 
   it('auto-opens the last valid workspace as active launch state', async () => {
-    const workspaceRoot = createTempPath('job-app-recent-workspace-')
+    const workspaceRoot = createTempPath('valedictorian-recent-workspace-')
     const workspace = initializeWorkspace(workspaceRoot, { createId: () => 'workspace-recent' })
-    const registryStore = createTempRegistryStore('job-app-recent-registry-')
+    const registryStore = createTempRegistryStore('valedictorian-recent-registry-')
     await registryStore.markOpened({
       id: workspace.id,
       name: workspace.name,
@@ -101,8 +101,8 @@ describe('workspace launch state', () => {
   })
 
   it('returns launcher state with missing recent workspace metadata', async () => {
-    const missingPath = path.join(os.tmpdir(), 'job-app-missing-workspace')
-    const registryStore = createTempRegistryStore('job-app-missing-registry-')
+    const missingPath = path.join(os.tmpdir(), 'valedictorian-missing-workspace')
+    const registryStore = createTempRegistryStore('valedictorian-missing-registry-')
     await registryStore.markOpened({
       id: 'workspace-missing',
       name: 'Missing Search',
@@ -135,14 +135,14 @@ describe('workspace launch state', () => {
 })
 
 describe('workspace startup resolution', () => {
-  it('opens JOB_APP_WORKSPACE_PATH without showing the picker', async () => {
-    const workspaceRoot = createTempPath('job-app-env-workspace-')
-    const registryStore = createTempRegistryStore('job-app-env-registry-')
+  it('opens VALEDICTORIAN_WORKSPACE_PATH without showing the picker', async () => {
+    const workspaceRoot = createTempPath('valedictorian-env-workspace-')
+    const registryStore = createTempRegistryStore('valedictorian-env-registry-')
     const chooseWorkspaceRoot = vi.fn(async () => null)
 
     const workspace = await resolveInitialWorkspace({
       chooseWorkspaceRoot,
-      env: { JOB_APP_WORKSPACE_PATH: workspaceRoot },
+      env: { VALEDICTORIAN_WORKSPACE_PATH: workspaceRoot },
       registryStore,
     })
 
@@ -154,8 +154,8 @@ describe('workspace startup resolution', () => {
   })
 
   it('auto-opens the last valid workspace before asking the user to choose', async () => {
-    const workspaceRoot = createTempPath('job-app-recent-workspace-')
-    const registryStore = createTempRegistryStore('job-app-recent-registry-')
+    const workspaceRoot = createTempPath('valedictorian-recent-workspace-')
+    const registryStore = createTempRegistryStore('valedictorian-recent-registry-')
     const workspace = await resolveInitialWorkspace({
       chooseWorkspaceRoot: vi.fn(async () => workspaceRoot),
       env: {},
@@ -176,8 +176,8 @@ describe('workspace startup resolution', () => {
 
 describe('workspace service', () => {
   it('opens a folder from the launcher and activates runtime without relaunching', async () => {
-    const nextRoot = createTempPath('job-app-launcher-open-workspace-')
-    const registryStore = createTempRegistryStore('job-app-launcher-service-registry-')
+    const nextRoot = createTempPath('valedictorian-launcher-open-workspace-')
+    const registryStore = createTempRegistryStore('valedictorian-launcher-service-registry-')
     const activateWorkspace = vi.fn(async () => undefined)
     const relaunchApp = vi.fn()
     const service = createWorkspaceService({
@@ -205,8 +205,8 @@ describe('workspace service', () => {
   })
 
   it('returns the current workspace after launcher activation updates shared state', async () => {
-    const nextRoot = createTempPath('job-app-launcher-current-workspace-')
-    const registryStore = createTempRegistryStore('job-app-launcher-current-registry-')
+    const nextRoot = createTempPath('valedictorian-launcher-current-workspace-')
+    const registryStore = createTempRegistryStore('valedictorian-launcher-current-registry-')
     let currentWorkspace: ReturnType<typeof initializeWorkspace> | null = null
     const service = createWorkspaceService({
       activateWorkspace: vi.fn(async (workspace) => {
@@ -227,9 +227,9 @@ describe('workspace service', () => {
   })
 
   it('opens a valid recent workspace from the launcher', async () => {
-    const workspaceRoot = createTempPath('job-app-recent-open-workspace-')
+    const workspaceRoot = createTempPath('valedictorian-recent-open-workspace-')
     const workspace = initializeWorkspace(workspaceRoot, { createId: () => 'workspace-recent' })
-    const registryStore = createTempRegistryStore('job-app-recent-open-registry-')
+    const registryStore = createTempRegistryStore('valedictorian-recent-open-registry-')
     await registryStore.markOpened({
       id: workspace.id,
       name: workspace.name,
@@ -261,9 +261,9 @@ describe('workspace service', () => {
   })
 
   it('shows launcher state instead of the active workspace when switcher mode is requested', async () => {
-    const workspaceRoot = createTempPath('job-app-switcher-workspace-')
+    const workspaceRoot = createTempPath('valedictorian-switcher-workspace-')
     const workspace = initializeWorkspace(workspaceRoot, { createId: () => 'workspace-switcher' })
-    const registryStore = createTempRegistryStore('job-app-switcher-registry-')
+    const registryStore = createTempRegistryStore('valedictorian-switcher-registry-')
     await registryStore.markOpened({
       id: workspace.id,
       name: workspace.name,
@@ -290,11 +290,11 @@ describe('workspace service', () => {
   })
 
   it('marks a recent workspace open and relaunches when switching from an active workspace', async () => {
-    const currentRoot = createTempPath('job-app-current-recent-workspace-')
-    const nextRoot = createTempPath('job-app-next-recent-workspace-')
+    const currentRoot = createTempPath('valedictorian-current-recent-workspace-')
+    const nextRoot = createTempPath('valedictorian-next-recent-workspace-')
     const currentWorkspace = initializeWorkspace(currentRoot, { createId: () => 'workspace-current' })
     const nextWorkspace = initializeWorkspace(nextRoot, { createId: () => 'workspace-next' })
-    const registryStore = createTempRegistryStore('job-app-recent-switch-registry-')
+    const registryStore = createTempRegistryStore('valedictorian-recent-switch-registry-')
     await registryStore.markOpened({
       id: currentWorkspace.id,
       name: currentWorkspace.name,
@@ -334,8 +334,8 @@ describe('workspace service', () => {
   })
 
   it('creates a named workspace under a parent folder from the launcher', async () => {
-    const parentPath = createTempPath('job-app-create-parent-')
-    const registryStore = createTempRegistryStore('job-app-create-registry-')
+    const parentPath = createTempPath('valedictorian-create-parent-')
+    const registryStore = createTempRegistryStore('valedictorian-create-registry-')
     const activateWorkspace = vi.fn(async () => undefined)
     const service = createWorkspaceService({
       activateWorkspace,
@@ -352,7 +352,7 @@ describe('workspace service', () => {
     })
 
     const rootPath = path.join(parentPath, 'Summer Search')
-    expect(fs.existsSync(path.join(rootPath, '.job-automation', 'manifest.json'))).toBe(true)
+    expect(fs.existsSync(path.join(rootPath, '.valedictorian', 'manifest.json'))).toBe(true)
     expect(launchState).toMatchObject({
       status: 'active',
       workspace: {
@@ -367,7 +367,7 @@ describe('workspace service', () => {
 
   it('chooses a create parent folder without opening a workspace', async () => {
     const chooseWorkspaceParentRoot = vi.fn(async () => '/Users/keni/Documents')
-    const registryStore = createTempRegistryStore('job-app-create-parent-picker-registry-')
+    const registryStore = createTempRegistryStore('valedictorian-create-parent-picker-registry-')
     const activateWorkspace = vi.fn(async () => undefined)
     const service = createWorkspaceService({
       activateWorkspace,
@@ -385,8 +385,8 @@ describe('workspace service', () => {
   })
 
   it('passes sample seed intent only when dev seeding is enabled', async () => {
-    const parentPath = createTempPath('job-app-create-dev-parent-')
-    const registryStore = createTempRegistryStore('job-app-create-dev-registry-')
+    const parentPath = createTempPath('valedictorian-create-dev-parent-')
+    const registryStore = createTempRegistryStore('valedictorian-create-dev-registry-')
     const activateWorkspace = vi.fn(async () => undefined)
     const service = createWorkspaceService({
       activateWorkspace,
@@ -411,8 +411,8 @@ describe('workspace service', () => {
   })
 
   it('ignores sample seed requests when dev seeding is disabled', async () => {
-    const parentPath = createTempPath('job-app-create-packaged-parent-')
-    const registryStore = createTempRegistryStore('job-app-create-packaged-registry-')
+    const parentPath = createTempPath('valedictorian-create-packaged-parent-')
+    const registryStore = createTempRegistryStore('valedictorian-create-packaged-registry-')
     const activateWorkspace = vi.fn(async () => undefined)
     const service = createWorkspaceService({
       activateWorkspace,
@@ -437,9 +437,9 @@ describe('workspace service', () => {
   })
 
   it('removes a recent workspace from launcher state', async () => {
-    const workspaceRoot = createTempPath('job-app-remove-recent-workspace-')
+    const workspaceRoot = createTempPath('valedictorian-remove-recent-workspace-')
     const workspace = initializeWorkspace(workspaceRoot, { createId: () => 'workspace-remove' })
-    const registryStore = createTempRegistryStore('job-app-remove-recent-registry-')
+    const registryStore = createTempRegistryStore('valedictorian-remove-recent-registry-')
     await registryStore.markOpened({
       id: workspace.id,
       name: workspace.name,
@@ -464,9 +464,9 @@ describe('workspace service', () => {
   })
 
   it('chooses a new workspace, records it as recent, and requests relaunch', async () => {
-    const currentRoot = createTempPath('job-app-current-workspace-')
-    const nextRoot = createTempPath('job-app-next-workspace-')
-    const registryStore = createTempRegistryStore('job-app-service-registry-')
+    const currentRoot = createTempPath('valedictorian-current-workspace-')
+    const nextRoot = createTempPath('valedictorian-next-workspace-')
+    const registryStore = createTempRegistryStore('valedictorian-service-registry-')
     const currentWorkspace = await resolveInitialWorkspace({
       chooseWorkspaceRoot: vi.fn(async () => currentRoot),
       env: {},

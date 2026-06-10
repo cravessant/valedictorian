@@ -8,20 +8,20 @@ describe('workspace paths', () => {
   it('resolves the Obsidian-style workspace data layout from a selected folder', () => {
     expect(resolveWorkspaceLayout('/Users/keni/Job Search')).toEqual({
       rootPath: '/Users/keni/Job Search',
-      dataPath: '/Users/keni/Job Search/.job-automation',
-      manifestPath: '/Users/keni/Job Search/.job-automation/manifest.json',
-      appSettingsPath: '/Users/keni/Job Search/.job-automation/app.json',
-      sqlitePath: '/Users/keni/Job Search/.job-automation/job-app.sqlite',
-      automationsPath: '/Users/keni/Job Search/.job-automation/automations',
-      promptsPath: '/Users/keni/Job Search/.job-automation/prompts',
-      templatesPath: '/Users/keni/Job Search/.job-automation/templates',
-      notesPath: '/Users/keni/Job Search/.job-automation/notes',
+      dataPath: '/Users/keni/Job Search/.valedictorian',
+      manifestPath: '/Users/keni/Job Search/.valedictorian/manifest.json',
+      appSettingsPath: '/Users/keni/Job Search/.valedictorian/app.json',
+      sqlitePath: '/Users/keni/Job Search/.valedictorian/valedictorian.sqlite',
+      automationsPath: '/Users/keni/Job Search/.valedictorian/automations',
+      promptsPath: '/Users/keni/Job Search/.valedictorian/prompts',
+      templatesPath: '/Users/keni/Job Search/.valedictorian/templates',
+      notesPath: '/Users/keni/Job Search/.valedictorian/notes',
     })
   })
 
   it('uses the app-data folder for the recent workspace registry', () => {
     expect(
-      getDefaultWorkspaceRegistryPath('/Users/keni/Library/Application Support/Job App'),
-    ).toBe('/Users/keni/Library/Application Support/Job App/workspaces.json')
+      getDefaultWorkspaceRegistryPath('/Users/keni/Library/Application Support/Valedictorian'),
+    ).toBe('/Users/keni/Library/Application Support/Valedictorian/workspaces.json')
   })
 })

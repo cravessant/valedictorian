@@ -1,4 +1,4 @@
-# Job App
+# Valedictorian
 
 Local-first desktop app for tracking job applications and preparing automation handoffs.
 
@@ -9,7 +9,7 @@ This repo currently targets a private Mac alpha. The packaged app is unsigned, s
 Workspace state lives under:
 
 ```text
-<workspace>/.job-automation/
+<workspace>/.valedictorian/
 ```
 
 The app keeps only a small recent-workspace registry in the Electron app-data folder so it can reopen the last valid workspace on launch.

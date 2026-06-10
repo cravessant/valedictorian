@@ -16,13 +16,13 @@ import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.proc
 import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
-export interface LocalJobAppClientOptions {
+export interface LocalValedictorianClientOptions {
   referenceTrackerPath?: string
-  seedDataMode?: JobAppSeedDataMode
+  seedDataMode?: ValedictorianSeedDataMode
   sqlitePath: string
 }
 
-export type JobAppSeedDataMode = 'none' | 'sample' | 'reference-tracker'
+export type ValedictorianSeedDataMode = 'none' | 'sample' | 'reference-tracker'
 
 const unavailableSecretCodec: ProfileSecretCodec = {
   decrypt() {
@@ -33,11 +33,11 @@ const unavailableSecretCodec: ProfileSecretCodec = {
   },
 }
 
-export function createLocalJobAppClient({
+export function createLocalValedictorianClient({
   referenceTrackerPath,
   seedDataMode = 'none',
   sqlitePath,
-}: LocalJobAppClientOptions): JobAppClient {
+}: LocalValedictorianClientOptions): JobAppClient {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
 
   const sqlite = createFileDatabase(sqlitePath)
@@ -141,7 +141,7 @@ function seedLocalData(
   {
     referenceTrackerPath,
     seedDataMode,
-  }: Pick<LocalJobAppClientOptions, 'referenceTrackerPath' | 'seedDataMode'>,
+  }: Pick<LocalValedictorianClientOptions, 'referenceTrackerPath' | 'seedDataMode'>,
 ) {
   if (seedDataMode === 'none') {
     return
@@ -166,10 +166,10 @@ function seedLocalData(
 function assertSeedOptions({
   referenceTrackerPath,
   seedDataMode,
-}: Pick<LocalJobAppClientOptions, 'referenceTrackerPath' | 'seedDataMode'>) {
+}: Pick<LocalValedictorianClientOptions, 'referenceTrackerPath' | 'seedDataMode'>) {
   if (seedDataMode === 'reference-tracker' && !referenceTrackerPath) {
     throw new Error(
-      'JOB_APP_REFERENCE_TRACKER_PATH is required when JOB_APP_SEED_DATA=reference-tracker',
+      'VALEDICTORIAN_REFERENCE_TRACKER_PATH is required when VALEDICTORIAN_SEED_DATA=reference-tracker',
     )
   }
 }
@@ -177,7 +177,7 @@ function assertSeedOptions({
 function requireReferenceTrackerPath(referenceTrackerPath: string | undefined) {
   if (!referenceTrackerPath) {
     throw new Error(
-      'JOB_APP_REFERENCE_TRACKER_PATH is required when JOB_APP_SEED_DATA=reference-tracker',
+      'VALEDICTORIAN_REFERENCE_TRACKER_PATH is required when VALEDICTORIAN_SEED_DATA=reference-tracker',
     )
   }
 

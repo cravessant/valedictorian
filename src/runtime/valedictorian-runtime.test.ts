@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { JobAppClient } from 'sparxie'
-import { createJobAppRuntime, resolveJobAppRuntimeConfig } from './job-app-runtime'
+import { createValedictorianRuntime, resolveValedictorianRuntimeConfig } from './valedictorian-runtime'
 
 function createClient(name: string): JobAppClient {
   return {
@@ -23,12 +23,12 @@ function createClient(name: string): JobAppClient {
   } as unknown as JobAppClient
 }
 
-describe('job app runtime config', () => {
+describe('Valedictorian runtime config', () => {
   it('defaults to local desktop mode without starting an HTTP server', () => {
     expect(
-      resolveJobAppRuntimeConfig({
+      resolveValedictorianRuntimeConfig({
         env: {},
-        userDataPath: '/Users/test/Library/Application Support/Job App',
+        userDataPath: '/Users/test/Library/Application Support/Valedictorian',
       }),
     ).toEqual({
       apiHost: '127.0.0.1',
@@ -38,32 +38,32 @@ describe('job app runtime config', () => {
       mode: 'local-desktop',
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
-      sqlitePath: '/Users/test/Library/Application Support/Job App/job-app.sqlite',
+      sqlitePath: '/Users/test/Library/Application Support/Valedictorian/valedictorian.sqlite',
     })
   })
 
   it('defaults the SQLite database path to the workspace data folder when present', () => {
     expect(
-      resolveJobAppRuntimeConfig({
+      resolveValedictorianRuntimeConfig({
         env: {},
-        userDataPath: '/Users/test/Library/Application Support/Job App',
-        workspaceDataPath: '/Users/test/Job Search/.job-automation',
+        userDataPath: '/Users/test/Library/Application Support/Valedictorian',
+        workspaceDataPath: '/Users/test/Job Search/.valedictorian',
       }),
     ).toMatchObject({
-      sqlitePath: '/Users/test/Job Search/.job-automation/job-app.sqlite',
+      sqlitePath: '/Users/test/Job Search/.valedictorian/valedictorian.sqlite',
     })
   })
 
   it('honors local shared, remote, and path overrides', () => {
     expect(
-      resolveJobAppRuntimeConfig({
+      resolveValedictorianRuntimeConfig({
         env: {
-          JOB_APP_API_HOST: '0.0.0.0',
-          JOB_APP_API_PORT: '9999',
-          JOB_APP_API_TOKEN: 'local-token',
-          JOB_APP_MODE: 'local-shared',
-          JOB_APP_SEED_DATA: 'sample',
-          JOB_APP_SQLITE_PATH: '/tmp/job-app.sqlite',
+          VALEDICTORIAN_API_HOST: '0.0.0.0',
+          VALEDICTORIAN_API_PORT: '9999',
+          VALEDICTORIAN_API_TOKEN: 'local-token',
+          VALEDICTORIAN_MODE: 'local-shared',
+          VALEDICTORIAN_SEED_DATA: 'sample',
+          VALEDICTORIAN_SQLITE_PATH: '/tmp/valedictorian.sqlite',
         },
         userDataPath: '/unused',
       }),
@@ -75,21 +75,21 @@ describe('job app runtime config', () => {
       mode: 'local-shared',
       referenceTrackerPath: undefined,
       seedDataMode: 'sample',
-      sqlitePath: '/tmp/job-app.sqlite',
+      sqlitePath: '/tmp/valedictorian.sqlite',
     })
 
     expect(
-      resolveJobAppRuntimeConfig({
+      resolveValedictorianRuntimeConfig({
         env: {
-          JOB_APP_API_TOKEN: 'remote-token',
-          JOB_APP_API_URL: 'https://hosted.job-app.test',
-          JOB_APP_MODE: 'remote',
+          VALEDICTORIAN_API_TOKEN: 'remote-token',
+          VALEDICTORIAN_API_URL: 'https://hosted.valedictorian.test',
+          VALEDICTORIAN_MODE: 'remote',
         },
         userDataPath: '/unused',
       }),
     ).toMatchObject({
       apiToken: 'remote-token',
-      apiUrl: 'https://hosted.job-app.test',
+      apiUrl: 'https://hosted.valedictorian.test',
       mode: 'remote',
       seedDataMode: 'none',
     })
@@ -97,17 +97,17 @@ describe('job app runtime config', () => {
 
   it('uses saved settings when env vars are absent', () => {
     expect(
-      resolveJobAppRuntimeConfig({
+      resolveValedictorianRuntimeConfig({
         env: {},
         settings: {
           apiToken: 'saved-token',
           localApiHost: '0.0.0.0',
           localApiPort: 7777,
-          remoteApiUrl: 'https://saved.job-app.test',
+          remoteApiUrl: 'https://saved.valedictorian.test',
           runtimeMode: 'local-shared',
           showAdvancedFilters: true,
         },
-        userDataPath: '/Users/test/Library/Application Support/Job App',
+        userDataPath: '/Users/test/Library/Application Support/Valedictorian',
       }),
     ).toEqual({
       apiHost: '0.0.0.0',
@@ -117,17 +117,17 @@ describe('job app runtime config', () => {
       mode: 'local-shared',
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
-      sqlitePath: '/Users/test/Library/Application Support/Job App/job-app.sqlite',
+      sqlitePath: '/Users/test/Library/Application Support/Valedictorian/valedictorian.sqlite',
     })
 
     expect(
-      resolveJobAppRuntimeConfig({
+      resolveValedictorianRuntimeConfig({
         env: {},
         settings: {
           apiToken: 'remote-token',
           localApiHost: '127.0.0.1',
           localApiPort: 4317,
-          remoteApiUrl: 'https://remote.job-app.test',
+          remoteApiUrl: 'https://remote.valedictorian.test',
           runtimeMode: 'remote',
           showAdvancedFilters: false,
         },
@@ -135,7 +135,7 @@ describe('job app runtime config', () => {
       }),
     ).toMatchObject({
       apiToken: 'remote-token',
-      apiUrl: 'https://remote.job-app.test',
+      apiUrl: 'https://remote.valedictorian.test',
       mode: 'remote',
       seedDataMode: 'none',
     })
@@ -143,19 +143,19 @@ describe('job app runtime config', () => {
 
   it('lets env vars override saved settings', () => {
     expect(
-      resolveJobAppRuntimeConfig({
+      resolveValedictorianRuntimeConfig({
         env: {
-          JOB_APP_API_HOST: '127.0.0.2',
-          JOB_APP_API_PORT: '9999',
-          JOB_APP_API_TOKEN: 'env-token',
-          JOB_APP_API_URL: 'https://env.job-app.test',
-          JOB_APP_MODE: 'remote',
+          VALEDICTORIAN_API_HOST: '127.0.0.2',
+          VALEDICTORIAN_API_PORT: '9999',
+          VALEDICTORIAN_API_TOKEN: 'env-token',
+          VALEDICTORIAN_API_URL: 'https://env.valedictorian.test',
+          VALEDICTORIAN_MODE: 'remote',
         },
         settings: {
           apiToken: 'saved-token',
           localApiHost: '0.0.0.0',
           localApiPort: 7777,
-          remoteApiUrl: 'https://saved.job-app.test',
+          remoteApiUrl: 'https://saved.valedictorian.test',
           runtimeMode: 'local-shared',
           showAdvancedFilters: true,
         },
@@ -165,24 +165,24 @@ describe('job app runtime config', () => {
       apiHost: '127.0.0.2',
       apiPort: 9999,
       apiToken: 'env-token',
-      apiUrl: 'https://env.job-app.test',
+      apiUrl: 'https://env.valedictorian.test',
       mode: 'remote',
       seedDataMode: 'none',
     })
   })
 })
 
-describe('job app runtime creation', () => {
+describe('Valedictorian runtime creation', () => {
   it('uses a local client without an HTTP server in local desktop mode', async () => {
     const localClient = createClient('local')
     const createLocalClient = vi.fn(() => localClient)
     const createHttpClient = vi.fn(() => createClient('http'))
     const startServer = vi.fn()
 
-    const runtime = await createJobAppRuntime({
-      config: resolveJobAppRuntimeConfig({
+    const runtime = await createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({
         env: {},
-        userDataPath: '/tmp/job-app-user-data',
+        userDataPath: '/tmp/valedictorian-user-data',
       }),
       createHttpClient,
       createLocalClient,
@@ -193,7 +193,7 @@ describe('job app runtime creation', () => {
     expect(createLocalClient).toHaveBeenCalledWith({
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
-      sqlitePath: '/tmp/job-app-user-data/job-app.sqlite',
+      sqlitePath: '/tmp/valedictorian-user-data/valedictorian.sqlite',
     })
     expect(createHttpClient).not.toHaveBeenCalled()
     expect(startServer).not.toHaveBeenCalled()
@@ -205,14 +205,14 @@ describe('job app runtime creation', () => {
     const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:9999' }
     const startServer = vi.fn(async () => server)
 
-    const runtime = await createJobAppRuntime({
-      config: resolveJobAppRuntimeConfig({
+    const runtime = await createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({
         env: {
-          JOB_APP_API_PORT: '9999',
-          JOB_APP_API_TOKEN: 'local-token',
-          JOB_APP_MODE: 'local-shared',
+          VALEDICTORIAN_API_PORT: '9999',
+          VALEDICTORIAN_API_TOKEN: 'local-token',
+          VALEDICTORIAN_MODE: 'local-shared',
         },
-        userDataPath: '/tmp/job-app-user-data',
+        userDataPath: '/tmp/valedictorian-user-data',
       }),
       createHttpClient: vi.fn(() => createClient('http')),
       createLocalClient: vi.fn(() => localClient),
@@ -238,14 +238,14 @@ describe('job app runtime creation', () => {
     const createLocalClient = vi.fn(() => createClient('local'))
     const startServer = vi.fn()
 
-    const runtime = await createJobAppRuntime({
-      config: resolveJobAppRuntimeConfig({
+    const runtime = await createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({
         env: {
-          JOB_APP_API_TOKEN: 'remote-token',
-          JOB_APP_API_URL: 'https://hosted.job-app.test',
-          JOB_APP_MODE: 'remote',
+          VALEDICTORIAN_API_TOKEN: 'remote-token',
+          VALEDICTORIAN_API_URL: 'https://hosted.valedictorian.test',
+          VALEDICTORIAN_MODE: 'remote',
         },
-        userDataPath: '/tmp/job-app-user-data',
+        userDataPath: '/tmp/valedictorian-user-data',
       }),
       createHttpClient,
       createLocalClient,
@@ -254,7 +254,7 @@ describe('job app runtime creation', () => {
 
     expect(runtime.client).toBe(httpClient)
     expect(createHttpClient).toHaveBeenCalledWith({
-      baseUrl: 'https://hosted.job-app.test',
+      baseUrl: 'https://hosted.valedictorian.test',
       token: 'remote-token',
     })
     expect(createLocalClient).not.toHaveBeenCalled()

@@ -2,26 +2,26 @@ import http from 'node:http'
 import type { JobAppClient } from 'sparxie'
 import { handleRequest } from './local-server.routes'
 
-export interface CreateJobAppHttpServerOptions {
+export interface CreateValedictorianHttpServerOptions {
   client: JobAppClient
   host?: string
   port?: number
   token?: string
 }
 
-export interface StartedJobAppHttpServer {
+export interface StartedValedictorianHttpServer {
   close: () => Promise<void>
   host: string
   port: number
   url: string
 }
 
-export async function createJobAppHttpServer({
+export async function createValedictorianHttpServer({
   client,
   host = '127.0.0.1',
   port = 4317,
   token,
-}: CreateJobAppHttpServerOptions): Promise<StartedJobAppHttpServer> {
+}: CreateValedictorianHttpServerOptions): Promise<StartedValedictorianHttpServer> {
   const server = http.createServer((request, response) => {
     void handleRequest({ client, request, response, token })
   })

@@ -7,7 +7,7 @@ import { createFileAppSettingsStore, createWorkspaceAppSettingsStore } from './a
 import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 
 function createTempSettingsPath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-settings-')), 'settings.json')
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-settings-')), 'settings.json')
 }
 
 describe('file app settings store', () => {
@@ -24,7 +24,7 @@ describe('file app settings store', () => {
 
     await expect(
       store.update({
-        remoteApiUrl: 'https://job-app.test',
+        remoteApiUrl: 'https://valedictorian.test',
         runtimeMode: 'remote',
         sidebarCollapsed: true,
         showAdvancedFilters: true,
@@ -32,19 +32,19 @@ describe('file app settings store', () => {
     ).resolves.toMatchObject({
       localApiHost: '127.0.0.1',
       localApiPort: 4317,
-      remoteApiUrl: 'https://job-app.test',
+      remoteApiUrl: 'https://valedictorian.test',
       runtimeMode: 'remote',
       sidebarCollapsed: true,
       showAdvancedFilters: true,
     })
 
     expect(JSON.parse(fs.readFileSync(settingsPath, 'utf8'))).toMatchObject({
-      remoteApiUrl: 'https://job-app.test',
+      remoteApiUrl: 'https://valedictorian.test',
       runtimeMode: 'remote',
       showAdvancedFilters: true,
     })
     await expect(createFileAppSettingsStore(settingsPath).get()).resolves.toMatchObject({
-      remoteApiUrl: 'https://job-app.test',
+      remoteApiUrl: 'https://valedictorian.test',
       runtimeMode: 'remote',
       sidebarCollapsed: true,
       showAdvancedFilters: true,
@@ -71,8 +71,8 @@ describe('file app settings store', () => {
     )
   })
 
-  it('persists workspace settings to .job-automation/app.json', async () => {
-    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-workspace-settings-'))
+  it('persists workspace settings to .valedictorian/app.json', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-workspace-settings-'))
     const layout = resolveWorkspaceLayout(workspaceRoot)
     const store = createWorkspaceAppSettingsStore(workspaceRoot)
 

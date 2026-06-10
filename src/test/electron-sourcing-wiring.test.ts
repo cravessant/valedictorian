@@ -60,10 +60,10 @@ describe('Electron sourcing wiring', () => {
     const indexSource = fs.readFileSync(path.resolve('index.html'), 'utf8')
 
     expect(mainSource).toContain("import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'")
-    expect(mainSource).toContain("app.setName('Job App')")
-    expect(mainSource).toContain("app.setAppUserModelId('com.jobautomation.jobapp')")
-    expect(mainSource).toContain("title: 'Job App'")
-    expect(indexSource).toContain('<title>Job App</title>')
+    expect(mainSource).toContain("app.setName('Valedictorian')")
+    expect(mainSource).toContain("app.setAppUserModelId('com.valedictorian.app')")
+    expect(mainSource).toContain("title: 'Valedictorian'")
+    expect(indexSource).toContain('<title>Valedictorian</title>')
     expect(mainSource).toContain('createWorkspaceMenuTemplate')
     expect(mainSource).toContain('Menu.setApplicationMenu')
     expect(mainSource).toContain('showWorkspaceLauncherWindow')
@@ -75,7 +75,7 @@ describe('Electron sourcing wiring', () => {
 
     expect(mainSource).toContain('function createWorkspaceLauncherWindow()')
     expect(mainSource).toContain('createWorkspaceLauncherWindow()')
-    expect(mainSource).toContain("title: 'Job Automation - Workspace Launcher'")
+    expect(mainSource).toContain("title: 'Valedictorian - Workspace Launcher'")
     expect(mainSource).toContain('width: 820')
     expect(mainSource).toContain('height: 560')
     expect(mainSource).toContain('useContentSize: true')

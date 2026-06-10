@@ -12,39 +12,39 @@ import {
   workflowRunSteps,
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
-import { createLocalJobAppClient as createRuntimeLocalJobAppClient } from './local-job-app-client'
+import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 
-function createLocalJobAppClient(options: Parameters<typeof createRuntimeLocalJobAppClient>[0]) {
-  return createRuntimeLocalJobAppClient({
+function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
+  return createRuntimeLocalValedictorianClient({
     seedDataMode: 'sample',
     ...options,
   })
 }
 
 function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-client-')), 'job-app.sqlite')
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
 }
 
-describe('runtime local job app client', () => {
-  const originalReferenceTrackerPath = process.env.JOB_APP_REFERENCE_TRACKER_PATH
+describe('runtime local Valedictorian client', () => {
+  const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
 
   beforeEach(() => {
-    process.env.JOB_APP_REFERENCE_TRACKER_PATH = path.join(
+    process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = path.join(
       os.tmpdir(),
-      'job-app-missing-reference-tracker.md',
+      'valedictorian-missing-reference-tracker.md',
     )
   })
 
   afterEach(() => {
     if (originalReferenceTrackerPath === undefined) {
-      delete process.env.JOB_APP_REFERENCE_TRACKER_PATH
+      delete process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
     } else {
-      process.env.JOB_APP_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
+      process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
     }
   })
 
   it('starts with an empty application list by default', async () => {
-    const client = createRuntimeLocalJobAppClient({ sqlitePath: createTempSqlitePath() })
+    const client = createRuntimeLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
 
     await expect(client.applications.list()).resolves.toMatchObject({
       items: [],
@@ -54,15 +54,15 @@ describe('runtime local job app client', () => {
 
   it('requires an explicit path for reference tracker seeding', () => {
     expect(() =>
-      createRuntimeLocalJobAppClient({
+      createRuntimeLocalValedictorianClient({
         seedDataMode: 'reference-tracker',
         sqlitePath: createTempSqlitePath(),
       }),
-    ).toThrow('JOB_APP_REFERENCE_TRACKER_PATH')
+    ).toThrow('VALEDICTORIAN_REFERENCE_TRACKER_PATH')
   })
 
   it('lists seeded applications with query filters and pagination', async () => {
-    const client = createLocalJobAppClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
 
     await expect(
       client.applications.list({
@@ -86,7 +86,7 @@ describe('runtime local job app client', () => {
   })
 
   it('gets and updates application status through the local client', async () => {
-    const client = createLocalJobAppClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
 
     await expect(client.applications.get('application-astranis-backend')).resolves.toMatchObject({
       companyName: 'Astranis Space Technologies',
@@ -109,7 +109,7 @@ describe('runtime local job app client', () => {
   })
 
   it('starts and lists application attempts through the local client', async () => {
-    const client = createLocalJobAppClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
 
     const attempt = await (client.applications as typeof client.applications & {
       attempts: {
@@ -150,7 +150,7 @@ describe('runtime local job app client', () => {
 
   it('records scores and updates the current application score', async () => {
     const sqlitePath = createTempSqlitePath()
-    const client = createLocalJobAppClient({ sqlitePath })
+    const client = createLocalValedictorianClient({ sqlitePath })
 
     await client.scores.record({
       applicationId: 'application-jobster-analytics',
@@ -178,7 +178,7 @@ describe('runtime local job app client', () => {
   })
 
   it('persists profile data and returns non-secret agent context', async () => {
-    const client = createLocalJobAppClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
 
     await client.profile.update({
       answers: [
@@ -229,7 +229,7 @@ describe('runtime local job app client', () => {
   })
 
   it('starts workflow runs and promotes sourcing findings through the local client', async () => {
-    const client = createLocalJobAppClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
 
     const run = await client.runs.start({
       runType: 'sourcing',
@@ -262,7 +262,7 @@ describe('runtime local job app client', () => {
   })
 
   it('processes sourcing candidates through the local client', async () => {
-    const client = createLocalJobAppClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
     const run = await client.runs.start({
       runType: 'sourcing',
       actorType: 'agent',
@@ -357,7 +357,7 @@ describe('runtime local job app client', () => {
       .run()
     sqlite.close()
 
-    const client = createLocalJobAppClient({ sqlitePath })
+    const client = createLocalValedictorianClient({ sqlitePath })
 
     const findings = await client.sourcing.findings.list()
 
@@ -422,7 +422,7 @@ describe('runtime local job app client', () => {
       .run()
     sqlite.close()
 
-    const client = createLocalJobAppClient({ sqlitePath })
+    const client = createLocalValedictorianClient({ sqlitePath })
 
     const attempts = await client.applications.attempts.list({
       applicationId: 'application-astranis-backend',
