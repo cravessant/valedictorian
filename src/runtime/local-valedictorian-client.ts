@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import type { JobAppClient } from 'sparxie'
+import type { ValedictorianClient } from 'sparxie'
 import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import {
@@ -37,7 +37,7 @@ export function createLocalValedictorianClient({
   referenceTrackerPath,
   seedDataMode = 'none',
   sqlitePath,
-}: LocalValedictorianClientOptions): JobAppClient {
+}: LocalValedictorianClientOptions): ValedictorianClient {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
 
   const sqlite = createFileDatabase(sqlitePath)

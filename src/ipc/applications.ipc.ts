@@ -3,7 +3,7 @@ import type {
   ArchiveApplicationInput,
   CreateApplicationInput,
   CreateApplicationLinkInput,
-  JobAppClient,
+  ValedictorianClient,
   StatusUpdateInput,
   UpdateApplicationInput,
   UpdateApplicationLinkInput,
@@ -26,7 +26,7 @@ interface IpcMainLike {
   ): void
 }
 
-export function registerApplicationIpc(client: JobAppClient, ipcMain: IpcMainLike) {
+export function registerApplicationIpc(client: ValedictorianClient, ipcMain: IpcMainLike) {
   ipcMain.handle('applications:list', (_event, query) =>
     client.applications.list(query as ApplicationListQuery | undefined),
   )

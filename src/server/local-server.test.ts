@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { JobAppClient } from 'sparxie'
+import type { ValedictorianClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
@@ -21,7 +21,7 @@ async function readJson(response: Response) {
   return (await response.json()) as unknown
 }
 
-function createBoundaryTestClient(onCreate: () => void): JobAppClient {
+function createBoundaryTestClient(onCreate: () => void): ValedictorianClient {
   return {
     applications: {
       async archive() {},
@@ -157,7 +157,7 @@ function createBoundaryTestClient(onCreate: () => void): JobAppClient {
         },
       },
     },
-  } as unknown as JobAppClient
+  } as unknown as ValedictorianClient
 }
 
 describe('local Valedictorian HTTP server', () => {

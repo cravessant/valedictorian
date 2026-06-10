@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { JobAppClient } from 'sparxie'
+import type { ValedictorianClient } from 'sparxie'
 import { createValedictorianRuntime, resolveValedictorianRuntimeConfig } from './valedictorian-runtime'
 
-function createClient(name: string): JobAppClient {
+function createClient(name: string): ValedictorianClient {
   return {
     applications: {
       get: vi.fn(async () => null),
@@ -20,7 +20,7 @@ function createClient(name: string): JobAppClient {
     scores: {
       record: vi.fn(async () => undefined),
     },
-  } as unknown as JobAppClient
+  } as unknown as ValedictorianClient
 }
 
 describe('Valedictorian runtime config', () => {

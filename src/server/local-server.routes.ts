@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { defaultLocalCapabilities, isApplicationStatus, type JobAppClient, type ProfileUpdateInput } from 'sparxie'
+import { defaultLocalCapabilities, isApplicationStatus, type ValedictorianClient, type ProfileUpdateInput } from 'sparxie'
 import { readJsonBody, readOptionalStringField, readStringField, writeJson } from './local-server.http'
 import {
   parseApplicationAttemptsQuery,
@@ -38,7 +38,7 @@ export async function handleRequest({
   response,
   token,
 }: {
-  client: JobAppClient
+  client: ValedictorianClient
   request: http.IncomingMessage
   response: http.ServerResponse
   token?: string
@@ -482,7 +482,7 @@ export async function handleRequest({
 
     if (request.method === 'POST' && requestUrl.pathname === '/v1/scores') {
       await client.scores.record((await readJsonBody(request)) as Parameters<
-        JobAppClient['scores']['record']
+        ValedictorianClient['scores']['record']
       >[0])
       writeJson(response, 200, { ok: true })
       return

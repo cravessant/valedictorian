@@ -1,9 +1,9 @@
 import path from 'node:path'
 import {
-  createHttpJobAppClient,
-  defaultJobAppApiBaseUrl,
-  type HttpJobAppClientOptions,
-  type JobAppClient,
+  createHttpValedictorianClient,
+  defaultValedictorianApiBaseUrl,
+  type HttpValedictorianClientOptions,
+  type ValedictorianClient,
 } from 'sparxie'
 import {
   createValedictorianHttpServer,
@@ -38,15 +38,15 @@ export interface ValedictorianRuntimeConfig {
 }
 
 export interface ValedictorianRuntime {
-  client: JobAppClient
+  client: ValedictorianClient
   close: () => Promise<void>
   server: Pick<StartedValedictorianHttpServer, 'close' | 'url'> | null
 }
 
 export interface CreateValedictorianRuntimeOptions {
   config: ValedictorianRuntimeConfig
-  createHttpClient?: (options: HttpJobAppClientOptions) => JobAppClient
-  createLocalClient?: (options: LocalValedictorianClientOptions) => JobAppClient
+  createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
+  createLocalClient?: (options: LocalValedictorianClientOptions) => ValedictorianClient
   startServer?: (
     options: CreateValedictorianHttpServerOptions,
   ) => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>
@@ -69,7 +69,7 @@ export function resolveValedictorianRuntimeConfig({
     apiToken: (env.VALEDICTORIAN_API_TOKEN ?? settings.apiToken) || undefined,
     apiUrl:
       env.VALEDICTORIAN_API_URL ??
-      (mode === 'remote' ? settings.remoteApiUrl || defaultJobAppApiBaseUrl : defaultApiUrl),
+      (mode === 'remote' ? settings.remoteApiUrl || defaultValedictorianApiBaseUrl : defaultApiUrl),
     mode,
     referenceTrackerPath: env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
     seedDataMode: readSeedDataMode(env.VALEDICTORIAN_SEED_DATA),
@@ -80,7 +80,7 @@ export function resolveValedictorianRuntimeConfig({
 
 export async function createValedictorianRuntime({
   config,
-  createHttpClient = createHttpJobAppClient,
+  createHttpClient = createHttpValedictorianClient,
   createLocalClient = createLocalValedictorianClient,
   startServer = createValedictorianHttpServer,
 }: CreateValedictorianRuntimeOptions): Promise<ValedictorianRuntime> {
