@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { JobAppClient, ScoreInput } from 'sparxie'
+import type { ValedictorianClient, ScoreInput } from 'sparxie'
 import { registerScoresIpc } from './scores.ipc'
 
 describe('scores IPC registration', () => {
@@ -11,7 +11,7 @@ describe('scores IPC registration', () => {
           inputs.push(input)
         },
       },
-    } as unknown as JobAppClient
+    } as unknown as ValedictorianClient
     const handlers = new Map<string, (_event: unknown, input?: unknown) => Promise<unknown>>()
 
     registerScoresIpc(client, {

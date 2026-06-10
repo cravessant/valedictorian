@@ -25,6 +25,9 @@ function readElectronBuilderConfig() {
 }
 
 describe('build configuration', () => {
+  const sparxieGitDependency =
+    'github:KennyKeni/sparxie#acad8b518e65746513bc9cfa6082fe93c43ac34f'
+
   it('keeps the Electron app packaged separately from the standalone CLI', () => {
     const packageJson = readPackageJson()
     const config = readElectronBuilderConfig()
@@ -47,12 +50,14 @@ describe('build configuration', () => {
     const scripts = Object.values(packageJson.scripts ?? {})
 
     expect(packageJson.version).toMatch(/^0\.\d+\.\d+-alpha\.\d+$/)
-    expect(packageJson.dependencies?.sparxie).toBe('0.1.1')
+    expect(packageJson.dependencies?.sparxie).toBe(sparxieGitDependency)
+    expect(packageJson.dependencies?.sparxie).not.toContain('../sparxie')
     expect(scripts).not.toEqual(expect.arrayContaining([expect.stringContaining('../sparxie')]))
     expect(fs.existsSync(path.resolve('pnpm-lock.yaml'))).toBe(true)
 
     const pnpmWorkspaceConfig = fs.readFileSync(path.resolve('pnpm-workspace.yaml'), 'utf8')
     expect(pnpmWorkspaceConfig).toContain('minimumReleaseAgeExclude:')
     expect(pnpmWorkspaceConfig).toContain('- sparxie')
+    expect(pnpmWorkspaceConfig).toContain('sparxie: true')
   })
 })

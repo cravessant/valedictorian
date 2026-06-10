@@ -1,9 +1,9 @@
 import http from 'node:http'
-import type { JobAppClient } from 'sparxie'
+import type { ValedictorianClient } from 'sparxie'
 import { handleRequest } from './local-server.routes'
 
 export interface CreateValedictorianHttpServerOptions {
-  client: JobAppClient
+  client: ValedictorianClient
   host?: string
   port?: number
   token?: string
