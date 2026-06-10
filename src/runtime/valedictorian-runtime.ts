@@ -6,83 +6,84 @@ import {
   type JobAppClient,
 } from 'sparxie'
 import {
-  createJobAppHttpServer,
-  type CreateJobAppHttpServerOptions,
-  type StartedJobAppHttpServer,
+  createValedictorianHttpServer,
+  type CreateValedictorianHttpServerOptions,
+  type StartedValedictorianHttpServer,
 } from '../server/local-server'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import {
-  createLocalJobAppClient,
-  type JobAppSeedDataMode,
-  type LocalJobAppClientOptions,
-} from './local-job-app-client'
+  createLocalValedictorianClient,
+  type ValedictorianSeedDataMode,
+  type LocalValedictorianClientOptions,
+} from './local-valedictorian-client'
 
-export type JobAppRuntimeMode = 'local-desktop' | 'local-shared' | 'remote'
+export type ValedictorianRuntimeMode = 'local-desktop' | 'local-shared' | 'remote'
 
-export interface JobAppRuntimeConfigInput {
+export interface ValedictorianRuntimeConfigInput {
   env?: Record<string, string | undefined>
   settings?: AppSettings
   userDataPath: string
   workspaceDataPath?: string
 }
 
-export interface JobAppRuntimeConfig {
+export interface ValedictorianRuntimeConfig {
   apiHost: string
   apiPort: number
   apiToken?: string
   apiUrl: string
-  mode: JobAppRuntimeMode
+  mode: ValedictorianRuntimeMode
   referenceTrackerPath?: string
-  seedDataMode: JobAppSeedDataMode
+  seedDataMode: ValedictorianSeedDataMode
   sqlitePath: string
 }
 
-export interface JobAppRuntime {
+export interface ValedictorianRuntime {
   client: JobAppClient
   close: () => Promise<void>
-  server: Pick<StartedJobAppHttpServer, 'close' | 'url'> | null
+  server: Pick<StartedValedictorianHttpServer, 'close' | 'url'> | null
 }
 
-export interface CreateJobAppRuntimeOptions {
-  config: JobAppRuntimeConfig
+export interface CreateValedictorianRuntimeOptions {
+  config: ValedictorianRuntimeConfig
   createHttpClient?: (options: HttpJobAppClientOptions) => JobAppClient
-  createLocalClient?: (options: LocalJobAppClientOptions) => JobAppClient
+  createLocalClient?: (options: LocalValedictorianClientOptions) => JobAppClient
   startServer?: (
-    options: CreateJobAppHttpServerOptions,
-  ) => Promise<Pick<StartedJobAppHttpServer, 'close' | 'url'>>
+    options: CreateValedictorianHttpServerOptions,
+  ) => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>
 }
 
-export function resolveJobAppRuntimeConfig({
+export function resolveValedictorianRuntimeConfig({
   env = process.env,
   settings = defaultAppSettings,
   userDataPath,
   workspaceDataPath,
-}: JobAppRuntimeConfigInput): JobAppRuntimeConfig {
-  const mode = readRuntimeMode(env.JOB_APP_MODE ?? settings.runtimeMode)
-  const apiHost = env.JOB_APP_API_HOST ?? settings.localApiHost
-  const apiPort = parsePort(env.JOB_APP_API_PORT ?? String(settings.localApiPort))
+}: ValedictorianRuntimeConfigInput): ValedictorianRuntimeConfig {
+  const mode = readRuntimeMode(env.VALEDICTORIAN_MODE ?? settings.runtimeMode)
+  const apiHost = env.VALEDICTORIAN_API_HOST ?? settings.localApiHost
+  const apiPort = parsePort(env.VALEDICTORIAN_API_PORT ?? String(settings.localApiPort))
   const defaultApiUrl = `http://${apiHost}:${apiPort}`
 
   return {
     apiHost,
     apiPort,
-    apiToken: (env.JOB_APP_API_TOKEN ?? settings.apiToken) || undefined,
+    apiToken: (env.VALEDICTORIAN_API_TOKEN ?? settings.apiToken) || undefined,
     apiUrl:
-      env.JOB_APP_API_URL ??
+      env.VALEDICTORIAN_API_URL ??
       (mode === 'remote' ? settings.remoteApiUrl || defaultJobAppApiBaseUrl : defaultApiUrl),
     mode,
-    referenceTrackerPath: env.JOB_APP_REFERENCE_TRACKER_PATH,
-    seedDataMode: readSeedDataMode(env.JOB_APP_SEED_DATA),
-    sqlitePath: env.JOB_APP_SQLITE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'job-app.sqlite'),
+    referenceTrackerPath: env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
+    seedDataMode: readSeedDataMode(env.VALEDICTORIAN_SEED_DATA),
+    sqlitePath:
+      env.VALEDICTORIAN_SQLITE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'valedictorian.sqlite'),
   }
 }
 
-export async function createJobAppRuntime({
+export async function createValedictorianRuntime({
   config,
   createHttpClient = createHttpJobAppClient,
-  createLocalClient = createLocalJobAppClient,
-  startServer = createJobAppHttpServer,
-}: CreateJobAppRuntimeOptions): Promise<JobAppRuntime> {
+  createLocalClient = createLocalValedictorianClient,
+  startServer = createValedictorianHttpServer,
+}: CreateValedictorianRuntimeOptions): Promise<ValedictorianRuntime> {
   if (config.mode === 'remote') {
     return {
       client: createHttpClient({
@@ -122,7 +123,7 @@ export async function createJobAppRuntime({
   }
 }
 
-function readRuntimeMode(value: string | undefined): JobAppRuntimeMode {
+function readRuntimeMode(value: string | undefined): ValedictorianRuntimeMode {
   if (!value) {
     return 'local-desktop'
   }
@@ -131,10 +132,10 @@ function readRuntimeMode(value: string | undefined): JobAppRuntimeMode {
     return value
   }
 
-  throw new Error(`Unsupported Job App runtime mode: ${value}`)
+  throw new Error(`Unsupported Valedictorian runtime mode: ${value}`)
 }
 
-function readSeedDataMode(value: string | undefined): JobAppSeedDataMode {
+function readSeedDataMode(value: string | undefined): ValedictorianSeedDataMode {
   if (!value) {
     return 'none'
   }
@@ -143,7 +144,7 @@ function readSeedDataMode(value: string | undefined): JobAppSeedDataMode {
     return value
   }
 
-  throw new Error(`Unsupported JOB_APP_SEED_DATA mode: ${value}`)
+  throw new Error(`Unsupported VALEDICTORIAN_SEED_DATA mode: ${value}`)
 }
 
 function parsePort(value: string | undefined) {
@@ -154,7 +155,7 @@ function parsePort(value: string | undefined) {
   const port = Number(value)
 
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`Invalid JOB_APP_API_PORT: ${value}`)
+    throw new Error(`Invalid VALEDICTORIAN_API_PORT: ${value}`)
   }
 
   return port

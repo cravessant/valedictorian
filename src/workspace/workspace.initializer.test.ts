@@ -7,7 +7,7 @@ import { initializeWorkspace } from './workspace.initializer'
 import { resolveWorkspaceLayout } from './workspace.paths'
 
 function createTempWorkspaceRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-workspace-'))
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-workspace-'))
 }
 
 describe('workspace initializer', () => {
@@ -29,7 +29,7 @@ describe('workspace initializer', () => {
       sqlitePath: layout.sqlitePath,
     })
     expect(JSON.parse(fs.readFileSync(layout.manifestPath, 'utf8'))).toEqual({
-      app: 'job-automation',
+      app: 'valedictorian',
       workspaceVersion: 1,
       id: 'workspace-1',
       name: path.basename(rootPath),

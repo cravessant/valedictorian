@@ -1,6 +1,6 @@
-# Job App UI Theme
+# Valedictorian UI Theme
 
-`job-app` uses Tailwind CSS v4 with local shadcn-style React primitives in `src/components/ui`.
+`valedictorian-app` uses Tailwind CSS v4 with local shadcn-style React primitives in `src/components/ui`.
 
 ## Visual Direction
 
@@ -32,6 +32,6 @@ Use Catppuccin Blur Mocha as the default color source unless the user explicitly
 
 ## Harness Boundary
 
-`job-app` is the deterministic app surface and policy source of truth for external coding harnesses such as Codex or Claude Code. Do not build an embedded OpenRouter loop, browser agent, cron runner, auto-submitter, or automatic database unlocker into the desktop app for v1.
+`valedictorian-app` is the deterministic app surface and policy source of truth for external coding harnesses such as Codex or Claude Code. Do not build an embedded OpenRouter loop, browser agent, cron runner, auto-submitter, or automatic database unlocker into the desktop app for v1.
 
 Policy configuration changes should only affect app decisions: queue buckets, validation gates, required evidence, displayed reasons, and scheduler-ready run-window recommendations. External harnesses remain responsible for executing actions through explicit app APIs.

@@ -6,6 +6,7 @@ function readPackageJson() {
   return JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as {
     bin?: Record<string, string>
     dependencies?: Record<string, string>
+    name?: string
     scripts?: Record<string, string>
     version?: string
   }
@@ -28,8 +29,9 @@ describe('build configuration', () => {
     const packageJson = readPackageJson()
     const config = readElectronBuilderConfig()
 
-    expect(config.appId).toBe('com.jobautomation.jobapp')
-    expect(config.productName).toBe('Job App')
+    expect(packageJson.name).toBe('valedictorian-app')
+    expect(config.appId).toBe('com.valedictorian.app')
+    expect(config.productName).toBe('Valedictorian')
     expect(config.mac?.identity).toBeNull()
     expect(config.mac?.icon).toBe('build/icon.icns')
     expect(fs.existsSync(path.resolve('build/icon.icns'))).toBe(true)

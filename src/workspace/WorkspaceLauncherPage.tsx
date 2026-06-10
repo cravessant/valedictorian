@@ -109,7 +109,7 @@ function WorkspaceLauncherPage({
           <div className="w-full max-w-[430px]">
             <div className="text-center">
               <h1 className="text-2xl font-bold tracking-normal text-foreground">
-                Job Automation
+                Valedictorian
               </h1>
               <p className="mt-1.5 text-xs font-medium text-muted-foreground">
                 Workspace launcher

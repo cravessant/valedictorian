@@ -82,7 +82,7 @@ describe('AppRoot workspace gate', () => {
       />,
     )
 
-    expect(await screen.findByRole('heading', { name: 'Job Automation' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Valedictorian' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open folder' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create workspace' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open Job Search' })).toBeEnabled()
@@ -113,7 +113,7 @@ describe('AppRoot workspace gate', () => {
       'bg-card',
       'pt-32',
     )
-    expect(screen.getByRole('heading', { name: 'Job Automation' })).toHaveClass('text-2xl')
+    expect(screen.getByRole('heading', { name: 'Valedictorian' })).toHaveClass('text-2xl')
     expect(screen.getByText('No recent workspaces')).not.toHaveClass('border')
     expect(container.querySelector('.lucide-gem')).toBeNull()
   })
@@ -142,7 +142,7 @@ describe('AppRoot workspace gate', () => {
     )
     expect(screen.getByRole('complementary', { name: 'Recent workspaces' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open Mango' })).toHaveTextContent('Mango')
-    expect(screen.getByRole('heading', { name: 'Job Automation' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Valedictorian' })).toBeInTheDocument()
     expect(screen.getByText('Create workspace')).toBeInTheDocument()
     expect(screen.getByText('Open folder as workspace')).toBeInTheDocument()
   })
@@ -346,7 +346,7 @@ describe('AppRoot workspace gate', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open folder' }))
 
     await waitFor(() => expect(openFolder).toHaveBeenCalled())
-    expect(screen.getByRole('heading', { name: 'Job Automation' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Valedictorian' })).toBeInTheDocument()
   })
 
   it('creates a workspace from the launcher and enters the main app', async () => {

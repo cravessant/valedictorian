@@ -6,7 +6,7 @@ import { createFileWorkspaceRegistryStore } from './workspace.registry'
 
 function createTempRegistryPath() {
   return path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'job-app-workspaces-')),
+    fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-workspaces-')),
     'workspaces.json',
   )
 }

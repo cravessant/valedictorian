@@ -327,7 +327,7 @@ describe('App settings and chrome', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Settings' })
 
-    expect(within(dialog).getByText('Job App')).toBeInTheDocument()
+    expect(within(dialog).getByText('Valedictorian')).toBeInTheDocument()
     expect(within(dialog).getByLabelText('Use remote backend')).not.toBeChecked()
     expect(within(dialog).getByLabelText('Local API sharing')).not.toBeChecked()
     expect(within(dialog).queryByLabelText('Show advanced filters')).not.toBeInTheDocument()
@@ -369,15 +369,15 @@ describe('App settings and chrome', () => {
     expect(within(dialog).getByLabelText('Local API sharing')).not.toBeChecked()
 
     fireEvent.change(within(dialog).getByLabelText('Remote API URL'), {
-      target: { value: 'https://job-app.test' },
+      target: { value: 'https://valedictorian.test' },
     })
 
     await waitFor(() => {
       expect(settingsApi.update).toHaveBeenCalledWith({
-        remoteApiUrl: 'https://job-app.test',
+        remoteApiUrl: 'https://valedictorian.test',
       })
     })
-    expect(within(dialog).getByDisplayValue('https://job-app.test')).toBeInTheDocument()
+    expect(within(dialog).getByDisplayValue('https://valedictorian.test')).toBeInTheDocument()
 
     expect(within(dialog).queryByLabelText('Show advanced filters')).not.toBeInTheDocument()
   })
@@ -586,14 +586,14 @@ describe('App settings and chrome', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Workspace path')).toHaveValue('/Users/keni/Job Search')
     })
-    expect(screen.getByLabelText('SQLite path')).toHaveValue('/Users/keni/Job Search/.job-automation/job-app.sqlite')
+    expect(screen.getByLabelText('SQLite path')).toHaveValue('/Users/keni/Job Search/.valedictorian/valedictorian.sqlite')
     expect(screen.getByRole('button', { name: 'Choose workspace' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reveal workspace' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Agent access' }))
 
     expect(screen.getByText('Local API is available in local-shared mode.')).toBeInTheDocument()
-    expect(screen.getByText(/JOB_APP_API_URL=http:\/\/127\.0\.0\.1:4317/)).toBeInTheDocument()
+    expect(screen.getByText(/VALEDICTORIAN_API_URL=http:\/\/127\.0\.0\.1:4317/)).toBeInTheDocument()
     expect(screen.getByText(/Tailscale/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))

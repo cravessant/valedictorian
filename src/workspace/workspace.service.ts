@@ -91,8 +91,10 @@ export async function resolveInitialWorkspace({
   pathExists = fs.existsSync,
   registryStore,
 }: ResolveInitialWorkspaceOptions): Promise<WorkspaceSummary | null> {
-  if (env.JOB_APP_WORKSPACE_PATH) {
-    return openWorkspace(env.JOB_APP_WORKSPACE_PATH, registryStore)
+  const envWorkspacePath = readWorkspacePathEnv(env)
+
+  if (envWorkspacePath) {
+    return openWorkspace(envWorkspacePath, registryStore)
   }
 
   const registry = await registryStore.get()
@@ -118,8 +120,10 @@ export async function resolveWorkspaceLaunchState({
   pathExists = fs.existsSync,
   registryStore,
 }: ResolveWorkspaceLaunchStateOptions): Promise<WorkspaceLaunchState> {
-  if (env.JOB_APP_WORKSPACE_PATH) {
-    const workspace = await openWorkspace(env.JOB_APP_WORKSPACE_PATH, registryStore)
+  const envWorkspacePath = readWorkspacePathEnv(env)
+
+  if (envWorkspacePath) {
+    const workspace = await openWorkspace(envWorkspacePath, registryStore)
     return {
       devOptions: {
         canSeedSampleData,
@@ -153,6 +157,10 @@ export async function resolveWorkspaceLaunchState({
     recentWorkspaces: await listLaunchRecords(registryStore, pathExists),
     status: 'needs-workspace',
   }
+}
+
+function readWorkspacePathEnv(env: Record<string, string | undefined>) {
+  return env.VALEDICTORIAN_WORKSPACE_PATH
 }
 
 export function createWorkspaceService({

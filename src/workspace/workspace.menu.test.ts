@@ -35,7 +35,7 @@ describe('workspace native menu template', () => {
     })
 
     expect(template[0]).toMatchObject({
-      label: 'Job App',
+      label: 'Valedictorian',
     })
     const fileMenu = findMenuItem(template, 'File')
     const openWorkspace = findMenuItem(fileMenu?.submenu ?? [], 'Open Workspace...')
