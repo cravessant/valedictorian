@@ -1,14 +1,14 @@
 {
   "name": "valedictorian-app",
   "private": true,
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Local job application tracker and agent access app.",
   "author": "Keni",
   "type": "module",
   "scripts": {
     "dev": "electron-builder install-app-deps && vite",
     "build": "pnpm run typecheck && vite build && electron-builder && NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3",
-    "build:mac": "vite build && electron-builder --mac dmg && NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3",
+    "build:mac": "vite build && electron-builder --mac dmg --publish never && NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3",
     "lint": "pnpm run typecheck && oxlint . --react-plugin --type-aware --report-unused-disable-directives --deny-warnings",
     "preview": "vite preview",
     "test": "NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3 && vitest run",
