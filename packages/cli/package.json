@@ -1,0 +1,49 @@
+{
+  "name": "valedictorian-cli",
+  "version": "0.1.0-alpha.1",
+  "description": "Command-line client for Valedictorian.",
+  "author": "Sparxie",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "bin": {
+    "valedictorian-cli": "./dist/valedictorian.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KennySparxie/valedictorian-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/KennySparxie/valedictorian-cli/issues"
+  },
+  "homepage": "https://github.com/KennySparxie/valedictorian-cli#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "prepack": "pnpm build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "sparxie": "github:KennySparxie/sparxie#acad8b518e65746513bc9cfa6082fe93c43ac34f"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^5.2.2",
+    "vitest": "^2.1.9"
+  }
+}

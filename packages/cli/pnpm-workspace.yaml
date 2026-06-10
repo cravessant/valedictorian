@@ -1,0 +1,6 @@
+minimumReleaseAgeExclude:
+  - sparxie
+
+allowBuilds:
+  esbuild: false
+  sparxie: true

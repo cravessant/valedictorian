@@ -1,0 +1,29 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+const workflowPath = path.resolve('.github/workflows/release-cli.yml')
+
+describe('CLI release workflow', () => {
+  it('builds, packs, and uploads the CLI package from the standalone repository', () => {
+    expect(fs.existsSync(workflowPath)).toBe(true)
+
+    const workflow = fs.readFileSync(workflowPath, 'utf8')
+
+    expect(workflow).toContain('workflow_dispatch:')
+    expect(workflow).toContain('tags:')
+    expect(workflow).toContain("'v*'")
+    expect(workflow).toContain('runs-on: ubuntu-latest')
+    expect(workflow).toContain('pnpm install --frozen-lockfile')
+    expect(workflow).toContain('pnpm test')
+    expect(workflow).toContain('pnpm lint')
+    expect(workflow).toContain('pnpm build')
+    expect(workflow).toContain('pnpm pack --pack-destination release')
+    expect(workflow).toContain('valedictorian-cli-npm-package')
+    expect(workflow).toContain('release/*.tgz')
+    expect(workflow).toContain('gh release upload')
+    expect(workflow).toContain('--clobber')
+    expect(workflow).toContain('gh release create')
+    expect(workflow).toContain('Valedictorian CLI $GITHUB_REF_NAME')
+  })
+})
