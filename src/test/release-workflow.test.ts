@@ -15,6 +15,7 @@ describe('Mac alpha release workflow', () => {
     const workflow = readReleaseWorkflow()
 
     expect(workflow).toContain('workflow_dispatch:')
+    expect(workflow).toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true')
     expect(workflow).toContain('tags:')
     expect(workflow).toContain("'v*'")
     expect(workflow).toContain('runs-on: macos-latest')
