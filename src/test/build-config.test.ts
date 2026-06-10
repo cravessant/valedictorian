@@ -50,6 +50,7 @@ describe('build configuration', () => {
     const scripts = Object.values(packageJson.scripts ?? {})
 
     expect(packageJson.version).toMatch(/^0\.\d+\.\d+-alpha\.\d+$/)
+    expect(packageJson.scripts?.['build:mac']).toContain('--publish never')
     expect(packageJson.dependencies?.sparxie).toBe(sparxieGitDependency)
     expect(packageJson.dependencies?.sparxie).not.toContain('../sparxie')
     expect(scripts).not.toEqual(expect.arrayContaining([expect.stringContaining('../sparxie')]))
