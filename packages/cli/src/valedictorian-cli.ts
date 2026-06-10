@@ -32,7 +32,7 @@ import {
   readRequiredOption,
   readRequiredText,
   runSourcingBatch,
-} from './valedictorian-cli.parsers'
+} from './valedictorian-cli.parsers.js'
 export interface RunValedictorianCliOptions {
   argv: string[]
   env?: Record<string, string | undefined>
@@ -348,4 +348,3 @@ function createClient(env: Record<string, string | undefined>): ValedictorianCli
     token: env.VALEDICTORIAN_API_TOKEN,
   })
 }
-
