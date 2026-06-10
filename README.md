@@ -1,30 +1,52 @@
-# React + TypeScript + Vite
+# Job App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Local-first desktop app for tracking job applications and preparing automation handoffs.
 
-Currently, two official plugins are available:
+## Alpha Scope
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+This repo currently targets a private Mac alpha. The packaged app is unsigned, stores meaningful local state inside a user-chosen workspace folder, and does not include sync, auto-updates, or a secrets redesign yet.
 
-## Expanding the ESLint configuration
+Workspace state lives under:
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+```text
+<workspace>/.job-automation/
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+The app keeps only a small recent-workspace registry in the Electron app-data folder so it can reopen the last valid workspace on launch.
+
+## Development
+
+Use the mise-managed runtimes from this machine, then run:
+
+```sh
+pnpm install
+pnpm dev
+```
+
+Useful checks:
+
+```sh
+pnpm test
+pnpm typecheck
+pnpm lint
+```
+
+`sparxie` is consumed from the public npm registry as a pinned dependency. Publish a new `sparxie` version before updating this app when shared contracts change.
+
+## Mac Alpha Release
+
+The GitHub Actions workflow at `.github/workflows/release-mac.yml` supports:
+
+- manual runs from the Actions tab
+- tag-triggered releases for tags matching `v*`
+
+For a tagged alpha release:
+
+```sh
+git tag v0.1.0-alpha.1
+git push origin v0.1.0-alpha.1
+```
+
+The workflow installs from `pnpm-lock.yaml`, runs tests, typecheck, and lint, builds the Mac DMG, uploads it as an Actions artifact, and attaches it to a GitHub prerelease.
+
+Because `electron-builder.json5` has `mac.identity` set to `null`, the DMG is intentionally unsigned for this alpha.
