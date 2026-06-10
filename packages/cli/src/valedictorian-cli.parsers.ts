@@ -31,7 +31,7 @@ import {
   setOptionalBooleanOption,
   setOptionalStringOption,
   validateLimit,
-} from './valedictorian-cli.parser-options'
+} from './valedictorian-cli.parser-options.js'
 
 export {
   assertKnownOptions,
@@ -42,14 +42,14 @@ export {
   readRequiredArgument,
   readRequiredOption,
   readRequiredText,
-} from './valedictorian-cli.parser-options'
+} from './valedictorian-cli.parser-options.js'
 export {
   parseSourcingFindingCreate,
   parseSourcingFindingsListQuery,
   parseSourcingFindingUpdate,
   parseSourcingRun,
   runSourcingBatch,
-} from './valedictorian-cli.sourcing-parsers'
+} from './valedictorian-cli.sourcing-parsers.js'
 
 const attemptBlockerOutcomes = new Set([
   'manual_captcha',

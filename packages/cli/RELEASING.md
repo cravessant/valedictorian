@@ -14,7 +14,7 @@ pnpm test
 pnpm build
 npm pack --dry-run
 npm login
-npm publish --access public --provenance=false
+npm publish --access public --tag alpha --provenance=false
 ```
 
 After the package exists on npm, configure npm Trusted Publishing for:

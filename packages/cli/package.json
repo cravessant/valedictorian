@@ -7,7 +7,7 @@
   "type": "module",
   "packageManager": "pnpm@11.3.0",
   "bin": {
-    "valedictorian-cli": "./dist/valedictorian.js"
+    "valedictorian-cli": "dist/valedictorian.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

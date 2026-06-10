@@ -69,6 +69,6 @@ describe('CLI release workflow', () => {
     expect(workflow).toContain('pnpm test')
     expect(workflow).toContain('pnpm build')
     expect(workflow).toContain('npm pack --dry-run')
-    expect(workflow).toContain('npm publish --access public --provenance')
+    expect(workflow).toContain('npm publish --access public --tag alpha --provenance')
   })
 })

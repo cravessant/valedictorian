@@ -18,7 +18,7 @@ describe('valedictorian-cli npm package', () => {
 
     expect(packageJson.name).toBe('valedictorian-cli')
     expect(packageJson.version).toMatch(/^0\.\d+\.\d+-alpha\.\d+$/)
-    expect(packageJson.bin?.['valedictorian-cli']).toBe('./dist/valedictorian.js')
+    expect(packageJson.bin?.['valedictorian-cli']).toBe('dist/valedictorian.js')
     expect(packageJson.files).toEqual(['dist'])
     expect(packageJson.scripts?.prepare).toBe('pnpm build')
     expect(packageJson.scripts?.prepublishOnly).toBe('pnpm lint && pnpm test && pnpm build')

@@ -17,7 +17,7 @@ import {
   readRequiredText,
   setOptionalStringOption,
   validateLimit,
-} from './valedictorian-cli.parser-options'
+} from './valedictorian-cli.parser-options.js'
 
 export function parseSourcingFindingsListQuery(
   argv: string[],
