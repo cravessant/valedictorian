@@ -18,8 +18,12 @@ function readElectronBuilderConfig() {
     appId?: string
     productName?: string
     mac?: {
+      entitlements?: string
+      entitlementsInherit?: string
+      hardenedRuntime?: boolean
       icon?: string
-      identity?: null | string
+      identity?: string
+      notarize?: boolean
     }
   }
 }
@@ -35,9 +39,15 @@ describe('build configuration', () => {
     expect(packageJson.name).toBe('valedictorian-app')
     expect(config.appId).toBe('com.valedictorian.app')
     expect(config.productName).toBe('Valedictorian')
-    expect(config.mac?.identity).toBeNull()
+    expect(config.mac?.identity).toBe('Developer ID Application')
+    expect(config.mac?.hardenedRuntime).toBe(true)
+    expect(config.mac?.notarize).toBe(true)
+    expect(config.mac?.entitlements).toBe('build/entitlements.mac.plist')
+    expect(config.mac?.entitlementsInherit).toBe('build/entitlements.mac.inherit.plist')
     expect(config.mac?.icon).toBe('build/icon.icns')
     expect(fs.existsSync(path.resolve('build/icon.icns'))).toBe(true)
+    expect(fs.existsSync(path.resolve('build/entitlements.mac.plist'))).toBe(true)
+    expect(fs.existsSync(path.resolve('build/entitlements.mac.inherit.plist'))).toBe(true)
 
     expect(packageJson.dependencies?.sparxie).toBeDefined()
     expect(packageJson.bin).toBeUndefined()
