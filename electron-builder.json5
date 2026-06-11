@@ -16,7 +16,11 @@
   ],
   "mac": {
     "icon": "build/icon.icns",
-    "identity": null,
+    "identity": "Developer ID Application",
+    "hardenedRuntime": true,
+    "notarize": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
     "target": [
       "dmg"
     ],
