@@ -23,6 +23,8 @@ export VALEDICTORIAN_API_URL=http://127.0.0.1:4317
 export VALEDICTORIAN_API_TOKEN=...
 ```
 
+The token line is a placeholder. Do not paste token literals into shared chat, shell history, logs, committed files, or persisted temp files.
+
 Prefer inline env assignment for one-off commands when the token is already available in the shell:
 
 ```sh
@@ -36,7 +38,7 @@ valedictorian-cli applications list --status needs_user_info --limit 25
 valedictorian-cli applications list --search "backend intern" --sort company_asc --limit 25
 valedictorian-cli applications get <application-id>
 valedictorian-cli queue list --bucket apply_now --limit 25
-valedictorian-cli runs list --run-type application --status running --limit 25
+valedictorian-cli runs list --run-type application_attempt --status in_progress --limit 25
 valedictorian-cli sourcing findings list --workflow-run-id <run-id> --merge-status new --limit 25
 ```
 
@@ -55,7 +57,9 @@ valedictorian-cli applications create \
   --status discovered
 ```
 
-Useful optional create/update fields include `--city`, `--region`, `--term`, `--location-raw`, `--has-applied`, `--current-resume-variant`, `--initial-note`, `--primary-url`, `--primary-label`, `--primary-kind`, `--primary-external-id`, `--source-link-url`, `--source-kind`, `--source-label`, and `--source-external-id`.
+Useful optional create fields include `--city`, `--region`, `--term`, `--location-raw`, `--has-applied`, `--current-resume-variant`, `--initial-note`, `--primary-url`, `--primary-label`, `--primary-kind`, `--primary-external-id`, `--source-link-url`, `--source-kind`, `--source-label`, and `--source-external-id`.
+
+Supported update fields are `--city`, `--country`, `--current-resume-variant`, `--has-applied`, `--location-raw`, `--region`, `--role-kind`, `--role-title`, `--term`, and `--work-mode`.
 
 Update common metadata:
 
@@ -75,9 +79,11 @@ valedictorian-cli applications link update <application-id> <link-id> --label "U
 
 Attempts:
 
+Use `applications attempts` for the actual apply attempt lifecycle on an application. Use `runs --run-type application_attempt` when you need a broader workflow-run audit trail for agent work around that application.
+
 ```sh
 valedictorian-cli applications attempts list <application-id> --limit 25
-valedictorian-cli applications attempts start <application-id> --actor-type agent --actor-name codex --entry-url "https://example.com/apply"
+valedictorian-cli applications attempts start <application-id> --actor-type agent --actor-name automation-agent --entry-url "https://example.com/apply"
 valedictorian-cli applications attempts step <application-id> <attempt-id> --type note --message "Opened application form"
 valedictorian-cli applications attempts complete <application-id> <attempt-id> --outcome submitted --summary "Application submitted"
 ```
@@ -85,7 +91,9 @@ valedictorian-cli applications attempts complete <application-id> <attempt-id> -
 ## Workflow Runs
 
 ```sh
-valedictorian-cli runs start --run-type sourcing --actor-type agent --actor-name codex --source-name "LinkedIn"
+valedictorian-cli runs start --run-type application_attempt --actor-type agent --actor-name automation-agent --subject-application-id <application-id> --summary "Started applying to queued application."
+valedictorian-cli runs list --run-type application_attempt --status in_progress --subject-application-id <application-id> --limit 25
+valedictorian-cli runs start --run-type sourcing --actor-type agent --actor-name automation-agent --source-name "LinkedIn"
 valedictorian-cli runs step <run-id> --type note --message "Collected 12 candidates"
 valedictorian-cli runs complete <run-id> --status completed --outcome success --summary "Sourcing run complete"
 valedictorian-cli runs list --run-type sourcing --source-id <source-id> --limit 25
@@ -102,7 +110,7 @@ valedictorian-cli runs step <run-id> --type data --message "Parsed candidate" --
 Run a batch:
 
 ```sh
-valedictorian-cli sourcing run --source-name "LinkedIn" --actor-name codex --candidates-json '[{"companyName":"Delta Labs","roleTitle":"Software Engineering Intern"}]'
+valedictorian-cli sourcing run --source-name "LinkedIn" --actor-name automation-agent --candidates-json '[{"companyName":"Delta Labs","roleTitle":"Software Engineering Intern"}]'
 ```
 
 Create, update, and promote findings:

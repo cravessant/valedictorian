@@ -1,7 +1,5 @@
 # valedictorian-cli
 
-[![skills.sh](https://skills.sh/b/KennySparxie/valedictorian-cli)](https://skills.sh/KennySparxie/valedictorian-cli)
-
 Command-line client for Valedictorian.
 
 ## Install
@@ -26,7 +24,7 @@ valedictorian-cli applications list --json
 This repo includes a Valedictorian CLI agent skill:
 
 ```sh
-npx skills add KennySparxie/valedictorian-cli --skill valedictorian-cli -a codex
+npx skills add KennySparxie/valedictorian-cli --skill valedictorian-cli
 ```
 
 ## Development
@@ -37,3 +35,7 @@ pnpm test
 pnpm lint
 pnpm build
 ```
+
+## License
+
+MIT
