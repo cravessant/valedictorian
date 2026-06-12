@@ -1,10 +1,10 @@
-name: Release Mac Alpha
+name: Release Mac
 
 on:
   workflow_dispatch:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 permissions:
   contents: write
@@ -33,6 +33,21 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const expectedTag = `v${packageJson.version}`
+          const actualTag = process.env.GITHUB_REF_NAME
+
+          if (actualTag !== expectedTag) {
+            throw new Error(`Release tag ${actualTag} does not match package version ${expectedTag}`)
+          }
+          NODE
 
       - name: Run tests
         run: pnpm test
@@ -101,16 +116,25 @@ jobs:
           path: release/*/*.dmg
           if-no-files-found: error
 
-      - name: Create GitHub prerelease
+      - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          version="$(node -p "require('./package.json').version")"
+
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" release/*/*.dmg --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release/*/*.dmg \
-              --title "Valedictorian $GITHUB_REF_NAME" \
-              --notes "Signed and notarized private Mac alpha build." \
-              --prerelease
+            release_args=(
+              release create "$GITHUB_REF_NAME" release/*/*.dmg
+              --title "Valedictorian $GITHUB_REF_NAME"
+              --notes "Signed and notarized Mac build."
+            )
+
+            if [[ "$version" == *-* ]]; then
+              release_args+=(--prerelease)
+            fi
+
+            gh "${release_args[@]}"
           fi

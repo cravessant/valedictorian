@@ -8,7 +8,7 @@ function readReleaseWorkflow() {
   return fs.readFileSync(workflowPath, 'utf8')
 }
 
-describe('Mac alpha release workflow', () => {
+describe('Mac release workflow', () => {
   it('builds and uploads a Mac DMG from the app-only repository', () => {
     expect(fs.existsSync(workflowPath)).toBe(true)
 
@@ -17,13 +17,15 @@ describe('Mac alpha release workflow', () => {
     expect(workflow).toContain('workflow_dispatch:')
     expect(workflow).toContain('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true')
     expect(workflow).toContain('tags:')
-    expect(workflow).toContain("'v*'")
+    expect(workflow).toContain("'v*.*.*'")
     expect(workflow).toContain('runs-on: macos-latest')
     expect(workflow).toContain('actions/checkout@v6')
     expect(workflow).toContain('pnpm/action-setup@v6')
     expect(workflow).toContain('actions/setup-node@v6')
     expect(workflow).toContain('actions/upload-artifact@v7')
     expect(workflow).toContain('pnpm install --frozen-lockfile')
+    expect(workflow).toContain('Verify release tag')
+    expect(workflow).toContain('Release tag ${actualTag} does not match package version ${expectedTag}')
     expect(workflow).toContain('pnpm test')
     expect(workflow).toContain('pnpm typecheck')
     expect(workflow).toContain('pnpm lint')
@@ -44,7 +46,8 @@ describe('Mac alpha release workflow', () => {
     expect(workflow).toContain('release/*/*.dmg')
     expect(workflow).toContain('gh release upload')
     expect(workflow).toContain('--clobber')
-    expect(workflow).toContain('gh release create')
+    expect(workflow).toContain('release create "$GITHUB_REF_NAME"')
+    expect(workflow).toContain('release_args+=(--prerelease)')
     expect(workflow).toContain('Valedictorian $GITHUB_REF_NAME')
   })
 })
