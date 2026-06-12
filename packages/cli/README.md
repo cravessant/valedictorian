@@ -16,6 +16,7 @@ Point the CLI at a running Valedictorian API:
 export VALEDICTORIAN_API_URL=http://127.0.0.1:4317
 export VALEDICTORIAN_API_TOKEN=your-token
 
+valedictorian-cli doctor
 valedictorian-cli applications list --json
 ```
 

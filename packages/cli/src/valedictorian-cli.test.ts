@@ -38,6 +38,81 @@ describe('valedictorian-cli npm package', () => {
     )
   })
 
+  it('runs read-only doctor diagnostics with human output by default', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValue(jsonResponse({ ok: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli(['doctor'], { VALEDICTORIAN_API_TOKEN: 'token-1' })
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain('Valedictorian CLI doctor')
+    expect(result.stdout).toContain('Status: ok')
+    expect(result.stdout).toContain('API URL: https://valedictorian.test (staging)')
+    expect(result.stdout).toContain('Token: present')
+    expect(result.stdout).not.toContain('token-1')
+    expect(fetchMock).toHaveBeenCalledWith('https://valedictorian.test/v1/health', {
+      headers: {
+        accept: 'application/json',
+        authorization: 'Bearer token-1',
+      },
+      method: 'GET',
+      signal: expect.any(AbortSignal) as AbortSignal,
+    })
+  })
+
+  it('can emit doctor diagnostics as JSON without probing the API', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli(['doctor', '--skip-network', '--json'], {
+      VALEDICTORIAN_API_URL: 'http://localhost:4317',
+    })
+    const report = JSON.parse(result.stdout) as {
+      ok: boolean
+      target: { apiUrl: string; classification: string; tokenPresent: boolean }
+      checks: Array<{ name: string; status: string }>
+    }
+
+    expect(result.exitCode).toBe(0)
+    expect(report.ok).toBe(true)
+    expect(report.target).toEqual({
+      apiUrl: 'http://localhost:4317',
+      classification: 'local',
+      tokenPresent: false,
+    })
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'api-health', status: 'skip' }),
+      ]),
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('exits non-zero when doctor cannot reach a healthy API', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValue(jsonResponse({ message: 'unavailable' }, { status: 503 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli(['doctor', '--json'])
+    const report = JSON.parse(result.stdout) as {
+      ok: boolean
+      checks: Array<{ name: string; status: string; message: string }>
+    }
+
+    expect(result.exitCode).toBe(1)
+    expect(report.ok).toBe(false)
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'api-health',
+          status: 'fail',
+          message: 'Health check returned HTTP 503.',
+        }),
+      ]),
+    )
+  })
+
   it('lists applications over HTTP with filters, pagination, sorting, and token auth', async () => {
     const payload = {
       items: [],

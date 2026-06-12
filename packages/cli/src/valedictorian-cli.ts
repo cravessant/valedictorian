@@ -15,6 +15,7 @@ import {
   type ValedictorianClient,
 } from 'sparxie'
 
+import { formatDoctorText, runDoctor } from './valedictorian-cli.doctor.js'
 import {
   parseApplicationAttemptsQuery,
   parseApplicationEventsQuery,
@@ -50,6 +51,8 @@ export interface RunValedictorianCliOptions {
 
 interface ValedictorianCliContext extends CommandContext {
   readonly client: ValedictorianClient
+  readonly env: Record<string, string | undefined>
+  readonly process: StricliProcess
 }
 
 export async function runValedictorianCli({
@@ -66,6 +69,7 @@ export async function runValedictorianCli({
   }
   const context: ValedictorianCliContext = {
     client: createClient(env),
+    env,
     process: processLike,
   }
 
@@ -85,7 +89,7 @@ function createClient(env: Record<string, string | undefined>): ValedictorianCli
 const stringParser = (input: string) => input
 
 const jsonFlag = {
-  brief: 'Accepted for compatibility; output is always JSON.',
+  brief: 'Emit JSON where supported; resource commands already emit JSON.',
   hidden: true,
   kind: 'boolean',
   optional: true,
@@ -96,6 +100,31 @@ const application = buildApplication(
     docs: { brief: 'Valedictorian resources' },
     routes: {
       applications: buildApplicationsRoute(),
+      doctor: makeCommand({
+        docs: { brief: 'Run read-only CLI diagnostics' },
+        flags: {
+          ...optionFlags(['timeout-ms']),
+          ...booleanFlags(['skip-network']),
+        },
+        run: async (context, flags) => {
+          const report = await runDoctor({
+            cliVersion: await readPackageVersion(),
+            env: context.env,
+            skipNetwork: flags['skip-network'] === true,
+            timeoutMs: parseTimeoutMs(optionValue(flags, 'timeout-ms')),
+          })
+
+          if (flags.json === true) {
+            writeJson(context, report)
+          } else {
+            context.process.stdout.write(formatDoctorText(report))
+          }
+
+          if (!report.ok) {
+            context.process.exitCode = 1
+          }
+        },
+      }),
       queue: buildRouteMap({
         docs: { brief: 'Inspect application queues' },
         routes: {
@@ -750,6 +779,20 @@ function requiredOption(flags: RawFlags, name: string, label: string) {
 
 function writeJson(context: ValedictorianCliContext, value: unknown, pretty = true) {
   context.process.stdout.write(`${JSON.stringify(value, null, pretty ? 2 : 0)}\n`)
+}
+
+function parseTimeoutMs(value: string | undefined) {
+  if (value === undefined) {
+    return 3000
+  }
+
+  const timeoutMs = Number(value)
+
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`Invalid --timeout-ms value: ${value}`)
+  }
+
+  return timeoutMs
 }
 
 function toError(error: unknown) {

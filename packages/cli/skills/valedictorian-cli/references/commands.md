@@ -5,6 +5,7 @@
 Installed package:
 
 ```sh
+valedictorian-cli doctor
 valedictorian-cli --help
 ```
 
@@ -13,6 +14,7 @@ From the `valedictorian-cli` repository:
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
+node dist/valedictorian.js doctor
 node dist/valedictorian.js --help
 ```
 
@@ -29,6 +31,13 @@ Prefer inline env assignment for one-off commands when the token is already avai
 
 ```sh
 VALEDICTORIAN_API_URL=http://127.0.0.1:4317 valedictorian-cli applications list --limit 25
+```
+
+Use JSON diagnostics for scripts or agent preflight checks:
+
+```sh
+valedictorian-cli doctor --json
+valedictorian-cli doctor --skip-network --json
 ```
 
 ## Discovery Commands

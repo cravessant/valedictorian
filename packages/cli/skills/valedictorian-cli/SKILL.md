@@ -12,24 +12,25 @@ Use the Valedictorian CLI as the first-choice interface for Valedictorian job au
 Verify the CLI surface before using it in a new environment:
 
 ```sh
-valedictorian-cli --help
+valedictorian-cli doctor
 ```
 
 When working from the `valedictorian-cli` repository, use the local build instead:
 
 ```sh
 pnpm build
-node dist/valedictorian.js --help
+node dist/valedictorian.js doctor
 ```
 
-Confirm the target API with a read-only command before mutations. If the API URL is not local, state the sanitized target URL and wait for clear user intent before changing data.
+Use `doctor --json` when another tool or script needs structured diagnostics. If the API URL is not local, state the sanitized target URL and wait for clear user intent before changing data.
 
 ## Core Workflow
 
 1. Locate the CLI:
    - Prefer an installed `valedictorian-cli` binary when available.
    - In the CLI repo, run `pnpm build` if `dist/` may be stale, then use `node dist/valedictorian.js`.
-   - Run `valedictorian-cli --help` or `node dist/valedictorian.js --help` before unfamiliar commands.
+   - Run `valedictorian-cli doctor` or `node dist/valedictorian.js doctor` before the first API operation in a new environment.
+   - Run `--help` on the nearest command before unfamiliar commands.
 2. Configure the API environment:
    - `VALEDICTORIAN_API_URL` points at the running Valedictorian API.
    - `VALEDICTORIAN_API_TOKEN` is optional only when the target API allows it.
@@ -55,7 +56,7 @@ Read `references/commands.md` before any mutation, first use in a session, struc
 
 ## Output Handling
 
-The CLI writes JSON by default. Use `jq` or save stdout to a `mktemp` file outside the repo when comparing records, then delete the temp file after use. If a value begins with `-`, pass `--` before positional arguments so the scanner treats it as data.
+Resource commands write JSON by default. `doctor` writes a human report by default; use `doctor --json` for scripts or agent preflight checks. Use `jq` or save stdout to a `mktemp` file outside the repo when comparing records, then delete the temp file after use. If a value begins with `-`, pass `--` before positional arguments so the scanner treats it as data.
 
 ## Troubleshooting
 
