@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -61,5 +60,28 @@ jobs:
       - name: Verify package contents
         run: npm pack --dry-run
 
+      - name: Resolve npm dist-tag
+        id: npm-dist-tag
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+
+          const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+          const match = packageJson.version.match(/-(alpha|beta|rc)\./)
+          const tag = match?.[1] ?? ''
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\n`)
+          console.log(tag ? `Publishing with npm dist-tag: ${tag}` : 'Publishing with npm default latest dist-tag')
+          NODE
+
       - name: Publish
-        run: npm publish --access public --tag alpha
+        env:
+          NPM_DIST_TAG: ${{ steps.npm-dist-tag.outputs.tag }}
+        run: |
+          publish_args=(publish --access public --provenance)
+
+          if [ -n "$NPM_DIST_TAG" ]; then
+            publish_args+=(--tag "$NPM_DIST_TAG")
+          fi
+
+          npm "${publish_args[@]}"
