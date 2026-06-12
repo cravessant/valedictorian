@@ -4,5 +4,6 @@ minimumReleaseAgeExclude:
 allowBuilds:
   better-sqlite3: true
   electron: true
+  electron-winstaller: true
   esbuild: false
   sparxie: true
