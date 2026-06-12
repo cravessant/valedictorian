@@ -1,5 +1,7 @@
 # valedictorian-cli
 
+[![skills.sh](https://skills.sh/b/KennySparxie/valedictorian-cli)](https://skills.sh/KennySparxie/valedictorian-cli)
+
 Command-line client for Valedictorian.
 
 ## Install
@@ -17,6 +19,14 @@ export VALEDICTORIAN_API_URL=http://127.0.0.1:4317
 export VALEDICTORIAN_API_TOKEN=your-token
 
 valedictorian-cli applications list --json
+```
+
+## Agent skill
+
+This repo includes a Valedictorian CLI agent skill:
+
+```sh
+npx skills add KennySparxie/valedictorian-cli --skill valedictorian-cli -a codex
 ```
 
 ## Development

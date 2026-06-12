@@ -1,0 +1,4 @@
+interface:
+  display_name: "Valedictorian CLI"
+  short_description: "Use the Valedictorian job automation CLI"
+  default_prompt: "Use $valedictorian-cli to inspect and update job automation data from the command line."
