@@ -16,6 +16,7 @@ import {
 } from 'sparxie'
 
 import { formatDoctorText, runDoctor } from './valedictorian-cli.doctor.js'
+import { formatHumanOutput } from './valedictorian-cli.output.js'
 import {
   parseApplicationAttemptsQuery,
   parseApplicationEventsQuery,
@@ -52,6 +53,7 @@ export interface RunValedictorianCliOptions {
 interface ValedictorianCliContext extends CommandContext {
   readonly client: ValedictorianClient
   readonly env: Record<string, string | undefined>
+  outputJson?: boolean
   readonly process: StricliProcess
 }
 
@@ -61,7 +63,7 @@ export async function runValedictorianCli({
   stdout = (value) => process.stdout.write(value),
   stderr = (value) => process.stderr.write(value),
 }: RunValedictorianCliOptions): Promise<number> {
-  const normalizedArgv = argv[0] === '--' ? argv.slice(1) : argv
+  const normalizedArgv = normalizeArgv(argv)
   const processLike: StricliProcess = {
     env: definedEnv(env),
     stdout: { write: stdout },
@@ -89,8 +91,7 @@ function createClient(env: Record<string, string | undefined>): ValedictorianCli
 const stringParser = (input: string) => input
 
 const jsonFlag = {
-  brief: 'Emit JSON where supported; resource commands already emit JSON.',
-  hidden: true,
+  brief: 'Output as JSON.',
   kind: 'boolean',
   optional: true,
 } as const
@@ -694,6 +695,8 @@ function makeCommand({
     docs,
     parameters,
     func: async function command(flags, ...args) {
+      this.outputJson = flags.json === true
+
       try {
         await run(this, flags, ...args)
       } catch (error) {
@@ -778,7 +781,35 @@ function requiredOption(flags: RawFlags, name: string, label: string) {
 }
 
 function writeJson(context: ValedictorianCliContext, value: unknown, pretty = true) {
-  context.process.stdout.write(`${JSON.stringify(value, null, pretty ? 2 : 0)}\n`)
+  if (context.outputJson) {
+    context.process.stdout.write(`${JSON.stringify(value, null, pretty ? 2 : 0)}\n`)
+    return
+  }
+
+  context.process.stdout.write(formatHumanOutput(value))
+}
+
+function normalizeArgv(argv: string[]) {
+  const normalized = argv[0] === '--' ? argv.slice(1) : [...argv]
+
+  if (normalized[0] !== '--json') {
+    return normalized
+  }
+
+  const withoutGlobalJson = normalized.slice(1)
+
+  if (
+    withoutGlobalJson.length === 0 ||
+    withoutGlobalJson[0] === '--help' ||
+    withoutGlobalJson[0] === '-h' ||
+    withoutGlobalJson[0] === '--version' ||
+    withoutGlobalJson[0] === '-v' ||
+    withoutGlobalJson.includes('--json')
+  ) {
+    return withoutGlobalJson
+  }
+
+  return [...withoutGlobalJson, '--json']
 }
 
 function parseTimeoutMs(value: string | undefined) {

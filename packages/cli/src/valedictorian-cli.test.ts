@@ -160,6 +160,48 @@ describe('valedictorian-cli npm package', () => {
     )
   })
 
+  it('formats resource commands as human text by default and supports leading --json', async () => {
+    const payload = {
+      items: [
+        {
+          id: 'application-1',
+          companyName: 'Delta Labs',
+          roleTitle: 'Software Engineering Intern',
+          status: 'queued',
+          priorityScore: 7,
+          priorityBand: 'high',
+        },
+      ],
+      total: 1,
+      limit: 1,
+      offset: 0,
+      hasMore: false,
+    }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(jsonResponse(payload))
+    fetchMock.mockResolvedValueOnce(jsonResponse(payload))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const textResult = await runCli(['applications', 'list', '--limit', '1'])
+
+    expect(textResult.exitCode).toBe(0)
+    expect(textResult.stdout).toContain('1 item - limit 1 - offset 0 - end reached')
+    expect(textResult.stdout).toContain(
+      'Delta Labs - Software Engineering Intern - status=queued - priority=7/high - id=application-1',
+    )
+    expect(() => JSON.parse(textResult.stdout)).toThrow()
+
+    const jsonResult = await runCli(['--json', 'applications', 'list', '--limit', '1'])
+
+    expect(jsonResult.exitCode).toBe(0)
+    expect(JSON.parse(jsonResult.stdout)).toEqual(payload)
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://valedictorian.test/v1/applications?limit=1',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
   it('lists queue rows over HTTP with bucket filtering, pagination, and token auth', async () => {
     const payload = {
       items: [],

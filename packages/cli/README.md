@@ -17,7 +17,8 @@ export VALEDICTORIAN_API_URL=http://127.0.0.1:4317
 export VALEDICTORIAN_API_TOKEN=your-token
 
 valedictorian-cli doctor
-valedictorian-cli applications list --json
+valedictorian-cli applications list
+valedictorian-cli --json applications list | jq '.items[] | {id, companyName, roleTitle, status}'
 ```
 
 ## Agent skill

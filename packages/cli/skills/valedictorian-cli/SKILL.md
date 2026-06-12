@@ -1,6 +1,6 @@
 ---
 name: valedictorian-cli
-description: Use when an AI coding agent needs to operate the Valedictorian job automation CLI for job applications, queues, workflow runs, sourcing findings, scoring, application attempts, or agent-driven application workflows. Helps agents locate and run the CLI safely, configure API environment variables, inspect JSON output, and perform requested mutations without bypassing the CLI.
+description: Use when an AI coding agent needs to operate the Valedictorian job automation CLI for job applications, queues, workflow runs, sourcing findings, scoring, application attempts, or agent-driven application workflows. Helps agents locate and run the CLI safely, configure API environment variables, request JSON output when needed, and perform requested mutations without bypassing the CLI.
 ---
 
 # Valedictorian CLI
@@ -22,7 +22,7 @@ pnpm build
 node dist/valedictorian.js doctor
 ```
 
-Use `doctor --json` when another tool or script needs structured diagnostics. If the API URL is not local, state the sanitized target URL and wait for clear user intent before changing data.
+Commands default to human-readable output. Use `--json` when another tool, script, or agent needs structured diagnostics or record fields. If the API URL is not local, state the sanitized target URL and wait for clear user intent before changing data.
 
 ## Core Workflow
 
@@ -36,7 +36,7 @@ Use `doctor --json` when another tool or script needs structured diagnostics. If
    - `VALEDICTORIAN_API_TOKEN` is optional only when the target API allows it.
    - Never print, commit, echo, log, or persist token values; avoid token literals in shell history, `env` output, `printenv`, `set -x`, chat, and temp files.
 3. Inspect before mutating:
-   - Use `applications list`, `applications get`, `queue list`, `runs list`, or `sourcing findings list` to identify records.
+   - Use `valedictorian-cli --json applications list`, `valedictorian-cli --json applications get`, `valedictorian-cli --json queue list`, `valedictorian-cli --json runs list`, or `valedictorian-cli --json sourcing findings list` to identify records for agent work.
    - Treat `create`, `update`, `status`, `archive`, `note`, `workflow`, `link add/update`, `attempts`, `scores record`, `runs start/step/complete`, `sourcing run`, `sourcing run --auto-promote`, and `sourcing findings create/update/promote` as mutations.
    - Before any mutation, identify the sanitized target URL and whether it is local, staging, or production. Require clear user intent before mutating non-local data.
    - Be especially cautious with irreversible or high-impact commands such as `applications archive`, `applications attempts complete --outcome submitted`, `sourcing findings promote`, and `sourcing run --auto-promote`.
@@ -45,10 +45,10 @@ Use `doctor --json` when another tool or script needs structured diagnostics. If
 
 ## Common Workflows
 
-- Investigate a queued application: `queue list` -> `applications get` -> `applications attempts list` and, if needed, `runs list`.
-- Record application work: use `applications attempts start/step/complete` for the real application attempt lifecycle. Use `runs start/step/complete --run-type application_attempt` for broader agent workflow audit trails.
-- Review sourcing output: use `sourcing findings list` before `sourcing findings create/update/promote`; verify promoted findings by reading the resulting application or listing affected findings.
-- Score an application: inspect the application first, then use `scores record`, then re-read the application or score output if available.
+- Investigate a queued application: `valedictorian-cli --json queue list` -> `valedictorian-cli --json applications get` -> `valedictorian-cli --json applications attempts list` and, if needed, `valedictorian-cli --json runs list`.
+- Record application work: use `valedictorian-cli --json applications attempts start/step/complete` for the real application attempt lifecycle. Use `valedictorian-cli --json runs start/step/complete --run-type application_attempt` for broader agent workflow audit trails.
+- Review sourcing output: use `valedictorian-cli --json sourcing findings list` before `valedictorian-cli --json sourcing findings create/update/promote`; verify promoted findings by reading the resulting application or listing affected findings.
+- Score an application: inspect the application first, then use `valedictorian-cli --json scores record`, then re-read the application or score output if available.
 
 ## Command Reference
 
@@ -56,7 +56,7 @@ Read `references/commands.md` before any mutation, first use in a session, struc
 
 ## Output Handling
 
-Resource commands write JSON by default. `doctor` writes a human report by default; use `doctor --json` for scripts or agent preflight checks. Use `jq` or save stdout to a `mktemp` file outside the repo when comparing records, then delete the temp file after use. If a value begins with `-`, pass `--` before positional arguments so the scanner treats it as data.
+Commands write human-readable output by default. Use leading `--json` (for example `valedictorian-cli --json applications list`) or command-level `--json` when the output must be parsed, compared, or passed to another tool. Use `jq` or save JSON stdout to a `mktemp` file outside the repo when comparing records, then delete the temp file after use. If a value begins with `-`, pass `--` before positional arguments so the scanner treats it as data.
 
 ## Troubleshooting
 
