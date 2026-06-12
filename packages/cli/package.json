@@ -6,6 +6,9 @@
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "bin": {
     "valedictorian-cli": "dist/valedictorian.js"
   },
@@ -41,10 +44,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@stricli/core": "1.2.7",
     "sparxie": "github:KennySparxie/sparxie#acad8b518e65746513bc9cfa6082fe93c43ac34f"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^24.13.1",
     "typescript": "^5.2.2",
     "vitest": "^2.1.9"
   }
