@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ValedictorianClient, QueueListQuery } from 'sparxie'
+import type { ValedictorianWorkspaceClient, QueueListQuery } from 'sparxie'
 import { registerQueueIpc } from './queue.ipc'
 
 describe('queue IPC registration', () => {
@@ -46,7 +46,7 @@ describe('queue IPC registration', () => {
           }
         },
       },
-    } as unknown as ValedictorianClient
+    } as unknown as ValedictorianWorkspaceClient
     const handlers = new Map<string, (_event: unknown, query?: QueueListQuery) => Promise<unknown>>()
 
     registerQueueIpc(client, {

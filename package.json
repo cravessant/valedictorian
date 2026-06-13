@@ -38,7 +38,7 @@
     "pathe": "^2.0.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "sparxie": "github:KennyKeni/sparxie#acad8b518e65746513bc9cfa6082fe93c43ac34f",
+    "sparxie": "github:KennyKeni/sparxie#84bcf6c",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0"
   },

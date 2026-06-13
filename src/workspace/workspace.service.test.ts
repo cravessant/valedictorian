@@ -123,6 +123,7 @@ describe('workspace launch state', () => {
         {
           id: 'workspace-missing',
           lastOpenedAt: expect.any(String),
+          latestError: null,
           missing: true,
           name: 'Missing Search',
           open: true,

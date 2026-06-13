@@ -1,6 +1,12 @@
 import http from 'node:http'
-import { defaultLocalCapabilities, isApplicationStatus, type ValedictorianClient, type ProfileUpdateInput } from 'sparxie'
-import { readJsonBody, readOptionalStringField, readStringField, writeJson } from './local-server.http'
+import { defaultLocalCapabilities, isApplicationStatus, type ValedictorianWorkspaceClient, type ProfileUpdateInput } from 'sparxie'
+import {
+  readJsonBody,
+  readOptionalBooleanField,
+  readOptionalStringField,
+  readStringField,
+  writeJson,
+} from './local-server.http'
 import {
   parseApplicationAttemptsQuery,
   parseApplicationEventsQuery,
@@ -31,17 +37,25 @@ import {
   parseWorkflowRunsListQuery,
   parseWorkflowUpdateInput,
 } from './local-server.parsers'
+import type { WorkspaceClientResolver } from './local-server'
+import type { LocalWorkspaceManager } from './local-workspaces'
 
 export async function handleRequest({
   client,
   request,
+  resolveWorkspaceClient,
   response,
   token,
+  workspaceManager,
+  workspaceScoped = false,
 }: {
-  client: ValedictorianClient
+  client: ValedictorianWorkspaceClient
   request: http.IncomingMessage
+  resolveWorkspaceClient?: WorkspaceClientResolver
   response: http.ServerResponse
   token?: string
+  workspaceManager?: LocalWorkspaceManager
+  workspaceScoped?: boolean
 }) {
   try {
     const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
@@ -58,6 +72,76 @@ export async function handleRequest({
 
     if (token && request.headers.authorization !== `Bearer ${token}`) {
       writeJson(response, 401, { message: 'Unauthorized' })
+      return
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/workspaces') {
+      if (!workspaceManager) {
+        writeJson(response, 404, { message: 'Workspace registry is unavailable' })
+        return
+      }
+
+      writeJson(response, 200, await workspaceManager.list())
+      return
+    }
+
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/workspaces/open') {
+      if (!workspaceManager) {
+        writeJson(response, 404, { message: 'Workspace registry is unavailable' })
+        return
+      }
+      const body = await readJsonBody(request)
+
+      writeJson(
+        response,
+        200,
+        await workspaceManager.open({
+          path: readStringField(body, 'path'),
+          rekey: readOptionalBooleanField(body, 'rekey'),
+        }),
+      )
+      return
+    }
+
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/workspaces/create') {
+      if (!workspaceManager) {
+        writeJson(response, 404, { message: 'Workspace registry is unavailable' })
+        return
+      }
+      const body = await readJsonBody(request)
+
+      writeJson(
+        response,
+        200,
+        await workspaceManager.create({
+          path: readStringField(body, 'path'),
+          rekey: readOptionalBooleanField(body, 'rekey'),
+        }),
+      )
+      return
+    }
+
+    const workspaceMatch = requestUrl.pathname.match(/^\/v1\/workspaces\/([^/]+)(\/.*)$/)
+
+    if (workspaceMatch) {
+      const workspaceClientResolver =
+        resolveWorkspaceClient ?? workspaceManager?.resolveClient.bind(workspaceManager) ?? (() => client)
+
+      const workspaceClient = await workspaceClientResolver(decodeURIComponent(workspaceMatch[1]))
+      const originalUrl = request.url
+      request.url = `/v1${workspaceMatch[2]}${requestUrl.search}`
+
+      try {
+        await handleRequest({ client: workspaceClient, request, response, workspaceScoped: true })
+      } finally {
+        request.url = originalUrl
+      }
+
+      return
+    }
+
+    if (!workspaceScoped && isDomainRoute(requestUrl.pathname)) {
+      writeJson(response, 404, { message: 'Not found' })
       return
     }
 
@@ -145,6 +229,49 @@ export async function handleRequest({
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/profile/agent-context') {
       writeJson(response, 200, await client.profile.agentContext.get())
+      return
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/profile/sensitive') {
+      writeJson(response, 200, await profileExtensions(client).sensitive.get())
+      return
+    }
+
+    if (request.method === 'PATCH' && requestUrl.pathname === '/v1/profile/sensitive') {
+      writeJson(
+        response,
+        200,
+        await profileExtensions(client).sensitive.update(await readJsonBody(request)),
+      )
+      return
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/secrets') {
+      writeJson(response, 200, { items: await profileExtensions(client).secrets.list() })
+      return
+    }
+
+    const secretMatch = requestUrl.pathname.match(/^\/v1\/secrets\/([^/]+)$/)
+
+    if (request.method === 'PUT' && secretMatch) {
+      const body = await readJsonBody(request)
+
+      writeJson(
+        response,
+        200,
+        await profileExtensions(client).secrets.upsert({
+          key: decodeURIComponent(secretMatch[1]),
+          kind: readStringField(body, 'kind') as never,
+          label: readStringField(body, 'label'),
+          value: readStringField(body, 'value'),
+        }),
+      )
+      return
+    }
+
+    if (request.method === 'DELETE' && secretMatch) {
+      await profileExtensions(client).secrets.delete(decodeURIComponent(secretMatch[1]))
+      writeJson(response, 200, { ok: true })
       return
     }
 
@@ -482,7 +609,7 @@ export async function handleRequest({
 
     if (request.method === 'POST' && requestUrl.pathname === '/v1/scores') {
       await client.scores.record((await readJsonBody(request)) as Parameters<
-        ValedictorianClient['scores']['record']
+        ValedictorianWorkspaceClient['scores']['record']
       >[0])
       writeJson(response, 200, { ok: true })
       return
@@ -490,8 +617,50 @@ export async function handleRequest({
 
     writeJson(response, 404, { message: 'Not found' })
   } catch (error) {
-    writeJson(response, 400, {
+    writeJson(response, readErrorStatusCode(error), {
       message: error instanceof Error ? error.message : String(error),
     })
   }
+}
+
+function readErrorStatusCode(error: unknown) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'statusCode' in error &&
+    typeof error.statusCode === 'number'
+  ) {
+    return error.statusCode
+  }
+
+  return 400
+}
+
+function isDomainRoute(pathname: string) {
+  return /^\/v1\/(applications|queue|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
+    pathname,
+  )
+}
+
+type ProfileExtensionsClient = ValedictorianWorkspaceClient & {
+  profile: ValedictorianWorkspaceClient['profile'] & {
+    secrets: {
+      delete(key: string): Promise<void>
+      list(): Promise<unknown[]>
+      upsert(input: {
+        key: string
+        kind: never
+        label: string
+        value: string
+      }): Promise<unknown>
+    }
+    sensitive: {
+      get(): Promise<unknown>
+      update(input: unknown): Promise<unknown>
+    }
+  }
+}
+
+function profileExtensions(client: ValedictorianWorkspaceClient) {
+  return (client as ProfileExtensionsClient).profile
 }

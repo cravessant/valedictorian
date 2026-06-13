@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type {
   CreateSourcingFindingInput,
-  ValedictorianClient,
+  ValedictorianWorkspaceClient,
   PromoteSourcingFindingInput,
   SetSourcingFindingDecisionInput,
   SourcingFindingsListInput,
@@ -44,7 +44,7 @@ describe('sourcing IPC registration', () => {
           },
         },
       },
-    } as ValedictorianClient
+    } as ValedictorianWorkspaceClient
     const handlers = new Map<string, (_event: unknown, input?: unknown) => Promise<unknown>>()
 
     registerSourcingIpc(client, {

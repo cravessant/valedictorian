@@ -4,6 +4,7 @@ import {
   defaultValedictorianApiBaseUrl,
   type HttpValedictorianClientOptions,
   type ValedictorianClient,
+  type ValedictorianWorkspaceClient,
 } from 'sparxie'
 import {
   createValedictorianHttpServer,
@@ -24,6 +25,7 @@ export interface ValedictorianRuntimeConfigInput {
   settings?: AppSettings
   userDataPath: string
   workspaceDataPath?: string
+  workspaceId?: string
 }
 
 export interface ValedictorianRuntimeConfig {
@@ -35,10 +37,11 @@ export interface ValedictorianRuntimeConfig {
   referenceTrackerPath?: string
   seedDataMode: ValedictorianSeedDataMode
   sqlitePath: string
+  workspaceId?: string
 }
 
 export interface ValedictorianRuntime {
-  client: ValedictorianClient
+  client: ValedictorianWorkspaceClient
   close: () => Promise<void>
   server: Pick<StartedValedictorianHttpServer, 'close' | 'url'> | null
 }
@@ -46,7 +49,7 @@ export interface ValedictorianRuntime {
 export interface CreateValedictorianRuntimeOptions {
   config: ValedictorianRuntimeConfig
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
-  createLocalClient?: (options: LocalValedictorianClientOptions) => ValedictorianClient
+  createLocalClient?: (options: LocalValedictorianClientOptions) => ValedictorianWorkspaceClient
   startServer?: (
     options: CreateValedictorianHttpServerOptions,
   ) => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>
@@ -57,6 +60,7 @@ export function resolveValedictorianRuntimeConfig({
   settings = defaultAppSettings,
   userDataPath,
   workspaceDataPath,
+  workspaceId,
 }: ValedictorianRuntimeConfigInput): ValedictorianRuntimeConfig {
   const mode = readRuntimeMode(env.VALEDICTORIAN_MODE ?? settings.runtimeMode)
   const apiHost = env.VALEDICTORIAN_API_HOST ?? settings.localApiHost
@@ -75,6 +79,7 @@ export function resolveValedictorianRuntimeConfig({
     seedDataMode: readSeedDataMode(env.VALEDICTORIAN_SEED_DATA),
     sqlitePath:
       env.VALEDICTORIAN_SQLITE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'valedictorian.sqlite'),
+    workspaceId,
   }
 }
 
@@ -85,11 +90,15 @@ export async function createValedictorianRuntime({
   startServer = createValedictorianHttpServer,
 }: CreateValedictorianRuntimeOptions): Promise<ValedictorianRuntime> {
   if (config.mode === 'remote') {
+    if (!config.workspaceId) {
+      throw new Error('A workspace id is required when VALEDICTORIAN_MODE=remote')
+    }
+
     return {
       client: createHttpClient({
         baseUrl: config.apiUrl,
         token: config.apiToken,
-      }),
+      }).forWorkspace(config.workspaceId),
       close: async () => undefined,
       server: null,
     }
@@ -101,19 +110,10 @@ export async function createValedictorianRuntime({
     sqlitePath: config.sqlitePath,
   })
 
-  if (config.mode === 'local-desktop') {
-    return {
-      client,
-      close: async () => undefined,
-      server: null,
-    }
-  }
-
   const server = await startServer({
     client,
     host: config.apiHost,
     port: config.apiPort,
-    token: config.apiToken,
   })
 
   return {

@@ -62,6 +62,7 @@ describe('file workspace registry store', () => {
           name: 'New Search',
           path: '/Users/keni/New Search',
           lastOpenedAt: '2026-06-08T10:00:00.000Z',
+          latestError: null,
           open: true,
         },
         'workspace-old': {
@@ -69,6 +70,7 @@ describe('file workspace registry store', () => {
           name: 'Old Search',
           path: '/Users/keni/Old Search',
           lastOpenedAt: '2026-06-01T10:00:00.000Z',
+          latestError: null,
           open: false,
         },
       },
@@ -77,5 +79,45 @@ describe('file workspace registry store', () => {
       { id: 'workspace-new' },
       { id: 'workspace-old' },
     ])
+  })
+
+  it('stores and clears the latest workspace error', async () => {
+    const registryPath = createTempRegistryPath()
+    const store = createFileWorkspaceRegistryStore(registryPath)
+    await store.markOpened(
+      {
+        id: 'workspace-error',
+        name: 'Error Search',
+        path: '/Users/keni/Error Search',
+      },
+      new Date('2026-06-08T10:00:00.000Z'),
+    )
+
+    await store.recordError(
+      'workspace-error',
+      'Workspace path does not exist: /Users/keni/Error Search',
+      new Date('2026-06-08T10:05:00.000Z'),
+    )
+
+    await expect(store.get()).resolves.toMatchObject({
+      workspaces: {
+        'workspace-error': {
+          latestError: {
+            at: '2026-06-08T10:05:00.000Z',
+            message: 'Workspace path does not exist: /Users/keni/Error Search',
+          },
+        },
+      },
+    })
+
+    await store.clearError('workspace-error')
+
+    await expect(store.get()).resolves.toMatchObject({
+      workspaces: {
+        'workspace-error': {
+          latestError: null,
+        },
+      },
+    })
   })
 })

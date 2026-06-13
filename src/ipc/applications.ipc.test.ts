@@ -3,7 +3,7 @@ import type {
   ArchiveApplicationInput,
   CreateApplicationInput,
   CreateApplicationLinkInput,
-  ValedictorianClient,
+  ValedictorianWorkspaceClient,
   StatusUpdateInput,
   UpdateApplicationInput,
   UpdateApplicationLinkInput,
@@ -187,7 +187,7 @@ describe('application IPC registration', () => {
           throw new Error('not used')
         },
       },
-    } as unknown as ValedictorianClient
+    } as unknown as ValedictorianWorkspaceClient
     const handlers = new Map<
       string,
       (

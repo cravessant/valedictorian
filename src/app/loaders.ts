@@ -2,7 +2,9 @@ import type { ApplicationsPreloadApi } from '../ipc/applications.preload'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import type { QueuePreloadApi } from '../ipc/queue.preload'
+import type { ScoresPreloadApi } from '../ipc/scores.preload'
 import type { SettingsPreloadApi } from '../ipc/settings.preload'
+import type { SourcingPreloadApi } from '../ipc/sourcing.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { ProfileSensitiveDetails } from '../modules/profile/profile.repository'
 import type {
@@ -24,6 +26,7 @@ import type {
   UpdateApplicationWorkflowInput,
 } from '../modules/applications/application.types'
 import {
+  createHttpValedictorianClient,
   defaultUserProfile,
   defaultPolicyConfig,
   type PromoteSourcingFindingInput,
@@ -98,18 +101,36 @@ export const emptyApplicationEventsResult: ApplicationEventsListResult = {
 }
 
 export const defaultApplicationLoader = (query: ApplicationListQuery) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.list(query)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return applicationWindow.applications?.list(query) ?? Promise.resolve(emptyApplicationResult)
 }
 
 export const defaultApplicationDetailLoader = (applicationId: string): Promise<ApplicationDetail | null> => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.get(applicationId) as Promise<ApplicationDetail | null>
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return applicationWindow.applications?.get(applicationId) ?? Promise.resolve(null)
 }
 
 export const defaultApplicationLinksLoader = (input: ApplicationLinksListInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.links.list(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return (
@@ -119,6 +140,12 @@ export const defaultApplicationLinksLoader = (input: ApplicationLinksListInput) 
 }
 
 export const defaultApplicationEventsLoader = (input: ApplicationEventsListInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.events.list(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return (
@@ -128,6 +155,12 @@ export const defaultApplicationEventsLoader = (input: ApplicationEventsListInput
 }
 
 export const defaultAttemptLoader = (applicationId: string) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.attempts.list({ applicationId })
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return (
@@ -137,30 +170,60 @@ export const defaultAttemptLoader = (applicationId: string) => {
 }
 
 export const defaultApplicationCreator = (input: CreateApplicationInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.create(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return applicationWindow.applications?.create(input) ?? Promise.reject(new Error('Applications API is unavailable.'))
 }
 
 export const defaultApplicationUpdater = (input: UpdateApplicationInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.update(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return applicationWindow.applications?.update(input) ?? Promise.reject(new Error('Applications API is unavailable.'))
 }
 
 export const defaultApplicationStatusUpdater = (input: StatusUpdateInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.updateStatus(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return applicationWindow.applications?.updateStatus(input) ?? Promise.reject(new Error('Applications API is unavailable.'))
 }
 
 export const defaultApplicationArchiver = (input: ArchiveApplicationInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.archive(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return applicationWindow.applications?.archive(input) ?? Promise.reject(new Error('Applications API is unavailable.'))
 }
 
 export const defaultApplicationWorkflowUpdater = (input: UpdateApplicationWorkflowInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.workflow.update(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return (
@@ -170,6 +233,12 @@ export const defaultApplicationWorkflowUpdater = (input: UpdateApplicationWorkfl
 }
 
 export const defaultApplicationNoteAppender = (input: AppendApplicationNoteInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.notes.append(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return (
@@ -179,6 +248,12 @@ export const defaultApplicationNoteAppender = (input: AppendApplicationNoteInput
 }
 
 export const defaultApplicationLinkCreator = (input: CreateApplicationLinkInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.links.create(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return (
@@ -188,6 +263,12 @@ export const defaultApplicationLinkCreator = (input: CreateApplicationLinkInput)
 }
 
 export const defaultApplicationLinkUpdater = (input: UpdateApplicationLinkInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.applications.links.update(input)
+  }
+
   const applicationWindow = window as Window & { applications?: ApplicationsPreloadApi }
 
   return (
@@ -197,12 +278,24 @@ export const defaultApplicationLinkUpdater = (input: UpdateApplicationLinkInput)
 }
 
 export const defaultQueueLoader = (query: QueueListQuery) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.queue.list(query)
+  }
+
   const queueWindow = window as Window & { queue?: QueuePreloadApi }
 
   return queueWindow.queue?.list(query) ?? Promise.resolve(emptyQueueResult)
 }
 
 export const defaultSourcingLoader = (query: SourcingFindingsListInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.sourcing.findings.list(query)
+  }
+
   const sourcingWindow = window as Window & {
     sourcing?: { findings?: { list(query: SourcingFindingsListInput): Promise<SourcingFindingsListResult> } }
   }
@@ -211,6 +304,12 @@ export const defaultSourcingLoader = (query: SourcingFindingsListInput) => {
 }
 
 export const defaultPromoteSourcingFinding = (input: PromoteSourcingFindingInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.sourcing.findings.promote(input)
+  }
+
   const sourcingWindow = window as Window & {
     sourcing?: { findings?: { promote(input: PromoteSourcingFindingInput): Promise<SourcingFinding> } }
   }
@@ -219,6 +318,12 @@ export const defaultPromoteSourcingFinding = (input: PromoteSourcingFindingInput
 }
 
 export const defaultCreateSourcingFinding = (input: CreateSourcingFindingInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.sourcing.findings.create(input)
+  }
+
   const sourcingWindow = window as Window & {
     sourcing?: { findings?: { create(input: CreateSourcingFindingInput): Promise<SourcingFinding> } }
   }
@@ -227,6 +332,12 @@ export const defaultCreateSourcingFinding = (input: CreateSourcingFindingInput) 
 }
 
 export const defaultUpdateSourcingFinding = (input: UpdateSourcingFindingInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.sourcing.findings.update(input)
+  }
+
   const sourcingWindow = window as Window & {
     sourcing?: { findings?: { update(input: UpdateSourcingFindingInput): Promise<SourcingFinding> } }
   }
@@ -235,6 +346,12 @@ export const defaultUpdateSourcingFinding = (input: UpdateSourcingFindingInput) 
 }
 
 export const defaultDecideSourcingFinding = (input: SetSourcingFindingDecisionInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.sourcing.findings.decide(input)
+  }
+
   const sourcingWindow = window as Window & {
     sourcing?: { findings?: { decide(input: SetSourcingFindingDecisionInput): Promise<SourcingFinding> } }
   }
@@ -243,11 +360,90 @@ export const defaultDecideSourcingFinding = (input: SetSourcingFindingDecisionIn
 }
 
 export const defaultScoreRecorder = (input: ScoreInput) => {
+  const httpClient = getRendererHttpWorkspaceClient()
+
+  if (httpClient) {
+    return httpClient.scores.record(input)
+  }
+
   const scoresWindow = window as Window & {
     scores?: { record(input: ScoreInput): Promise<void> }
   }
 
   return scoresWindow.scores?.record(input) ?? Promise.reject(new Error('Scores API is unavailable.'))
+}
+
+interface RendererHttpConfig {
+  apiBaseUrl: string
+  token?: string
+  workspaceId: string
+}
+
+type RendererHttpWorkspaceClient = {
+  applications: ApplicationsPreloadApi
+  policy: PolicyPreloadApi
+  profile: ProfilePreloadApi
+  queue: QueuePreloadApi
+  scores: ScoresPreloadApi
+  secrets: {
+    delete(key: string): Promise<void>
+    list(): Promise<{ items: Awaited<ReturnType<ProfilePreloadApi['secrets']['list']>> }>
+    upsert(input: Parameters<ProfilePreloadApi['secrets']['upsert']>[0]): ReturnType<
+      ProfilePreloadApi['secrets']['upsert']
+    >
+  }
+  sourcing: SourcingPreloadApi
+}
+
+function getRendererHttpWorkspaceClient(): RendererHttpWorkspaceClient | null {
+  const config = (window as Window & { valedictorianHttp?: RendererHttpConfig }).valedictorianHttp
+
+  if (!config) {
+    return null
+  }
+
+  const client = createHttpValedictorianClient({
+    baseUrl: config.apiBaseUrl,
+    token: config.token,
+  }) as unknown as {
+    forWorkspace?: (workspaceId: string) => RendererHttpWorkspaceClient
+  }
+
+  if (client.forWorkspace) {
+    return client.forWorkspace(config.workspaceId)
+  }
+
+  return createHttpValedictorianClient({
+    baseUrl: config.apiBaseUrl,
+    fetch: createWorkspaceFetch(config.workspaceId),
+    token: config.token,
+  }) as unknown as RendererHttpWorkspaceClient
+}
+
+function createWorkspaceFetch(workspaceId: string): typeof fetch {
+  return (async (input, init) => {
+    const url = new URL(readFetchUrl(input))
+
+    if (url.pathname.startsWith('/v1/') && !url.pathname.startsWith('/v1/workspaces/')) {
+      url.pathname = `/v1/workspaces/${encodeURIComponent(workspaceId)}${url.pathname.slice(
+        '/v1'.length,
+      )}`
+    }
+
+    return fetch(url.toString(), init)
+  }) as typeof fetch
+}
+
+function readFetchUrl(input: Parameters<typeof fetch>[0]) {
+  if (typeof input === 'string') {
+    return input
+  }
+
+  if (input instanceof URL) {
+    return input.toString()
+  }
+
+  return input.url
 }
 
 function getWindowSettingsApi() {
@@ -365,20 +561,50 @@ export const defaultWorkspaceApi: WorkspacePreloadApi = {
 export const defaultPolicyApi: PolicyPreloadApi = {
   config: {
     get() {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.policy.config.get()
+      }
+
       return getWindowPolicyApi()?.config.get() ?? Promise.resolve(defaultPolicyConfig)
     },
     reset() {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.policy.config.reset()
+      }
+
       return getWindowPolicyApi()?.config.reset() ?? Promise.resolve(defaultPolicyConfig)
     },
     update(patch) {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.policy.config.update(patch)
+      }
+
       return getWindowPolicyApi()?.config.update(patch) ?? Promise.resolve(defaultPolicyConfig)
     },
   },
   evidence: {
     list(query) {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.policy.evidence.list(query)
+      }
+
       return getWindowPolicyApi()?.evidence.list(query) ?? Promise.resolve([])
     },
     record(input) {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.policy.evidence.record(input)
+      }
+
       return (
         getWindowPolicyApi()?.evidence.record(input) ??
         Promise.resolve({
@@ -396,6 +622,12 @@ export const defaultPolicyApi: PolicyPreloadApi = {
   },
   evaluate: {
     application(input) {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.policy.evaluate.application(input)
+      }
+
       return (
         getWindowPolicyApi()?.evaluate.application(input) ??
         Promise.resolve({
@@ -409,6 +641,12 @@ export const defaultPolicyApi: PolicyPreloadApi = {
       )
     },
     sourcingCandidate(input) {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.policy.evaluate.sourcingCandidate(input)
+      }
+
       return (
         getWindowPolicyApi()?.evaluate.sourcingCandidate(input) ??
         Promise.resolve({
@@ -422,7 +660,12 @@ export const defaultPolicyApi: PolicyPreloadApi = {
       )
     },
     runWindow(input) {
+      const httpClient = getRendererHttpWorkspaceClient()
       const now = input.now ?? new Date().toISOString()
+
+      if (httpClient) {
+        return httpClient.policy.evaluate.runWindow(input)
+      }
 
       return (
         getWindowPolicyApi()?.evaluate.runWindow(input) ??
@@ -447,17 +690,41 @@ export const defaultPolicyApi: PolicyPreloadApi = {
 export const defaultProfileApi: ProfilePreloadApi = {
   agentContext: {
     get() {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.profile.agentContext.get()
+      }
+
       return getWindowProfileApi()?.agentContext.get() ?? Promise.resolve({ answers: [], basics: {} })
     },
   },
   get() {
+    const httpClient = getRendererHttpWorkspaceClient()
+
+    if (httpClient) {
+      return httpClient.profile.get()
+    }
+
     return getWindowProfileApi()?.get() ?? Promise.resolve(defaultUserProfile)
   },
   sensitive: {
     get() {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.profile.sensitive.get()
+      }
+
       return getWindowProfileApi()?.sensitive.get() ?? Promise.resolve(defaultSensitiveDetails)
     },
     update(input) {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.profile.sensitive.update(input)
+      }
+
       return (
         getWindowProfileApi()?.sensitive.update(input) ??
         Promise.resolve({ ...defaultSensitiveDetails, ...input })
@@ -466,15 +733,33 @@ export const defaultProfileApi: ProfilePreloadApi = {
   },
   secrets: {
     delete(key) {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.secrets.delete(key)
+      }
+
       return getWindowProfileApi()?.secrets.delete(key) ?? Promise.resolve()
     },
     list() {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.secrets.list().then((result) => result.items)
+      }
+
       return getWindowProfileApi()?.secrets.list() ?? Promise.resolve([])
     },
     reveal(key) {
       return getWindowProfileApi()?.secrets.reveal(key) ?? Promise.resolve(null)
     },
     upsert(input) {
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      if (httpClient) {
+        return httpClient.secrets.upsert(input)
+      }
+
       return (
         getWindowProfileApi()?.secrets.upsert(input) ??
         Promise.resolve({
@@ -487,6 +772,12 @@ export const defaultProfileApi: ProfilePreloadApi = {
     },
   },
   update(input) {
+    const httpClient = getRendererHttpWorkspaceClient()
+
+    if (httpClient) {
+      return httpClient.profile.update(input)
+    }
+
     return getWindowProfileApi()?.update(input) ?? Promise.resolve({ ...defaultUserProfile, ...input })
   },
 }

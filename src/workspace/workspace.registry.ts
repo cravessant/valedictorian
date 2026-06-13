@@ -7,6 +7,12 @@ export interface WorkspaceRecord {
   path: string
   lastOpenedAt: string
   open: boolean
+  latestError?: WorkspaceRegistryError | null
+}
+
+export interface WorkspaceRegistryError {
+  at: string
+  message: string
 }
 
 export interface WorkspaceRegistry {
@@ -21,11 +27,17 @@ export interface WorkspaceRegistryUpsertInput {
 }
 
 export interface WorkspaceRegistryStore {
+  clearError: (workspaceId: string) => Promise<WorkspaceRegistry>
   get: () => Promise<WorkspaceRegistry>
   listRecent: () => Promise<WorkspaceRecord[]>
   markOpened: (
     workspace: WorkspaceRegistryUpsertInput,
     openedAt?: Date,
+  ) => Promise<WorkspaceRegistry>
+  recordError: (
+    workspaceId: string,
+    message: string,
+    occurredAt?: Date,
   ) => Promise<WorkspaceRegistry>
   remove: (workspaceId: string) => Promise<WorkspaceRegistry>
 }
@@ -37,6 +49,28 @@ export const emptyWorkspaceRegistry: WorkspaceRegistry = {
 
 export function createFileWorkspaceRegistryStore(registryPath: string): WorkspaceRegistryStore {
   return {
+    async clearError(workspaceId) {
+      const currentRegistry = readRegistry(registryPath)
+      const workspace = currentRegistry.workspaces[workspaceId]
+
+      if (!workspace) {
+        return currentRegistry
+      }
+
+      const nextRegistry = {
+        ...currentRegistry,
+        workspaces: {
+          ...currentRegistry.workspaces,
+          [workspaceId]: {
+            ...workspace,
+            latestError: null,
+          },
+        },
+      }
+
+      writeRegistry(registryPath, nextRegistry)
+      return nextRegistry
+    },
     async get() {
       return readRegistry(registryPath)
     },
@@ -47,7 +81,10 @@ export function createFileWorkspaceRegistryStore(registryPath: string): Workspac
     },
     async markOpened(workspace, openedAt = new Date()) {
       const currentRegistry = readRegistry(registryPath)
+      const previousRecord = currentRegistry.workspaces[workspace.id]
       const nextRecord: WorkspaceRecord = {
+        latestError: null,
+        ...previousRecord,
         ...workspace,
         lastOpenedAt: openedAt.toISOString(),
         open: true,
@@ -68,6 +105,31 @@ export function createFileWorkspaceRegistryStore(registryPath: string): Workspac
       const nextRegistry = {
         lastOpenedWorkspaceId: workspace.id,
         workspaces: nextWorkspaces,
+      }
+
+      writeRegistry(registryPath, nextRegistry)
+      return nextRegistry
+    },
+    async recordError(workspaceId, message, occurredAt = new Date()) {
+      const currentRegistry = readRegistry(registryPath)
+      const workspace = currentRegistry.workspaces[workspaceId]
+
+      if (!workspace) {
+        return currentRegistry
+      }
+
+      const nextRegistry = {
+        ...currentRegistry,
+        workspaces: {
+          ...currentRegistry.workspaces,
+          [workspaceId]: {
+            ...workspace,
+            latestError: {
+              at: occurredAt.toISOString(),
+              message,
+            },
+          },
+        },
       }
 
       writeRegistry(registryPath, nextRegistry)
@@ -151,6 +213,24 @@ function normalizeWorkspaceRecord(value: unknown): WorkspaceRecord | null {
     name: candidate.name,
     path: candidate.path,
     lastOpenedAt: candidate.lastOpenedAt,
+    latestError: normalizeWorkspaceRegistryError(candidate.latestError),
     open: candidate.open === true,
+  }
+}
+
+function normalizeWorkspaceRegistryError(value: unknown): WorkspaceRegistryError | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const candidate = value as Record<string, unknown>
+
+  if (typeof candidate.at !== 'string' || typeof candidate.message !== 'string') {
+    return null
+  }
+
+  return {
+    at: candidate.at,
+    message: candidate.message,
   }
 }

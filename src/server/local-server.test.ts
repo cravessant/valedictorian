@@ -1,9 +1,12 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ValedictorianClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { initializeWorkspace } from '../workspace/workspace.initializer'
+import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
+import { createLocalWorkspaceManager } from './local-workspaces'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
 
 function createTempSqlitePath() {
@@ -21,7 +24,7 @@ async function readJson(response: Response) {
   return (await response.json()) as unknown
 }
 
-function createBoundaryTestClient(onCreate: () => void): ValedictorianClient {
+function createBoundaryTestClient(onCreate: () => void): ValedictorianWorkspaceClient {
   return {
     applications: {
       async archive() {},
@@ -157,7 +160,7 @@ function createBoundaryTestClient(onCreate: () => void): ValedictorianClient {
         },
       },
     },
-  } as unknown as ValedictorianClient
+  } as unknown as ValedictorianWorkspaceClient
 }
 
 describe('local Valedictorian HTTP server', () => {
@@ -195,6 +198,448 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
+  it('routes workspace-scoped application lists through the selected workspace client', async () => {
+    const rootClient = createBoundaryTestClient(() => {})
+    const workspaceClient = createBoundaryTestClient(() => {})
+    const listCalls: unknown[] = []
+
+    workspaceClient.applications.list = async (query) => {
+      listCalls.push(query)
+      return { hasMore: false, items: [], limit: 10, offset: 0, total: 0 }
+    }
+
+    server = await createValedictorianHttpServer({
+      client: rootClient,
+      host: '127.0.0.1',
+      port: 0,
+      resolveWorkspaceClient(workspaceId) {
+        expect(workspaceId).toBe('workspace-1')
+        return workspaceClient
+      },
+    })
+
+    const response = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/applications?status=queued&limit=10&offset=0`,
+    )
+
+    await expect(readJson(response)).resolves.toEqual({
+      hasMore: false,
+      items: [],
+      limit: 10,
+      offset: 0,
+      total: 0,
+    })
+    expect(response.status).toBe(200)
+    expect(listCalls).toEqual([{ limit: 10, offset: 0, status: 'queued' }])
+  })
+
+  it('does not expose old unscoped domain routes', async () => {
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+    })
+
+    const response = await fetch(`${server.url}/v1/applications`)
+
+    expect(response.status).toBe(404)
+    await expect(readJson(response)).resolves.toEqual({ message: 'Not found' })
+  })
+
+  it('lists registered local workspaces from the registry', async () => {
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    await registryStore.markOpened(
+      {
+        id: 'workspace-1',
+        name: 'Summer Search',
+        path: '/Users/keni/Summer Search',
+      },
+      new Date('2026-06-12T10:00:00.000Z'),
+    )
+
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager: createLocalWorkspaceManager({ registryStore }),
+    })
+
+    const response = await fetch(`${server.url}/v1/workspaces`)
+
+    await expect(readJson(response)).resolves.toEqual({
+      items: [
+        {
+          id: 'workspace-1',
+          lastOpenedAt: '2026-06-12T10:00:00.000Z',
+          latestError: null,
+          name: 'Summer Search',
+          open: true,
+          path: '/Users/keni/Summer Search',
+          source: 'local',
+        },
+      ],
+    })
+  })
+
+  it('opens an existing folder as a registered local workspace', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-open-'))
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager: createLocalWorkspaceManager({
+        createId: () => 'workspace-opened',
+        now: () => new Date('2026-06-12T11:00:00.000Z'),
+        registryStore,
+      }),
+    })
+
+    const response = await fetch(`${server.url}/v1/workspaces/open`, {
+      body: JSON.stringify({ path: workspaceRoot }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+
+    await expect(readJson(response)).resolves.toEqual({
+      id: 'workspace-opened',
+      lastOpenedAt: '2026-06-12T11:00:00.000Z',
+      latestError: null,
+      name: path.basename(workspaceRoot),
+      open: true,
+      path: workspaceRoot,
+      source: 'local',
+    })
+    await expect(registryStore.get()).resolves.toMatchObject({
+      lastOpenedWorkspaceId: 'workspace-opened',
+      workspaces: {
+        'workspace-opened': {
+          id: 'workspace-opened',
+          path: workspaceRoot,
+        },
+      },
+    })
+  })
+
+  it('creates a workspace at a new path and registers it', async () => {
+    const parentPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-create-parent-'))
+    const workspaceRoot = path.join(parentPath, 'Created Search')
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager: createLocalWorkspaceManager({
+        createId: () => 'workspace-created',
+        now: () => new Date('2026-06-12T12:00:00.000Z'),
+        registryStore,
+      }),
+    })
+
+    const response = await fetch(`${server.url}/v1/workspaces/create`, {
+      body: JSON.stringify({ path: workspaceRoot }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+
+    await expect(readJson(response)).resolves.toEqual({
+      id: 'workspace-created',
+      lastOpenedAt: '2026-06-12T12:00:00.000Z',
+      latestError: null,
+      name: 'Created Search',
+      open: true,
+      path: workspaceRoot,
+      source: 'local',
+    })
+    expect(fs.existsSync(path.join(workspaceRoot, '.valedictorian', 'manifest.json'))).toBe(true)
+    await expect(registryStore.get()).resolves.toMatchObject({
+      lastOpenedWorkspaceId: 'workspace-created',
+    })
+  })
+
+  it('auto-loads registered workspace data for workspace-scoped domain routes', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-load-'))
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const workspaceManager = createLocalWorkspaceManager({
+      createId: () => 'workspace-loaded',
+      now: () => new Date('2026-06-12T13:00:00.000Z'),
+      registryStore,
+      seedDataMode: 'sample',
+    })
+    await workspaceManager.open({ path: workspaceRoot })
+
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager,
+    })
+
+    const response = await fetch(
+      `${server.url}/v1/workspaces/workspace-loaded/applications?status=needs_user_info&limit=25&offset=0`,
+    )
+    const payload = (await readJson(response)) as {
+      items: Array<{ companyName: string; status: string }>
+      total: number
+    }
+
+    expect(response.status).toBe(200)
+    expect(payload.total).toBe(1)
+    expect(payload.items[0]).toMatchObject({
+      companyName: 'Astranis Space Technologies',
+      status: 'needs_user_info',
+    })
+  })
+
+  it('blocks opening a workspace when its manifest id is registered to a different path', async () => {
+    const firstRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-collision-a-'))
+    const secondRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-collision-b-'))
+    const firstWorkspace = initializeWorkspace(firstRoot, {
+      createId: () => 'workspace-collision',
+    })
+    initializeWorkspace(secondRoot, {
+      createId: () => 'workspace-collision',
+    })
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    await registryStore.markOpened({
+      id: firstWorkspace.id,
+      name: firstWorkspace.name,
+      path: firstWorkspace.rootPath,
+    })
+
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager: createLocalWorkspaceManager({ registryStore }),
+    })
+
+    const response = await fetch(`${server.url}/v1/workspaces/open`, {
+      body: JSON.stringify({ path: secondRoot }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+
+    expect(response.status).toBe(409)
+    await expect(readJson(response)).resolves.toEqual({
+      message:
+        'Workspace id workspace-collision is already registered to a different path. Re-key the workspace to register it here.',
+    })
+    await expect(registryStore.get()).resolves.toMatchObject({
+      lastOpenedWorkspaceId: 'workspace-collision',
+      workspaces: {
+        'workspace-collision': {
+          path: firstRoot,
+        },
+      },
+    })
+  })
+
+  it('re-keys a colliding workspace manifest when explicitly requested', async () => {
+    const firstRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-rekey-a-'))
+    const secondRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-rekey-b-'))
+    const firstWorkspace = initializeWorkspace(firstRoot, {
+      createId: () => 'workspace-collision',
+      now: new Date('2026-06-12T09:00:00.000Z'),
+    })
+    initializeWorkspace(secondRoot, {
+      createId: () => 'workspace-collision',
+      now: new Date('2026-06-12T09:30:00.000Z'),
+    })
+    const manifestPath = path.join(secondRoot, '.valedictorian', 'manifest.json')
+    const manifestBeforeRekey = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    await registryStore.markOpened({
+      id: firstWorkspace.id,
+      name: firstWorkspace.name,
+      path: firstWorkspace.rootPath,
+    })
+
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager: createLocalWorkspaceManager({
+        createId: () => 'workspace-rekeyed',
+        now: () => new Date('2026-06-12T14:00:00.000Z'),
+        registryStore,
+      }),
+    })
+
+    const response = await fetch(`${server.url}/v1/workspaces/open`, {
+      body: JSON.stringify({ path: secondRoot, rekey: true }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+
+    await expect(readJson(response)).resolves.toMatchObject({
+      id: 'workspace-rekeyed',
+      path: secondRoot,
+    })
+    expect(JSON.parse(fs.readFileSync(manifestPath, 'utf8'))).toEqual({
+      ...manifestBeforeRekey,
+      id: 'workspace-rekeyed',
+    })
+    await expect(registryStore.get()).resolves.toMatchObject({
+      lastOpenedWorkspaceId: 'workspace-rekeyed',
+      workspaces: {
+        'workspace-collision': {
+          path: firstRoot,
+        },
+        'workspace-rekeyed': {
+          path: secondRoot,
+        },
+      },
+    })
+  })
+
+  it('records and clears a workspace latest error around backend load attempts', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-error-'))
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const workspaceManager = createLocalWorkspaceManager({
+      createId: () => 'workspace-error',
+      now: () => new Date('2026-06-12T15:00:00.000Z'),
+      registryStore,
+      seedDataMode: 'sample',
+    })
+    await workspaceManager.open({ path: workspaceRoot })
+    fs.rmSync(workspaceRoot, { force: true, recursive: true })
+
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager,
+    })
+
+    const failingResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-error/applications?limit=1`,
+    )
+
+    expect(failingResponse.status).toBe(400)
+    await expect(fetch(`${server.url}/v1/workspaces`).then(readJson)).resolves.toMatchObject({
+      items: [
+        {
+          id: 'workspace-error',
+          latestError: {
+            at: '2026-06-12T15:00:00.000Z',
+            message: `Workspace path does not exist: ${workspaceRoot}`,
+          },
+        },
+      ],
+    })
+
+    initializeWorkspace(workspaceRoot, { createId: () => 'workspace-error' })
+
+    const successfulResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-error/applications?limit=1`,
+    )
+
+    expect(successfulResponse.status).toBe(200)
+    await expect(fetch(`${server.url}/v1/workspaces`).then(readJson)).resolves.toMatchObject({
+      items: [
+        {
+          id: 'workspace-error',
+          latestError: null,
+        },
+      ],
+    })
+  })
+
+  it('exposes write-only workspace secrets and explicit sensitive profile details over HTTP', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-secrets-'))
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const workspaceManager = createLocalWorkspaceManager({
+      createId: () => 'workspace-secrets',
+      registryStore,
+      secretCodec: {
+        decrypt(value) {
+          return value.replace(/^enc:/, '')
+        },
+        encrypt(value) {
+          return `enc:${value}`
+        },
+      },
+    })
+    await workspaceManager.open({ path: workspaceRoot })
+
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager,
+    })
+
+    const secretResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-secrets/secrets/greenhouse_password`,
+      {
+        body: JSON.stringify({
+          kind: 'password',
+          label: 'Greenhouse',
+          value: 'correct horse battery staple',
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'PUT',
+      },
+    )
+    const secretPayload = (await readJson(secretResponse)) as Record<string, unknown>
+    const listResponse = await fetch(`${server.url}/v1/workspaces/workspace-secrets/secrets`)
+    const listPayload = (await readJson(listResponse)) as { items: Array<Record<string, unknown>> }
+    const revealResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-secrets/secrets/greenhouse_password`,
+    )
+
+    expect(secretResponse.status).toBe(200)
+    expect(secretPayload).toMatchObject({
+      key: 'greenhouse_password',
+      kind: 'password',
+      label: 'Greenhouse',
+    })
+    expect(secretPayload).not.toHaveProperty('value')
+    expect(listPayload.items[0]).toMatchObject({
+      key: 'greenhouse_password',
+      kind: 'password',
+      label: 'Greenhouse',
+    })
+    expect(listPayload.items[0]).not.toHaveProperty('value')
+    expect(revealResponse.status).toBe(404)
+
+    const sensitiveUpdateResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-secrets/profile/sensitive`,
+      {
+        body: JSON.stringify({ disabilityStatus: 'No', ssnLast4: '5125' }),
+        headers: { 'content-type': 'application/json' },
+        method: 'PATCH',
+      },
+    )
+    const sensitiveGetResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-secrets/profile/sensitive`,
+    )
+
+    await expect(readJson(sensitiveUpdateResponse)).resolves.toMatchObject({
+      disabilityStatus: 'No',
+      ssnLast4: '5125',
+    })
+    await expect(readJson(sensitiveGetResponse)).resolves.toMatchObject({
+      disabilityStatus: 'No',
+      ssnLast4: '5125',
+    })
+
+    const deleteResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-secrets/secrets/greenhouse_password`,
+      { method: 'DELETE' },
+    )
+    const emptyListResponse = await fetch(`${server.url}/v1/workspaces/workspace-secrets/secrets`)
+
+    expect(deleteResponse.status).toBe(200)
+    await expect(readJson(emptyListResponse)).resolves.toEqual({ items: [] })
+  })
+
   it('lists and gets applications with auth, filters, and pagination', async () => {
     server = await createValedictorianHttpServer({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
@@ -204,7 +649,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const listResponse = await fetch(
-      `${server.url}/v1/applications?status=needs_user_info&minScore=6&source=linkedin&limit=25&offset=0`,
+      `${server.url}/v1/workspaces/workspace-1/applications?status=needs_user_info&minScore=6&source=linkedin&limit=25&offset=0`,
       { headers: { authorization: 'Bearer server-token' } },
     )
     const listPayload = (await readJson(listResponse)) as {
@@ -219,7 +664,7 @@ describe('local Valedictorian HTTP server', () => {
       status: 'needs_user_info',
     })
 
-    const getResponse = await fetch(`${server.url}/v1/applications/${listPayload.items[0].id}`, {
+    const getResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${listPayload.items[0].id}`, {
       headers: { authorization: 'Bearer server-token' },
     })
 
@@ -238,7 +683,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const queueResponse = await fetch(
-      `${server.url}/v1/queue?bucket=apply_now&limit=25&offset=0`,
+      `${server.url}/v1/workspaces/workspace-1/queue?bucket=apply_now&limit=25&offset=0`,
       { headers: { authorization: 'Bearer server-token' } },
     )
     const queuePayload = (await readJson(queueResponse)) as {
@@ -263,7 +708,7 @@ describe('local Valedictorian HTTP server', () => {
       token: 'server-token',
     })
 
-    const updateResponse = await fetch(`${server.url}/v1/profile`, {
+    const updateResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/profile`, {
       body: JSON.stringify({
         answers: [
           {
@@ -302,7 +747,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     await expect(
-      fetch(`${server.url}/v1/profile`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/profile`, {
         headers: { authorization: 'Bearer server-token' },
       }).then(readJson),
     ).resolves.toMatchObject({
@@ -310,7 +755,7 @@ describe('local Valedictorian HTTP server', () => {
       fullName: 'Kenny Lin',
     })
     await expect(
-      fetch(`${server.url}/v1/profile/agent-context`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/profile/agent-context`, {
         headers: { authorization: 'Bearer server-token' },
       }).then(readJson),
     ).resolves.toEqual({
@@ -340,7 +785,7 @@ describe('local Valedictorian HTTP server', () => {
       token: 'server-token',
     })
 
-    const runResponse = await fetch(`${server.url}/v1/runs`, {
+    const runResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/runs`, {
       method: 'POST',
       headers: {
         authorization: 'Bearer server-token',
@@ -359,7 +804,7 @@ describe('local Valedictorian HTTP server', () => {
     expect(runResponse.status).toBe(200)
     expect(run).toMatchObject({ id: expect.any(String) })
 
-    const findingResponse = await fetch(`${server.url}/v1/sourcing/findings`, {
+    const findingResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings`, {
       method: 'POST',
       headers: {
         authorization: 'Bearer server-token',
@@ -383,17 +828,17 @@ describe('local Valedictorian HTTP server', () => {
     expect(findingResponse.status).toBe(200)
 
     await expect(
-      fetch(`${server.url}/v1/runs?runType=sourcing&status=in_progress&sourceId=${finding.sourceId}`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/runs?runType=sourcing&status=in_progress&sourceId=${finding.sourceId}`, {
         headers: { authorization: 'Bearer server-token' },
       }).then(readJson),
     ).resolves.toMatchObject({ total: 1, items: [{ id: run.id }] })
     await expect(
-      fetch(`${server.url}/v1/sourcing/findings?workflowRunId=${run.id}&sourceId=${finding.sourceId}&mergeStatus=new`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings?workflowRunId=${run.id}&sourceId=${finding.sourceId}&mergeStatus=new`, {
         headers: { authorization: 'Bearer server-token' },
       }).then(readJson),
     ).resolves.toMatchObject({ total: 1, items: [{ id: finding.id }] })
 
-    const blockedFindingResponse = await fetch(`${server.url}/v1/sourcing/findings`, {
+    const blockedFindingResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings`, {
       method: 'POST',
       headers: {
         authorization: 'Bearer server-token',
@@ -412,7 +857,7 @@ describe('local Valedictorian HTTP server', () => {
     const blockedFinding = (await readJson(blockedFindingResponse)) as { id: string }
 
     await expect(
-      fetch(`${server.url}/v1/sourcing/findings/${blockedFinding.id}`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings/${blockedFinding.id}`, {
         method: 'PATCH',
         headers: {
           authorization: 'Bearer server-token',
@@ -433,7 +878,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     await expect(
-      fetch(`${server.url}/v1/sourcing/findings/${blockedFinding.id}/decide`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings/${blockedFinding.id}/decide`, {
         method: 'POST',
         headers: {
           authorization: 'Bearer server-token',
@@ -451,7 +896,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     await expect(
-      fetch(`${server.url}/v1/sourcing/findings/${finding.id}/promote`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings/${finding.id}/promote`, {
         method: 'POST',
         headers: { authorization: 'Bearer server-token' },
       }).then(readJson),
@@ -461,7 +906,7 @@ describe('local Valedictorian HTTP server', () => {
       mergedApplicationId: expect.any(String),
     })
 
-    const candidateResponse = await fetch(`${server.url}/v1/sourcing/candidates/process`, {
+    const candidateResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/candidates/process`, {
       method: 'POST',
       headers: {
         authorization: 'Bearer server-token',
@@ -507,7 +952,7 @@ describe('local Valedictorian HTTP server', () => {
       token: 'server-token',
     })
 
-    const response = await fetch(`${server.url}/v1/queue?bucket=random`, {
+    const response = await fetch(`${server.url}/v1/workspaces/workspace-1/queue?bucket=random`, {
       headers: { authorization: 'Bearer server-token' },
     })
 
@@ -526,7 +971,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     await expect(
-      fetch(`${server.url}/v1/policy/config`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/policy/config`, {
         headers: { authorization: 'Bearer server-token' },
       }).then(readJson),
     ).resolves.toMatchObject({
@@ -536,7 +981,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     await expect(
-      fetch(`${server.url}/v1/policy/config`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/policy/config`, {
         method: 'PATCH',
         headers: {
           authorization: 'Bearer server-token',
@@ -554,7 +999,7 @@ describe('local Valedictorian HTTP server', () => {
       },
     })
 
-    const evidence = (await fetch(`${server.url}/v1/policy/evidence`, {
+    const evidence = (await fetch(`${server.url}/v1/workspaces/workspace-1/policy/evidence`, {
       method: 'POST',
       headers: {
         authorization: 'Bearer server-token',
@@ -572,7 +1017,7 @@ describe('local Valedictorian HTTP server', () => {
     expect(evidence).toMatchObject({ id: expect.any(String) })
     await expect(
       fetch(
-        `${server.url}/v1/policy/evidence?subjectType=application&subjectId=application-versant-platform`,
+        `${server.url}/v1/workspaces/workspace-1/policy/evidence?subjectType=application&subjectId=application-versant-platform`,
         {
           headers: { authorization: 'Bearer server-token' },
         },
@@ -580,7 +1025,7 @@ describe('local Valedictorian HTTP server', () => {
     ).resolves.toEqual([expect.objectContaining({ id: evidence.id })])
 
     await expect(
-      fetch(`${server.url}/v1/policy/evaluate/run-window`, {
+      fetch(`${server.url}/v1/workspaces/workspace-1/policy/evaluate/run-window`, {
         method: 'POST',
         headers: {
           authorization: 'Bearer server-token',
@@ -661,7 +1106,7 @@ describe('local Valedictorian HTTP server', () => {
     ]
 
     for (const testCase of cases) {
-      const response = await fetch(`${server.url}/v1/applications`, {
+      const response = await fetch(`${server.url}/v1/workspaces/workspace-1/applications`, {
         body: JSON.stringify(testCase.body),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -689,7 +1134,7 @@ describe('local Valedictorian HTTP server', () => {
       port: 0,
     })
 
-    const response = await fetch(`${server.url}/v1/applications/application-1/workflow`, {
+    const response = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/application-1/workflow`, {
       body: JSON.stringify({
         lockStartedAt: 'tomorrow-ish',
       }),
@@ -718,7 +1163,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const response = await fetch(
-      `${server.url}/v1/applications/application-1/attempts/attempt-1/complete`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-1/attempts/attempt-1/complete`,
       {
         body: JSON.stringify({
           outcome: 'needs_user_info',
@@ -743,7 +1188,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const statusResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform/status`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform/status`,
       {
         body: JSON.stringify({ status: 'submitted', notes: 'Submitted from HTTP test.' }),
         headers: { 'content-type': 'application/json' },
@@ -757,7 +1202,7 @@ describe('local Valedictorian HTTP server', () => {
       status: 'submitted',
     })
 
-    const scoreResponse = await fetch(`${server.url}/v1/scores`, {
+    const scoreResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/scores`, {
       body: JSON.stringify({
         applicationId: 'application-versant-platform',
         score: 8,
@@ -777,7 +1222,7 @@ describe('local Valedictorian HTTP server', () => {
     await expect(readJson(scoreResponse)).resolves.toEqual({ ok: true })
 
     const applicationResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform`,
     )
 
     await expect(readJson(applicationResponse)).resolves.toMatchObject({
@@ -793,7 +1238,7 @@ describe('local Valedictorian HTTP server', () => {
       port: 0,
     })
 
-    const createResponse = await fetch(`${server.url}/v1/applications`, {
+    const createResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications`, {
       body: JSON.stringify({
         companyName: 'Delta Labs',
         roleTitle: 'Software Engineering Intern',
@@ -822,7 +1267,7 @@ describe('local Valedictorian HTTP server', () => {
       },
     })
 
-    const updateResponse = await fetch(`${server.url}/v1/applications/${created.id}`, {
+    const updateResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${created.id}`, {
       body: JSON.stringify({
         locationRaw: 'United States / Remote',
         hasApplied: true,
@@ -835,7 +1280,7 @@ describe('local Valedictorian HTTP server', () => {
       location: 'United States / Remote',
     })
 
-    const workflowResponse = await fetch(`${server.url}/v1/applications/${created.id}/workflow`, {
+    const workflowResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${created.id}/workflow`, {
       body: JSON.stringify({
         missingUserInfo: 'Graduation date confirmation',
         blockerReason: null,
@@ -845,7 +1290,7 @@ describe('local Valedictorian HTTP server', () => {
     })
     expect(workflowResponse.status).toBe(200)
 
-    const noteResponse = await fetch(`${server.url}/v1/applications/${created.id}/notes`, {
+    const noteResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${created.id}/notes`, {
       body: JSON.stringify({ message: 'Reached review page.' }),
       headers: { 'content-type': 'application/json' },
       method: 'POST',
@@ -854,7 +1299,7 @@ describe('local Valedictorian HTTP server', () => {
       notes: 'Reached review page.',
     })
 
-    const linkResponse = await fetch(`${server.url}/v1/applications/${created.id}/links`, {
+    const linkResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${created.id}/links`, {
       body: JSON.stringify({
         kind: 'source',
         label: 'LinkedIn',
@@ -869,7 +1314,7 @@ describe('local Valedictorian HTTP server', () => {
     expect(linkResponse.status).toBe(200)
 
     const linkUpdateResponse = await fetch(
-      `${server.url}/v1/applications/${created.id}/links/${link.id}`,
+      `${server.url}/v1/workspaces/workspace-1/applications/${created.id}/links/${link.id}`,
       {
         body: JSON.stringify({ label: 'LinkedIn Easy Apply' }),
         headers: { 'content-type': 'application/json' },
@@ -880,7 +1325,7 @@ describe('local Valedictorian HTTP server', () => {
       label: 'LinkedIn Easy Apply',
     })
 
-    const linksResponse = await fetch(`${server.url}/v1/applications/${created.id}/links?limit=10`)
+    const linksResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${created.id}/links?limit=10`)
     const links = (await readJson(linksResponse)) as {
       items: Array<{ id: string; isPrimary: boolean; label: string }>
     }
@@ -898,7 +1343,7 @@ describe('local Valedictorian HTTP server', () => {
       },
     ])
 
-    const eventsResponse = await fetch(`${server.url}/v1/applications/${created.id}/events?limit=10`)
+    const eventsResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${created.id}/events?limit=10`)
     const events = (await readJson(eventsResponse)) as {
       items: Array<{ type: string }>
     }
@@ -915,14 +1360,14 @@ describe('local Valedictorian HTTP server', () => {
       ]),
     )
 
-    const archiveResponse = await fetch(`${server.url}/v1/applications/${created.id}/archive`, {
+    const archiveResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${created.id}/archive`, {
       body: JSON.stringify({ note: 'No longer pursuing.' }),
       headers: { 'content-type': 'application/json' },
       method: 'PATCH',
     })
     expect(archiveResponse.status).toBe(200)
 
-    const getArchivedResponse = await fetch(`${server.url}/v1/applications/${created.id}`)
+    const getArchivedResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/${created.id}`)
     expect(getArchivedResponse.status).toBe(404)
   })
 
@@ -934,7 +1379,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const startResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform/attempts`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform/attempts`,
       {
         body: JSON.stringify({
           actorType: 'agent',
@@ -954,7 +1399,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const stepResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform/attempts/${attempt.id}/steps`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform/attempts/${attempt.id}/steps`,
       {
         body: JSON.stringify({
           type: 'page_verified',
@@ -975,7 +1420,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const completeResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform/attempts/${attempt.id}/complete`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform/attempts/${attempt.id}/complete`,
       {
         body: JSON.stringify({
           outcome: 'needs_user_info',
@@ -993,7 +1438,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const listResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform/attempts?limit=10`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform/attempts?limit=10`,
     )
 
     await expect(readJson(listResponse)).resolves.toMatchObject({
@@ -1019,7 +1464,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const startResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform/attempts`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform/attempts`,
       {
         body: JSON.stringify({
           actorType: 'agent',
@@ -1032,7 +1477,7 @@ describe('local Valedictorian HTTP server', () => {
     )
     const attempt = (await readJson(startResponse)) as { id: string }
     const receiptResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform/attempts/${attempt.id}/steps`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform/attempts/${attempt.id}/steps`,
       {
         body: JSON.stringify({
           type: 'verification_receipt',
@@ -1058,7 +1503,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const completeResponse = await fetch(
-      `${server.url}/v1/applications/application-versant-platform/attempts/${attempt.id}/complete`,
+      `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform/attempts/${attempt.id}/complete`,
       {
         body: JSON.stringify({
           outcome: 'submitted',
@@ -1089,8 +1534,8 @@ describe('local Valedictorian HTTP server', () => {
       token: 'server-token',
     })
 
-    const unauthorized = await fetch(`${server.url}/v1/applications`)
-    const missing = await fetch(`${server.url}/v1/applications/missing`, {
+    const unauthorized = await fetch(`${server.url}/v1/workspaces/workspace-1/applications`)
+    const missing = await fetch(`${server.url}/v1/workspaces/workspace-1/applications/missing`, {
       headers: { authorization: 'Bearer server-token' },
     })
 

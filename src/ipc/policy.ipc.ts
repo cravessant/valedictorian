@@ -2,7 +2,7 @@ import type {
   EvaluateApplicationPolicyInput,
   EvaluateRunWindowPolicyInput,
   EvaluateSourcingCandidatePolicyInput,
-  ValedictorianClient,
+  ValedictorianWorkspaceClient,
   PolicyConfigPatch,
   PolicyEvidenceInput,
   PolicyEvidenceListInput,
@@ -15,7 +15,7 @@ interface IpcMainLike {
   ): void
 }
 
-export function registerPolicyIpc(client: ValedictorianClient, ipcMain: IpcMainLike) {
+export function registerPolicyIpc(client: ValedictorianWorkspaceClient, ipcMain: IpcMainLike) {
   ipcMain.handle('policy:config:get', () => client.policy.config.get())
   ipcMain.handle('policy:config:update', (_event, patch) =>
     client.policy.config.update(patch as PolicyConfigPatch),

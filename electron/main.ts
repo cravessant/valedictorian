@@ -101,6 +101,7 @@ async function registerRuntimeServices(
     settings: await settingsStore.get(),
     userDataPath: app.getPath('userData'),
     workspaceDataPath: workspace.dataPath,
+    workspaceId: workspace.id,
   })
 
   runtime = await createValedictorianRuntime({
@@ -158,6 +159,7 @@ function createMainWindow() {
       y: 17,
     },
     webPreferences: {
+      additionalArguments: createRendererHttpArguments(),
       preload: path.join(__dirname, 'preload.mjs'),
     },
   })
@@ -212,6 +214,7 @@ function createWorkspaceLauncherWindow() {
     },
     useContentSize: true,
     webPreferences: {
+      additionalArguments: createRendererHttpArguments(),
       preload: path.join(__dirname, 'preload.mjs'),
     },
     width: 820,
@@ -247,6 +250,17 @@ function loadRenderer(window: BrowserWindow) {
   } else {
     void window.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+}
+
+function createRendererHttpArguments() {
+  if (!runtime?.server || !currentWorkspace) {
+    return []
+  }
+
+  return [
+    `--valedictorian-api-url=${runtime.server.url}`,
+    `--valedictorian-workspace-id=${currentWorkspace.id}`,
+  ]
 }
 
 // Quit when all windows are closed, except on macOS. There, it's common

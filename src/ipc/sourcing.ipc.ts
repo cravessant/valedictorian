@@ -1,6 +1,6 @@
 import type {
   CreateSourcingFindingInput,
-  ValedictorianClient,
+  ValedictorianWorkspaceClient,
   PromoteSourcingFindingInput,
   SetSourcingFindingDecisionInput,
   SourcingFindingsListInput,
@@ -11,7 +11,7 @@ interface IpcMainLike {
   handle: (channel: string, handler: (_event: unknown, input?: unknown) => Promise<unknown>) => void
 }
 
-export function registerSourcingIpc(client: ValedictorianClient, ipcMain: IpcMainLike) {
+export function registerSourcingIpc(client: ValedictorianWorkspaceClient, ipcMain: IpcMainLike) {
   ipcMain.handle('sourcing:findings:list', (_event, query) =>
     client.sourcing.findings.list(query as SourcingFindingsListInput | undefined),
   )

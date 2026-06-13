@@ -1,4 +1,4 @@
-import type { ValedictorianClient, QueueListQuery } from 'sparxie'
+import type { ValedictorianWorkspaceClient, QueueListQuery } from 'sparxie'
 
 interface IpcMainLike {
   handle(
@@ -7,6 +7,6 @@ interface IpcMainLike {
   ): void
 }
 
-export function registerQueueIpc(client: ValedictorianClient, ipcMain: IpcMainLike) {
+export function registerQueueIpc(client: ValedictorianWorkspaceClient, ipcMain: IpcMainLike) {
   ipcMain.handle('queue:list', (_event, query) => client.queue.list(query))
 }

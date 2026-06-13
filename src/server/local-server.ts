@@ -1,12 +1,19 @@
 import http from 'node:http'
-import type { ValedictorianClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from 'sparxie'
 import { handleRequest } from './local-server.routes'
+import type { LocalWorkspaceManager } from './local-workspaces'
+
+export type WorkspaceClientResolver = (
+  workspaceId: string,
+) => Promise<ValedictorianWorkspaceClient> | ValedictorianWorkspaceClient
 
 export interface CreateValedictorianHttpServerOptions {
-  client: ValedictorianClient
+  client: ValedictorianWorkspaceClient
   host?: string
   port?: number
+  resolveWorkspaceClient?: WorkspaceClientResolver
   token?: string
+  workspaceManager?: LocalWorkspaceManager
 }
 
 export interface StartedValedictorianHttpServer {
@@ -20,10 +27,12 @@ export async function createValedictorianHttpServer({
   client,
   host = '127.0.0.1',
   port = 4317,
+  resolveWorkspaceClient,
   token,
+  workspaceManager,
 }: CreateValedictorianHttpServerOptions): Promise<StartedValedictorianHttpServer> {
   const server = http.createServer((request, response) => {
-    void handleRequest({ client, request, response, token })
+    void handleRequest({ client, request, resolveWorkspaceClient, response, token, workspaceManager })
   })
 
   await new Promise<void>((resolve, reject) => {

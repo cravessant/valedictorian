@@ -30,7 +30,7 @@ function readElectronBuilderConfig() {
 
 describe('build configuration', () => {
   const sparxieGitDependency =
-    'github:KennyKeni/sparxie#acad8b518e65746513bc9cfa6082fe93c43ac34f'
+    'github:KennyKeni/sparxie#84bcf6c'
 
   it('keeps the Electron app packaged separately from the standalone CLI', () => {
     const packageJson = readPackageJson()

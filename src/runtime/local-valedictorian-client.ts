@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-import type { ValedictorianClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from 'sparxie'
 import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import {
@@ -19,6 +19,7 @@ import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/work
 export interface LocalValedictorianClientOptions {
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
+  secretCodec?: ProfileSecretCodec
   sqlitePath: string
 }
 
@@ -36,8 +37,9 @@ const unavailableSecretCodec: ProfileSecretCodec = {
 export function createLocalValedictorianClient({
   referenceTrackerPath,
   seedDataMode = 'none',
+  secretCodec = unavailableSecretCodec,
   sqlitePath,
-}: LocalValedictorianClientOptions): ValedictorianClient {
+}: LocalValedictorianClientOptions): ValedictorianWorkspaceClient {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
 
   const sqlite = createFileDatabase(sqlitePath)
@@ -50,7 +52,7 @@ export function createLocalValedictorianClient({
   })
 
   const scoringRepository = createSqliteScoringRepository(database)
-  const profileRepository = createSqliteProfileRepository(database, unavailableSecretCodec)
+  const profileRepository = createSqliteProfileRepository(database, secretCodec)
   const queueRepository = createSqliteQueueRepository(database)
   const policyRepository = createSqlitePolicyRepository(database)
   const workflowRunRepository = createSqliteWorkflowRunRepository(database)
@@ -114,6 +116,22 @@ export function createLocalValedictorianClient({
       agentContext: {
         get: () => profileRepository.getAgentContext(),
       },
+      secrets: {
+        delete: (key: string) => profileRepository.deleteSecret(key),
+        list: () => profileRepository.listSecrets(),
+        upsert: (input: Parameters<typeof profileRepository.upsertSecret>[0]) =>
+          profileRepository.upsertSecret(input),
+      },
+      sensitive: {
+        get: () => profileRepository.getSensitiveDetails(),
+        update: (input: Parameters<typeof profileRepository.updateSensitiveDetails>[0]) =>
+          profileRepository.updateSensitiveDetails(input),
+      },
+    } as ValedictorianWorkspaceClient['profile'],
+    secrets: {
+      delete: (key) => profileRepository.deleteSecret(key),
+      list: async () => ({ items: await profileRepository.listSecrets() }),
+      upsert: (input) => profileRepository.upsertSecret(input),
     },
     runs: {
       list: (query) => workflowRunRepository.listRuns(query),

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ValedictorianClient } from 'sparxie'
+import type { ValedictorianClient, ValedictorianWorkspaceClient } from 'sparxie'
 import { createValedictorianRuntime, resolveValedictorianRuntimeConfig } from './valedictorian-runtime'
 
-function createClient(name: string): ValedictorianClient {
+function createWorkspaceClient(name: string): ValedictorianWorkspaceClient {
   return {
     applications: {
       get: vi.fn(async () => null),
@@ -19,6 +19,32 @@ function createClient(name: string): ValedictorianClient {
     },
     scores: {
       record: vi.fn(async () => undefined),
+    },
+  } as unknown as ValedictorianWorkspaceClient
+}
+
+function createRootClient(
+  workspaceClient: ValedictorianWorkspaceClient,
+  forWorkspace = vi.fn(() => workspaceClient),
+): ValedictorianClient {
+  return {
+    capabilities: {
+      get: vi.fn(async () => ({
+        agentWorkflows: false,
+        billing: false,
+        hostedSync: false,
+        localSqlite: false,
+        multiWorkspace: true,
+      })),
+    },
+    forWorkspace,
+    health: {
+      get: vi.fn(async () => ({ ok: true })),
+    },
+    workspaces: {
+      create: vi.fn(),
+      list: vi.fn(),
+      open: vi.fn(),
     },
   } as unknown as ValedictorianClient
 }
@@ -39,6 +65,7 @@ describe('Valedictorian runtime config', () => {
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
       sqlitePath: '/Users/test/Library/Application Support/Valedictorian/valedictorian.sqlite',
+      workspaceId: undefined,
     })
   })
 
@@ -118,6 +145,7 @@ describe('Valedictorian runtime config', () => {
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
       sqlitePath: '/Users/test/Library/Application Support/Valedictorian/valedictorian.sqlite',
+      workspaceId: undefined,
     })
 
     expect(
@@ -173,11 +201,12 @@ describe('Valedictorian runtime config', () => {
 })
 
 describe('Valedictorian runtime creation', () => {
-  it('uses a local client without an HTTP server in local desktop mode', async () => {
-    const localClient = createClient('local')
+  it('starts a local HTTP server in local desktop mode', async () => {
+    const localClient = createWorkspaceClient('local')
+    const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:4317' }
     const createLocalClient = vi.fn(() => localClient)
-    const createHttpClient = vi.fn(() => createClient('http'))
-    const startServer = vi.fn()
+    const createHttpClient = vi.fn(() => createRootClient(createWorkspaceClient('http')))
+    const startServer = vi.fn(async () => server)
 
     const runtime = await createValedictorianRuntime({
       config: resolveValedictorianRuntimeConfig({
@@ -196,12 +225,18 @@ describe('Valedictorian runtime creation', () => {
       sqlitePath: '/tmp/valedictorian-user-data/valedictorian.sqlite',
     })
     expect(createHttpClient).not.toHaveBeenCalled()
-    expect(startServer).not.toHaveBeenCalled()
+    expect(runtime.server).toBe(server)
+    expect(startServer).toHaveBeenCalledWith({
+      client: localClient,
+      host: '127.0.0.1',
+      port: 4317,
+    })
     await runtime.close()
+    expect(server.close).toHaveBeenCalled()
   })
 
-  it('starts a local HTTP server only in local shared mode', async () => {
-    const localClient = createClient('local')
+  it('starts a local HTTP server in local shared mode without app-level auth', async () => {
+    const localClient = createWorkspaceClient('local')
     const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:9999' }
     const startServer = vi.fn(async () => server)
 
@@ -214,7 +249,7 @@ describe('Valedictorian runtime creation', () => {
         },
         userDataPath: '/tmp/valedictorian-user-data',
       }),
-      createHttpClient: vi.fn(() => createClient('http')),
+      createHttpClient: vi.fn(() => createRootClient(createWorkspaceClient('http'))),
       createLocalClient: vi.fn(() => localClient),
       startServer,
     })
@@ -225,7 +260,6 @@ describe('Valedictorian runtime creation', () => {
       client: localClient,
       host: '127.0.0.1',
       port: 9999,
-      token: 'local-token',
     })
 
     await runtime.close()
@@ -233,9 +267,11 @@ describe('Valedictorian runtime creation', () => {
   })
 
   it('uses an HTTP client without SQLite or local server in remote mode', async () => {
-    const httpClient = createClient('http')
+    const workspaceClient = createWorkspaceClient('http')
+    const forWorkspace = vi.fn(() => workspaceClient)
+    const httpClient = createRootClient(workspaceClient, forWorkspace)
     const createHttpClient = vi.fn(() => httpClient)
-    const createLocalClient = vi.fn(() => createClient('local'))
+    const createLocalClient = vi.fn(() => createWorkspaceClient('local'))
     const startServer = vi.fn()
 
     const runtime = await createValedictorianRuntime({
@@ -246,13 +282,15 @@ describe('Valedictorian runtime creation', () => {
           VALEDICTORIAN_MODE: 'remote',
         },
         userDataPath: '/tmp/valedictorian-user-data',
+        workspaceId: 'workspace-1',
       }),
       createHttpClient,
       createLocalClient,
       startServer,
     })
 
-    expect(runtime.client).toBe(httpClient)
+    expect(runtime.client).toBe(workspaceClient)
+    expect(forWorkspace).toHaveBeenCalledWith('workspace-1')
     expect(createHttpClient).toHaveBeenCalledWith({
       baseUrl: 'https://hosted.valedictorian.test',
       token: 'remote-token',

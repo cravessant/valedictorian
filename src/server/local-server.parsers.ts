@@ -20,7 +20,7 @@ import {
   type EvaluateApplicationPolicyInput,
   type EvaluateRunWindowPolicyInput,
   type EvaluateSourcingCandidatePolicyInput,
-  type ValedictorianClient,
+  type ValedictorianWorkspaceClient,
   type PolicyConfigPatch,
   type PolicyEvidenceInput,
   type PolicyEvidenceListInput,
@@ -251,7 +251,7 @@ export function parseSourcingFindingsListQuery(requestUrl: URL): SourcingFinding
 
 export function parseRunStartInput(
   body: unknown,
-): Parameters<ValedictorianClient['runs']['start']>[0] {
+): Parameters<ValedictorianWorkspaceClient['runs']['start']>[0] {
   const record = readRecord(body)
   const runType = readStringField(record, 'runType')
   const actorType = readStringField(record, 'actorType')
@@ -283,7 +283,7 @@ export function parseRunStartInput(
 export function parseRunStepInput(
   workflowRunId: string,
   body: unknown,
-): Parameters<ValedictorianClient['runs']['step']>[0] {
+): Parameters<ValedictorianWorkspaceClient['runs']['step']>[0] {
   const record = readRecord(body)
 
   return {
@@ -298,10 +298,10 @@ export function parseRunStepInput(
 export function parseRunCompleteInput(
   workflowRunId: string,
   body: unknown,
-): Parameters<ValedictorianClient['runs']['complete']>[0] {
+): Parameters<ValedictorianWorkspaceClient['runs']['complete']>[0] {
   const record = readRecord(body)
   const statusValue = readOptionalStringField(record, 'status')
-  let status: Parameters<ValedictorianClient['runs']['complete']>[0]['status']
+  let status: Parameters<ValedictorianWorkspaceClient['runs']['complete']>[0]['status']
 
   if (statusValue !== undefined) {
     if (!isRunStatus(statusValue)) {
@@ -323,12 +323,12 @@ export function parseRunCompleteInput(
 
 export function parseSourcingFindingCreateInput(
   body: unknown,
-): Parameters<ValedictorianClient['sourcing']['findings']['create']>[0] {
+): Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0] {
   const record = readRecord(body)
   const roleKind = readStringField(record, 'roleKind')
   const workMode = readStringField(record, 'workMode')
   const mergeStatusValue = readOptionalStringField(record, 'mergeStatus')
-  let mergeStatus: Parameters<ValedictorianClient['sourcing']['findings']['create']>[0]['mergeStatus']
+  let mergeStatus: Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0]['mergeStatus']
 
   if (!isRoleKind(roleKind)) {
     throw new Error(`Invalid roleKind: ${roleKind}`)
@@ -374,7 +374,7 @@ export function parseSourcingFindingCreateInput(
 
 export function parseSourcingCandidateProcessInput(
   body: unknown,
-): Parameters<ValedictorianClient['sourcing']['candidates']['process']>[0] {
+): Parameters<ValedictorianWorkspaceClient['sourcing']['candidates']['process']>[0] {
   const record = readRecord(body)
   const roleKind = readStringField(record, 'roleKind')
   const workMode = readStringField(record, 'workMode')
@@ -437,12 +437,12 @@ export function parseCandidateScore(value: unknown) {
 export function parseSourcingFindingUpdateInput(
   findingId: string,
   body: unknown,
-): Parameters<ValedictorianClient['sourcing']['findings']['update']>[0] {
+): Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['update']>[0] {
   const record = readRecord(body)
   const roleKind = readOptionalStringField(record, 'roleKind')
   const workMode = readOptionalStringField(record, 'workMode')
   const mergeStatusValue = readOptionalStringField(record, 'mergeStatus')
-  let mergeStatus: Parameters<ValedictorianClient['sourcing']['findings']['update']>[0]['mergeStatus']
+  let mergeStatus: Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['update']>[0]['mergeStatus']
 
   if (roleKind !== undefined && !isRoleKind(roleKind)) {
     throw new Error(`Invalid roleKind: ${roleKind}`)
@@ -489,7 +489,7 @@ export function parseSourcingFindingUpdateInput(
 export function parseSourcingFindingDecisionInput(
   findingId: string,
   body: unknown,
-): Parameters<ValedictorianClient['sourcing']['findings']['decide']>[0] {
+): Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['decide']>[0] {
   const record = readRecord(body)
   const mergeStatus = readStringField(record, 'mergeStatus')
 
@@ -507,8 +507,8 @@ export function parseSourcingFindingDecisionInput(
 export function parseApplicationEventsQuery(
   applicationId: string,
   requestUrl: URL,
-): Parameters<ValedictorianClient['applications']['events']['list']>[0] {
-  const query: Parameters<ValedictorianClient['applications']['events']['list']>[0] = {
+): Parameters<ValedictorianWorkspaceClient['applications']['events']['list']>[0] {
+  const query: Parameters<ValedictorianWorkspaceClient['applications']['events']['list']>[0] = {
     applicationId,
   }
 
@@ -525,8 +525,8 @@ export function parseApplicationEventsQuery(
 export function parseApplicationLinksQuery(
   applicationId: string,
   requestUrl: URL,
-): Parameters<ValedictorianClient['applications']['links']['list']>[0] {
-  const query: Parameters<ValedictorianClient['applications']['links']['list']>[0] = {
+): Parameters<ValedictorianWorkspaceClient['applications']['links']['list']>[0] {
+  const query: Parameters<ValedictorianWorkspaceClient['applications']['links']['list']>[0] = {
     applicationId,
   }
 
@@ -543,8 +543,8 @@ export function parseApplicationLinksQuery(
 export function parseApplicationAttemptsQuery(
   applicationId: string,
   requestUrl: URL,
-): Parameters<ValedictorianClient['applications']['attempts']['list']>[0] {
-  const query: Parameters<ValedictorianClient['applications']['attempts']['list']>[0] = {
+): Parameters<ValedictorianWorkspaceClient['applications']['attempts']['list']>[0] {
+  const query: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['list']>[0] = {
     applicationId,
   }
 
@@ -561,7 +561,7 @@ export function parseApplicationAttemptsQuery(
 export function parseAttemptStartInput(
   applicationId: string,
   body: unknown,
-): Parameters<ValedictorianClient['applications']['attempts']['start']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['attempts']['start']>[0] {
   const actorType = readStringField(body, 'actorType')
 
   if (!isApplicationAttemptActorType(actorType)) {
@@ -583,7 +583,7 @@ export function parseAttemptStepInput(
   applicationId: string,
   attemptId: string,
   body: unknown,
-): Parameters<ValedictorianClient['applications']['attempts']['step']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['attempts']['step']>[0] {
   const record = readRecord(body)
   const type = readStringField(record, 'type')
 
@@ -605,7 +605,7 @@ export function parseAttemptCompleteInput(
   applicationId: string,
   attemptId: string,
   body: unknown,
-): Parameters<ValedictorianClient['applications']['attempts']['complete']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['attempts']['complete']>[0] {
   const outcome = readStringField(body, 'outcome')
 
   if (!isApplicationStatus(outcome)) {
@@ -656,7 +656,7 @@ export function parseAttemptCompleteInput(
 
 export function parseCreateApplicationInput(
   body: unknown,
-): Parameters<ValedictorianClient['applications']['create']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['create']>[0] {
   const status = readStringField(body, 'status')
   const roleKind = readStringField(body, 'roleKind')
   const workMode = readStringField(body, 'workMode')
@@ -703,7 +703,7 @@ export function parseCreateApplicationInput(
 export function parseApplicationUpdateInput(
   applicationId: string,
   body: unknown,
-): Parameters<ValedictorianClient['applications']['update']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['update']>[0] {
   const record = readRecord(body)
   const input: Record<string, unknown> = { applicationId }
 
@@ -718,13 +718,13 @@ export function parseApplicationUpdateInput(
   copyOptionalBooleanField(record, input, 'hasApplied')
   copyOptionalNullableStringField(record, input, 'currentResumeVariant')
 
-  return input as unknown as Parameters<ValedictorianClient['applications']['update']>[0]
+  return input as unknown as Parameters<ValedictorianWorkspaceClient['applications']['update']>[0]
 }
 
 export function parseWorkflowUpdateInput(
   applicationId: string,
   body: unknown,
-): Parameters<ValedictorianClient['applications']['workflow']['update']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['workflow']['update']>[0] {
   const record = readRecord(body)
   const input: Record<string, unknown> = { applicationId }
 
@@ -747,13 +747,13 @@ export function parseWorkflowUpdateInput(
     throw new Error(`Invalid manualReviewKind: ${JSON.stringify(manualReviewKind)}`)
   }
 
-  return input as unknown as Parameters<ValedictorianClient['applications']['workflow']['update']>[0]
+  return input as unknown as Parameters<ValedictorianWorkspaceClient['applications']['workflow']['update']>[0]
 }
 
 export function parseLinkCreateInput(
   applicationId: string,
   body: unknown,
-): Parameters<ValedictorianClient['applications']['links']['create']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['links']['create']>[0] {
   return {
     applicationId,
     kind: normalizeApplicationLinkKind(readStringField(body, 'kind')),
@@ -768,7 +768,7 @@ export function parseLinkUpdateInput(
   applicationId: string,
   linkId: string,
   body: unknown,
-): Parameters<ValedictorianClient['applications']['links']['update']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['links']['update']>[0] {
   const record = readRecord(body)
   const input: Record<string, unknown> = { applicationId, linkId }
 
@@ -783,7 +783,7 @@ export function parseLinkUpdateInput(
   copyOptionalBooleanField(record, input, 'isPrimary')
   copyOptionalBooleanField(record, input, 'archived')
 
-  return input as unknown as Parameters<ValedictorianClient['applications']['links']['update']>[0]
+  return input as unknown as Parameters<ValedictorianWorkspaceClient['applications']['links']['update']>[0]
 }
 
 export function readOptionalLinkField(

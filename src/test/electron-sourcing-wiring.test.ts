@@ -43,6 +43,17 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("workspace: import('../src/ipc/workspace.preload').WorkspacePreloadApi")
   })
 
+  it('passes the selected local backend and active workspace id to the renderer', () => {
+    const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+
+    expect(mainSource).toContain('createRendererHttpArguments()')
+    expect(mainSource).toContain('--valedictorian-api-url=')
+    expect(mainSource).toContain('--valedictorian-workspace-id=')
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('valedictorianHttp'")
+    expect(preloadSource).toContain('readRendererHttpConfig(process.argv)')
+  })
+
   it('uses launch-state workspace startup instead of opening Finder before the window exists', () => {
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
     const rendererEntrySource = fs.readFileSync(path.resolve('src/main.tsx'), 'utf8')
