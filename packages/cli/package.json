@@ -1,6 +1,6 @@
 {
   "name": "valedictorian-cli",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Command-line client for Valedictorian.",
   "author": "Sparxie",
   "license": "MIT",
@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "@stricli/core": "1.2.7",
-    "sparxie": "github:KennySparxie/sparxie#84bcf6c"
+    "sparxie": "github:KennySparxie/sparxie#199eb1f"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",

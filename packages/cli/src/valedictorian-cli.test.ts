@@ -3,7 +3,7 @@ import { jsonResponse, readPackageJson, runCli } from './valedictorian-cli.test-
 
 describe('valedictorian-cli npm package', () => {
   const sparxieGitDependency =
-    'github:KennySparxie/sparxie#84bcf6c'
+    'github:KennySparxie/sparxie#199eb1f'
 
   afterEach(() => {
     vi.unstubAllGlobals()
