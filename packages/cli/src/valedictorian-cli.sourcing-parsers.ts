@@ -2,7 +2,7 @@ import {
   isRoleKind,
   isSourcingMergeStatus,
   isWorkMode,
-  type ValedictorianClient,
+  type ValedictorianWorkspaceClient,
 } from 'sparxie'
 import {
   assertKnownOptions,
@@ -21,8 +21,8 @@ import {
 
 export function parseSourcingFindingsListQuery(
   argv: string[],
-): NonNullable<Parameters<ValedictorianClient['sourcing']['findings']['list']>[0]> {
-  const query: NonNullable<Parameters<ValedictorianClient['sourcing']['findings']['list']>[0]> = {}
+): NonNullable<Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['list']>[0]> {
+  const query: NonNullable<Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['list']>[0]> = {}
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]
@@ -83,7 +83,7 @@ export function parseSourcingFindingsListQuery(
 export interface ParsedSourcingRun {
   actorName?: string
   autoPromote: boolean
-  candidates: Array<Parameters<ValedictorianClient['sourcing']['candidates']['process']>[0]>
+  candidates: Array<Parameters<ValedictorianWorkspaceClient['sourcing']['candidates']['process']>[0]>
   sourceId?: string
   sourceName?: string
 }
@@ -144,17 +144,17 @@ export function parseSourcingRun(argv: string[]): ParsedSourcingRun {
 
 export function parseSourcingCandidatesJson(
   text: string,
-): Array<Parameters<ValedictorianClient['sourcing']['candidates']['process']>[0]> {
+): Array<Parameters<ValedictorianWorkspaceClient['sourcing']['candidates']['process']>[0]> {
   const parsed = JSON.parse(text) as unknown
 
   if (!Array.isArray(parsed)) {
     throw new Error('--candidates-json must be a JSON array')
   }
 
-  return parsed as Array<Parameters<ValedictorianClient['sourcing']['candidates']['process']>[0]>
+  return parsed as Array<Parameters<ValedictorianWorkspaceClient['sourcing']['candidates']['process']>[0]>
 }
 
-export async function runSourcingBatch(client: ValedictorianClient, input: ParsedSourcingRun) {
+export async function runSourcingBatch(client: ValedictorianWorkspaceClient, input: ParsedSourcingRun) {
   const run = await client.runs.start({
     runType: 'sourcing',
     actorType: 'agent',
@@ -222,7 +222,7 @@ export function errorMessage(error: unknown) {
 
 export function parseSourcingFindingCreate(
   argv: string[],
-): Parameters<ValedictorianClient['sourcing']['findings']['create']>[0] {
+): Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0] {
   assertKnownOptions(argv, [
     '--blocker',
     '--city',
@@ -260,7 +260,7 @@ export function parseSourcingFindingCreate(
 
   const input = {
     workflowRunId: readRequiredOption(argv, '--workflow-run-id'),
-  } as Parameters<ValedictorianClient['sourcing']['findings']['create']>[0]
+  } as Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0]
   const sourceName = readOption(argv, '--source-name')
   const country = readOption(argv, '--country')
   const officialUrl = readOption(argv, '--official-url')
@@ -329,7 +329,7 @@ export function parseSourcingFindingCreate(
 export function parseSourcingFindingUpdate(
   findingId: string,
   argv: string[],
-): Parameters<ValedictorianClient['sourcing']['findings']['update']>[0] {
+): Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['update']>[0] {
   assertKnownOptions(argv, [
     '--blocker',
     '--duplicate-notes',
@@ -337,7 +337,7 @@ export function parseSourcingFindingUpdate(
     '--merge-notes',
     '--merge-status',
   ])
-  const input: Parameters<ValedictorianClient['sourcing']['findings']['update']>[0] = { findingId }
+  const input: Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['update']>[0] = { findingId }
   const mergeStatus = readOption(argv, '--merge-status')
 
   if (mergeStatus !== undefined) {

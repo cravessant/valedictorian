@@ -13,6 +13,7 @@ import {
   defaultValedictorianApiBaseUrl,
   isApplicationStatus,
   type ValedictorianClient,
+  type ValedictorianWorkspaceClient,
 } from 'sparxie'
 
 import { formatDoctorText, runDoctor } from './valedictorian-cli.doctor.js'
@@ -51,6 +52,8 @@ export interface RunValedictorianCliOptions {
 }
 
 interface ValedictorianCliContext extends CommandContext {
+  readonly apiBaseUrl: string
+  readonly apiToken?: string
   readonly client: ValedictorianClient
   readonly env: Record<string, string | undefined>
   outputJson?: boolean
@@ -69,7 +72,10 @@ export async function runValedictorianCli({
     stdout: { write: stdout },
     stderr: { write: stderr },
   }
+  const apiBaseUrl = env.VALEDICTORIAN_API_URL ?? defaultValedictorianApiBaseUrl
   const context: ValedictorianCliContext = {
+    apiBaseUrl,
+    apiToken: env.VALEDICTORIAN_API_TOKEN,
     client: createClient(env),
     env,
     process: processLike,
@@ -126,14 +132,45 @@ const application = buildApplication(
           }
         },
       }),
+      workspaces: buildRouteMap({
+        docs: { brief: 'Manage local workspaces' },
+        routes: {
+          create: makeCommand({
+            docs: { brief: 'Create a workspace at a path' },
+            positionalCount: 1,
+            run: async (context, _flags, workspacePath) => {
+              writeJson(context, await createWorkspace(context, workspacePath))
+            },
+          }),
+          list: makeCommand({
+            docs: { brief: 'List registered workspaces' },
+            run: async (context) => {
+              writeJson(context, await listWorkspaces(context))
+            },
+          }),
+          open: makeCommand({
+            docs: { brief: 'Open a folder as a workspace' },
+            flags: booleanFlags(['rekey']),
+            positionalCount: 1,
+            run: async (context, flags, workspacePath) => {
+              writeJson(context, await openWorkspace(context, workspacePath, flags.rekey === true))
+            },
+          }),
+        },
+      }),
       queue: buildRouteMap({
         docs: { brief: 'Inspect application queues' },
         routes: {
           list: makeCommand({
             docs: { brief: 'List queue items' },
-            flags: optionFlags(['bucket', 'limit', 'offset']),
+            flags: optionFlags(['bucket', 'limit', 'offset', 'workspace']),
             run: async (context, flags) => {
-              writeJson(context, await context.client.queue.list(parseQueueListQuery(toArgv(flags))))
+              const client = await workspaceClient(context, flags)
+
+              writeJson(
+                context,
+                await client.queue.list(parseQueueListQuery(toArgvWithoutWorkspace(flags))),
+              )
             },
           }),
         },
@@ -155,10 +192,13 @@ const application = buildApplication(
                 'rationale',
               ]),
               ...optionFlags(['rubric-version']),
+              ...optionFlags(['workspace']),
             },
             positionalCount: 1,
             run: async (context, flags, applicationId) => {
-              await context.client.scores.record({
+              const client = await workspaceClient(context, flags)
+
+              await client.scores.record({
                 applicationId,
                 score: Number(requiredOption(flags, 'score', '--score value')),
                 band: requiredOption(flags, 'band', '--band value'),
@@ -200,10 +240,12 @@ function buildApplicationsRoute() {
     routes: {
       archive: makeCommand({
         docs: { brief: 'Archive an application' },
-        flags: optionFlags(['note']),
+        flags: optionFlags(['note', 'workspace']),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
-          await context.client.applications.archive({
+          const client = await workspaceClient(context, flags)
+
+          await client.applications.archive({
             applicationId,
             note: readOptionalText(optionValue(flags, 'note'), 'archive note'),
           })
@@ -231,6 +273,7 @@ function buildApplicationsRoute() {
             'source-label',
             'source-link-url',
             'term',
+            'workspace',
           ]),
           ...optionFlags([], [
             'company-name',
@@ -243,27 +286,36 @@ function buildApplicationsRoute() {
           ]),
         },
         run: async (context, flags) => {
-          writeJson(context, await context.client.applications.create(parseCreateApplication(toArgv(flags))))
+          const client = await workspaceClient(context, flags)
+
+          writeJson(
+            context,
+            await client.applications.create(parseCreateApplication(toArgvWithoutWorkspace(flags))),
+          )
         },
       }),
       events: makeCommand({
         docs: { brief: 'List application events' },
-        flags: optionFlags(['limit', 'offset']),
+        flags: optionFlags(['limit', 'offset', 'workspace']),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.events.list(
-              parseApplicationEventsQuery(applicationId, toArgv(flags)),
+            await client.applications.events.list(
+              parseApplicationEventsQuery(applicationId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
       }),
       get: makeCommand({
         docs: { brief: 'Get application details' },
+        flags: optionFlags(['workspace']),
         positionalCount: 1,
-        run: async (context, _flags, applicationId) => {
-          const applicationDetail = await context.client.applications.get(applicationId)
+        run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+          const applicationDetail = await client.applications.get(applicationId)
 
           if (!applicationDetail) {
             throw new Error(`Application not found: ${applicationId}`)
@@ -294,22 +346,25 @@ function buildApplicationsRoute() {
           'updated-from',
           'updated-to',
           'work-mode',
+          'workspace',
         ]),
         run: async (context, flags) => {
-          writeJson(
-            context,
-            await context.client.applications.list(parseApplicationListQuery(toArgv(flags))),
-          )
+          const query = parseApplicationListQuery(toArgvWithoutWorkspace(flags))
+          const client = await workspaceClient(context, flags)
+
+          writeJson(context, await client.applications.list(query))
         },
       }),
       note: makeCommand({
         docs: { brief: 'Append an application note' },
-        flags: optionFlags([], ['message']),
+        flags: optionFlags(['workspace'], ['message']),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.notes.append({
+            await client.applications.notes.append({
               applicationId,
               message: readRequiredText(optionValue(flags, 'message'), 'note message'),
             }),
@@ -318,16 +373,18 @@ function buildApplicationsRoute() {
       }),
       status: makeCommand({
         docs: { brief: 'Update application status' },
-        flags: optionFlags(['notes']),
+        flags: optionFlags(['notes', 'workspace']),
         positionalCount: 2,
         run: async (context, flags, applicationId, status) => {
           if (!isApplicationStatus(status)) {
             throw new Error(`Invalid application status: ${status}`)
           }
 
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.updateStatus({
+            await client.applications.updateStatus({
               applicationId,
               status,
               notes: optionValue(flags, 'notes'),
@@ -348,13 +405,16 @@ function buildApplicationsRoute() {
           'role-title',
           'term',
           'work-mode',
+          'workspace',
         ]),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.update(
-              parseUpdateApplication(applicationId, toArgv(flags)),
+            await client.applications.update(
+              parseUpdateApplication(applicationId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
@@ -367,13 +427,16 @@ function buildApplicationsRoute() {
           'lock-started-at',
           'manual-review-kind',
           'missing-user-info',
+          'workspace',
         ]),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.workflow.update(
-              parseWorkflowUpdate(applicationId, toArgv(flags)),
+            await client.applications.workflow.update(
+              parseWorkflowUpdate(applicationId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
@@ -389,16 +452,18 @@ function buildApplicationLinksRoute() {
       add: makeCommand({
         docs: { brief: 'Add an application link' },
         flags: {
-          ...optionFlags(['external-id']),
+          ...optionFlags(['external-id', 'workspace']),
           ...optionFlags([], ['kind', 'label', 'url']),
           ...booleanFlags(['primary']),
         },
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.links.create(
-              parseCreateApplicationLink(applicationId, toArgv(flags)),
+            await client.applications.links.create(
+              parseCreateApplicationLink(applicationId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
@@ -406,15 +471,17 @@ function buildApplicationLinksRoute() {
       update: makeCommand({
         docs: { brief: 'Update an application link' },
         flags: {
-          ...optionFlags(['archived', 'external-id', 'kind', 'label', 'url']),
+          ...optionFlags(['archived', 'external-id', 'kind', 'label', 'url', 'workspace']),
           ...booleanFlags(['archive', 'primary']),
         },
         positionalCount: 2,
         run: async (context, flags, applicationId, linkId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.links.update(
-              parseUpdateApplicationLink(applicationId, linkId, toArgv(flags)),
+            await client.applications.links.update(
+              parseUpdateApplicationLink(applicationId, linkId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
@@ -439,28 +506,33 @@ function buildApplicationAttemptsRoute() {
             'missing-user-info',
             'stop-reason',
             'summary',
+            'workspace',
           ],
           ['outcome'],
         ),
         positionalCount: 2,
         run: async (context, flags, applicationId, attemptId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.attempts.complete(
-              parseAttemptComplete(applicationId, attemptId, toArgv(flags)),
+            await client.applications.attempts.complete(
+              parseAttemptComplete(applicationId, attemptId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
       }),
       list: makeCommand({
         docs: { brief: 'List application attempts' },
-        flags: optionFlags(['limit', 'offset']),
+        flags: optionFlags(['limit', 'offset', 'workspace']),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.attempts.list(
-              parseApplicationAttemptsQuery(applicationId, toArgv(flags)),
+            await client.applications.attempts.list(
+              parseApplicationAttemptsQuery(applicationId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
@@ -468,28 +540,32 @@ function buildApplicationAttemptsRoute() {
       start: makeCommand({
         docs: { brief: 'Start an application attempt' },
         flags: optionFlags(
-          ['actor-name', 'entry-url', 'resume-artifact-path', 'resume-variant', 'summary'],
+          ['actor-name', 'entry-url', 'resume-artifact-path', 'resume-variant', 'summary', 'workspace'],
           ['actor-type'],
         ),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.attempts.start(
-              parseAttemptStart(applicationId, toArgv(flags)),
+            await client.applications.attempts.start(
+              parseAttemptStart(applicationId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
       }),
       step: makeCommand({
         docs: { brief: 'Record an application attempt step' },
-        flags: optionFlags(['actor', 'payload-json'], ['message', 'type']),
+        flags: optionFlags(['actor', 'payload-json', 'workspace'], ['message', 'type']),
         positionalCount: 2,
         run: async (context, flags, applicationId, attemptId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.applications.attempts.step(
-              parseAttemptStep(applicationId, attemptId, toArgv(flags)),
+            await client.applications.attempts.step(
+              parseAttemptStep(applicationId, attemptId, toArgvWithoutWorkspace(flags)),
             ),
           )
         },
@@ -504,12 +580,16 @@ function buildRunsRoute() {
     routes: {
       complete: makeCommand({
         docs: { brief: 'Complete a workflow run' },
-        flags: optionFlags(['blocker', 'metadata-json', 'outcome', 'status', 'summary']),
+        flags: optionFlags(['blocker', 'metadata-json', 'outcome', 'status', 'summary', 'workspace']),
         positionalCount: 1,
         run: async (context, flags, workflowRunId) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.runs.complete(parseRunComplete(workflowRunId, toArgv(flags))),
+            await client.runs.complete(
+              parseRunComplete(workflowRunId, toArgvWithoutWorkspace(flags)),
+            ),
           )
         },
       }),
@@ -523,11 +603,14 @@ function buildRunsRoute() {
           'source-id',
           'status',
           'subject-application-id',
+          'workspace',
         ]),
         run: async (context, flags) => {
+          const client = await workspaceClient(context, flags)
+
           writeJson(
             context,
-            await context.client.runs.list(parseWorkflowRunsListQuery(toArgv(flags))),
+            await client.runs.list(parseWorkflowRunsListQuery(toArgvWithoutWorkspace(flags))),
           )
         },
       }),
@@ -545,19 +628,27 @@ function buildRunsRoute() {
             'subject-application-id',
             'summary',
             'timezone',
+            'workspace',
           ],
           ['actor-type', 'run-type'],
         ),
         run: async (context, flags) => {
-          writeJson(context, await context.client.runs.start(parseRunStart(toArgv(flags))))
+          const client = await workspaceClient(context, flags)
+
+          writeJson(context, await client.runs.start(parseRunStart(toArgvWithoutWorkspace(flags))))
         },
       }),
       step: makeCommand({
         docs: { brief: 'Record a workflow run step' },
-        flags: optionFlags(['actor', 'payload-json'], ['message', 'type']),
+        flags: optionFlags(['actor', 'payload-json', 'workspace'], ['message', 'type']),
         positionalCount: 1,
         run: async (context, flags, workflowRunId) => {
-          writeJson(context, await context.client.runs.step(parseRunStep(workflowRunId, toArgv(flags))))
+          const client = await workspaceClient(context, flags)
+
+          writeJson(
+            context,
+            await client.runs.step(parseRunStep(workflowRunId, toArgvWithoutWorkspace(flags))),
+          )
         },
       }),
     },
@@ -591,46 +682,70 @@ function buildSourcingRoute() {
                 'source-name',
                 'source-url',
                 'term',
+                'workspace',
               ],
               ['company-name', 'role-kind', 'role-title', 'work-mode', 'workflow-run-id'],
             ),
             run: async (context, flags) => {
+              const client = await workspaceClient(context, flags)
+
               writeJson(
                 context,
-                await context.client.sourcing.findings.create(
-                  parseSourcingFindingCreate(toArgv(flags)),
+                await client.sourcing.findings.create(
+                  parseSourcingFindingCreate(toArgvWithoutWorkspace(flags)),
                 ),
               )
             },
           }),
           list: makeCommand({
             docs: { brief: 'List sourcing findings' },
-            flags: optionFlags(['limit', 'merge-status', 'offset', 'source', 'source-id', 'workflow-run-id']),
+            flags: optionFlags([
+              'limit',
+              'merge-status',
+              'offset',
+              'source',
+              'source-id',
+              'workflow-run-id',
+              'workspace',
+            ]),
             run: async (context, flags) => {
+              const client = await workspaceClient(context, flags)
+
               writeJson(
                 context,
-                await context.client.sourcing.findings.list(
-                  parseSourcingFindingsListQuery(toArgv(flags)),
+                await client.sourcing.findings.list(
+                  parseSourcingFindingsListQuery(toArgvWithoutWorkspace(flags)),
                 ),
               )
             },
           }),
           promote: makeCommand({
             docs: { brief: 'Promote a sourcing finding into an application' },
+            flags: optionFlags(['workspace']),
             positionalCount: 1,
-            run: async (context, _flags, findingId) => {
-              writeJson(context, await context.client.sourcing.findings.promote({ findingId }))
+            run: async (context, flags, findingId) => {
+              const client = await workspaceClient(context, flags)
+
+              writeJson(context, await client.sourcing.findings.promote({ findingId }))
             },
           }),
           update: makeCommand({
             docs: { brief: 'Update a sourcing finding' },
-            flags: optionFlags(['blocker', 'duplicate-notes', 'merge-notes', 'merge-status']),
+            flags: optionFlags([
+              'blocker',
+              'duplicate-notes',
+              'merge-notes',
+              'merge-status',
+              'workspace',
+            ]),
             positionalCount: 1,
             run: async (context, flags, findingId) => {
+              const client = await workspaceClient(context, flags)
+
               writeJson(
                 context,
-                await context.client.sourcing.findings.update(
-                  parseSourcingFindingUpdate(findingId, toArgv(flags)),
+                await client.sourcing.findings.update(
+                  parseSourcingFindingUpdate(findingId, toArgvWithoutWorkspace(flags)),
                 ),
               )
             },
@@ -640,11 +755,16 @@ function buildSourcingRoute() {
       run: makeCommand({
         docs: { brief: 'Run a sourcing batch' },
         flags: {
-          ...optionFlags(['actor-name', 'candidates-json', 'source-id', 'source-name']),
+          ...optionFlags(['actor-name', 'candidates-json', 'source-id', 'source-name', 'workspace']),
           ...booleanFlags(['auto-promote']),
         },
         run: async (context, flags) => {
-          writeJson(context, await runSourcingBatch(context.client, parseSourcingRun(toArgv(flags))))
+          const client = await workspaceClient(context, flags)
+
+          writeJson(
+            context,
+            await runSourcingBatch(client, parseSourcingRun(toArgvWithoutWorkspace(flags))),
+          )
         },
       }),
     },
@@ -769,6 +889,212 @@ function toArgv(flags: RawFlags) {
   }
 
   return argv
+}
+
+function toArgvWithoutWorkspace(flags: RawFlags) {
+  const { workspace: _workspace, ...rest } = flags
+  return toArgv(rest)
+}
+
+async function workspaceClient(
+  context: ValedictorianCliContext,
+  flags: RawFlags,
+): Promise<ValedictorianWorkspaceClient> {
+  const workspaceId = await resolveWorkspaceId(
+    context,
+    readRequiredText(optionValue(flags, 'workspace'), '--workspace'),
+  )
+  const clientWithWorkspace = context.client as ValedictorianClient & {
+    forWorkspace?: (workspaceId: string) => ValedictorianWorkspaceClient
+  }
+
+  if (clientWithWorkspace.forWorkspace) {
+    return clientWithWorkspace.forWorkspace(workspaceId)
+  }
+
+  return createHttpValedictorianClient({
+    baseUrl: context.apiBaseUrl,
+    fetch: createWorkspaceFetch(workspaceId),
+    token: context.apiToken,
+  }) as unknown as ValedictorianWorkspaceClient
+}
+
+async function resolveWorkspaceId(context: ValedictorianCliContext, selector: string) {
+  if (looksLikeWorkspaceId(selector)) {
+    return selector
+  }
+
+  const result = (await listWorkspaces(context)) as {
+    items?: Array<{ id: string; name: string }>
+  }
+  const workspaces = Array.isArray(result.items) ? result.items : []
+  const idMatch = workspaces.find((workspace) => workspace.id === selector)
+
+  if (idMatch) {
+    return idMatch.id
+  }
+
+  const exactNameMatches = workspaces.filter((workspace) => workspace.name === selector)
+
+  if (exactNameMatches.length === 1) {
+    return exactNameMatches[0].id
+  }
+
+  if (exactNameMatches.length > 1) {
+    throw new Error(formatAmbiguousWorkspaceError(selector, exactNameMatches))
+  }
+
+  const lowerSelector = selector.toLocaleLowerCase()
+  const caseInsensitiveMatches = workspaces.filter(
+    (workspace) => workspace.name.toLocaleLowerCase() === lowerSelector,
+  )
+
+  if (caseInsensitiveMatches.length === 1) {
+    return caseInsensitiveMatches[0].id
+  }
+
+  if (caseInsensitiveMatches.length > 1) {
+    throw new Error(formatAmbiguousWorkspaceError(selector, caseInsensitiveMatches))
+  }
+
+  throw new Error(`Workspace not found: ${selector}`)
+}
+
+function looksLikeWorkspaceId(selector: string) {
+  return (
+    /^workspace[-_]/i.test(selector) ||
+    /^ws[-_]/i.test(selector) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      selector,
+    )
+  )
+}
+
+function formatAmbiguousWorkspaceError(
+  selector: string,
+  workspaces: Array<{ id: string; name: string }>,
+) {
+  return `Workspace name is ambiguous: ${selector}. Rerun with an id: ${workspaces
+    .map((workspace) => `${workspace.name} (${workspace.id})`)
+    .join(', ')}`
+}
+
+async function listWorkspaces(context: ValedictorianCliContext) {
+  const clientWithWorkspaces = context.client as ValedictorianClient & {
+    workspaces?: {
+      list(): Promise<unknown>
+    }
+  }
+
+  if (clientWithWorkspaces.workspaces) {
+    return clientWithWorkspaces.workspaces.list()
+  }
+
+  return requestJson(context, '/v1/workspaces')
+}
+
+async function openWorkspace(context: ValedictorianCliContext, path: string, rekey: boolean) {
+  const clientWithWorkspaces = context.client as ValedictorianClient & {
+    workspaces?: {
+      open(input: { path: string; rekey?: boolean }): Promise<unknown>
+    }
+  }
+  const input = rekey ? { path, rekey } : { path }
+
+  if (clientWithWorkspaces.workspaces) {
+    return clientWithWorkspaces.workspaces.open(input)
+  }
+
+  return requestJson(context, '/v1/workspaces/open', {
+    body: input,
+    method: 'POST',
+  })
+}
+
+async function createWorkspace(context: ValedictorianCliContext, path: string) {
+  const clientWithWorkspaces = context.client as ValedictorianClient & {
+    workspaces?: {
+      create(input: { path: string }): Promise<unknown>
+    }
+  }
+  const input = { path }
+
+  if (clientWithWorkspaces.workspaces) {
+    return clientWithWorkspaces.workspaces.create(input)
+  }
+
+  return requestJson(context, '/v1/workspaces/create', {
+    body: input,
+    method: 'POST',
+  })
+}
+
+async function requestJson(
+  context: ValedictorianCliContext,
+  path: string,
+  options: { body?: unknown; method?: 'GET' | 'POST' } = {},
+) {
+  const url = new URL(path, context.apiBaseUrl)
+  const headers: Record<string, string> = {
+    accept: 'application/json',
+  }
+
+  if (context.apiToken) {
+    headers.authorization = `Bearer ${context.apiToken}`
+  }
+
+  const init: RequestInit = {
+    headers,
+    method: options.method ?? 'GET',
+  }
+
+  if (options.body !== undefined) {
+    headers['content-type'] = 'application/json'
+    init.body = JSON.stringify(options.body)
+  }
+
+  const response = await fetch(url.toString(), init)
+  const body = await response.json().catch(() => undefined)
+
+  if (!response.ok) {
+    throw new Error(readResponseMessage(body, response.statusText))
+  }
+
+  return body
+}
+
+function readResponseMessage(body: unknown, fallback: string) {
+  if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
+    return body.message
+  }
+
+  return fallback || 'Valedictorian request failed'
+}
+
+function createWorkspaceFetch(workspaceId: string): typeof fetch {
+  return (async (input, init) => {
+    const url = new URL(readFetchUrl(input))
+
+    if (url.pathname.startsWith('/v1/') && !url.pathname.startsWith('/v1/workspaces/')) {
+      url.pathname = `/v1/workspaces/${encodeURIComponent(workspaceId)}${url.pathname.slice(
+        '/v1'.length,
+      )}`
+    }
+
+    return fetch(url.toString(), init)
+  }) as typeof fetch
+}
+
+function readFetchUrl(input: Parameters<typeof fetch>[0]) {
+  if (typeof input === 'string') {
+    return input
+  }
+
+  if (input instanceof URL) {
+    return input.toString()
+  }
+
+  return input.url
 }
 
 function optionValue(flags: RawFlags, name: string) {

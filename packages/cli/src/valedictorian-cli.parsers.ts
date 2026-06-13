@@ -12,7 +12,7 @@ import {
   isWorkMode,
   normalizeApplicationLinkKind,
   type ApplicationListQuery,
-  type ValedictorianClient,
+  type ValedictorianWorkspaceClient,
   type QueueListQuery,
 } from 'sparxie'
 import {
@@ -61,7 +61,7 @@ const attemptBlockerOutcomes = new Set([
   'not_pursued',
 ])
 
-export function parseCreateApplication(argv: string[]): Parameters<ValedictorianClient['applications']['create']>[0] {
+export function parseCreateApplication(argv: string[]): Parameters<ValedictorianWorkspaceClient['applications']['create']>[0] {
   assertKnownOptions(argv, [
     '--city',
     '--company-name',
@@ -104,7 +104,7 @@ export function parseCreateApplication(argv: string[]): Parameters<Valedictorian
     throw new Error(`Invalid workMode: ${workMode}`)
   }
 
-  const input: Parameters<ValedictorianClient['applications']['create']>[0] = {
+  const input: Parameters<ValedictorianWorkspaceClient['applications']['create']>[0] = {
     companyName: readRequiredOption(argv, '--company-name'),
     roleTitle: readRequiredOption(argv, '--role-title'),
     sourceName: readRequiredOption(argv, '--source-name'),
@@ -155,7 +155,7 @@ export function parseCreateApplication(argv: string[]): Parameters<Valedictorian
 export function parseUpdateApplication(
   applicationId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['update']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['update']>[0] {
   assertKnownOptions(argv, [
     '--city',
     '--country',
@@ -169,7 +169,7 @@ export function parseUpdateApplication(
     '--term',
     '--work-mode',
   ])
-  const input: Parameters<ValedictorianClient['applications']['update']>[0] = { applicationId }
+  const input: Parameters<ValedictorianWorkspaceClient['applications']['update']>[0] = { applicationId }
 
   setOptionalStringOption(input, argv, '--role-title', 'roleTitle')
   setOptionalStringOption(input, argv, '--role-kind', 'roleKind')
@@ -198,7 +198,7 @@ export function parseUpdateApplication(
 export function parseWorkflowUpdate(
   applicationId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['workflow']['update']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['workflow']['update']>[0] {
   assertKnownOptions(argv, [
     '--blocker-reason',
     '--hold-started-at',
@@ -207,7 +207,7 @@ export function parseWorkflowUpdate(
     '--manual-review-kind',
     '--missing-user-info',
   ])
-  const input: Parameters<ValedictorianClient['applications']['workflow']['update']>[0] = {
+  const input: Parameters<ValedictorianWorkspaceClient['applications']['workflow']['update']>[0] = {
     applicationId,
   }
   const lockStartedAt = readOption(argv, '--lock-started-at')
@@ -250,7 +250,7 @@ export function parseWorkflowUpdate(
 export function parseCreateApplicationLink(
   applicationId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['links']['create']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['links']['create']>[0] {
   assertKnownOptions(argv, ['--external-id', '--json', '--kind', '--label', '--primary', '--url'])
 
   return {
@@ -267,7 +267,7 @@ export function parseUpdateApplicationLink(
   applicationId: string,
   linkId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['links']['update']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['links']['update']>[0] {
   assertKnownOptions(argv, [
     '--archive',
     '--archived',
@@ -278,7 +278,7 @@ export function parseUpdateApplicationLink(
     '--primary',
     '--url',
   ])
-  const input: Parameters<ValedictorianClient['applications']['links']['update']>[0] = {
+  const input: Parameters<ValedictorianWorkspaceClient['applications']['links']['update']>[0] = {
     applicationId,
     linkId,
   }
@@ -320,9 +320,9 @@ export function parseUpdateApplicationLink(
 export function parseApplicationEventsQuery(
   applicationId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['events']['list']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['events']['list']>[0] {
   assertKnownOptions(argv, ['--json', '--limit', '--offset'])
-  const query: Parameters<ValedictorianClient['applications']['events']['list']>[0] = { applicationId }
+  const query: Parameters<ValedictorianWorkspaceClient['applications']['events']['list']>[0] = { applicationId }
   const limit = readOption(argv, '--limit')
   const offset = readOption(argv, '--offset')
 
@@ -341,9 +341,9 @@ export function parseApplicationEventsQuery(
 export function parseApplicationAttemptsQuery(
   applicationId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['attempts']['list']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['attempts']['list']>[0] {
   assertKnownOptions(argv, ['--json', '--limit', '--offset'])
-  const query: Parameters<ValedictorianClient['applications']['attempts']['list']>[0] = { applicationId }
+  const query: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['list']>[0] = { applicationId }
   const limit = readOption(argv, '--limit')
   const offset = readOption(argv, '--offset')
 
@@ -362,7 +362,7 @@ export function parseApplicationAttemptsQuery(
 export function parseAttemptStart(
   applicationId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['attempts']['start']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['attempts']['start']>[0] {
   assertKnownOptions(argv, [
     '--actor-name',
     '--actor-type',
@@ -378,7 +378,7 @@ export function parseAttemptStart(
     throw new Error(`Invalid actorType: ${actorType}`)
   }
 
-  const input: Parameters<ValedictorianClient['applications']['attempts']['start']>[0] = {
+  const input: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['start']>[0] = {
     applicationId,
     actorType,
   }
@@ -396,7 +396,7 @@ export function parseAttemptStep(
   applicationId: string,
   attemptId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['attempts']['step']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['attempts']['step']>[0] {
   assertKnownOptions(argv, ['--actor', '--json', '--message', '--payload-json', '--type'])
   const type = readRequiredOption(argv, '--type')
 
@@ -404,7 +404,7 @@ export function parseAttemptStep(
     throw new Error(`Invalid attempt step type: ${type}`)
   }
 
-  const input: Parameters<ValedictorianClient['applications']['attempts']['step']>[0] = {
+  const input: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['step']>[0] = {
     applicationId,
     attemptId,
     type,
@@ -426,7 +426,7 @@ export function parseAttemptComplete(
   applicationId: string,
   attemptId: string,
   argv: string[],
-): Parameters<ValedictorianClient['applications']['attempts']['complete']>[0] {
+): Parameters<ValedictorianWorkspaceClient['applications']['attempts']['complete']>[0] {
   assertKnownOptions(argv, [
     '--blocker-reason',
     '--confirmation-text',
@@ -445,7 +445,7 @@ export function parseAttemptComplete(
     throw new Error(`Invalid application status: ${outcome}`)
   }
 
-  const input: Parameters<ValedictorianClient['applications']['attempts']['complete']>[0] = {
+  const input: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['complete']>[0] = {
     applicationId,
     attemptId,
     outcome,
@@ -537,8 +537,8 @@ export function parseQueueListQuery(argv: string[]): QueueListQuery {
   return query
 }
 
-export function parseWorkflowRunsListQuery(argv: string[]): NonNullable<Parameters<ValedictorianClient['runs']['list']>[0]> {
-  const query: NonNullable<Parameters<ValedictorianClient['runs']['list']>[0]> = {}
+export function parseWorkflowRunsListQuery(argv: string[]): NonNullable<Parameters<ValedictorianWorkspaceClient['runs']['list']>[0]> {
+  const query: NonNullable<Parameters<ValedictorianWorkspaceClient['runs']['list']>[0]> = {}
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]
@@ -611,7 +611,7 @@ export function parseWorkflowRunsListQuery(argv: string[]): NonNullable<Paramete
   return query
 }
 
-export function parseRunStart(argv: string[]): Parameters<ValedictorianClient['runs']['start']>[0] {
+export function parseRunStart(argv: string[]): Parameters<ValedictorianWorkspaceClient['runs']['start']>[0] {
   assertKnownOptions(argv, [
     '--actor-name',
     '--actor-type',
@@ -638,7 +638,7 @@ export function parseRunStart(argv: string[]): Parameters<ValedictorianClient['r
     throw new Error(`Invalid actorType: ${actorType}`)
   }
 
-  const input: Parameters<ValedictorianClient['runs']['start']>[0] = {
+  const input: Parameters<ValedictorianWorkspaceClient['runs']['start']>[0] = {
     runType,
     actorType,
   }
@@ -677,9 +677,9 @@ export function parseRunStart(argv: string[]): Parameters<ValedictorianClient['r
 export function parseRunStep(
   workflowRunId: string,
   argv: string[],
-): Parameters<ValedictorianClient['runs']['step']>[0] {
+): Parameters<ValedictorianWorkspaceClient['runs']['step']>[0] {
   assertKnownOptions(argv, ['--actor', '--json', '--message', '--payload-json', '--type'])
-  const input: Parameters<ValedictorianClient['runs']['step']>[0] = {
+  const input: Parameters<ValedictorianWorkspaceClient['runs']['step']>[0] = {
     workflowRunId,
     type: readRequiredOption(argv, '--type'),
     message: readRequiredText(readOption(argv, '--message'), 'run step message'),
@@ -699,7 +699,7 @@ export function parseRunStep(
 export function parseRunComplete(
   workflowRunId: string,
   argv: string[],
-): Parameters<ValedictorianClient['runs']['complete']>[0] {
+): Parameters<ValedictorianWorkspaceClient['runs']['complete']>[0] {
   assertKnownOptions(argv, [
     '--blocker',
     '--json',
@@ -708,7 +708,7 @@ export function parseRunComplete(
     '--status',
     '--summary',
   ])
-  const input: Parameters<ValedictorianClient['runs']['complete']>[0] = { workflowRunId }
+  const input: Parameters<ValedictorianWorkspaceClient['runs']['complete']>[0] = { workflowRunId }
   const status = readOption(argv, '--status')
   const metadataJson = readOption(argv, '--metadata-json')
 

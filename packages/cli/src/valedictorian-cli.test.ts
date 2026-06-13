@@ -3,7 +3,7 @@ import { jsonResponse, readPackageJson, runCli } from './valedictorian-cli.test-
 
 describe('valedictorian-cli npm package', () => {
   const sparxieGitDependency =
-    'github:KennySparxie/sparxie#acad8b518e65746513bc9cfa6082fe93c43ac34f'
+    'github:KennySparxie/sparxie#84bcf6c'
 
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -89,6 +89,93 @@ describe('valedictorian-cli npm package', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('lists workspaces without requiring a selected workspace', async () => {
+    const payload = {
+      items: [
+        {
+          id: 'workspace-1',
+          latestError: null,
+          name: 'Example Workspace',
+          open: true,
+          path: '/Users/example/valedictorian/Example Workspace',
+          source: 'local',
+        },
+      ],
+    }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValue(jsonResponse(payload))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli(['workspaces', 'list', '--json'])
+
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledWith('https://valedictorian.test/v1/workspaces', {
+      headers: {
+        accept: 'application/json',
+      },
+      method: 'GET',
+    })
+  })
+
+  it('opens and creates workspaces over HTTP', async () => {
+    const opened = {
+      id: 'workspace-opened',
+      latestError: null,
+      name: 'Opened',
+      open: true,
+      path: '/Users/example/valedictorian/Opened',
+      source: 'local',
+    }
+    const created = {
+      id: 'workspace-created',
+      latestError: null,
+      name: 'Created',
+      open: true,
+      path: '/Users/example/valedictorian/Created',
+      source: 'local',
+    }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(jsonResponse(opened))
+    fetchMock.mockResolvedValueOnce(jsonResponse(created))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const openResult = await runCli([
+      'workspaces',
+      'open',
+      '/Users/example/valedictorian/Opened',
+      '--rekey',
+      '--json',
+    ])
+    const createResult = await runCli([
+      'workspaces',
+      'create',
+      '/Users/example/valedictorian/Created',
+      '--json',
+    ])
+
+    expect(openResult.exitCode).toBe(0)
+    expect(JSON.parse(openResult.stdout)).toEqual(opened)
+    expect(createResult.exitCode).toBe(0)
+    expect(JSON.parse(createResult.stdout)).toEqual(created)
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://valedictorian.test/v1/workspaces/open',
+      expect.objectContaining({
+        body: JSON.stringify({ path: '/Users/example/valedictorian/Opened', rekey: true }),
+        method: 'POST',
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://valedictorian.test/v1/workspaces/create',
+      expect.objectContaining({
+        body: JSON.stringify({ path: '/Users/example/valedictorian/Created' }),
+        method: 'POST',
+      }),
+    )
+  })
+
   it('exits non-zero when doctor cannot reach a healthy API', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValue(jsonResponse({ message: 'unavailable' }, { status: 503 }))
@@ -141,6 +228,8 @@ describe('valedictorian-cli npm package', () => {
         '25',
         '--offset',
         '5',
+        '--workspace',
+        'workspace-1',
         '--json',
       ],
       { VALEDICTORIAN_API_TOKEN: 'token-1' },
@@ -149,7 +238,7 @@ describe('valedictorian-cli npm package', () => {
     expect(result.exitCode).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual(payload)
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://valedictorian.test/v1/applications?status=needs_user_info&minScore=6&role=backend&sort=company_asc&limit=25&offset=5',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications?status=needs_user_info&minScore=6&role=backend&sort=company_asc&limit=25&offset=5',
       {
         headers: {
           accept: 'application/json',
@@ -158,6 +247,89 @@ describe('valedictorian-cli npm package', () => {
         method: 'GET',
       },
     )
+  })
+
+  it('requires and applies an explicit workspace for application list commands', async () => {
+    const payload = {
+      items: [],
+      total: 0,
+      limit: 25,
+      offset: 0,
+      hasMore: false,
+    }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValue(jsonResponse(payload))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const missingWorkspace = await runCli(['applications', 'list', '--limit', '25'])
+    const scoped = await runCli([
+      'applications',
+      'list',
+      '--workspace',
+      'workspace-1',
+      '--limit',
+      '25',
+    ])
+
+    expect(missingWorkspace.exitCode).toBe(1)
+    expect(missingWorkspace.stderr).toContain('--workspace is required')
+    expect(scoped.exitCode).toBe(0)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications?limit=25',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('resolves workspace names and fails when a workspace name is ambiguous', async () => {
+    const workspaces = {
+      items: [
+        { id: 'workspace-alpha', name: 'Example Workspace', open: true, source: 'local' },
+        { id: 'workspace-beta', name: 'Winter Search', open: false, source: 'local' },
+      ],
+    }
+    const duplicateWorkspaces = {
+      items: [
+        { id: 'workspace-one', name: 'Example Workspace', open: true, source: 'local' },
+        { id: 'workspace-two', name: 'Example Workspace', open: false, source: 'local' },
+      ],
+    }
+    const applications = { items: [], total: 0, limit: 10, offset: 0, hasMore: false }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(jsonResponse(workspaces))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applications))
+    fetchMock.mockResolvedValueOnce(jsonResponse(duplicateWorkspaces))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const resolved = await runCli([
+      'applications',
+      'list',
+      '--workspace',
+      'example workspace',
+      '--limit',
+      '10',
+      '--json',
+    ])
+    const ambiguous = await runCli([
+      'applications',
+      'list',
+      '--workspace',
+      'Example Workspace',
+      '--limit',
+      '10',
+    ])
+
+    expect(resolved.exitCode).toBe(0)
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://valedictorian.test/v1/workspaces/workspace-alpha/applications?limit=10',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(ambiguous.exitCode).toBe(1)
+    expect(ambiguous.stderr).toContain('Workspace name is ambiguous: Example Workspace')
+    expect(ambiguous.stderr).toContain('workspace-one')
+    expect(ambiguous.stderr).toContain('workspace-two')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('formats resource commands as human text by default and supports leading --json', async () => {
@@ -182,7 +354,14 @@ describe('valedictorian-cli npm package', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(payload))
     vi.stubGlobal('fetch', fetchMock)
 
-    const textResult = await runCli(['applications', 'list', '--limit', '1'])
+    const textResult = await runCli([
+      'applications',
+      'list',
+      '--workspace',
+      'workspace-1',
+      '--limit',
+      '1',
+    ])
 
     expect(textResult.exitCode).toBe(0)
     expect(textResult.stdout).toContain('1 item - limit 1 - offset 0 - end reached')
@@ -191,13 +370,21 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(() => JSON.parse(textResult.stdout)).toThrow()
 
-    const jsonResult = await runCli(['--json', 'applications', 'list', '--limit', '1'])
+    const jsonResult = await runCli([
+      '--json',
+      'applications',
+      'list',
+      '--workspace',
+      'workspace-1',
+      '--limit',
+      '1',
+    ])
 
     expect(jsonResult.exitCode).toBe(0)
     expect(JSON.parse(jsonResult.stdout)).toEqual(payload)
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://valedictorian.test/v1/applications?limit=1',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications?limit=1',
       expect.objectContaining({ method: 'GET' }),
     )
   })
@@ -216,14 +403,26 @@ describe('valedictorian-cli npm package', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await runCli(
-      ['queue', 'list', '--bucket', 'apply_now', '--limit', '25', '--offset', '5', '--json'],
+      [
+        'queue',
+        'list',
+        '--workspace',
+        'workspace-1',
+        '--bucket',
+        'apply_now',
+        '--limit',
+        '25',
+        '--offset',
+        '5',
+        '--json',
+      ],
       { VALEDICTORIAN_API_TOKEN: 'token-1' },
     )
 
     expect(result.exitCode).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual(payload)
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://valedictorian.test/v1/queue?bucket=apply_now&limit=25&offset=5',
+      'https://valedictorian.test/v1/workspaces/workspace-1/queue?bucket=apply_now&limit=25&offset=5',
       {
         headers: {
           accept: 'application/json',
@@ -241,7 +440,16 @@ describe('valedictorian-cli npm package', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(runCli(['applications', 'get', 'application-1', '--json'])).resolves.toMatchObject({
+    await expect(
+      runCli([
+        'applications',
+        'get',
+        'application-1',
+        '--workspace',
+        'workspace-1',
+        '--json',
+      ]),
+    ).resolves.toMatchObject({
       exitCode: 0,
     })
     await expect(
@@ -250,6 +458,8 @@ describe('valedictorian-cli npm package', () => {
         'status',
         'application-1',
         'submitted',
+        '--workspace',
+        'workspace-1',
         '--notes',
         'Submitted from CLI.',
       ]),
@@ -273,17 +483,19 @@ describe('valedictorian-cli npm package', () => {
         '1',
         '--rationale',
         'Strong fit.',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://valedictorian.test/v1/applications/application-1',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1',
       expect.objectContaining({ method: 'GET' }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://valedictorian.test/v1/applications/application-1/status',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/status',
       expect.objectContaining({
         body: JSON.stringify({ status: 'submitted', notes: 'Submitted from CLI.' }),
         method: 'PATCH',
@@ -291,7 +503,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://valedictorian.test/v1/scores',
+      'https://valedictorian.test/v1/workspaces/workspace-1/scores',
       expect.objectContaining({
         body: expect.stringContaining('"applicationId":"application-1"') as string,
         method: 'POST',
@@ -335,6 +547,8 @@ describe('valedictorian-cli npm package', () => {
         'https://jobs.example.com/delta',
         '--initial-note',
         'Seeded by CLI.',
+        '--workspace',
+        'workspace-1',
         '--json',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
@@ -347,6 +561,8 @@ describe('valedictorian-cli npm package', () => {
         'Software Engineering Intern II',
         '--has-applied',
         'true',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -360,10 +576,20 @@ describe('valedictorian-cli npm package', () => {
         '2026-06-04T16:00:00.000Z',
         '--manual-review-kind',
         'overridable',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
-      runCli(['applications', 'note', 'application-1', '--message', 'Reached review.']),
+      runCli([
+        'applications',
+        'note',
+        'application-1',
+        '--workspace',
+        'workspace-1',
+        '--message',
+        'Reached review.',
+      ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
       runCli([
@@ -378,6 +604,8 @@ describe('valedictorian-cli npm package', () => {
         '--url',
         'https://jobs.example.com/delta',
         '--primary',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -387,20 +615,39 @@ describe('valedictorian-cli npm package', () => {
         'update',
         'application-1',
         'link-1',
+        '--workspace',
+        'workspace-1',
         '--label',
         'company site',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
-      runCli(['applications', 'events', 'application-1', '--limit', '50', '--json']),
+      runCli([
+        'applications',
+        'events',
+        'application-1',
+        '--workspace',
+        'workspace-1',
+        '--limit',
+        '50',
+        '--json',
+      ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
-      runCli(['applications', 'archive', 'application-1', '--note', 'No longer pursuing.']),
+      runCli([
+        'applications',
+        'archive',
+        'application-1',
+        '--workspace',
+        'workspace-1',
+        '--note',
+        'No longer pursuing.',
+      ]),
     ).resolves.toMatchObject({ exitCode: 0 })
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://valedictorian.test/v1/applications',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications',
       expect.objectContaining({
         body: JSON.stringify({
           companyName: 'Delta Labs',
@@ -422,7 +669,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://valedictorian.test/v1/applications/application-1',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1',
       expect.objectContaining({
         body: JSON.stringify({
           roleTitle: 'Software Engineering Intern II',
@@ -433,7 +680,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://valedictorian.test/v1/applications/application-1/workflow',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/workflow',
       expect.objectContaining({
         body: JSON.stringify({
           holdStartedAt: '2026-06-04T16:00:00.000Z',
@@ -445,7 +692,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      'https://valedictorian.test/v1/applications/application-1/notes',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/notes',
       expect.objectContaining({
         body: JSON.stringify({ message: 'Reached review.' }),
         method: 'POST',
@@ -453,7 +700,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
-      'https://valedictorian.test/v1/applications/application-1/links',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/links',
       expect.objectContaining({
         body: JSON.stringify({
           kind: 'official',
@@ -466,7 +713,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
-      'https://valedictorian.test/v1/applications/application-1/links/link-1',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/links/link-1',
       expect.objectContaining({
         body: JSON.stringify({ label: 'company site' }),
         method: 'PATCH',
@@ -474,12 +721,12 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       7,
-      'https://valedictorian.test/v1/applications/application-1/events?limit=50',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/events?limit=50',
       expect.objectContaining({ method: 'GET' }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       8,
-      'https://valedictorian.test/v1/applications/application-1/archive',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/archive',
       expect.objectContaining({
         body: JSON.stringify({ note: 'No longer pursuing.' }),
         method: 'PATCH',
@@ -509,6 +756,8 @@ describe('valedictorian-cli npm package', () => {
         'codex',
         '--summary',
         'Started.',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -524,6 +773,8 @@ describe('valedictorian-cli npm package', () => {
         'Verified page.',
         '--actor',
         'agent:codex',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -539,15 +790,27 @@ describe('valedictorian-cli npm package', () => {
         'Needs dates.',
         '--missing-user-info',
         'Fall 2026 dates',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
-      runCli(['applications', 'attempts', 'list', 'application-1', '--limit', '25', '--json']),
+      runCli([
+        'applications',
+        'attempts',
+        'list',
+        'application-1',
+        '--workspace',
+        'workspace-1',
+        '--limit',
+        '25',
+        '--json',
+      ]),
     ).resolves.toMatchObject({ exitCode: 0 })
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://valedictorian.test/v1/applications/application-1/attempts',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/attempts',
       expect.objectContaining({
         body: JSON.stringify({
           actorType: 'agent',
@@ -559,7 +822,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://valedictorian.test/v1/applications/application-1/attempts/attempt-1/steps',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/attempts/attempt-1/steps',
       expect.objectContaining({
         body: JSON.stringify({
           type: 'page_verified',
@@ -571,7 +834,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://valedictorian.test/v1/applications/application-1/attempts/attempt-1/complete',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/attempts/attempt-1/complete',
       expect.objectContaining({
         body: JSON.stringify({
           outcome: 'needs_user_info',
@@ -583,7 +846,7 @@ describe('valedictorian-cli npm package', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      'https://valedictorian.test/v1/applications/application-1/attempts?limit=25',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/attempts?limit=25',
       expect.objectContaining({ method: 'GET' }),
     )
   })
@@ -615,12 +878,14 @@ describe('valedictorian-cli npm package', () => {
         }),
         '--actor',
         'agent:codex',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
 
     const [requestUrl, requestInit] = fetchMock.mock.calls[0]
     expect(requestUrl).toBe(
-      'https://valedictorian.test/v1/applications/application-1/attempts/attempt-1/steps',
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications/application-1/attempts/attempt-1/steps',
     )
     expect(requestInit).toMatchObject({ method: 'POST' })
     expect(JSON.parse(String(requestInit?.body))).toEqual({
@@ -642,9 +907,30 @@ describe('valedictorian-cli npm package', () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     vi.stubGlobal('fetch', fetchMock)
 
-    const invalidSort = await runCli(['applications', 'list', '--sort', 'random_sort'])
-    const removedName = await runCli(['applications', 'list', '--name', 'astranis'])
-    const invalidDate = await runCli(['applications', 'list', '--created-from', 'tomorrow-ish'])
+    const invalidSort = await runCli([
+      'applications',
+      'list',
+      '--workspace',
+      'workspace-1',
+      '--sort',
+      'random_sort',
+    ])
+    const removedName = await runCli([
+      'applications',
+      'list',
+      '--workspace',
+      'workspace-1',
+      '--name',
+      'astranis',
+    ])
+    const invalidDate = await runCli([
+      'applications',
+      'list',
+      '--workspace',
+      'workspace-1',
+      '--created-from',
+      'tomorrow-ish',
+    ])
     const invalidRoleKind = await runCli([
       'applications',
       'create',
@@ -664,6 +950,8 @@ describe('valedictorian-cli npm package', () => {
       'queued',
       '--primary-url',
       'https://jobs.example.com/delta',
+      '--workspace',
+      'workspace-1',
     ])
     const invalidWorkMode = await runCli([
       'applications',
@@ -684,6 +972,8 @@ describe('valedictorian-cli npm package', () => {
       'queued',
       '--primary-url',
       'https://jobs.example.com/delta',
+      '--workspace',
+      'workspace-1',
     ])
     const missingLink = await runCli([
       'applications',
@@ -702,6 +992,8 @@ describe('valedictorian-cli npm package', () => {
       'remote',
       '--status',
       'queued',
+      '--workspace',
+      'workspace-1',
     ])
     const malformedUrl = await runCli([
       'applications',
@@ -722,11 +1014,15 @@ describe('valedictorian-cli npm package', () => {
       'queued',
       '--primary-url',
       'ftp://jobs.example.com/delta',
+      '--workspace',
+      'workspace-1',
     ])
     const invalidManualKind = await runCli([
       'applications',
       'workflow',
       'application-1',
+      '--workspace',
+      'workspace-1',
       '--manual-review-kind',
       'manual',
     ])
@@ -734,14 +1030,24 @@ describe('valedictorian-cli npm package', () => {
       'applications',
       'workflow',
       'application-1',
+      '--workspace',
+      'workspace-1',
       '--lock-started-at',
       'tomorrow-ish',
     ])
-    const emptyUpdate = await runCli(['applications', 'update', 'application-1'])
+    const emptyUpdate = await runCli([
+      'applications',
+      'update',
+      'application-1',
+      '--workspace',
+      'workspace-1',
+    ])
     const blankNote = await runCli([
       'applications',
       'note',
       'application-1',
+      '--workspace',
+      'workspace-1',
       '--message',
       '   ',
     ])
@@ -751,6 +1057,8 @@ describe('valedictorian-cli npm package', () => {
       'complete',
       'application-1',
       'attempt-1',
+      '--workspace',
+      'workspace-1',
       '--outcome',
       'needs_user_info',
     ])

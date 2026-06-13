@@ -45,7 +45,7 @@
   },
   "dependencies": {
     "@stricli/core": "1.2.7",
-    "sparxie": "github:KennySparxie/sparxie#acad8b518e65746513bc9cfa6082fe93c43ac34f"
+    "sparxie": "github:KennySparxie/sparxie#84bcf6c"
   },
   "devDependencies": {
     "@types/node": "^24.13.1",

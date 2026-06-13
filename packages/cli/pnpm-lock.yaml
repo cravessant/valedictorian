@@ -12,8 +12,8 @@ importers:
         specifier: 1.2.7
         version: 1.2.7
       sparxie:
-        specifier: github:KennySparxie/sparxie#acad8b518e65746513bc9cfa6082fe93c43ac34f
-        version: https://codeload.github.com/KennySparxie/sparxie/tar.gz/acad8b518e65746513bc9cfa6082fe93c43ac34f
+        specifier: github:KennySparxie/sparxie#84bcf6c
+        version: https://codeload.github.com/KennySparxie/sparxie/tar.gz/84bcf6c69ed2f28a25ee893e481d32f342113751
     devDependencies:
       '@types/node':
         specifier: ^24.13.1
@@ -433,10 +433,10 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
-  sparxie@https://codeload.github.com/KennySparxie/sparxie/tar.gz/acad8b518e65746513bc9cfa6082fe93c43ac34f:
-    resolution: {gitHosted: true, tarball: https://codeload.github.com/KennySparxie/sparxie/tar.gz/acad8b518e65746513bc9cfa6082fe93c43ac34f}
+  sparxie@https://codeload.github.com/KennySparxie/sparxie/tar.gz/84bcf6c69ed2f28a25ee893e481d32f342113751:
+    resolution: {gitHosted: true, integrity: sha512-OQehQbhoMlJEe/Gj+Udtqv9ss/Hl18FZ7M2QPuUqMddVfZo+1UN3W1FDrHYdvCMgZeF1NlFeV86Urhe5p8fDog==, tarball: https://codeload.github.com/KennySparxie/sparxie/tar.gz/84bcf6c69ed2f28a25ee893e481d32f342113751}
     version: 0.2.0
-    engines: {node: '>=18'}
+    engines: {node: '>=22.12.0'}
 
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
@@ -846,7 +846,7 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  sparxie@https://codeload.github.com/KennySparxie/sparxie/tar.gz/acad8b518e65746513bc9cfa6082fe93c43ac34f: {}
+  sparxie@https://codeload.github.com/KennySparxie/sparxie/tar.gz/84bcf6c69ed2f28a25ee893e481d32f342113751: {}
 
   stackback@0.0.2: {}
 

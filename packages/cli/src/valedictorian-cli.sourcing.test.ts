@@ -47,6 +47,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         'LinkedIn',
         '--summary',
         'Started.',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -60,10 +62,22 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         'Reached frontier.',
         '--actor',
         'agent:codex',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
-      runCli(['runs', 'complete', 'run-1', '--outcome', 'full_coverage', '--summary', 'Completed.']),
+      runCli([
+        'runs',
+        'complete',
+        'run-1',
+        '--workspace',
+        'workspace-1',
+        '--outcome',
+        'full_coverage',
+        '--summary',
+        'Completed.',
+      ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
       runCli([
@@ -75,6 +89,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         'source-linkedin',
         '--limit',
         '25',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -90,6 +106,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         'new',
         '--limit',
         '25',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -117,6 +135,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         '7',
         '--priority-band',
         'high',
+        '--workspace',
+        'workspace-1',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -127,17 +147,28 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         'finding-1',
         '--merge-status',
         'below_cutoff',
+        '--workspace',
+        'workspace-1',
         '--merge-notes',
         'Below cutoff.',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
-    await expect(runCli(['sourcing', 'findings', 'promote', 'finding-1'])).resolves.toMatchObject({
+    await expect(
+      runCli([
+        'sourcing',
+        'findings',
+        'promote',
+        'finding-1',
+        '--workspace',
+        'workspace-1',
+      ]),
+    ).resolves.toMatchObject({
       exitCode: 0,
     })
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://valedictorian.test/v1/runs',
+      'https://valedictorian.test/v1/workspaces/workspace-1/runs',
       expect.objectContaining({
         body: JSON.stringify({
           runType: 'sourcing',
@@ -151,7 +182,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://valedictorian.test/v1/runs/run-1/steps',
+      'https://valedictorian.test/v1/workspaces/workspace-1/runs/run-1/steps',
       expect.objectContaining({
         body: JSON.stringify({
           type: 'note',
@@ -163,7 +194,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://valedictorian.test/v1/runs/run-1/complete',
+      'https://valedictorian.test/v1/workspaces/workspace-1/runs/run-1/complete',
       expect.objectContaining({
         body: JSON.stringify({
           outcome: 'full_coverage',
@@ -174,17 +205,17 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      'https://valedictorian.test/v1/runs?runType=sourcing&sourceId=source-linkedin&limit=25',
+      'https://valedictorian.test/v1/workspaces/workspace-1/runs?runType=sourcing&sourceId=source-linkedin&limit=25',
       expect.objectContaining({ method: 'GET' }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
-      'https://valedictorian.test/v1/sourcing/findings?workflowRunId=run-1&sourceId=source-linkedin&mergeStatus=new&limit=25',
+      'https://valedictorian.test/v1/workspaces/workspace-1/sourcing/findings?workflowRunId=run-1&sourceId=source-linkedin&mergeStatus=new&limit=25',
       expect.objectContaining({ method: 'GET' }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
-      'https://valedictorian.test/v1/sourcing/findings',
+      'https://valedictorian.test/v1/workspaces/workspace-1/sourcing/findings',
       expect.objectContaining({
         body: JSON.stringify({
           workflowRunId: 'run-1',
@@ -203,7 +234,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       7,
-      'https://valedictorian.test/v1/sourcing/findings/finding-1',
+      'https://valedictorian.test/v1/workspaces/workspace-1/sourcing/findings/finding-1',
       expect.objectContaining({
         body: JSON.stringify({
           mergeStatus: 'below_cutoff',
@@ -214,7 +245,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       8,
-      'https://valedictorian.test/v1/sourcing/findings/finding-1/promote',
+      'https://valedictorian.test/v1/workspaces/workspace-1/sourcing/findings/finding-1/promote',
       expect.objectContaining({
         body: JSON.stringify({}),
         method: 'POST',
@@ -265,6 +296,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         '--source-id',
         'source-linkedin',
         '--auto-promote',
+        '--workspace',
+        'workspace-1',
         '--candidates-json',
         JSON.stringify(candidates),
       ]),
@@ -272,7 +305,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://valedictorian.test/v1/runs',
+      'https://valedictorian.test/v1/workspaces/workspace-1/runs',
       expect.objectContaining({
         body: expect.stringContaining('"sourceId":"source-linkedin"') as string,
         method: 'POST',
@@ -280,7 +313,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      'https://valedictorian.test/v1/sourcing/candidates/process',
+      'https://valedictorian.test/v1/workspaces/workspace-1/sourcing/candidates/process',
       expect.objectContaining({
         body: expect.stringContaining('"workflowRunId":"run-1"') as string,
         method: 'POST',
@@ -288,7 +321,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://valedictorian.test/v1/runs/run-1/complete',
+      'https://valedictorian.test/v1/workspaces/workspace-1/runs/run-1/complete',
       expect.objectContaining({
         body: JSON.stringify({
           outcome: 'processed_1_candidates',
@@ -314,6 +347,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         '--source-id',
         'source-linkedin',
         '--auto-promote',
+        '--workspace',
+        'workspace-1',
         '--candidates-json',
         JSON.stringify([
           {
@@ -330,7 +365,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      'https://valedictorian.test/v1/runs/run-1/steps',
+      'https://valedictorian.test/v1/workspaces/workspace-1/runs/run-1/steps',
       expect.objectContaining({
         body: expect.stringContaining('"type":"sourcing_candidate_failed"') as string,
         method: 'POST',
@@ -338,7 +373,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
-      'https://valedictorian.test/v1/runs/run-1/complete',
+      'https://valedictorian.test/v1/workspaces/workspace-1/runs/run-1/complete',
       expect.objectContaining({
         body: expect.stringContaining('"status":"failed"') as string,
         method: 'PATCH',
@@ -357,6 +392,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
       'application-1',
       '--lock-started-at',
       'now',
+      '--workspace',
+      'workspace-1',
     ])
 
     expect(result.exitCode).toBe(0)
