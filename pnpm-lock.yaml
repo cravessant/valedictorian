@@ -51,8 +51,8 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
       sparxie:
-        specifier: github:KennyKeni/sparxie#84bcf6c
-        version: https://codeload.github.com/KennyKeni/sparxie/tar.gz/84bcf6c69ed2f28a25ee893e481d32f342113751
+        specifier: github:KennyKeni/sparxie#199eb1f
+        version: https://codeload.github.com/KennyKeni/sparxie/tar.gz/199eb1f9af462bccefc2eaea67456fc7f9624334
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -3014,9 +3014,9 @@ packages:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
 
-  sparxie@https://codeload.github.com/KennyKeni/sparxie/tar.gz/84bcf6c69ed2f28a25ee893e481d32f342113751:
-    resolution: {gitHosted: true, integrity: sha512-OQehQbhoMlJEe/Gj+Udtqv9ss/Hl18FZ7M2QPuUqMddVfZo+1UN3W1FDrHYdvCMgZeF1NlFeV86Urhe5p8fDog==, tarball: https://codeload.github.com/KennyKeni/sparxie/tar.gz/84bcf6c69ed2f28a25ee893e481d32f342113751}
-    version: 0.2.0
+  sparxie@https://codeload.github.com/KennyKeni/sparxie/tar.gz/199eb1f9af462bccefc2eaea67456fc7f9624334:
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/KennyKeni/sparxie/tar.gz/199eb1f9af462bccefc2eaea67456fc7f9624334}
+    version: 0.3.0
     engines: {node: '>=22.12.0'}
 
   sprintf-js@1.1.3:
@@ -5941,7 +5941,7 @@ snapshots:
 
   source-map@0.6.1: {}
 
-  sparxie@https://codeload.github.com/KennyKeni/sparxie/tar.gz/84bcf6c69ed2f28a25ee893e481d32f342113751: {}
+  sparxie@https://codeload.github.com/KennyKeni/sparxie/tar.gz/199eb1f9af462bccefc2eaea67456fc7f9624334: {}
 
   sprintf-js@1.1.3:
     optional: true
