@@ -25,7 +25,7 @@ describe('CLI release workflow', () => {
     expect(fs.existsSync(releaseWorkflowPath)).toBe(false)
   })
 
-  it('publishes the CLI package to npm with trusted publishing from the private repository', () => {
+  it('publishes the CLI package to npm from the private repository', () => {
     expect(fs.existsSync(publishWorkflowPath)).toBe(true)
 
     const workflow = fs.readFileSync(publishWorkflowPath, 'utf8')
@@ -49,7 +49,8 @@ describe('CLI release workflow', () => {
     expect(workflow).toContain('Resolve npm dist-tag')
     expect(workflow).toContain('packageJson.version.match(/-(alpha|beta|rc)\\./)')
     expect(workflow).toContain('NPM_DIST_TAG')
-    expect(workflow).toContain('publish_args=(publish --access public --provenance)')
+    expect(workflow).toContain('publish_args=(publish --access public)')
+    expect(workflow).not.toContain('--provenance')
     expect(workflow).toContain('publish_args+=(--tag "$NPM_DIST_TAG")')
   })
 })
