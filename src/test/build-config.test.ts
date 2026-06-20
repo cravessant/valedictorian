@@ -31,9 +31,6 @@ function readElectronBuilderConfig() {
 }
 
 describe('build configuration', () => {
-  const sparxieGitDependency =
-    'github:KennyKeni/sparxie#199eb1f'
-
   it('keeps the Electron app packaged separately from the standalone CLI', () => {
     const packageJson = readPackageJson()
     const config = readElectronBuilderConfig()
@@ -63,7 +60,8 @@ describe('build configuration', () => {
 
     expect(packageJson.version).toMatch(/^0\.\d+\.\d+-alpha\.\d+$/)
     expect(packageJson.scripts?.['build:mac']).toContain('--publish never')
-    expect(packageJson.dependencies?.sparxie).toBe(sparxieGitDependency)
+    expect(packageJson.dependencies?.sparxie).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(packageJson.dependencies?.sparxie).not.toContain('github:')
     expect(packageJson.dependencies?.sparxie).not.toContain('../sparxie')
     expect(scripts).not.toEqual(expect.arrayContaining([expect.stringContaining('../sparxie')]))
     expect(fs.existsSync(path.resolve('pnpm-lock.yaml'))).toBe(true)
