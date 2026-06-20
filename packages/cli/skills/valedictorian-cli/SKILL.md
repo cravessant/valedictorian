@@ -1,6 +1,6 @@
 ---
 name: valedictorian-cli
-description: Use when an AI coding agent needs to operate the Valedictorian job automation CLI for job applications, queues, workflow runs, sourcing findings, scoring, application attempts, or agent-driven application workflows. Helps agents locate and run the CLI safely, configure API environment variables, request JSON output when needed, and perform requested mutations without bypassing the CLI.
+description: Use when an AI coding agent needs to operate the Valedictorian job automation CLI for job applications, the Action Queue worklist, workflow runs, sourcing findings, scoring, application attempts, or agent-driven application workflows. Helps agents locate and run the CLI safely, configure API environment variables, request JSON output when needed, and perform requested mutations without bypassing the CLI.
 ---
 
 # Valedictorian CLI
@@ -46,7 +46,7 @@ Commands default to human-readable output. Use `--json` when another tool, scrip
    - Never print, commit, echo, log, or persist token values; avoid token literals in shell history, `env` output, `printenv`, `set -x`, chat, and temp files.
 3. Inspect before mutating:
    - Use `valedictorian-cli --json context` and `valedictorian-cli --json workspaces list` to find workspace ids/names.
-   - Use `valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json applications get <id> --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json queue list --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE"`, or `valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE"` to identify records for agent work.
+   - Use `valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json applications get <id> --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE"`, or `valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE"` to identify records for agent work.
    - Treat `create`, `update`, `status`, `archive`, `note`, `workflow`, `link add/update`, `attempts`, `scores record`, `runs start/step/complete`, `sourcing run`, `sourcing run --auto-promote`, and `sourcing findings create/decide/update/promote` as mutations.
    - Before any mutation, identify the sanitized target URL and whether it is local, staging, or production. Require clear user intent before mutating non-local data.
    - Be especially cautious with irreversible or high-impact commands such as `applications archive`, `applications attempts complete --outcome submitted`, `sourcing findings promote`, and `sourcing run --auto-promote`.
@@ -55,7 +55,7 @@ Commands default to human-readable output. Use `--json` when another tool, scrip
 
 ## Common Workflows
 
-- Investigate a queued application: `valedictorian-cli --json queue list --workspace "$VALEDICTORIAN_WORKSPACE"` -> `valedictorian-cli --json applications get <id> --workspace "$VALEDICTORIAN_WORKSPACE"` -> `valedictorian-cli --json applications attempts list <id> --workspace "$VALEDICTORIAN_WORKSPACE"` and, if needed, `valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE"`.
+- Investigate an Action Queue item: `valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE"` -> `valedictorian-cli --json applications get <id> --workspace "$VALEDICTORIAN_WORKSPACE"` -> `valedictorian-cli --json applications attempts list <id> --workspace "$VALEDICTORIAN_WORKSPACE"` and, if needed, `valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE"`.
 - Record application work: use `valedictorian-cli --json applications attempts start/step/complete --workspace "$VALEDICTORIAN_WORKSPACE"` for the real application attempt lifecycle. Use `valedictorian-cli --json runs start/step/complete --run-type application_attempt --workspace "$VALEDICTORIAN_WORKSPACE"` for broader agent workflow audit trails.
 - Before completing an attempt as submitted, use `valedictorian-cli examples attempts complete --outcome submitted` to see the required `verification_receipt` step shape.
 - Review sourcing output: use `valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE"` before `valedictorian-cli --json sourcing findings create/decide/update/promote --workspace "$VALEDICTORIAN_WORKSPACE"`; verify promoted findings by reading the resulting application or listing affected findings. Use `--fit-notes` for historical/import context; classification recalculates `blocker`, `duplicateNotes`, and `mergeNotes` unless you set a manual disposition with `sourcing findings decide`.

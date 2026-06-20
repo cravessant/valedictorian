@@ -27,7 +27,7 @@ import {
   parseAttemptStep,
   parseCreateApplication,
   parseCreateApplicationLink,
-  parseQueueListQuery,
+  parseActionQueueListQuery,
   parseRunComplete,
   parseRunStart,
   parseRunStep,
@@ -179,18 +179,18 @@ const application = buildApplication(
           }),
         },
       }),
-      queue: buildRouteMap({
-        docs: { brief: 'Inspect application queues' },
+      'action-queue': buildRouteMap({
+        docs: { brief: 'Inspect action queue items' },
         routes: {
           list: makeCommand({
-            docs: { brief: 'List queue items' },
-            flags: optionFlags(['bucket', 'limit', 'offset', 'workspace']),
+            docs: { brief: 'List action queue items' },
+            flags: optionFlags(['action-bucket', 'limit', 'offset', 'workspace']),
             run: async (context, flags) => {
               const client = await workspaceClient(context, flags)
 
               writeJson(
                 context,
-                await client.queue.list(parseQueueListQuery(toArgvWithoutWorkspace(flags))),
+                await client.actionQueue.list(parseActionQueueListQuery(toArgvWithoutWorkspace(flags))),
               )
             },
           }),

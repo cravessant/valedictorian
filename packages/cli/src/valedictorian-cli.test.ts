@@ -503,14 +503,14 @@ describe('valedictorian-cli npm package', () => {
     )
   })
 
-  it('lists queue rows over HTTP with bucket filtering, pagination, and token auth', async () => {
+  it('lists action queue rows over HTTP with action bucket filtering, pagination, and token auth', async () => {
     const payload = {
       items: [],
       total: 0,
       limit: 25,
       offset: 5,
       hasMore: false,
-      bucketCounts: { apply_now: 0 },
+      actionBucketCounts: { apply_now: 0 },
     }
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValue(jsonResponse(payload))
@@ -518,11 +518,11 @@ describe('valedictorian-cli npm package', () => {
 
     const result = await runCli(
       [
-        'queue',
+        'action-queue',
         'list',
         '--workspace',
         'workspace-1',
-        '--bucket',
+        '--action-bucket',
         'apply_now',
         '--limit',
         '25',
@@ -536,7 +536,7 @@ describe('valedictorian-cli npm package', () => {
     expect(result.exitCode).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual(payload)
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://valedictorian.test/v1/workspaces/workspace-1/queue?bucket=apply_now&limit=25&offset=5',
+      'https://valedictorian.test/v1/workspaces/workspace-1/action-queue?actionBucket=apply_now&limit=25&offset=5',
       {
         headers: {
           accept: 'application/json',

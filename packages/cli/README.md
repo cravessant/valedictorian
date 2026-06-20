@@ -24,6 +24,7 @@ valedictorian-cli doctor
 valedictorian-cli --json context
 valedictorian-cli --json workspaces list
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" | jq '.items[] | {id, companyName, roleTitle, status}'
 ```
 

@@ -59,13 +59,13 @@ function formatList(record: Record<string, unknown>) {
     lines.push(...items.map((item) => `- ${summarizeItem(item)}`))
   }
 
-  if (isPlainRecord(record.bucketCounts)) {
-    const counts = Object.entries(record.bucketCounts)
+  if (isPlainRecord(record.actionBucketCounts)) {
+    const counts = Object.entries(record.actionBucketCounts)
       .map(([name, count]) => `${name}: ${String(count)}`)
       .join(', ')
 
     if (counts) {
-      lines.push(`Buckets: ${counts}`)
+      lines.push(`Action buckets: ${counts}`)
     }
   }
 

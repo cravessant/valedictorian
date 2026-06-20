@@ -5,7 +5,7 @@ import {
   isApplicationListSort,
   isApplicationStatus,
   isManualReviewKind,
-  isQueueBucket,
+  isActionQueueBucket,
   isRoleKind,
   isRunStatus,
   isRunType,
@@ -13,7 +13,7 @@ import {
   normalizeApplicationLinkKind,
   type ApplicationListQuery,
   type ValedictorianWorkspaceClient,
-  type QueueListQuery,
+  type ActionQueueListQuery,
 } from 'sparxie'
 import {
   assertKnownOptions,
@@ -497,20 +497,20 @@ export function parseAttemptComplete(
   return input
 }
 
-export function parseQueueListQuery(argv: string[]): QueueListQuery {
-  const query: QueueListQuery = {}
+export function parseActionQueueListQuery(argv: string[]): ActionQueueListQuery {
+  const query: ActionQueueListQuery = {}
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index]
 
-    if (token === '--bucket') {
-      const bucket = readRequiredArgument(argv[index + 1], '--bucket value')
+    if (token === '--action-bucket') {
+      const actionBucket = readRequiredArgument(argv[index + 1], '--action-bucket value')
 
-      if (!isQueueBucket(bucket)) {
-        throw new Error(`Invalid queue bucket: ${bucket}`)
+      if (!isActionQueueBucket(actionBucket)) {
+        throw new Error(`Invalid action queue bucket: ${actionBucket}`)
       }
 
-      query.bucket = bucket
+      query.actionBucket = actionBucket
       index += 1
       continue
     }

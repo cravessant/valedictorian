@@ -56,7 +56,7 @@ valedictorian-cli --json context
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" --status needs_user_info --limit 25
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" --search "backend intern" --sort company_asc --limit 25
 valedictorian-cli --json applications get <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json queue list --workspace "$VALEDICTORIAN_WORKSPACE" --bucket apply_now --limit 25
+valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now --limit 25
 valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --status in_progress --limit 25
 valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE" --workflow-run-id <run-id> --merge-status new --limit 25
 ```
