@@ -16,7 +16,7 @@ import type {
   ApplicationListItem,
   ApplicationListResult,
 } from './modules/applications/application.types'
-import type { QueueListItem, QueueListResult } from './modules/queue/queue.repository'
+import type { ActionQueueListItem, ActionQueueListResult } from './modules/action-queue/action-queue.repository'
 import type { ProfileSensitiveDetails } from './modules/profile/profile.repository'
 import {
   defaultPolicyConfig,
@@ -198,7 +198,7 @@ export function createAttemptResult(
   }
 }
 
-export function createQueueItem(overrides: Partial<QueueListItem> = {}): QueueListItem {
+export function createActionQueueItem(overrides: Partial<ActionQueueListItem> = {}): ActionQueueListItem {
   return {
     id: 'application-versant-platform',
     companyName: 'Versant Media',
@@ -216,7 +216,7 @@ export function createQueueItem(overrides: Partial<QueueListItem> = {}): QueueLi
     },
     createdAt: '2026-06-04T16:00:00.000Z',
     updatedAt: '2026-06-04T16:00:00.000Z',
-    bucket: 'apply_now',
+    actionBucket: 'apply_now',
     nextAction: 'apply_now',
     reason: 'Queued score 6 meets policy cutoff 6.',
     policyReasons: [{ code: 'meets_policy_cutoff', message: 'Queued score 6 meets policy cutoff 6.' }],
@@ -224,21 +224,21 @@ export function createQueueItem(overrides: Partial<QueueListItem> = {}): QueueLi
   }
 }
 
-export function createQueueResult(items: QueueListItem[]): QueueListResult {
+export function createActionQueueResult(items: ActionQueueListItem[]): ActionQueueListResult {
   return {
     items,
     total: items.length,
     limit: 50,
     offset: 0,
     hasMore: false,
-    bucketCounts: {
-      apply_now: items.filter((item) => item.bucket === 'apply_now').length,
-      manual_review_pickup: items.filter((item) => item.bucket === 'manual_review_pickup').length,
-      needs_user_info: items.filter((item) => item.bucket === 'needs_user_info').length,
-      stale_lock_recovery: items.filter((item) => item.bucket === 'stale_lock_recovery').length,
-      user_review_required: items.filter((item) => item.bucket === 'user_review_required').length,
-      blocked: items.filter((item) => item.bucket === 'blocked').length,
-      skip_below_cutoff: items.filter((item) => item.bucket === 'skip_below_cutoff').length,
+    actionBucketCounts: {
+      apply_now: items.filter((item) => item.actionBucket === 'apply_now').length,
+      manual_review_pickup: items.filter((item) => item.actionBucket === 'manual_review_pickup').length,
+      needs_user_info: items.filter((item) => item.actionBucket === 'needs_user_info').length,
+      stale_lock_recovery: items.filter((item) => item.actionBucket === 'stale_lock_recovery').length,
+      user_review_required: items.filter((item) => item.actionBucket === 'user_review_required').length,
+      blocked: items.filter((item) => item.actionBucket === 'blocked').length,
+      skip_below_cutoff: items.filter((item) => item.actionBucket === 'skip_below_cutoff').length,
     },
   }
 }
@@ -390,7 +390,7 @@ export function createPolicyApi(initialConfig: PolicyConfig = defaultPolicyConfi
   let evidenceRecords: PolicyEvidenceRecord[] = []
   const allowDecision: PolicyDecision = {
     action: 'allow',
-    configVersion: 1,
+    configVersion: 2,
     reasons: [],
     requiredEvidence: [],
     status: 'allow',
@@ -549,9 +549,9 @@ function mergePolicyConfig(currentConfig: PolicyConfig, patch: PolicyConfigPatch
       ...currentConfig.officialPath,
       ...patch.officialPath,
     },
-    queue: {
-      ...currentConfig.queue,
-      ...patch.queue,
+    actionQueue: {
+      ...currentConfig.actionQueue,
+      ...patch.actionQueue,
     },
     retries: {
       ...currentConfig.retries,

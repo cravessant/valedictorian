@@ -497,7 +497,7 @@ function decision({
 }): PolicyDecision {
   return {
     action,
-    configVersion: 1,
+    configVersion: 2,
     reasons,
     requiredEvidence,
     status,

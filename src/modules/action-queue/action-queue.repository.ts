@@ -11,7 +11,7 @@ import type { ApplicationStatus, WorkMode } from '../applications/application.ty
 import { readPolicyConfig } from '../policy/policy.repository'
 import type { PolicyConfig, PolicyReason } from 'sparxie'
 
-export const queueBuckets = [
+export const actionQueueBuckets = [
   'apply_now',
   'manual_review_pickup',
   'needs_user_info',
@@ -21,16 +21,16 @@ export const queueBuckets = [
   'skip_below_cutoff',
 ] as const
 
-export type QueueBucket = (typeof queueBuckets)[number]
-export type NextAction = QueueBucket
+export type ActionQueueBucket = (typeof actionQueueBuckets)[number]
+export type NextAction = ActionQueueBucket
 
-export interface QueueListQuery {
-  bucket?: QueueBucket
+export interface ActionQueueListQuery {
+  actionBucket?: ActionQueueBucket
   limit?: number
   offset?: number
 }
 
-export interface QueueListItem {
+export interface ActionQueueListItem {
   id: string
   companyName: string
   roleTitle: string
@@ -47,22 +47,22 @@ export interface QueueListItem {
   } | null
   createdAt: string
   updatedAt: string
-  bucket: QueueBucket
+  actionBucket: ActionQueueBucket
   nextAction: NextAction
   reason: string
   policyReasons: PolicyReason[]
 }
 
-export interface QueueListResult {
-  items: QueueListItem[]
+export interface ActionQueueListResult {
+  items: ActionQueueListItem[]
   total: number
   limit: number
   offset: number
   hasMore: boolean
-  bucketCounts: Record<QueueBucket, number>
+  actionBucketCounts: Record<ActionQueueBucket, number>
 }
 
-interface QueueRow {
+interface ActionQueueRow {
   id: string
   companyName: string
   roleTitle: string
@@ -87,8 +87,8 @@ interface QueueRow {
   updatedAt: string
 }
 
-const DEFAULT_QUEUE_LIMIT = 50
-const bucketOrder: Record<QueueBucket, number> = {
+const DEFAULT_ACTION_QUEUE_LIMIT = 50
+const actionBucketOrder: Record<ActionQueueBucket, number> = {
   apply_now: 0,
   manual_review_pickup: 1,
   needs_user_info: 2,
@@ -107,19 +107,19 @@ const blockerStatuses = new Set([
   'not_pursued',
 ])
 
-export function createSqliteQueueRepository(
+export function createSqliteActionQueueRepository(
   database: DrizzleDatabase,
   options: {
     now?: () => Date
   } = {},
 ) {
   return {
-    async listQueue(query: QueueListQuery = {}): Promise<QueueListResult> {
-      const limit = query.limit ?? DEFAULT_QUEUE_LIMIT
+    async listActionQueue(query: ActionQueueListQuery = {}): Promise<ActionQueueListResult> {
+      const limit = query.limit ?? DEFAULT_ACTION_QUEUE_LIMIT
       const offset = query.offset ?? 0
       const policyConfig = readPolicyConfig(database)
       const now = options.now?.() ?? new Date()
-      const queueItems = database
+      const actionQueueItems = database
         .select({
           id: applications.id,
           companyName: companies.name,
@@ -162,18 +162,18 @@ export function createSqliteQueueRepository(
         .where(isNull(applications.deletedAt))
         .orderBy(desc(applications.currentPriorityScore), desc(applications.updatedAt))
         .all()
-        .flatMap((row) => mapQueueRow(row, policyConfig, now))
-        .sort(compareQueueItems)
+        .flatMap((row) => mapActionQueueRow(row, policyConfig, now))
+        .sort(compareActionQueueItems)
 
-      const bucketCounts = createEmptyBucketCounts()
+      const actionBucketCounts = createEmptyBucketCounts()
 
-      for (const item of queueItems) {
-        bucketCounts[item.bucket] += 1
+      for (const item of actionQueueItems) {
+        actionBucketCounts[item.actionBucket] += 1
       }
 
-      const filteredItems = query.bucket
-        ? queueItems.filter((item) => item.bucket === query.bucket)
-        : queueItems
+      const filteredItems = query.actionBucket
+        ? actionQueueItems.filter((item) => item.actionBucket === query.actionBucket)
+        : actionQueueItems
       const items = filteredItems.slice(offset, offset + limit)
 
       return {
@@ -182,19 +182,19 @@ export function createSqliteQueueRepository(
         limit,
         offset,
         hasMore: offset + items.length < filteredItems.length,
-        bucketCounts,
+        actionBucketCounts,
       }
     },
   }
 }
 
-function mapQueueRow(row: QueueRow, policyConfig: PolicyConfig, now: Date): QueueListItem[] {
+function mapActionQueueRow(row: ActionQueueRow, policyConfig: PolicyConfig, now: Date): ActionQueueListItem[] {
   if (row.blockerReason) {
     const reason = `Blocked: ${row.blockerReason}.`
     return [
-      createQueueItem({
+      createActionQueueItem({
         row,
-        bucket: 'blocked',
+        actionBucket: 'blocked',
         reason,
         policyReasons: [{ code: 'workflow_blocker', message: reason }],
       }),
@@ -204,9 +204,9 @@ function mapQueueRow(row: QueueRow, policyConfig: PolicyConfig, now: Date): Queu
   if (blockerStatuses.has(row.status)) {
     const reason = `Application status is ${row.status}.`
     return [
-      createQueueItem({
+      createActionQueueItem({
         row,
-        bucket: 'blocked',
+        actionBucket: 'blocked',
         reason,
         policyReasons: [{ code: 'blocked_status', message: reason }],
       }),
@@ -218,9 +218,9 @@ function mapQueueRow(row: QueueRow, policyConfig: PolicyConfig, now: Date): Queu
       ? `Missing user info: ${row.missingUserInfo}.`
       : 'Application needs user-specific information.'
     return [
-      createQueueItem({
+      createActionQueueItem({
         row,
-        bucket: 'needs_user_info',
+        actionBucket: 'needs_user_info',
         reason,
         policyReasons: [{ code: 'missing_user_info', message: reason }],
       }),
@@ -235,9 +235,9 @@ function mapQueueRow(row: QueueRow, policyConfig: PolicyConfig, now: Date): Queu
   ) {
     const reason = `Manual review hold is overridable and eligible for pickup after ${policyConfig.manualReview.pickupDelayHours} hours.`
     return [
-      createQueueItem({
+      createActionQueueItem({
         row,
-        bucket: 'manual_review_pickup',
+        actionBucket: 'manual_review_pickup',
         reason,
         policyReasons: [{ code: 'manual_review_pickup_eligible', message: reason }],
       }),
@@ -247,21 +247,24 @@ function mapQueueRow(row: QueueRow, policyConfig: PolicyConfig, now: Date): Queu
   if (row.status === 'ready_for_review' && row.manualReviewKind === 'non_overridable') {
     const reason = 'Manual review hold is non-overridable.'
     return [
-      createQueueItem({
+      createActionQueueItem({
         row,
-        bucket: 'user_review_required',
+        actionBucket: 'user_review_required',
         reason,
         policyReasons: [{ code: 'manual_review_non_overridable', message: reason }],
       }),
     ]
   }
 
-  if (row.status === 'in_progress' && isAtLeastHoursOld(row.lockStartedAt, policyConfig.queue.staleLockHours, now)) {
-    const reason = `In-progress lock is older than ${policyConfig.queue.staleLockHours} hours.`
+  if (
+    row.status === 'in_progress' &&
+    isAtLeastHoursOld(row.lockStartedAt, policyConfig.actionQueue.staleLockHours, now)
+  ) {
+    const reason = `In-progress lock is older than ${policyConfig.actionQueue.staleLockHours} hours.`
     return [
-      createQueueItem({
+      createActionQueueItem({
         row,
-        bucket: 'stale_lock_recovery',
+        actionBucket: 'stale_lock_recovery',
         reason,
         policyReasons: [{ code: 'stale_lock', message: reason }],
       }),
@@ -275,9 +278,9 @@ function mapQueueRow(row: QueueRow, policyConfig: PolicyConfig, now: Date): Queu
   if (row.currentPriorityScore < policyConfig.scoring.applyCutoff) {
     const reason = `Queued score ${row.currentPriorityScore} is below policy cutoff ${policyConfig.scoring.applyCutoff}.`
     return [
-      createQueueItem({
+      createActionQueueItem({
         row,
-        bucket: 'skip_below_cutoff',
+        actionBucket: 'skip_below_cutoff',
         reason,
         policyReasons: [{ code: 'below_policy_cutoff', message: reason }],
       }),
@@ -286,26 +289,26 @@ function mapQueueRow(row: QueueRow, policyConfig: PolicyConfig, now: Date): Queu
 
   const reason = `Queued score ${row.currentPriorityScore} meets policy cutoff ${policyConfig.scoring.applyCutoff}.`
   return [
-    createQueueItem({
+    createActionQueueItem({
       row,
-      bucket: 'apply_now',
+      actionBucket: 'apply_now',
       reason,
       policyReasons: [{ code: 'meets_policy_cutoff', message: reason }],
     }),
   ]
 }
 
-function createQueueItem({
-  bucket,
+function createActionQueueItem({
+  actionBucket,
   policyReasons,
   reason,
   row,
 }: {
-  bucket: QueueBucket
+  actionBucket: ActionQueueBucket
   policyReasons: PolicyReason[]
   reason: string
-  row: QueueRow
-}): QueueListItem {
+  row: ActionQueueRow
+}): ActionQueueListItem {
   return {
     id: row.id,
     companyName: row.companyName,
@@ -326,14 +329,14 @@ function createQueueItem({
         : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    bucket,
-    nextAction: bucket,
+    actionBucket,
+    nextAction: actionBucket,
     reason,
     policyReasons,
   }
 }
 
-function createEmptyBucketCounts(): Record<QueueBucket, number> {
+function createEmptyBucketCounts(): Record<ActionQueueBucket, number> {
   return {
     apply_now: 0,
     manual_review_pickup: 0,
@@ -345,8 +348,9 @@ function createEmptyBucketCounts(): Record<QueueBucket, number> {
   }
 }
 
-function compareQueueItems(left: QueueListItem, right: QueueListItem) {
-  const bucketComparison = bucketOrder[left.bucket] - bucketOrder[right.bucket]
+function compareActionQueueItems(left: ActionQueueListItem, right: ActionQueueListItem) {
+  const bucketComparison =
+    actionBucketOrder[left.actionBucket] - actionBucketOrder[right.actionBucket]
 
   if (bucketComparison !== 0) {
     return bucketComparison

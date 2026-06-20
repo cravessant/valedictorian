@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { seedSampleApplications } from './application.fixtures'
 import { createSqliteApplicationRepository } from './application.repository'
-import { createSqliteQueueRepository } from '../queue/queue.repository'
+import { createSqliteActionQueueRepository } from '../action-queue/action-queue.repository'
 
 describe('SQLite application repository links, events, and workflow state', () => {
   it('lists application events newest first with pagination', async () => {
@@ -333,9 +333,9 @@ describe('SQLite application repository links, events, and workflow state', () =
       ]),
     })
 
-    const queue = createSqliteQueueRepository(database)
-    await expect(queue.listQueue()).resolves.toMatchObject({
-      bucketCounts: {
+    const queue = createSqliteActionQueueRepository(database)
+    await expect(queue.listActionQueue()).resolves.toMatchObject({
+      actionBucketCounts: {
         apply_now: 0,
       },
       items: expect.not.arrayContaining([

@@ -13,7 +13,7 @@ import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
 import { ApplicationEditorModal } from './modules/applications/ApplicationEditorModal'
 import { ProfileSettingsPanel } from './modules/profile/ProfileSettingsPanel'
-import { QueuePage } from './modules/queue/QueuePage'
+import { ActionQueuePage } from './modules/action-queue/ActionQueuePage'
 import { SourcingPage } from './modules/sourcing/SourcingPage'
 import { AppSidebar, AppTopbar } from './app/AppChrome'
 import { SettingsPage, SettingsSidebar } from './settings/SettingsPage'
@@ -42,9 +42,9 @@ import {
 } from './modules/applications/application.types'
 import {
   type CreateSourcingFindingInput,
-  type QueueBucket,
-  type QueueListQuery,
-  type QueueListResult,
+  type ActionQueueBucket,
+  type ActionQueueListQuery,
+  type ActionQueueListResult,
   type PromoteSourcingFindingInput,
   type ScoreInput,
   type SetSourcingFindingDecisionInput,
@@ -78,7 +78,7 @@ import {
   defaultPolicyApi,
   defaultProfileApi,
   defaultPromoteSourcingFinding,
-  defaultQueueLoader,
+  defaultActionQueueLoader,
   defaultScoreRecorder,
   defaultSettingsApi,
   defaultWorkspaceApi,
@@ -88,10 +88,10 @@ import {
   emptyApplicationLinksResult,
   emptyAttemptResult,
   emptyApplicationResult,
-  emptyQueueResult,
+  emptyActionQueueResult,
   emptySourcingResult,
 } from './app/loaders'
-import { buildApplicationListQuery, buildQueueListQuery, buildSourcingFindingsListQuery } from './app/query'
+import { buildApplicationListQuery, buildActionQueueListQuery, buildSourcingFindingsListQuery } from './app/query'
 import {
   APP_VIEWS,
   PAGE_LIMIT,
@@ -147,7 +147,7 @@ interface AppProps {
   applicationWorkflowUpdater?: (input: UpdateApplicationWorkflowInput) => Promise<ApplicationDetail>
   attemptLoader?: (applicationId: string) => Promise<ApplicationAttemptsListResult>
   createSourcingFinding?: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
-  queueLoader?: (query: QueueListQuery) => Promise<QueueListResult>
+  actionQueueLoader?: (query: ActionQueueListQuery) => Promise<ActionQueueListResult>
   scoreRecorder?: (input: ScoreInput) => Promise<void>
   sourcingLoader?: (input: SourcingFindingsListInput) => Promise<SourcingFindingsListResult>
   promoteSourcingFinding?: (input: PromoteSourcingFindingInput) => Promise<SourcingFinding>
@@ -173,7 +173,7 @@ function App({
   applicationWorkflowUpdater = defaultApplicationWorkflowUpdater,
   attemptLoader = defaultAttemptLoader,
   createSourcingFinding = defaultCreateSourcingFinding,
-  queueLoader = defaultQueueLoader,
+  actionQueueLoader = defaultActionQueueLoader,
   scoreRecorder = defaultScoreRecorder,
   sourcingLoader = defaultSourcingLoader,
   promoteSourcingFinding = defaultPromoteSourcingFinding,
@@ -203,13 +203,13 @@ function App({
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedApplications, setHasLoadedApplications] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [queueBucket, setQueueBucket] = useState<QueueBucket | undefined>(undefined)
-  const [queueOffset, setQueueOffset] = useState(0)
-  const [queueReloadKey, setQueueReloadKey] = useState(0)
-  const [queueResult, setQueueResult] = useState<QueueListResult>(emptyQueueResult)
-  const [isQueueLoading, setIsQueueLoading] = useState(false)
-  const [hasLoadedQueue, setHasLoadedQueue] = useState(false)
-  const [queueError, setQueueError] = useState<string | null>(null)
+  const [actionQueueBucket, setActionQueueBucket] = useState<ActionQueueBucket | undefined>(undefined)
+  const [actionQueueOffset, setActionQueueOffset] = useState(0)
+  const [actionQueueReloadKey, setActionQueueReloadKey] = useState(0)
+  const [actionQueueResult, setActionQueueResult] = useState<ActionQueueListResult>(emptyActionQueueResult)
+  const [isActionQueueLoading, setIsActionQueueLoading] = useState(false)
+  const [hasLoadedActionQueue, setHasLoadedActionQueue] = useState(false)
+  const [actionQueueError, setActionQueueError] = useState<string | null>(null)
   const [sourcingMergeStatus, setSourcingMergeStatus] = useState<SourcingMergeStatus | undefined>(undefined)
   const [sourcingSourceId, setSourcingSourceId] = useState('')
   const [sourcingOffset, setSourcingOffset] = useState(0)
@@ -235,9 +235,9 @@ function App({
   const [editingApplication, setEditingApplication] = useState<ApplicationListItem | null>(null)
   const [isAddingApplication, setIsAddingApplication] = useState(false)
   const query = useMemo(() => buildApplicationListQuery(filters, offset), [filters, offset])
-  const queueQuery = useMemo(
-    () => buildQueueListQuery(queueBucket, queueOffset),
-    [queueBucket, queueOffset],
+  const actionQueueQuery = useMemo(
+    () => buildActionQueueListQuery(actionQueueBucket, actionQueueOffset),
+    [actionQueueBucket, actionQueueOffset],
   )
   const sourcingQuery = useMemo(
     () => buildSourcingFindingsListQuery(sourcingMergeStatus, sourcingSourceId, sourcingOffset),
@@ -307,36 +307,36 @@ function App({
   }, [applicationLoader, applicationReloadKey, query])
 
   useEffect(() => {
-    if (appView !== APP_VIEWS.QUEUE) {
+    if (appView !== APP_VIEWS.ACTION_QUEUE) {
       return undefined
     }
 
     let isMounted = true
 
-    setIsQueueLoading(true)
-    queueLoader(queueQuery)
+    setIsActionQueueLoading(true)
+    actionQueueLoader(actionQueueQuery)
       .then((nextResult) => {
         if (isMounted) {
-          setQueueResult(nextResult)
-          setHasLoadedQueue(true)
-          setQueueError(null)
+          setActionQueueResult(nextResult)
+          setHasLoadedActionQueue(true)
+          setActionQueueError(null)
         }
       })
       .catch(() => {
         if (isMounted) {
-          setQueueError('Queue could not be loaded.')
+          setActionQueueError('Action Queue could not be loaded.')
         }
       })
       .finally(() => {
         if (isMounted) {
-          setIsQueueLoading(false)
+          setIsActionQueueLoading(false)
         }
       })
 
     return () => {
       isMounted = false
     }
-  }, [appView, queueLoader, queueQuery, queueReloadKey])
+  }, [appView, actionQueueLoader, actionQueueQuery, actionQueueReloadKey])
 
   useEffect(() => {
     if (appView !== APP_VIEWS.SOURCING) {
@@ -512,9 +512,9 @@ function App({
     setOffset(0)
   }
 
-  function updateQueueBucket(bucket: QueueBucket | undefined) {
-    setQueueBucket(bucket)
-    setQueueOffset(0)
+  function updateActionQueueBucket(bucket: ActionQueueBucket | undefined) {
+    setActionQueueBucket(bucket)
+    setActionQueueOffset(0)
   }
 
   function updateSourcingMergeStatus(mergeStatus: SourcingMergeStatus | undefined) {
@@ -531,19 +531,19 @@ function App({
     setApplicationReloadKey((current) => current + 1)
   }
 
-  function reloadQueue() {
-    setQueueReloadKey((current) => current + 1)
+  function reloadActionQueue() {
+    setActionQueueReloadKey((current) => current + 1)
   }
 
-  function reloadQueueIfLoaded() {
-    if (appView === APP_VIEWS.QUEUE || hasLoadedQueue) {
-      reloadQueue()
+  function reloadActionQueueIfLoaded() {
+    if (appView === APP_VIEWS.ACTION_QUEUE || hasLoadedActionQueue) {
+      reloadActionQueue()
     }
   }
 
   function reloadApplicationViews() {
     reloadApplications()
-    reloadQueueIfLoaded()
+    reloadActionQueueIfLoaded()
   }
 
   function reloadSourcing() {
@@ -563,7 +563,7 @@ function App({
           ),
         }))
         reloadApplications()
-        reloadQueueIfLoaded()
+        reloadActionQueueIfLoaded()
       })
       .catch(() => {
         setSourcingError('Sourcing finding could not be promoted.')
@@ -610,17 +610,17 @@ function App({
     setAttemptError(null)
   }
 
-  function openQueueApplicationEditor(application: ApplicationDetailSeed) {
+  function openActionQueueApplicationEditor(application: ApplicationDetailSeed) {
     void applicationDetailLoader(application.id)
       .then((detail) => {
         if (detail) {
           setEditingApplication(detail)
         } else {
-          setQueueError('Application detail could not be found.')
+          setActionQueueError('Application detail could not be found.')
         }
       })
       .catch(() => {
-        setQueueError('Application detail could not be loaded.')
+        setActionQueueError('Application detail could not be loaded.')
       })
   }
 
@@ -650,8 +650,8 @@ function App({
       ? 'Settings'
       : appView === APP_VIEWS.PROFILE
         ? 'Profile'
-        : appView === APP_VIEWS.QUEUE
-          ? 'Queue'
+        : appView === APP_VIEWS.ACTION_QUEUE
+          ? 'Action Queue'
           : appView === APP_VIEWS.SOURCING
             ? 'Sourcing'
             : 'Applications'
@@ -784,18 +784,18 @@ function App({
               <ProfileSettingsPanel profileApi={profileApi} />
             </div>
           </main>
-        ) : appView === APP_VIEWS.QUEUE ? (
-          <QueuePage
-            bucket={queueBucket}
+        ) : appView === APP_VIEWS.ACTION_QUEUE ? (
+          <ActionQueuePage
+            actionBucket={actionQueueBucket}
             contentColumnClass={contentColumnClass}
-            isLoading={isQueueLoading && !hasLoadedQueue}
-            result={queueResult}
-            error={queueError}
-            onBucketChange={updateQueueBucket}
-            onEditApplication={openQueueApplicationEditor}
-            onNextPage={() => setQueueOffset(queueOffset + PAGE_LIMIT)}
+            isLoading={isActionQueueLoading && !hasLoadedActionQueue}
+            result={actionQueueResult}
+            error={actionQueueError}
+            onActionBucketChange={updateActionQueueBucket}
+            onEditApplication={openActionQueueApplicationEditor}
+            onNextPage={() => setActionQueueOffset(actionQueueOffset + PAGE_LIMIT)}
             onOpenApplication={openApplicationDetail}
-            onPreviousPage={() => setQueueOffset(Math.max(0, queueOffset - PAGE_LIMIT))}
+            onPreviousPage={() => setActionQueueOffset(Math.max(0, actionQueueOffset - PAGE_LIMIT))}
           />
         ) : appView === APP_VIEWS.SOURCING ? (
           <SourcingPage

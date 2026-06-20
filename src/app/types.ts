@@ -31,7 +31,7 @@ export const defaultFilters: FilterState = {
 export const APP_VIEWS = {
   APPLICATIONS: 'applications',
   PROFILE: 'profile',
-  QUEUE: 'queue',
+  ACTION_QUEUE: 'action-queue',
   SETTINGS: 'settings',
   SOURCING: 'sourcing',
 } as const

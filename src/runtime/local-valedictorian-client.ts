@@ -8,7 +8,7 @@ import {
   seedSampleSourcingFindings,
 } from '../modules/applications/application.fixtures'
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
-import { createSqliteQueueRepository } from '../modules/queue/queue.repository'
+import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
 import { createSqliteProfileRepository, type ProfileSecretCodec } from '../modules/profile/profile.repository'
 import { createSqliteScoringRepository } from '../modules/scoring/scoring.repository'
@@ -53,7 +53,7 @@ export function createLocalValedictorianClient({
 
   const scoringRepository = createSqliteScoringRepository(database)
   const profileRepository = createSqliteProfileRepository(database, secretCodec)
-  const queueRepository = createSqliteQueueRepository(database)
+  const actionQueueRepository = createSqliteActionQueueRepository(database)
   const policyRepository = createSqlitePolicyRepository(database)
   const workflowRunRepository = createSqliteWorkflowRunRepository(database)
   const sourcingProcessor = createSqliteSourcingProcessor(database)
@@ -91,8 +91,8 @@ export function createLocalValedictorianClient({
     scores: {
       record: (input) => scoringRepository.recordScore(input),
     },
-    queue: {
-      list: (query) => queueRepository.listQueue(query),
+    actionQueue: {
+      list: (query) => actionQueueRepository.listActionQueue(query),
     },
     policy: {
       config: {

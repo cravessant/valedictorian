@@ -100,7 +100,7 @@ describe('App settings and chrome', () => {
     const appNavigation = within(sidebar).getByRole('navigation', { name: 'Application views' })
     expect(
       within(appNavigation).getAllByRole('button').map((button) => button.textContent),
-    ).toEqual(['Profile', 'Applications', 'Queue', 'Sourcing'])
+    ).toEqual(['Profile', 'Applications', 'Action Queue', 'Sourcing'])
 
     fireEvent.click(within(sidebar).getByRole('button', { name: 'Profile' }))
 
@@ -290,9 +290,9 @@ describe('App settings and chrome', () => {
     await screen.findByRole('table', { name: 'Applications' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Queue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
 
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'queue')
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'action-queue')
     expect(screen.getByTestId('app-shell')).toHaveAttribute(
       'data-sidebar-state',
       'drawer-closed',
@@ -300,7 +300,7 @@ describe('App settings and chrome', () => {
     expect(
       screen.queryByRole('complementary', { name: 'Application navigation' }),
     ).not.toBeInTheDocument()
-    expect(within(screen.getByRole('banner', { name: 'App chrome' })).getByText('Queue')).toBeInTheDocument()
+    expect(within(screen.getByRole('banner', { name: 'App chrome' })).getByText('Action Queue')).toBeInTheDocument()
   })
 
   it('opens a compact settings popover for important runtime controls', async () => {
@@ -1211,7 +1211,7 @@ describe('App settings and chrome', () => {
     expect(settingsSidebar).not.toHaveClass('h-auto', 'max-h-72', 'w-full', 'border-b')
 
     for (const sectionName of [
-      'Queue decisions',
+      'Action Queue decisions',
       'Manual review',
       'Evidence requirements',
       'Application gates',
@@ -1254,26 +1254,26 @@ describe('App settings and chrome', () => {
     expect(screen.queryByRole('button', { name: 'Save policy' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument()
 
-    const queueDecisions = screen.getByRole('region', { name: 'Queue decisions' })
+    const queueDecisions = screen.getByRole('region', { name: 'Action Queue decisions' })
     const manualReview = screen.getByRole('region', { name: 'Manual review' })
     const queueSaveButton = within(queueDecisions).getByRole('button', {
-      name: 'Save queue decisions',
+      name: 'Save Action Queue decisions',
     })
     const manualReviewSaveButton = within(manualReview).getByRole('button', {
       name: 'Save manual review',
     })
 
-    for (const sectionName of [
-      'Queue decisions',
-      'Manual review',
-      'Evidence requirements',
-      'Application gates',
-      'Retry recovery',
-      'Sourcing windows',
-    ]) {
+    for (const [sectionName, saveLabel] of [
+      ['Action Queue decisions', 'Save Action Queue decisions'],
+      ['Manual review', 'Save manual review'],
+      ['Evidence requirements', 'Save evidence requirements'],
+      ['Application gates', 'Save application gates'],
+      ['Retry recovery', 'Save retry recovery'],
+      ['Sourcing windows', 'Save sourcing windows'],
+    ] as const) {
       expect(
         within(screen.getByRole('region', { name: sectionName })).getByRole('button', {
-          name: `Save ${sectionName.toLowerCase()}`,
+          name: saveLabel,
         }),
       ).toBeDisabled()
     }
@@ -1296,15 +1296,15 @@ describe('App settings and chrome', () => {
 
     expect(vi.mocked(policyApi.config.update).mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
-        queue: expect.objectContaining({
-          staleLockHours: defaultPolicyConfig.queue.staleLockHours,
+        actionQueue: expect.objectContaining({
+          staleLockHours: defaultPolicyConfig.actionQueue.staleLockHours,
         }),
         scoring: expect.objectContaining({
           applyCutoff: 7,
         }),
       }),
     )
-    expect(await screen.findByText('Queue decisions saved.')).toBeInTheDocument()
+    expect(await screen.findByText('Action Queue decisions saved.')).toBeInTheDocument()
     expect(queueSaveButton).toBeDisabled()
     expect(manualReviewSaveButton).toBeEnabled()
     expect(screen.getByLabelText('Manual pickup delay')).toHaveValue(8)
@@ -1346,8 +1346,8 @@ describe('App settings and chrome', () => {
     expect(screen.getByLabelText('Apply cutoff')).toHaveValue(9)
 
     expect(
-      within(screen.getByRole('region', { name: 'Queue decisions' })).getByRole('button', {
-        name: 'Save queue decisions',
+      within(screen.getByRole('region', { name: 'Action Queue decisions' })).getByRole('button', {
+        name: 'Save Action Queue decisions',
       }),
     ).toBeEnabled()
     expect(policyApi.config.update).not.toHaveBeenCalled()
@@ -1359,8 +1359,8 @@ describe('App settings and chrome', () => {
     })
     expect(screen.getByLabelText('Apply cutoff')).toHaveValue(defaultPolicyConfig.scoring.applyCutoff)
     expect(
-      within(screen.getByRole('region', { name: 'Queue decisions' })).getByRole('button', {
-        name: 'Save queue decisions',
+      within(screen.getByRole('region', { name: 'Action Queue decisions' })).getByRole('button', {
+        name: 'Save Action Queue decisions',
       }),
     ).toBeDisabled()
     expect(await screen.findByText('Policy reset.')).toBeInTheDocument()

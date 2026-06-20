@@ -406,7 +406,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         .set({
           mergeStatus: 'merged',
           mergedApplicationId: application.id,
-          mergeNotes: 'Merged into application queue.',
+          mergeNotes: 'Merged into applications.',
           updatedAt: now,
         })
         .where(eq(sourcingFindings.id, finding.id))

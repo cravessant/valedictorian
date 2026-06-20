@@ -9,7 +9,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { ApplicationListQuery } from './modules/applications/application.types'
-import type { QueueListQuery } from './modules/queue/queue.repository'
+import type { ActionQueueListQuery } from './modules/action-queue/action-queue.repository'
 import type { SourcingFindingsListInput } from 'sparxie'
 import {
   createApplication,
@@ -18,8 +18,8 @@ import {
   createEventsResult,
   createLinksResult,
   createListResult,
-  createQueueItem,
-  createQueueResult,
+  createActionQueueItem,
+  createActionQueueResult,
   createSettingsApi,
   createSourcingFinding,
   createSourcingResult,
@@ -483,7 +483,7 @@ describe('App', () => {
     expect(within(dialog).getByText('onsite availability')).toBeInTheDocument()
   })
 
-  it('opens the same application detail modal from a queue row', async () => {
+  it('opens the same application detail modal from an action queue row', async () => {
     const attemptQueries: string[] = []
 
     render(
@@ -502,12 +502,12 @@ describe('App', () => {
           attemptQueries.push(applicationId)
           return Promise.resolve(createAttemptResult())
         }}
-        queueLoader={() => Promise.resolve(createQueueResult([createQueueItem()]))}
+        actionQueueLoader={() => Promise.resolve(createActionQueueResult([createActionQueueItem()]))}
       />,
     )
 
     await screen.findByRole('table', { name: 'Applications' })
-    fireEvent.click(screen.getByRole('button', { name: 'Queue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
     fireEvent.click(await screen.findByText('Versant Media'))
 
     const dialog = await screen.findByRole('dialog', { name: 'Application detail' })
@@ -596,26 +596,26 @@ describe('App', () => {
     })
   })
 
-  it('renders queue rows from the configured loader', async () => {
-    const queueQueries: QueueListQuery[] = []
+  it('renders action queue rows from the configured loader', async () => {
+    const actionQueueQueries: ActionQueueListQuery[] = []
 
     render(
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        queueLoader={(query) => {
-          queueQueries.push(query)
-          return Promise.resolve(createQueueResult([createQueueItem()]))
+        actionQueueLoader={(query) => {
+          actionQueueQueries.push(query)
+          return Promise.resolve(createActionQueueResult([createActionQueueItem()]))
         }}
         settingsApi={createSettingsApi()}
       />,
     )
 
     await screen.findByRole('table', { name: 'Applications' })
-    fireEvent.click(screen.getByRole('button', { name: 'Queue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
 
-    const table = await screen.findByRole('table', { name: 'Queue' })
+    const table = await screen.findByRole('table', { name: 'Action Queue' })
 
-    expect(screen.getByRole('heading', { name: 'Queue' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Action Queue' })).toBeInTheDocument()
     expect(within(table).getByText('Versant Media')).toBeInTheDocument()
     expect(within(table).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
     expect(within(table).getByText('apply_now')).toBeInTheDocument()
@@ -625,22 +625,22 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply now 1' }))
 
     await waitFor(() => {
-      expect(queueQueries.at(-1)).toMatchObject({
-        bucket: 'apply_now',
+      expect(actionQueueQueries.at(-1)).toMatchObject({
+        actionBucket: 'apply_now',
         limit: 50,
         offset: 0,
       })
     })
   })
 
-  it('lets users edit the underlying application from a queue row and reloads queue', async () => {
-    const queueItem = createQueueItem()
-    const queueLoader = vi
+  it('lets users edit the underlying application from an action queue row and reloads action queue', async () => {
+    const actionQueueItem = createActionQueueItem()
+    const actionQueueLoader = vi
       .fn()
-      .mockResolvedValueOnce(createQueueResult([queueItem]))
+      .mockResolvedValueOnce(createActionQueueResult([actionQueueItem]))
       .mockResolvedValueOnce(
-        createQueueResult([
-          createQueueItem({ roleTitle: 'Backend Platform Engineering Intern' }),
+        createActionQueueResult([
+          createActionQueueItem({ roleTitle: 'Backend Platform Engineering Intern' }),
         ]),
       )
     const applicationDetailLoader = vi.fn(async (applicationId: string) =>
@@ -653,7 +653,7 @@ describe('App', () => {
         term: 'Academic Year internship',
         location: 'Universal City, CA / Remote',
         workMode: 'remote',
-        primaryLink: queueItem.primaryLink,
+        primaryLink: actionQueueItem.primaryLink,
       }),
     )
     const updateApplication = vi.fn(async () =>
@@ -665,14 +665,14 @@ describe('App', () => {
         applicationDetailLoader={applicationDetailLoader}
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         applicationUpdater={updateApplication}
-        queueLoader={queueLoader}
+        actionQueueLoader={actionQueueLoader}
         settingsApi={createSettingsApi()}
       />,
     )
 
     await screen.findByRole('table', { name: 'Applications' })
-    fireEvent.click(screen.getByRole('button', { name: 'Queue' }))
-    await screen.findByRole('table', { name: 'Queue' })
+    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
+    await screen.findByRole('table', { name: 'Action Queue' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Versant Media' }))
 
@@ -697,7 +697,7 @@ describe('App', () => {
         term: 'Academic Year internship',
         workMode: 'remote',
       })
-      expect(queueLoader).toHaveBeenCalledTimes(2)
+      expect(actionQueueLoader).toHaveBeenCalledTimes(2)
     })
   })
 
@@ -991,7 +991,7 @@ describe('App', () => {
                 mergedApplicationId: 'application-merged',
                 mergedApplicationCompanyName: 'Merged Co',
                 mergedApplicationRoleTitle: 'Software Engineering Intern',
-                mergeNotes: 'Merged into application queue.',
+                mergeNotes: 'Merged into applications.',
               }),
               createSourcingFinding({
                 id: 'finding-blocked',
@@ -1015,7 +1015,7 @@ describe('App', () => {
     const table = await screen.findByRole('table', { name: 'Sourcing findings' })
 
     expect(within(table).getByText('Promoted')).toBeInTheDocument()
-    expect(within(table).getByText('In application queue')).toBeInTheDocument()
+    expect(within(table).getByText('In applications')).toBeInTheDocument()
     expect(within(table).getByText('Blocked')).toBeInTheDocument()
     expect(within(table).getByText('Needs source data before promotion')).toBeInTheDocument()
   })

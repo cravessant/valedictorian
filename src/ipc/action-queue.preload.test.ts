@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { createQueuePreloadApi } from './queue.preload'
+import { createActionQueuePreloadApi } from './action-queue.preload'
 
-describe('queue preload API', () => {
-  it('invokes the queue list IPC channel with query filters', async () => {
+describe('action queue preload API', () => {
+  it('invokes the action queue list IPC channel with query filters', async () => {
     const invocations: unknown[][] = []
-    const api = createQueuePreloadApi({
+    const api = createActionQueuePreloadApi({
       invoke(...args) {
         invocations.push(args)
         return Promise.resolve({
@@ -13,7 +13,7 @@ describe('queue preload API', () => {
           limit: 50,
           offset: 0,
           hasMore: false,
-          bucketCounts: {
+          actionBucketCounts: {
             apply_now: 0,
             manual_review_pickup: 0,
             needs_user_info: 0,
@@ -26,11 +26,11 @@ describe('queue preload API', () => {
       },
     })
     const query = {
-      bucket: 'apply_now' as const,
+      actionBucket: 'apply_now' as const,
       limit: 25,
     }
 
     await expect(api.list(query)).resolves.toMatchObject({ total: 0 })
-    expect(invocations).toEqual([['queue:list', query]])
+    expect(invocations).toEqual([['action-queue:list', query]])
   })
 })

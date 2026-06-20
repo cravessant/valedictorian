@@ -6,7 +6,7 @@ import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../s
 import { registerApplicationIpc } from '../src/ipc/applications.ipc'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
 import { registerProfileIpc } from '../src/ipc/profile.ipc'
-import { registerQueueIpc } from '../src/ipc/queue.ipc'
+import { registerActionQueueIpc } from '../src/ipc/action-queue.ipc'
 import { registerScoresIpc } from '../src/ipc/scores.ipc'
 import { registerSettingsIpc } from '../src/ipc/settings.ipc'
 import { registerSourcingIpc } from '../src/ipc/sourcing.ipc'
@@ -120,7 +120,7 @@ async function registerRuntimeServices(
   registerApplicationIpc(runtime.client, ipcMain)
   registerPolicyIpc(runtime.client, ipcMain)
   registerProfileIpc(profileRepository, ipcMain)
-  registerQueueIpc(runtime.client, ipcMain)
+  registerActionQueueIpc(runtime.client, ipcMain)
   registerScoresIpc(runtime.client, ipcMain)
   registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain)

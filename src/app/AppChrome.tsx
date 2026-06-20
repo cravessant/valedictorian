@@ -93,11 +93,11 @@ function AppSidebar({
         </button>
         <button
           type="button"
-          className={applicationNavClass(currentView === APP_VIEWS.QUEUE)}
-          onClick={() => onViewChange(APP_VIEWS.QUEUE)}
+          className={applicationNavClass(currentView === APP_VIEWS.ACTION_QUEUE)}
+          onClick={() => onViewChange(APP_VIEWS.ACTION_QUEUE)}
         >
           <ListChecks className="h-4 w-4" aria-hidden="true" />
-          Queue
+          Action Queue
         </button>
         <button
           type="button"

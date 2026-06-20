@@ -760,7 +760,7 @@ function getSourcingDecision(item: SourcingFinding): {
     case 'merged':
       return {
         actionLabel: 'Already promoted',
-        description: 'In application queue',
+        description: 'In applications',
         label: 'Promoted',
         variant: 'success',
       }

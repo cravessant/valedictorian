@@ -5,34 +5,34 @@ import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AlertCircle, Pencil } from 'lucide-react'
-import { queueBuckets, type QueueBucket, type QueueListItem, type QueueListResult } from 'sparxie'
+import { actionQueueBuckets, type ActionQueueBucket, type ActionQueueListItem, type ActionQueueListResult } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
 
-interface QueuePageProps {
-  bucket: QueueBucket | undefined
+interface ActionQueuePageProps {
+  actionBucket: ActionQueueBucket | undefined
   contentColumnClass: string
   error: string | null
   isLoading: boolean
-  result: QueueListResult
-  onBucketChange: (bucket: QueueBucket | undefined) => void
+  result: ActionQueueListResult
+  onActionBucketChange: (actionBucket: ActionQueueBucket | undefined) => void
   onEditApplication: (application: ApplicationDetailSeed) => void
   onOpenApplication: (application: ApplicationDetailSeed) => void
   onPreviousPage: () => void
   onNextPage: () => void
 }
 
-function QueuePage({
-  bucket,
+function ActionQueuePage({
+  actionBucket,
   contentColumnClass,
   error,
   isLoading,
   result,
-  onBucketChange,
+  onActionBucketChange,
   onEditApplication,
   onOpenApplication,
   onPreviousPage,
   onNextPage,
-}: QueuePageProps) {
+}: ActionQueuePageProps) {
   const pageStart = result.total === 0 ? 0 : result.offset + 1
   const pageEnd = Math.min(result.offset + result.items.length, result.total)
 
@@ -45,7 +45,7 @@ function QueuePage({
               Job automation
             </p>
             <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">
-              Queue
+              Action Queue
             </h1>
           </div>
           <Badge variant="secondary" className="w-fit border border-border bg-card">
@@ -53,25 +53,25 @@ function QueuePage({
           </Badge>
         </header>
 
-        <section aria-label="Queue buckets" className="rounded-md border border-border bg-card p-4">
+        <section aria-label="Action Buckets" className="rounded-md border border-border bg-card p-4">
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              variant={bucket === undefined ? 'default' : 'outline'}
+              variant={actionBucket === undefined ? 'default' : 'outline'}
               size="sm"
-              onClick={() => onBucketChange(undefined)}
+              onClick={() => onActionBucketChange(undefined)}
             >
-              All {sumQueueCounts(result)}
+              All {sumActionBucketCounts(result)}
             </Button>
-            {queueBuckets.map((queueBucket) => (
+            {actionQueueBuckets.map((availableActionBucket) => (
               <Button
-                key={queueBucket}
+                key={availableActionBucket}
                 type="button"
-                variant={bucket === queueBucket ? 'default' : 'outline'}
+                variant={actionBucket === availableActionBucket ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => onBucketChange(queueBucket)}
+                onClick={() => onActionBucketChange(availableActionBucket)}
               >
-                {queueBucketLabel(queueBucket)} {result.bucketCounts[queueBucket]}
+                {actionBucketLabel(availableActionBucket)} {result.actionBucketCounts[availableActionBucket]}
               </Button>
             ))}
           </div>
@@ -80,11 +80,11 @@ function QueuePage({
         {isLoading ? (
           <div
             role="status"
-            aria-label="Queue loading"
+            aria-label="Action Queue loading"
             className="rounded-md border border-border bg-card p-4"
           >
             <div className="mb-4 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-foreground">Loading queue...</p>
+              <p className="text-sm font-medium text-foreground">Loading Action Queue...</p>
               <Skeleton className="h-2 w-24" />
             </div>
             <Skeleton className="h-9 w-full" />
@@ -111,7 +111,7 @@ function QueuePage({
                 type="button"
                 variant="outline"
                 size="sm"
-                aria-label="Previous queue page"
+                aria-label="Previous action queue page"
                 disabled={result.offset === 0}
                 onClick={onPreviousPage}
               >
@@ -121,7 +121,7 @@ function QueuePage({
                 type="button"
                 variant="outline"
                 size="sm"
-                aria-label="Next queue page"
+                aria-label="Next action queue page"
                 disabled={!result.hasMore}
                 onClick={onNextPage}
               >
@@ -129,14 +129,14 @@ function QueuePage({
               </Button>
             </div>
           </div>
-          <Table aria-label="Queue" className="min-w-[980px]">
+          <Table aria-label="Action Queue" className="min-w-[980px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Company</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Score</TableHead>
-                <TableHead>Action</TableHead>
+                <TableHead>Next action</TableHead>
                 <TableHead>Reason</TableHead>
                 <TableHead>Link</TableHead>
                 <TableHead>Actions</TableHead>
@@ -144,7 +144,7 @@ function QueuePage({
             </TableHeader>
             <TableBody>
               {result.items.map((item) => (
-                <QueueRow
+                <ActionQueueRow
                   key={item.id}
                   item={item}
                   onEditApplication={onEditApplication}
@@ -160,12 +160,12 @@ function QueuePage({
 }
 
 
-function QueueRow({
+function ActionQueueRow({
   item,
   onEditApplication,
   onOpenApplication,
 }: {
-  item: QueueListItem
+  item: ActionQueueListItem
   onEditApplication: (application: ApplicationDetailSeed) => void
   onOpenApplication: (application: ApplicationDetailSeed) => void
 }) {
@@ -219,8 +219,8 @@ function QueueRow({
 }
 
 
-function queueBucketLabel(bucket: QueueBucket) {
-  const labels: Record<QueueBucket, string> = {
+function actionBucketLabel(bucket: ActionQueueBucket) {
+  const labels: Record<ActionQueueBucket, string> = {
     apply_now: 'Apply now',
     manual_review_pickup: 'Manual review',
     needs_user_info: 'Needs info',
@@ -233,9 +233,9 @@ function queueBucketLabel(bucket: QueueBucket) {
   return labels[bucket]
 }
 
-function sumQueueCounts(result: QueueListResult) {
-  return queueBuckets.reduce((sum, bucket) => sum + result.bucketCounts[bucket], 0)
+function sumActionBucketCounts(result: ActionQueueListResult) {
+  return actionQueueBuckets.reduce((sum, bucket) => sum + result.actionBucketCounts[bucket], 0)
 }
 
 
-export { QueuePage }
+export { ActionQueuePage }

@@ -629,7 +629,7 @@ function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi }) {
             Policy
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Queue buckets, evidence gates, submit checks, retry thresholds, and sourcing windows.
+            Action buckets, evidence gates, submit checks, retry thresholds, and sourcing windows.
           </p>
         </div>
         <Button
@@ -654,15 +654,15 @@ function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi }) {
       ) : null}
 
       <PolicySection
-        isSaving={savingSection === 'queue-decisions'}
+        isSaving={savingSection === 'action-queue-decisions'}
         saveDisabled={
           isLoading ||
           savingSection !== null ||
-          !hasPolicySectionChanges(draftConfig, savedConfig, 'queue-decisions')
+          !hasPolicySectionChanges(draftConfig, savedConfig, 'action-queue-decisions')
         }
-        saveLabel="Save queue decisions"
-        title="Queue decisions"
-        onSave={() => savePolicySection('queue-decisions')}
+        saveLabel="Save Action Queue decisions"
+        title="Action Queue decisions"
+        onSave={() => savePolicySection('action-queue-decisions')}
       >
         <SettingsTextInput
           label="Apply cutoff"
@@ -680,12 +680,12 @@ function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi }) {
         <SettingsTextInput
           label="Stale lock hours"
           type="number"
-          value={String(draftConfig.queue.staleLockHours)}
+          value={String(draftConfig.actionQueue.staleLockHours)}
           onChange={(value) =>
-            updatePolicyNumber(value, draftConfig.queue.staleLockHours, (staleLockHours) =>
+            updatePolicyNumber(value, draftConfig.actionQueue.staleLockHours, (staleLockHours) =>
               updateDraft((currentConfig) => ({
                 ...currentConfig,
-                queue: { ...currentConfig.queue, staleLockHours },
+                actionQueue: { ...currentConfig.actionQueue, staleLockHours },
               })),
             )
           }
@@ -1169,9 +1169,9 @@ function slugify(value: string) {
 
 type PolicySectionKey =
   | 'application-gates'
+  | 'action-queue-decisions'
   | 'evidence-requirements'
   | 'manual-review'
-  | 'queue-decisions'
   | 'retry-recovery'
   | 'sourcing-windows'
 
@@ -1179,9 +1179,9 @@ type PolicySaveScope = PolicySectionKey | 'reset' | null
 
 const policySectionTitles: Record<PolicySectionKey, string> = {
   'application-gates': 'Application gates',
+  'action-queue-decisions': 'Action Queue decisions',
   'evidence-requirements': 'Evidence requirements',
   'manual-review': 'Manual review',
-  'queue-decisions': 'Queue decisions',
   'retry-recovery': 'Retry recovery',
   'sourcing-windows': 'Sourcing windows',
 }
@@ -1208,9 +1208,9 @@ function buildPolicySectionPatch(
       return { officialPath: config.officialPath }
     case 'manual-review':
       return { manualReview: config.manualReview }
-    case 'queue-decisions':
+    case 'action-queue-decisions':
       return {
-        queue: config.queue,
+        actionQueue: config.actionQueue,
         scoring: config.scoring,
       }
     case 'retry-recovery':
@@ -1232,10 +1232,10 @@ function mergeSavedPolicySection(
       return { ...draftConfig, officialPath: savedConfig.officialPath }
     case 'manual-review':
       return { ...draftConfig, manualReview: savedConfig.manualReview }
-    case 'queue-decisions':
+    case 'action-queue-decisions':
       return {
         ...draftConfig,
-        queue: savedConfig.queue,
+        actionQueue: savedConfig.actionQueue,
         scoring: savedConfig.scoring,
       }
     case 'retry-recovery':
@@ -1253,9 +1253,9 @@ function readPolicySection(config: PolicyConfig, section: PolicySectionKey) {
       return config.officialPath
     case 'manual-review':
       return config.manualReview
-    case 'queue-decisions':
+    case 'action-queue-decisions':
       return {
-        queue: config.queue,
+        actionQueue: config.actionQueue,
         scoring: config.scoring,
       }
     case 'retry-recovery':

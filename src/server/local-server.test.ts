@@ -82,7 +82,7 @@ function createBoundaryTestClient(onCreate: () => void): ValedictorianWorkspaceC
         },
       },
     },
-    queue: {
+    actionQueue: {
       async list() {
         throw new Error('not implemented')
       },
@@ -678,7 +678,7 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('lists queue rows with auth, bucket filtering, and pagination', async () => {
+  it('lists action queue rows with auth, action bucket filtering, and pagination', async () => {
     server = await createValedictorianHttpServer({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
@@ -686,21 +686,21 @@ describe('local Valedictorian HTTP server', () => {
       token: 'server-token',
     })
 
-    const queueResponse = await fetch(
-      `${server.url}/v1/workspaces/workspace-1/queue?bucket=apply_now&limit=25&offset=0`,
+    const actionQueueResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/action-queue?actionBucket=apply_now&limit=25&offset=0`,
       { headers: { authorization: 'Bearer server-token' } },
     )
-    const queuePayload = (await readJson(queueResponse)) as {
-      items: Array<{ bucket: string; companyName: string; id: string }>
+    const actionQueuePayload = (await readJson(actionQueueResponse)) as {
+      items: Array<{ actionBucket: string; companyName: string; id: string }>
       total: number
     }
 
-    expect(queueResponse.status).toBe(200)
-    expect(queuePayload.total).toBe(1)
-    expect(queuePayload.items[0]).toMatchObject({
+    expect(actionQueueResponse.status).toBe(200)
+    expect(actionQueuePayload.total).toBe(1)
+    expect(actionQueuePayload.items[0]).toMatchObject({
       id: 'application-versant-platform',
       companyName: 'Versant Media',
-      bucket: 'apply_now',
+      actionBucket: 'apply_now',
     })
   })
 
@@ -1008,7 +1008,7 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('returns a bad request for invalid queue buckets', async () => {
+  it('returns a bad request for invalid action queue buckets', async () => {
     server = await createValedictorianHttpServer({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
@@ -1016,13 +1016,16 @@ describe('local Valedictorian HTTP server', () => {
       token: 'server-token',
     })
 
-    const response = await fetch(`${server.url}/v1/workspaces/workspace-1/queue?bucket=random`, {
-      headers: { authorization: 'Bearer server-token' },
-    })
+    const response = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/action-queue?actionBucket=random`,
+      {
+        headers: { authorization: 'Bearer server-token' },
+      },
+    )
 
     expect(response.status).toBe(400)
     await expect(readJson(response)).resolves.toEqual({
-      message: 'Invalid queue bucket: random',
+      message: 'Invalid action queue bucket: random',
     })
   })
 

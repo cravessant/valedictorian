@@ -7,7 +7,7 @@ import {
   isManualReviewKind,
   isPolicyEvidenceTag,
   isPolicySubjectType,
-  isQueueBucket,
+  isActionQueueBucket,
   isRoleKind,
   isRunStatus,
   isRunType,
@@ -24,7 +24,7 @@ import {
   type PolicyConfigPatch,
   type PolicyEvidenceInput,
   type PolicyEvidenceListInput,
-  type QueueListQuery,
+  type ActionQueueListQuery,
   type SourcingFindingsListInput,
   type WorkflowRunsListInput,
   type WorkMode,
@@ -53,17 +53,17 @@ const attemptBlockerOutcomes = new Set([
   'not_pursued',
 ])
 
-export function parseQueueListQuery(requestUrl: URL): QueueListQuery {
-  const query: QueueListQuery = {}
+export function parseActionQueueListQuery(requestUrl: URL): ActionQueueListQuery {
+  const query: ActionQueueListQuery = {}
 
-  const bucket = requestUrl.searchParams.get('bucket')
+  const actionBucket = requestUrl.searchParams.get('actionBucket')
 
-  if (bucket) {
-    if (!isQueueBucket(bucket)) {
-      throw new Error(`Invalid queue bucket: ${bucket}`)
+  if (actionBucket) {
+    if (!isActionQueueBucket(actionBucket)) {
+      throw new Error(`Invalid action queue bucket: ${actionBucket}`)
     }
 
-    query.bucket = bucket
+    query.actionBucket = actionBucket
   }
 
   setNumberQuery(requestUrl, 'limit', (value) => {

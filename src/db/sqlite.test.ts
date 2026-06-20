@@ -52,6 +52,43 @@ describe('SQLite database', () => {
     expect(sourceIndexes).toContain('idx_sources_name')
   })
 
+  it('migrates legacy policy queue config to action queue config', () => {
+    const database = createInMemoryDatabase()
+
+    migrateDatabase(database)
+    database
+      .prepare(
+        `
+          insert into policy_config (id, config_json, created_at, updated_at)
+          values (?, ?, ?, ?)
+        `,
+      )
+      .run(
+        'active',
+        JSON.stringify({
+          version: 1,
+          scoring: { applyCutoff: 7 },
+          queue: { staleLockHours: 5 },
+        }),
+        '2026-06-04T16:00:00.000Z',
+        '2026-06-04T16:00:00.000Z',
+      )
+
+    migrateDatabase(database)
+
+    const row = database.prepare('select config_json from policy_config where id = ?').get('active') as {
+      config_json: string
+    }
+    const config = JSON.parse(row.config_json) as Record<string, unknown>
+
+    expect(config).toMatchObject({
+      version: 2,
+      scoring: { applyCutoff: 7 },
+      actionQueue: { staleLockHours: 5 },
+    })
+    expect(config).not.toHaveProperty('queue')
+  })
+
   it('enables local file database pragmas for agent access', () => {
     const databasePath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-pragmas-')),

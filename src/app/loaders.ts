@@ -1,7 +1,7 @@
 import type { ApplicationsPreloadApi } from '../ipc/applications.preload'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
-import type { QueuePreloadApi } from '../ipc/queue.preload'
+import type { ActionQueuePreloadApi } from '../ipc/action-queue.preload'
 import type { ScoresPreloadApi } from '../ipc/scores.preload'
 import type { SettingsPreloadApi } from '../ipc/settings.preload'
 import type { SourcingPreloadApi } from '../ipc/sourcing.preload'
@@ -31,8 +31,8 @@ import {
   defaultPolicyConfig,
   type PromoteSourcingFindingInput,
   type CreateSourcingFindingInput,
-  type QueueListQuery,
-  type QueueListResult,
+  type ActionQueueListResult,
+  type ActionQueueListQuery,
   type ScoreInput,
   type SetSourcingFindingDecisionInput,
   type SourcingFinding,
@@ -51,13 +51,13 @@ export const emptyApplicationResult: ApplicationListResult = {
   hasMore: false,
 }
 
-export const emptyQueueResult: QueueListResult = {
+export const emptyActionQueueResult: ActionQueueListResult = {
   items: [],
   total: 0,
   limit: PAGE_LIMIT,
   offset: 0,
   hasMore: false,
-  bucketCounts: {
+  actionBucketCounts: {
     apply_now: 0,
     manual_review_pickup: 0,
     needs_user_info: 0,
@@ -277,16 +277,16 @@ export const defaultApplicationLinkUpdater = (input: UpdateApplicationLinkInput)
   )
 }
 
-export const defaultQueueLoader = (query: QueueListQuery) => {
+export const defaultActionQueueLoader = (query: ActionQueueListQuery) => {
   const httpClient = getRendererHttpWorkspaceClient()
 
   if (httpClient) {
-    return httpClient.queue.list(query)
+    return httpClient.actionQueue.list(query)
   }
 
-  const queueWindow = window as Window & { queue?: QueuePreloadApi }
+  const actionQueueWindow = window as Window & { actionQueue?: ActionQueuePreloadApi }
 
-  return queueWindow.queue?.list(query) ?? Promise.resolve(emptyQueueResult)
+  return actionQueueWindow.actionQueue?.list(query) ?? Promise.resolve(emptyActionQueueResult)
 }
 
 export const defaultSourcingLoader = (query: SourcingFindingsListInput) => {
@@ -383,7 +383,7 @@ type RendererHttpWorkspaceClient = {
   applications: ApplicationsPreloadApi
   policy: PolicyPreloadApi
   profile: ProfilePreloadApi
-  queue: QueuePreloadApi
+  actionQueue: ActionQueuePreloadApi
   scores: ScoresPreloadApi
   secrets: {
     delete(key: string): Promise<void>
@@ -632,7 +632,7 @@ export const defaultPolicyApi: PolicyPreloadApi = {
         getWindowPolicyApi()?.evaluate.application(input) ??
         Promise.resolve({
           action: 'allow_outcome',
-          configVersion: 1,
+          configVersion: 2,
           reasons: [],
           requiredEvidence: [],
           status: 'allow',
@@ -651,7 +651,7 @@ export const defaultPolicyApi: PolicyPreloadApi = {
         getWindowPolicyApi()?.evaluate.sourcingCandidate(input) ??
         Promise.resolve({
           action: 'promote_sourcing_candidate',
-          configVersion: 1,
+          configVersion: 2,
           reasons: [],
           requiredEvidence: [],
           status: 'allow',
@@ -672,7 +672,7 @@ export const defaultPolicyApi: PolicyPreloadApi = {
         Promise.resolve({
           action: 'recommend_run_window',
           cadenceHours: defaultPolicyConfig.sourcing.weekdayNormalCadenceHours,
-          configVersion: 1,
+          configVersion: 2,
           overlapMinutes: defaultPolicyConfig.sourcing.overlapMinutes,
           reasons: [],
           recommendedCoverageEndedAt: now,

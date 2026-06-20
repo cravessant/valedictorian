@@ -1,5 +1,5 @@
 import type { ApplicationListQuery } from '../modules/applications/application.types'
-import type { QueueListQuery, SourcingFindingsListInput, SourcingMergeStatus, QueueBucket } from 'sparxie'
+import type { ActionQueueListQuery, SourcingFindingsListInput, SourcingMergeStatus, ActionQueueBucket } from 'sparxie'
 import { PAGE_LIMIT, type FilterState } from './types'
 
 export function buildApplicationListQuery(
@@ -22,12 +22,12 @@ export function buildApplicationListQuery(
   })
 }
 
-export function buildQueueListQuery(
-  bucket: QueueBucket | undefined,
+export function buildActionQueueListQuery(
+  actionBucket: ActionQueueBucket | undefined,
   offset: number,
-): QueueListQuery {
-  return removeEmptyQueueValues({
-    bucket,
+): ActionQueueListQuery {
+  return removeEmptyActionQueueValues({
+    actionBucket,
     limit: PAGE_LIMIT,
     offset,
   })
@@ -52,10 +52,10 @@ function removeEmptyValues(query: ApplicationListQuery): ApplicationListQuery {
   ) as ApplicationListQuery
 }
 
-function removeEmptyQueueValues(query: QueueListQuery): QueueListQuery {
+function removeEmptyActionQueueValues(query: ActionQueueListQuery): ActionQueueListQuery {
   return Object.fromEntries(
     Object.entries(query).filter(([, value]) => value !== '' && value !== undefined),
-  ) as QueueListQuery
+  ) as ActionQueueListQuery
 }
 
 function removeEmptySourcingValues(query: SourcingFindingsListInput): SourcingFindingsListInput {

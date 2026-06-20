@@ -25,7 +25,7 @@ declare namespace NodeJS {
 interface Window {
   applications: import('../src/ipc/applications.preload').ApplicationsPreloadApi
   profile: import('../src/ipc/profile.preload').ProfilePreloadApi
-  queue: import('../src/ipc/queue.preload').QueuePreloadApi
+  actionQueue: import('../src/ipc/action-queue.preload').ActionQueuePreloadApi
   scores: import('../src/ipc/scores.preload').ScoresPreloadApi
   settings: import('../src/ipc/settings.preload').SettingsPreloadApi
   sourcing: import('../src/ipc/sourcing.preload').SourcingPreloadApi

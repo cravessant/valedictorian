@@ -25,7 +25,7 @@ import {
   parsePolicyConfigPatch,
   parsePolicyEvidenceInput,
   parsePolicyEvidenceListQuery,
-  parseQueueListQuery,
+  parseActionQueueListQuery,
   parseRunCompleteInput,
   parseRunStartInput,
   parseRunStepInput,
@@ -157,8 +157,8 @@ export async function handleRequest({
       return
     }
 
-    if (request.method === 'GET' && requestUrl.pathname === '/v1/queue') {
-      writeJson(response, 200, await client.queue.list(parseQueueListQuery(requestUrl)))
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/action-queue') {
+      writeJson(response, 200, await client.actionQueue.list(parseActionQueueListQuery(requestUrl)))
       return
     }
 
@@ -644,7 +644,7 @@ function readErrorStatusCode(error: unknown) {
 }
 
 function isDomainRoute(pathname: string) {
-  return /^\/v1\/(applications|queue|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
+  return /^\/v1\/(applications|action-queue|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
     pathname,
   )
 }

@@ -306,7 +306,7 @@ function ApplicationTable({
     <div className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-card">
       <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-foreground">Application queue</p>
+          <p className="text-sm font-medium text-foreground">Applications</p>
           <p className="text-xs text-muted-foreground">
             Showing {pageStart}-{pageEnd} of {result.total}
           </p>

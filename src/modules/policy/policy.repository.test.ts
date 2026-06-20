@@ -36,13 +36,13 @@ describe('SQLite policy repository', () => {
         scoring: {
           applyCutoff: 7,
         },
-        queue: {
+        actionQueue: {
           staleLockHours: 3,
         },
       }),
     ).resolves.toMatchObject({
       scoring: { applyCutoff: 7 },
-      queue: { staleLockHours: 3 },
+      actionQueue: { staleLockHours: 3 },
     })
     expect(database.select().from(policyConfig).all()).toHaveLength(1)
     await expect(repository.resetConfig()).resolves.toEqual(defaultPolicyConfig)

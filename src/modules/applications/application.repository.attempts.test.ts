@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { seedSampleApplications } from './application.fixtures'
 import { createSqliteApplicationRepository } from './application.repository'
-import { createSqliteQueueRepository } from '../queue/queue.repository'
+import { createSqliteActionQueueRepository } from '../action-queue/action-queue.repository'
 import { createSqlitePolicyRepository } from '../policy/policy.repository'
 
 type ApplicationRepositoryInstance = ReturnType<typeof createSqliteApplicationRepository>
@@ -562,14 +562,14 @@ describe('SQLite application repository workflow attempts', () => {
     })
   })
 
-  it('completes a needs-user-info attempt and moves the row into the queue bucket', async () => {
+  it('completes a needs-user-info attempt and moves the row into the action queue bucket', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     seedSampleApplications(database)
 
     const repository = createSqliteApplicationRepository(database)
-    const queueRepository = createSqliteQueueRepository(database)
+    const queueRepository = createSqliteActionQueueRepository(database)
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -601,12 +601,12 @@ describe('SQLite application repository workflow attempts', () => {
       missingUserInfo: 'Confirm work authorization answer.',
       blockerReason: null,
     })
-    const queue = await queueRepository.listQueue({ bucket: 'needs_user_info' })
+    const queue = await queueRepository.listActionQueue({ actionBucket: 'needs_user_info' })
     expect(queue.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'application-versant-platform',
-          bucket: 'needs_user_info',
+          actionBucket: 'needs_user_info',
           nextAction: 'needs_user_info',
         }),
       ]),

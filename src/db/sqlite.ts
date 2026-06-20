@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { normalizePolicyConfig } from 'sparxie'
 import { schema } from './schema'
 
 export type SqliteDatabase = Database.Database
@@ -374,6 +375,7 @@ export function migrateDatabase(database: SqliteDatabase) {
     ['ssn_last_4_encrypted', 'text'],
     ['veteran_status_encrypted', 'text'],
   ])
+  migratePolicyConfigJson(database)
 }
 
 function ensureColumns(database: SqliteDatabase, tableName: string, columns: Array<[string, string]>) {
@@ -386,6 +388,27 @@ function ensureColumns(database: SqliteDatabase, tableName: string, columns: Arr
   for (const [name, definition] of columns) {
     if (!existingColumns.has(name)) {
       database.exec(`alter table ${tableName} add column ${name} ${definition}`)
+    }
+  }
+}
+
+function migratePolicyConfigJson(database: SqliteDatabase) {
+  const rows = database.prepare('select id, config_json from policy_config').all() as Array<{
+    id: string
+    config_json: string
+  }>
+  const update = database.prepare('update policy_config set config_json = ? where id = ?')
+
+  for (const row of rows) {
+    try {
+      const normalized = normalizePolicyConfig(JSON.parse(row.config_json) as unknown)
+      const nextJson = JSON.stringify(normalized)
+
+      if (nextJson !== row.config_json) {
+        update.run(nextJson, row.id)
+      }
+    } catch {
+      // Leave unreadable JSON for repository-level fallback handling.
     }
   }
 }
