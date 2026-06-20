@@ -16,6 +16,8 @@ function readElectronBuilderConfig() {
   const configText = fs.readFileSync(path.resolve('electron-builder.json5'), 'utf8')
   return JSON.parse(configText.replace(/^\s*\/\/.*\r?\n/, '')) as {
     appId?: string
+    asarUnpack?: string[]
+    files?: string[]
     productName?: string
     mac?: {
       entitlements?: string
@@ -70,5 +72,28 @@ describe('build configuration', () => {
     expect(pnpmWorkspaceConfig).toContain('minimumReleaseAgeExclude:')
     expect(pnpmWorkspaceConfig).toContain('- sparxie')
     expect(pnpmWorkspaceConfig).toContain('sparxie: true')
+  })
+
+  it('packages native SQLite runtime helpers for the signed Mac app', () => {
+    const packageJson = readPackageJson()
+    const config = readElectronBuilderConfig()
+
+    expect(packageJson.dependencies).toMatchObject({
+      'better-sqlite3': expect.any(String),
+      bindings: expect.any(String),
+      'file-uri-to-path': expect.any(String),
+    })
+    expect(config.files).toEqual(
+      expect.arrayContaining([
+        'dist',
+        'dist-electron',
+        'node_modules/better-sqlite3/**/*',
+        'node_modules/bindings/**/*',
+        'node_modules/file-uri-to-path/**/*',
+      ]),
+    )
+    expect(config.asarUnpack).toEqual(
+      expect.arrayContaining(['**/node_modules/better-sqlite3/**']),
+    )
   })
 })
