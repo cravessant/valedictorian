@@ -5,8 +5,11 @@ Command-line client for Valedictorian.
 ## Install
 
 ```sh
-npm install -g valedictorian-cli
+npm install -g valedictorian-cli@alpha
 ```
+
+The CLI is still published under the npm `alpha` dist-tag. Avoid an untagged
+global install until a stable release is published.
 
 ## Usage
 
@@ -15,10 +18,13 @@ Point the CLI at a running Valedictorian API:
 ```sh
 export VALEDICTORIAN_API_URL=http://127.0.0.1:4317
 export VALEDICTORIAN_API_TOKEN=your-token
+export VALEDICTORIAN_WORKSPACE=workspace-id-or-name
 
 valedictorian-cli doctor
-valedictorian-cli applications list
-valedictorian-cli --json applications list | jq '.items[] | {id, companyName, roleTitle, status}'
+valedictorian-cli --json context
+valedictorian-cli --json workspaces list
+valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" | jq '.items[] | {id, companyName, roleTitle, status}'
 ```
 
 ## Agent skill

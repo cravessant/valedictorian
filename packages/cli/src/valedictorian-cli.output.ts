@@ -151,6 +151,8 @@ function summarizeItem(value: unknown): string {
   const url = primitiveString(value.url)
   const priorityScore = primitiveString(value.priorityScore)
   const priorityBand = primitiveString(value.priorityBand)
+  const applicationId = primitiveString(value.applicationId)
+  const mergedApplicationId = primitiveString(value.mergedApplicationId)
   const parts: string[] = []
 
   if (companyName || roleTitle) {
@@ -175,6 +177,12 @@ function summarizeItem(value: unknown): string {
 
   if (priorityScore || priorityBand) {
     parts.push(`priority=${[priorityScore, priorityBand].filter(Boolean).join('/')}`)
+  }
+
+  if (mergedApplicationId) {
+    parts.push(`application=${mergedApplicationId}`)
+  } else if (applicationId && applicationId !== id) {
+    parts.push(`application=${applicationId}`)
   }
 
   if (id) {

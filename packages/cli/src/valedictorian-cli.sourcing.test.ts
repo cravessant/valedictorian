@@ -25,6 +25,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'finding-1', mergeStatus: 'new' }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'finding-1', mergeStatus: 'below_cutoff' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'finding-1', mergeStatus: 'not_fit' }))
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         finding: { id: 'finding-1', mergeStatus: 'merged', mergedApplicationId: 'application-1' },
@@ -157,6 +158,20 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
       runCli([
         'sourcing',
         'findings',
+        'decide',
+        'finding-1',
+        '--merge-status',
+        'not_fit',
+        '--merge-notes',
+        'Imported markdown row was below fit threshold.',
+        '--workspace',
+        'workspace-1',
+      ]),
+    ).resolves.toMatchObject({ exitCode: 0 })
+    await expect(
+      runCli([
+        'sourcing',
+        'findings',
         'promote',
         'finding-1',
         '--workspace',
@@ -245,12 +260,68 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       8,
+      'https://valedictorian.test/v1/workspaces/workspace-1/sourcing/findings/finding-1/decide',
+      expect.objectContaining({
+        body: JSON.stringify({
+          mergeStatus: 'not_fit',
+          mergeNotes: 'Imported markdown row was below fit threshold.',
+        }),
+        method: 'POST',
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
       'https://valedictorian.test/v1/workspaces/workspace-1/sourcing/findings/finding-1/promote',
       expect.objectContaining({
         body: JSON.stringify({}),
         method: 'POST',
       }),
     )
+  })
+
+  it('rejects manual merged status in sourcing finding create and update flags', async () => {
+    await expect(
+      runCli([
+        'sourcing',
+        'findings',
+        'create',
+        '--workflow-run-id',
+        'run-1',
+        '--source-name',
+        'LinkedIn',
+        '--company-name',
+        'Manual Merge Labs',
+        '--role-title',
+        'Software Engineering Intern',
+        '--role-kind',
+        'internship',
+        '--work-mode',
+        'remote',
+        '--merge-status',
+        'merged',
+        '--workspace',
+        'workspace-1',
+      ]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining('Sourcing findings can only be marked merged by promotion.'),
+    })
+
+    await expect(
+      runCli([
+        'sourcing',
+        'findings',
+        'update',
+        'finding-1',
+        '--merge-status',
+        'merged',
+        '--workspace',
+        'workspace-1',
+      ]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining('Sourcing findings can only be marked merged by promotion.'),
+    })
   })
 
   it('runs a sourcing batch and processes candidates over HTTP', async () => {

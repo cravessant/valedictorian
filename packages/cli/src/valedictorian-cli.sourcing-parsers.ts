@@ -1,4 +1,5 @@
 import {
+  isManualSourcingDecisionStatus,
   isRoleKind,
   isSourcingMergeStatus,
   isWorkMode,
@@ -312,10 +313,7 @@ export function parseSourcingFindingCreate(
   setOptionalStringOption(input, argv, '--blocker', 'blocker')
 
   if (mergeStatus !== undefined) {
-    if (!isSourcingMergeStatus(mergeStatus)) {
-      throw new Error(`Invalid merge status: ${mergeStatus}`)
-    }
-
+    assertWritableSourcingMergeStatus(mergeStatus)
     input.mergeStatus = mergeStatus
   }
 
@@ -341,10 +339,7 @@ export function parseSourcingFindingUpdate(
   const mergeStatus = readOption(argv, '--merge-status')
 
   if (mergeStatus !== undefined) {
-    if (!isSourcingMergeStatus(mergeStatus)) {
-      throw new Error(`Invalid merge status: ${mergeStatus}`)
-    }
-
+    assertWritableSourcingMergeStatus(mergeStatus)
     input.mergeStatus = mergeStatus
   }
 
@@ -353,6 +348,41 @@ export function parseSourcingFindingUpdate(
   setOptionalStringOption(input, argv, '--merge-notes', 'mergeNotes')
 
   assertMutationPatch(input, ['findingId'], 'Sourcing finding update requires at least one field')
+
+  return input
+}
+
+function assertWritableSourcingMergeStatus(
+  mergeStatus: string,
+): asserts mergeStatus is NonNullable<
+  Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0]['mergeStatus']
+> {
+  if (!isSourcingMergeStatus(mergeStatus)) {
+    throw new Error(`Invalid merge status: ${mergeStatus}`)
+  }
+
+  if (mergeStatus === 'merged') {
+    throw new Error('Sourcing findings can only be marked merged by promotion.')
+  }
+}
+
+export function parseSourcingFindingDecision(
+  findingId: string,
+  argv: string[],
+): Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['decide']>[0] {
+  assertKnownOptions(argv, ['--json', '--merge-notes', '--merge-status'])
+  const mergeStatus = readRequiredOption(argv, '--merge-status')
+
+  if (!isManualSourcingDecisionStatus(mergeStatus)) {
+    throw new Error(`Invalid manual sourcing decision: ${mergeStatus}`)
+  }
+
+  const input: Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['decide']>[0] = {
+    findingId,
+    mergeStatus,
+  }
+
+  setOptionalStringOption(input, argv, '--merge-notes', 'mergeNotes')
 
   return input
 }

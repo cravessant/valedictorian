@@ -45,6 +45,7 @@ export {
 } from './valedictorian-cli.parser-options.js'
 export {
   parseSourcingFindingCreate,
+  parseSourcingFindingDecision,
   parseSourcingFindingsListQuery,
   parseSourcingFindingUpdate,
   parseSourcingRun,

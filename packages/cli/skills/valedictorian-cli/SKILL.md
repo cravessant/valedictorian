@@ -13,6 +13,13 @@ Verify the CLI surface before using it in a new environment:
 
 ```sh
 valedictorian-cli doctor
+valedictorian-cli context
+```
+
+If installing the npm package while Valedictorian is still in alpha, install the alpha dist-tag:
+
+```sh
+npm install -g valedictorian-cli@alpha
 ```
 
 When working from the `valedictorian-cli` repository, use the local build instead:
@@ -22,22 +29,25 @@ pnpm build
 node dist/valedictorian.js doctor
 ```
 
-Commands default to human-readable output. Use `--json` when another tool, script, or agent needs structured diagnostics or record fields. If the API URL is not local, state the sanitized target URL and wait for clear user intent before changing data.
+Commands default to human-readable output. Use `--json` when another tool, script, or agent needs structured diagnostics or record fields. Workspace-scoped commands require `--workspace <id-or-name>`; only root commands such as `doctor`, `workspaces list`, and `workspaces open/create` are workspace-neutral. If the API URL is not local, state the sanitized target URL and wait for clear user intent before changing data.
 
 ## Core Workflow
 
 1. Locate the CLI:
    - Prefer an installed `valedictorian-cli` binary when available.
    - In the CLI repo, run `pnpm build` if `dist/` may be stale, then use `node dist/valedictorian.js`.
-   - Run `valedictorian-cli doctor` or `node dist/valedictorian.js doctor` before the first API operation in a new environment.
+   - Run `valedictorian-cli doctor --workspace <id-or-name>` or `node dist/valedictorian.js doctor --workspace <id-or-name>` before the first API operation in a new environment when a workspace is known.
+   - Run `valedictorian-cli context` to print the API target and workspace discovery state without mutating anything.
    - Run `--help` on the nearest command before unfamiliar commands.
 2. Configure the API environment:
    - `VALEDICTORIAN_API_URL` points at the running Valedictorian API.
    - `VALEDICTORIAN_API_TOKEN` is optional only when the target API allows it.
+   - Keep a shell variable such as `VALEDICTORIAN_WORKSPACE=workspace-id-or-name` for examples, but pass it explicitly as `--workspace "$VALEDICTORIAN_WORKSPACE"`.
    - Never print, commit, echo, log, or persist token values; avoid token literals in shell history, `env` output, `printenv`, `set -x`, chat, and temp files.
 3. Inspect before mutating:
-   - Use `valedictorian-cli --json applications list`, `valedictorian-cli --json applications get`, `valedictorian-cli --json queue list`, `valedictorian-cli --json runs list`, or `valedictorian-cli --json sourcing findings list` to identify records for agent work.
-   - Treat `create`, `update`, `status`, `archive`, `note`, `workflow`, `link add/update`, `attempts`, `scores record`, `runs start/step/complete`, `sourcing run`, `sourcing run --auto-promote`, and `sourcing findings create/update/promote` as mutations.
+   - Use `valedictorian-cli --json context` and `valedictorian-cli --json workspaces list` to find workspace ids/names.
+   - Use `valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json applications get <id> --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json queue list --workspace "$VALEDICTORIAN_WORKSPACE"`, `valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE"`, or `valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE"` to identify records for agent work.
+   - Treat `create`, `update`, `status`, `archive`, `note`, `workflow`, `link add/update`, `attempts`, `scores record`, `runs start/step/complete`, `sourcing run`, `sourcing run --auto-promote`, and `sourcing findings create/decide/update/promote` as mutations.
    - Before any mutation, identify the sanitized target URL and whether it is local, staging, or production. Require clear user intent before mutating non-local data.
    - Be especially cautious with irreversible or high-impact commands such as `applications archive`, `applications attempts complete --outcome submitted`, `sourcing findings promote`, and `sourcing run --auto-promote`.
 4. Run the smallest command that satisfies the user request.
@@ -45,10 +55,11 @@ Commands default to human-readable output. Use `--json` when another tool, scrip
 
 ## Common Workflows
 
-- Investigate a queued application: `valedictorian-cli --json queue list` -> `valedictorian-cli --json applications get` -> `valedictorian-cli --json applications attempts list` and, if needed, `valedictorian-cli --json runs list`.
-- Record application work: use `valedictorian-cli --json applications attempts start/step/complete` for the real application attempt lifecycle. Use `valedictorian-cli --json runs start/step/complete --run-type application_attempt` for broader agent workflow audit trails.
-- Review sourcing output: use `valedictorian-cli --json sourcing findings list` before `valedictorian-cli --json sourcing findings create/update/promote`; verify promoted findings by reading the resulting application or listing affected findings.
-- Score an application: inspect the application first, then use `valedictorian-cli --json scores record`, then re-read the application or score output if available.
+- Investigate a queued application: `valedictorian-cli --json queue list --workspace "$VALEDICTORIAN_WORKSPACE"` -> `valedictorian-cli --json applications get <id> --workspace "$VALEDICTORIAN_WORKSPACE"` -> `valedictorian-cli --json applications attempts list <id> --workspace "$VALEDICTORIAN_WORKSPACE"` and, if needed, `valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE"`.
+- Record application work: use `valedictorian-cli --json applications attempts start/step/complete --workspace "$VALEDICTORIAN_WORKSPACE"` for the real application attempt lifecycle. Use `valedictorian-cli --json runs start/step/complete --run-type application_attempt --workspace "$VALEDICTORIAN_WORKSPACE"` for broader agent workflow audit trails.
+- Before completing an attempt as submitted, use `valedictorian-cli examples attempts complete --outcome submitted` to see the required `verification_receipt` step shape.
+- Review sourcing output: use `valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE"` before `valedictorian-cli --json sourcing findings create/decide/update/promote --workspace "$VALEDICTORIAN_WORKSPACE"`; verify promoted findings by reading the resulting application or listing affected findings. Use `--fit-notes` for historical/import context; classification recalculates `blocker`, `duplicateNotes`, and `mergeNotes` unless you set a manual disposition with `sourcing findings decide`.
+- Score an application: inspect the application first, then use `valedictorian-cli --json scores record <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"`, then re-read the application or score output if available.
 
 ## Command Reference
 

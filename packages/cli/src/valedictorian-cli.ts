@@ -16,7 +16,7 @@ import {
   type ValedictorianWorkspaceClient,
 } from 'sparxie'
 
-import { formatDoctorText, runDoctor } from './valedictorian-cli.doctor.js'
+import { formatDoctorText, runContext, runDoctor } from './valedictorian-cli.doctor.js'
 import { formatHumanOutput } from './valedictorian-cli.output.js'
 import {
   parseApplicationAttemptsQuery,
@@ -32,6 +32,7 @@ import {
   parseRunStart,
   parseRunStep,
   parseSourcingFindingCreate,
+  parseSourcingFindingDecision,
   parseSourcingFindingsListQuery,
   parseSourcingFindingUpdate,
   parseSourcingRun,
@@ -107,10 +108,28 @@ const application = buildApplication(
     docs: { brief: 'Valedictorian resources' },
     routes: {
       applications: buildApplicationsRoute(),
+      context: makeCommand({
+        docs: { brief: 'Print current CLI target context' },
+        flags: {
+          ...optionFlags(['timeout-ms', 'workspace']),
+          ...booleanFlags(['skip-network']),
+        },
+        run: async (context, flags) => {
+          writeJson(
+            context,
+            await runContext({
+              env: context.env,
+              skipNetwork: flags['skip-network'] === true,
+              timeoutMs: parseTimeoutMs(optionValue(flags, 'timeout-ms')),
+              workspaceSelector: optionValue(flags, 'workspace'),
+            }),
+          )
+        },
+      }),
       doctor: makeCommand({
         docs: { brief: 'Run read-only CLI diagnostics' },
         flags: {
-          ...optionFlags(['timeout-ms']),
+          ...optionFlags(['timeout-ms', 'workspace']),
           ...booleanFlags(['skip-network']),
         },
         run: async (context, flags) => {
@@ -119,6 +138,7 @@ const application = buildApplication(
             env: context.env,
             skipNetwork: flags['skip-network'] === true,
             timeoutMs: parseTimeoutMs(optionValue(flags, 'timeout-ms')),
+            workspaceSelector: optionValue(flags, 'workspace'),
           })
 
           if (flags.json === true) {
@@ -132,6 +152,7 @@ const application = buildApplication(
           }
         },
       }),
+      examples: buildExamplesRoute(),
       workspaces: buildRouteMap({
         docs: { brief: 'Manage local workspaces' },
         routes: {
@@ -697,6 +718,21 @@ function buildSourcingRoute() {
               )
             },
           }),
+          decide: makeCommand({
+            docs: { brief: 'Set a manual sourcing finding disposition' },
+            flags: optionFlags(['merge-notes', 'workspace'], ['merge-status']),
+            positionalCount: 1,
+            run: async (context, flags, findingId) => {
+              const client = await workspaceClient(context, flags)
+
+              writeJson(
+                context,
+                await client.sourcing.findings.decide(
+                  parseSourcingFindingDecision(findingId, toArgvWithoutWorkspace(flags)),
+                ),
+              )
+            },
+          }),
           list: makeCommand({
             docs: { brief: 'List sourcing findings' },
             flags: optionFlags([
@@ -769,6 +805,69 @@ function buildSourcingRoute() {
       }),
     },
   })
+}
+
+function buildExamplesRoute() {
+  return buildRouteMap({
+    docs: { brief: 'Show command examples' },
+    routes: {
+      attempts: buildRouteMap({
+        docs: { brief: 'Show application attempt examples' },
+        routes: {
+          complete: makeCommand({
+            docs: { brief: 'Show attempt completion examples' },
+            flags: optionFlags(['outcome']),
+            run: (context, flags) => {
+              writeJson(context, buildAttemptCompleteExample(optionValue(flags, 'outcome')))
+            },
+          }),
+        },
+      }),
+    },
+  })
+}
+
+function buildAttemptCompleteExample(outcome: string | undefined) {
+  const normalizedOutcome = outcome ?? 'submitted'
+
+  if (normalizedOutcome !== 'submitted') {
+    return {
+      complete: [
+        'valedictorian-cli --json applications attempts complete <application-id> <attempt-id>',
+        '--workspace "$VALEDICTORIAN_WORKSPACE"',
+        `--outcome ${normalizedOutcome}`,
+        '--summary "Attempt completed."',
+      ].join(' '),
+    }
+  }
+
+  const verificationPayload = {
+    version: 1,
+    scope: 'final_review',
+    status: 'passed',
+    verified: ['identity', 'contact_info', 'resume_attachment', 'work_authorization'],
+    unresolved: [],
+    evidence: 'Final review screen matched the intended application payload before submit.',
+  }
+
+  return {
+    note: 'Submitted attempts require a passed verification_receipt step before completion.',
+    verificationReceiptStep: [
+      'valedictorian-cli --json applications attempts step <application-id> <attempt-id>',
+      '--workspace "$VALEDICTORIAN_WORKSPACE"',
+      '--type verification_receipt',
+      '--message "Final review verification passed."',
+      `--payload-json '${JSON.stringify(verificationPayload)}'`,
+    ].join(' '),
+    complete: [
+      'valedictorian-cli --json applications attempts complete <application-id> <attempt-id>',
+      '--workspace "$VALEDICTORIAN_WORKSPACE"',
+      '--outcome submitted',
+      '--summary "Application submitted."',
+      '--confirmation-url "https://example.com/confirmation"',
+      '--confirmation-text "Thanks, your application was received."',
+    ].join(' '),
+  }
 }
 
 type RawFlagValue = string | boolean | readonly string[] | undefined

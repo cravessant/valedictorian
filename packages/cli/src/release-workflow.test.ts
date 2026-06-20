@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest'
 const ciWorkflowPath = path.resolve('.github/workflows/ci.yml')
 const releaseWorkflowPath = path.resolve('.github/workflows/release-cli.yml')
 const publishWorkflowPath = path.resolve('.github/workflows/publish.yml')
+const readmePath = path.resolve('README.md')
+const skillPath = path.resolve('skills/valedictorian-cli/SKILL.md')
+const commandReferencePath = path.resolve('skills/valedictorian-cli/references/commands.md')
 
 describe('CLI release workflow', () => {
   it('opts JavaScript actions into Node 24 for CI', () => {
@@ -52,5 +55,21 @@ describe('CLI release workflow', () => {
     expect(workflow).toContain('publish_args=(publish --access public)')
     expect(workflow).not.toContain('--provenance')
     expect(workflow).toContain('publish_args+=(--tag "$NPM_DIST_TAG")')
+  })
+
+  it('documents the alpha install tag and explicit workspace commands', () => {
+    const readme = fs.readFileSync(readmePath, 'utf8')
+    const skill = fs.readFileSync(skillPath, 'utf8')
+    const commandReference = fs.readFileSync(commandReferencePath, 'utf8')
+
+    expect(readme).toContain('npm install -g valedictorian-cli@alpha')
+    expect(readme).toContain('valedictorian-cli --json workspaces list')
+    expect(readme).toContain('applications list --workspace "$VALEDICTORIAN_WORKSPACE"')
+    expect(skill).toContain('npm install -g valedictorian-cli@alpha')
+    expect(skill).toContain('Workspace-scoped commands require `--workspace <id-or-name>`')
+    expect(commandReference).toContain('npm install -g valedictorian-cli@alpha')
+    expect(commandReference).toContain('export VALEDICTORIAN_WORKSPACE=workspace-id-or-name')
+    expect(commandReference).toContain('sourcing findings create \\')
+    expect(commandReference).toContain('--workspace "$VALEDICTORIAN_WORKSPACE"')
   })
 })

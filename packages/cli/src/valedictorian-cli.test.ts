@@ -2,9 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { jsonResponse, readPackageJson, runCli } from './valedictorian-cli.test-helpers'
 
 describe('valedictorian-cli npm package', () => {
-  const sparxieGitDependency =
-    'github:KennySparxie/sparxie#199eb1f'
-
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -22,7 +19,8 @@ describe('valedictorian-cli npm package', () => {
     expect(packageJson.files).toEqual(['dist'])
     expect(packageJson.scripts?.prepare).toBe('pnpm build')
     expect(packageJson.scripts?.prepublishOnly).toBe('pnpm lint && pnpm test && pnpm build')
-    expect(packageJson.dependencies?.sparxie).toBe(sparxieGitDependency)
+    expect(packageJson.dependencies?.sparxie).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(packageJson.dependencies?.sparxie).not.toContain('github:')
     expect(Object.values(packageJson.scripts ?? {})).not.toEqual(
       expect.arrayContaining([expect.stringContaining('../sparxie')]),
     )
@@ -87,6 +85,122 @@ describe('valedictorian-cli npm package', () => {
       ]),
     )
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('verifies workspace-scoped route access in doctor diagnostics', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        applicationAttempts: true,
+        agentWorkflows: false,
+        billing: false,
+        hostedSync: false,
+        localSqlite: true,
+        multiWorkspace: true,
+        sourcing: true,
+        workflowRuns: true,
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          {
+            id: 'workspace-1',
+            latestError: null,
+            name: 'Example Workspace',
+            open: true,
+            path: '/Users/example/valedictorian/Example Workspace',
+            source: 'local',
+          },
+        ],
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'Not found' }, { status: 404 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [], total: 0, limit: 1, offset: 0 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli(['doctor', '--workspace', 'Example Workspace', '--json'])
+    const report = JSON.parse(result.stdout) as {
+      capabilities?: Record<string, unknown>
+      checks: Array<{ name: string; status: string; message: string }>
+      ok: boolean
+      workspace: { id?: string; name?: string; resolution: string }
+    }
+
+    expect(result.exitCode).toBe(0)
+    expect(report.ok).toBe(true)
+    expect(report.workspace).toMatchObject({
+      id: 'workspace-1',
+      name: 'Example Workspace',
+      resolution: 'resolved',
+    })
+    expect(report.capabilities).toMatchObject({
+      agentWorkflows: false,
+      workflowRuns: true,
+      applicationAttempts: true,
+    })
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'workspace-route-scope',
+          status: 'pass',
+          message: 'Unscoped data route returned 404 as expected; workspace-scoped read succeeded.',
+        }),
+      ]),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications?limit=1',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('prints read-only CLI context without selecting an implicit workspace', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        applicationAttempts: true,
+        agentWorkflows: false,
+        hostedSync: false,
+        localSqlite: true,
+        multiWorkspace: true,
+        sourcing: true,
+        workflowRuns: true,
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          {
+            id: 'workspace-1',
+            latestError: null,
+            name: 'Example Workspace',
+            open: true,
+            path: '/Users/example/valedictorian/Example Workspace',
+            source: 'local',
+          },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli(['context', '--json'])
+    const context = JSON.parse(result.stdout) as {
+      target: { apiUrl: string; classification: string }
+      workspace: { note: string; openWorkspaces: Array<{ id: string }>; resolution: string }
+    }
+
+    expect(result.exitCode).toBe(0)
+    expect(context.target).toMatchObject({
+      apiUrl: 'https://valedictorian.test',
+      classification: 'staging',
+    })
+    expect(context.workspace).toMatchObject({
+      note: 'No implicit CLI workspace is active. Pass --workspace <id-or-name> for workspace-scoped commands.',
+      openWorkspaces: [{ id: 'workspace-1' }],
+      resolution: 'not_requested',
+    })
   })
 
   it('lists workspaces without requiring a selected workspace', async () => {
@@ -901,6 +1015,29 @@ describe('valedictorian-cli npm package', () => {
         evidence: 'Final review page showed resume and contact info.',
       },
     })
+  })
+
+  it('shows submitted attempt completion examples with a verification receipt step', async () => {
+    const result = await runCli([
+      'examples',
+      'attempts',
+      'complete',
+      '--outcome',
+      'submitted',
+      '--json',
+    ])
+    const examples = JSON.parse(result.stdout) as {
+      complete: string
+      note: string
+      verificationReceiptStep: string
+    }
+
+    expect(result.exitCode).toBe(0)
+    expect(examples.note).toContain('verification_receipt')
+    expect(examples.verificationReceiptStep).toContain('--type verification_receipt')
+    expect(examples.verificationReceiptStep).toContain('"scope":"final_review"')
+    expect(examples.verificationReceiptStep).toContain('"status":"passed"')
+    expect(examples.complete).toContain('--outcome submitted')
   })
 
   it('rejects invalid CLI-only input before calling HTTP', async () => {

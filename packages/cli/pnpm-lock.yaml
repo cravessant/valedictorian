@@ -12,8 +12,8 @@ importers:
         specifier: 1.2.7
         version: 1.2.7
       sparxie:
-        specifier: github:KennySparxie/sparxie#199eb1f
-        version: https://codeload.github.com/KennySparxie/sparxie/tar.gz/199eb1f9af462bccefc2eaea67456fc7f9624334
+        specifier: 0.3.1
+        version: 0.3.1
     devDependencies:
       '@types/node':
         specifier: ^24.13.1
@@ -433,9 +433,8 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
-  sparxie@https://codeload.github.com/KennySparxie/sparxie/tar.gz/199eb1f9af462bccefc2eaea67456fc7f9624334:
-    resolution: {gitHosted: true, integrity: sha512-d1dAWWW1uS5zqy9hqQr9PW3QVYWsn7D7UyI65lRbjS8JDgmREsH6Q6+jl3j9rZSvR9ekfk6YwBv3yTht/KbDng==, tarball: https://codeload.github.com/KennySparxie/sparxie/tar.gz/199eb1f9af462bccefc2eaea67456fc7f9624334}
-    version: 0.3.0
+  sparxie@0.3.1:
+    resolution: {integrity: sha512-LeUnuBGYInTzygmuy/aRj6v6t/N+nspSkZFgUA48GqmUj6FEJmVgirUA+1jgqtHf3rQksmYm+LEjB5OeS55r3Q==}
     engines: {node: '>=22.12.0'}
 
   stackback@0.0.2:
@@ -846,7 +845,7 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  sparxie@https://codeload.github.com/KennySparxie/sparxie/tar.gz/199eb1f9af462bccefc2eaea67456fc7f9624334: {}
+  sparxie@0.3.1: {}
 
   stackback@0.0.2: {}
 
