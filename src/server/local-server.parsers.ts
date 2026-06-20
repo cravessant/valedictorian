@@ -339,10 +339,7 @@ export function parseSourcingFindingCreateInput(
   }
 
   if (mergeStatusValue !== undefined) {
-    if (!isSourcingMergeStatus(mergeStatusValue)) {
-      throw new Error(`Invalid sourcing merge status: ${mergeStatusValue}`)
-    }
-
+    assertWritableSourcingMergeStatus(mergeStatusValue)
     mergeStatus = mergeStatusValue
   }
 
@@ -453,10 +450,7 @@ export function parseSourcingFindingUpdateInput(
   }
 
   if (mergeStatusValue !== undefined) {
-    if (!isSourcingMergeStatus(mergeStatusValue)) {
-      throw new Error(`Invalid sourcing merge status: ${mergeStatusValue}`)
-    }
-
+    assertWritableSourcingMergeStatus(mergeStatusValue)
     mergeStatus = mergeStatusValue
   }
 
@@ -501,6 +495,20 @@ export function parseSourcingFindingDecisionInput(
     findingId,
     mergeStatus,
     mergeNotes: readOptionalNullableStringField(record, 'mergeNotes'),
+  }
+}
+
+function assertWritableSourcingMergeStatus(
+  mergeStatus: string,
+): asserts mergeStatus is NonNullable<
+  Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0]['mergeStatus']
+> {
+  if (!isSourcingMergeStatus(mergeStatus)) {
+    throw new Error(`Invalid sourcing merge status: ${mergeStatus}`)
+  }
+
+  if (mergeStatus === 'merged') {
+    throw new Error('Sourcing findings can only be marked merged by promotion.')
   }
 }
 

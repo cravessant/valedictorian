@@ -194,6 +194,10 @@ describe('local Valedictorian HTTP server', () => {
     await expect(fetch(`${server.url}/v1/health`).then(readJson)).resolves.toEqual({ ok: true })
     await expect(fetch(`${server.url}/v1/capabilities`).then(readJson)).resolves.toMatchObject({
       localSqlite: true,
+      agentWorkflows: false,
+      workflowRuns: true,
+      applicationAttempts: true,
+      sourcing: true,
       hostedSync: false,
     })
   })
@@ -856,6 +860,52 @@ describe('local Valedictorian HTTP server', () => {
     })
     const blockedFinding = (await readJson(blockedFindingResponse)) as { id: string }
 
+    const mergedCreateResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/sourcing/findings`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer server-token',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflowRunId: run.id,
+          sourceName: 'LinkedIn',
+          companyName: 'Manual Merge Labs',
+          roleTitle: 'Software Engineering Intern',
+          roleKind: 'internship',
+          country: 'US',
+          workMode: 'remote',
+          sourceUrl: 'https://linkedin.com/jobs/view/manual-merge-labs',
+          priorityScore: 8,
+          priorityBand: 'high',
+          mergeStatus: 'merged',
+        }),
+      },
+    )
+
+    expect(mergedCreateResponse.status).toBe(400)
+    await expect(readJson(mergedCreateResponse)).resolves.toEqual({
+      message: 'Sourcing findings can only be marked merged by promotion.',
+    })
+
+    const mergedUpdateResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/sourcing/findings/${blockedFinding.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          authorization: 'Bearer server-token',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ mergeStatus: 'merged' }),
+      },
+    )
+
+    expect(mergedUpdateResponse.status).toBe(400)
+    await expect(readJson(mergedUpdateResponse)).resolves.toEqual({
+      message: 'Sourcing findings can only be marked merged by promotion.',
+    })
+
     await expect(
       fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings/${blockedFinding.id}`, {
         method: 'PATCH',
@@ -895,15 +945,29 @@ describe('local Valedictorian HTTP server', () => {
       mergeStatus: 'not_fit',
     })
 
-    await expect(
-      fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings/${finding.id}/promote`, {
+    const promotedFinding = (await fetch(
+      `${server.url}/v1/workspaces/workspace-1/sourcing/findings/${finding.id}/promote`,
+      {
         method: 'POST',
         headers: { authorization: 'Bearer server-token' },
-      }).then(readJson),
-    ).resolves.toMatchObject({
+      },
+    ).then(readJson)) as { id: string; mergedApplicationId: string; mergeStatus: string }
+
+    expect(promotedFinding).toMatchObject({
       id: finding.id,
       mergeStatus: 'merged',
       mergedApplicationId: expect.any(String),
+    })
+    await expect(
+      fetch(
+        `${server.url}/v1/workspaces/workspace-1/sourcing/findings?workflowRunId=${run.id}&mergeStatus=merged`,
+        {
+          headers: { authorization: 'Bearer server-token' },
+        },
+      ).then(readJson),
+    ).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: finding.id, mergedApplicationId: promotedFinding.mergedApplicationId }],
     })
 
     const candidateResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/candidates/process`, {

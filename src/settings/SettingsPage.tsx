@@ -238,7 +238,11 @@ function SettingsPage({
             <ConfigurationSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.AGENT_ACCESS ? (
-            <AgentAccessSettingsPanel apiBaseUrl={apiBaseUrl} settings={settings} />
+            <AgentAccessSettingsPanel
+              apiBaseUrl={apiBaseUrl}
+              settings={settings}
+              workspace={workspace}
+            />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.APPEARANCE ? (
             <AppearanceSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
@@ -368,10 +372,14 @@ function ConfigurationSettingsPanel({
 function AgentAccessSettingsPanel({
   apiBaseUrl,
   settings,
+  workspace,
 }: {
   apiBaseUrl: string
   settings: AppSettings
+  workspace: WorkspaceSummary | null
 }) {
+  const workspaceSelector = workspace?.id ?? '<workspace-id-or-name>'
+
   return (
     <section aria-labelledby="agent-access-settings-title" className="space-y-7">
       <div>
@@ -395,10 +403,13 @@ function AgentAccessSettingsPanel({
       <div className="rounded-md border border-border bg-card p-4">
         <h3 className="text-sm font-semibold text-foreground">CLI examples</h3>
         <pre className="mt-3 overflow-auto rounded-md bg-background p-3 text-xs text-foreground">
-          <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json applications list`}</code>
+          <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json workspaces list`}</code>
         </pre>
         <pre className="mt-2 overflow-auto rounded-md bg-background p-3 text-xs text-foreground">
-          <code>{`VALEDICTORIAN_API_TOKEN=<token> valedictorian-cli --json applications get <id>`}</code>
+          <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json applications list --workspace ${workspaceSelector}`}</code>
+        </pre>
+        <pre className="mt-2 overflow-auto rounded-md bg-background p-3 text-xs text-foreground">
+          <code>{`VALEDICTORIAN_API_TOKEN=<token> valedictorian-cli --json applications get <id> --workspace ${workspaceSelector}`}</code>
         </pre>
       </div>
 

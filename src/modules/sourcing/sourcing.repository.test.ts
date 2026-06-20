@@ -264,6 +264,63 @@ describe('SQLite sourcing repository', () => {
     })
   })
 
+  it('rejects manually writing merged status through create and update paths', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const runRepository = createSqliteWorkflowRunRepository(database)
+    const sourcingRepository = createSqliteSourcingRepository(database)
+    const run = await runRepository.startRun({
+      runType: 'sourcing',
+      actorType: 'agent',
+      sourceName: 'LinkedIn',
+      summary: 'Started LinkedIn sourcing.',
+    })
+
+    await expect(
+      sourcingRepository.createFinding({
+        workflowRunId: run.id,
+        sourceName: 'LinkedIn',
+        companyName: 'Manual Merge Labs',
+        roleTitle: 'Software Engineering Intern',
+        roleKind: 'internship',
+        country: 'US',
+        workMode: 'remote',
+        sourceUrl: 'https://linkedin.com/jobs/view/manual-merge-labs',
+        priorityScore: 8,
+        priorityBand: 'high',
+        mergeStatus: 'merged' as never,
+      }),
+    ).rejects.toThrow('Sourcing findings can only be marked merged by promotion.')
+
+    const finding = await sourcingRepository.createFinding({
+      workflowRunId: run.id,
+      sourceName: 'LinkedIn',
+      companyName: 'Manual Merge Labs',
+      roleTitle: 'Software Engineering Intern',
+      roleKind: 'internship',
+      country: 'US',
+      workMode: 'remote',
+      sourceUrl: 'https://linkedin.com/jobs/view/manual-merge-labs',
+      priorityScore: 8,
+      priorityBand: 'high',
+    })
+
+    await expect(
+      sourcingRepository.updateFinding({
+        findingId: finding.id,
+        mergeStatus: 'merged' as never,
+      }),
+    ).rejects.toThrow('Sourcing findings can only be marked merged by promotion.')
+
+    expect(
+      database.select().from(sourcingFindings).where(eq(sourcingFindings.id, finding.id)).get(),
+    ).toMatchObject({
+      mergeStatus: 'new',
+      mergedApplicationId: null,
+    })
+  })
+
   it('creates, lists, updates, and promotes sourcing findings into applications', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
@@ -346,6 +403,12 @@ describe('SQLite sourcing repository', () => {
       id: finding.id,
       mergeStatus: 'merged',
       mergedApplicationId: expect.any(String),
+    })
+    await expect(
+      sourcingRepository.listFindings({ workflowRunId: run.id, mergeStatus: 'merged' }),
+    ).resolves.toMatchObject({
+      total: 1,
+      items: [{ id: finding.id, mergedApplicationId: promoted.mergedApplicationId }],
     })
     expect(
       database

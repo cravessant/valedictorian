@@ -40,6 +40,13 @@ import {
 import type { WorkspaceClientResolver } from './local-server'
 import type { LocalWorkspaceManager } from './local-workspaces'
 
+const localCapabilities = {
+  ...defaultLocalCapabilities,
+  workflowRuns: true,
+  applicationAttempts: true,
+  sourcing: true,
+}
+
 export async function handleRequest({
   client,
   request,
@@ -66,7 +73,7 @@ export async function handleRequest({
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/capabilities') {
-      writeJson(response, 200, defaultLocalCapabilities)
+      writeJson(response, 200, localCapabilities)
       return
     }
 

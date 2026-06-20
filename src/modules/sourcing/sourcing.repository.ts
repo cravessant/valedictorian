@@ -278,6 +278,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
           throw new Error(`Invalid sourcing merge status: ${String(input.mergeStatus)}`)
         }
 
+        assertPromotionOnlyMergeStatus(input.mergeStatus)
         patch.mergeStatus = input.mergeStatus
       }
 
@@ -531,6 +532,8 @@ function normalizeCreateFindingInput(input: CreateSourcingFindingInput, now: str
     throw new Error(`Invalid sourcing merge status: ${String(mergeStatus)}`)
   }
 
+  assertPromotionOnlyMergeStatus(mergeStatus)
+
   return {
     ...input,
     companyName: requiredTrimmedText(input.companyName, 'companyName'),
@@ -542,6 +545,12 @@ function normalizeCreateFindingInput(input: CreateSourcingFindingInput, now: str
     sourceUrl: input.sourceUrl ? canonicalizeApplicationUrl(input.sourceUrl) : null,
     mergeStatus,
     discoveredAt: input.discoveredAt ?? now,
+  }
+}
+
+function assertPromotionOnlyMergeStatus(mergeStatus: SourcingMergeStatus) {
+  if (mergeStatus === 'merged') {
+    throw new Error('Sourcing findings can only be marked merged by promotion.')
   }
 }
 

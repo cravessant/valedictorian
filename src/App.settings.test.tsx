@@ -593,7 +593,12 @@ describe('App settings and chrome', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Agent access' }))
 
     expect(screen.getByText('Local API is available in local-shared mode.')).toBeInTheDocument()
-    expect(screen.getByText(/VALEDICTORIAN_API_URL=http:\/\/127\.0\.0\.1:4317/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'VALEDICTORIAN_API_URL=http://127.0.0.1:4317 valedictorian-cli --json workspaces list',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/applications list --workspace workspace-1/)).toBeInTheDocument()
     expect(screen.getByText(/Tailscale/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
