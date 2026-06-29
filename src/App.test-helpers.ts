@@ -266,6 +266,8 @@ export function createSourcingFinding(overrides: Partial<SourcingFinding> = {}):
     fitNotes: 'Good backend internship fit.',
     duplicateNotes: null,
     blocker: null,
+    policyBlocker: null,
+    dispositionReason: null,
     mergeStatus: 'new',
     mergedApplicationId: null,
     mergedApplicationCompanyName: null,

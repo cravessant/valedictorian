@@ -319,6 +319,8 @@ export function migrateDatabase(database: SqliteDatabase) {
       fit_notes text,
       duplicate_notes text,
       blocker text,
+      policy_blocker text,
+      disposition_reason text,
       merge_status text not null,
       merged_application_id text references applications(id),
       merge_notes text,
@@ -374,6 +376,10 @@ export function migrateDatabase(database: SqliteDatabase) {
     ['race_ethnicity_encrypted', 'text'],
     ['ssn_last_4_encrypted', 'text'],
     ['veteran_status_encrypted', 'text'],
+  ])
+  ensureColumns(database, 'sourcing_findings', [
+    ['policy_blocker', 'text'],
+    ['disposition_reason', 'text'],
   ])
   migratePolicyConfigJson(database)
 }

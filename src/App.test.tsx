@@ -938,8 +938,10 @@ describe('App', () => {
   it('uses an explicit decision dialog for manual sourcing dispositions', async () => {
     const decideFinding = vi.fn(async () =>
       createSourcingFinding({
-        mergeStatus: 'not_fit',
+        dispositionReason: 'Needs sponsorship decision.',
+        mergeStatus: 'blocked',
         mergeNotes: 'Requires a non-student schedule.',
+        policyBlocker: 'needs_user_decision',
       }),
     )
     const sourcingLoader = vi.fn(async () => createSourcingResult([createSourcingFinding()]))
@@ -960,7 +962,13 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Set disposition Delta Labs' }))
     const dialog = await screen.findByRole('dialog', { name: 'Set sourcing disposition' })
     fireEvent.change(within(dialog).getByLabelText('Disposition'), {
-      target: { value: 'not_fit' },
+      target: { value: 'blocked' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Disposition reason'), {
+      target: { value: 'Needs sponsorship decision.' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Policy blocker'), {
+      target: { value: 'needs_user_decision' },
     })
     fireEvent.change(within(dialog).getByLabelText('Disposition notes'), {
       target: { value: 'Requires a non-student schedule.' },
@@ -969,9 +977,11 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(decideFinding).toHaveBeenCalledWith({
+        dispositionReason: 'Needs sponsorship decision.',
         findingId: 'finding-1',
         mergeNotes: 'Requires a non-student schedule.',
-        mergeStatus: 'not_fit',
+        mergeStatus: 'blocked',
+        policyBlocker: 'needs_user_decision',
       })
       expect(sourcingLoader).toHaveBeenCalledTimes(2)
     })

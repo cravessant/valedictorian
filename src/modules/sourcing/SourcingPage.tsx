@@ -315,7 +315,15 @@ function SourcingFindingRow({
       </TableCell>
       <TableCell>
         <div className="grid min-w-56 gap-1 text-muted-foreground">
-          <span>{item.mergeNotes ?? item.fitNotes ?? item.duplicateNotes ?? item.blocker ?? 'None'}</span>
+          <span>
+            {item.dispositionReason ??
+              item.policyBlocker ??
+              item.mergeNotes ??
+              item.fitNotes ??
+              item.duplicateNotes ??
+              item.blocker ??
+              'None'}
+          </span>
           {item.mergedApplicationId ? (
             <span className="font-mono text-xs">{item.mergedApplicationId}</span>
           ) : null}
@@ -409,6 +417,8 @@ function SourcingFindingDispositionModal({
     : 'not_pursued'
   const [mergeStatus, setMergeStatus] = useState<ManualSourcingDecisionStatus>(initialStatus)
   const [mergeNotes, setMergeNotes] = useState(finding.mergeNotes ?? '')
+  const [policyBlocker, setPolicyBlocker] = useState(finding.policyBlocker ?? '')
+  const [dispositionReason, setDispositionReason] = useState(finding.dispositionReason ?? '')
   const [error, setError] = useState<string | null>(null)
 
   async function saveDecision() {
@@ -418,7 +428,9 @@ function SourcingFindingDispositionModal({
       await onDecide({
         findingId: finding.id,
         mergeStatus,
-        mergeNotes: mergeNotes.trim() || null,
+        mergeNotes: mergeNotes.trim() || dispositionReason.trim() || null,
+        policyBlocker: policyBlocker.trim() || null,
+        dispositionReason: dispositionReason.trim() || mergeNotes.trim() || null,
       })
       onClose()
     } catch (saveError) {
@@ -441,6 +453,12 @@ function SourcingFindingDispositionModal({
           options={manualSourcingDecisionStatuses}
           onChange={(value) => setMergeStatus(value as ManualSourcingDecisionStatus)}
         />
+        <FindingInput
+          label="Disposition reason"
+          value={dispositionReason}
+          onChange={setDispositionReason}
+        />
+        <FindingInput label="Policy blocker" value={policyBlocker} onChange={setPolicyBlocker} />
         <label className="grid gap-1 text-xs font-medium text-muted-foreground">
           Disposition notes
           <textarea

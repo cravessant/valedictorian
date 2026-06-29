@@ -364,6 +364,8 @@ export function parseSourcingFindingCreateInput(
     fitNotes: readOptionalNullableStringField(record, 'fitNotes'),
     duplicateNotes: readOptionalNullableStringField(record, 'duplicateNotes'),
     blocker: readOptionalNullableStringField(record, 'blocker'),
+    policyBlocker: readOptionalNullableStringField(record, 'policyBlocker'),
+    dispositionReason: readOptionalNullableStringField(record, 'dispositionReason'),
     mergeStatus,
     discoveredAt: readOptionalNullableStringField(record, 'discoveredAt'),
   }
@@ -475,6 +477,8 @@ export function parseSourcingFindingUpdateInput(
     fitNotes: readOptionalNullableStringField(record, 'fitNotes'),
     duplicateNotes: readOptionalNullableStringField(record, 'duplicateNotes'),
     blocker: readOptionalNullableStringField(record, 'blocker'),
+    policyBlocker: readOptionalNullableStringField(record, 'policyBlocker'),
+    dispositionReason: readOptionalNullableStringField(record, 'dispositionReason'),
     mergeStatus,
     mergeNotes: readOptionalNullableStringField(record, 'mergeNotes'),
   }
@@ -495,6 +499,8 @@ export function parseSourcingFindingDecisionInput(
     findingId,
     mergeStatus,
     mergeNotes: readOptionalNullableStringField(record, 'mergeNotes'),
+    policyBlocker: readOptionalNullableStringField(record, 'policyBlocker'),
+    dispositionReason: readOptionalNullableStringField(record, 'dispositionReason'),
   }
 }
 

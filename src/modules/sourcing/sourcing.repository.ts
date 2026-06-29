@@ -25,6 +25,7 @@ import {
   canonicalizeApplicationUrl,
   isRoleKind,
   isWorkMode,
+  normalizeApplicationUrlPreservingQuery,
 } from '../applications/application.types'
 import { createSqliteApplicationRepository } from '../applications/application.repository'
 import {
@@ -57,6 +58,8 @@ const sourcingFindingSelection = {
   fitNotes: sourcingFindings.fitNotes,
   duplicateNotes: sourcingFindings.duplicateNotes,
   blocker: sourcingFindings.blocker,
+  policyBlocker: sourcingFindings.policyBlocker,
+  dispositionReason: sourcingFindings.dispositionReason,
   mergeStatus: sourcingFindings.mergeStatus,
   mergedApplicationId: sourcingFindings.mergedApplicationId,
   mergedApplicationCompanyName: companies.name,
@@ -71,6 +74,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
   return {
     async createFinding(input: CreateSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
+      assertCompatibleSourcingDispositionInput(input)
       const normalizedInput = normalizeCreateFindingInput(input, now)
 
       return database.transaction((transaction) => {
@@ -115,6 +119,8 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
             fitNotes: normalizedInput.fitNotes ?? null,
             duplicateNotes: normalizedInput.duplicateNotes ?? null,
             blocker: normalizedInput.blocker ?? null,
+            policyBlocker: normalizedInput.policyBlocker ?? null,
+            dispositionReason: normalizedInput.dispositionReason ?? null,
             mergeStatus: normalizedInput.mergeStatus,
             mergedApplicationId: null,
             mergeNotes: null,
@@ -164,6 +170,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
     },
     async updateFinding(input: UpdateSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
+      assertCompatibleSourcingDispositionInput(input)
       const patch: Partial<typeof sourcingFindings.$inferInsert> = {
         updatedAt: now,
       }
@@ -246,7 +253,9 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
       }
 
       if (input.sourceUrl !== undefined) {
-        patch.sourceUrl = input.sourceUrl ? canonicalizeApplicationUrl(input.sourceUrl) : null
+        patch.sourceUrl = input.sourceUrl
+          ? normalizeApplicationUrlPreservingQuery(input.sourceUrl)
+          : null
       }
 
       if (input.postedAge !== undefined) {
@@ -271,6 +280,14 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
       if (input.blocker !== undefined) {
         patch.blocker = nullableTrimmedText(input.blocker)
+      }
+
+      if (input.policyBlocker !== undefined) {
+        patch.policyBlocker = nullableTrimmedText(input.policyBlocker)
+      }
+
+      if (input.dispositionReason !== undefined) {
+        patch.dispositionReason = nullableTrimmedText(input.dispositionReason)
       }
 
       if (input.mergeStatus !== undefined) {
@@ -308,6 +325,13 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         .set({
           blocker: null,
           duplicateNotes: null,
+          policyBlocker: input.policyBlocker === undefined ? null : nullableTrimmedText(input.policyBlocker),
+          dispositionReason:
+            input.dispositionReason === undefined
+              ? input.mergeNotes === undefined
+                ? null
+                : nullableTrimmedText(input.mergeNotes)
+              : nullableTrimmedText(input.dispositionReason),
           mergeStatus: input.mergeStatus,
           mergedApplicationId: null,
           mergeNotes: input.mergeNotes === undefined ? null : nullableTrimmedText(input.mergeNotes),
@@ -424,7 +448,7 @@ function reclassifySourcingFinding(
 ) {
   const finding = selectSourcingFindingById(database, findingId)
 
-  if (finding.mergeStatus === 'merged') {
+  if (finding.mergeStatus === 'merged' || isManualDispositionFinding(finding)) {
     return finding
   }
 
@@ -435,6 +459,7 @@ function reclassifySourcingFinding(
     .set({
       blocker: classification.blocker,
       duplicateNotes: classification.duplicateNotes,
+      policyBlocker: classification.policyBlocker,
       mergeStatus: classification.mergeStatus,
       mergedApplicationId: classification.mergedApplicationId,
       mergeNotes: classification.mergeNotes,
@@ -451,7 +476,12 @@ function classifySourcingFinding(
   finding: SourcingFinding,
 ): Pick<
   typeof sourcingFindings.$inferInsert,
-  'blocker' | 'duplicateNotes' | 'mergeStatus' | 'mergedApplicationId' | 'mergeNotes'
+  | 'blocker'
+  | 'duplicateNotes'
+  | 'policyBlocker'
+  | 'mergeStatus'
+  | 'mergedApplicationId'
+  | 'mergeNotes'
 > {
   if (!finding.officialUrl && !finding.sourceUrl) {
     const note = 'Candidate requires an officialUrl or sourceUrl before promotion.'
@@ -459,6 +489,7 @@ function classifySourcingFinding(
     return {
       blocker: note,
       duplicateNotes: null,
+      policyBlocker: null,
       mergeStatus: 'blocked',
       mergedApplicationId: null,
       mergeNotes: note,
@@ -471,6 +502,7 @@ function classifySourcingFinding(
     return {
       blocker: null,
       duplicateNotes: duplicate.note,
+      policyBlocker: null,
       mergeStatus: 'duplicate',
       mergedApplicationId: duplicate.applicationId,
       mergeNotes: duplicate.note,
@@ -490,6 +522,7 @@ function classifySourcingFinding(
     return {
       blocker: null,
       duplicateNotes: null,
+      policyBlocker: null,
       mergeStatus: 'below_cutoff',
       mergedApplicationId: null,
       mergeNotes: policyDecision.reasons[0]?.message ?? 'Priority score is below policy cutoff.',
@@ -502,6 +535,7 @@ function classifySourcingFinding(
     return {
       blocker: note,
       duplicateNotes: null,
+      policyBlocker: note,
       mergeStatus: 'blocked',
       mergedApplicationId: null,
       mergeNotes: note,
@@ -511,9 +545,47 @@ function classifySourcingFinding(
   return {
     blocker: null,
     duplicateNotes: null,
+    policyBlocker: null,
     mergeStatus: 'new',
     mergedApplicationId: null,
     mergeNotes: null,
+  }
+}
+
+function isManualDispositionFinding(finding: SourcingFinding) {
+  if (finding.mergeStatus === 'not_fit' || finding.mergeStatus === 'not_pursued' || finding.mergeStatus === 'archived') {
+    return true
+  }
+
+  return finding.mergeStatus === 'blocked' && hasText(finding.dispositionReason)
+}
+
+function assertCompatibleSourcingDispositionInput(input: {
+  blocker?: string | null
+  dispositionReason?: string | null
+  duplicateNotes?: string | null
+  mergeStatus?: string
+  policyBlocker?: string | null
+}) {
+  if (input.duplicateNotes !== undefined) {
+    throw new Error(
+      'duplicateNotes is generated by duplicate detection; use dispositionReason or mergeNotes for manual notes.',
+    )
+  }
+
+  if (input.blocker !== undefined && input.mergeStatus !== 'blocked') {
+    throw new Error('blocker requires mergeStatus blocked.')
+  }
+
+  if (input.policyBlocker !== undefined && input.mergeStatus !== 'blocked') {
+    throw new Error('policyBlocker requires mergeStatus blocked.')
+  }
+
+  if (
+    input.dispositionReason !== undefined &&
+    (input.mergeStatus === undefined || !isManualSourcingDecisionStatus(input.mergeStatus))
+  ) {
+    throw new Error('dispositionReason requires a manual mergeStatus.')
   }
 }
 
@@ -542,7 +614,7 @@ function normalizeCreateFindingInput(input: CreateSourcingFindingInput, now: str
     sourceName: input.sourceName ? requiredTrimmedText(input.sourceName, 'sourceName') : null,
     country: input.country ?? 'US',
     officialUrl: input.officialUrl ? canonicalizeApplicationUrl(input.officialUrl) : null,
-    sourceUrl: input.sourceUrl ? canonicalizeApplicationUrl(input.sourceUrl) : null,
+    sourceUrl: input.sourceUrl ? normalizeApplicationUrlPreservingQuery(input.sourceUrl) : null,
     mergeStatus,
     discoveredAt: input.discoveredAt ?? now,
   }
@@ -619,6 +691,8 @@ function mapSourcingFinding(row: SourcingFindingRow): SourcingFinding {
     fitNotes: row.fitNotes as string | null,
     duplicateNotes: row.duplicateNotes as string | null,
     blocker: row.blocker as string | null,
+    policyBlocker: row.policyBlocker as string | null,
+    dispositionReason: row.dispositionReason as string | null,
     mergeStatus: row.mergeStatus as SourcingMergeStatus,
     mergedApplicationId: row.mergedApplicationId as string | null,
     mergedApplicationCompanyName: row.mergedApplicationCompanyName as string | null,
@@ -787,6 +861,10 @@ function nullableTrimmedText(value: string | null) {
 
   const trimmed = value.trim()
   return trimmed ? trimmed : null
+}
+
+function hasText(value: string | null | undefined) {
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 function normalizeText(value: string) {

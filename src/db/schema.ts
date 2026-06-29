@@ -334,6 +334,8 @@ export const sourcingFindings = sqliteTable(
     fitNotes: text('fit_notes'),
     duplicateNotes: text('duplicate_notes'),
     blocker: text('blocker'),
+    policyBlocker: text('policy_blocker'),
+    dispositionReason: text('disposition_reason'),
     mergeStatus: text('merge_status').notNull(),
     mergedApplicationId: text('merged_application_id').references(() => applications.id),
     mergeNotes: text('merge_notes'),

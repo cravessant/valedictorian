@@ -39,6 +39,7 @@ export {
   isWorkMode,
   MAX_APPLICATION_LIST_LIMIT,
   normalizeApplicationLinkKind,
+  normalizeApplicationUrlPreservingQuery,
 } from 'sparxie'
 export type {
   ApplicationDetail,
