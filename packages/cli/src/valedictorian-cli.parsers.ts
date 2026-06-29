@@ -46,9 +46,11 @@ export {
 export {
   parseSourcingFindingCreate,
   parseSourcingFindingDecision,
+  parseSourcingFindingImportJson,
   parseSourcingFindingsListQuery,
   parseSourcingFindingUpdate,
   parseSourcingRun,
+  runSourcingFindingImport,
   runSourcingBatch,
 } from './valedictorian-cli.sourcing-parsers.js'
 

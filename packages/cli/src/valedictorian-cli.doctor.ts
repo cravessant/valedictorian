@@ -4,6 +4,11 @@ import {
   type ValedictorianCapabilities,
   type WorkspaceListItem,
 } from 'sparxie'
+import {
+  inferLastOpenWorkspace,
+  isLocalApiUrl,
+  readLocalWorkspaceList,
+} from './valedictorian-cli.workspaces.js'
 
 type DoctorClassification = 'local' | 'staging' | 'production' | 'invalid'
 type DoctorCheckStatus = 'pass' | 'fail' | 'skip'
@@ -93,6 +98,7 @@ export async function runDoctor({
       env.VALEDICTORIAN_API_TOKEN,
       timeoutMs,
       workspaceSelector,
+      env,
     )
     checks.push(workspaceResult.check)
     workspace = workspaceResult.workspace
@@ -156,6 +162,7 @@ export async function runContext({
     env.VALEDICTORIAN_API_TOKEN,
     timeoutMs,
     workspaceSelector,
+    env,
   )
 
   return {
@@ -164,7 +171,9 @@ export async function runContext({
       ...workspaceResult.workspace,
       note:
         workspaceResult.workspace.resolution === 'resolved'
-          ? 'Workspace resolved explicitly. Workspace-scoped commands still require --workspace.'
+          ? workspaceSelector
+            ? 'Workspace resolved explicitly. Workspace-scoped commands still require --workspace.'
+            : 'Last-open workspace resolved for diagnostics. Workspace-scoped commands still require --workspace.'
           : 'No implicit CLI workspace is active. Pass --workspace <id-or-name> for workspace-scoped commands.',
     },
     capabilities: capabilitiesResult.capabilities,
@@ -306,49 +315,91 @@ async function workspaceCheck(
   token: string | undefined,
   timeoutMs: number,
   selector: string | undefined,
+  env: Record<string, string | undefined>,
 ): Promise<{ check: DoctorCheck; workspace: DoctorWorkspaceContext }> {
   const result = await fetchJson(rawApiUrl, valedictorianApiPaths.workspaces, token, timeoutMs)
+  let items: WorkspaceListItem[] | undefined
+  let fallbackMessage: string | undefined
 
   if ('error' in result) {
-    return {
-      check: {
-        name: 'workspace',
-        status: 'fail',
-        message: `Workspace discovery failed: ${result.error}`,
-      },
-      workspace: {
-        resolution: selector ? 'not_found' : 'not_requested',
-        selector,
-      },
+    const fallback = readWorkspaceFallback(rawApiUrl, env)
+
+    if (!fallback) {
+      return {
+        check: {
+          name: 'workspace',
+          status: 'fail',
+          message: `Workspace discovery failed: ${result.error}`,
+        },
+        workspace: {
+          resolution: selector ? 'not_found' : 'not_requested',
+          selector,
+        },
+      }
     }
+
+    items = fallback.items
+    fallbackMessage = `Workspace discovery failed at the API (${result.error}); loaded local registry fallback.`
   }
 
-  if (!result.response.ok) {
-    return {
-      check: {
-        name: 'workspace',
-        status: 'fail',
-        message: `Workspace discovery returned HTTP ${result.response.status}.`,
-        details: { status: result.response.status },
-      },
-      workspace: {
-        resolution: selector ? 'not_found' : 'not_requested',
-        selector,
-      },
+  if (!items && !('error' in result) && !result.response.ok) {
+    const fallback = readWorkspaceFallback(rawApiUrl, env)
+
+    if (!fallback) {
+      return {
+        check: {
+          name: 'workspace',
+          status: 'fail',
+          message: `Workspace discovery returned HTTP ${result.response.status}.`,
+          details: { status: result.response.status },
+        },
+        workspace: {
+          resolution: selector ? 'not_found' : 'not_requested',
+          selector,
+        },
+      }
     }
+
+    items = fallback.items
+    fallbackMessage = `Workspace discovery returned HTTP ${result.response.status}; loaded local registry fallback.`
   }
 
-  const items = readWorkspaceItems(result.body)
+  items ??= 'body' in result ? readWorkspaceItems(result.body) : []
   const openWorkspaces = items
     .filter((workspace) => workspace.open)
     .map(({ id, name, open, source }) => ({ id, name, open, source }))
 
   if (!selector) {
+    const inferredWorkspace = inferLastOpenWorkspace(items)
+
+    if (inferredWorkspace) {
+      return {
+        check: {
+          name: 'workspace',
+          status: 'pass',
+          message:
+            fallbackMessage ??
+            `Resolved last-open workspace ${inferredWorkspace.name} (${inferredWorkspace.id}).`,
+          details: fallbackMessage ? { openWorkspaces } : undefined,
+        },
+        workspace: {
+          id: inferredWorkspace.id,
+          name: inferredWorkspace.name,
+          open: inferredWorkspace.open,
+          path: inferredWorkspace.path,
+          resolution: 'resolved',
+          source: inferredWorkspace.source,
+        },
+      }
+    }
+
     return {
       check: {
         name: 'workspace',
         status: 'skip',
-        message: 'No workspace provided; route scoping checks require --workspace <id-or-name>.',
+        message:
+          fallbackMessage ??
+          'No workspace provided; route scoping checks require --workspace <id-or-name>.',
         details: { openWorkspaces },
       },
       workspace: {
@@ -393,7 +444,10 @@ async function workspaceCheck(
     check: {
       name: 'workspace',
       status: 'pass',
-      message: `Resolved workspace ${resolved.workspace.name} (${resolved.workspace.id}).`,
+      message:
+        fallbackMessage ??
+        `Resolved workspace ${resolved.workspace.name} (${resolved.workspace.id}).`,
+      details: fallbackMessage ? { openWorkspaces } : undefined,
     },
     workspace: {
       id: resolved.workspace.id,
@@ -457,6 +511,14 @@ async function workspaceRouteScopeCheck(
       workspaceId,
     },
   }
+}
+
+function readWorkspaceFallback(rawApiUrl: string, env: Record<string, string | undefined>) {
+  if (!isLocalApiUrl(rawApiUrl)) {
+    return null
+  }
+
+  return readLocalWorkspaceList(env)
 }
 
 async function fetchJson(

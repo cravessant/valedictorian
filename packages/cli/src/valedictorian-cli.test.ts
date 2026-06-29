@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { jsonResponse, readPackageJson, runCli } from './valedictorian-cli.test-helpers'
 
@@ -156,7 +159,69 @@ describe('valedictorian-cli npm package', () => {
     )
   })
 
-  it('prints read-only CLI context without selecting an implicit workspace', async () => {
+  it('falls back to the local workspace registry and resolves the last-open workspace for doctor', async () => {
+    const registryPath = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-cli-workspaces-')),
+      'workspaces.json',
+    )
+    fs.writeFileSync(
+      registryPath,
+      JSON.stringify({
+        lastOpenedWorkspaceId: 'workspace-last',
+        workspaces: {
+          'workspace-last': {
+            id: 'workspace-last',
+            lastOpenedAt: '2026-06-12T10:00:00.000Z',
+            name: 'Example Workspace',
+            open: true,
+            path: '/Users/example/valedictorian/Example Workspace',
+          },
+        },
+      }),
+    )
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        localSqlite: true,
+        multiWorkspace: true,
+        sourcing: true,
+        workflowRuns: true,
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'Not found' }, { status: 404 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'Not found' }, { status: 404 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [], total: 0, limit: 1, offset: 0 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli(['doctor', '--json'], {
+      VALEDICTORIAN_API_URL: 'http://127.0.0.1:4317',
+      VALEDICTORIAN_WORKSPACE_REGISTRY_PATH: registryPath,
+    })
+    const report = JSON.parse(result.stdout) as {
+      checks: Array<{ name: string; status: string; message: string }>
+      ok: boolean
+      workspace: { id?: string; resolution: string }
+    }
+
+    expect(result.exitCode).toBe(0)
+    expect(report.ok).toBe(true)
+    expect(report.workspace).toMatchObject({
+      id: 'workspace-last',
+      resolution: 'resolved',
+    })
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'workspace',
+          status: 'pass',
+          message: expect.stringContaining('loaded local registry fallback'),
+        }),
+      ]),
+    )
+  })
+
+  it('prints read-only CLI context and reports a single last-open workspace', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -188,7 +253,7 @@ describe('valedictorian-cli npm package', () => {
     const result = await runCli(['context', '--json'])
     const context = JSON.parse(result.stdout) as {
       target: { apiUrl: string; classification: string }
-      workspace: { note: string; openWorkspaces: Array<{ id: string }>; resolution: string }
+      workspace: { id?: string; note: string; resolution: string }
     }
 
     expect(result.exitCode).toBe(0)
@@ -197,9 +262,9 @@ describe('valedictorian-cli npm package', () => {
       classification: 'staging',
     })
     expect(context.workspace).toMatchObject({
-      note: 'No implicit CLI workspace is active. Pass --workspace <id-or-name> for workspace-scoped commands.',
-      openWorkspaces: [{ id: 'workspace-1' }],
-      resolution: 'not_requested',
+      id: 'workspace-1',
+      note: 'Last-open workspace resolved for diagnostics. Workspace-scoped commands still require --workspace.',
+      resolution: 'resolved',
     })
   })
 
@@ -389,6 +454,35 @@ describe('valedictorian-cli npm package', () => {
     expect(missingWorkspace.stderr).toContain('--workspace is required')
     expect(scoped.exitCode).toBe(0)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://valedictorian.test/v1/workspaces/workspace-1/applications?limit=25',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('accepts global --workspace before the command for workspace-scoped commands', async () => {
+    const payload = {
+      items: [],
+      total: 0,
+      limit: 25,
+      offset: 0,
+      hasMore: false,
+    }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValue(jsonResponse(payload))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli([
+      '--workspace',
+      'workspace-1',
+      'applications',
+      'list',
+      '--limit',
+      '25',
+      '--json',
+    ])
+
+    expect(result.exitCode).toBe(0)
     expect(fetchMock).toHaveBeenCalledWith(
       'https://valedictorian.test/v1/workspaces/workspace-1/applications?limit=25',
       expect.objectContaining({ method: 'GET' }),

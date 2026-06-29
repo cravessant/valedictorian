@@ -1,4 +1,8 @@
-import { canonicalizeApplicationUrl, MAX_APPLICATION_LIST_LIMIT } from 'sparxie'
+import {
+  canonicalizeApplicationUrl,
+  MAX_APPLICATION_LIST_LIMIT,
+  normalizeApplicationUrlPreservingQuery,
+} from 'sparxie'
 
 export function readOption(argv: string[], name: string) {
   const index = argv.indexOf(name)
@@ -91,6 +95,12 @@ export function parseNullableApplicationUrlOption(value: string, fieldName: stri
   const parsed = parseNullableStringOption(value, fieldName)
 
   return parsed === null ? null : canonicalizeApplicationUrl(parsed)
+}
+
+export function parseNullableSourceUrlOption(value: string, fieldName: string) {
+  const parsed = parseNullableStringOption(value, fieldName)
+
+  return parsed === null ? null : normalizeApplicationUrlPreservingQuery(parsed)
 }
 
 export function hasFlag(argv: string[], name: string) {

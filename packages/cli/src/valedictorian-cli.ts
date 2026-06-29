@@ -18,6 +18,7 @@ import {
 
 import { formatDoctorText, runContext, runDoctor } from './valedictorian-cli.doctor.js'
 import { formatHumanOutput } from './valedictorian-cli.output.js'
+import { isLocalApiUrl, readLocalWorkspaceList } from './valedictorian-cli.workspaces.js'
 import {
   parseApplicationAttemptsQuery,
   parseApplicationEventsQuery,
@@ -33,6 +34,7 @@ import {
   parseRunStep,
   parseSourcingFindingCreate,
   parseSourcingFindingDecision,
+  parseSourcingFindingImportJson,
   parseSourcingFindingsListQuery,
   parseSourcingFindingUpdate,
   parseSourcingRun,
@@ -43,6 +45,7 @@ import {
   readOptionalText,
   readRequiredText,
   runSourcingBatch,
+  runSourcingFindingImport,
 } from './valedictorian-cli.parsers.js'
 
 export interface RunValedictorianCliOptions {
@@ -691,12 +694,14 @@ function buildSourcingRoute() {
                 'city',
                 'country',
                 'discovered-at',
+                'disposition-reason',
                 'duplicate-notes',
                 'fit-notes',
                 'location-raw',
                 'merge-status',
                 'official-url',
                 'posted-age',
+                'policy-blocker',
                 'priority-band',
                 'priority-score',
                 'region',
@@ -720,7 +725,10 @@ function buildSourcingRoute() {
           }),
           decide: makeCommand({
             docs: { brief: 'Set a manual sourcing finding disposition' },
-            flags: optionFlags(['merge-notes', 'workspace'], ['merge-status']),
+            flags: optionFlags(
+              ['disposition-reason', 'merge-notes', 'policy-blocker', 'workspace'],
+              ['merge-status'],
+            ),
             positionalCount: 1,
             run: async (context, flags, findingId) => {
               const client = await workspaceClient(context, flags)
@@ -731,6 +739,24 @@ function buildSourcingRoute() {
                   parseSourcingFindingDecision(findingId, toArgvWithoutWorkspace(flags)),
                 ),
               )
+            },
+          }),
+          import: makeCommand({
+            docs: { brief: 'Bulk import sourcing findings from a JSON file' },
+            flags: optionFlags(['workspace'], ['input-json']),
+            run: async (context, flags) => {
+              const client = await workspaceClient(context, flags)
+              const inputPath = readRequiredText(optionValue(flags, 'input-json'), '--input-json')
+              const result = await runSourcingFindingImport(
+                client,
+                parseSourcingFindingImportJson(fs.readFileSync(inputPath, 'utf8')),
+              )
+
+              writeJson(context, result)
+
+              if (result.failureCount > 0) {
+                context.process.exitCode = 1
+              }
             },
           }),
           list: makeCommand({
@@ -769,9 +795,11 @@ function buildSourcingRoute() {
             docs: { brief: 'Update a sourcing finding' },
             flags: optionFlags([
               'blocker',
+              'disposition-reason',
               'duplicate-notes',
               'merge-notes',
               'merge-status',
+              'policy-blocker',
               'workspace',
             ]),
             positionalCount: 1,
@@ -1085,11 +1113,23 @@ async function listWorkspaces(context: ValedictorianCliContext) {
     }
   }
 
-  if (clientWithWorkspaces.workspaces) {
-    return clientWithWorkspaces.workspaces.list()
-  }
+  try {
+    if (clientWithWorkspaces.workspaces) {
+      return await clientWithWorkspaces.workspaces.list()
+    }
 
-  return requestJson(context, '/v1/workspaces')
+    return await requestJson(context, '/v1/workspaces')
+  } catch (error) {
+    const localWorkspaces = isLocalApiUrl(context.apiBaseUrl)
+      ? readLocalWorkspaceList(context.env)
+      : null
+
+    if (localWorkspaces) {
+      return localWorkspaces
+    }
+
+    throw error
+  }
 }
 
 async function openWorkspace(context: ValedictorianCliContext, path: string, rekey: boolean) {
@@ -1216,6 +1256,36 @@ function writeJson(context: ValedictorianCliContext, value: unknown, pretty = tr
 
 function normalizeArgv(argv: string[]) {
   const normalized = argv[0] === '--' ? argv.slice(1) : [...argv]
+  const leadingFlags: string[] = []
+  let index = 0
+
+  while (index < normalized.length) {
+    const token = normalized[index]
+
+    if (token === '--json') {
+      leadingFlags.push(token)
+      index += 1
+      continue
+    }
+
+    if (token === '--workspace') {
+      const value = normalized[index + 1]
+
+      if (value === undefined || value.startsWith('--')) {
+        return normalized
+      }
+
+      leadingFlags.push(token, value)
+      index += 2
+      continue
+    }
+
+    break
+  }
+
+  if (leadingFlags.length > 0) {
+    return normalizeLeadingFlags(normalized.slice(index), leadingFlags)
+  }
 
   if (normalized[0] !== '--json') {
     return normalized
@@ -1235,6 +1305,49 @@ function normalizeArgv(argv: string[]) {
   }
 
   return [...withoutGlobalJson, '--json']
+}
+
+function normalizeLeadingFlags(argv: string[], leadingFlags: string[]) {
+  let result = [...argv]
+  const hasGlobalJson = leadingFlags.includes('--json')
+  const globalWorkspaceIndex = leadingFlags.indexOf('--workspace')
+
+  if (
+    hasGlobalJson &&
+    result.length > 0 &&
+    !isHelpOrVersion(result) &&
+    !result.includes('--json')
+  ) {
+    result = [...result, '--json']
+  }
+
+  if (
+    globalWorkspaceIndex >= 0 &&
+    shouldForwardGlobalWorkspace(result) &&
+    !result.includes('--workspace')
+  ) {
+    result = [...result, '--workspace', leadingFlags[globalWorkspaceIndex + 1]]
+  }
+
+  return result
+}
+
+function isHelpOrVersion(argv: string[]) {
+  return (
+    argv.length === 0 ||
+    argv[0] === '--help' ||
+    argv[0] === '-h' ||
+    argv[0] === '--version' ||
+    argv[0] === '-v'
+  )
+}
+
+function shouldForwardGlobalWorkspace(argv: string[]) {
+  if (isHelpOrVersion(argv)) {
+    return false
+  }
+
+  return argv[0] !== 'workspaces' && argv[0] !== 'examples'
 }
 
 function parseTimeoutMs(value: string | undefined) {

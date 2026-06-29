@@ -24,9 +24,13 @@ valedictorian-cli doctor
 valedictorian-cli --json context
 valedictorian-cli --json workspaces list
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --workspace "$VALEDICTORIAN_WORKSPACE" --json applications list
 valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now
+valedictorian-cli --json sourcing findings import --workspace "$VALEDICTORIAN_WORKSPACE" --input-json findings.json
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" | jq '.items[] | {id, companyName, roleTitle, status}'
 ```
+
+`--workspace` may be placed before the command or on the command itself. Workspace-scoped commands still require an explicit workspace; `doctor` and `context` can use the local last-open workspace for diagnostics when the local API workspace endpoint is unavailable.
 
 ## Agent skill
 
