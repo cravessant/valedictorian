@@ -132,7 +132,7 @@ jobs:
           chmod 600 "${{ runner.temp }}/app-store-connect-api-key.p8"
 
       - name: Build Mac DMG
-        run: pnpm build:mac
+        run: pnpm build:mac:release
         env:
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
