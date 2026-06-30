@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import type { MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -10,6 +11,7 @@ import { registerActionQueueIpc } from '../src/ipc/action-queue.ipc'
 import { registerScoresIpc } from '../src/ipc/scores.ipc'
 import { registerSettingsIpc } from '../src/ipc/settings.ipc'
 import { registerSourcingIpc } from '../src/ipc/sourcing.ipc'
+import { registerUpdatesIpc } from '../src/ipc/updates.ipc'
 import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
 import {
   createSqliteProfileRepository,
@@ -31,6 +33,7 @@ import {
   type WorkspaceActivationOptions,
   type WorkspaceService,
 } from '../src/workspace/workspace.service'
+import { createElectronUpdateService } from '../src/updates/update.service'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -63,6 +66,20 @@ let workspaceLauncherWindow: BrowserWindow | null = null
 let runtime: ValedictorianRuntime | null = null
 let currentWorkspace: WorkspaceSummary | null = null
 let runtimeServicesRegistered = false
+let initialUpdateCheckScheduled = false
+const updateService = createElectronUpdateService(app, {
+  get autoDownload() {
+    return autoUpdater.autoDownload
+  },
+  set autoDownload(autoDownload: boolean) {
+    autoUpdater.autoDownload = autoDownload
+  },
+  checkForUpdates: () => autoUpdater.checkForUpdates(),
+  on: (event, listener) => autoUpdater.on(event as never, listener as never),
+  quitAndInstall: () => autoUpdater.quitAndInstall(),
+}, {
+  beforeInstall: closeRuntime,
+})
 
 async function openWorkspaceInMainWindow(
   workspace: WorkspaceSummary,
@@ -295,6 +312,9 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
+  registerUpdatesIpc(updateService, ipcMain, () => BrowserWindow.getAllWindows())
+  scheduleInitialUpdateCheck()
+
   const registryStore = createFileWorkspaceRegistryStore(
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
@@ -340,6 +360,17 @@ app.whenReady().then(async () => {
   console.error(error)
   app.quit()
 })
+
+function scheduleInitialUpdateCheck() {
+  if (initialUpdateCheckScheduled) {
+    return
+  }
+
+  initialUpdateCheckScheduled = true
+  setTimeout(() => {
+    void updateService.check()
+  }, 3000)
+}
 
 async function closeRuntime() {
   await runtime?.close()

@@ -86,6 +86,44 @@ jobs:
             exit 1
           fi
 
+      - name: Validate update feed publishing secrets
+        env:
+          UPDATE_FEED_URL: ${{ vars.UPDATE_FEED_URL }}
+          UPDATE_FEED_ENDPOINT: ${{ secrets.UPDATE_FEED_ENDPOINT }}
+          UPDATE_FEED_BUCKET: ${{ secrets.UPDATE_FEED_BUCKET }}
+          UPDATE_FEED_ACCESS_KEY_ID: ${{ secrets.UPDATE_FEED_ACCESS_KEY_ID }}
+          UPDATE_FEED_SECRET_ACCESS_KEY: ${{ secrets.UPDATE_FEED_SECRET_ACCESS_KEY }}
+          UPDATE_FEED_PREFIX: ${{ vars.UPDATE_FEED_PREFIX }}
+        run: |
+          missing=0
+          for secret_name in \
+            UPDATE_FEED_URL \
+            UPDATE_FEED_ENDPOINT \
+            UPDATE_FEED_BUCKET \
+            UPDATE_FEED_ACCESS_KEY_ID \
+            UPDATE_FEED_SECRET_ACCESS_KEY \
+            UPDATE_FEED_PREFIX
+          do
+            if [ -z "${!secret_name}" ]; then
+              echo "::error::$secret_name is required for publishing app update metadata"
+              missing=1
+            fi
+          done
+
+          if [ "$UPDATE_FEED_URL" != "https://updates.valedictorian.app/mac/alpha" ]; then
+            echo "::error::UPDATE_FEED_URL must match the app's electron-builder publish URL"
+            missing=1
+          fi
+
+          if [ "$UPDATE_FEED_PREFIX" != "mac/alpha" ]; then
+            echo "::error::UPDATE_FEED_PREFIX must be mac/alpha"
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Decode App Store Connect API key
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -103,18 +141,56 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Verify DMG exists
+      - name: Verify update artifacts exist
         run: |
           dmg_path="$(find release -type f -name '*.dmg' -print -quit)"
+          zip_path="$(find release -type f -name '*.zip' -print -quit)"
+          latest_path="$(find release -type f -name 'latest-mac.yml' -print -quit)"
           test -n "$dmg_path"
+          test -n "$zip_path"
+          test -n "$latest_path"
           echo "Built $dmg_path"
+          echo "Built $zip_path"
+          echo "Built $latest_path"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v7
         with:
           name: valedictorian-app-mac-dmg
-          path: release/*/*.dmg
+          path: |
+            release/*/*.dmg
+            release/*/*.zip
+            release/*/*.blockmap
+            release/*/latest-mac.yml
           if-no-files-found: error
+
+      - name: Publish update feed
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.UPDATE_FEED_ACCESS_KEY_ID }}
+          AWS_DEFAULT_REGION: auto
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.UPDATE_FEED_SECRET_ACCESS_KEY }}
+          UPDATE_FEED_BUCKET: ${{ secrets.UPDATE_FEED_BUCKET }}
+          UPDATE_FEED_ENDPOINT: ${{ secrets.UPDATE_FEED_ENDPOINT }}
+          UPDATE_FEED_PREFIX: ${{ vars.UPDATE_FEED_PREFIX }}
+        run: |
+          release_dir="$(find release -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -n "$release_dir"
+
+          feed_destination="s3://${UPDATE_FEED_BUCKET}/${UPDATE_FEED_PREFIX}"
+          aws_args=(--endpoint-url "$UPDATE_FEED_ENDPOINT")
+
+          aws s3 sync "$release_dir" "$feed_destination/" \
+            "${aws_args[@]}" \
+            --exclude "*" \
+            --include "*.dmg" \
+            --include "*.zip" \
+            --include "*.blockmap" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 cp "$release_dir/latest-mac.yml" "$feed_destination/latest-mac.yml" \
+            "${aws_args[@]}" \
+            --cache-control "no-cache" \
+            --content-type "text/yaml"
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -124,10 +200,10 @@ jobs:
           version="$(node -p "require('./package.json').version")"
 
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release/*/*.dmg --clobber
+            gh release upload "$GITHUB_REF_NAME" release/*/*.dmg release/*/*.zip release/*/*.blockmap release/*/latest-mac.yml --clobber
           else
             release_args=(
-              release create "$GITHUB_REF_NAME" release/*/*.dmg
+              release create "$GITHUB_REF_NAME" release/*/*.dmg release/*/*.zip release/*/*.blockmap release/*/latest-mac.yml
               --title "Valedictorian $GITHUB_REF_NAME"
               --notes "Signed and notarized Mac build."
             )

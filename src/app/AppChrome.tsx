@@ -1,16 +1,25 @@
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { CircleUserRound, Database, Globe2, ListChecks, Search, Server, Settings as SettingsIcon, X, PanelLeft } from 'lucide-react'
+import { CircleUserRound, Database, Download, Globe2, ListChecks, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
+import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
 import { APP_VIEWS, type MainAppView } from './types'
 
 interface AppTopbarProps {
   sidebarCollapsed: boolean
   title: string
+  updateState?: UpdateState | null
+  onInstallUpdate?: () => void
   onToggleSidebar: () => void
 }
 
-function AppTopbar({ sidebarCollapsed, title, onToggleSidebar }: AppTopbarProps) {
+function AppTopbar({
+  sidebarCollapsed,
+  title,
+  updateState = null,
+  onInstallUpdate,
+  onToggleSidebar,
+}: AppTopbarProps) {
   return (
     <header
       aria-label="App chrome"
@@ -27,7 +36,43 @@ function AppTopbar({ sidebarCollapsed, title, onToggleSidebar }: AppTopbarProps)
         <PanelLeft className="h-4 w-4" aria-hidden="true" />
       </Button>
       <div className="min-w-0 text-sm font-semibold text-foreground">{title}</div>
+      <UpdateStatusControl
+        state={updateState}
+        onInstall={onInstallUpdate}
+      />
     </header>
+  )
+}
+
+interface UpdateStatusControlProps {
+  state: UpdateState | null
+  onInstall?: () => void
+}
+
+function UpdateStatusControl({ state, onInstall }: UpdateStatusControlProps) {
+  if (!state || state.status === 'idle' || state.status === 'checking' || state.status === 'disabled' || state.status === 'unavailable' || state.status === 'error') {
+    return null
+  }
+
+  if (state.status === 'downloading') {
+    return (
+      <div className="app-no-drag ml-auto flex h-8 items-center gap-2 rounded-md border border-border bg-card/80 px-3 text-xs font-medium text-muted-foreground">
+        <Download className="h-3.5 w-3.5" aria-hidden="true" />
+        Downloading update {Math.round(state.percent ?? 0)}%
+      </div>
+    )
+  }
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      className="app-no-drag ml-auto gap-2"
+      onClick={onInstall}
+    >
+      <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+      Restart to update
+    </Button>
   )
 }
 

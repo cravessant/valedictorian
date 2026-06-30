@@ -26,7 +26,12 @@ function readElectronBuilderConfig() {
       icon?: string
       identity?: string
       notarize?: boolean
+      target?: string[]
     }
+    publish?: Array<{
+      provider?: string
+      url?: string
+    }>
   }
 }
 
@@ -44,6 +49,7 @@ describe('build configuration', () => {
     expect(config.mac?.entitlements).toBe('build/entitlements.mac.plist')
     expect(config.mac?.entitlementsInherit).toBe('build/entitlements.mac.inherit.plist')
     expect(config.mac?.icon).toBe('build/icon.icns')
+    expect(config.mac?.target).toEqual(['dmg', 'zip'])
     expect(fs.existsSync(path.resolve('build/icon.icns'))).toBe(true)
     expect(fs.existsSync(path.resolve('build/entitlements.mac.plist'))).toBe(true)
     expect(fs.existsSync(path.resolve('build/entitlements.mac.inherit.plist'))).toBe(true)
@@ -56,10 +62,19 @@ describe('build configuration', () => {
 
   it('can be installed and released as an app-only repository', () => {
     const packageJson = readPackageJson()
+    const config = readElectronBuilderConfig()
     const scripts = Object.values(packageJson.scripts ?? {})
 
     expect(packageJson.version).toMatch(/^0\.\d+\.\d+-alpha\.\d+$/)
     expect(packageJson.scripts?.['build:mac']).toContain('--publish never')
+    expect(packageJson.scripts?.['build:mac']).not.toContain('--mac dmg')
+    expect(packageJson.dependencies?.['electron-updater']).toBeDefined()
+    expect(config.publish).toEqual([
+      {
+        provider: 'generic',
+        url: 'https://updates.valedictorian.app/mac/alpha',
+      },
+    ])
     expect(packageJson.dependencies?.sparxie).toMatch(/^\d+\.\d+\.\d+$/)
     expect(packageJson.dependencies?.sparxie).not.toContain('github:')
     expect(packageJson.dependencies?.sparxie).not.toContain('../sparxie')

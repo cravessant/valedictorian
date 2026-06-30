@@ -29,6 +29,7 @@ interface Window {
   scores: import('../src/ipc/scores.preload').ScoresPreloadApi
   settings: import('../src/ipc/settings.preload').SettingsPreloadApi
   sourcing: import('../src/ipc/sourcing.preload').SourcingPreloadApi
+  valedictorianUpdates: import('../src/ipc/updates.preload').UpdatesPreloadApi
   valedictorianHttp?: {
     apiBaseUrl: string
     workspaceId: string

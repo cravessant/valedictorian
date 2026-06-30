@@ -1,6 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
+import type { UpdatesPreloadApi, UpdateState } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
@@ -315,6 +316,35 @@ export function createSettingsApi(overrides: Partial<AppSettings> = {}): Setting
       }
 
       return currentSettings
+    }),
+  }
+}
+
+export type TestUpdatesApi = UpdatesPreloadApi & {
+  emitState: (state: UpdateState) => void
+}
+
+export function createUpdatesApi(initialState: UpdateState): TestUpdatesApi {
+  let state = initialState
+  const listeners = new Set<(state: UpdateState) => void>()
+
+  return {
+    check: vi.fn(async () => state),
+    emitState(nextState) {
+      state = nextState
+
+      for (const listener of listeners) {
+        listener(state)
+      }
+    },
+    getState: vi.fn(async () => state),
+    install: vi.fn(async () => undefined),
+    onStateChanged: vi.fn((listener: (state: UpdateState) => void) => {
+      listeners.add(listener)
+
+      return () => {
+        listeners.delete(listener)
+      }
     }),
   }
 }

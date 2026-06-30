@@ -8,6 +8,7 @@ import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
+import type { UpdatesPreloadApi } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
@@ -81,6 +82,7 @@ import {
   defaultActionQueueLoader,
   defaultScoreRecorder,
   defaultSettingsApi,
+  defaultUpdatesApi,
   defaultWorkspaceApi,
   defaultSourcingLoader,
   defaultUpdateSourcingFinding,
@@ -92,6 +94,7 @@ import {
   emptySourcingResult,
 } from './app/loaders'
 import { buildApplicationListQuery, buildActionQueueListQuery, buildSourcingFindingsListQuery } from './app/query'
+import { useAppUpdates } from './updates/use-app-updates'
 import {
   APP_VIEWS,
   PAGE_LIMIT,
@@ -156,6 +159,7 @@ interface AppProps {
   profileApi?: ProfilePreloadApi
   policyApi?: PolicyPreloadApi
   settingsApi?: SettingsPreloadApi
+  updatesApi?: UpdatesPreloadApi
   workspaceApi?: WorkspacePreloadApi
 }
 
@@ -182,6 +186,7 @@ function App({
   policyApi = defaultPolicyApi,
   profileApi = defaultProfileApi,
   settingsApi = defaultSettingsApi,
+  updatesApi = defaultUpdatesApi,
   workspaceApi = defaultWorkspaceApi,
 }: AppProps) {
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
@@ -229,6 +234,7 @@ function App({
   const [applicationDetailError, setApplicationDetailError] = useState<string | null>(null)
   const [applicationLinksError, setApplicationLinksError] = useState<string | null>(null)
   const [applicationEventsError, setApplicationEventsError] = useState<string | null>(null)
+  const { installUpdate, updateState } = useAppUpdates(updatesApi)
   const [attemptResult, setAttemptResult] = useState<ApplicationAttemptsListResult>(emptyAttemptResult)
   const [isAttemptLoading, setIsAttemptLoading] = useState(false)
   const [attemptError, setAttemptError] = useState<string | null>(null)
@@ -689,6 +695,10 @@ function App({
       <AppTopbar
         sidebarCollapsed={sidebarToggleCollapsed}
         title={viewTitle}
+        updateState={updateState}
+        onInstallUpdate={() => {
+          void installUpdate()
+        }}
         onToggleSidebar={togglePinnedSidebar}
       />
       {!isNarrowViewport && settings.sidebarCollapsed && !sidebarHoverExpanded ? (

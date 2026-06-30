@@ -6,6 +6,7 @@ import { createActionQueuePreloadApi } from '../src/ipc/action-queue.preload'
 import { createScoresPreloadApi } from '../src/ipc/scores.preload'
 import { createSettingsPreloadApi } from '../src/ipc/settings.preload'
 import { createSourcingPreloadApi } from '../src/ipc/sourcing.preload'
+import { createUpdatesPreloadApi } from '../src/ipc/updates.preload'
 import { createWorkspacePreloadApi } from '../src/ipc/workspace.preload'
 
 const rendererHttpConfig = readRendererHttpConfig(process.argv)
@@ -22,6 +23,7 @@ contextBridge.exposeInMainWorld('actionQueue', createActionQueuePreloadApi(ipcRe
 contextBridge.exposeInMainWorld('scores', createScoresPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('settings', createSettingsPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('sourcing', createSourcingPreloadApi(ipcRenderer))
+contextBridge.exposeInMainWorld('valedictorianUpdates', createUpdatesPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('workspace', createWorkspacePreloadApi(ipcRenderer))
 
 function readRendererHttpConfig(argv: string[]) {

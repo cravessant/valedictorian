@@ -43,6 +43,21 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("workspace: import('../src/ipc/workspace.preload').WorkspacePreloadApi")
   })
 
+  it('exposes update preload APIs and registers app update IPC handlers', () => {
+    const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const envSource = fs.readFileSync(path.resolve('electron/electron-env.d.ts'), 'utf8')
+
+    expect(preloadSource).toContain('createUpdatesPreloadApi')
+    expect(preloadSource).toContain(
+      "contextBridge.exposeInMainWorld('valedictorianUpdates', createUpdatesPreloadApi(ipcRenderer))",
+    )
+    expect(mainSource).toContain('createElectronUpdateService')
+    expect(mainSource).toContain('registerUpdatesIpc(updateService, ipcMain')
+    expect(mainSource).toContain('scheduleInitialUpdateCheck()')
+    expect(envSource).toContain("valedictorianUpdates: import('../src/ipc/updates.preload').UpdatesPreloadApi")
+  })
+
   it('passes the selected local backend and active workspace id to the renderer', () => {
     const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')

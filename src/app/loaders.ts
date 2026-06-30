@@ -5,6 +5,7 @@ import type { ActionQueuePreloadApi } from '../ipc/action-queue.preload'
 import type { ScoresPreloadApi } from '../ipc/scores.preload'
 import type { SettingsPreloadApi } from '../ipc/settings.preload'
 import type { SourcingPreloadApi } from '../ipc/sourcing.preload'
+import type { UpdatesPreloadApi } from '../ipc/updates.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { ProfileSensitiveDetails } from '../modules/profile/profile.repository'
 import type {
@@ -460,6 +461,33 @@ function getWindowProfileApi() {
 
 function getWindowWorkspaceApi() {
   return (window as Window & { workspace?: WorkspacePreloadApi }).workspace
+}
+
+function getWindowUpdatesApi() {
+  return (window as Window & { valedictorianUpdates?: UpdatesPreloadApi }).valedictorianUpdates
+}
+
+export const defaultUpdatesApi: UpdatesPreloadApi = {
+  check() {
+    return getWindowUpdatesApi()?.check() ?? Promise.resolve({
+      currentVersion: 'unknown',
+      message: 'Updates are unavailable in this environment.',
+      status: 'disabled',
+    })
+  },
+  getState() {
+    return getWindowUpdatesApi()?.getState() ?? Promise.resolve({
+      currentVersion: 'unknown',
+      message: 'Updates are unavailable in this environment.',
+      status: 'disabled',
+    })
+  },
+  install() {
+    return getWindowUpdatesApi()?.install() ?? Promise.resolve()
+  },
+  onStateChanged(listener) {
+    return getWindowUpdatesApi()?.onStateChanged(listener) ?? (() => undefined)
+  },
 }
 
 export const defaultSettingsApi: SettingsPreloadApi = {
