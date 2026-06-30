@@ -72,6 +72,36 @@ describe('SQLite action queue repository', () => {
     })
   })
 
+  it('keeps queued applications without scores visible for user review', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+    database
+      .update(applications)
+      .set({ currentPriorityScore: null, currentPriorityBand: null })
+      .where(eq(applications.id, 'application-versant-platform'))
+      .run()
+
+    const repository = createSqliteActionQueueRepository(database)
+    const result = await repository.listActionQueue({ actionBucket: 'user_review_required' })
+
+    expect(result).toMatchObject({
+      total: 1,
+      actionBucketCounts: {
+        user_review_required: 1,
+      },
+    })
+    expect(result.items[0]).toMatchObject({
+      id: 'application-versant-platform',
+      status: 'queued',
+      currentPriorityScore: null,
+      actionBucket: 'user_review_required',
+      nextAction: 'user_review_required',
+      reason: 'Queued application has no priority score; record a score before applying.',
+    })
+  })
+
   it('uses policy cutoff overrides when deriving action queue buckets', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)

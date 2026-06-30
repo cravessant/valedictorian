@@ -271,8 +271,20 @@ function mapActionQueueRow(row: ActionQueueRow, policyConfig: PolicyConfig, now:
     ]
   }
 
-  if (row.status !== 'queued' || row.currentPriorityScore === null) {
+  if (row.status !== 'queued') {
     return []
+  }
+
+  if (row.currentPriorityScore === null) {
+    const reason = 'Queued application has no priority score; record a score before applying.'
+    return [
+      createActionQueueItem({
+        row,
+        actionBucket: 'user_review_required',
+        reason,
+        policyReasons: [{ code: 'priority_score_missing', message: reason }],
+      }),
+    ]
   }
 
   if (row.currentPriorityScore < policyConfig.scoring.applyCutoff) {
