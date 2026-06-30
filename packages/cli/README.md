@@ -5,11 +5,13 @@ Command-line client for Valedictorian.
 ## Install
 
 ```sh
-pnpm add -g valedictorian-cli@alpha
+pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha
 ```
 
-The CLI is still published under the npm `alpha` dist-tag. Avoid an untagged
-global install until a stable release is published.
+The CLI is still published under the npm `alpha` dist-tag. This machine-safe
+command forces the public npm registry because private registry caches can lag
+behind fresh alpha publishes. Avoid an untagged global install until a stable
+release is published.
 
 ## Usage
 

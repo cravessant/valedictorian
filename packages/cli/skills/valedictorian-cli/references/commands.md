@@ -5,14 +5,16 @@
 Installed package:
 
 ```sh
-pnpm add -g valedictorian-cli@alpha
+pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha
 valedictorian-cli doctor
 valedictorian-cli context
 valedictorian-cli --help
 ```
 
-The package is currently published under the npm `alpha` dist-tag. Untagged
-global installs can resolve to an older prerelease.
+The package is currently published under the npm `alpha` dist-tag. The explicit
+registry avoids stale private registry caches; the release-age override is for
+fresh alpha installs. Untagged global installs can resolve to an older
+prerelease.
 
 From the `valedictorian-cli` repository:
 
