@@ -1134,6 +1134,58 @@ describe('valedictorian-cli npm package', () => {
     expect(examples.complete).toContain('--outcome submitted')
   })
 
+  it('shows valid non-submitted attempt completion examples with required companion flags', async () => {
+    const needsUserInfo = await runCli([
+      'examples',
+      'attempts',
+      'complete',
+      '--outcome',
+      'needs_user_info',
+      '--json',
+    ])
+    const platformError = await runCli([
+      'examples',
+      'attempts',
+      'complete',
+      '--outcome',
+      'platform_error',
+      '--json',
+    ])
+
+    expect(needsUserInfo.exitCode).toBe(0)
+    expect(JSON.parse(needsUserInfo.stdout).complete).toContain(
+      '--missing-user-info "Synthetic missing answer to collect from the user."',
+    )
+    expect(platformError.exitCode).toBe(0)
+    expect(JSON.parse(platformError.stdout).complete).toContain(
+      '--blocker-reason "Synthetic blocker reason."',
+    )
+  })
+
+  it('rejects invalid attempt completion example outcomes', async () => {
+    const stopped = await runCli([
+      'examples',
+      'attempts',
+      'complete',
+      '--outcome',
+      'stopped',
+      '--json',
+    ])
+    const blocked = await runCli([
+      'examples',
+      'attempts',
+      'complete',
+      '--outcome',
+      'blocked',
+      '--json',
+    ])
+
+    expect(stopped.exitCode).toBe(1)
+    expect(stopped.stderr).toContain('Invalid application status: stopped')
+    expect(blocked.exitCode).toBe(1)
+    expect(blocked.stderr).toContain('Invalid application status: blocked')
+  })
+
   it('rejects invalid CLI-only input before calling HTTP', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     vi.stubGlobal('fetch', fetchMock)

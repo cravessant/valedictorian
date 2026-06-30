@@ -9,6 +9,7 @@ import {
   type StricliProcess,
 } from '@stricli/core'
 import {
+  applicationStatuses,
   createHttpValedictorianClient,
   defaultValedictorianApiBaseUrl,
   isApplicationStatus,
@@ -858,12 +859,21 @@ function buildExamplesRoute() {
 function buildAttemptCompleteExample(outcome: string | undefined) {
   const normalizedOutcome = outcome ?? 'submitted'
 
+  if (!isApplicationStatus(normalizedOutcome)) {
+    throw new Error(
+      `Invalid application status: ${normalizedOutcome}. Valid outcomes: ${applicationStatuses.join(', ')}`,
+    )
+  }
+
   if (normalizedOutcome !== 'submitted') {
+    const requiredFlags = attemptCompletionRequiredFlags(normalizedOutcome)
+
     return {
       complete: [
         'valedictorian-cli --json applications attempts complete <application-id> <attempt-id>',
         '--workspace "$VALEDICTORIAN_WORKSPACE"',
         `--outcome ${normalizedOutcome}`,
+        ...requiredFlags,
         '--summary "Attempt completed."',
       ].join(' '),
     }
@@ -897,6 +907,35 @@ function buildAttemptCompleteExample(outcome: string | undefined) {
     ].join(' '),
   }
 }
+
+function attemptCompletionRequiredFlags(outcome: string) {
+  if (outcome === 'needs_user_info') {
+    return ['--missing-user-info "Synthetic missing answer to collect from the user."']
+  }
+
+  if (outcome === 'ready_for_review') {
+    return [
+      '--hold-started-at "2026-06-30T00:00:00.000Z"',
+      '--manual-review-kind overridable',
+    ]
+  }
+
+  if (attemptBlockerOutcomes.has(outcome)) {
+    return ['--blocker-reason "Synthetic blocker reason."']
+  }
+
+  return []
+}
+
+const attemptBlockerOutcomes = new Set([
+  'manual_captcha',
+  'security_gate',
+  'login_needed',
+  'platform_error',
+  'closed',
+  'not_fit',
+  'not_pursued',
+])
 
 type RawFlagValue = string | boolean | readonly string[] | undefined
 type RawFlags = Readonly<Record<string, RawFlagValue>>
