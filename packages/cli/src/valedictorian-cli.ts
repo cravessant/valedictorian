@@ -223,7 +223,7 @@ const application = buildApplication(
             run: async (context, flags, applicationId) => {
               const client = await workspaceClient(context, flags)
 
-              await client.scores.record({
+              const score = await client.scores.record({
                 applicationId,
                 score: Number(requiredOption(flags, 'score', '--score value')),
                 band: requiredOption(flags, 'band', '--band value'),
@@ -238,7 +238,7 @@ const application = buildApplication(
                 rubricVersion: optionValue(flags, 'rubric-version') ?? 'valedictorian-cli',
               })
 
-              writeJson(context, { ok: true }, false)
+              writeJson(context, score, false)
             },
           }),
         },

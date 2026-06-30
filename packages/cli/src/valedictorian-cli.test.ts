@@ -643,9 +643,23 @@ describe('valedictorian-cli npm package', () => {
 
   it('gets applications, updates status, and records scores over HTTP', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    const scoreRecord = {
+      applicationId: 'application-1',
+      score: 8,
+      band: 'high',
+      roleRelevance: 3,
+      careerSignal: 2,
+      cityWorkMode: 2,
+      compensationLogistics: 1,
+      penalties: [],
+      rationale: 'Strong fit.',
+      rubricVersion: 'valedictorian-cli',
+      id: 'score-1',
+      createdAt: '2026-06-30T00:00:00.000Z',
+    }
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'application-1' }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'application-1', status: 'submitted' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(scoreRecord))
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(
@@ -672,29 +686,31 @@ describe('valedictorian-cli npm package', () => {
         'Submitted from CLI.',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
-    await expect(
-      runCli([
-        'scores',
-        'record',
-        'application-1',
-        '--score',
-        '8',
-        '--band',
-        'high',
-        '--role-relevance',
-        '3',
-        '--career-signal',
-        '2',
-        '--city-work-mode',
-        '2',
-        '--compensation-logistics',
-        '1',
-        '--rationale',
-        'Strong fit.',
-        '--workspace',
-        'workspace-1',
-      ]),
-    ).resolves.toMatchObject({ exitCode: 0 })
+    const scoreResult = await runCli([
+      'scores',
+      'record',
+      'application-1',
+      '--score',
+      '8',
+      '--band',
+      'high',
+      '--role-relevance',
+      '3',
+      '--career-signal',
+      '2',
+      '--city-work-mode',
+      '2',
+      '--compensation-logistics',
+      '1',
+      '--rationale',
+      'Strong fit.',
+      '--workspace',
+      'workspace-1',
+      '--json',
+    ])
+
+    expect(scoreResult.exitCode).toBe(0)
+    expect(JSON.parse(scoreResult.stdout)).toEqual(scoreRecord)
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
