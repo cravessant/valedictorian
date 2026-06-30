@@ -5,7 +5,7 @@ Command-line client for Valedictorian.
 ## Install
 
 ```sh
-npm install -g valedictorian-cli@alpha
+pnpm add -g valedictorian-cli@alpha
 ```
 
 The CLI is still published under the npm `alpha` dist-tag. Avoid an untagged

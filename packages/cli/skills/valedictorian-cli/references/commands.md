@@ -5,7 +5,7 @@
 Installed package:
 
 ```sh
-npm install -g valedictorian-cli@alpha
+pnpm add -g valedictorian-cli@alpha
 valedictorian-cli doctor
 valedictorian-cli context
 valedictorian-cli --help
@@ -75,7 +75,7 @@ valedictorian-cli --json applications create \
   --country US \
   --work-mode remote \
   --source-name "LinkedIn" \
-  --status discovered \
+  --status queued \
   --primary-url "https://jobs.example.com/delta"
 ```
 

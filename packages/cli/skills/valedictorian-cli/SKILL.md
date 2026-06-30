@@ -19,7 +19,7 @@ valedictorian-cli context
 If installing the npm package while Valedictorian is still in alpha, install the alpha dist-tag:
 
 ```sh
-npm install -g valedictorian-cli@alpha
+pnpm add -g valedictorian-cli@alpha
 ```
 
 When working from the `valedictorian-cli` repository, use the local build instead:
