@@ -368,7 +368,7 @@ export const defaultScoreRecorder = (input: ScoreInput) => {
   }
 
   const scoresWindow = window as Window & {
-    scores?: { record(input: ScoreInput): Promise<void> }
+    scores?: { record(input: ScoreInput): ReturnType<ScoresPreloadApi['record']> }
   }
 
   return scoresWindow.scores?.record(input) ?? Promise.reject(new Error('Scores API is unavailable.'))

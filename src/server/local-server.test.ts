@@ -1309,7 +1309,20 @@ describe('local Valedictorian HTTP server', () => {
       method: 'POST',
     })
 
-    await expect(readJson(scoreResponse)).resolves.toEqual({ ok: true })
+    await expect(readJson(scoreResponse)).resolves.toMatchObject({
+      applicationId: 'application-versant-platform',
+      score: 8,
+      band: 'high',
+      roleRelevance: 3,
+      careerSignal: 2,
+      cityWorkMode: 2,
+      compensationLogistics: 1,
+      penalties: [],
+      rationale: 'Strong fit.',
+      rubricVersion: 'http-test',
+      id: expect.any(String) as string,
+      createdAt: expect.any(String) as string,
+    })
 
     const applicationResponse = await fetch(
       `${server.url}/v1/workspaces/workspace-1/applications/application-versant-platform`,

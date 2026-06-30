@@ -6,7 +6,7 @@ import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ModalShell } from '@/components/ui/modal-shell'
 import { AlertCircle, X } from 'lucide-react'
-import type { ScoreInput, VerificationReceiptPayload } from 'sparxie'
+import type { ScoreInput, ScoreRecord, VerificationReceiptPayload } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
 import { formatTimestamp } from '../../app/format'
 import type {
@@ -32,7 +32,7 @@ interface ApplicationDetailModalProps {
   links: ApplicationLinkRecord[]
   linksError: string | null
   onCreateLink?: (input: CreateApplicationLinkInput) => Promise<ApplicationLinkRecord>
-  onRecordScore?: (input: ScoreInput) => Promise<void>
+  onRecordScore?: (input: ScoreInput) => Promise<ScoreRecord>
   onUpdateLink?: (input: UpdateApplicationLinkInput) => Promise<ApplicationLinkRecord>
   onClose: () => void
 }
@@ -384,7 +384,7 @@ function ScoreEditorModal({
 }: {
   applicationId: string
   onClose: () => void
-  onRecordScore: (input: ScoreInput) => Promise<void>
+  onRecordScore: (input: ScoreInput) => Promise<ScoreRecord>
 }) {
   const [score, setScore] = useState('8')
   const [band, setBand] = useState('high')

@@ -152,7 +152,7 @@ describe('runtime local Valedictorian client', () => {
     const sqlitePath = createTempSqlitePath()
     const client = createLocalValedictorianClient({ sqlitePath })
 
-    await client.scores.record({
+    await expect(client.scores.record({
       applicationId: 'application-jobster-analytics',
       band: 'high',
       careerSignal: 2,
@@ -163,6 +163,19 @@ describe('runtime local Valedictorian client', () => {
       roleRelevance: 3,
       rubricVersion: 'test-rubric',
       score: 7,
+    })).resolves.toMatchObject({
+      applicationId: 'application-jobster-analytics',
+      band: 'high',
+      careerSignal: 2,
+      cityWorkMode: 1,
+      compensationLogistics: 1,
+      penalties: [],
+      rationale: 'Now looks relevant after a closer review.',
+      roleRelevance: 3,
+      rubricVersion: 'test-rubric',
+      score: 7,
+      id: expect.any(String) as string,
+      createdAt: expect.any(String) as string,
     })
 
     await expect(client.applications.get('application-jobster-analytics')).resolves.toMatchObject({

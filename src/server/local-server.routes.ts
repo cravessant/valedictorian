@@ -615,10 +615,13 @@ export async function handleRequest({
     }
 
     if (request.method === 'POST' && requestUrl.pathname === '/v1/scores') {
-      await client.scores.record((await readJsonBody(request)) as Parameters<
-        ValedictorianWorkspaceClient['scores']['record']
-      >[0])
-      writeJson(response, 200, { ok: true })
+      writeJson(
+        response,
+        200,
+        await client.scores.record((await readJsonBody(request)) as Parameters<
+          ValedictorianWorkspaceClient['scores']['record']
+        >[0]),
+      )
       return
     }
 

@@ -48,6 +48,7 @@ import {
   type ActionQueueListResult,
   type PromoteSourcingFindingInput,
   type ScoreInput,
+  type ScoreRecord,
   type SetSourcingFindingDecisionInput,
   type SourcingFinding,
   type SourcingFindingsListInput,
@@ -151,7 +152,7 @@ interface AppProps {
   attemptLoader?: (applicationId: string) => Promise<ApplicationAttemptsListResult>
   createSourcingFinding?: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
   actionQueueLoader?: (query: ActionQueueListQuery) => Promise<ActionQueueListResult>
-  scoreRecorder?: (input: ScoreInput) => Promise<void>
+  scoreRecorder?: (input: ScoreInput) => Promise<ScoreRecord>
   sourcingLoader?: (input: SourcingFindingsListInput) => Promise<SourcingFindingsListResult>
   promoteSourcingFinding?: (input: PromoteSourcingFindingInput) => Promise<SourcingFinding>
   decideSourcingFinding?: (input: SetSourcingFindingDecisionInput) => Promise<SourcingFinding>
@@ -1084,8 +1085,9 @@ function App({
             return link
           }}
           onRecordScore={async (input) => {
-            await scoreRecorder(input)
+            const score = await scoreRecorder(input)
             reloadApplicationViews()
+            return score
           }}
           onUpdateLink={async (input) => {
             const link = await applicationLinkUpdater(input)

@@ -1,24 +1,25 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import type { ScoreInput } from 'sparxie'
+import type { ScoreInput, ScoreRecord } from 'sparxie'
 import { applicationScores, applications } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 
 export type { ScoreInput } from 'sparxie'
 
 export interface ScoringRepository {
-  recordScore: (input: ScoreInput) => Promise<void>
+  recordScore: (input: ScoreInput) => Promise<ScoreRecord>
 }
 
 export function createSqliteScoringRepository(database: DrizzleDatabase): ScoringRepository {
   return {
     async recordScore(input) {
       const createdAt = new Date().toISOString()
+      const id = randomUUID()
 
       database
         .insert(applicationScores)
         .values({
-          id: randomUUID(),
+          id,
           applicationId: input.applicationId,
           score: input.score,
           band: input.band,
@@ -42,6 +43,12 @@ export function createSqliteScoringRepository(database: DrizzleDatabase): Scorin
         })
         .where(eq(applications.id, input.applicationId))
         .run()
+
+      return {
+        ...input,
+        id,
+        createdAt,
+      }
     },
   }
 }
