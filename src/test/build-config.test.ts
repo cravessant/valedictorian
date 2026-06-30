@@ -17,6 +17,7 @@ function readElectronBuilderConfig() {
   return JSON.parse(configText.replace(/^\s*\/\/.*\r?\n/, '')) as {
     appId?: string
     asarUnpack?: string[]
+    detectUpdateChannel?: boolean
     files?: string[]
     productName?: string
     mac?: {
@@ -68,9 +69,9 @@ describe('build configuration', () => {
     expect(packageJson.version).toMatch(/^0\.\d+\.\d+-alpha\.\d+$/)
     expect(packageJson.scripts?.['build:mac']).toContain('--publish never')
     expect(packageJson.scripts?.['build:mac']).not.toContain('--mac dmg')
-    expect(packageJson.scripts?.['build:mac:release']).toContain('--publish always')
-    expect(packageJson.scripts?.['build:mac:release']).not.toContain('--publish never')
+    expect(packageJson.scripts?.['build:mac:release']).toBeUndefined()
     expect(packageJson.dependencies?.['electron-updater']).toBeDefined()
+    expect(config.detectUpdateChannel).toBe(false)
     expect(config.publish).toEqual([
       {
         provider: 'generic',
