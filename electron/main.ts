@@ -13,6 +13,7 @@ import { registerSettingsIpc } from '../src/ipc/settings.ipc'
 import { registerSourcingIpc } from '../src/ipc/sourcing.ipc'
 import { registerUpdatesIpc } from '../src/ipc/updates.ipc'
 import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
+import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '../src/server/local-workspaces'
 import {
   createSqliteProfileRepository,
   type ProfileSecretCodec,
@@ -65,6 +66,7 @@ let mainWindow: BrowserWindow | null = null
 let workspaceLauncherWindow: BrowserWindow | null = null
 let runtime: ValedictorianRuntime | null = null
 let currentWorkspace: WorkspaceSummary | null = null
+let workspaceManager: LocalWorkspaceManager | null = null
 let runtimeServicesRegistered = false
 let initialUpdateCheckScheduled = false
 const updateService = createElectronUpdateService(app, {
@@ -126,6 +128,7 @@ async function registerRuntimeServices(
       ...config,
       seedDataMode: options?.seedData ?? config.seedDataMode,
     },
+    workspaceManager: workspaceManager ?? undefined,
   })
   const profileSqlite = createFileDatabase(config.sqlitePath)
   migrateDatabase(profileSqlite)
@@ -318,6 +321,11 @@ app.whenReady().then(async () => {
   const registryStore = createFileWorkspaceRegistryStore(
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
+  workspaceManager = createLocalWorkspaceManager({
+    referenceTrackerPath: process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
+    registryStore,
+    secretCodec: createElectronSecretCodec(),
+  })
   const canSeedSampleData = Boolean(VITE_DEV_SERVER_URL)
   let workspaceService: WorkspaceService
   workspaceService = createWorkspaceService({

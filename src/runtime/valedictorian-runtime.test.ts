@@ -266,6 +266,38 @@ describe('Valedictorian runtime creation', () => {
     expect(server.close).toHaveBeenCalled()
   })
 
+  it('passes a local workspace manager to the local HTTP server', async () => {
+    const localClient = createWorkspaceClient('local')
+    const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:4317' }
+    const workspaceManager = {
+      create: vi.fn(),
+      list: vi.fn(),
+      open: vi.fn(),
+      resolveClient: vi.fn(),
+    }
+    const startServer = vi.fn(async () => server)
+
+    const runtime = await createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({
+        env: {},
+        userDataPath: '/tmp/valedictorian-user-data',
+      }),
+      createLocalClient: vi.fn(() => localClient),
+      startServer,
+      workspaceManager,
+    })
+
+    expect(startServer).toHaveBeenCalledWith({
+      client: localClient,
+      host: '127.0.0.1',
+      port: 4317,
+      workspaceManager,
+    })
+
+    await runtime.close()
+    expect(server.close).toHaveBeenCalled()
+  })
+
   it('uses an HTTP client without SQLite or local server in remote mode', async () => {
     const workspaceClient = createWorkspaceClient('http')
     const forWorkspace = vi.fn(() => workspaceClient)

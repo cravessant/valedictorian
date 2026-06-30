@@ -112,11 +112,11 @@ export function createLocalWorkspaceManager({
         }
 
         const client = createClient({
-        referenceTrackerPath,
-        seedDataMode,
-        secretCodec,
-        sqlitePath: resolveWorkspaceLayout(workspace.path).sqlitePath,
-      })
+          referenceTrackerPath,
+          seedDataMode,
+          secretCodec,
+          sqlitePath: resolveWorkspaceLayout(workspace.path).sqlitePath,
+        })
         clientCache.set(workspaceId, client)
         await registryStore.clearError(workspaceId)
         return client

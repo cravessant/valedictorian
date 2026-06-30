@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, count, desc, eq, isNull } from 'drizzle-orm'
+import { and, count, desc, eq, isNull, or, sql } from 'drizzle-orm'
 import {
   applicationEvents,
   applicationLinks,
@@ -69,6 +69,7 @@ const DEFAULT_EVENT_LIST_LIMIT = 50
 const DEFAULT_ATTEMPT_LIST_LIMIT = 50
 const DEFAULT_LINK_LIST_LIMIT = 50
 const FIRST_ATTEMPT_STEP_SEQUENCE = 1
+const APPLICATION_ATTEMPT_METADATA_KIND = 'application_attempt'
 export function createSqliteApplicationRepository(
   database: DrizzleDatabase,
 ): ApplicationRepository {
@@ -382,6 +383,7 @@ export function createSqliteApplicationRepository(
             timezone: null,
             inputJson: JSON.stringify(normalizedInput),
             metadataJson: JSON.stringify({
+              kind: APPLICATION_ATTEMPT_METADATA_KIND,
               entryUrl: normalizedInput.entryUrl ?? null,
               resumeVariant: normalizedInput.resumeVariant ?? null,
               resumeArtifactPath: normalizedInput.resumeArtifactPath ?? null,
@@ -814,6 +816,7 @@ export function createSqliteApplicationRepository(
         eq(workflowRuns.subjectApplicationId, applicationId),
         eq(workflowRuns.runType, 'application_attempt'),
         isNull(workflowRuns.deletedAt),
+        isApplicationAttemptLifecycleRun(),
       )
       const totalRow = database
         .select({ value: count() })
@@ -953,4 +956,17 @@ export function createSqliteApplicationRepository(
       })
     },
   }
+}
+
+function isApplicationAttemptLifecycleRun() {
+  return or(
+    sql`${workflowRuns.metadataJson} like ${'%"kind":"application_attempt"%'}`,
+    sql`exists (
+      select 1
+      from ${workflowRunSteps}
+      where ${workflowRunSteps.workflowRunId} = ${workflowRuns.id}
+        and ${workflowRunSteps.sequence} = ${FIRST_ATTEMPT_STEP_SEQUENCE}
+        and ${workflowRunSteps.type} = 'attempt_started'
+    )`,
+  )
 }

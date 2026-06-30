@@ -810,6 +810,44 @@ describe('SQLite application repository workflow attempts', () => {
       .set({ startedAt: '2026-06-04T17:00:00.000Z' })
       .where(eq(workflowRuns.id, secondAttempt.id))
       .run()
+    database
+      .insert(workflowRuns)
+      .values({
+        id: 'workflow-run-broad-audit',
+        actorName: 'codex',
+        actorType: 'agent',
+        blocker: null,
+        completedAt: null,
+        coverageEndedAt: null,
+        coverageStartedAt: null,
+        createdAt: '2026-06-04T18:00:00.000Z',
+        deletedAt: null,
+        inputJson: '{}',
+        metadataJson: '{}',
+        outcome: null,
+        runType: 'application_attempt',
+        sourceId: null,
+        startedAt: '2026-06-04T18:00:00.000Z',
+        status: 'in_progress',
+        subjectApplicationId: 'application-versant-platform',
+        summary: 'Broad audit workflow, not an application attempt lifecycle.',
+        timezone: null,
+        updatedAt: '2026-06-04T18:00:00.000Z',
+      })
+      .run()
+    database
+      .insert(workflowRunSteps)
+      .values({
+        id: 'workflow-run-broad-audit-step-1',
+        actor: 'agent:codex',
+        createdAt: '2026-06-04T18:00:00.000Z',
+        message: 'Broad workflow started.',
+        payloadJson: '{}',
+        sequence: 1,
+        type: 'run_started',
+        workflowRunId: 'workflow-run-broad-audit',
+      })
+      .run()
 
     await expect(
       repository.listApplicationAttempts({

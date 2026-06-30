@@ -11,6 +11,7 @@ import {
   type CreateValedictorianHttpServerOptions,
   type StartedValedictorianHttpServer,
 } from '../server/local-server'
+import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import {
   createLocalValedictorianClient,
@@ -53,6 +54,7 @@ export interface CreateValedictorianRuntimeOptions {
   startServer?: (
     options: CreateValedictorianHttpServerOptions,
   ) => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>
+  workspaceManager?: LocalWorkspaceManager
 }
 
 export function resolveValedictorianRuntimeConfig({
@@ -88,6 +90,7 @@ export async function createValedictorianRuntime({
   createHttpClient = createHttpValedictorianClient,
   createLocalClient = createLocalValedictorianClient,
   startServer = createValedictorianHttpServer,
+  workspaceManager,
 }: CreateValedictorianRuntimeOptions): Promise<ValedictorianRuntime> {
   if (config.mode === 'remote') {
     if (!config.workspaceId) {
@@ -110,11 +113,17 @@ export async function createValedictorianRuntime({
     sqlitePath: config.sqlitePath,
   })
 
-  const server = await startServer({
+  const serverOptions: CreateValedictorianHttpServerOptions = {
     client,
     host: config.apiHost,
     port: config.apiPort,
-  })
+  }
+
+  if (workspaceManager) {
+    serverOptions.workspaceManager = workspaceManager
+  }
+
+  const server = await startServer(serverOptions)
 
   return {
     client,
