@@ -190,7 +190,7 @@ export function createSqliteActionQueueRepository(
 
 function mapActionQueueRow(row: ActionQueueRow, policyConfig: PolicyConfig, now: Date): ActionQueueListItem[] {
   if (row.blockerReason) {
-    const reason = `Blocked: ${row.blockerReason}.`
+    const reason = prefixedSentence('Blocked', row.blockerReason)
     return [
       createActionQueueItem({
         row,
@@ -215,7 +215,7 @@ function mapActionQueueRow(row: ActionQueueRow, policyConfig: PolicyConfig, now:
 
   if (row.missingUserInfo || row.status === 'needs_user_info') {
     const reason = row.missingUserInfo
-      ? `Missing user info: ${row.missingUserInfo}.`
+      ? prefixedSentence('Missing user info', row.missingUserInfo)
       : 'Application needs user-specific information.'
     return [
       createActionQueueItem({
@@ -376,6 +376,12 @@ function compareActionQueueItems(left: ActionQueueListItem, right: ActionQueueLi
   }
 
   return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+}
+
+function prefixedSentence(prefix: string, value: string) {
+  const trimmedValue = value.trim()
+  const terminalPunctuation = /[.!?]$/.test(trimmedValue)
+  return `${prefix}: ${trimmedValue}${terminalPunctuation ? '' : '.'}`
 }
 
 function isAtLeastHoursOld(timestamp: string | null, hours: number, now: Date) {

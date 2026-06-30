@@ -174,6 +174,42 @@ describe('SQLite action queue repository', () => {
     })
   })
 
+  it('does not duplicate punctuation in structured missing-info reasons', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    seedSampleApplications(database)
+    sqlite
+      .prepare(
+        `
+          insert into application_workflow_states (
+            application_id,
+            missing_user_info,
+            created_at,
+            updated_at
+          ) values (?, ?, ?, ?)
+        `,
+      )
+      .run(
+        'application-versant-platform',
+        'Explicit user confirmation is required before any real submission.',
+        '2026-06-04T16:00:00.000Z',
+        '2026-06-04T16:00:00.000Z',
+      )
+
+    const repository = createSqliteActionQueueRepository(database)
+    const result = await repository.listActionQueue({ actionBucket: 'needs_user_info' })
+
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'application-versant-platform',
+          reason: 'Missing user info: Explicit user confirmation is required before any real submission.',
+        }),
+      ]),
+    )
+  })
+
   it('places old overridable review holds in the manual-review-pickup action bucket', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
