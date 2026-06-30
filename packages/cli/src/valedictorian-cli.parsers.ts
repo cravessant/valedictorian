@@ -445,7 +445,7 @@ export function parseAttemptComplete(
   const outcome = readRequiredOption(argv, '--outcome')
 
   if (!isApplicationStatus(outcome)) {
-    throw new Error(`Invalid application status: ${outcome}`)
+    throw new Error(`Invalid attempt outcome: ${outcome}`)
   }
 
   const input: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['complete']>[0] = {

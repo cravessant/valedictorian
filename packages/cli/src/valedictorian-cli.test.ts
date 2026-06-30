@@ -1181,9 +1181,9 @@ describe('valedictorian-cli npm package', () => {
     ])
 
     expect(stopped.exitCode).toBe(1)
-    expect(stopped.stderr).toContain('Invalid application status: stopped')
+    expect(stopped.stderr).toContain('Invalid attempt outcome: stopped')
     expect(blocked.exitCode).toBe(1)
-    expect(blocked.stderr).toContain('Invalid application status: blocked')
+    expect(blocked.stderr).toContain('Invalid attempt outcome: blocked')
   })
 
   it('rejects invalid CLI-only input before calling HTTP', async () => {

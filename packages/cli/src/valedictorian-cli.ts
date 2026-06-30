@@ -861,7 +861,7 @@ function buildAttemptCompleteExample(outcome: string | undefined) {
 
   if (!isApplicationStatus(normalizedOutcome)) {
     throw new Error(
-      `Invalid application status: ${normalizedOutcome}. Valid outcomes: ${applicationStatuses.join(', ')}`,
+      `Invalid attempt outcome: ${normalizedOutcome}. Valid outcomes: ${applicationStatuses.join(', ')}`,
     )
   }
 
