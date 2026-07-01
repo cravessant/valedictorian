@@ -20,7 +20,11 @@ export function readPackageJson() {
   }
 }
 
-export async function runCli(argv: string[], env: Record<string, string | undefined> = {}) {
+export async function runCli(
+  argv: string[],
+  env: Record<string, string | undefined> = {},
+  options: { cwd?: string } = {},
+) {
   const stdout: string[] = []
   const stderr: string[] = []
   const exitCode = await runValedictorianCli({
@@ -29,6 +33,7 @@ export async function runCli(argv: string[], env: Record<string, string | undefi
       VALEDICTORIAN_API_URL: 'https://valedictorian.test',
       ...env,
     },
+    cwd: options.cwd,
     stdout: (value) => stdout.push(value),
     stderr: (value) => stderr.push(value),
   })
@@ -39,4 +44,3 @@ export async function runCli(argv: string[], env: Record<string, string | undefi
     stdout: stdout.join(''),
   }
 }
-

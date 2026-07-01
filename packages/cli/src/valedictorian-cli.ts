@@ -51,6 +51,7 @@ import {
 
 export interface RunValedictorianCliOptions {
   argv: string[]
+  cwd?: string
   env?: Record<string, string | undefined>
   stdout?: (value: string) => void
   stderr?: (value: string) => void
@@ -60,6 +61,7 @@ interface ValedictorianCliContext extends CommandContext {
   readonly apiBaseUrl: string
   readonly apiToken?: string
   readonly client: ValedictorianClient
+  readonly cwd: string
   readonly env: Record<string, string | undefined>
   outputJson?: boolean
   readonly process: StricliProcess
@@ -67,6 +69,7 @@ interface ValedictorianCliContext extends CommandContext {
 
 export async function runValedictorianCli({
   argv,
+  cwd = process.cwd(),
   env = process.env,
   stdout = (value) => process.stdout.write(value),
   stderr = (value) => process.stderr.write(value),
@@ -82,6 +85,7 @@ export async function runValedictorianCli({
     apiBaseUrl,
     apiToken: env.VALEDICTORIAN_API_TOKEN,
     client: createClient(env),
+    cwd,
     env,
     process: processLike,
   }
@@ -122,6 +126,7 @@ const application = buildApplication(
           writeJson(
             context,
             await runContext({
+              cwd: context.cwd,
               env: context.env,
               skipNetwork: flags['skip-network'] === true,
               timeoutMs: parseTimeoutMs(optionValue(flags, 'timeout-ms')),
@@ -139,6 +144,7 @@ const application = buildApplication(
         run: async (context, flags) => {
           const report = await runDoctor({
             cliVersion: await readPackageVersion(),
+            cwd: context.cwd,
             env: context.env,
             skipNetwork: flags['skip-network'] === true,
             timeoutMs: parseTimeoutMs(optionValue(flags, 'timeout-ms')),

@@ -67,6 +67,9 @@ describe('CLI release workflow', () => {
     )
     expect(readme).toContain('valedictorian-cli --json workspaces list')
     expect(readme).toContain('applications list --workspace "$VALEDICTORIAN_WORKSPACE"')
+    expect(readme).toContain('## Project config discovery')
+    expect(readme).toContain('valedictorian.config.json')
+    expect(readme).toContain('Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.')
     expect(skill).toContain(
       'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha',
     )

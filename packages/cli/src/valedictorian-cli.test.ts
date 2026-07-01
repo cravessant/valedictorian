@@ -22,8 +22,11 @@ describe('valedictorian-cli npm package', () => {
     expect(packageJson.files).toEqual(['dist'])
     expect(packageJson.scripts?.prepare).toBe('pnpm build')
     expect(packageJson.scripts?.prepublishOnly).toBe('pnpm lint && pnpm test && pnpm build')
+    expect(packageJson.dependencies?.cosmiconfig).toBe('9.0.2')
     expect(packageJson.dependencies?.sparxie).toMatch(/^\d+\.\d+\.\d+$/)
     expect(packageJson.dependencies?.sparxie).not.toContain('github:')
+    expect(packageJson.dependencies).not.toHaveProperty('conf')
+    expect(packageJson.dependencies).not.toHaveProperty('configstore')
     expect(Object.values(packageJson.scripts ?? {})).not.toEqual(
       expect.arrayContaining([expect.stringContaining('../sparxie')]),
     )
@@ -266,6 +269,68 @@ describe('valedictorian-cli npm package', () => {
       note: 'Last-open workspace resolved for diagnostics. Workspace-scoped commands still require --workspace.',
       resolution: 'resolved',
     })
+  })
+
+  it('prints discovered project config in read-only CLI context', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-project-config-'))
+    fs.writeFileSync(
+      path.join(projectRoot, 'valedictorian.config.json'),
+      JSON.stringify({ version: 1, workspace: { name: '  Example Workspace  ' } }),
+      'utf8',
+    )
+
+    const result = await runCli(['context', '--skip-network', '--json'], {}, { cwd: projectRoot })
+    const context = JSON.parse(result.stdout) as {
+      projectConfig: {
+        config?: { version: number; workspace: { name?: string } }
+        path?: string
+        status: string
+      }
+    }
+
+    expect(result.exitCode).toBe(0)
+    expect(context.projectConfig).toEqual({
+      config: {
+        version: 1,
+        workspace: {
+          name: 'Example Workspace',
+        },
+      },
+      path: path.join(projectRoot, 'valedictorian.config.json'),
+      status: 'found',
+    })
+  })
+
+  it('fails doctor diagnostics when discovered project config is invalid', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-invalid-config-'))
+    fs.writeFileSync(
+      path.join(projectRoot, '.valedictorianrc.json'),
+      JSON.stringify({ version: 1, token: 'do-not-store-this-here' }),
+      'utf8',
+    )
+
+    const result = await runCli(['doctor', '--skip-network', '--json'], {}, { cwd: projectRoot })
+    const report = JSON.parse(result.stdout) as {
+      checks: Array<{ message: string; name: string; status: string }>
+      ok: boolean
+      projectConfig: { message?: string; status: string }
+    }
+
+    expect(result.exitCode).toBe(1)
+    expect(report.ok).toBe(false)
+    expect(report.projectConfig).toMatchObject({
+      message: 'Project config must not contain secret-like key: token',
+      status: 'invalid',
+    })
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        {
+          message: 'Project config must not contain secret-like key: token',
+          name: 'project-config',
+          status: 'fail',
+        },
+      ]),
+    )
   })
 
   it('lists workspaces without requiring a selected workspace', async () => {

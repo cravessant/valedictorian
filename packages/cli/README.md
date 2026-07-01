@@ -34,6 +34,23 @@ valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE
 
 `--workspace` may be placed before the command or on the command itself. Workspace-scoped commands still require an explicit workspace; `doctor` and `context` can use the local last-open workspace for diagnostics when the local API workspace endpoint is unavailable.
 
+## Project config discovery
+
+The CLI discovers human-authored project config from the current working
+directory upward. Supported files are `valedictorian.config.json`,
+`.valedictorianrc.json`, and the `valedictorian` key in `package.json`.
+
+```json
+{
+  "version": 1,
+  "workspace": {
+    "name": "Example Workspace"
+  }
+}
+```
+
+Project config is for repo/workspace defaults only. Do not store API tokens, OAuth tokens, passwords, or client secrets in project config. Use environment variables or the app's encrypted secret storage for secrets.
+
 ## Agent skill
 
 This repo includes a Valedictorian CLI agent skill:

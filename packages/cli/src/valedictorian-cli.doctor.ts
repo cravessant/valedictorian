@@ -9,6 +9,10 @@ import {
   isLocalApiUrl,
   readLocalWorkspaceList,
 } from './valedictorian-cli.workspaces.js'
+import {
+  loadValedictorianProjectConfig,
+  type ProjectConfigDiscoveryResult,
+} from './valedictorian-cli.project-config.js'
 
 type DoctorClassification = 'local' | 'staging' | 'production' | 'invalid'
 type DoctorCheckStatus = 'pass' | 'fail' | 'skip'
@@ -31,6 +35,7 @@ export interface DoctorReport {
     readonly tokenPresent: boolean
   }
   readonly workspace: DoctorWorkspaceContext
+  readonly projectConfig: ProjectConfigDiscoveryResult
   readonly capabilities?: Partial<ValedictorianCapabilities> & Record<string, unknown>
   readonly checks: DoctorCheck[]
 }
@@ -48,6 +53,7 @@ export interface DoctorWorkspaceContext {
 
 export interface CliContextReport {
   readonly target: DoctorReport['target']
+  readonly projectConfig: ProjectConfigDiscoveryResult
   readonly workspace: DoctorWorkspaceContext & {
     readonly note: string
   }
@@ -57,11 +63,13 @@ export interface CliContextReport {
 export async function runDoctor({
   cliVersion,
   env,
+  cwd,
   skipNetwork,
   timeoutMs,
   workspaceSelector,
 }: {
   cliVersion: string
+  cwd: string
   env: Record<string, string | undefined>
   skipNetwork: boolean
   timeoutMs: number
@@ -70,11 +78,13 @@ export async function runDoctor({
   const rawApiUrl = env.VALEDICTORIAN_API_URL ?? defaultValedictorianApiBaseUrl
   const apiUrl = sanitizeApiUrl(rawApiUrl)
   const classification = classifyApiUrl(rawApiUrl)
+  const projectConfig = loadValedictorianProjectConfig(cwd)
   let workspace: DoctorWorkspaceContext = { resolution: 'not_requested' }
   let capabilities: DoctorReport['capabilities']
   const checks: DoctorCheck[] = [
     nodeVersionCheck(),
     apiUrlCheck(rawApiUrl, classification),
+    projectConfigCheck(projectConfig),
   ]
 
   if (skipNetwork) {
@@ -122,17 +132,20 @@ export async function runDoctor({
       tokenPresent: Boolean(env.VALEDICTORIAN_API_TOKEN),
     },
     workspace,
+    projectConfig,
     capabilities,
     checks,
   }
 }
 
 export async function runContext({
+  cwd,
   env,
   skipNetwork,
   timeoutMs,
   workspaceSelector,
 }: {
+  cwd: string
   env: Record<string, string | undefined>
   skipNetwork: boolean
   timeoutMs: number
@@ -148,6 +161,7 @@ export async function runContext({
   if (skipNetwork) {
     return {
       target,
+      projectConfig: loadValedictorianProjectConfig(cwd),
       workspace: {
         resolution: 'skipped',
         selector: workspaceSelector,
@@ -167,6 +181,7 @@ export async function runContext({
 
   return {
     target,
+    projectConfig: loadValedictorianProjectConfig(cwd),
     workspace: {
       ...workspaceResult.workspace,
       note:
@@ -232,6 +247,30 @@ function apiUrlCheck(rawApiUrl: string, classification: DoctorClassification): D
     name: 'api-url',
     status: 'pass',
     message: `${sanitizeApiUrl(rawApiUrl)} is classified as ${classification}.`,
+  }
+}
+
+function projectConfigCheck(projectConfig: ProjectConfigDiscoveryResult): DoctorCheck {
+  if (projectConfig.status === 'found') {
+    return {
+      name: 'project-config',
+      status: 'pass',
+      message: `Loaded project config from ${projectConfig.path}.`,
+    }
+  }
+
+  if (projectConfig.status === 'invalid') {
+    return {
+      name: 'project-config',
+      status: 'fail',
+      message: projectConfig.message,
+    }
+  }
+
+  return {
+    name: 'project-config',
+    status: 'skip',
+    message: 'No Valedictorian project config found.',
   }
 }
 
