@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { createDataMigrationUmzug } from './data-migrations'
 import { createFileDatabase, createInMemoryDatabase, migrateDatabase } from './sqlite'
 
 describe('SQLite database', () => {
@@ -52,10 +53,43 @@ describe('SQLite database', () => {
     expect(sourceIndexes).toContain('idx_sources_name')
   })
 
-  it('migrates legacy policy queue config to action queue config', () => {
+  it('baselines legacy app databases into Drizzle migration history', () => {
     const database = createInMemoryDatabase()
+    database.exec(`
+      create table companies (
+        id text primary key,
+        name text not null,
+        normalized_name text not null,
+        website_url text,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+    `)
 
     migrateDatabase(database)
+
+    const migrationRows = database
+      .prepare('select created_at from __drizzle_migrations order by created_at')
+      .all()
+    const applicationTables = database
+      .prepare("select name from sqlite_master where type = 'table' and name = 'applications'")
+      .all()
+
+    expect(migrationRows).toHaveLength(3)
+    expect(applicationTables).toHaveLength(1)
+  })
+
+  it('migrates legacy policy queue config to action queue config', () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table policy_config (
+        id text primary key,
+        config_json text not null,
+        created_at text not null,
+        updated_at text not null
+      );
+    `)
     database
       .prepare(
         `
@@ -87,6 +121,120 @@ describe('SQLite database', () => {
       actionQueue: { staleLockHours: 5 },
     })
     expect(config).not.toHaveProperty('queue')
+
+    const dataMigrationRows = database
+      .prepare('select name from __valedictorian_data_migrations')
+      .all()
+    expect(dataMigrationRows).toEqual([
+      {
+        name: '20260630000000_policy_config_v2',
+      },
+    ])
+  })
+
+  it('records data migrations through Umzug SQLite storage', async () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table policy_config (
+        id text primary key,
+        config_json text not null,
+        created_at text not null,
+        updated_at text not null
+      );
+    `)
+
+    await createDataMigrationUmzug(database).up()
+
+    const dataMigrationRows = database
+      .prepare('select name from __valedictorian_data_migrations')
+      .all()
+    expect(dataMigrationRows).toEqual([
+      {
+        name: '20260630000000_policy_config_v2',
+      },
+    ])
+  })
+
+  it('backs up non-empty file databases before migration', () => {
+    const databaseRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-backup-'))
+    const databasePath = path.join(databaseRoot, 'valedictorian.sqlite')
+    const backupDirectory = path.join(databaseRoot, 'backups')
+    const database = createFileDatabase(databasePath)
+    database.exec(`
+      create table companies (
+        id text primary key,
+        name text not null,
+        normalized_name text not null,
+        website_url text,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+    `)
+
+    migrateDatabase(database, {
+      backupDirectory,
+      now: () => new Date('2026-06-30T17:00:00.000Z'),
+    })
+    database.close()
+
+    const backupFileName = 'valedictorian.sqlite.2026-06-30T17-00-00-000Z.bak'
+    expect(fs.readdirSync(backupDirectory)).toEqual([backupFileName])
+
+    const backup = createFileDatabase(path.join(backupDirectory, backupFileName))
+    const backupTables = backup
+      .prepare("select name from sqlite_master where type = 'table' and name = 'companies'")
+      .all()
+    backup.close()
+
+    expect(backupTables).toHaveLength(1)
+  })
+
+  it('rejects databases with newer Drizzle schema history', () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table __drizzle_migrations (
+        id SERIAL PRIMARY KEY,
+        hash text not null,
+        created_at numeric
+      );
+
+      insert into __drizzle_migrations (hash, created_at)
+      values ('future', 9999999999999);
+    `)
+
+    expect(() => migrateDatabase(database)).toThrow('Workspace schema is newer')
+  })
+
+  it('rejects databases with unrecognized Drizzle schema history', () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table __drizzle_migrations (
+        id SERIAL PRIMARY KEY,
+        hash text not null,
+        created_at numeric
+      );
+
+      insert into __drizzle_migrations (hash, created_at)
+      values ('unknown', 1);
+    `)
+
+    expect(() => migrateDatabase(database)).toThrow('schema migration history is not recognized')
+  })
+
+  it('rejects databases with newer data migration history', () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table __valedictorian_data_migrations (
+        name text primary key,
+        created_at text not null
+      );
+
+      insert into __valedictorian_data_migrations (name, created_at)
+      values ('29990101000000_future_data_change', '2999-01-01T00:00:00.000Z');
+    `)
+
+    expect(() => migrateDatabase(database)).toThrow('Workspace data migrations are newer')
   })
 
   it('enables local file database pragmas for agent access', () => {

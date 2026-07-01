@@ -12,6 +12,10 @@ function readPackageJson() {
   }
 }
 
+function readReadme() {
+  return fs.readFileSync(path.resolve('README.md'), 'utf8')
+}
+
 function readElectronBuilderConfig() {
   const configText = fs.readFileSync(path.resolve('electron-builder.json5'), 'utf8')
   return JSON.parse(configText.replace(/^\s*\/\/.*\r?\n/, '')) as {
@@ -56,6 +60,9 @@ describe('build configuration', () => {
     expect(fs.existsSync(path.resolve('build/entitlements.mac.inherit.plist'))).toBe(true)
 
     expect(packageJson.dependencies?.sparxie).toBeDefined()
+    expect(packageJson.dependencies?.cosmiconfig).toBe('9.0.2')
+    expect(packageJson.dependencies).not.toHaveProperty('conf')
+    expect(packageJson.dependencies).not.toHaveProperty('configstore')
     expect(packageJson.bin).toBeUndefined()
     expect(fs.existsSync(path.resolve('src/cli'))).toBe(false)
     expect(fs.existsSync(path.resolve('src/agent'))).toBe(false)
@@ -101,6 +108,7 @@ describe('build configuration', () => {
     })
     expect(config.files).toEqual(
       expect.arrayContaining([
+        'drizzle/**/*',
         'dist',
         'dist-electron',
         'node_modules/better-sqlite3/**/*',
@@ -111,5 +119,14 @@ describe('build configuration', () => {
     expect(config.asarUnpack).toEqual(
       expect.arrayContaining(['**/node_modules/better-sqlite3/**']),
     )
+  })
+
+  it('documents project config discovery separately from app-owned workspace state', () => {
+    const readme = readReadme()
+
+    expect(readme).toContain('## Project config discovery')
+    expect(readme).toContain('valedictorian.config.json')
+    expect(readme).toContain('<workspace>/.valedictorian/manifest.json')
+    expect(readme).toContain('Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.')
   })
 })

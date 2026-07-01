@@ -15,6 +15,7 @@
   ],
   "detectUpdateChannel": false,
   "files": [
+    "drizzle/**/*",
     "dist",
     "dist-electron",
     "node_modules/better-sqlite3/**/*",

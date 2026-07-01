@@ -14,6 +14,27 @@ Workspace state lives under:
 
 The app keeps only a small recent-workspace registry in the Electron app-data folder so it can reopen the last valid workspace on launch.
 
+## Project config discovery
+
+When opening a new project folder as a workspace, the app can discover
+human-authored project config from `valedictorian.config.json`,
+`.valedictorianrc.json`, or the `valedictorian` key in `package.json`.
+
+```json
+{
+  "version": 1,
+  "workspace": {
+    "name": "Summer Search"
+  }
+}
+```
+
+Project config is separate from app-owned workspace state. Once a workspace is
+initialized, `<workspace>/.valedictorian/manifest.json`,
+`<workspace>/.valedictorian/app.json`, and
+`<workspace>/.valedictorian/valedictorian.sqlite` remain the source of truth for
+app-managed data. Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.
+
 ## Development
 
 Use the mise-managed runtimes from this machine, then run:

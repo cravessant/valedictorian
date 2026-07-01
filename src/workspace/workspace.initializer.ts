@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { defaultAppSettings } from '../settings/app-settings'
+import { loadValedictorianProjectConfig } from './project-config'
 import { resolveWorkspaceLayout, type WorkspaceLayout } from './workspace.paths'
 
 export interface WorkspaceManifest {
@@ -32,7 +33,7 @@ export function initializeWorkspace(
     app: 'valedictorian',
     workspaceVersion: 1,
     id: createId(),
-    name: path.basename(rootPath),
+    name: readInitialWorkspaceName(rootPath),
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   }
@@ -57,6 +58,16 @@ export function initializeWorkspace(
     id: manifest.id,
     name: manifest.name,
   }
+}
+
+function readInitialWorkspaceName(rootPath: string) {
+  const projectConfig = loadValedictorianProjectConfig(rootPath)
+
+  if (projectConfig.status === 'found' && projectConfig.config.workspace.name) {
+    return projectConfig.config.workspace.name
+  }
+
+  return path.basename(rootPath)
 }
 
 function readManifest(manifestPath: string): WorkspaceManifest | null {

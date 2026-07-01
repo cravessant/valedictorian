@@ -45,6 +45,31 @@ describe('workspace initializer', () => {
     expect(fs.existsSync(layout.notesPath)).toBe(true)
   })
 
+  it('uses discovered project config when naming a new workspace manifest', () => {
+    const rootPath = createTempWorkspaceRoot()
+
+    fs.writeFileSync(
+      path.join(rootPath, 'valedictorian.config.json'),
+      JSON.stringify({ version: 1, workspace: { name: '  Summer Search  ' } }),
+      'utf8',
+    )
+
+    const workspace = initializeWorkspace(rootPath, {
+      createId: () => 'workspace-configured',
+      now: new Date('2026-06-08T12:00:00.000Z'),
+    })
+    const layout = resolveWorkspaceLayout(rootPath)
+
+    expect(workspace).toMatchObject({
+      id: 'workspace-configured',
+      name: 'Summer Search',
+    })
+    expect(JSON.parse(fs.readFileSync(layout.manifestPath, 'utf8'))).toMatchObject({
+      id: 'workspace-configured',
+      name: 'Summer Search',
+    })
+  })
+
   it('keeps existing workspace app settings when initializing an existing folder', () => {
     const rootPath = createTempWorkspaceRoot()
     const layout = resolveWorkspaceLayout(rootPath)

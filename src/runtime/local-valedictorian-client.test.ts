@@ -44,12 +44,21 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('starts with an empty application list by default', async () => {
-    const client = createRuntimeLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({ sqlitePath })
 
     await expect(client.applications.list()).resolves.toMatchObject({
       items: [],
       total: 0,
     })
+
+    const sqlite = createFileDatabase(sqlitePath)
+    const migrationRows = sqlite
+      .prepare('select created_at from __drizzle_migrations order by created_at')
+      .all()
+    sqlite.close()
+
+    expect(migrationRows.length).toBeGreaterThan(0)
   })
 
   it('requires an explicit path for reference tracker seeding', () => {
