@@ -21,6 +21,10 @@ export interface WorkspaceActivationOptions {
   seedData: WorkspaceCreateSeedData
 }
 
+export interface WorkspaceFolderPickerOptions<ParentWindow = unknown> {
+  parentWindow?: ParentWindow | null
+}
+
 export type WorkspaceLaunchState =
   | {
       devOptions: WorkspaceDevOptions
@@ -34,14 +38,21 @@ export type WorkspaceLaunchState =
       recentWorkspaces: WorkspaceLaunchRecord[]
     }
 
-export interface WorkspaceService {
-  chooseCreateParentFolder: () => Promise<string | null>
-  chooseFolder: () => Promise<WorkspaceSummary | null>
-  createWorkspace: (input: CreateWorkspaceInput) => Promise<WorkspaceLaunchState>
+export interface WorkspaceService<ParentWindow = unknown> {
+  chooseCreateParentFolder: (
+    options?: WorkspaceFolderPickerOptions<ParentWindow>,
+  ) => Promise<string | null>
+  chooseFolder: (
+    options?: WorkspaceFolderPickerOptions<ParentWindow>,
+  ) => Promise<WorkspaceSummary | null>
+  createWorkspace: (
+    input: CreateWorkspaceInput,
+    options?: WorkspaceFolderPickerOptions<ParentWindow>,
+  ) => Promise<WorkspaceLaunchState>
   getCurrent: () => Promise<WorkspaceSummary | null>
   getLaunchState: () => Promise<WorkspaceLaunchState>
   listRecent: () => Promise<WorkspaceRecord[]>
-  openFolder: () => Promise<WorkspaceLaunchState>
+  openFolder: (options?: WorkspaceFolderPickerOptions<ParentWindow>) => Promise<WorkspaceLaunchState>
   openRecent: (workspaceId: string) => Promise<WorkspaceLaunchState>
   removeRecent: (workspaceId: string) => Promise<WorkspaceLaunchState>
   reveal: (workspacePath: string) => Promise<void>
@@ -68,14 +79,16 @@ export interface ResolveWorkspaceLaunchStateOptions {
   registryStore: WorkspaceRegistryStore
 }
 
-export interface CreateWorkspaceServiceOptions {
+export interface CreateWorkspaceServiceOptions<ParentWindow = unknown> {
   activateWorkspace?: (
     workspace: WorkspaceSummary,
     options: WorkspaceActivationOptions,
   ) => Promise<void> | void
   canSeedSampleData?: boolean
-  chooseWorkspaceParentRoot?: () => Promise<string | null>
-  chooseWorkspaceRoot: () => Promise<string | null>
+  chooseWorkspaceParentRoot?: (
+    options?: WorkspaceFolderPickerOptions<ParentWindow>,
+  ) => Promise<string | null>
+  chooseWorkspaceRoot: (options?: WorkspaceFolderPickerOptions<ParentWindow>) => Promise<string | null>
   currentWorkspace: WorkspaceSummary | null | (() => WorkspaceSummary | null)
   onWorkspaceRegistryChanged?: () => Promise<void> | void
   pathExists?: (workspacePath: string) => boolean
@@ -163,7 +176,7 @@ function readWorkspacePathEnv(env: Record<string, string | undefined>) {
   return env.VALEDICTORIAN_WORKSPACE_PATH
 }
 
-export function createWorkspaceService({
+export function createWorkspaceService<ParentWindow = unknown>({
   activateWorkspace = async () => undefined,
   canSeedSampleData = false,
   chooseWorkspaceRoot,
@@ -175,15 +188,26 @@ export function createWorkspaceService({
   relaunchApp,
   revealPath,
   showWorkspaceSwitcher = () => false,
-}: CreateWorkspaceServiceOptions): WorkspaceService {
+}: CreateWorkspaceServiceOptions<ParentWindow>): WorkspaceService<ParentWindow> {
   const selectWorkspaceParentRoot = chooseWorkspaceParentRoot ?? chooseWorkspaceRoot
+  const resolveCurrentLaunchState = () => {
+    if (showWorkspaceSwitcher()) {
+      return resolveWorkspaceSwitcherLaunchState({
+        canSeedSampleData,
+        pathExists,
+        registryStore,
+      })
+    }
+
+    return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
+  }
 
   return {
-    chooseCreateParentFolder() {
-      return selectWorkspaceParentRoot()
+    chooseCreateParentFolder(options) {
+      return selectWorkspaceParentRoot(options)
     },
-    async chooseFolder() {
-      const selectedWorkspacePath = await chooseWorkspaceRoot()
+    async chooseFolder(options) {
+      const selectedWorkspacePath = await chooseWorkspaceRoot(options)
 
       if (!selectedWorkspacePath) {
         return null
@@ -194,11 +218,11 @@ export function createWorkspaceService({
       relaunchApp()
       return nextWorkspace
     },
-    async createWorkspace(input) {
-      const parentPath = input.parentPath ?? await selectWorkspaceParentRoot()
+    async createWorkspace(input, options) {
+      const parentPath = input.parentPath ?? await selectWorkspaceParentRoot(options)
 
       if (!parentPath) {
-        return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
+        return resolveCurrentLaunchState()
       }
 
       const workspaceRootPath = join(parentPath, input.name)
@@ -218,24 +242,16 @@ export function createWorkspaceService({
       return readCurrentWorkspace(currentWorkspace)
     },
     getLaunchState() {
-      if (showWorkspaceSwitcher()) {
-        return resolveWorkspaceSwitcherLaunchState({
-          canSeedSampleData,
-          pathExists,
-          registryStore,
-        })
-      }
-
-      return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
+      return resolveCurrentLaunchState()
     },
     listRecent() {
       return registryStore.listRecent()
     },
-    async openFolder() {
-      const selectedWorkspacePath = await chooseWorkspaceRoot()
+    async openFolder(options) {
+      const selectedWorkspacePath = await chooseWorkspaceRoot(options)
 
       if (!selectedWorkspacePath) {
-        return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
+        return resolveCurrentLaunchState()
       }
 
       const workspace = await openWorkspace(selectedWorkspacePath, registryStore)
@@ -271,7 +287,7 @@ export function createWorkspaceService({
     async removeRecent(workspaceId) {
       await registryStore.remove(workspaceId)
       await onWorkspaceRegistryChanged()
-      return resolveWorkspaceLaunchState({ canSeedSampleData, pathExists, registryStore })
+      return resolveCurrentLaunchState()
     },
     async reveal(workspacePath) {
       await revealPath(workspacePath)
