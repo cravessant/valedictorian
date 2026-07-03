@@ -9,6 +9,7 @@ import type { DrizzleDatabase } from '../../db/sqlite'
 import {
   DEFAULT_APPLICATION_LIST_LIMIT,
   MAX_APPLICATION_LIST_LIMIT,
+  parseJobTermsJson,
   type ApplicationListItem,
   type ApplicationListQuery,
   type WorkMode,
@@ -20,9 +21,14 @@ export const applicationSelection = {
   id: applications.id,
   companyName: companies.name,
   roleTitle: applications.roleTitle,
+  roleKind: applications.roleKind,
   sourceName: sources.name,
   status: applications.status,
   term: applications.term,
+  timingMode: applications.timingMode,
+  termsJson: applications.termsJson,
+  startDate: applications.startDate,
+  endDate: applications.endDate,
   locationRaw: applications.locationRaw,
   city: applications.city,
   region: applications.region,
@@ -42,9 +48,14 @@ interface ApplicationRow {
   id: string
   companyName: string
   roleTitle: string
+  roleKind: string
   sourceName: string
   status: string
   term: string | null
+  timingMode: string
+  termsJson: string
+  startDate: string | null
+  endDate: string | null
   locationRaw: string | null
   city: string | null
   region: string | null
@@ -102,9 +113,14 @@ export function mapApplicationRow(row: ApplicationRow): ApplicationListItem {
     id: row.id,
     companyName: row.companyName,
     roleTitle: row.roleTitle,
+    roleKind: row.roleKind as ApplicationListItem['roleKind'],
     sourceName: row.sourceName,
     status: row.status as ApplicationListItem['status'],
     term: row.term,
+    terms: parseJobTermsJson(row.termsJson),
+    timingMode: row.timingMode as ApplicationListItem['timingMode'],
+    startDate: row.startDate,
+    endDate: row.endDate,
     location,
     workMode: row.workMode as WorkMode,
     hasApplied: row.hasApplied,

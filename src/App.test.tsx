@@ -59,7 +59,8 @@ describe('App', () => {
     expect(
       within(table).getByText('Software Engineer- Backend Intern (Fall 2026)'),
     ).toBeInTheDocument()
-    expect(within(table).getByText('needs_user_info')).toBeInTheDocument()
+    expect(within(table).getByText('Fall 2026 internship')).toBeInTheDocument()
+    expect(within(table).getByText('Needs User Info')).toBeInTheDocument()
     expect(within(table).getByText('8/10')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'official' })).toHaveAttribute(
       'href',
@@ -176,6 +177,15 @@ describe('App', () => {
     fireEvent.change(within(dialog).getByLabelText('Source URL'), {
       target: { value: 'https://linkedin.com/jobs/delta' },
     })
+    fireEvent.change(within(dialog).getByLabelText('Timing mode'), {
+      target: { value: 'dates' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Start date'), {
+      target: { value: '2027-05-15' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('End date'), {
+      target: { value: '2027-08-15' },
+    })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
 
     await waitFor(() => {
@@ -195,6 +205,9 @@ describe('App', () => {
         roleKind: 'internship',
         roleTitle: 'Software Engineering Intern',
         sourceName: 'LinkedIn',
+        timingMode: 'dates',
+        startDate: '2027-05-15',
+        endDate: '2027-08-15',
         status: 'queued',
         workMode: 'remote',
       })
@@ -237,7 +250,8 @@ describe('App', () => {
         locationRaw: 'San Francisco, CA / Onsite',
         roleKind: 'internship',
         roleTitle: 'Backend Platform Intern',
-        term: 'Fall 2026 internship',
+        timingMode: 'terms',
+        terms: [{ season: 'fall', year: 2026 }],
         workMode: 'onsite',
       })
     })
@@ -376,7 +390,7 @@ describe('App', () => {
     expect(dialog).toHaveClass('backdrop-blur-sm')
     expect(within(dialog).getByText('Application detail')).toBeInTheDocument()
     expect(within(dialog).getByText('Software Engineer- Backend Intern (Fall 2026)')).toBeInTheDocument()
-    expect(within(dialog).getAllByText('needs_user_info')).toHaveLength(2)
+    expect(within(dialog).getAllByText('Needs User Info')).toHaveLength(2)
     expect(within(dialog).getByText('Source context')).toBeInTheDocument()
     expect(within(dialog).getAllByText('LinkedIn').length).toBeGreaterThan(0)
     expect(within(dialog).getByText('Links')).toBeInTheDocument()
@@ -532,8 +546,8 @@ describe('App', () => {
     expect(within(dialog).getByText('Uploaded tailored resume.')).toBeInTheDocument()
     expect(within(dialog).getByText('Final review verification passed.')).toBeInTheDocument()
     expect(within(dialog).getByText('Final review verification failed.')).toBeInTheDocument()
-    expect(within(dialog).getByText('passed')).toBeInTheDocument()
-    expect(within(dialog).getByText('failed')).toBeInTheDocument()
+    expect(within(dialog).getByText('Passed')).toBeInTheDocument()
+    expect(within(dialog).getByText('Failed')).toBeInTheDocument()
     expect(
       within(dialog).getByText('Final review page showed the attached resume and contact info.'),
     ).toBeInTheDocument()
@@ -681,7 +695,7 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Action Queue' })).toBeInTheDocument()
     expect(within(table).getByText('Versant Media')).toBeInTheDocument()
     expect(within(table).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
-    expect(within(table).getByText('apply_now')).toBeInTheDocument()
+    expect(within(table).getByText('Apply now')).toBeInTheDocument()
     expect(within(table).getByText('Queued score 6 meets policy cutoff 6.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Apply now 1' })).toBeInTheDocument()
 
@@ -757,7 +771,8 @@ describe('App', () => {
         locationRaw: 'Universal City, CA / Remote',
         roleKind: 'internship',
         roleTitle: 'Backend Platform Engineering Intern',
-        term: 'Academic Year internship',
+        timingMode: 'terms',
+        terms: [{ season: 'fall', year: 2026 }],
         workMode: 'remote',
       })
       expect(actionQueueLoader).toHaveBeenCalledTimes(2)
@@ -820,6 +835,7 @@ describe('App', () => {
 
     expect(screen.getByRole('heading', { name: 'Sourcing' })).toBeInTheDocument()
     expect(within(table).getByText('Delta Labs')).toBeInTheDocument()
+    expect(within(table).getAllByText('Fall 2026').length).toBeGreaterThan(0)
     expect(within(table).getByText('Software Engineering Intern')).toBeInTheDocument()
     expect(within(table).getAllByText('LinkedIn')).toHaveLength(2)
     expect(within(table).getAllByText('run-1')).toHaveLength(2)
@@ -933,8 +949,20 @@ describe('App', () => {
     fireEvent.change(within(addDialog).getByLabelText('Role'), {
       target: { value: 'Frontend Engineering Intern' },
     })
+    fireEvent.change(within(addDialog).getByLabelText('Role kind'), {
+      target: { value: 'full_time' },
+    })
     fireEvent.change(within(addDialog).getByLabelText('Source URL'), {
       target: { value: 'https://linkedin.com/jobs/view/human-labs' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('Timing mode'), {
+      target: { value: 'dates' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('Start date'), {
+      target: { value: '2027-05-15' },
+    })
+    fireEvent.change(within(addDialog).getByLabelText('End date'), {
+      target: { value: '2027-09-01' },
     })
     fireEvent.change(within(addDialog).getByLabelText('Priority score'), {
       target: { value: '7' },
@@ -951,9 +979,12 @@ describe('App', () => {
       expect(createFinding).toHaveBeenCalledWith({
         companyName: 'Human Labs',
         fitNotes: 'Strong frontend internship fit.',
+        timingMode: 'dates',
+        startDate: '2027-05-15',
+        endDate: '2027-09-01',
         priorityBand: 'high',
         priorityScore: 7,
-        roleKind: 'internship',
+        roleKind: 'full_time',
         roleTitle: 'Frontend Engineering Intern',
         sourceName: 'Manual',
         sourceUrl: 'https://linkedin.com/jobs/view/human-labs',
@@ -980,6 +1011,18 @@ describe('App', () => {
     fireEvent.change(within(editDialog).getByLabelText('Fit notes'), {
       target: { value: 'Below current sourcing cutoff.' },
     })
+    fireEvent.change(within(editDialog).getByLabelText('Role kind'), {
+      target: { value: 'new_grad' },
+    })
+    fireEvent.change(within(editDialog).getByLabelText('Timing mode'), {
+      target: { value: 'dates' },
+    })
+    fireEvent.change(within(editDialog).getByLabelText('Start date'), {
+      target: { value: '2027-06-01' },
+    })
+    fireEvent.change(within(editDialog).getByLabelText('End date'), {
+      target: { value: '2027-08-15' },
+    })
     fireEvent.click(within(editDialog).getByRole('button', { name: 'Save finding' }))
 
     await waitFor(() => {
@@ -991,7 +1034,11 @@ describe('App', () => {
         officialUrl: 'https://jobs.example.com/delta-updated',
         priorityBand: 'skip',
         priorityScore: 4,
+        roleKind: 'new_grad',
         sourceUrl: 'https://linkedin.com/jobs/view/delta-updated',
+        timingMode: 'dates',
+        startDate: '2027-06-01',
+        endDate: '2027-08-15',
       })
       expect(updatePayload).not.toHaveProperty('mergeStatus')
       expect(sourcingLoader).toHaveBeenCalledTimes(3)

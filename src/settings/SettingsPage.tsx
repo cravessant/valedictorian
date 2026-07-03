@@ -402,13 +402,13 @@ function AgentAccessSettingsPanel({
 
       <div className="rounded-md border border-border bg-card p-4">
         <h3 className="text-sm font-semibold text-foreground">CLI examples</h3>
-        <pre className="mt-3 overflow-auto rounded-md bg-background p-3 text-xs text-foreground">
+        <pre className="mt-3 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
           <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json workspaces list`}</code>
         </pre>
-        <pre className="mt-2 overflow-auto rounded-md bg-background p-3 text-xs text-foreground">
+        <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
           <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json applications list --workspace ${workspaceSelector}`}</code>
         </pre>
-        <pre className="mt-2 overflow-auto rounded-md bg-background p-3 text-xs text-foreground">
+        <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
           <code>{`VALEDICTORIAN_API_TOKEN=<token> valedictorian-cli --json applications get <id> --workspace ${workspaceSelector}`}</code>
         </pre>
       </div>

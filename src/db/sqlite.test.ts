@@ -26,6 +26,13 @@ describe('SQLite database', () => {
     expect(tables).toContain('workflow_runs')
     expect(tables).toContain('workflow_run_steps')
     expect(tables).toContain('sourcing_findings')
+
+    expect(tableColumns(database, 'applications')).toEqual(
+      expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
+    )
+    expect(tableColumns(database, 'sourcing_findings')).toEqual(
+      expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
+    )
   })
 
   it('creates source indexes for workflow run and sourcing filters', () => {
@@ -76,7 +83,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'applications'")
       .all()
 
-    expect(migrationRows).toHaveLength(3)
+    expect(migrationRows).toHaveLength(4)
     expect(applicationTables).toHaveLength(1)
   })
 
@@ -129,7 +136,62 @@ describe('SQLite database', () => {
       {
         name: '20260630000000_policy_config_v2',
       },
+      {
+        name: '20260702000000_job_timing_terms',
+      },
     ])
+  })
+
+  it('backfills recognized legacy timing terms and preserves unrecognized labels', async () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table policy_config (
+        id text primary key,
+        config_json text not null,
+        created_at text not null,
+        updated_at text not null
+      );
+
+      create table applications (
+        id text primary key,
+        term text,
+        timing_mode text not null default 'unknown',
+        terms_json text not null default '[]',
+        start_date text,
+        end_date text
+      );
+
+      create table sourcing_findings (
+        id text primary key,
+        term text,
+        timing_mode text not null default 'unknown',
+        terms_json text not null default '[]',
+        start_date text,
+        end_date text
+      );
+
+      insert into applications (id, term) values
+        ('application-recognized', 'Fall 2026 internship'),
+        ('application-display-only', 'Internship');
+
+      insert into sourcing_findings (id, term) values
+        ('finding-recognized', 'Academic Year 2026');
+    `)
+
+    await createDataMigrationUmzug(database).up()
+
+    expect(database.prepare('select timing_mode, terms_json from applications where id = ?').get('application-recognized')).toEqual({
+      timing_mode: 'terms',
+      terms_json: '[{"season":"fall","year":2026}]',
+    })
+    expect(database.prepare('select timing_mode, terms_json from applications where id = ?').get('application-display-only')).toEqual({
+      timing_mode: 'unknown',
+      terms_json: '[]',
+    })
+    expect(database.prepare('select timing_mode, terms_json from sourcing_findings where id = ?').get('finding-recognized')).toEqual({
+      timing_mode: 'terms',
+      terms_json: '[{"season":"fall","year":2026},{"season":"spring","year":2027}]',
+    })
   })
 
   it('records data migrations through Umzug SQLite storage', async () => {
@@ -151,6 +213,9 @@ describe('SQLite database', () => {
     expect(dataMigrationRows).toEqual([
       {
         name: '20260630000000_policy_config_v2',
+      },
+      {
+        name: '20260702000000_job_timing_terms',
       },
     ])
   })
@@ -251,3 +316,10 @@ describe('SQLite database', () => {
     database.close()
   })
 })
+
+function tableColumns(database: ReturnType<typeof createInMemoryDatabase>, tableName: string) {
+  return database
+    .prepare(`pragma table_info('${tableName}')`)
+    .all()
+    .map((row) => (row as { name: string }).name)
+}

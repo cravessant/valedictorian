@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { and, count, desc, eq, isNull, like, type SQL } from 'drizzle-orm'
 import type {
+  CreateApplicationInput,
   CreateSourcingFindingInput,
   PromoteSourcingFindingInput,
   SetSourcingFindingDecisionInput,
@@ -10,7 +11,13 @@ import type {
   SourcingMergeStatus,
   UpdateSourcingFindingInput,
 } from 'sparxie'
-import { isManualSourcingDecisionStatus, isSourcingMergeStatus } from 'sparxie'
+import {
+  isManualSourcingDecisionStatus,
+  isSourcingMergeStatus,
+  normalizeJobTimingInput,
+  parseJobTermsJson,
+  stringifyJobTerms,
+} from 'sparxie'
 import {
   applicationEvents,
   applicationLinks,
@@ -45,6 +52,10 @@ const sourcingFindingSelection = {
   roleTitle: sourcingFindings.roleTitle,
   roleKind: sourcingFindings.roleKind,
   term: sourcingFindings.term,
+  timingMode: sourcingFindings.timingMode,
+  termsJson: sourcingFindings.termsJson,
+  startDate: sourcingFindings.startDate,
+  endDate: sourcingFindings.endDate,
   city: sourcingFindings.city,
   region: sourcingFindings.region,
   country: sourcingFindings.country,
@@ -106,6 +117,10 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
             roleTitle: normalizedInput.roleTitle,
             roleKind: normalizedInput.roleKind,
             term: normalizedInput.term ?? null,
+            timingMode: normalizedInput.timingMode,
+            termsJson: stringifyJobTerms(normalizedInput.terms),
+            startDate: normalizedInput.startDate,
+            endDate: normalizedInput.endDate,
             city: normalizedInput.city ?? null,
             region: normalizedInput.region ?? null,
             country: normalizedInput.country,
@@ -220,8 +235,13 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         patch.roleKind = input.roleKind
       }
 
-      if (input.term !== undefined) {
-        patch.term = nullableTrimmedText(input.term)
+      if (hasSourcingTimingPatch(input)) {
+        const timing = normalizeJobTimingInput(input)
+        patch.term = timing.term
+        patch.timingMode = timing.timingMode
+        patch.termsJson = stringifyJobTerms(timing.terms)
+        patch.startDate = timing.startDate
+        patch.endDate = timing.endDate
       }
 
       if (input.city !== undefined) {
@@ -373,7 +393,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         roleTitle: finding.roleTitle,
         sourceName: finding.sourceName,
         roleKind: finding.roleKind,
-        term: finding.term,
+        ...applicationTimingInputForFinding(finding),
         city: finding.city,
         region: finding.region,
         country: finding.country,
@@ -438,6 +458,30 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
       return selectSourcingFindingById(database, finding.id)
     },
+  }
+}
+
+function applicationTimingInputForFinding(
+  finding: SourcingFinding,
+): Pick<CreateApplicationInput, 'endDate' | 'startDate' | 'term' | 'terms' | 'timingMode'> {
+  if (finding.timingMode === 'dates') {
+    return {
+      timingMode: 'dates',
+      startDate: finding.startDate,
+      endDate: finding.endDate,
+    }
+  }
+
+  if (finding.timingMode === 'terms') {
+    return {
+      timingMode: 'terms',
+      terms: finding.terms,
+    }
+  }
+
+  return {
+    timingMode: 'unknown',
+    term: finding.term,
   }
 }
 
@@ -610,6 +654,7 @@ function normalizeCreateFindingInput(input: CreateSourcingFindingInput, now: str
     ...input,
     companyName: requiredTrimmedText(input.companyName, 'companyName'),
     roleTitle: requiredTrimmedText(input.roleTitle, 'roleTitle'),
+    ...normalizeJobTimingInput(input),
     sourceId: input.sourceId ? requiredTrimmedText(input.sourceId, 'sourceId') : null,
     sourceName: input.sourceName ? requiredTrimmedText(input.sourceName, 'sourceName') : null,
     country: input.country ?? 'US',
@@ -618,6 +663,16 @@ function normalizeCreateFindingInput(input: CreateSourcingFindingInput, now: str
     mergeStatus,
     discoveredAt: input.discoveredAt ?? now,
   }
+}
+
+function hasSourcingTimingPatch(input: UpdateSourcingFindingInput) {
+  return (
+    'term' in input ||
+    'terms' in input ||
+    'timingMode' in input ||
+    'startDate' in input ||
+    'endDate' in input
+  )
 }
 
 function assertPromotionOnlyMergeStatus(mergeStatus: SourcingMergeStatus) {
@@ -678,6 +733,10 @@ function mapSourcingFinding(row: SourcingFindingRow): SourcingFinding {
     roleTitle: row.roleTitle as string,
     roleKind: row.roleKind as SourcingFinding['roleKind'],
     term: row.term as string | null,
+    terms: parseJobTermsJson(row.termsJson as string),
+    timingMode: row.timingMode as SourcingFinding['timingMode'],
+    startDate: row.startDate as string | null,
+    endDate: row.endDate as string | null,
     city: row.city as string | null,
     region: row.region as string | null,
     country: row.country as string,

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { CircleUserRound, Database, Download, Globe2, ListChecks, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
+import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
 import { APP_VIEWS, type MainAppView } from './types'
@@ -23,19 +23,19 @@ function AppTopbar({
   return (
     <header
       aria-label="App chrome"
-      className="app-drag flex h-12 items-center gap-3 border-b border-border bg-background/95 pl-20 pr-4"
+      className="app-drag flex h-12 items-center gap-2 border-b border-border bg-background/95 pl-[4.75rem] pr-3"
     >
       <Button
         type="button"
         variant="ghost"
         size="icon"
         aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="app-no-drag"
+        className="app-no-drag h-7 w-7 shrink-0 border border-border/70 bg-card/70 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         onClick={onToggleSidebar}
       >
-        <PanelLeft className="h-4 w-4" aria-hidden="true" />
+        <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" />
       </Button>
-      <div className="min-w-0 text-sm font-semibold text-foreground">{title}</div>
+      <div className="min-w-0 truncate text-sm font-semibold leading-none text-foreground">{title}</div>
       <UpdateStatusControl
         state={updateState}
         onInstall={onInstallUpdate}
@@ -50,15 +50,37 @@ interface UpdateStatusControlProps {
 }
 
 function UpdateStatusControl({ state, onInstall }: UpdateStatusControlProps) {
-  if (!state || state.status === 'idle' || state.status === 'checking' || state.status === 'disabled' || state.status === 'unavailable' || state.status === 'error') {
+  if (!state || state.status === 'idle' || state.status === 'disabled' || state.status === 'unavailable') {
     return null
   }
 
-  if (state.status === 'downloading') {
+  if (state.status === 'checking') {
     return (
-      <div className="app-no-drag ml-auto flex h-8 items-center gap-2 rounded-md border border-border bg-card/80 px-3 text-xs font-medium text-muted-foreground">
-        <Download className="h-3.5 w-3.5" aria-hidden="true" />
-        Downloading update {Math.round(state.percent ?? 0)}%
+      <div className="app-no-drag ml-auto inline-flex h-7 items-center gap-2 rounded-md border border-border bg-card/80 px-2.5 text-xs font-medium text-muted-foreground">
+        <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        Checking for updates
+      </div>
+    )
+  }
+
+  if (state.status === 'error') {
+    return (
+      <div className="app-no-drag ml-auto inline-flex h-7 max-w-[min(22rem,45vw)] items-center gap-2 rounded-md border border-destructive/40 bg-destructive/15 px-2.5 text-xs font-medium text-destructive">
+        <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="truncate">{state.message ?? 'Update check failed'}</span>
+      </div>
+    )
+  }
+
+  if (state.status === 'downloading') {
+    const percent = Math.round(state.percent ?? 0)
+    return (
+      <div className="app-no-drag ml-auto inline-flex h-7 items-center gap-2 rounded-md border border-border bg-card/80 px-2.5 text-xs font-medium text-muted-foreground">
+        <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span>Downloading update {percent}%</span>
+        <span className="h-1 w-16 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+          <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
+        </span>
       </div>
     )
   }
@@ -67,7 +89,7 @@ function UpdateStatusControl({ state, onInstall }: UpdateStatusControlProps) {
     <Button
       type="button"
       size="sm"
-      className="app-no-drag ml-auto gap-2"
+      className="app-no-drag ml-auto h-7 gap-2 px-2.5"
       onClick={onInstall}
     >
       <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -308,16 +330,16 @@ function SettingsToggleRow({
   onChange,
 }: SettingsToggleRowProps) {
   return (
-    <label className="flex cursor-pointer items-center gap-3 px-3 py-3 text-sm text-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
+    <label className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,22rem)_auto] items-center justify-start gap-3 px-3 py-3 text-sm text-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
       <span className="text-muted-foreground">{icon}</span>
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0">
         <span className="block font-medium">{label}</span>
         <span className="block text-xs text-muted-foreground">{description}</span>
       </span>
       <input
         aria-label={label}
         checked={checked}
-        className="h-4 w-4 accent-primary"
+        className="h-5 w-5 shrink-0 accent-primary"
         disabled={disabled}
         type="checkbox"
         onChange={(event) => onChange(event.target.checked)}

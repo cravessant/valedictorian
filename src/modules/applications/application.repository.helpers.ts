@@ -20,12 +20,16 @@ import {
   isRoleKind,
   isWorkMode,
   normalizeApplicationLinkKind,
+  normalizeJobTimingInput,
+  stringifyJobTerms,
   type ApplicationLinkRecord,
   type ApplicationAttempt,
   type ApplicationAttemptStep,
   type CompleteApplicationAttemptInput,
   type CreateApplicationInput,
   type CreateApplicationAttemptStepInput,
+  type JobTerm,
+  type JobTimingMode,
   type StartApplicationAttemptInput,
 } from './application.types'
 import { normalizeText } from './application.repository.utils'
@@ -251,6 +255,7 @@ export function normalizeCreateApplicationInput(input: CreateApplicationInput): 
   const roleKind = requiredText(input.roleKind, 'roleKind')
   const workMode = input.workMode
   const status = input.status
+  const timing = normalizeJobTimingInput(input)
 
   if (!isRoleKind(roleKind)) {
     throw new Error(`Invalid roleKind: ${roleKind}`)
@@ -274,6 +279,11 @@ export function normalizeCreateApplicationInput(input: CreateApplicationInput): 
     roleTitle: requiredText(input.roleTitle, 'roleTitle'),
     sourceName: requiredText(input.sourceName, 'sourceName'),
     roleKind,
+    term: timing.term,
+    terms: timing.terms,
+    timingMode: timing.timingMode,
+    startDate: timing.startDate,
+    endDate: timing.endDate,
     country: requiredText(input.country, 'country'),
     primaryLink: input.primaryLink ? normalizeApplicationLinkInput(input.primaryLink) : undefined,
     sourceLink: input.sourceLink ? normalizeApplicationLinkInput(input.sourceLink) : undefined,
@@ -293,10 +303,16 @@ export function normalizeApplicationUpdateInput<T extends {
   roleKind?: string
   roleTitle?: string
   term?: string | null
+  terms?: JobTerm[] | null
+  timingMode?: JobTimingMode
+  startDate?: string | null
+  endDate?: string | null
   workMode?: string
 }>(input: T): T {
   const roleKind = input.roleKind !== undefined ? requiredText(input.roleKind, 'roleKind') : undefined
   const workMode = input.workMode !== undefined ? requiredText(input.workMode, 'workMode') : undefined
+  const hasTimingPatch = hasApplicationTimingPatch(input)
+  const timing = hasTimingPatch ? normalizeJobTimingInput(input) : null
 
   if (roleKind !== undefined && !isRoleKind(roleKind)) {
     throw new Error(`Invalid roleKind: ${roleKind}`)
@@ -310,7 +326,15 @@ export function normalizeApplicationUpdateInput<T extends {
     ...input,
     ...(input.roleTitle !== undefined ? { roleTitle: requiredText(input.roleTitle, 'roleTitle') } : {}),
     ...(roleKind !== undefined ? { roleKind } : {}),
-    ...(input.term !== undefined ? { term: nullableTrimmedText(input.term, 'term') } : {}),
+    ...(timing
+      ? {
+          term: timing.term,
+          terms: timing.terms,
+          timingMode: timing.timingMode,
+          startDate: timing.startDate,
+          endDate: timing.endDate,
+        }
+      : {}),
     ...(input.city !== undefined ? { city: nullableTrimmedText(input.city, 'city') } : {}),
     ...(input.region !== undefined ? { region: nullableTrimmedText(input.region, 'region') } : {}),
     ...(input.country !== undefined ? { country: requiredText(input.country, 'country') } : {}),
@@ -434,37 +458,70 @@ export function applicationPatch(input: {
   roleKind?: string
   roleTitle?: string
   term?: string | null
+  terms?: JobTerm[] | null
+  timingMode?: JobTimingMode
+  startDate?: string | null
+  endDate?: string | null
   workMode?: string
 }) {
-  return Object.fromEntries(
-    (
-      [
-        'roleTitle',
-        'roleKind',
-        'term',
-        'city',
-        'region',
-        'country',
-        'workMode',
-        'locationRaw',
-        'hasApplied',
-        'currentResumeVariant',
-      ] as const
-    )
-      .filter((key) => key in input)
-      .map((key) => [key, input[key]]),
-  ) as {
+  const patch: {
     city?: string | null
     country?: string
     currentResumeVariant?: string | null
+    endDate?: string | null
     hasApplied?: boolean
     locationRaw?: string | null
     region?: string | null
     roleKind?: string
     roleTitle?: string
+    startDate?: string | null
     term?: string | null
+    termsJson?: string
+    timingMode?: JobTimingMode
     workMode?: string
+  } = {}
+
+  for (const key of [
+    'roleTitle',
+    'roleKind',
+    'term',
+    'timingMode',
+    'startDate',
+    'endDate',
+    'city',
+    'region',
+    'country',
+    'workMode',
+    'locationRaw',
+    'hasApplied',
+    'currentResumeVariant',
+  ] as const) {
+    if (key in input) {
+      ;(patch as Record<typeof key, (typeof input)[typeof key]>)[key] = input[key]
+    }
   }
+
+  if ('terms' in input) {
+    patch.termsJson = stringifyJobTerms(input.terms ?? [])
+  }
+
+  return patch
+}
+
+function hasApplicationTimingPatch(input: {
+  term?: string | null
+  terms?: JobTerm[] | null
+  timingMode?: JobTimingMode
+  startDate?: string | null
+  endDate?: string | null
+}) {
+  return (
+    'term' in input ||
+    'terms' in input ||
+    'timingMode' in input ||
+    'startDate' in input ||
+    'endDate' in input
+  )
 }
 
 export function findOrCreateCompany(database: MutationDatabase, name: string, now: string) {

@@ -5,6 +5,7 @@ import {
   isApplicationListSort,
   isApplicationStatus,
   isManualReviewKind,
+  isJobTimingMode,
   isPolicyEvidenceTag,
   isPolicySubjectType,
   isActionQueueBucket,
@@ -25,6 +26,8 @@ import {
   type PolicyEvidenceInput,
   type PolicyEvidenceListInput,
   type ActionQueueListQuery,
+  type JobTerm,
+  type JobTimingMode,
   type SourcingFindingsListInput,
   type WorkflowRunsListInput,
   type WorkMode,
@@ -351,6 +354,10 @@ export function parseSourcingFindingCreateInput(
     roleTitle: readStringField(record, 'roleTitle'),
     roleKind,
     term: readOptionalNullableStringField(record, 'term'),
+    terms: readOptionalJobTermsField(record),
+    timingMode: readOptionalJobTimingModeField(record),
+    startDate: readOptionalNullableStringField(record, 'startDate'),
+    endDate: readOptionalNullableStringField(record, 'endDate'),
     city: readOptionalNullableStringField(record, 'city'),
     region: readOptionalNullableStringField(record, 'region'),
     country: readOptionalStringField(record, 'country'),
@@ -394,6 +401,10 @@ export function parseSourcingCandidateProcessInput(
     roleTitle: readStringField(record, 'roleTitle'),
     roleKind,
     term: readOptionalNullableStringField(record, 'term'),
+    terms: readOptionalJobTermsField(record),
+    timingMode: readOptionalJobTimingModeField(record),
+    startDate: readOptionalNullableStringField(record, 'startDate'),
+    endDate: readOptionalNullableStringField(record, 'endDate'),
     city: readOptionalNullableStringField(record, 'city'),
     region: readOptionalNullableStringField(record, 'region'),
     country: readOptionalStringField(record, 'country'),
@@ -464,6 +475,10 @@ export function parseSourcingFindingUpdateInput(
     roleTitle: readOptionalStringField(record, 'roleTitle'),
     roleKind,
     term: readOptionalNullableStringField(record, 'term'),
+    terms: readOptionalJobTermsField(record),
+    timingMode: readOptionalJobTimingModeField(record),
+    startDate: readOptionalNullableStringField(record, 'startDate'),
+    endDate: readOptionalNullableStringField(record, 'endDate'),
     city: readOptionalNullableStringField(record, 'city'),
     region: readOptionalNullableStringField(record, 'region'),
     country: readOptionalStringField(record, 'country'),
@@ -671,6 +686,7 @@ export function parseAttemptCompleteInput(
 export function parseCreateApplicationInput(
   body: unknown,
 ): Parameters<ValedictorianWorkspaceClient['applications']['create']>[0] {
+  const record = readRecord(body)
   const status = readStringField(body, 'status')
   const roleKind = readStringField(body, 'roleKind')
   const workMode = readStringField(body, 'workMode')
@@ -703,6 +719,10 @@ export function parseCreateApplicationInput(
     workMode,
     status,
     term: readOptionalNullableStringField(body, 'term'),
+    terms: readOptionalJobTermsField(record),
+    timingMode: readOptionalJobTimingModeField(record),
+    startDate: readOptionalNullableStringField(body, 'startDate'),
+    endDate: readOptionalNullableStringField(body, 'endDate'),
     city: readOptionalNullableStringField(body, 'city'),
     region: readOptionalNullableStringField(body, 'region'),
     locationRaw: readOptionalNullableStringField(body, 'locationRaw'),
@@ -724,6 +744,13 @@ export function parseApplicationUpdateInput(
   copyOptionalStringField(record, input, 'roleTitle')
   copyOptionalStringField(record, input, 'roleKind')
   copyOptionalNullableStringField(record, input, 'term')
+  copyOptionalJobTermsField(record, input)
+  const timingMode = readOptionalJobTimingModeField(record)
+  if (timingMode !== undefined) {
+    input.timingMode = timingMode
+  }
+  copyOptionalNullableStringField(record, input, 'startDate')
+  copyOptionalNullableStringField(record, input, 'endDate')
   copyOptionalNullableStringField(record, input, 'city')
   copyOptionalNullableStringField(record, input, 'region')
   copyOptionalStringField(record, input, 'country')
@@ -816,6 +843,47 @@ export function readOptionalLinkField(
     label: readStringField(value, 'label'),
     url: canonicalizeApplicationUrl(readStringField(value, 'url')),
     externalId: readOptionalNullableStringField(value, 'externalId'),
+  }
+}
+
+function readOptionalJobTermsField(
+  record: Record<string, unknown>,
+): JobTerm[] | null | undefined {
+  if (!('terms' in record)) {
+    return undefined
+  }
+
+  const value = record.terms
+  if (value === null) {
+    return null
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error('terms must be an array.')
+  }
+
+  return value as JobTerm[]
+}
+
+function readOptionalJobTimingModeField(
+  record: Record<string, unknown>,
+): JobTimingMode | undefined {
+  const value = readOptionalStringField(record, 'timingMode')
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (!isJobTimingMode(value)) {
+    throw new Error(`Invalid timingMode: ${value}`)
+  }
+
+  return value
+}
+
+function copyOptionalJobTermsField(record: Record<string, unknown>, input: Record<string, unknown>) {
+  const value = readOptionalJobTermsField(record)
+  if (value !== undefined) {
+    input.terms = value
   }
 }
 

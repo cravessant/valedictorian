@@ -190,7 +190,19 @@ function formatUnknownValue(value: unknown) {
 
 export function writeJson(response: http.ServerResponse, statusCode: number, body: unknown) {
   response.writeHead(statusCode, {
+    ...localCorsHeaders,
     'content-type': 'application/json',
   })
   response.end(JSON.stringify(body))
+}
+
+export function writeEmpty(response: http.ServerResponse, statusCode: number) {
+  response.writeHead(statusCode, localCorsHeaders)
+  response.end()
+}
+
+const localCorsHeaders = {
+  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-allow-methods': 'DELETE, GET, OPTIONS, PATCH, POST, PUT',
+  'access-control-allow-origin': '*',
 }

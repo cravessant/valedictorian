@@ -133,10 +133,10 @@ describe('App settings and chrome', () => {
     const sidebarToggle = within(chrome).getByRole('button', { name: 'Collapse sidebar' })
 
     expect(chrome).toHaveClass('app-drag')
-    expect(chrome).toHaveClass('pl-20')
+    expect(chrome).toHaveClass('pl-[4.75rem]')
     expect(chrome).not.toHaveClass('pl-24')
     expect(sidebarToggle).toHaveClass('app-no-drag')
-    expect(sidebarToggle).toHaveClass('h-8', 'w-8')
+    expect(sidebarToggle).toHaveClass('h-7', 'w-7')
     expect(within(chrome).getByText('Applications')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Forward' })).not.toBeInTheDocument()

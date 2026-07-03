@@ -43,6 +43,11 @@ describe('SQLite application repository create and update behavior', () => {
       roleTitle: 'Software Engineer Intern',
       sourceName: 'LinkedIn',
       status: 'queued',
+      term: 'Summer 2027 internship',
+      terms: [{ season: 'summer', year: 2027 }],
+      timingMode: 'terms',
+      startDate: null,
+      endDate: null,
       location: 'United States / Remote',
       notes: 'Merged from LinkedIn sourcing.',
       primaryLink: {
@@ -67,6 +72,104 @@ describe('SQLite application repository create and update behavior', () => {
         message: 'Merged from LinkedIn sourcing.',
       }),
     ])
+  })
+
+  it('normalizes application timing across date, term, and unknown modes', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+
+    const repository = createSqliteApplicationRepository(database)
+    const created = await repository.createApplication({
+      companyName: 'Calendar Labs',
+      roleTitle: 'Infrastructure Intern',
+      sourceName: 'Greenhouse',
+      roleKind: 'internship',
+      country: 'US',
+      workMode: 'remote',
+      status: 'queued',
+      timingMode: 'dates',
+      startDate: '2027-05-15',
+      endDate: '2027-10-01',
+      primaryLink: {
+        kind: 'official',
+        label: 'official',
+        url: 'https://jobs.example.com/calendar-labs/infrastructure-intern',
+      },
+    })
+
+    expect(created).toMatchObject({
+      term: 'Summer 2027 / Fall 2027',
+      terms: [
+        { season: 'summer', year: 2027 },
+        { season: 'fall', year: 2027 },
+      ],
+      timingMode: 'dates',
+      startDate: '2027-05-15',
+      endDate: '2027-10-01',
+    })
+
+    const termMode = await repository.updateApplication({
+      applicationId: created.id,
+      timingMode: 'terms',
+      terms: [
+        { season: 'fall', year: 2026 },
+        { season: 'summer', year: 2026 },
+        { season: 'summer', year: 2026 },
+      ],
+    })
+
+    expect(termMode).toMatchObject({
+      term: 'Summer 2026 / Fall 2026',
+      terms: [
+        { season: 'summer', year: 2026 },
+        { season: 'fall', year: 2026 },
+      ],
+      timingMode: 'terms',
+      startDate: null,
+      endDate: null,
+    })
+
+    const unknownMode = await repository.updateApplication({
+      applicationId: created.id,
+      timingMode: 'unknown',
+      term: 'Internship',
+    })
+
+    expect(unknownMode).toMatchObject({
+      term: 'Internship',
+      terms: [],
+      timingMode: 'unknown',
+      startDate: null,
+      endDate: null,
+    })
+  })
+
+  it('rejects mixed application date and term timing input', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+
+    const repository = createSqliteApplicationRepository(database)
+
+    await expect(
+      repository.createApplication({
+        companyName: 'Mixed Timing Labs',
+        roleTitle: 'Software Engineering Intern',
+        sourceName: 'LinkedIn',
+        roleKind: 'internship',
+        country: 'US',
+        workMode: 'remote',
+        status: 'queued',
+        term: 'Summer 2027',
+        startDate: '2027-05-01',
+        primaryLink: {
+          kind: 'official',
+          label: 'official',
+          url: 'https://jobs.example.com/mixed-timing/software-engineering-intern',
+        },
+      }),
+    ).rejects.toThrow('Date-based timing cannot include term or terms input')
   })
 
   it('rejects blank required create text fields before writing lookup rows', async () => {

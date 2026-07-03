@@ -202,6 +202,44 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
+  it('serves local API responses with browser CORS headers', async () => {
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+    })
+
+    const response = await fetch(`${server.url}/v1/health`, {
+      headers: { origin: 'http://localhost:5173' },
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('access-control-allow-headers')).toContain('authorization')
+    await expect(readJson(response)).resolves.toEqual({ ok: true })
+  })
+
+  it('answers browser CORS preflight requests', async () => {
+    server = await createValedictorianHttpServer({
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+    })
+
+    const response = await fetch(`${server.url}/v1/workspaces/workspace-1/applications`, {
+      headers: {
+        'access-control-request-headers': 'authorization, content-type',
+        'access-control-request-method': 'GET',
+        origin: 'http://localhost:5173',
+      },
+      method: 'OPTIONS',
+    })
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('access-control-allow-methods')).toContain('OPTIONS')
+  })
+
   it('routes workspace-scoped application lists through the selected workspace client', async () => {
     const rootClient = createBoundaryTestClient(() => {})
     const workspaceClient = createBoundaryTestClient(() => {})
@@ -822,6 +860,9 @@ describe('local Valedictorian HTTP server', () => {
         roleKind: 'internship',
         country: 'US',
         workMode: 'remote',
+        timingMode: 'dates',
+        startDate: '2027-05-15',
+        endDate: '2027-09-01',
         officialUrl: 'https://jobs.example.com/delta',
         priorityScore: 7,
         priorityBand: 'high',
@@ -830,6 +871,16 @@ describe('local Valedictorian HTTP server', () => {
     const finding = (await readJson(findingResponse)) as { id: string; sourceId: string }
 
     expect(findingResponse.status).toBe(200)
+    expect(finding).toMatchObject({
+      term: 'Summer 2027 / Fall 2027',
+      terms: [
+        { season: 'summer', year: 2027 },
+        { season: 'fall', year: 2027 },
+      ],
+      timingMode: 'dates',
+      startDate: '2027-05-15',
+      endDate: '2027-09-01',
+    })
 
     await expect(
       fetch(`${server.url}/v1/workspaces/workspace-1/runs?runType=sourcing&status=in_progress&sourceId=${finding.sourceId}`, {
@@ -887,6 +938,34 @@ describe('local Valedictorian HTTP server', () => {
     expect(mergedCreateResponse.status).toBe(400)
     await expect(readJson(mergedCreateResponse)).resolves.toEqual({
       message: 'Sourcing findings can only be marked merged by promotion.',
+    })
+
+    const mixedTimingResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/sourcing/findings`,
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer server-token',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflowRunId: run.id,
+          sourceName: 'LinkedIn',
+          companyName: 'Mixed Timing Labs',
+          roleTitle: 'Software Engineering Intern',
+          roleKind: 'internship',
+          country: 'US',
+          workMode: 'remote',
+          term: 'Fall 2027',
+          startDate: '2027-09-01',
+          sourceUrl: 'https://linkedin.com/jobs/view/mixed-timing-labs',
+        }),
+      },
+    )
+
+    expect(mixedTimingResponse.status).toBe(400)
+    await expect(readJson(mixedTimingResponse)).resolves.toEqual({
+      message: 'Date-based timing cannot include term or terms input.',
     })
 
     const mergedUpdateResponse = await fetch(

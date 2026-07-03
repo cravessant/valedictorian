@@ -1,6 +1,6 @@
 import { Umzug, type MigrationParams, type RunnableMigration, type UmzugStorage } from 'umzug'
 import { z } from 'zod'
-import { normalizePolicyConfig } from 'sparxie'
+import { normalizeJobTimingInput, normalizePolicyConfig, stringifyJobTerms } from 'sparxie'
 import type { SqliteDatabase } from './sqlite'
 
 const DATA_MIGRATIONS_TABLE = '__valedictorian_data_migrations'
@@ -23,6 +23,12 @@ const dataMigrations: SyncDataMigration[] = [
     name: '20260630000000_policy_config_v2',
     up({ context }) {
       migratePolicyConfigJson(context.database)
+    },
+  },
+  {
+    name: '20260702000000_job_timing_terms',
+    up({ context }) {
+      migrateJobTimingTerms(context.database)
     },
   },
 ]
@@ -157,6 +163,42 @@ function migratePolicyConfigJson(database: SqliteDatabase) {
     if (nextJson !== row.config_json) {
       update.run(nextJson, row.id)
     }
+  }
+}
+
+function migrateJobTimingTerms(database: SqliteDatabase) {
+  backfillTimingTerms(database, 'applications')
+  backfillTimingTerms(database, 'sourcing_findings')
+}
+
+function backfillTimingTerms(database: SqliteDatabase, tableName: 'applications' | 'sourcing_findings') {
+  if (!tableExists(database, tableName)) {
+    return
+  }
+
+  const rows = database
+    .prepare(`select id, term, timing_mode from ${tableName}`)
+    .all() as Array<{ id: string; term: string | null; timing_mode: string | null }>
+  const update = database.prepare(`
+    update ${tableName}
+    set timing_mode = ?, terms_json = ?, start_date = null, end_date = null
+    where id = ?
+  `)
+
+  for (const row of rows) {
+    if (row.timing_mode && row.timing_mode !== 'unknown') {
+      continue
+    }
+    if (!row.term) {
+      continue
+    }
+
+    const timing = normalizeJobTimingInput({ term: row.term })
+    if (timing.timingMode !== 'terms') {
+      continue
+    }
+
+    update.run(timing.timingMode, stringifyJobTerms(timing.terms), row.id)
   }
 }
 

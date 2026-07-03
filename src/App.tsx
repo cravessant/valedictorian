@@ -17,6 +17,7 @@ import { ProfileSettingsPanel } from './modules/profile/ProfileSettingsPanel'
 import { ActionQueuePage } from './modules/action-queue/ActionQueuePage'
 import { SourcingPage } from './modules/sourcing/SourcingPage'
 import { AppSidebar, AppTopbar } from './app/AppChrome'
+import { formatEnumLabel } from './app/labels'
 import { SettingsPage, SettingsSidebar } from './settings/SettingsPage'
 import { requiresRestart } from './settings/requiresRestart'
 import {
@@ -965,7 +966,7 @@ function App({
                           <option value="">Any status</option>
                           {applicationStatuses.map((status) => (
                             <option key={status} value={status}>
-                              {status}
+                              {formatEnumLabel(status)}
                             </option>
                           ))}
                         </select>
@@ -980,7 +981,7 @@ function App({
                         >
                           {applicationListSorts.map((sort) => (
                             <option key={sort} value={sort}>
-                              {sort}
+                              {formatEnumLabel(sort)}
                             </option>
                           ))}
                         </select>
@@ -994,9 +995,9 @@ function App({
                           onChange={(event) => updateFilter('priorityBand', event.target.value)}
                         >
                           <option value="">Any band</option>
-                          <option value="high">high</option>
-                          <option value="medium">medium</option>
-                          <option value="skip">skip</option>
+                          <option value="high">High</option>
+                          <option value="medium">Medium</option>
+                          <option value="skip">Skip</option>
                         </select>
                       </label>
                       <label className="grid gap-1 text-xs font-medium text-muted-foreground">
@@ -1020,10 +1021,10 @@ function App({
                           onChange={(event) => updateFilter('workMode', event.target.value)}
                         >
                           <option value="">Any mode</option>
-                          <option value="remote">remote</option>
-                          <option value="onsite">onsite</option>
-                          <option value="hybrid">hybrid</option>
-                          <option value="unclear">unclear</option>
+                          <option value="remote">Remote</option>
+                          <option value="onsite">Onsite</option>
+                          <option value="hybrid">Hybrid</option>
+                          <option value="unclear">Unclear</option>
                         </select>
                       </label>
                     </div>

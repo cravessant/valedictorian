@@ -2,10 +2,19 @@ import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
-import { applicationStatuses, type ApplicationDetail, type ApplicationListItem } from './application.types'
+import { formatEnumLabel } from '../../app/labels'
+import {
+  applicationStatuses,
+  deriveJobTermsFromDateRange,
+  formatJobTerms,
+  type ApplicationDetail,
+  type ApplicationListItem,
+} from './application.types'
 import type {
   AppendApplicationNoteInput,
   CreateApplicationInput,
+  JobTerm,
+  JobTimingMode,
   StatusUpdateInput,
   UpdateApplicationInput,
   UpdateApplicationWorkflowInput,
@@ -28,6 +37,7 @@ interface ApplicationEditorModalProps {
 const roleKindOptions = ['internship', 'new_grad', 'full_time', 'contract', 'part_time', 'other'] as const
 const workModeOptions = ['remote', 'onsite', 'hybrid', 'unclear'] as const
 const manualReviewKindOptions = ['overridable', 'non_overridable'] as const
+const timingModeOptions = ['unknown', 'terms', 'dates'] as const
 
 type ManualReviewKindSelection = NonNullable<UpdateApplicationWorkflowInput['manualReviewKind']> | ''
 
@@ -45,7 +55,9 @@ function ApplicationEditorModal({
   const [companyName, setCompanyName] = useState(application?.companyName ?? '')
   const [roleTitle, setRoleTitle] = useState(application?.roleTitle ?? '')
   const [sourceName, setSourceName] = useState(application?.sourceName ?? 'LinkedIn')
-  const [roleKind, setRoleKind] = useState<CreateApplicationInput['roleKind']>('internship')
+  const [roleKind, setRoleKind] = useState<CreateApplicationInput['roleKind']>(
+    application?.roleKind ?? 'internship',
+  )
   const [country, setCountry] = useState('US')
   const [workMode, setWorkMode] = useState<CreateApplicationInput['workMode']>(
     application?.workMode ?? 'remote',
@@ -53,7 +65,13 @@ function ApplicationEditorModal({
   const [status, setStatus] = useState<CreateApplicationInput['status']>(
     application && isApplicationStatusValue(application.status) ? application.status : 'queued',
   )
-  const [term, setTerm] = useState(application && 'term' in application ? application.term ?? '' : '')
+  const [timingMode, setTimingMode] = useState<JobTimingMode>(
+    application?.timingMode ?? 'unknown',
+  )
+  const [termsJson, setTermsJson] = useState(application?.terms?.length ? JSON.stringify(application.terms, null, 2) : '')
+  const [startDate, setStartDate] = useState(application?.startDate ?? '')
+  const [endDate, setEndDate] = useState(application?.endDate ?? '')
+  const [timingLabel, setTimingLabel] = useState(application && 'term' in application ? application.term ?? '' : '')
   const [locationRaw, setLocationRaw] = useState(
     application && 'location' in application ? application.location : '',
   )
@@ -77,6 +95,14 @@ function ApplicationEditorModal({
     setIsSaving(true)
 
     try {
+      const timingInput = buildTimingInput({
+        endDate,
+        startDate,
+        timingLabel,
+        timingMode,
+        termsJson,
+      })
+
       if (mode === 'add') {
         await onCreate({
           companyName: companyName.trim(),
@@ -101,7 +127,7 @@ function ApplicationEditorModal({
                 },
               }
             : {}),
-          ...(term.trim() ? { term: term.trim() } : {}),
+          ...timingInput,
           roleKind,
           roleTitle: roleTitle.trim(),
           sourceName: sourceName.trim(),
@@ -118,7 +144,7 @@ function ApplicationEditorModal({
           locationRaw: locationRaw.trim() || null,
           roleKind,
           roleTitle: roleTitle.trim(),
-          term: term.trim() || null,
+          ...timingInput,
           workMode,
         })
 
@@ -179,7 +205,18 @@ function ApplicationEditorModal({
           <EditorSelect label="Role kind" value={roleKind} options={roleKindOptions} onChange={(value) => setRoleKind(value as CreateApplicationInput['roleKind'])} />
           <EditorSelect label="Work mode" value={workMode} options={workModeOptions} onChange={(value) => setWorkMode(value as CreateApplicationInput['workMode'])} />
           <EditorSelect label="Status" value={status} options={applicationStatuses} onChange={(value) => setStatus(value as CreateApplicationInput['status'])} />
-          <EditorInput label="Term" value={term} onChange={setTerm} />
+          <TimingFields
+            endDate={endDate}
+            startDate={startDate}
+            timingLabel={timingLabel}
+            timingMode={timingMode}
+            termsJson={termsJson}
+            onEndDateChange={setEndDate}
+            onStartDateChange={setStartDate}
+            onTimingLabelChange={setTimingLabel}
+            onTimingModeChange={setTimingMode}
+            onTermsJsonChange={setTermsJson}
+          />
           <EditorInput label="Location" value={locationRaw} onChange={setLocationRaw} />
           <EditorInput label="Primary URL" value={primaryUrl} disabled={mode === 'edit'} onChange={setPrimaryUrl} />
           {mode === 'add' ? (
@@ -230,6 +267,128 @@ function ApplicationEditorModal({
   )
 }
 
+function TimingFields({
+  endDate,
+  onEndDateChange,
+  onStartDateChange,
+  onTermsJsonChange,
+  onTimingLabelChange,
+  onTimingModeChange,
+  startDate,
+  termsJson,
+  timingLabel,
+  timingMode,
+}: {
+  endDate: string
+  onEndDateChange: (value: string) => void
+  onStartDateChange: (value: string) => void
+  onTermsJsonChange: (value: string) => void
+  onTimingLabelChange: (value: string) => void
+  onTimingModeChange: (value: JobTimingMode) => void
+  startDate: string
+  termsJson: string
+  timingLabel: string
+  timingMode: JobTimingMode
+}) {
+  const termsPreview = timingMode === 'terms' ? formatTermsJsonPreview(termsJson) : ''
+  const datePreview = timingMode === 'dates' ? formatDateTermsPreview(startDate, endDate) : ''
+
+  return (
+    <>
+      <EditorSelect
+        label="Timing mode"
+        value={timingMode}
+        options={timingModeOptions}
+        onChange={(value) => onTimingModeChange(value as JobTimingMode)}
+      />
+      {timingMode === 'unknown' ? (
+        <EditorInput label="Timing label" value={timingLabel} onChange={onTimingLabelChange} />
+      ) : null}
+      {timingMode === 'terms' ? (
+        <>
+          <EditorTextarea label="Terms JSON" value={termsJson} onChange={onTermsJsonChange} />
+          <EditorInput label="Timing summary" value={termsPreview} disabled onChange={() => {}} />
+        </>
+      ) : null}
+      {timingMode === 'dates' ? (
+        <>
+          <EditorInput label="Start date" value={startDate} onChange={onStartDateChange} />
+          <EditorInput label="End date" value={endDate} onChange={onEndDateChange} />
+          <EditorInput label="Timing summary" value={datePreview} disabled onChange={() => {}} />
+        </>
+      ) : null}
+    </>
+  )
+}
+
+function buildTimingInput({
+  endDate,
+  startDate,
+  termsJson,
+  timingLabel,
+  timingMode,
+}: {
+  endDate: string
+  startDate: string
+  termsJson: string
+  timingLabel: string
+  timingMode: JobTimingMode
+}): Pick<CreateApplicationInput, 'endDate' | 'startDate' | 'term' | 'terms' | 'timingMode'> {
+  if (timingMode === 'dates') {
+    return {
+      timingMode,
+      startDate: startDate.trim(),
+      endDate: endDate.trim() || null,
+    }
+  }
+
+  if (timingMode === 'terms') {
+    return {
+      timingMode,
+      terms: parseTermsJsonInput(termsJson),
+    }
+  }
+
+  return {
+    timingMode,
+    term: timingLabel.trim() || null,
+    terms: [],
+    startDate: null,
+    endDate: null,
+  }
+}
+
+function parseTermsJsonInput(value: string): JobTerm[] {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    throw new Error('Terms JSON is required for term timing.')
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown
+  if (!Array.isArray(parsed)) {
+    throw new Error('Terms JSON must be an array.')
+  }
+
+  return parsed as JobTerm[]
+}
+
+function formatTermsJsonPreview(value: string) {
+  try {
+    const terms = parseTermsJsonInput(value)
+    return formatJobTerms(terms)
+  } catch {
+    return ''
+  }
+}
+
+function formatDateTermsPreview(startDate: string, endDate: string) {
+  try {
+    return formatJobTerms(deriveJobTermsFromDateRange(startDate.trim(), endDate.trim() || null))
+  } catch {
+    return ''
+  }
+}
+
 function EditorOptionalSelect({
   label,
   onChange,
@@ -253,7 +412,7 @@ function EditorOptionalSelect({
         <option value="">None</option>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {formatEnumLabel(option)}
           </option>
         ))}
       </select>
@@ -333,7 +492,7 @@ function EditorSelect({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {formatEnumLabel(option)}
           </option>
         ))}
       </select>

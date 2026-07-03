@@ -1,0 +1,49 @@
+version: '3'
+
+tasks:
+  release:tag-push:
+    desc: Create the package version tag, then push the current branch and tag.
+    silent: true
+    cmds:
+      - |
+        set -euo pipefail
+
+        remote="${REMOTE:-origin}"
+        branch="$(git branch --show-current)"
+        if [ -z "$branch" ]; then
+          echo "Refusing to release from a detached HEAD."
+          exit 1
+        fi
+
+        if ! git diff --quiet || ! git diff --cached --quiet; then
+          echo "Refusing to tag with uncommitted changes."
+          git status --short
+          exit 1
+        fi
+
+        version="$(node --input-type=module -e "import fs from 'node:fs'; process.stdout.write(JSON.parse(fs.readFileSync('package.json', 'utf8')).version)")"
+        tag="v$version"
+        head_commit="$(git rev-parse HEAD)"
+
+        echo "Preparing release $tag from $branch at $head_commit"
+        git fetch "$remote" --tags
+
+        if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+          tag_commit="$(git rev-list -n 1 "$tag")"
+          if [ "$tag_commit" != "$head_commit" ]; then
+            echo "Refusing to move existing tag $tag."
+            echo "$tag points to $tag_commit, but HEAD is $head_commit."
+            exit 1
+          fi
+          echo "Using existing local tag $tag at HEAD."
+        else
+          if git ls-remote --exit-code --tags "$remote" "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Remote tag $tag already exists on $remote. Fetch tags and inspect before releasing."
+            exit 1
+          fi
+          git tag -a "$tag" -m "Release $tag"
+        fi
+
+        git push "$remote" "$branch"
+        git push "$remote" "refs/tags/$tag"
+        echo "Released $tag."

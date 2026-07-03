@@ -325,6 +325,10 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       role_title text not null,
       role_kind text not null,
       term text,
+      timing_mode text not null default 'unknown',
+      terms_json text not null default '[]',
+      start_date text,
+      end_date text,
       city text,
       region text,
       country text not null,
@@ -579,6 +583,10 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       role_title text not null,
       role_kind text not null,
       term text,
+      timing_mode text not null default 'unknown',
+      terms_json text not null default '[]',
+      start_date text,
+      end_date text,
       city text,
       region text,
       country text not null,
@@ -637,6 +645,18 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     ['travel_notes', 'text'],
     ['willing_to_relocate', 'integer'],
     ['willing_to_travel', 'integer'],
+  ])
+  ensureColumns(database, 'applications', [
+    ['timing_mode', "text not null default 'unknown'"],
+    ['terms_json', "text not null default '[]'"],
+    ['start_date', 'text'],
+    ['end_date', 'text'],
+  ])
+  ensureColumns(database, 'sourcing_findings', [
+    ['timing_mode', "text not null default 'unknown'"],
+    ['terms_json', "text not null default '[]'"],
+    ['start_date', 'text'],
+    ['end_date', 'text'],
   ])
   ensureColumns(database, 'profile_sensitive_details', [
     ['birth_day_encrypted', 'text'],

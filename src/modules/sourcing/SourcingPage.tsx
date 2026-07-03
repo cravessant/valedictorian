@@ -8,9 +8,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AlertCircle, Ban, Pencil } from 'lucide-react'
 import {
+  deriveJobTermsFromDateRange,
+  formatJobTerms,
   manualSourcingDecisionStatuses,
+  roleKinds,
   sourcingMergeStatuses,
   type CreateSourcingFindingInput,
+  type JobTerm,
+  type JobTimingMode,
   type ManualSourcingDecisionStatus,
   type SetSourcingFindingDecisionInput,
   type SourcingFinding,
@@ -19,7 +24,10 @@ import {
   type UpdateSourcingFindingInput,
 } from 'sparxie'
 import { formatSourcingLocation } from '../../app/format'
+import { formatEnumLabel } from '../../app/labels'
 import type { ApplicationDetailSeed } from '../../app/types'
+
+const timingModeOptions = ['unknown', 'terms', 'dates'] as const
 
 interface SourcingPageProps {
   contentColumnClass: string
@@ -63,6 +71,7 @@ function SourcingPage({
   const [decidingFinding, setDecidingFinding] = useState<SourcingFinding | null>(null)
   const pageStart = result.total === 0 ? 0 : result.offset + 1
   const pageEnd = Math.min(result.offset + result.items.length, result.total)
+  const showResultTable = !error && result.items.length > 0
   const sourceOptions = Array.from(
     new Map(result.items.map((item) => [item.sourceId, item.sourceName])).entries(),
   ).map(([sourceId, sourceName]) => ({ sourceId, sourceName }))
@@ -143,7 +152,7 @@ function SourcingPage({
                 <option value="">Any status</option>
                 {sourcingMergeStatuses.map((status) => (
                   <option key={status} value={status}>
-                    {status}
+                    {formatEnumLabel(status)}
                   </option>
                 ))}
               </select>
@@ -175,66 +184,72 @@ function SourcingPage({
           </Alert>
         ) : null}
 
-        <section className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-card">
-          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-            <p className="text-sm font-medium text-foreground">
-              {pageStart}-{pageEnd} of {result.total}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-label="Previous sourcing page"
-                disabled={result.offset === 0}
-                onClick={onPreviousPage}
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-label="Next sourcing page"
-                disabled={!result.hasMore}
-                onClick={onNextPage}
-              >
-                Next
-              </Button>
+        {showResultTable ? (
+          <section className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-card">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <p className="text-sm font-medium text-foreground">
+                {pageStart}-{pageEnd} of {result.total}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Previous sourcing page"
+                  disabled={result.offset === 0}
+                  onClick={onPreviousPage}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Next sourcing page"
+                  disabled={!result.hasMore}
+                  onClick={onNextPage}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-auto">
-            <Table aria-label="Sourcing findings" className="min-w-[1100px]">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Company</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Run</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Merge</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead>Links</TableHead>
-                  <TableHead>Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {result.items.map((item) => (
-                  <SourcingFindingRow
-                    key={item.id}
-                    item={item}
-                    isPromoting={promotingFindingId === item.id}
-                    onDecideFinding={setDecidingFinding}
-                    onEditFinding={setEditingFinding}
-                    onOpenApplication={onOpenApplication}
-                    onPromoteFinding={onPromoteFinding}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </section>
+            <div className="min-h-0 flex-1 overflow-auto">
+              <Table aria-label="Sourcing findings" className="min-w-[1100px]">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Company</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Run</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Score</TableHead>
+                    <TableHead>Merge</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead>Links</TableHead>
+                    <TableHead>Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {result.items.map((item) => (
+                    <SourcingFindingRow
+                      key={item.id}
+                      item={item}
+                      isPromoting={promotingFindingId === item.id}
+                      onDecideFinding={setDecidingFinding}
+                      onEditFinding={setEditingFinding}
+                      onOpenApplication={onOpenApplication}
+                      onPromoteFinding={onPromoteFinding}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </section>
+        ) : !isLoading && !error ? (
+          <section className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
+            No sourcing findings match the current filters.
+          </section>
+        ) : null}
         {addingFinding ? (
           <SourcingFindingEditorModal
             mode="add"
@@ -287,6 +302,7 @@ function SourcingFindingRow({
       </TableCell>
       <TableCell>
         <span className="block min-w-64 text-muted-foreground">{item.roleTitle}</span>
+        <span className="mt-1 block text-xs text-muted-foreground">{formatSourcingTiming(item)}</span>
       </TableCell>
       <TableCell>
         <Badge variant="secondary">{item.sourceName}</Badge>
@@ -498,7 +514,14 @@ function SourcingFindingEditorModal({
   const [sourceName, setSourceName] = useState(finding?.sourceName ?? 'Manual')
   const [companyName, setCompanyName] = useState(finding?.companyName ?? '')
   const [roleTitle, setRoleTitle] = useState(finding?.roleTitle ?? '')
-  const [term, setTerm] = useState(finding?.term ?? '')
+  const [roleKind, setRoleKind] = useState<CreateSourcingFindingInput['roleKind']>(
+    finding?.roleKind ?? 'internship',
+  )
+  const [timingMode, setTimingMode] = useState<JobTimingMode>(finding?.timingMode ?? 'unknown')
+  const [termsJson, setTermsJson] = useState(finding?.terms?.length ? JSON.stringify(finding.terms, null, 2) : '')
+  const [startDate, setStartDate] = useState(finding?.startDate ?? '')
+  const [endDate, setEndDate] = useState(finding?.endDate ?? '')
+  const [timingLabel, setTimingLabel] = useState(finding?.term ?? '')
   const [locationRaw, setLocationRaw] = useState(finding?.locationRaw ?? '')
   const [workMode, setWorkMode] = useState(finding?.workMode ?? 'remote')
   const [officialUrl, setOfficialUrl] = useState(finding?.officialUrl ?? '')
@@ -519,14 +542,23 @@ function SourcingFindingEditorModal({
     setError(null)
 
     try {
+      const timingInput = buildFindingTimingInput({
+        endDate,
+        startDate,
+        timingLabel,
+        timingMode,
+        termsJson,
+      })
+
       if (mode === 'add' && onCreate) {
         const input: CreateSourcingFindingInput = {
           companyName: companyName.trim(),
-          roleKind: 'internship',
+          roleKind,
           roleTitle: roleTitle.trim(),
           sourceName: sourceName.trim(),
           workflowRunId: workflowRunId.trim(),
           workMode: workMode as CreateSourcingFindingInput['workMode'],
+          ...timingInput,
         }
 
         applyOptionalFindingFields(input, {
@@ -538,7 +570,6 @@ function SourcingFindingEditorModal({
           priorityBand,
           priorityScore,
           sourceUrl,
-          term,
         }, { includeNulls: false })
 
         await onCreate(input)
@@ -546,9 +577,11 @@ function SourcingFindingEditorModal({
         const input: UpdateSourcingFindingInput = {
           companyName: companyName.trim(),
           findingId: finding.id,
+          roleKind,
           roleTitle: roleTitle.trim(),
           sourceName: sourceName.trim(),
           workMode: workMode as UpdateSourcingFindingInput['workMode'],
+          ...timingInput,
         }
 
         applyOptionalFindingFields(input, {
@@ -562,7 +595,6 @@ function SourcingFindingEditorModal({
           priorityBand,
           priorityScore,
           sourceUrl,
-          term,
         }, { includeNulls: true })
 
         await onUpdate(input)
@@ -590,7 +622,19 @@ function SourcingFindingEditorModal({
           <FindingInput label="Source" value={sourceName} onChange={setSourceName} />
           <FindingInput label="Company" value={companyName} onChange={setCompanyName} />
           <FindingInput label="Role" value={roleTitle} onChange={setRoleTitle} />
-          <FindingInput label="Term" value={term} onChange={setTerm} />
+          <FindingSelect label="Role kind" value={roleKind} options={roleKinds} onChange={(value) => setRoleKind(value as CreateSourcingFindingInput['roleKind'])} />
+          <FindingTimingFields
+            endDate={endDate}
+            startDate={startDate}
+            timingLabel={timingLabel}
+            timingMode={timingMode}
+            termsJson={termsJson}
+            onEndDateChange={setEndDate}
+            onStartDateChange={setStartDate}
+            onTimingLabelChange={setTimingLabel}
+            onTimingModeChange={setTimingMode}
+            onTermsJsonChange={setTermsJson}
+          />
           <FindingInput label="Location" value={locationRaw} onChange={setLocationRaw} />
           <FindingSelect label="Work mode" value={workMode} options={['remote', 'onsite', 'hybrid', 'unclear']} onChange={(value) => setWorkMode(value as CreateSourcingFindingInput['workMode'])} />
           <FindingInput label="Official URL" value={officialUrl} onChange={setOfficialUrl} />
@@ -628,11 +672,136 @@ function SourcingFindingEditorModal({
   )
 }
 
+function FindingTimingFields({
+  endDate,
+  onEndDateChange,
+  onStartDateChange,
+  onTermsJsonChange,
+  onTimingLabelChange,
+  onTimingModeChange,
+  startDate,
+  termsJson,
+  timingLabel,
+  timingMode,
+}: {
+  endDate: string
+  onEndDateChange: (value: string) => void
+  onStartDateChange: (value: string) => void
+  onTermsJsonChange: (value: string) => void
+  onTimingLabelChange: (value: string) => void
+  onTimingModeChange: (value: JobTimingMode) => void
+  startDate: string
+  termsJson: string
+  timingLabel: string
+  timingMode: JobTimingMode
+}) {
+  const termsPreview = timingMode === 'terms' ? formatFindingTermsJsonPreview(termsJson) : ''
+  const datePreview = timingMode === 'dates'
+    ? formatFindingDateTermsPreview(startDate, endDate)
+    : ''
+
+  return (
+    <>
+      <FindingSelect
+        label="Timing mode"
+        value={timingMode}
+        options={timingModeOptions}
+        onChange={(value) => onTimingModeChange(value as JobTimingMode)}
+      />
+      {timingMode === 'unknown' ? (
+        <FindingInput label="Timing label" value={timingLabel} onChange={onTimingLabelChange} />
+      ) : null}
+      {timingMode === 'terms' ? (
+        <>
+          <FindingTextarea label="Terms JSON" value={termsJson} onChange={onTermsJsonChange} />
+          <FindingInput label="Timing summary" value={termsPreview} disabled onChange={() => {}} />
+        </>
+      ) : null}
+      {timingMode === 'dates' ? (
+        <>
+          <FindingInput label="Start date" value={startDate} onChange={onStartDateChange} />
+          <FindingInput label="End date" value={endDate} onChange={onEndDateChange} />
+          <FindingInput label="Timing summary" value={datePreview} disabled onChange={() => {}} />
+        </>
+      ) : null}
+    </>
+  )
+}
+
+function buildFindingTimingInput({
+  endDate,
+  startDate,
+  termsJson,
+  timingLabel,
+  timingMode,
+}: {
+  endDate: string
+  startDate: string
+  termsJson: string
+  timingLabel: string
+  timingMode: JobTimingMode
+}): Pick<CreateSourcingFindingInput, 'endDate' | 'startDate' | 'term' | 'terms' | 'timingMode'> {
+  if (timingMode === 'dates') {
+    return {
+      timingMode,
+      startDate: startDate.trim(),
+      endDate: endDate.trim() || null,
+    }
+  }
+
+  if (timingMode === 'terms') {
+    return {
+      timingMode,
+      terms: parseFindingTermsJsonInput(termsJson),
+    }
+  }
+
+  return {
+    timingMode,
+    term: timingLabel.trim() || null,
+    terms: [],
+    startDate: null,
+    endDate: null,
+  }
+}
+
+function parseFindingTermsJsonInput(value: string): JobTerm[] {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    throw new Error('Terms JSON is required for term timing.')
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown
+  if (!Array.isArray(parsed)) {
+    throw new Error('Terms JSON must be an array.')
+  }
+
+  return parsed as JobTerm[]
+}
+
+function formatFindingTermsJsonPreview(value: string) {
+  try {
+    return formatJobTerms(parseFindingTermsJsonInput(value))
+  } catch {
+    return ''
+  }
+}
+
+function formatFindingDateTermsPreview(startDate: string, endDate: string) {
+  try {
+    return formatJobTerms(deriveJobTermsFromDateRange(startDate.trim(), endDate.trim() || null))
+  } catch {
+    return ''
+  }
+}
+
 function FindingInput({
+  disabled,
   label,
   onChange,
   value,
 }: {
+  disabled?: boolean
   label: string
   onChange: (value: string) => void
   value: string
@@ -642,7 +811,30 @@ function FindingInput({
       {label}
       <input
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  )
+}
+
+function FindingTextarea({
+  label,
+  onChange,
+  value,
+}: {
+  label: string
+  onChange: (value: string) => void
+  value: string
+}) {
+  return (
+    <label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+      {label}
+      <textarea
+        aria-label={label}
+        className="min-h-20 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -665,11 +857,9 @@ function applyOptionalFindingFields(
     priorityBand?: string
     priorityScore?: string
     sourceUrl?: string
-    term?: string
   },
   options: { includeNulls: boolean },
 ) {
-  assignOptionalString(input, 'term', fields.term, options.includeNulls)
   assignOptionalString(input, 'locationRaw', fields.locationRaw, options.includeNulls)
   assignOptionalString(input, 'officialUrl', fields.officialUrl, options.includeNulls)
   assignOptionalString(input, 'sourceUrl', fields.sourceUrl, options.includeNulls)
@@ -739,12 +929,21 @@ function FindingSelect({
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {formatEnumLabel(option)}
           </option>
         ))}
       </select>
     </label>
   )
+}
+
+function formatSourcingTiming(item: SourcingFinding) {
+  if (item.term) {
+    return item.term
+  }
+
+  const termsLabel = formatJobTerms(item.terms)
+  return termsLabel || 'Unknown timing'
 }
 
 function sourcingFindingToApplication(item: SourcingFinding): ApplicationDetailSeed {

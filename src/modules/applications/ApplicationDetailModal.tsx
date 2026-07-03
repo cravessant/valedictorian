@@ -9,6 +9,7 @@ import { AlertCircle, X } from 'lucide-react'
 import type { ScoreInput, ScoreRecord, VerificationReceiptPayload } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
 import { formatTimestamp } from '../../app/format'
+import { formatEnumLabel } from '../../app/labels'
 import type {
   ApplicationAttempt,
   ApplicationDetail,
@@ -17,6 +18,7 @@ import type {
   CreateApplicationLinkInput,
   UpdateApplicationLinkInput,
 } from './application.types'
+import { formatJobTerms } from './application.types'
 
 interface ApplicationDetailModalProps {
   application: ApplicationDetail | ApplicationDetailSeed
@@ -58,6 +60,7 @@ function ApplicationDetailModal({
   const [linkEditorOpen, setLinkEditorOpen] = useState(false)
   const [scoreEditorOpen, setScoreEditorOpen] = useState(false)
   const [editingLink, setEditingLink] = useState<ApplicationLinkRecord | null>(null)
+  const timingLabel = formatApplicationTiming(application)
 
   return (
     <>
@@ -82,7 +85,7 @@ function ApplicationDetailModal({
         </header>
         <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
           <div className="mb-4 flex flex-wrap gap-2">
-            <Badge variant="secondary">{application.status}</Badge>
+            <Badge variant="secondary">{formatEnumLabel(application.status)}</Badge>
             {'currentPriorityScore' in application ? (
               <Badge variant={application.currentPriorityScore === null ? 'outline' : 'default'}>
                 {application.currentPriorityScore === null ? 'Unscored' : `${application.currentPriorityScore}/10`}
@@ -114,6 +117,12 @@ function ApplicationDetailModal({
                 <div>
                   <dt className="text-xs text-muted-foreground">Location</dt>
                   <dd className="font-medium text-foreground">{application.location}</dd>
+                </div>
+              ) : null}
+              {timingLabel ? (
+                <div>
+                  <dt className="text-xs text-muted-foreground">Timing</dt>
+                  <dd className="font-medium text-foreground">{timingLabel}</dd>
                 </div>
               ) : null}
             </dl>
@@ -195,7 +204,7 @@ function ApplicationDetailModal({
                 {events.map((event) => (
                   <li key={event.id} className="grid gap-1 py-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{event.type}</Badge>
+                      <Badge variant="outline">{formatEnumLabel(event.type)}</Badge>
                       <span className="text-xs text-muted-foreground">
                         {formatTimestamp(event.createdAt)}
                       </span>
@@ -247,8 +256,8 @@ function ApplicationDetailModal({
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Badge>{attempt.status}</Badge>
-                      {attempt.outcome ? <Badge variant="secondary">{attempt.outcome}</Badge> : null}
+                      <Badge>{formatEnumLabel(attempt.status)}</Badge>
+                      {attempt.outcome ? <Badge variant="secondary">{formatEnumLabel(attempt.outcome)}</Badge> : null}
                     </div>
                   </div>
                   <ol className="divide-y divide-border">
@@ -473,7 +482,7 @@ function AttemptStepItem({ step }: { step: ApplicationAttempt['steps'][number] }
   return (
     <li className="grid gap-1 px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="outline">{step.type}</Badge>
+        <Badge variant="outline">{formatEnumLabel(step.type)}</Badge>
         <span className="text-xs text-muted-foreground">
           {formatTimestamp(step.createdAt)}
         </span>
@@ -494,9 +503,9 @@ function VerificationReceiptStepItem({
     <li className="px-4 py-3">
       <div className="border-l-4 border-l-border bg-muted/40 px-3 py-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">{step.type}</Badge>
+          <Badge variant="outline">{formatEnumLabel(step.type)}</Badge>
           <Badge variant={receipt.status === 'passed' ? 'success' : 'warning'}>
-            {receipt.status}
+            {formatEnumLabel(receipt.status)}
           </Badge>
           <span className="text-xs text-muted-foreground">
             {formatTimestamp(step.createdAt)}
@@ -579,6 +588,19 @@ function parseVerificationReceiptPayload(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function formatApplicationTiming(application: ApplicationDetail | ApplicationDetailSeed) {
+  if (!('term' in application)) {
+    return null
+  }
+
+  if (application.term) {
+    return application.term
+  }
+
+  const termsLabel = formatJobTerms(application.terms)
+  return termsLabel || 'Unknown'
 }
 
 function InlineLoadError({ message }: { message: string }) {

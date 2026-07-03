@@ -22,14 +22,20 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ExternalLink, Pencil } from 'lucide-react'
+import { formatEnumLabel } from '../../app/labels'
 import type {
   ApplicationListItem,
   ApplicationListResult,
   ApplicationListSort,
 } from './application.types'
+import { formatJobTerms } from './application.types'
 
 const ROW_HEIGHT = 54
 const ROW_OVERSCAN = 4
+const defaultColumnVisibility: VisibilityState = {
+  location: false,
+  updated: false,
+}
 
 interface ApplicationTableProps {
   result: ApplicationListResult
@@ -68,38 +74,64 @@ const applicationColumns: ColumnDef<ApplicationListItem>[] = [
     accessorKey: 'companyName',
     id: 'company',
     enableHiding: false,
+    size: 190,
     header: 'Company',
     cell: ({ row }) => (
-      <span className="font-medium text-foreground">{row.original.companyName}</span>
+      <span className="block max-w-48 truncate font-medium text-foreground" title={row.original.companyName}>
+        {row.original.companyName}
+      </span>
     ),
   },
   {
     accessorKey: 'roleTitle',
     id: 'role',
     enableHiding: false,
+    size: 220,
     header: 'Role',
     cell: ({ row }) => (
-      <span className="block min-w-64 text-muted-foreground">{row.original.roleTitle}</span>
+      <span className="block max-w-56 truncate text-muted-foreground" title={row.original.roleTitle}>
+        {row.original.roleTitle}
+      </span>
+    ),
+  },
+  {
+    id: 'timing',
+    enableSorting: false,
+    size: 94,
+    header: 'Timing',
+    cell: ({ row }) => (
+      <Badge className="max-w-24 truncate whitespace-nowrap" variant="outline">
+        {formatApplicationTiming(row.original)}
+      </Badge>
     ),
   },
   {
     accessorKey: 'sourceName',
     id: 'source',
+    size: 118,
     header: 'Source',
-    cell: ({ row }) => <Badge variant="secondary">{row.original.sourceName}</Badge>,
+    cell: ({ row }) => (
+      <Badge className="max-w-28 truncate whitespace-nowrap" title={row.original.sourceName} variant="secondary">
+        {row.original.sourceName}
+      </Badge>
+    ),
   },
   {
     accessorKey: 'status',
     id: 'status',
     enableHiding: false,
+    size: 122,
     header: 'Status',
     cell: ({ row }) => (
-      <Badge variant={getStatusVariant(row.original.status)}>{row.original.status}</Badge>
+      <Badge className="max-w-32 truncate whitespace-nowrap" variant={getStatusVariant(row.original.status)}>
+        {formatEnumLabel(row.original.status)}
+      </Badge>
     ),
   },
   {
     accessorKey: 'currentPriorityScore',
     id: 'priority',
+    size: 76,
     header: 'Score',
     cell: ({ row }) => (
       <Badge variant={row.original.currentPriorityScore === null ? 'outline' : 'default'}>
@@ -111,14 +143,18 @@ const applicationColumns: ColumnDef<ApplicationListItem>[] = [
     accessorKey: 'location',
     id: 'location',
     enableSorting: false,
+    size: 120,
     header: 'Location',
     cell: ({ row }) => (
-      <span className="block min-w-48 text-muted-foreground">{row.original.location}</span>
+      <span className="block max-w-28 truncate text-muted-foreground" title={row.original.location}>
+        {row.original.location}
+      </span>
     ),
   },
   {
     accessorKey: 'updatedAt',
     id: 'updated',
+    size: 104,
     header: 'Updated',
     cell: ({ row }) => (
       <span className="text-muted-foreground">{formatDate(row.original.updatedAt)}</span>
@@ -127,6 +163,7 @@ const applicationColumns: ColumnDef<ApplicationListItem>[] = [
   {
     id: 'link',
     enableSorting: false,
+    size: 72,
     header: 'Link',
     cell: ({ row }) =>
       row.original.primaryLink ? (
@@ -152,7 +189,9 @@ function ApplicationTable({
   onPreviousPage,
   onNextPage,
 }: ApplicationTableProps) {
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+    defaultColumnVisibility,
+  )
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [columnsOpen, setColumnsOpen] = useState(false)
   const tableContainerRef = useRef<HTMLDivElement>(null)
@@ -176,7 +215,8 @@ function ApplicationTable({
         id: 'actions',
         enableHiding: false,
         enableSorting: false,
-        header: 'Actions',
+        size: 56,
+        header: 'Edit',
         cell: ({ row }) => (
           <Button
             type="button"
@@ -380,16 +420,24 @@ function ApplicationTable({
         aria-label="Applications table viewport"
         className="min-h-0 flex-1 overflow-auto"
       >
-        <Table aria-label="Applications" className="min-w-[940px]">
+        <Table
+          aria-label="Applications"
+          className="table-fixed"
+          style={{ minWidth: table.getTotalSize() }}
+        >
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
+                  <TableHead
+                    key={header.id}
+                    className={getColumnChromeClassName(header.column.id)}
+                    style={{ width: header.getSize() }}
+                  >
                     {header.isPlaceholder ? null : header.column.getCanSort() ? (
                       <button
                         type="button"
-                        className="flex items-center gap-1 text-xs font-medium uppercase text-muted-foreground hover:text-foreground"
+                        className="flex min-w-0 items-center gap-1 text-xs font-medium uppercase text-muted-foreground hover:text-foreground"
                         aria-label={`Sort by ${getColumnLabel(header.column.id).toLowerCase()}`}
                         onClick={header.column.getToggleSortingHandler()}
                       >
@@ -432,7 +480,11 @@ function ApplicationTable({
                       onClick={() => onOpenApplication?.(row.original)}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
+                        <TableCell
+                          key={cell.id}
+                          className={getColumnChromeClassName(cell.column.id)}
+                          style={{ width: cell.column.getSize() }}
+                        >
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </TableCell>
                       ))}
@@ -578,10 +630,31 @@ function getStatusVariant(status: ApplicationListItem['status']): BadgeProps['va
   return 'outline'
 }
 
+function getColumnChromeClassName(columnId: string) {
+  if (columnId === 'actions') {
+    return undefined
+  }
+
+  if (columnId === 'select') {
+    return 'w-11 px-2'
+  }
+
+  return undefined
+}
+
 function formatScore(application: ApplicationListItem) {
   return application.currentPriorityScore === null
     ? 'Unscored'
     : `${application.currentPriorityScore}/10`
+}
+
+function formatApplicationTiming(application: ApplicationListItem) {
+  if (application.term) {
+    return application.term
+  }
+
+  const termsLabel = formatJobTerms(application.terms)
+  return termsLabel || 'Unknown'
 }
 
 function formatDate(value: string) {

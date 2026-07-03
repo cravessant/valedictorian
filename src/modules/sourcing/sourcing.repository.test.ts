@@ -362,6 +362,9 @@ describe('SQLite sourcing repository', () => {
       roleKind: 'internship',
       country: 'US',
       workMode: 'remote',
+      timingMode: 'dates',
+      startDate: '2027-01-15',
+      endDate: '2027-06-01',
       locationRaw: 'United States / Remote',
       officialUrl: 'https://jobs.example.com/delta?utm_source=linkedin',
       sourceUrl: 'https://linkedin.com/jobs/view/123',
@@ -394,6 +397,14 @@ describe('SQLite sourcing repository', () => {
       workflowRunId: run.id,
       sourceName: 'LinkedIn',
       companyName: 'Delta Labs',
+      term: 'Spring 2027 / Summer 2027',
+      terms: [
+        { season: 'spring', year: 2027 },
+        { season: 'summer', year: 2027 },
+      ],
+      timingMode: 'dates',
+      startDate: '2027-01-15',
+      endDate: '2027-06-01',
       mergeStatus: 'new',
       officialUrl: 'https://jobs.example.com/delta',
     })
@@ -434,6 +445,11 @@ describe('SQLite sourcing repository', () => {
     ).toMatchObject({
       roleTitle: 'Software Engineering Intern',
       status: 'queued',
+      term: 'Spring 2027 / Summer 2027',
+      timingMode: 'dates',
+      termsJson: '[{"season":"spring","year":2027},{"season":"summer","year":2027}]',
+      startDate: '2027-01-15',
+      endDate: '2027-06-01',
       currentPriorityScore: 7,
       currentPriorityBand: 'high',
     })
@@ -460,6 +476,82 @@ describe('SQLite sourcing repository', () => {
         .all()
         .map((event) => event.type),
     ).toContain('merged_from_sourcing_finding')
+  })
+
+  it('updates sourcing timing modes and rejects mixed date and term input', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const runRepository = createSqliteWorkflowRunRepository(database)
+    const sourcingRepository = createSqliteSourcingRepository(database)
+    const run = await runRepository.startRun({
+      runType: 'sourcing',
+      actorType: 'agent',
+      sourceName: 'LinkedIn',
+      summary: 'Started LinkedIn sourcing.',
+    })
+
+    const finding = await sourcingRepository.createFinding({
+      workflowRunId: run.id,
+      sourceName: 'LinkedIn',
+      companyName: 'Timing Labs',
+      roleTitle: 'Software Engineering Intern',
+      roleKind: 'internship',
+      term: 'Fall 2026',
+      country: 'US',
+      workMode: 'remote',
+      sourceUrl: 'https://linkedin.com/jobs/view/timing-labs',
+      priorityScore: 8,
+      priorityBand: 'high',
+    })
+
+    expect(finding).toMatchObject({
+      term: 'Fall 2026',
+      terms: [{ season: 'fall', year: 2026 }],
+      timingMode: 'terms',
+      startDate: null,
+      endDate: null,
+    })
+
+    const dateMode = await sourcingRepository.updateFinding({
+      findingId: finding.id,
+      timingMode: 'dates',
+      startDate: '2027-05-01',
+      endDate: '2027-09-15',
+    })
+
+    expect(dateMode).toMatchObject({
+      term: 'Summer 2027 / Fall 2027',
+      terms: [
+        { season: 'summer', year: 2027 },
+        { season: 'fall', year: 2027 },
+      ],
+      timingMode: 'dates',
+      startDate: '2027-05-01',
+      endDate: '2027-09-15',
+    })
+
+    const unknownMode = await sourcingRepository.updateFinding({
+      findingId: finding.id,
+      timingMode: 'unknown',
+      term: 'Internship',
+    })
+
+    expect(unknownMode).toMatchObject({
+      term: 'Internship',
+      terms: [],
+      timingMode: 'unknown',
+      startDate: null,
+      endDate: null,
+    })
+
+    await expect(
+      sourcingRepository.updateFinding({
+        findingId: finding.id,
+        term: 'Fall 2027',
+        startDate: '2027-09-01',
+      }),
+    ).rejects.toThrow('Date-based timing cannot include term or terms input')
   })
 
   it('marks duplicate findings without creating another application', async () => {
