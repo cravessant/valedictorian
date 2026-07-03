@@ -554,6 +554,235 @@ describe('valedictorian-cli npm package', () => {
     )
   })
 
+  it('manages profile details and secret summaries over workspace-scoped HTTP', async () => {
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-cli-profile-'))
+    const profilePath = path.join(tempDirectory, 'profile.json')
+    const sensitivePath = path.join(tempDirectory, 'sensitive.json')
+    const secretValuePath = path.join(tempDirectory, 'secret-value.txt')
+    const profileInput = {
+      fullName: 'Sparxie Example',
+      email: 'alex@example.com',
+      answers: [
+        {
+          key: 'work_auth',
+          label: 'Work authorization',
+          questionPattern: 'Are you authorized to work?',
+          answer: 'Yes',
+          includeInAgentContext: true,
+        },
+      ],
+    }
+    const sensitiveInput = {
+      birthYear: '2000',
+      ssnLast4: '1234',
+    }
+    const profilePayload = {
+      ...profileInput,
+      education: [],
+    }
+    const agentContextPayload = {
+      answers: profileInput.answers,
+      basics: {
+        email: 'alex@example.com',
+        fullName: 'Sparxie Example',
+      },
+      education: [],
+    }
+    const secretSummary = {
+      key: 'greenhouse_password',
+      kind: 'password',
+      label: 'Greenhouse password',
+      updatedAt: '2026-07-03T12:00:00.000Z',
+    }
+
+    fs.writeFileSync(profilePath, JSON.stringify(profileInput))
+    fs.writeFileSync(sensitivePath, JSON.stringify(sensitiveInput))
+    fs.writeFileSync(secretValuePath, 'super-secret-password')
+
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(jsonResponse(profilePayload))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agentContextPayload))
+    fetchMock.mockResolvedValueOnce(jsonResponse(profilePayload))
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        birthDay: null,
+        birthMonth: null,
+        birthYear: '2000',
+        disabilityStatus: null,
+        gender: null,
+        hispanicLatino: null,
+        raceEthnicity: null,
+        ssnLast4: '1234',
+        veteranStatus: null,
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        birthDay: null,
+        birthMonth: null,
+        birthYear: '2000',
+        disabilityStatus: null,
+        gender: null,
+        hispanicLatino: null,
+        raceEthnicity: null,
+        ssnLast4: '1234',
+        veteranStatus: null,
+      }),
+    )
+    fetchMock.mockResolvedValueOnce(jsonResponse(secretSummary))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [secretSummary] }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const profileGet = await runCli(['profile', 'get', '--workspace', 'workspace-1', '--json'])
+    const agentContext = await runCli([
+      'profile',
+      'agent-context',
+      '--workspace',
+      'workspace-1',
+      '--json',
+    ])
+    const profileUpdate = await runCli([
+      'profile',
+      'update',
+      '--workspace',
+      'workspace-1',
+      '--input-json',
+      profilePath,
+      '--json',
+    ])
+    const sensitiveUpdate = await runCli([
+      'profile',
+      'sensitive',
+      'update',
+      '--workspace',
+      'workspace-1',
+      '--input-json',
+      sensitivePath,
+      '--json',
+    ])
+    const sensitiveSummary = await runCli([
+      'profile',
+      'sensitive',
+      'summary',
+      '--workspace',
+      'workspace-1',
+      '--json',
+    ])
+    const secretUpsert = await runCli([
+      'profile',
+      'secrets',
+      'upsert',
+      'greenhouse_password',
+      '--workspace',
+      'workspace-1',
+      '--kind',
+      'password',
+      '--label',
+      'Greenhouse password',
+      '--value-file',
+      secretValuePath,
+      '--json',
+    ])
+    const secretList = await runCli([
+      'profile',
+      'secrets',
+      'list',
+      '--workspace',
+      'workspace-1',
+      '--json',
+    ])
+    const secretDelete = await runCli([
+      'profile',
+      'secrets',
+      'delete',
+      'greenhouse_password',
+      '--workspace',
+      'workspace-1',
+      '--json',
+    ])
+
+    expect(profileGet.exitCode).toBe(0)
+    expect(agentContext.exitCode).toBe(0)
+    expect(profileUpdate.exitCode).toBe(0)
+    expect(sensitiveUpdate.exitCode).toBe(0)
+    expect(sensitiveSummary.exitCode).toBe(0)
+    expect(secretUpsert.exitCode).toBe(0)
+    expect(secretList.exitCode).toBe(0)
+    expect(secretDelete.exitCode).toBe(0)
+    expect(JSON.parse(profileGet.stdout)).toEqual(profilePayload)
+    expect(JSON.parse(agentContext.stdout)).toEqual(agentContextPayload)
+    expect(JSON.parse(profileUpdate.stdout)).toEqual(profilePayload)
+    expect(JSON.parse(sensitiveUpdate.stdout)).toEqual({
+      populatedFieldCount: 2,
+      populatedFields: ['birthYear', 'ssnLast4'],
+    })
+    expect(JSON.parse(sensitiveSummary.stdout)).toEqual({
+      populatedFieldCount: 2,
+      populatedFields: ['birthYear', 'ssnLast4'],
+    })
+    expect(JSON.parse(secretUpsert.stdout)).toEqual(secretSummary)
+    expect(JSON.parse(secretList.stdout)).toEqual({ items: [secretSummary] })
+    expect(JSON.parse(secretDelete.stdout)).toEqual({ ok: true })
+    expect(`${sensitiveUpdate.stdout}${sensitiveSummary.stdout}`).not.toContain('1234')
+    expect(`${secretUpsert.stdout}${secretList.stdout}${secretDelete.stdout}`).not.toContain(
+      'super-secret-password',
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://valedictorian.test/v1/workspaces/workspace-1/profile',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://valedictorian.test/v1/workspaces/workspace-1/profile/agent-context',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'https://valedictorian.test/v1/workspaces/workspace-1/profile',
+      expect.objectContaining({
+        body: JSON.stringify(profileInput),
+        method: 'PATCH',
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      'https://valedictorian.test/v1/workspaces/workspace-1/profile/sensitive',
+      expect.objectContaining({
+        body: JSON.stringify(sensitiveInput),
+        method: 'PATCH',
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      'https://valedictorian.test/v1/workspaces/workspace-1/profile/sensitive',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      'https://valedictorian.test/v1/workspaces/workspace-1/secrets/greenhouse_password',
+      expect.objectContaining({
+        body: JSON.stringify({
+          kind: 'password',
+          label: 'Greenhouse password',
+          value: 'super-secret-password',
+        }),
+        method: 'PUT',
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      'https://valedictorian.test/v1/workspaces/workspace-1/secrets',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      'https://valedictorian.test/v1/workspaces/workspace-1/secrets/greenhouse_password',
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+  })
+
   it('resolves workspace names and fails when a workspace name is ambiguous', async () => {
     const workspaces = {
       items: [
@@ -834,6 +1063,10 @@ describe('valedictorian-cli npm package', () => {
         'queued',
         '--primary-url',
         'https://jobs.example.com/delta',
+        '--start-date',
+        '2027-05-15',
+        '--end-date',
+        '2027-08-15',
         '--initial-note',
         'Seeded by CLI.',
         '--workspace',
@@ -850,6 +1083,8 @@ describe('valedictorian-cli npm package', () => {
         'Software Engineering Intern II',
         '--has-applied',
         'true',
+        '--terms-json',
+        '[{"season":"fall","year":2026}]',
         '--workspace',
         'workspace-1',
       ]),
@@ -946,6 +1181,8 @@ describe('valedictorian-cli npm package', () => {
           country: 'US',
           workMode: 'remote',
           status: 'queued',
+          startDate: '2027-05-15',
+          endDate: '2027-08-15',
           primaryLink: {
             kind: 'official',
             label: 'official',
@@ -962,6 +1199,7 @@ describe('valedictorian-cli npm package', () => {
       expect.objectContaining({
         body: JSON.stringify({
           roleTitle: 'Software Engineering Intern II',
+          terms: [{ season: 'fall', year: 2026 }],
           hasApplied: true,
         }),
         method: 'PATCH',
@@ -1381,6 +1619,32 @@ describe('valedictorian-cli npm package', () => {
       '--workspace',
       'workspace-1',
     ])
+    const mixedTiming = await runCli([
+      'applications',
+      'create',
+      '--company-name',
+      'Delta Labs',
+      '--role-title',
+      'Software Engineering Intern',
+      '--source-name',
+      'LinkedIn',
+      '--role-kind',
+      'internship',
+      '--country',
+      'US',
+      '--work-mode',
+      'remote',
+      '--status',
+      'queued',
+      '--term',
+      'Fall 2027',
+      '--start-date',
+      '2027-09-01',
+      '--primary-url',
+      'https://jobs.example.com/delta',
+      '--workspace',
+      'workspace-1',
+    ])
     const invalidManualKind = await runCli([
       'applications',
       'workflow',
@@ -1441,6 +1705,8 @@ describe('valedictorian-cli npm package', () => {
     expect(missingLink.stderr).toContain('Application creation requires a primaryLink or sourceLink')
     expect(malformedUrl.exitCode).toBe(1)
     expect(malformedUrl.stderr).toContain('Invalid application URL: ftp://jobs.example.com/delta')
+    expect(mixedTiming.exitCode).toBe(1)
+    expect(mixedTiming.stderr).toContain('Date-based timing cannot include term or terms input')
     expect(invalidManualKind.exitCode).toBe(1)
     expect(invalidManualKind.stderr).toContain('Invalid manualReviewKind: manual')
     expect(invalidWorkflowTimestamp.exitCode).toBe(1)

@@ -29,6 +29,9 @@ valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE
 valedictorian-cli --workspace "$VALEDICTORIAN_WORKSPACE" --json applications list
 valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now
 valedictorian-cli --json sourcing findings import --workspace "$VALEDICTORIAN_WORKSPACE" --input-json findings.json
+valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile sensitive summary --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" | jq '.items[] | {id, companyName, roleTitle, status}'
 ```
 
@@ -50,6 +53,22 @@ directory upward. Supported files are `valedictorian.config.json`,
 ```
 
 Project config is for repo/workspace defaults only. Do not store API tokens, OAuth tokens, passwords, or client secrets in project config. Use environment variables or the app's encrypted secret storage for secrets.
+
+## Profile and secrets
+
+Profile commands are workspace-scoped and use the same HTTP contract as the app:
+
+```sh
+valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile agent-context --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile update --workspace "$VALEDICTORIAN_WORKSPACE" --input-json profile.json
+valedictorian-cli --json profile sensitive update --workspace "$VALEDICTORIAN_WORKSPACE" --input-json sensitive-profile.json
+valedictorian-cli --json profile sensitive summary --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile secrets upsert greenhouse_password --workspace "$VALEDICTORIAN_WORKSPACE" --kind password --label "Greenhouse password" --value-file "$SECRET_VALUE_FILE"
+```
+
+`profile sensitive update` and `profile sensitive summary` print populated-field summaries rather than sensitive values. `profile secrets upsert` reads the secret value from `--value-file` and prints only the stored secret summary.
 
 ## Agent skill
 

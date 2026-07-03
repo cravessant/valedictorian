@@ -69,6 +69,25 @@ export function parseNullableTimestampOption(value: string, fieldName: string) {
   return timestamp
 }
 
+export function parseNullableDateStringOption(value: string, fieldName: string) {
+  const trimmed = value.trim()
+
+  if (trimmed === 'null') {
+    return null
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new Error(`Invalid ${fieldName}: ${value}`)
+  }
+
+  const date = new Date(`${trimmed}T00:00:00.000Z`)
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== trimmed) {
+    throw new Error(`Invalid ${fieldName}: ${value}`)
+  }
+
+  return trimmed
+}
+
 export function parseBooleanValue(value: string, optionName: string) {
   if (value === 'true') {
     return true

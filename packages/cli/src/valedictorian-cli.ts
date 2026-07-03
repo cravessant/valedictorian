@@ -13,6 +13,12 @@ import {
   createHttpValedictorianClient,
   defaultValedictorianApiBaseUrl,
   isApplicationStatus,
+  profileSecretKinds,
+  type ProfileSecretKind,
+  type ProfileSensitiveDetails,
+  type ProfileSensitiveDetailsInput,
+  type ProfileUpdateInput,
+  type UpsertProfileSecretInput,
   type ValedictorianClient,
   type ValedictorianWorkspaceClient,
 } from 'sparxie'
@@ -163,6 +169,7 @@ const application = buildApplication(
         },
       }),
       examples: buildExamplesRoute(),
+      profile: buildProfileRoute(),
       workspaces: buildRouteMap({
         docs: { brief: 'Manage local workspaces' },
         routes: {
@@ -303,8 +310,11 @@ function buildApplicationsRoute() {
             'source-kind',
             'source-label',
             'source-link-url',
+            'start-date',
             'term',
+            'terms-json',
             'workspace',
+            'end-date',
           ]),
           ...optionFlags([], [
             'company-name',
@@ -434,9 +444,12 @@ function buildApplicationsRoute() {
           'region',
           'role-kind',
           'role-title',
+          'start-date',
           'term',
+          'terms-json',
           'work-mode',
           'workspace',
+          'end-date',
         ]),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
@@ -470,6 +483,122 @@ function buildApplicationsRoute() {
               parseWorkflowUpdate(applicationId, toArgvWithoutWorkspace(flags)),
             ),
           )
+        },
+      }),
+    },
+  })
+}
+
+function buildProfileRoute() {
+  return buildRouteMap({
+    docs: { brief: 'Manage workspace profile data' },
+    routes: {
+      'agent-context': makeCommand({
+        docs: { brief: 'Get non-secret profile context for agents' },
+        flags: optionFlags(['workspace']),
+        run: async (context, flags) => {
+          const client = await workspaceClient(context, flags)
+
+          writeJson(context, await client.profile.agentContext.get())
+        },
+      }),
+      get: makeCommand({
+        docs: { brief: 'Get non-sensitive profile details' },
+        flags: optionFlags(['workspace']),
+        run: async (context, flags) => {
+          const client = await workspaceClient(context, flags)
+
+          writeJson(context, await client.profile.get())
+        },
+      }),
+      secrets: buildRouteMap({
+        docs: { brief: 'Manage credential secret summaries' },
+        routes: {
+          delete: makeCommand({
+            docs: { brief: 'Delete a credential secret' },
+            flags: optionFlags(['workspace']),
+            positionalCount: 1,
+            run: async (context, flags, key) => {
+              const client = await workspaceClient(context, flags)
+
+              await client.secrets.delete(key)
+              writeJson(context, { ok: true })
+            },
+          }),
+          list: makeCommand({
+            docs: { brief: 'List credential secret summaries' },
+            flags: optionFlags(['workspace']),
+            run: async (context, flags) => {
+              const client = await workspaceClient(context, flags)
+
+              writeJson(context, await client.secrets.list())
+            },
+          }),
+          upsert: makeCommand({
+            docs: {
+              brief: 'Create or update a credential secret from a value file',
+              fullDescription: 'Stores a secret value and prints only the non-secret summary.',
+            },
+            flags: optionFlags(['workspace'], ['kind', 'label', 'value-file']),
+            positionalCount: 1,
+            run: async (context, flags, key) => {
+              const client = await workspaceClient(context, flags)
+              const input: UpsertProfileSecretInput = {
+                key,
+                kind: parseProfileSecretKind(requiredOption(flags, 'kind', '--kind value')),
+                label: readRequiredText(optionValue(flags, 'label'), '--label value'),
+                value: fs.readFileSync(
+                  readRequiredText(optionValue(flags, 'value-file'), '--value-file path'),
+                  'utf8',
+                ),
+              }
+
+              writeJson(context, await client.secrets.upsert(input))
+            },
+          }),
+        },
+      }),
+      sensitive: buildRouteMap({
+        docs: { brief: 'Manage sensitive profile details' },
+        routes: {
+          summary: makeCommand({
+            docs: { brief: 'Show which sensitive profile fields are populated' },
+            flags: optionFlags(['workspace']),
+            run: async (context, flags) => {
+              const client = await workspaceClient(context, flags)
+
+              writeJson(context, summarizeSensitiveDetails(await client.profile.sensitive.get()))
+            },
+          }),
+          update: makeCommand({
+            docs: {
+              brief: 'Update sensitive profile details from a JSON file',
+              fullDescription: 'Writes sensitive values and prints only populated-field summary.',
+            },
+            flags: optionFlags(['workspace'], ['input-json']),
+            run: async (context, flags) => {
+              const client = await workspaceClient(context, flags)
+              const input = readJsonObjectFile<ProfileSensitiveDetailsInput>(
+                readRequiredText(optionValue(flags, 'input-json'), '--input-json path'),
+                'sensitive profile input',
+              )
+
+              writeJson(context, summarizeSensitiveDetails(await client.profile.sensitive.update(input)))
+            },
+          }),
+        },
+      }),
+      update: makeCommand({
+        docs: { brief: 'Update non-sensitive profile details from a JSON file' },
+        flags: optionFlags(['workspace'], ['input-json']),
+        run: async (context, flags) => {
+          const client = await workspaceClient(context, flags)
+          const input = readJsonObjectFile<ProfileUpdateInput>(
+            readRequiredText(optionValue(flags, 'input-json'), '--input-json path'),
+            'profile update input',
+          )
+
+          writeJson(context, await client.profile.update(input))
         },
       }),
     },
@@ -714,8 +843,11 @@ function buildSourcingRoute() {
                 'region',
                 'source-name',
                 'source-url',
+                'start-date',
                 'term',
+                'terms-json',
                 'workspace',
+                'end-date',
               ],
               ['company-name', 'role-kind', 'role-title', 'work-mode', 'workflow-run-id'],
             ),
@@ -807,7 +939,11 @@ function buildSourcingRoute() {
               'merge-notes',
               'merge-status',
               'policy-blocker',
+              'start-date',
+              'term',
+              'terms-json',
               'workspace',
+              'end-date',
             ]),
             positionalCount: 1,
             run: async (context, flags, findingId) => {
@@ -1288,6 +1424,35 @@ function optionValue(flags: RawFlags, name: string) {
 
 function requiredOption(flags: RawFlags, name: string, label: string) {
   return readRequiredText(optionValue(flags, name), label)
+}
+
+function parseProfileSecretKind(value: string): ProfileSecretKind {
+  if (profileSecretKinds.includes(value as ProfileSecretKind)) {
+    return value as ProfileSecretKind
+  }
+
+  throw new Error(`Invalid profile secret kind: ${value}`)
+}
+
+function readJsonObjectFile<T extends object>(path: string, label: string): T {
+  const parsed = JSON.parse(fs.readFileSync(path, 'utf8')) as unknown
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON object`)
+  }
+
+  return parsed as T
+}
+
+function summarizeSensitiveDetails(details: ProfileSensitiveDetails) {
+  const populatedFields = Object.entries(details)
+    .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+    .map(([field]) => field)
+
+  return {
+    populatedFieldCount: populatedFields.length,
+    populatedFields,
+  }
 }
 
 function writeJson(context: ValedictorianCliContext, value: unknown, pretty = true) {

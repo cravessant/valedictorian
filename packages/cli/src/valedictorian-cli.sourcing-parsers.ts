@@ -1,14 +1,18 @@
 import {
   isManualSourcingDecisionStatus,
+  isJobTimingMode,
   isRoleKind,
   isSourcingMergeStatus,
   isWorkMode,
+  normalizeJobTimingInput,
+  type JobTerm,
   type ValedictorianWorkspaceClient,
 } from 'sparxie'
 import {
   assertKnownOptions,
   assertMutationPatch,
   parseNullableApplicationUrlOption,
+  parseNullableDateStringOption,
   parseNullableSourceUrlOption,
   parseNullableStringOption,
   parseNullableTimestampOption,
@@ -276,6 +280,43 @@ export function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
+function setOptionalTimingOptions(
+  input: CreateSourcingFindingInput | Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['update']>[0],
+  argv: string[],
+) {
+  const termsJson = readOption(argv, '--terms-json')
+  const startDate = readOption(argv, '--start-date')
+  const endDate = readOption(argv, '--end-date')
+
+  if (termsJson !== undefined) {
+    input.terms = parseTermsJsonOption(termsJson)
+  }
+  if (startDate !== undefined) {
+    input.startDate = parseNullableDateStringOption(startDate, 'startDate')
+  }
+  if (endDate !== undefined) {
+    input.endDate = parseNullableDateStringOption(endDate, 'endDate')
+  }
+
+  if (
+    input.term !== undefined ||
+    input.terms !== undefined ||
+    input.startDate !== undefined ||
+    input.endDate !== undefined
+  ) {
+    normalizeJobTimingInput(input)
+  }
+}
+
+function parseTermsJsonOption(value: string): JobTerm[] {
+  const parsed = JSON.parse(value) as unknown
+  if (!Array.isArray(parsed)) {
+    throw new Error('--terms-json must be a JSON array')
+  }
+
+  return parsed as JobTerm[]
+}
+
 export function parseSourcingFindingCreate(
   argv: string[],
 ): Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0] {
@@ -301,6 +342,9 @@ export function parseSourcingFindingCreate(
     '--source-name',
     '--source-url',
     '--term',
+    '--terms-json',
+    '--start-date',
+    '--end-date',
     '--work-mode',
     '--workflow-run-id',
     '--disposition-reason',
@@ -337,6 +381,7 @@ export function parseSourcingFindingCreate(
   input.roleKind = roleKind
 
   setOptionalStringOption(input, argv, '--term', 'term')
+  setOptionalTimingOptions(input, argv)
   setOptionalStringOption(input, argv, '--city', 'city')
   setOptionalStringOption(input, argv, '--region', 'region')
 
@@ -397,6 +442,10 @@ export function parseSourcingFindingUpdate(
     '--merge-notes',
     '--merge-status',
     '--policy-blocker',
+    '--term',
+    '--terms-json',
+    '--start-date',
+    '--end-date',
   ])
   const input: Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['update']>[0] = { findingId }
   const mergeStatus = readOption(argv, '--merge-status')
@@ -406,6 +455,8 @@ export function parseSourcingFindingUpdate(
     input.mergeStatus = mergeStatus
   }
 
+  setOptionalStringOption(input, argv, '--term', 'term')
+  setOptionalTimingOptions(input, argv)
   setOptionalStringOption(input, argv, '--duplicate-notes', 'duplicateNotes')
   setOptionalStringOption(input, argv, '--blocker', 'blocker')
   setOptionalStringOption(input, argv, '--merge-notes', 'mergeNotes')
@@ -527,6 +578,10 @@ function normalizeImportFinding(
   assignStringField(input, value, 'roleTitle', label, { required: !options.partial })
   assignStringField(input, value, 'roleKind', label, { required: !options.partial })
   assignNullableStringField(input, value, 'term', label)
+  assignJobTermsField(input, value, label)
+  assignTimingModeField(input, value, label)
+  assignNullableDateField(input, value, 'startDate', label)
+  assignNullableDateField(input, value, 'endDate', label)
   assignNullableStringField(input, value, 'city', label)
   assignNullableStringField(input, value, 'region', label)
   assignStringField(input, value, 'country', label)
@@ -590,6 +645,15 @@ function normalizeImportFinding(
     throw new Error(`Invalid workMode for ${label}: ${input.workMode}`)
   }
 
+  if (
+    input.term !== undefined ||
+    input.terms !== undefined ||
+    input.startDate !== undefined ||
+    input.endDate !== undefined
+  ) {
+    normalizeJobTimingInput(input)
+  }
+
   assertCompatibleSourcingDispositionFields(input)
 
   return input
@@ -632,6 +696,69 @@ function assignNullableStringField(
       : parseNullableStringOption(
           readStringValue(record[fieldName], `${label}.${String(fieldName)}`),
           String(fieldName),
+        )
+}
+
+function assignJobTermsField(
+  input: CreateSourcingFindingInput,
+  record: Record<string, unknown>,
+  label: string,
+) {
+  if (!('terms' in record)) {
+    return
+  }
+
+  const value = record.terms
+  if (value === null) {
+    input.terms = null
+    return
+  }
+
+  if (!Array.isArray(value)) {
+    throw new Error(`${label}.terms must be an array`)
+  }
+
+  input.terms = value as JobTerm[]
+}
+
+function assignTimingModeField(
+  input: CreateSourcingFindingInput,
+  record: Record<string, unknown>,
+  label: string,
+) {
+  if (!('timingMode' in record)) {
+    return
+  }
+
+  const value = record.timingMode
+  if (value === null) {
+    return
+  }
+
+  const timingMode = readStringValue(value, `${label}.timingMode`)
+  if (!isJobTimingMode(timingMode)) {
+    throw new Error(`Invalid timingMode for ${label}: ${timingMode}`)
+  }
+
+  input.timingMode = timingMode
+}
+
+function assignNullableDateField(
+  input: CreateSourcingFindingInput,
+  record: Record<string, unknown>,
+  fieldName: 'startDate' | 'endDate',
+  label: string,
+) {
+  if (!(fieldName in record)) {
+    return
+  }
+
+  input[fieldName] =
+    record[fieldName] === null
+      ? null
+      : parseNullableDateStringOption(
+          readStringValue(record[fieldName], `${label}.${fieldName}`),
+          fieldName,
         )
 }
 

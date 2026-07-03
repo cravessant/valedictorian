@@ -11,7 +11,9 @@ import {
   isRunType,
   isWorkMode,
   normalizeApplicationLinkKind,
+  normalizeJobTimingInput,
   type ApplicationListQuery,
+  type JobTerm,
   type ValedictorianWorkspaceClient,
   type ActionQueueListQuery,
 } from 'sparxie'
@@ -21,6 +23,7 @@ import {
   hasFlag,
   hasTextValue,
   parseDateOption,
+  parseNullableDateStringOption,
   parseNullableStringOption,
   parseNullableTimestampOption,
   readOption,
@@ -88,6 +91,9 @@ export function parseCreateApplication(argv: string[]): Parameters<Valedictorian
     '--source-name',
     '--status',
     '--term',
+    '--terms-json',
+    '--start-date',
+    '--end-date',
     '--work-mode',
   ])
   const status = readRequiredOption(argv, '--status')
@@ -118,6 +124,7 @@ export function parseCreateApplication(argv: string[]): Parameters<Valedictorian
   }
 
   setOptionalStringOption(input, argv, '--term', 'term')
+  setOptionalTimingOptions(input, argv)
   setOptionalStringOption(input, argv, '--city', 'city')
   setOptionalStringOption(input, argv, '--region', 'region')
   setOptionalStringOption(input, argv, '--location-raw', 'locationRaw')
@@ -170,6 +177,9 @@ export function parseUpdateApplication(
     '--role-kind',
     '--role-title',
     '--term',
+    '--terms-json',
+    '--start-date',
+    '--end-date',
     '--work-mode',
   ])
   const input: Parameters<ValedictorianWorkspaceClient['applications']['update']>[0] = { applicationId }
@@ -177,6 +187,7 @@ export function parseUpdateApplication(
   setOptionalStringOption(input, argv, '--role-title', 'roleTitle')
   setOptionalStringOption(input, argv, '--role-kind', 'roleKind')
   setOptionalStringOption(input, argv, '--term', 'term')
+  setOptionalTimingOptions(input, argv)
   setOptionalStringOption(input, argv, '--city', 'city')
   setOptionalStringOption(input, argv, '--region', 'region')
   setOptionalStringOption(input, argv, '--country', 'country')
@@ -196,6 +207,44 @@ export function parseUpdateApplication(
   assertMutationPatch(input, ['applicationId'], 'Application metadata update requires at least one field')
 
   return input
+}
+
+function setOptionalTimingOptions(
+  input: Parameters<ValedictorianWorkspaceClient['applications']['create']>[0] |
+    Parameters<ValedictorianWorkspaceClient['applications']['update']>[0],
+  argv: string[],
+) {
+  const termsJson = readOption(argv, '--terms-json')
+  const startDate = readOption(argv, '--start-date')
+  const endDate = readOption(argv, '--end-date')
+
+  if (termsJson !== undefined) {
+    input.terms = parseTermsJsonOption(termsJson)
+  }
+  if (startDate !== undefined) {
+    input.startDate = parseNullableDateStringOption(startDate, 'startDate')
+  }
+  if (endDate !== undefined) {
+    input.endDate = parseNullableDateStringOption(endDate, 'endDate')
+  }
+
+  if (
+    input.term !== undefined ||
+    input.terms !== undefined ||
+    input.startDate !== undefined ||
+    input.endDate !== undefined
+  ) {
+    normalizeJobTimingInput(input)
+  }
+}
+
+function parseTermsJsonOption(value: string): JobTerm[] {
+  const parsed = JSON.parse(value) as unknown
+  if (!Array.isArray(parsed)) {
+    throw new Error('--terms-json must be a JSON array')
+  }
+
+  return parsed as JobTerm[]
 }
 
 export function parseWorkflowUpdate(

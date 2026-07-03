@@ -137,6 +137,10 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         'https://jobs.example.com/delta',
         '--source-url',
         'https://ats.example.com/apply?source=linkedin&route=agent&utm_source=agent',
+        '--start-date',
+        '2027-05-15',
+        '--end-date',
+        '2027-09-01',
         '--priority-score',
         '7',
         '--priority-band',
@@ -163,6 +167,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
         'workspace-1',
         '--merge-notes',
         'Below cutoff.',
+        '--terms-json',
+        '[{"season":"fall","year":2027}]',
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
     await expect(
@@ -253,6 +259,8 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
           companyName: 'Delta Labs',
           roleTitle: 'Software Engineering Intern',
           roleKind: 'internship',
+          startDate: '2027-05-15',
+          endDate: '2027-09-01',
           country: 'US',
           workMode: 'remote',
           officialUrl: 'https://jobs.example.com/delta',
@@ -272,6 +280,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
       expect.objectContaining({
         body: JSON.stringify({
           mergeStatus: 'below_cutoff',
+          terms: [{ season: 'fall', year: 2027 }],
           mergeNotes: 'Below cutoff.',
         }),
         method: 'PATCH',
@@ -390,6 +399,35 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
       exitCode: 1,
       stderr: expect.stringContaining('--blocker requires --merge-status blocked.'),
     })
+
+    await expect(
+      runCli([
+        'sourcing',
+        'findings',
+        'create',
+        '--workflow-run-id',
+        'run-1',
+        '--source-name',
+        'LinkedIn',
+        '--company-name',
+        'Mixed Timing Labs',
+        '--role-title',
+        'Software Engineering Intern',
+        '--role-kind',
+        'internship',
+        '--work-mode',
+        'remote',
+        '--term',
+        'Fall 2027',
+        '--start-date',
+        '2027-09-01',
+        '--workspace',
+        'workspace-1',
+      ]),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining('Date-based timing cannot include term or terms input'),
+    })
   })
 
   it('bulk imports sourcing findings from a JSON file and reports row failures', async () => {
@@ -411,6 +449,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
           {
             companyName: 'Delta Labs',
             roleTitle: 'Software Engineering Intern',
+            terms: [{ season: 'summer', year: 2027 }],
             officialUrl: 'https://jobs.example.com/delta?utm_source=linkedin&b=2&a=1',
             priorityScore: 7,
             priorityBand: 'high',
@@ -481,6 +520,7 @@ describe('Valedictorian CLI sourcing and workflow commands', () => {
       roleKind: 'internship',
       country: 'US',
       workMode: 'remote',
+      terms: [{ season: 'summer', year: 2027 }],
       priorityBand: 'high',
       officialUrl: 'https://jobs.example.com/delta?a=1&b=2',
       priorityScore: 7,

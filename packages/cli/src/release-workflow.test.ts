@@ -67,6 +67,7 @@ describe('CLI release workflow', () => {
     )
     expect(readme).toContain('valedictorian-cli --json workspaces list')
     expect(readme).toContain('applications list --workspace "$VALEDICTORIAN_WORKSPACE"')
+    expect(readme).toContain('profile sensitive summary --workspace "$VALEDICTORIAN_WORKSPACE"')
     expect(readme).toContain('## Project config discovery')
     expect(readme).toContain('valedictorian.config.json')
     expect(readme).toContain('Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.')
@@ -74,10 +75,12 @@ describe('CLI release workflow', () => {
       'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha',
     )
     expect(skill).toContain('Workspace-scoped commands require `--workspace <id-or-name>`')
+    expect(skill).toContain('profile secrets upsert <key>')
     expect(commandReference).toContain(
       'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha',
     )
     expect(commandReference).toContain('export VALEDICTORIAN_WORKSPACE=workspace-id-or-name')
+    expect(commandReference).toContain('## Profile And Secrets')
     expect(commandReference).toContain('sourcing findings create \\')
     expect(commandReference).toContain('--workspace "$VALEDICTORIAN_WORKSPACE"')
   })
