@@ -35,3 +35,19 @@ Use Catppuccin Blur Mocha as the default color source unless the user explicitly
 `valedictorian-app` is the deterministic app surface and policy source of truth for external coding harnesses such as Codex or Claude Code. Do not build an embedded OpenRouter loop, browser agent, cron runner, auto-submitter, or automatic database unlocker into the desktop app for v1.
 
 Policy configuration changes should only affect app decisions: queue buckets, validation gates, required evidence, displayed reasons, and scheduler-ready run-window recommendations. External harnesses remain responsible for executing actions through explicit app APIs.
+
+## Agent skills
+
+This repo keeps agent-owned support files in `.local/`, which is intentionally gitignored.
+
+### Issue tracker
+
+Issues, PRDs, triage, QA reports, and refactor plans live in GitHub Issues. See `.local/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the repo's configured GitHub labels. See `.local/agents/triage-labels.md`.
+
+### Domain docs
+
+Local-only domain context and ADRs live under `.local/context/` and `.local/adr/`. See `.local/agents/domain.md`.
