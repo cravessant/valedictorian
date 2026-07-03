@@ -70,12 +70,13 @@ valedictorian-cli --json profile secrets upsert greenhouse_password --workspace 
 
 `profile sensitive update` and `profile sensitive summary` print populated-field summaries rather than sensitive values. `profile secrets upsert` reads the secret value from `--value-file` and prints only the stored secret summary.
 
-## Agent skill
+## Agent skills
 
-This repo includes a Valedictorian CLI agent skill:
+This repo includes Valedictorian agent skills:
 
 ```sh
 npx skills add KennySparxie/valedictorian-cli --skill valedictorian-cli
+npx skills add KennySparxie/valedictorian-cli --skill valedictorian-application-agent
 ```
 
 ## Development

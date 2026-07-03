@@ -4,8 +4,8 @@
   "groupings": [
     {
       "title": "Valedictorian",
-      "description": "Skills for operating the Valedictorian job automation CLI.",
-      "skills": ["valedictorian-cli"]
+      "description": "Skills for operating Valedictorian job automation.",
+      "skills": ["valedictorian-cli", "valedictorian-application-agent"]
     }
   ]
 }
