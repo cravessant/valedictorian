@@ -93,7 +93,7 @@ export interface CreateWorkspaceServiceOptions<ParentWindow = unknown> {
   onWorkspaceRegistryChanged?: () => Promise<void> | void
   pathExists?: (workspacePath: string) => boolean
   registryStore: WorkspaceRegistryStore
-  relaunchApp: () => void
+  relaunchApp?: () => void
   revealPath: (workspacePath: string) => Promise<void> | void
   showWorkspaceSwitcher?: () => boolean
 }
@@ -185,7 +185,6 @@ export function createWorkspaceService<ParentWindow = unknown>({
   onWorkspaceRegistryChanged = async () => undefined,
   pathExists = fs.existsSync,
   registryStore,
-  relaunchApp,
   revealPath,
   showWorkspaceSwitcher = () => false,
 }: CreateWorkspaceServiceOptions<ParentWindow>): WorkspaceService<ParentWindow> {
@@ -215,7 +214,7 @@ export function createWorkspaceService<ParentWindow = unknown>({
 
       const nextWorkspace = await openWorkspace(selectedWorkspacePath, registryStore)
       await onWorkspaceRegistryChanged()
-      relaunchApp()
+      await activateWorkspace(nextWorkspace, { seedData: 'none' })
       return nextWorkspace
     },
     async createWorkspace(input, options) {
@@ -229,10 +228,8 @@ export function createWorkspaceService<ParentWindow = unknown>({
       fs.mkdirSync(workspaceRootPath, { recursive: true })
       const workspace = await openWorkspace(workspaceRootPath, registryStore)
       await onWorkspaceRegistryChanged()
-      await activateOrRelaunch({
+      await activateWorkspaceSelection({
         activateWorkspace,
-        currentWorkspace: readCurrentWorkspace(currentWorkspace),
-        relaunchApp,
         seedData: readCreateSeedData(input, canSeedSampleData),
         workspace,
       })
@@ -256,10 +253,8 @@ export function createWorkspaceService<ParentWindow = unknown>({
 
       const workspace = await openWorkspace(selectedWorkspacePath, registryStore)
       await onWorkspaceRegistryChanged()
-      await activateOrRelaunch({
+      await activateWorkspaceSelection({
         activateWorkspace,
-        currentWorkspace: readCurrentWorkspace(currentWorkspace),
-        relaunchApp,
         seedData: 'none',
         workspace,
       })
@@ -275,10 +270,8 @@ export function createWorkspaceService<ParentWindow = unknown>({
 
       const workspace = await openWorkspace(workspaceRecord.path, registryStore)
       await onWorkspaceRegistryChanged()
-      await activateOrRelaunch({
+      await activateWorkspaceSelection({
         activateWorkspace,
-        currentWorkspace: readCurrentWorkspace(currentWorkspace),
-        relaunchApp,
         seedData: 'none',
         workspace,
       })
@@ -351,10 +344,8 @@ async function listLaunchRecords(
   }))
 }
 
-async function activateOrRelaunch({
+async function activateWorkspaceSelection({
   activateWorkspace,
-  currentWorkspace,
-  relaunchApp,
   seedData,
   workspace,
 }: {
@@ -362,16 +353,9 @@ async function activateOrRelaunch({
     workspace: WorkspaceSummary,
     options: WorkspaceActivationOptions,
   ) => Promise<void> | void
-  currentWorkspace: WorkspaceSummary | null
-  relaunchApp: () => void
   seedData: WorkspaceCreateSeedData
   workspace: WorkspaceSummary
 }) {
-  if (currentWorkspace) {
-    relaunchApp()
-    return
-  }
-
   await activateWorkspace(workspace, { seedData })
 }
 

@@ -155,6 +155,15 @@ describe('Electron sourcing wiring', () => {
     expect(mainSource).toContain('openWorkspaceInMainWindow')
   })
 
+  it('switches workspaces in-process instead of relaunching the app', () => {
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+
+    expect(mainSource).toContain('replaceMainWindowForWorkspace')
+    expect(mainSource).toContain('removeRuntimeIpcHandlers()')
+    expect(mainSource).not.toContain('app.relaunch()')
+    expect(mainSource).not.toContain('app.exit(0)')
+  })
+
   it('parents workspace launcher folder pickers to the invoking Electron window', () => {
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
 

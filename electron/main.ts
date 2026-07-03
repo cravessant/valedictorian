@@ -80,11 +80,53 @@ let workspaceLauncherWindow: BrowserWindow | null = null
 let runtime: ValedictorianRuntime | null = null
 let currentWorkspace: WorkspaceSummary | null = null
 let workspaceManager: LocalWorkspaceManager | null = null
-let activeWorkspaceService: WorkspaceService | null = null
+let activeWorkspaceService: WorkspaceService<BrowserWindow> | null = null
 let runtimeServicesRegistered = false
 let updatePollingScheduled = false
 const updatePollInitialDelayMs = 3000
 const updatePollIntervalMs = 30 * 60 * 1000
+const runtimeIpcChannels = [
+  'action-queue:list',
+  'applications:list',
+  'applications:get',
+  'applications:create',
+  'applications:update',
+  'applications:update-status',
+  'applications:archive',
+  'applications:workflow:update',
+  'applications:notes:append',
+  'applications:events:list',
+  'applications:links:list',
+  'applications:links:create',
+  'applications:links:update',
+  'applications:attempts:list',
+  'policy:config:get',
+  'policy:config:update',
+  'policy:config:reset',
+  'policy:evidence:list',
+  'policy:evidence:record',
+  'policy:evaluate:application',
+  'policy:evaluate:sourcing-candidate',
+  'policy:evaluate:run-window',
+  'profile:get',
+  'profile:update',
+  'profile:agent-context:get',
+  'profile:sensitive:get',
+  'profile:sensitive:update',
+  'profile:secrets:list',
+  'profile:secrets:upsert',
+  'profile:secrets:reveal',
+  'profile:secrets:delete',
+  'scores:record',
+  'settings:get',
+  'settings:update',
+  'settings:reset',
+  'sourcing:findings:list',
+  'sourcing:findings:create',
+  'sourcing:findings:update',
+  'sourcing:findings:decide',
+  'sourcing:findings:promote',
+]
 const updateService = createElectronUpdateService(app, {
   get autoDownload() {
     return autoUpdater.autoDownload
@@ -103,26 +145,46 @@ async function openWorkspaceInMainWindow(
   workspace: WorkspaceSummary,
   options: WorkspaceActivationOptions,
 ) {
+  const shouldReplaceMainWindow = Boolean(
+    mainWindow
+      && !mainWindow.isDestroyed()
+      && currentWorkspace?.id !== workspace.id,
+  )
+
   await activateWorkspace(workspace, options)
-
-  if (!mainWindow) {
-    createMainWindow()
-  }
-
   workspaceLauncherWindow?.close()
   workspaceLauncherWindow = null
+
+  if (shouldReplaceMainWindow) {
+    replaceMainWindowForWorkspace()
+    return
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow()
+    return
+  }
+
+  focusAppWindow(mainWindow)
 }
 
 async function activateWorkspace(
   workspace: WorkspaceSummary,
   options?: WorkspaceActivationOptions,
 ) {
-  currentWorkspace = workspace
+  const isSameWorkspace = currentWorkspace?.id === workspace.id
 
-  if (runtimeServicesRegistered) {
+  if (runtimeServicesRegistered && isSameWorkspace) {
+    currentWorkspace = workspace
     return
   }
 
+  if (runtimeServicesRegistered) {
+    await closeRuntime()
+    removeRuntimeIpcHandlers()
+  }
+
+  currentWorkspace = workspace
   await registerRuntimeServices(workspace, options)
   runtimeServicesRegistered = true
 }
@@ -253,6 +315,22 @@ function createMainWindow() {
 
   loadRenderer(mainWindow)
   refreshWorkspaceMenu()
+}
+
+function replaceMainWindowForWorkspace() {
+  const previousMainWindow = mainWindow
+
+  if (!previousMainWindow || previousMainWindow.isDestroyed()) {
+    createMainWindow()
+    return
+  }
+
+  previousMainWindow.once('closed', () => {
+    if (!mainWindow && currentWorkspace) {
+      createMainWindow()
+    }
+  })
+  previousMainWindow.close()
 }
 
 function getMainWindowStatePath() {
@@ -479,12 +557,6 @@ app.whenReady().then(async () => {
       void installWorkspaceMenu(workspaceService)
     },
     registryStore,
-    relaunchApp() {
-      setTimeout(() => {
-        app.relaunch()
-        app.exit(0)
-      }, 0)
-    },
     revealPath(workspacePath) {
       return shell.openPath(workspacePath).then(() => undefined)
     },
@@ -548,6 +620,12 @@ async function closeRuntime() {
   await runtime?.close()
   runtime = null
   runtimeServicesRegistered = false
+}
+
+function removeRuntimeIpcHandlers() {
+  for (const channel of runtimeIpcChannels) {
+    ipcMain.removeHandler(channel)
+  }
 }
 
 async function installWorkspaceMenu(workspaceService: WorkspaceService<BrowserWindow>) {

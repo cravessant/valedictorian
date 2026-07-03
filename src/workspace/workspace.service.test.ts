@@ -329,7 +329,7 @@ describe('workspace service', () => {
     })
   })
 
-  it('marks a recent workspace open and relaunches when switching from an active workspace', async () => {
+  it('marks a recent workspace open and activates it when switching from an active workspace', async () => {
     const currentRoot = createTempPath('valedictorian-current-recent-workspace-')
     const nextRoot = createTempPath('valedictorian-next-recent-workspace-')
     const currentWorkspace = initializeWorkspace(currentRoot, { createId: () => 'workspace-current' })
@@ -368,9 +368,12 @@ describe('workspace service', () => {
     await expect(registryStore.get()).resolves.toMatchObject({
       lastOpenedWorkspaceId: nextWorkspace.id,
     })
-    expect(activateWorkspace).not.toHaveBeenCalled()
+    expect(activateWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ id: nextWorkspace.id }),
+      { seedData: 'none' },
+    )
     expect(onWorkspaceRegistryChanged).toHaveBeenCalled()
-    expect(relaunchApp).toHaveBeenCalled()
+    expect(relaunchApp).not.toHaveBeenCalled()
   })
 
   it('creates a named workspace under a parent folder from the launcher', async () => {
@@ -544,7 +547,7 @@ describe('workspace service', () => {
     await expect(registryStore.listRecent()).resolves.toEqual([])
   })
 
-  it('chooses a new workspace, records it as recent, and requests relaunch', async () => {
+  it('chooses a new workspace, records it as recent, and activates it in-process', async () => {
     const currentRoot = createTempPath('valedictorian-current-workspace-')
     const nextRoot = createTempPath('valedictorian-next-workspace-')
     const registryStore = createTempRegistryStore('valedictorian-service-registry-')
@@ -553,8 +556,10 @@ describe('workspace service', () => {
       env: {},
       registryStore,
     })
+    const activateWorkspace = vi.fn(async () => undefined)
     const relaunchApp = vi.fn()
     const service = createWorkspaceService({
+      activateWorkspace,
       chooseWorkspaceRoot: vi.fn(async () => nextRoot),
       currentWorkspace: currentWorkspace!,
       registryStore,
@@ -568,6 +573,10 @@ describe('workspace service', () => {
     await expect(registryStore.get()).resolves.toMatchObject({
       lastOpenedWorkspaceId: nextWorkspace?.id,
     })
-    expect(relaunchApp).toHaveBeenCalled()
+    expect(activateWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ rootPath: nextRoot }),
+      { seedData: 'none' },
+    )
+    expect(relaunchApp).not.toHaveBeenCalled()
   })
 })
