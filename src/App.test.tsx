@@ -33,6 +33,7 @@ afterEach(() => {
   delete (window as Window & { sourcing?: unknown }).sourcing
   delete (window as Window & { settings?: unknown }).settings
   delete (window as Window & { profile?: unknown }).profile
+  delete (window as Window & { valedictorianWindowChrome?: unknown }).valedictorianWindowChrome
 })
 
 describe('App', () => {
@@ -1238,6 +1239,19 @@ describe('App', () => {
     })
   })
 
+  it('keeps compact filter controls visually aligned', async () => {
+    render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))} />)
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    expect(screen.getByLabelText('Search')).toHaveClass('h-9', 'rounded-md')
+    expect(screen.getByRole('button', { name: 'Show filters' })).toHaveClass(
+      'h-9',
+      'w-9',
+      'rounded-md',
+    )
+  })
+
   it('places reset in a separate expanded filter action row', async () => {
     render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))} />)
 
@@ -1368,11 +1382,21 @@ describe('App', () => {
   it('tracks selected rows locally', async () => {
     render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))} />)
 
-    await screen.findByRole('table', { name: 'Applications' })
+    const table = await screen.findByRole('table', { name: 'Applications' })
 
     expect(screen.getByText('0 selected')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Astranis Space Technologies' }))
+    const pageCheckbox = within(table).getByRole('checkbox', {
+      name: 'Select all applications on page',
+    })
+    const rowCheckbox = within(table).getByRole('checkbox', {
+      name: 'Select Astranis Space Technologies',
+    })
+
+    expect(pageCheckbox).toHaveClass('mx-auto', 'block', 'h-4', 'w-4')
+    expect(pageCheckbox.closest('th')).toHaveClass('px-0', 'text-center')
+
+    fireEvent.click(rowCheckbox)
 
     expect(screen.getByText('1 selected')).toBeInTheDocument()
   })

@@ -189,6 +189,8 @@ function createMainWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+  mainWindow.on('enter-full-screen', () => sendWindowChromeState(mainWindow))
+  mainWindow.on('leave-full-screen', () => sendWindowChromeState(mainWindow))
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isExternalHttpUrl(url)) {
@@ -209,9 +211,24 @@ function createMainWindow() {
   // Test active push message to Renderer-process.
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.webContents.send('main-process-message', (new Date).toLocaleString())
+    sendWindowChromeState(mainWindow)
   })
 
   loadRenderer(mainWindow)
+}
+
+function getWindowChromeState(window: BrowserWindow | null) {
+  return {
+    isFullScreen: window?.isFullScreen() ?? false,
+  }
+}
+
+function sendWindowChromeState(window: BrowserWindow | null) {
+  if (!window || window.isDestroyed()) {
+    return
+  }
+
+  window.webContents.send('window-chrome:state-changed', getWindowChromeState(window))
 }
 
 function createWorkspaceLauncherWindow() {
@@ -317,6 +334,9 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
+  ipcMain.handle('window-chrome:get-state', (event) =>
+    getWindowChromeState(BrowserWindow.fromWebContents(event.sender)),
+  )
   registerUpdatesIpc(updateService, ipcMain, () => BrowserWindow.getAllWindows())
   scheduleUpdatePolling()
 

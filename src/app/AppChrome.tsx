@@ -6,6 +6,7 @@ import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settin
 import { APP_VIEWS, type MainAppView } from './types'
 
 interface AppTopbarProps {
+  isFullScreen: boolean
   sidebarCollapsed: boolean
   title: string
   updateState?: UpdateState | null
@@ -15,6 +16,7 @@ interface AppTopbarProps {
 }
 
 function AppTopbar({
+  isFullScreen,
   sidebarCollapsed,
   title,
   updateState = null,
@@ -25,7 +27,9 @@ function AppTopbar({
   return (
     <header
       aria-label="App chrome"
-      className="app-drag flex h-12 items-center gap-2 border-b border-border bg-background/95 pl-[4.75rem] pr-3"
+      className={`app-drag flex h-12 items-center gap-2 border-b border-border bg-background/95 pr-3 ${
+        isFullScreen ? 'pl-3' : 'pl-[4.75rem]'
+      }`}
     >
       <Button
         type="button"

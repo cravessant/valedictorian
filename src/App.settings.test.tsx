@@ -27,6 +27,7 @@ afterEach(() => {
   delete (window as Window & { settings?: unknown }).settings
   delete (window as Window & { profile?: unknown }).profile
   delete (window as Window & { workspace?: unknown }).workspace
+  delete (window as Window & { valedictorianWindowChrome?: unknown }).valedictorianWindowChrome
 })
 
 function mockNarrowViewport() {
@@ -141,6 +142,33 @@ describe('App settings and chrome', () => {
     expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Forward' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+  })
+
+  it('removes the traffic-light inset from app chrome in fullscreen', async () => {
+    Object.defineProperty(window, 'valedictorianWindowChrome', {
+      configurable: true,
+      value: {
+        getState: vi.fn().mockResolvedValue({ isFullScreen: true }),
+        onStateChanged: vi.fn(() => () => undefined),
+      },
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+        workspaceApi={createWorkspaceApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    const chrome = screen.getByRole('banner', { name: 'App chrome' })
+
+    await waitFor(() => {
+      expect(chrome).toHaveClass('pl-3')
+    })
+    expect(chrome).not.toHaveClass('pl-[4.75rem]')
   })
 
   it('collapses the sidebar from the topbar and persists the pinned state', async () => {

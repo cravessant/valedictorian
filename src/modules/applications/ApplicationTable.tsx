@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -54,18 +54,16 @@ const applicationColumns: ColumnDef<ApplicationListItem>[] = [
     enableSorting: false,
     size: 44,
     header: ({ table }) => (
-      <input
+      <SelectionCheckbox
         aria-label="Select all applications on page"
         checked={table.getIsAllRowsSelected()}
-        type="checkbox"
         onChange={table.getToggleAllRowsSelectedHandler()}
       />
     ),
     cell: ({ row }) => (
-      <input
+      <SelectionCheckbox
         aria-label={`Select ${row.original.companyName}`}
         checked={row.getIsSelected()}
-        type="checkbox"
         onChange={row.getToggleSelectedHandler()}
       />
     ),
@@ -636,10 +634,33 @@ function getColumnChromeClassName(columnId: string) {
   }
 
   if (columnId === 'select') {
-    return 'w-11 px-2'
+    return 'w-11 px-0 text-center'
   }
 
   return undefined
+}
+
+interface SelectionCheckboxProps {
+  'aria-label': string
+  checked: boolean
+  onChange: ChangeEventHandler<HTMLInputElement>
+}
+
+function SelectionCheckbox({
+  checked,
+  onChange,
+  ...props
+}: SelectionCheckboxProps) {
+  return (
+    <input
+      {...props}
+      checked={checked}
+      className="mx-auto block h-4 w-4 rounded border-border bg-background accent-primary"
+      type="checkbox"
+      onChange={onChange}
+      onClick={(event) => event.stopPropagation()}
+    />
+  )
 }
 
 function formatScore(application: ApplicationListItem) {

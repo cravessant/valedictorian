@@ -60,6 +60,22 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("valedictorianUpdates: import('../src/ipc/updates.preload').UpdatesPreloadApi")
   })
 
+  it('exposes window chrome preload APIs for fullscreen-aware layout', () => {
+    const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const envSource = fs.readFileSync(path.resolve('electron/electron-env.d.ts'), 'utf8')
+
+    expect(preloadSource).toContain('createWindowChromePreloadApi')
+    expect(preloadSource).toContain(
+      "contextBridge.exposeInMainWorld('valedictorianWindowChrome', createWindowChromePreloadApi(ipcRenderer))",
+    )
+    expect(mainSource).toContain("ipcMain.handle('window-chrome:get-state'")
+    expect(mainSource).toContain("'enter-full-screen'")
+    expect(mainSource).toContain("'leave-full-screen'")
+    expect(mainSource).toContain("webContents.send('window-chrome:state-changed'")
+    expect(envSource).toContain("valedictorianWindowChrome: import('../src/ipc/window-chrome.preload').WindowChromePreloadApi")
+  })
+
   it('passes the selected local backend and active workspace id to the renderer', () => {
     const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')

@@ -30,6 +30,7 @@ interface Window {
   settings: import('../src/ipc/settings.preload').SettingsPreloadApi
   sourcing: import('../src/ipc/sourcing.preload').SourcingPreloadApi
   valedictorianUpdates: import('../src/ipc/updates.preload').UpdatesPreloadApi
+  valedictorianWindowChrome: import('../src/ipc/window-chrome.preload').WindowChromePreloadApi
   valedictorianHttp?: {
     apiBaseUrl: string
     workspaceId: string

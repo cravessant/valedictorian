@@ -98,6 +98,7 @@ import {
 } from './app/loaders'
 import { buildApplicationListQuery, buildActionQueueListQuery, buildSourcingFindingsListQuery } from './app/query'
 import { useAppUpdates } from './updates/use-app-updates'
+import { useWindowChromeState } from './app/use-window-chrome-state'
 import {
   APP_VIEWS,
   PAGE_LIMIT,
@@ -112,6 +113,7 @@ import type { WorkspaceSummary } from './workspace/workspace.initializer'
 
 const narrowSidebarMediaQuery = '(max-width: 767px)'
 const DATA_AUTO_REFRESH_INTERVAL_MS = 15_000
+const filterControlClassName = 'h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground'
 
 function getMediaQueryMatches(query: string) {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -210,6 +212,7 @@ function App({
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false)
   const isNarrowViewport = useMediaQuery(narrowSidebarMediaQuery)
+  const windowChromeState = useWindowChromeState()
   const [offset, setOffset] = useState(0)
   const [applicationReloadKey, setApplicationReloadKey] = useState(0)
   const [result, setResult] = useState<ApplicationListResult>(emptyApplicationResult)
@@ -788,6 +791,7 @@ function App({
       data-view={appView}
     >
       <AppTopbar
+        isFullScreen={windowChromeState.isFullScreen}
         sidebarCollapsed={sidebarToggleCollapsed}
         title={viewTitle}
         updateState={updateState}
@@ -977,6 +981,7 @@ function App({
                       size="icon"
                       aria-label={filtersExpanded ? 'Hide filters' : 'Show filters'}
                       aria-expanded={filtersExpanded}
+                      className="h-9 w-9 rounded-md"
                       onClick={() => setFiltersExpanded((current) => !current)}
                     >
                       <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
@@ -985,12 +990,12 @@ function App({
                 </div>
                 {filtersExpanded ? (
                   <>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                       <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Status
                         <select
                           aria-label="Status"
-                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          className={filterControlClassName}
                           value={filters.status}
                           onChange={(event) => updateFilter('status', event.target.value)}
                         >
@@ -1006,7 +1011,7 @@ function App({
                         Sort
                         <select
                           aria-label="Sort"
-                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          className={filterControlClassName}
                           value={filters.sort}
                           onChange={(event) => updateFilter('sort', event.target.value)}
                         >
@@ -1021,7 +1026,7 @@ function App({
                         Score band
                         <select
                           aria-label="Score band"
-                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          className={filterControlClassName}
                           value={filters.priorityBand}
                           onChange={(event) => updateFilter('priorityBand', event.target.value)}
                         >
@@ -1035,7 +1040,7 @@ function App({
                         Min score
                         <input
                           aria-label="Min score"
-                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          className={filterControlClassName}
                           min="0"
                           max="10"
                           type="number"
@@ -1047,7 +1052,7 @@ function App({
                         Work mode
                         <select
                           aria-label="Work mode"
-                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          className={filterControlClassName}
                           value={filters.workMode}
                           onChange={(event) => updateFilter('workMode', event.target.value)}
                         >
@@ -1211,7 +1216,7 @@ function FilterTextInput({ label, value, onChange }: FilterInputProps) {
       {label}
       <input
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+        className={filterControlClassName}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -1225,7 +1230,7 @@ function FilterDateInput({ label, value, onChange }: FilterInputProps) {
       {label}
       <input
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+        className={filterControlClassName}
         type="date"
         value={value}
         onChange={(event) => onChange(event.target.value)}
