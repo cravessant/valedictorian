@@ -3,6 +3,10 @@ import * as React from 'react'
 type ToastVariant = 'default' | 'destructive' | 'success'
 
 export interface ToastInput {
+  action?: {
+    label: string
+    onClick: () => Promise<void> | void
+  }
   description?: string
   title: string
   variant?: ToastVariant

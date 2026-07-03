@@ -9,6 +9,7 @@ interface AppTopbarProps {
   sidebarCollapsed: boolean
   title: string
   updateState?: UpdateState | null
+  onCheckForUpdates?: () => void
   onInstallUpdate?: () => void
   onToggleSidebar: () => void
 }
@@ -17,6 +18,7 @@ function AppTopbar({
   sidebarCollapsed,
   title,
   updateState = null,
+  onCheckForUpdates,
   onInstallUpdate,
   onToggleSidebar,
 }: AppTopbarProps) {
@@ -37,6 +39,7 @@ function AppTopbar({
       </Button>
       <div className="min-w-0 truncate text-sm font-semibold leading-none text-foreground">{title}</div>
       <UpdateStatusControl
+        onCheck={onCheckForUpdates}
         state={updateState}
         onInstall={onInstallUpdate}
       />
@@ -45,13 +48,29 @@ function AppTopbar({
 }
 
 interface UpdateStatusControlProps {
+  onCheck?: () => void
   state: UpdateState | null
   onInstall?: () => void
 }
 
-function UpdateStatusControl({ state, onInstall }: UpdateStatusControlProps) {
-  if (!state || state.status === 'idle' || state.status === 'disabled' || state.status === 'unavailable') {
+function UpdateStatusControl({ onCheck, state, onInstall }: UpdateStatusControlProps) {
+  if (!state || state.status === 'disabled') {
     return null
+  }
+
+  if (state.status === 'idle' || state.status === 'unavailable') {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="app-no-drag ml-auto h-7 gap-2 px-2.5"
+        onClick={onCheck}
+      >
+        <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+        Check for updates
+      </Button>
+    )
   }
 
   if (state.status === 'checking') {
@@ -65,10 +84,17 @@ function UpdateStatusControl({ state, onInstall }: UpdateStatusControlProps) {
 
   if (state.status === 'error') {
     return (
-      <div className="app-no-drag ml-auto inline-flex h-7 max-w-[min(22rem,45vw)] items-center gap-2 rounded-md border border-destructive/40 bg-destructive/15 px-2.5 text-xs font-medium text-destructive">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="app-no-drag ml-auto h-7 max-w-[min(22rem,45vw)] gap-2 border-destructive/40 bg-destructive/15 px-2.5 text-destructive hover:bg-destructive/20 hover:text-destructive"
+        onClick={onCheck}
+      >
         <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span className="truncate">{state.message ?? 'Update check failed'}</span>
-      </div>
+        <span className="shrink-0">Retry</span>
+      </Button>
     )
   }
 

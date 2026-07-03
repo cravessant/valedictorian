@@ -1,5 +1,6 @@
 import {
   Toast,
+  ToastAction,
   ToastDescription,
   ToastProvider,
   ToastTitle,
@@ -12,7 +13,7 @@ function Toaster() {
 
   return (
     <ToastProvider>
-      {toasts.map(({ description, id, open, title, variant }) => (
+      {toasts.map(({ action, description, id, open, title, variant }) => (
         <Toast key={id} open={open} variant={variant} onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             dismiss(id)
@@ -20,6 +21,17 @@ function Toaster() {
         }}>
           <ToastTitle>{title}</ToastTitle>
           {description ? <ToastDescription>{description}</ToastDescription> : null}
+          {action ? (
+            <ToastAction
+              altText={action.label}
+              onClick={() => {
+                void action.onClick()
+                dismiss(id)
+              }}
+            >
+              {action.label}
+            </ToastAction>
+          ) : null}
         </Toast>
       ))}
       <ToastViewport />

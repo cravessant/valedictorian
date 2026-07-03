@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { UpdatesPreloadApi, UpdateState } from '../ipc/updates.preload'
 
 function useAppUpdates(updatesApi: UpdatesPreloadApi) {
@@ -22,7 +22,14 @@ function useAppUpdates(updatesApi: UpdatesPreloadApi) {
     }
   }, [updatesApi])
 
+  const checkForUpdates = useCallback(async () => {
+    const state = await updatesApi.check()
+    setUpdateState(state)
+    return state
+  }, [updatesApi])
+
   return {
+    checkForUpdates,
     installUpdate: updatesApi.install,
     updateState,
   }

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/toaster'
+import { useToast } from '@/components/ui/use-toast'
 import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
@@ -241,13 +242,15 @@ function App({
   const [applicationDetailError, setApplicationDetailError] = useState<string | null>(null)
   const [applicationLinksError, setApplicationLinksError] = useState<string | null>(null)
   const [applicationEventsError, setApplicationEventsError] = useState<string | null>(null)
-  const { installUpdate, updateState } = useAppUpdates(updatesApi)
+  const { checkForUpdates, installUpdate, updateState } = useAppUpdates(updatesApi)
+  const { toast } = useToast()
   const [attemptResult, setAttemptResult] = useState<ApplicationAttemptsListResult>(emptyAttemptResult)
   const [isAttemptLoading, setIsAttemptLoading] = useState(false)
   const [attemptError, setAttemptError] = useState<string | null>(null)
   const [editingApplication, setEditingApplication] = useState<ApplicationListItem | null>(null)
   const [isAddingApplication, setIsAddingApplication] = useState(false)
   const previousAppViewRef = useRef(appView)
+  const updateReadyToastVersionsRef = useRef(new Set<string>())
   const query = useMemo(() => buildApplicationListQuery(filters, offset), [filters, offset])
   const actionQueueQuery = useMemo(
     () => buildActionQueueListQuery(actionQueueBucket, actionQueueOffset),
@@ -442,6 +445,31 @@ function App({
       document.removeEventListener('visibilitychange', refreshOnVisible)
     }
   }, [appView, canAutoRefreshData])
+
+  useEffect(() => {
+    if (updateState?.status !== 'ready') {
+      return
+    }
+
+    const toastKey = updateState.availableVersion ?? 'unknown'
+
+    if (updateReadyToastVersionsRef.current.has(toastKey)) {
+      return
+    }
+
+    updateReadyToastVersionsRef.current.add(toastKey)
+    toast({
+      action: {
+        label: 'Restart',
+        onClick: installUpdate,
+      },
+      description: updateState.availableVersion
+        ? `Valedictorian ${updateState.availableVersion} has downloaded.`
+        : 'A Valedictorian update has downloaded.',
+      title: 'Update ready',
+      variant: 'success',
+    })
+  }, [installUpdate, toast, updateState])
 
   useEffect(() => {
     if (!selectedApplication) {
@@ -763,6 +791,9 @@ function App({
         sidebarCollapsed={sidebarToggleCollapsed}
         title={viewTitle}
         updateState={updateState}
+        onCheckForUpdates={() => {
+          void checkForUpdates()
+        }}
         onInstallUpdate={() => {
           void installUpdate()
         }}
