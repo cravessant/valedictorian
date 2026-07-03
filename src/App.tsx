@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -109,11 +109,16 @@ import {
 import type { WorkspaceSummary } from './workspace/workspace.initializer'
 
 const narrowSidebarMediaQuery = '(max-width: 767px)'
+const DATA_AUTO_REFRESH_INTERVAL_MS = 15_000
 
 function getMediaQueryMatches(query: string) {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia(query).matches
     : false
+}
+
+function isDocumentHidden() {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden'
 }
 
 function useMediaQuery(query: string) {
@@ -241,6 +246,7 @@ function App({
   const [attemptError, setAttemptError] = useState<string | null>(null)
   const [editingApplication, setEditingApplication] = useState<ApplicationListItem | null>(null)
   const [isAddingApplication, setIsAddingApplication] = useState(false)
+  const previousAppViewRef = useRef(appView)
   const query = useMemo(() => buildApplicationListQuery(filters, offset), [filters, offset])
   const actionQueueQuery = useMemo(
     () => buildActionQueueListQuery(actionQueueBucket, actionQueueOffset),
@@ -251,6 +257,14 @@ function App({
     [sourcingMergeStatus, sourcingOffset, sourcingSourceId],
   )
   const isInitialLoading = isLoading && !hasLoadedApplications
+  const canAutoRefreshData =
+    appView === APP_VIEWS.APPLICATIONS
+      ? hasLoadedApplications && !isLoading
+      : appView === APP_VIEWS.ACTION_QUEUE
+        ? hasLoadedActionQueue && !isActionQueueLoading
+        : appView === APP_VIEWS.SOURCING
+          ? hasLoadedSourcing && !isSourcingLoading
+          : false
 
   useEffect(() => {
     let isMounted = true
@@ -376,6 +390,57 @@ function App({
       isMounted = false
     }
   }, [appView, sourcingLoader, sourcingQuery, sourcingReloadKey])
+
+  useEffect(() => {
+    const previousAppView = previousAppViewRef.current
+
+    previousAppViewRef.current = appView
+
+    if (
+      appView !== APP_VIEWS.APPLICATIONS ||
+      previousAppView === APP_VIEWS.APPLICATIONS ||
+      !hasLoadedApplications
+    ) {
+      return
+    }
+
+    reloadApplications()
+  }, [appView, hasLoadedApplications])
+
+  useEffect(() => {
+    if (!canAutoRefreshData) {
+      return undefined
+    }
+
+    const refreshActiveDataView = () => {
+      if (isDocumentHidden()) {
+        return
+      }
+
+      if (appView === APP_VIEWS.APPLICATIONS) {
+        setApplicationReloadKey((current) => current + 1)
+      } else if (appView === APP_VIEWS.ACTION_QUEUE) {
+        setActionQueueReloadKey((current) => current + 1)
+      } else if (appView === APP_VIEWS.SOURCING) {
+        setSourcingReloadKey((current) => current + 1)
+      }
+    }
+    const refreshOnVisible = () => {
+      if (!isDocumentHidden()) {
+        refreshActiveDataView()
+      }
+    }
+    const intervalId = window.setInterval(refreshActiveDataView, DATA_AUTO_REFRESH_INTERVAL_MS)
+
+    window.addEventListener('focus', refreshOnVisible)
+    document.addEventListener('visibilitychange', refreshOnVisible)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', refreshOnVisible)
+      document.removeEventListener('visibilitychange', refreshOnVisible)
+    }
+  }, [appView, canAutoRefreshData])
 
   useEffect(() => {
     if (!selectedApplication) {

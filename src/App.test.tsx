@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -27,6 +28,7 @@ import {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   delete (window as Window & { applications?: unknown }).applications
   delete (window as Window & { sourcing?: unknown }).sourcing
   delete (window as Window & { settings?: unknown }).settings
@@ -68,6 +70,67 @@ describe('App', () => {
       'rel',
       'noreferrer',
     )
+  })
+
+  it('periodically refreshes visible application rows', async () => {
+    vi.useFakeTimers()
+    const refreshedApplication = createApplication({
+      id: 'application-delta',
+      companyName: 'Delta Labs',
+      roleTitle: 'Software Engineering Intern',
+    })
+    const applicationLoader = vi
+      .fn()
+      .mockResolvedValueOnce(createListResult([createApplication()]))
+      .mockResolvedValueOnce(createListResult([refreshedApplication]))
+
+    render(
+      <App
+        applicationLoader={applicationLoader}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('Astranis Space Technologies')).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+
+    expect(screen.getByText('Delta Labs')).toBeInTheDocument()
+    expect(applicationLoader).toHaveBeenCalledTimes(2)
+  })
+
+  it('refreshes application rows when returning to the applications view', async () => {
+    const refreshedApplication = createApplication({
+      id: 'application-delta',
+      companyName: 'Delta Labs',
+      roleTitle: 'Software Engineering Intern',
+    })
+    const applicationLoader = vi
+      .fn()
+      .mockResolvedValueOnce(createListResult([createApplication()]))
+      .mockResolvedValueOnce(createListResult([refreshedApplication]))
+
+    render(
+      <App
+        applicationLoader={applicationLoader}
+        actionQueueLoader={() => Promise.resolve(createActionQueueResult([createActionQueueItem()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
+    await screen.findByRole('table', { name: 'Action Queue' })
+    fireEvent.click(screen.getByRole('button', { name: 'Applications' }))
+
+    expect(await screen.findByText('Delta Labs')).toBeInTheDocument()
+    expect(applicationLoader).toHaveBeenCalledTimes(2)
   })
 
   it('lets users add application rows from a modal and reloads the list', async () => {
