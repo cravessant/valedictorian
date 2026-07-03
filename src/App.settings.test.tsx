@@ -448,6 +448,24 @@ describe('App settings and chrome', () => {
     expect(await screen.findByRole('table', { name: 'Applications' })).toBeInTheDocument()
   })
 
+  it('opens the full settings page from the native Settings menu event', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    fireEvent(window, new Event('valedictorian:open-settings'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'settings')
+    })
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+  })
+
   it('uses the same app chrome shell for the settings view', async () => {
     render(
       <App

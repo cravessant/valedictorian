@@ -26,6 +26,7 @@ import {
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
 import { type WorkspaceSummary } from '../src/workspace/workspace.initializer'
 import { createWorkspaceMenuTemplate } from '../src/workspace/workspace.menu'
+import { createWorkspaceWindowTitle } from '../src/workspace/workspace.window'
 import { getDefaultWorkspaceRegistryPath } from '../src/workspace/workspace.paths'
 import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.registry'
 import {
@@ -67,6 +68,7 @@ let workspaceLauncherWindow: BrowserWindow | null = null
 let runtime: ValedictorianRuntime | null = null
 let currentWorkspace: WorkspaceSummary | null = null
 let workspaceManager: LocalWorkspaceManager | null = null
+let activeWorkspaceService: WorkspaceService | null = null
 let runtimeServicesRegistered = false
 let updatePollingScheduled = false
 const updatePollInitialDelayMs = 3000
@@ -170,7 +172,7 @@ function createElectronSecretCodec(): ProfileSecretCodec {
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
-    title: 'Valedictorian',
+    title: createWorkspaceWindowTitle(currentWorkspace),
     titleBarOverlay: {
       color: '#181825',
       symbolColor: '#cdd6f4',
@@ -188,6 +190,7 @@ function createMainWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    refreshWorkspaceMenu()
   })
   mainWindow.on('enter-full-screen', () => sendWindowChromeState(mainWindow))
   mainWindow.on('leave-full-screen', () => sendWindowChromeState(mainWindow))
@@ -215,6 +218,7 @@ function createMainWindow() {
   })
 
   loadRenderer(mainWindow)
+  refreshWorkspaceMenu()
 }
 
 function getWindowChromeState(window: BrowserWindow | null) {
@@ -261,12 +265,14 @@ function createWorkspaceLauncherWindow() {
 
   workspaceLauncherWindow.on('closed', () => {
     workspaceLauncherWindow = null
+    refreshWorkspaceMenu()
   })
   workspaceLauncherWindow.once('ready-to-show', () => {
     workspaceLauncherWindow?.show()
   })
 
   loadRenderer(workspaceLauncherWindow)
+  refreshWorkspaceMenu()
 }
 
 function showWorkspaceLauncherWindow() {
@@ -281,6 +287,66 @@ function showWorkspaceLauncherWindow() {
   }
 
   createWorkspaceLauncherWindow()
+}
+
+function openSettings() {
+  if (!mainWindow && currentWorkspace) {
+    createMainWindow()
+  }
+
+  focusAppWindow(mainWindow)
+  sendOpenSettingsWhenReady()
+}
+
+function sendOpenSettingsWhenReady() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  if (mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once('did-finish-load', sendOpenSettingsWhenReady)
+    return
+  }
+
+  mainWindow.webContents.send('valedictorian:open-settings')
+}
+
+function focusAppWindow(window: BrowserWindow | null) {
+  if (!window || window.isDestroyed()) {
+    return
+  }
+
+  if (window.isMinimized()) {
+    window.restore()
+  }
+
+  window.show()
+  window.focus()
+}
+
+function createFocusableWindowMenuItems() {
+  return [
+    ...(mainWindow && !mainWindow.isDestroyed()
+      ? [{
+          label: currentWorkspace?.name ?? 'Workspace Window',
+          onFocus: () => focusAppWindow(mainWindow),
+        }]
+      : []),
+    ...(workspaceLauncherWindow && !workspaceLauncherWindow.isDestroyed()
+      ? [{
+          label: 'Workspace Launcher',
+          onFocus: () => focusAppWindow(workspaceLauncherWindow),
+        }]
+      : []),
+  ]
+}
+
+function refreshWorkspaceMenu() {
+  if (!activeWorkspaceService) {
+    return
+  }
+
+  void installWorkspaceMenu(activeWorkspaceService)
 }
 
 function loadRenderer(window: BrowserWindow) {
@@ -371,6 +437,7 @@ app.whenReady().then(async () => {
     },
     showWorkspaceSwitcher: () => Boolean(workspaceLauncherWindow && currentWorkspace),
   })
+  activeWorkspaceService = workspaceService
   registerWorkspaceIpc(workspaceService, ipcMain)
   await installWorkspaceMenu(workspaceService)
 
@@ -429,9 +496,12 @@ async function closeRuntime() {
 async function installWorkspaceMenu(workspaceService: WorkspaceService) {
   const launchState = await workspaceService.getLaunchState()
   const menuTemplate = createWorkspaceMenuTemplate({
+    focusableWindows: createFocusableWindowMenuItems(),
+    isDevelopment: Boolean(VITE_DEV_SERVER_URL),
     onOpenRecentWorkspace(workspaceId) {
       void workspaceService.openRecent(workspaceId).then(() => installWorkspaceMenu(workspaceService))
     },
+    onOpenSettings: openSettings,
     onOpenWorkspace: showWorkspaceLauncherWindow,
     platform: process.platform,
     recentWorkspaces: launchState.recentWorkspaces,

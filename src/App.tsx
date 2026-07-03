@@ -307,6 +307,21 @@ function App({
   }, [workspaceApi])
 
   useEffect(() => {
+    const openSettingsFromNativeMenu = () => {
+      setSettingsOpen(false)
+      setSidebarHoverExpanded(false)
+      setNarrowSidebarOpen(false)
+      setAppView(APP_VIEWS.SETTINGS)
+    }
+
+    window.addEventListener('valedictorian:open-settings', openSettingsFromNativeMenu)
+
+    return () => {
+      window.removeEventListener('valedictorian:open-settings', openSettingsFromNativeMenu)
+    }
+  }, [])
+
+  useEffect(() => {
     let isMounted = true
 
     setIsLoading(true)
