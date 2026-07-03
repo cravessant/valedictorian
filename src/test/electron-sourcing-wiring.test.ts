@@ -99,11 +99,30 @@ describe('Electron sourcing wiring', () => {
     expect(mainSource).toContain('createMainWindow()')
   })
 
+  it('configures the main window with persisted state and graceful first show', () => {
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const windowStateSource = fs.readFileSync(path.resolve('electron/window-state.ts'), 'utf8')
+
+    expect(mainSource).toContain('createFileMainWindowStateStore')
+    expect(mainSource).toContain('resolveMainWindowStateOptions')
+    expect(mainSource).toContain('screen.getAllDisplays()')
+    expect(windowStateSource).toContain('width: 1280')
+    expect(windowStateSource).toContain('height: 840')
+    expect(windowStateSource).toContain('minWidth: 1024')
+    expect(windowStateSource).toContain('minHeight: 680')
+    expect(windowStateSource).toContain("backgroundColor: '#181825'")
+    expect(windowStateSource).toContain('show: false')
+    expect(mainSource).toContain("mainWindow.once('ready-to-show'")
+    expect(mainSource).toContain('mainWindow.show()')
+    expect(mainSource).toContain("mainWindow.on('close'")
+    expect(mainSource).toContain('saveMainWindowState')
+  })
+
   it('configures native app identity and workspace menu actions', () => {
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
     const indexSource = fs.readFileSync(path.resolve('index.html'), 'utf8')
 
-    expect(mainSource).toContain("import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'")
+    expect(mainSource).toContain("from 'electron'")
     expect(mainSource).toContain("app.setName('Valedictorian')")
     expect(mainSource).toContain("app.setAppUserModelId('com.valedictorian.app')")
     expect(mainSource).toContain("title: 'Valedictorian'")

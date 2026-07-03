@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
@@ -35,6 +35,14 @@ import {
   type WorkspaceService,
 } from '../src/workspace/workspace.service'
 import { createElectronUpdateService } from '../src/updates/update.service'
+import {
+  createFileMainWindowStateStore,
+  createMainWindowStateSnapshot,
+  mainWindowFirstPaintOptions,
+  minimumMainWindowBounds,
+  resolveMainWindowStateOptions,
+  type MainWindowStateStore,
+} from './window-state'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -168,7 +176,13 @@ function createElectronSecretCodec(): ProfileSecretCodec {
 }
 
 function createMainWindow() {
+  const mainWindowStateStore = createFileMainWindowStateStore(getMainWindowStatePath())
+  const savedMainWindowState = mainWindowStateStore.read()
+
   mainWindow = new BrowserWindow({
+    ...resolveMainWindowStateOptions(savedMainWindowState, screen.getAllDisplays()),
+    ...minimumMainWindowBounds,
+    ...mainWindowFirstPaintOptions,
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     title: 'Valedictorian',
     titleBarOverlay: {
@@ -189,8 +203,24 @@ function createMainWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+  mainWindow.on('close', () => saveMainWindowState(mainWindow, mainWindowStateStore))
   mainWindow.on('enter-full-screen', () => sendWindowChromeState(mainWindow))
   mainWindow.on('leave-full-screen', () => sendWindowChromeState(mainWindow))
+  mainWindow.once('ready-to-show', () => {
+    if (!mainWindow) {
+      return
+    }
+
+    if (savedMainWindowState?.isMaximized) {
+      mainWindow.maximize()
+    }
+
+    if (savedMainWindowState?.isFullScreen) {
+      mainWindow.setFullScreen(true)
+    }
+
+    mainWindow.show()
+  })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isExternalHttpUrl(url)) {
@@ -215,6 +245,25 @@ function createMainWindow() {
   })
 
   loadRenderer(mainWindow)
+}
+
+function getMainWindowStatePath() {
+  return path.join(app.getPath('userData'), 'main-window-state.json')
+}
+
+function saveMainWindowState(
+  window: BrowserWindow | null,
+  mainWindowStateStore: MainWindowStateStore,
+) {
+  if (!window || window.isDestroyed()) {
+    return
+  }
+
+  try {
+    mainWindowStateStore.write(createMainWindowStateSnapshot(window))
+  } catch (error) {
+    console.warn('Failed to save main window state.', error)
+  }
 }
 
 function getWindowChromeState(window: BrowserWindow | null) {
