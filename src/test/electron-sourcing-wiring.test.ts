@@ -54,7 +54,9 @@ describe('Electron sourcing wiring', () => {
     )
     expect(mainSource).toContain('createElectronUpdateService')
     expect(mainSource).toContain('registerUpdatesIpc(updateService, ipcMain')
-    expect(mainSource).toContain('scheduleInitialUpdateCheck()')
+    expect(mainSource).toContain('scheduleUpdatePolling()')
+    expect(mainSource).toContain('const updatePollIntervalMs = 30 * 60 * 1000')
+    expect(mainSource).toContain("state.status === 'ready'")
     expect(envSource).toContain("valedictorianUpdates: import('../src/ipc/updates.preload').UpdatesPreloadApi")
   })
 

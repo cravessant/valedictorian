@@ -68,7 +68,9 @@ let runtime: ValedictorianRuntime | null = null
 let currentWorkspace: WorkspaceSummary | null = null
 let workspaceManager: LocalWorkspaceManager | null = null
 let runtimeServicesRegistered = false
-let initialUpdateCheckScheduled = false
+let updatePollingScheduled = false
+const updatePollInitialDelayMs = 3000
+const updatePollIntervalMs = 30 * 60 * 1000
 const updateService = createElectronUpdateService(app, {
   get autoDownload() {
     return autoUpdater.autoDownload
@@ -316,7 +318,7 @@ app.on('activate', () => {
 
 app.whenReady().then(async () => {
   registerUpdatesIpc(updateService, ipcMain, () => BrowserWindow.getAllWindows())
-  scheduleInitialUpdateCheck()
+  scheduleUpdatePolling()
 
   const registryStore = createFileWorkspaceRegistryStore(
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
@@ -369,15 +371,33 @@ app.whenReady().then(async () => {
   app.quit()
 })
 
-function scheduleInitialUpdateCheck() {
-  if (initialUpdateCheckScheduled) {
+function scheduleUpdatePolling() {
+  if (updatePollingScheduled) {
     return
   }
 
-  initialUpdateCheckScheduled = true
+  updatePollingScheduled = true
   setTimeout(() => {
-    void updateService.check()
-  }, 3000)
+    void pollForUpdates()
+    setInterval(() => {
+      void pollForUpdates()
+    }, updatePollIntervalMs)
+  }, updatePollInitialDelayMs)
+}
+
+async function pollForUpdates() {
+  const state = updateService.getState()
+
+  if (
+    state.status === 'checking'
+    || state.status === 'disabled'
+    || state.status === 'downloading'
+    || state.status === 'ready'
+  ) {
+    return
+  }
+
+  await updateService.check()
 }
 
 async function closeRuntime() {
