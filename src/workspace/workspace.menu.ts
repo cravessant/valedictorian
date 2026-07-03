@@ -10,15 +10,26 @@ export interface WorkspaceMenuItem {
   type?: 'separator'
 }
 
+export interface WorkspaceMenuFocusableWindow {
+  label: string
+  onFocus: () => void
+}
+
 export interface CreateWorkspaceMenuTemplateOptions {
+  focusableWindows?: WorkspaceMenuFocusableWindow[]
+  isDevelopment?: boolean
   onOpenRecentWorkspace: (workspaceId: string) => void
+  onOpenSettings: () => void
   onOpenWorkspace: () => void
   platform: NodeJS.Platform
   recentWorkspaces: WorkspaceLaunchRecord[]
 }
 
 export function createWorkspaceMenuTemplate({
+  focusableWindows = [],
+  isDevelopment = false,
   onOpenRecentWorkspace,
+  onOpenSettings,
   onOpenWorkspace,
   platform,
   recentWorkspaces,
@@ -54,10 +65,14 @@ export function createWorkspaceMenuTemplate({
   const viewMenu: WorkspaceMenuItem = {
     label: 'View',
     submenu: [
-      { role: 'reload' },
-      { role: 'forceReload' },
-      { role: 'toggleDevTools' },
-      { type: 'separator' },
+      ...(isDevelopment
+        ? ([
+            { role: 'reload' },
+            { role: 'forceReload' },
+            { role: 'toggleDevTools' },
+            { type: 'separator' },
+          ] satisfies WorkspaceMenuItem[])
+        : []),
       { role: 'resetZoom' },
       { role: 'zoomIn' },
       { role: 'zoomOut' },
@@ -70,6 +85,7 @@ export function createWorkspaceMenuTemplate({
     submenu: [
       { role: 'minimize' },
       { role: 'zoom' },
+      ...createFocusableWindowMenuItems(focusableWindows),
       ...(platform === 'darwin'
         ? ([{ type: 'separator' }, { role: 'front' }] satisfies WorkspaceMenuItem[])
         : ([{ role: 'close' }] satisfies WorkspaceMenuItem[])),
@@ -89,6 +105,11 @@ export function createWorkspaceMenuTemplate({
       label: 'Valedictorian',
       submenu: [
         { role: 'about' },
+        {
+          accelerator: 'Command+,',
+          click: onOpenSettings,
+          label: 'Settings...',
+        },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -126,4 +147,20 @@ function createRecentWorkspaceMenuItems(
     click: () => onOpenRecentWorkspace(workspace.id),
     label: workspace.name,
   }))
+}
+
+function createFocusableWindowMenuItems(
+  focusableWindows: WorkspaceMenuFocusableWindow[],
+): WorkspaceMenuItem[] {
+  if (focusableWindows.length === 0) {
+    return []
+  }
+
+  return [
+    { type: 'separator' },
+    ...focusableWindows.map((window) => ({
+      click: window.onFocus,
+      label: window.label,
+    })),
+  ]
 }

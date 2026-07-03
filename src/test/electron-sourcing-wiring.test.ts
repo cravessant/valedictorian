@@ -120,16 +120,23 @@ describe('Electron sourcing wiring', () => {
 
   it('configures native app identity and workspace menu actions', () => {
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const indexSource = fs.readFileSync(path.resolve('index.html'), 'utf8')
 
     expect(mainSource).toContain("from 'electron'")
     expect(mainSource).toContain("app.setName('Valedictorian')")
     expect(mainSource).toContain("app.setAppUserModelId('com.valedictorian.app')")
-    expect(mainSource).toContain("title: 'Valedictorian'")
+    expect(mainSource).toContain("import { createWorkspaceWindowTitle } from '../src/workspace/workspace.window'")
+    expect(mainSource).toContain('title: createWorkspaceWindowTitle(currentWorkspace)')
+    expect(mainSource).toContain('--valedictorian-workspace-id=${currentWorkspace.id}')
     expect(indexSource).toContain('<title>Valedictorian</title>')
     expect(mainSource).toContain('createWorkspaceMenuTemplate')
     expect(mainSource).toContain('Menu.setApplicationMenu')
     expect(mainSource).toContain('showWorkspaceLauncherWindow')
+    expect(mainSource).toContain("webContents.send('valedictorian:open-settings')")
+    expect(mainSource).toContain("webContents.once('did-finish-load', sendOpenSettingsWhenReady)")
+    expect(preloadSource).toContain("ipcRenderer.on('valedictorian:open-settings'")
+    expect(preloadSource).toContain("window.dispatchEvent(new Event('valedictorian:open-settings'))")
     expect(mainSource).toContain('workspaceService.openRecent(workspaceId)')
   })
 

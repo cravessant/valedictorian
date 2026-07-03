@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('valedictorianUpdates', createUpdatesPreloadApi(
 contextBridge.exposeInMainWorld('valedictorianWindowChrome', createWindowChromePreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('workspace', createWorkspacePreloadApi(ipcRenderer))
 
+ipcRenderer.on('valedictorian:open-settings', () => {
+  window.dispatchEvent(new Event('valedictorian:open-settings'))
+})
+
 function readRendererHttpConfig(argv: string[]) {
   const apiBaseUrl = readArgumentValue(argv, '--valedictorian-api-url=')
   const workspaceId = readArgumentValue(argv, '--valedictorian-workspace-id=')
