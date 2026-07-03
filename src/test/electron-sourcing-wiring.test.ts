@@ -39,7 +39,7 @@ describe('Electron sourcing wiring', () => {
     expect(preloadSource).toContain(
       "contextBridge.exposeInMainWorld('workspace', createWorkspacePreloadApi(ipcRenderer))",
     )
-    expect(mainSource).toContain('registerWorkspaceIpc(workspaceService, ipcMain)')
+    expect(mainSource).toContain('registerWorkspaceIpc(workspaceService, ipcMain')
     expect(envSource).toContain("workspace: import('../src/ipc/workspace.preload').WorkspacePreloadApi")
   })
 
@@ -95,7 +95,7 @@ describe('Electron sourcing wiring', () => {
     expect(rendererEntrySource).toContain('<AppRoot />')
     expect(mainSource).toContain('resolveWorkspaceLaunchState')
     expect(mainSource).not.toContain('resolveInitialWorkspace')
-    expect(mainSource).toContain('registerWorkspaceIpc(workspaceService, ipcMain)')
+    expect(mainSource).toContain('registerWorkspaceIpc(workspaceService, ipcMain')
     expect(mainSource).toContain('createMainWindow()')
   })
 
@@ -127,6 +127,16 @@ describe('Electron sourcing wiring', () => {
     expect(mainSource).toContain('maximizable: false')
     expect(mainSource).toContain('fullscreenable: false')
     expect(mainSource).toContain('openWorkspaceInMainWindow')
+  })
+
+  it('parents workspace launcher folder pickers to the invoking Electron window', () => {
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+
+    expect(mainSource).toContain('createWorkspaceFolderPicker')
+    expect(mainSource).toContain('registerWorkspaceIpc(workspaceService, ipcMain, {')
+    expect(mainSource).toContain('BrowserWindow.fromWebContents(event.sender)')
+    expect(mainSource).toContain('dialog.showOpenDialog(parentWindow, dialogOptions)')
+    expect(mainSource).toContain('dialog.showOpenDialog(dialogOptions)')
   })
 
   it('opens external application links outside the Electron app window', () => {

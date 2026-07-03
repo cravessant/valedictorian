@@ -17,6 +17,64 @@ const currentWorkspace = {
 }
 
 describe('workspace IPC registration', () => {
+  it('passes the invoking window to launcher folder picker handlers', async () => {
+    const parentWindow = { id: 1 }
+    const event = { sender: { id: 2 } }
+    const service: WorkspaceService = {
+      chooseCreateParentFolder: vi.fn(async () => '/Users/keni/Documents'),
+      chooseFolder: vi.fn(async () => currentWorkspace),
+      createWorkspace: vi.fn(async () => ({
+        devOptions: {
+          canSeedSampleData: false,
+        },
+        recentWorkspaces: [],
+        status: 'needs-workspace',
+      })),
+      getCurrent: vi.fn(),
+      getLaunchState: vi.fn(),
+      listRecent: vi.fn(),
+      openFolder: vi.fn(async () => ({
+        devOptions: {
+          canSeedSampleData: false,
+        },
+        recentWorkspaces: [],
+        status: 'needs-workspace',
+      })),
+      openRecent: vi.fn(),
+      removeRecent: vi.fn(),
+      reveal: vi.fn(),
+      revealCurrent: vi.fn(),
+    }
+    const handlers = new Map<string, (_event: unknown, payload?: unknown) => Promise<unknown>>()
+
+    registerWorkspaceIpc(
+      service,
+      {
+        handle(channel, handler) {
+          handlers.set(channel, handler)
+        },
+      },
+      {
+        getParentWindow(ipcEvent) {
+          return ipcEvent === event ? parentWindow : null
+        },
+      },
+    )
+
+    await handlers.get('workspace:choose-create-parent-folder')?.(event)
+    await handlers.get('workspace:choose-folder')?.(event)
+    await handlers.get('workspace:open-folder')?.(event)
+    await handlers.get('workspace:create-workspace')?.(event, { name: 'Draft Search' })
+
+    expect(service.chooseCreateParentFolder).toHaveBeenCalledWith({ parentWindow })
+    expect(service.chooseFolder).toHaveBeenCalledWith({ parentWindow })
+    expect(service.openFolder).toHaveBeenCalledWith({ parentWindow })
+    expect(service.createWorkspace).toHaveBeenCalledWith(
+      { name: 'Draft Search' },
+      { parentWindow },
+    )
+  })
+
   it('registers workspace handlers', async () => {
     const service: WorkspaceService = {
       chooseCreateParentFolder: vi.fn(async () => '/Users/keni/Documents'),
@@ -109,10 +167,13 @@ describe('workspace IPC registration', () => {
     expect(service.chooseFolder).toHaveBeenCalled()
     expect(service.openFolder).toHaveBeenCalled()
     expect(service.openRecent).toHaveBeenCalledWith('workspace-1')
-    expect(service.createWorkspace).toHaveBeenCalledWith({
-      name: 'Summer Search',
-      parentPath: '/Users/keni',
-    })
+    expect(service.createWorkspace).toHaveBeenCalledWith(
+      {
+        name: 'Summer Search',
+        parentPath: '/Users/keni',
+      },
+      { parentWindow: null },
+    )
     expect(service.removeRecent).toHaveBeenCalledWith('workspace-1')
     expect(service.reveal).toHaveBeenCalledWith('/Users/keni/Job Search')
     expect(service.revealCurrent).toHaveBeenCalled()

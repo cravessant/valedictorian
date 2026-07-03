@@ -205,6 +205,45 @@ describe('workspace service', () => {
     expect(relaunchApp).not.toHaveBeenCalled()
   })
 
+  it('stays in switcher launcher state when opening a folder is canceled', async () => {
+    const currentRoot = createTempPath('valedictorian-switcher-current-workspace-')
+    const currentWorkspace = initializeWorkspace(currentRoot, { createId: () => 'workspace-current' })
+    const registryStore = createTempRegistryStore('valedictorian-switcher-cancel-registry-')
+    await registryStore.markOpened({
+      id: currentWorkspace.id,
+      name: currentWorkspace.name,
+      path: currentWorkspace.rootPath,
+    })
+    const activateWorkspace = vi.fn(async () => undefined)
+    const relaunchApp = vi.fn()
+    const service = createWorkspaceService({
+      activateWorkspace,
+      chooseWorkspaceRoot: vi.fn(async () => null),
+      currentWorkspace,
+      registryStore,
+      relaunchApp,
+      revealPath: vi.fn(),
+      showWorkspaceSwitcher: () => true,
+    })
+
+    const launchState = await service.openFolder()
+
+    expect(launchState).toMatchObject({
+      recentWorkspaces: [
+        expect.objectContaining({
+          id: currentWorkspace.id,
+          missing: false,
+        }),
+      ],
+      status: 'needs-workspace',
+    })
+    await expect(registryStore.get()).resolves.toMatchObject({
+      lastOpenedWorkspaceId: currentWorkspace.id,
+    })
+    expect(activateWorkspace).not.toHaveBeenCalled()
+    expect(relaunchApp).not.toHaveBeenCalled()
+  })
+
   it('returns the current workspace after launcher activation updates shared state', async () => {
     const nextRoot = createTempPath('valedictorian-launcher-current-workspace-')
     const registryStore = createTempRegistryStore('valedictorian-launcher-current-registry-')
@@ -383,6 +422,47 @@ describe('workspace service', () => {
     await expect(service.chooseCreateParentFolder()).resolves.toBe('/Users/keni/Documents')
     await expect(registryStore.listRecent()).resolves.toEqual([])
     expect(activateWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('stays in switcher launcher state when creating a workspace is canceled', async () => {
+    const currentRoot = createTempPath('valedictorian-switcher-create-current-')
+    const currentWorkspace = initializeWorkspace(currentRoot, { createId: () => 'workspace-current' })
+    const registryStore = createTempRegistryStore('valedictorian-switcher-create-cancel-registry-')
+    await registryStore.markOpened({
+      id: currentWorkspace.id,
+      name: currentWorkspace.name,
+      path: currentWorkspace.rootPath,
+    })
+    const activateWorkspace = vi.fn(async () => undefined)
+    const relaunchApp = vi.fn()
+    const service = createWorkspaceService({
+      activateWorkspace,
+      chooseWorkspaceParentRoot: vi.fn(async () => null),
+      chooseWorkspaceRoot: vi.fn(async () => null),
+      currentWorkspace,
+      registryStore,
+      relaunchApp,
+      revealPath: vi.fn(),
+      showWorkspaceSwitcher: () => true,
+    })
+
+    const launchState = await service.createWorkspace({ name: 'Draft Search' })
+
+    expect(launchState).toMatchObject({
+      recentWorkspaces: [
+        expect.objectContaining({
+          id: currentWorkspace.id,
+          missing: false,
+        }),
+      ],
+      status: 'needs-workspace',
+    })
+    await expect(registryStore.listRecent()).resolves.toHaveLength(1)
+    await expect(registryStore.get()).resolves.toMatchObject({
+      lastOpenedWorkspaceId: currentWorkspace.id,
+    })
+    expect(activateWorkspace).not.toHaveBeenCalled()
+    expect(relaunchApp).not.toHaveBeenCalled()
   })
 
   it('passes sample seed intent only when dev seeding is enabled', async () => {

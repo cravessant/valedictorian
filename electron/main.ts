@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
-import type { MenuItemConstructorOptions } from 'electron'
+import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
@@ -34,6 +34,10 @@ import {
   type WorkspaceActivationOptions,
   type WorkspaceService,
 } from '../src/workspace/workspace.service'
+import {
+  createWorkspaceFolderPicker,
+  type WorkspaceFolderDialogOptions,
+} from '../src/workspace/workspace.dialog'
 import { createElectronUpdateService } from '../src/updates/update.service'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -349,7 +353,7 @@ app.whenReady().then(async () => {
     secretCodec: createElectronSecretCodec(),
   })
   const canSeedSampleData = Boolean(VITE_DEV_SERVER_URL)
-  let workspaceService: WorkspaceService
+  let workspaceService: WorkspaceService<BrowserWindow>
   workspaceService = createWorkspaceService({
     activateWorkspace: openWorkspaceInMainWindow,
     canSeedSampleData,
@@ -371,7 +375,11 @@ app.whenReady().then(async () => {
     },
     showWorkspaceSwitcher: () => Boolean(workspaceLauncherWindow && currentWorkspace),
   })
-  registerWorkspaceIpc(workspaceService, ipcMain)
+  registerWorkspaceIpc(workspaceService, ipcMain, {
+    getParentWindow(event) {
+      return getWorkspacePickerParentWindow(event as IpcMainInvokeEvent)
+    },
+  })
   await installWorkspaceMenu(workspaceService)
 
   const launchState = await resolveWorkspaceLaunchState({
@@ -426,7 +434,7 @@ async function closeRuntime() {
   runtimeServicesRegistered = false
 }
 
-async function installWorkspaceMenu(workspaceService: WorkspaceService) {
+async function installWorkspaceMenu(workspaceService: WorkspaceService<BrowserWindow>) {
   const launchState = await workspaceService.getLaunchState()
   const menuTemplate = createWorkspaceMenuTemplate({
     onOpenRecentWorkspace(workspaceId) {
@@ -460,30 +468,38 @@ function isExternalHttpUrl(value: string) {
   }
 }
 
-async function chooseWorkspaceRoot() {
-  const result = await dialog.showOpenDialog({
-    buttonLabel: 'Open workspace',
-    properties: ['openDirectory', 'createDirectory'],
-    title: 'Choose Valedictorian workspace',
-  })
+function getWorkspacePickerParentWindow(event: IpcMainInvokeEvent) {
+  const parentWindow = BrowserWindow.fromWebContents(event.sender)
 
-  if (result.canceled) {
+  if (!parentWindow || parentWindow.isDestroyed()) {
     return null
   }
 
-  return result.filePaths[0] ?? null
+  return parentWindow
 }
 
-async function chooseWorkspaceParentRoot() {
-  const result = await dialog.showOpenDialog({
-    buttonLabel: 'Create workspace here',
-    properties: ['openDirectory', 'createDirectory'],
-    title: 'Choose parent folder',
-  })
-
-  if (result.canceled) {
-    return null
+function showWorkspaceFolderDialog(
+  ...args:
+    | [dialogOptions: WorkspaceFolderDialogOptions]
+    | [parentWindow: BrowserWindow, dialogOptions: WorkspaceFolderDialogOptions]
+) {
+  if (args.length === 2) {
+    const [parentWindow, dialogOptions] = args
+    return dialog.showOpenDialog(parentWindow, dialogOptions)
   }
 
-  return result.filePaths[0] ?? null
+  const [dialogOptions] = args
+  return dialog.showOpenDialog(dialogOptions)
 }
+
+const chooseWorkspaceRoot = createWorkspaceFolderPicker<BrowserWindow>({
+  buttonLabel: 'Open workspace',
+  showOpenDialog: showWorkspaceFolderDialog,
+  title: 'Choose Valedictorian workspace',
+})
+
+const chooseWorkspaceParentRoot = createWorkspaceFolderPicker<BrowserWindow>({
+  buttonLabel: 'Create workspace here',
+  showOpenDialog: showWorkspaceFolderDialog,
+  title: 'Choose parent folder',
+})
