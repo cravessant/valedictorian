@@ -77,6 +77,7 @@ export interface UpsertConnectorInstanceInput {
   displayName: string
   enabled: boolean
   config?: JsonRecord
+  filters?: JsonRecord
   createdAt?: string
 }
 
@@ -85,7 +86,15 @@ export interface RecordConnectorRefreshResultInput {
   mode: string
   startedAt: string
   completedAt: string
+  config: JsonRecord
+  filters: JsonRecord
+  filterSignature: string
   result: ConnectorRefreshResultInput
+}
+
+export interface GetConnectorCheckpointInput {
+  connectorInstanceId: string
+  filterSignature: string
 }
 
 export interface ConnectorInstanceRecord {
@@ -95,6 +104,7 @@ export interface ConnectorInstanceRecord {
   displayName: string
   enabled: boolean
   config: unknown
+  filters: unknown
   createdAt: string
   updatedAt: string
 }
@@ -108,6 +118,9 @@ export interface ConnectorRunRecord {
   completedAt: string | null
   coverageStartedAt: string | null
   coverageEndedAt: string | null
+  config: unknown
+  filters: unknown
+  filterSignature: string
   observationCount: number
   warningCount: number
   stats: unknown
@@ -117,6 +130,7 @@ export interface ConnectorRunRecord {
 
 export interface ConnectorCheckpointRecord {
   connectorInstanceId: string
+  filterSignature: string
   checkpoint: unknown
   schemaVersion: string
   coverageStartedAt: string | null
@@ -174,6 +188,7 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
             displayName: input.displayName,
             enabled: input.enabled,
             configJson: JSON.stringify(input.config ?? {}),
+            filtersJson: JSON.stringify(input.filters ?? {}),
             updatedAt: now,
           })
           .where(eq(connectorInstances.id, input.id))
@@ -188,6 +203,7 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
             displayName: input.displayName,
             enabled: input.enabled,
             configJson: JSON.stringify(input.config ?? {}),
+            filtersJson: JSON.stringify(input.filters ?? {}),
             createdAt,
             updatedAt: now,
             deletedAt: null,
@@ -233,6 +249,9 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
             completedAt: input.completedAt,
             coverageStartedAt: input.result.coverage.start,
             coverageEndedAt: input.result.coverage.end,
+            configJson: JSON.stringify(input.config),
+            filtersJson: JSON.stringify(input.filters),
+            filterSignature: input.filterSignature,
             observationCount,
             warningCount,
             statsJson: JSON.stringify(input.result.stats),
@@ -245,11 +264,15 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
           .run()
 
         const existingCheckpoint = transaction
-          .select({ connectorInstanceId: connectorCheckpoints.connectorInstanceId })
+          .select({
+            connectorInstanceId: connectorCheckpoints.connectorInstanceId,
+            filterSignature: connectorCheckpoints.filterSignature,
+          })
           .from(connectorCheckpoints)
           .where(
             and(
               eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
+              eq(connectorCheckpoints.filterSignature, input.filterSignature),
               isNull(connectorCheckpoints.deletedAt),
             ),
           )
@@ -268,13 +291,19 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
           transaction
             .update(connectorCheckpoints)
             .set(checkpointValues)
-            .where(eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId))
+            .where(
+              and(
+                eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
+                eq(connectorCheckpoints.filterSignature, input.filterSignature),
+              ),
+            )
             .run()
         } else {
           transaction
             .insert(connectorCheckpoints)
             .values({
               connectorInstanceId: input.connectorInstanceId,
+              filterSignature: input.filterSignature,
               ...checkpointValues,
               createdAt: now,
             })
@@ -320,13 +349,28 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
       })
     },
 
-    async getCheckpoint(connectorInstanceId: string): Promise<ConnectorCheckpointRecord | null> {
+    async getInstance(connectorInstanceId: string): Promise<ConnectorInstanceRecord | null> {
+      const row = database
+        .select()
+        .from(connectorInstances)
+        .where(
+          and(eq(connectorInstances.id, connectorInstanceId), isNull(connectorInstances.deletedAt)),
+        )
+        .get()
+
+      return row ? mapConnectorInstance(row) : null
+    },
+
+    async getCheckpoint(
+      input: GetConnectorCheckpointInput,
+    ): Promise<ConnectorCheckpointRecord | null> {
       const row = database
         .select()
         .from(connectorCheckpoints)
         .where(
           and(
-            eq(connectorCheckpoints.connectorInstanceId, connectorInstanceId),
+            eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
+            eq(connectorCheckpoints.filterSignature, input.filterSignature),
             isNull(connectorCheckpoints.deletedAt),
           ),
         )
@@ -495,6 +539,12 @@ function selectConnectorInstance(
     throw new Error(`Connector instance not found: ${connectorInstanceId}`)
   }
 
+  return mapConnectorInstance(row)
+}
+
+function mapConnectorInstance(
+  row: typeof connectorInstances.$inferSelect,
+): ConnectorInstanceRecord {
   return {
     id: row.id,
     connectorId: row.connectorId,
@@ -502,6 +552,7 @@ function selectConnectorInstance(
     displayName: row.displayName,
     enabled: row.enabled,
     config: JSON.parse(row.configJson) as unknown,
+    filters: JSON.parse(row.filtersJson) as unknown,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -521,6 +572,9 @@ function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefined): Co
     completedAt: row.completedAt,
     coverageStartedAt: row.coverageStartedAt,
     coverageEndedAt: row.coverageEndedAt,
+    config: JSON.parse(row.configJson) as unknown,
+    filters: JSON.parse(row.filtersJson) as unknown,
+    filterSignature: row.filterSignature,
     observationCount: row.observationCount,
     warningCount: row.warningCount,
     stats: JSON.parse(row.statsJson) as unknown,
@@ -534,6 +588,7 @@ function mapConnectorCheckpoint(
 ): ConnectorCheckpointRecord {
   return {
     connectorInstanceId: row.connectorInstanceId,
+    filterSignature: row.filterSignature,
     checkpoint: JSON.parse(row.checkpointJson) as unknown,
     schemaVersion: row.schemaVersion,
     coverageStartedAt: row.coverageStartedAt,

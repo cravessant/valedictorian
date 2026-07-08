@@ -79,6 +79,7 @@ describe('connector runner', () => {
       displayName: 'Fixture jobs',
       enabled: true,
       config: { fixture: true },
+      filters: { roleKeywords: ['intern'] },
       createdAt: '2026-07-08T16:55:00.000Z',
     })
 
@@ -107,6 +108,12 @@ describe('connector runner', () => {
           start: '2026-07-01T00:00:00.000Z',
           end: observedAt,
         },
+        config: {
+          fixture: true,
+        },
+        filters: {
+          roleKeywords: ['intern'],
+        },
       },
     ])
 
@@ -126,9 +133,55 @@ describe('connector runner', () => {
       checkpoint: {
         cursor: `fixture:${observedAt}`,
       },
+      config: {
+        fixture: true,
+      },
+      filters: {
+        roleKeywords: ['intern'],
+      },
+    })
+
+    await runner.registerInstance({
+      id: 'connector-instance-fixture',
+      connector: fixtureConnector,
+      displayName: 'Fixture jobs',
+      enabled: true,
+      config: { fixture: true },
+      filters: { roleKeywords: ['new grad'] },
+    })
+
+    const changedFilterRun = await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T18:00:00.000Z',
+        end: '2026-07-08T19:00:00.000Z',
+      },
+      startedAt: '2026-07-08T19:00:00.000Z',
+      completedAt: '2026-07-08T19:00:01.000Z',
+    })
+
+    expect(receivedInputs[2]).toMatchObject({
+      connectorInstanceId: 'connector-instance-fixture',
+      config: {
+        fixture: true,
+      },
+      filters: {
+        roleKeywords: ['new grad'],
+      },
+    })
+    expect(receivedInputs[2]).not.toHaveProperty('checkpoint')
+    expect(changedFilterRun).toMatchObject({
+      config: {
+        fixture: true,
+      },
+      filters: {
+        roleKeywords: ['new grad'],
+      },
+      filterSignature: 'filters:{"roleKeywords":["new grad"]}',
     })
     await expect(
       repository.listObservations({ connectorInstanceId: 'connector-instance-fixture' }),
-    ).resolves.toHaveLength(2)
+    ).resolves.toHaveLength(3)
   })
 })

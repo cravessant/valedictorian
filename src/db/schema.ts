@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 const timestamps = {
   createdAt: text('created_at').notNull(),
@@ -320,6 +320,7 @@ export const connectorInstances = sqliteTable(
     displayName: text('display_name').notNull(),
     enabled: integer('enabled', { mode: 'boolean' }).notNull(),
     configJson: text('config_json').notNull(),
+    filtersJson: text('filters_json').notNull().default('{}'),
     ...timestamps,
   },
   (table) => ({
@@ -341,6 +342,9 @@ export const connectorRuns = sqliteTable(
     completedAt: text('completed_at'),
     coverageStartedAt: text('coverage_started_at'),
     coverageEndedAt: text('coverage_ended_at'),
+    configJson: text('config_json').notNull().default('{}'),
+    filtersJson: text('filters_json').notNull().default('{}'),
+    filterSignature: text('filter_signature').notNull().default('filters:{}'),
     observationCount: integer('observation_count').notNull(),
     warningCount: integer('warning_count').notNull(),
     statsJson: text('stats_json').notNull(),
@@ -358,19 +362,27 @@ export const connectorRuns = sqliteTable(
   }),
 )
 
-export const connectorCheckpoints = sqliteTable('connector_checkpoints', {
-  connectorInstanceId: text('connector_instance_id')
-    .primaryKey()
-    .references(() => connectorInstances.id),
-  checkpointJson: text('checkpoint_json').notNull(),
-  schemaVersion: text('schema_version').notNull(),
-  coverageStartedAt: text('coverage_started_at'),
-  coverageEndedAt: text('coverage_ended_at'),
-  savedAt: text('saved_at').notNull(),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
-  deletedAt: text('deleted_at'),
-})
+export const connectorCheckpoints = sqliteTable(
+  'connector_checkpoints',
+  {
+    connectorInstanceId: text('connector_instance_id')
+      .notNull()
+      .references(() => connectorInstances.id),
+    filterSignature: text('filter_signature').notNull().default('filters:{}'),
+    checkpointJson: text('checkpoint_json').notNull(),
+    schemaVersion: text('schema_version').notNull(),
+    coverageStartedAt: text('coverage_started_at'),
+    coverageEndedAt: text('coverage_ended_at'),
+    savedAt: text('saved_at').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    deletedAt: text('deleted_at'),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.connectorInstanceId, table.filterSignature] }),
+    instanceIdx: index('idx_connector_checkpoints_instance').on(table.connectorInstanceId),
+  }),
+)
 
 export const connectorObservations = sqliteTable(
   'connector_observations',

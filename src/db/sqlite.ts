@@ -587,6 +587,7 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       display_name text not null,
       enabled integer not null,
       config_json text not null,
+      filters_json text not null default '{}',
       created_at text not null,
       updated_at text not null,
       deleted_at text
@@ -601,6 +602,9 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       completed_at text,
       coverage_started_at text,
       coverage_ended_at text,
+      config_json text not null default '{}',
+      filters_json text not null default '{}',
+      filter_signature text not null default 'filters:{}',
       observation_count integer not null,
       warning_count integer not null,
       stats_json text not null,
@@ -612,7 +616,8 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     );
 
     create table if not exists connector_checkpoints (
-      connector_instance_id text primary key references connector_instances(id),
+      connector_instance_id text not null references connector_instances(id),
+      filter_signature text not null default 'filters:{}',
       checkpoint_json text not null,
       schema_version text not null,
       coverage_started_at text,
@@ -620,7 +625,8 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       saved_at text not null,
       created_at text not null,
       updated_at text not null,
-      deleted_at text
+      deleted_at text,
+      primary key (connector_instance_id, filter_signature)
     );
 
     create table if not exists connector_observations (
@@ -703,6 +709,8 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on connector_runs(connector_instance_id);
     create index if not exists idx_connector_runs_instance_status_started
       on connector_runs(connector_instance_id, status, started_at);
+    create index if not exists idx_connector_checkpoints_instance
+      on connector_checkpoints(connector_instance_id);
     create index if not exists idx_connector_observations_instance
       on connector_observations(connector_instance_id);
     create index if not exists idx_connector_observations_run
@@ -771,12 +779,103 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     ['policy_blocker', 'text'],
     ['disposition_reason', 'text'],
   ])
+  ensureColumns(database, 'connector_instances', [
+    ['filters_json', "text not null default '{}'"],
+  ])
+  ensureColumns(database, 'connector_runs', [
+    ['config_json', "text not null default '{}'"],
+    ['filters_json', "text not null default '{}'"],
+    ['filter_signature', "text not null default 'filters:{}'"],
+  ])
+  ensureConnectorCheckpointFilterScope(database)
   ensureColumns(database, 'connector_observations', [
     ['sourcing_finding_id', 'text'],
   ])
   database.exec(`
     create index if not exists idx_connector_observations_sourcing_finding
       on connector_observations(sourcing_finding_id);
+  `)
+}
+
+function ensureConnectorCheckpointFilterScope(database: SqliteDatabase) {
+  if (!tableExists(database, 'connector_checkpoints')) {
+    return
+  }
+
+  const tableInfo = database.prepare('pragma table_info(connector_checkpoints)').all() as Array<{
+    name: string
+    pk: number
+  }>
+  const existingColumns = new Set(tableInfo.map((column) => column.name))
+  const primaryKeyColumns = tableInfo
+    .filter((column) => column.pk > 0)
+    .sort((left, right) => left.pk - right.pk)
+    .map((column) => column.name)
+
+  if (
+    existingColumns.has('filter_signature') &&
+    primaryKeyColumns.join(',') === 'connector_instance_id,filter_signature'
+  ) {
+    database.exec(`
+      create index if not exists idx_connector_checkpoints_instance
+        on connector_checkpoints(connector_instance_id);
+    `)
+    return
+  }
+
+  const filterSignatureExpression = existingColumns.has('filter_signature')
+    ? "coalesce(filter_signature, 'filters:{}')"
+    : "'filters:{}'"
+
+  database.exec(`
+    pragma foreign_keys = off;
+
+    create table connector_checkpoints_next (
+      connector_instance_id text not null references connector_instances(id),
+      filter_signature text not null default 'filters:{}',
+      checkpoint_json text not null,
+      schema_version text not null,
+      coverage_started_at text,
+      coverage_ended_at text,
+      saved_at text not null,
+      created_at text not null,
+      updated_at text not null,
+      deleted_at text,
+      primary key (connector_instance_id, filter_signature)
+    );
+
+    insert into connector_checkpoints_next (
+      connector_instance_id,
+      filter_signature,
+      checkpoint_json,
+      schema_version,
+      coverage_started_at,
+      coverage_ended_at,
+      saved_at,
+      created_at,
+      updated_at,
+      deleted_at
+    )
+    select
+      connector_instance_id,
+      ${filterSignatureExpression},
+      checkpoint_json,
+      schema_version,
+      coverage_started_at,
+      coverage_ended_at,
+      saved_at,
+      created_at,
+      updated_at,
+      deleted_at
+    from connector_checkpoints;
+
+    drop table connector_checkpoints;
+    alter table connector_checkpoints_next rename to connector_checkpoints;
+
+    create index if not exists idx_connector_checkpoints_instance
+      on connector_checkpoints(connector_instance_id);
+
+    pragma foreign_keys = on;
   `)
 }
 

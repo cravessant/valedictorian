@@ -38,6 +38,15 @@ describe('SQLite database', () => {
     expect(tableColumns(database, 'sourcing_findings')).toEqual(
       expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
     )
+    expect(tableColumns(database, 'connector_instances')).toEqual(
+      expect.arrayContaining(['config_json', 'filters_json']),
+    )
+    expect(tableColumns(database, 'connector_runs')).toEqual(
+      expect.arrayContaining(['config_json', 'filters_json', 'filter_signature']),
+    )
+    expect(tableColumns(database, 'connector_checkpoints')).toEqual(
+      expect.arrayContaining(['filter_signature']),
+    )
   })
 
   it('creates source indexes for workflow run and sourcing filters', () => {
@@ -65,6 +74,10 @@ describe('SQLite database', () => {
       .prepare("pragma index_list('connector_observations')")
       .all()
       .map((row) => (row as { name: string }).name)
+    const connectorCheckpointIndexes = database
+      .prepare("pragma index_list('connector_checkpoints')")
+      .all()
+      .map((row) => (row as { name: string }).name)
 
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_id')
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_type_status_started')
@@ -75,6 +88,7 @@ describe('SQLite database', () => {
     expect(connectorRunIndexes).toContain('idx_connector_runs_instance_status_started')
     expect(connectorObservationIndexes).toContain('idx_connector_observations_instance')
     expect(connectorObservationIndexes).toContain('idx_connector_observations_run')
+    expect(connectorCheckpointIndexes).toContain('idx_connector_checkpoints_instance')
   })
 
   it('baselines legacy app databases into Drizzle migration history', () => {
@@ -103,7 +117,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(6)
+    expect(migrationRows).toHaveLength(7)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -150,6 +164,146 @@ describe('SQLite database', () => {
         .prepare("select name from sqlite_master where type = 'table' and name = 'connector_projection_keys'")
         .all(),
     ).toHaveLength(1)
+  })
+
+  it('adds connector filters and scoped checkpoints to legacy connector tables', () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table connector_instances (
+        id text primary key,
+        connector_id text not null,
+        connector_version text not null,
+        display_name text not null,
+        enabled integer not null,
+        config_json text not null,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+
+      create table connector_runs (
+        id text primary key,
+        connector_instance_id text not null references connector_instances(id),
+        mode text not null,
+        status text not null,
+        started_at text not null,
+        completed_at text,
+        coverage_started_at text,
+        coverage_ended_at text,
+        observation_count integer not null,
+        warning_count integer not null,
+        stats_json text not null,
+        warnings_json text not null,
+        retry_hints_json text not null,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+
+      create table connector_checkpoints (
+        connector_instance_id text primary key references connector_instances(id),
+        checkpoint_json text not null,
+        schema_version text not null,
+        coverage_started_at text,
+        coverage_ended_at text,
+        saved_at text not null,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+
+      insert into connector_instances (
+        id,
+        connector_id,
+        connector_version,
+        display_name,
+        enabled,
+        config_json,
+        created_at,
+        updated_at,
+        deleted_at
+      ) values (
+        'connector-instance-fixture',
+        'fixture.jobs',
+        '0.0.0-fixture',
+        'Fixture jobs',
+        1,
+        '{}',
+        '2026-07-08T15:00:00.000Z',
+        '2026-07-08T15:00:00.000Z',
+        null
+      );
+
+      insert into connector_checkpoints (
+        connector_instance_id,
+        checkpoint_json,
+        schema_version,
+        coverage_started_at,
+        coverage_ended_at,
+        saved_at,
+        created_at,
+        updated_at,
+        deleted_at
+      ) values (
+        'connector-instance-fixture',
+        '{"cursor":"legacy"}',
+        'fixture-checkpoint@1',
+        '2026-07-01T00:00:00.000Z',
+        '2026-07-08T16:00:00.000Z',
+        '2026-07-08T16:00:01.000Z',
+        '2026-07-08T16:00:01.000Z',
+        '2026-07-08T16:00:01.000Z',
+        null
+      );
+    `)
+
+    migrateDatabase(database)
+
+    expect(tableColumns(database, 'connector_instances')).toContain('filters_json')
+    expect(tableColumns(database, 'connector_runs')).toEqual(
+      expect.arrayContaining(['config_json', 'filters_json', 'filter_signature']),
+    )
+    expect(tableColumns(database, 'connector_checkpoints')).toContain('filter_signature')
+    expect(
+      database
+        .prepare('select filter_signature from connector_checkpoints where connector_instance_id = ?')
+        .get('connector-instance-fixture'),
+    ).toEqual({
+      filter_signature: 'filters:{}',
+    })
+
+    database
+      .prepare(
+        `
+          insert into connector_checkpoints (
+            connector_instance_id,
+            filter_signature,
+            checkpoint_json,
+            schema_version,
+            saved_at,
+            created_at,
+            updated_at
+          ) values (?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        'connector-instance-fixture',
+        'filters:{"roleKeywords":["intern"]}',
+        '{"cursor":"intern"}',
+        'fixture-checkpoint@1',
+        '2026-07-08T17:00:01.000Z',
+        '2026-07-08T17:00:01.000Z',
+        '2026-07-08T17:00:01.000Z',
+      )
+
+    expect(
+      database
+        .prepare('select filter_signature from connector_checkpoints order by filter_signature')
+        .all(),
+    ).toEqual([
+      { filter_signature: 'filters:{"roleKeywords":["intern"]}' },
+      { filter_signature: 'filters:{}' },
+    ])
   })
 
   it('migrates legacy policy queue config to action queue config', () => {

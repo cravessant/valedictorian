@@ -17,6 +17,7 @@ describe('SQLite connector repository', () => {
       displayName: 'Fixture jobs',
       enabled: true,
       config: { fixture: true },
+      filters: { roleKeywords: ['intern'] },
       createdAt: '2026-07-08T15:00:00.000Z',
     })
 
@@ -25,6 +26,9 @@ describe('SQLite connector repository', () => {
       mode: 'manual',
       startedAt: '2026-07-08T16:00:00.000Z',
       completedAt: '2026-07-08T16:00:01.000Z',
+      config: { fixture: true },
+      filters: { roleKeywords: ['intern'] },
+      filterSignature: 'filters:{"roleKeywords":["intern"]}',
       result: {
         coverage: {
           start: '2026-07-01T00:00:00.000Z',
@@ -97,14 +101,23 @@ describe('SQLite connector repository', () => {
       coverageEndedAt: '2026-07-08T16:00:00.000Z',
       observationCount: 1,
       warningCount: 1,
+      config: { fixture: true },
+      filters: { roleKeywords: ['intern'] },
+      filterSignature: 'filters:{"roleKeywords":["intern"]}',
       stats: {
         observations: 1,
         resolved: 1,
       },
     })
 
-    await expect(repository.getCheckpoint('connector-instance-fixture')).resolves.toEqual({
+    await expect(
+      repository.getCheckpoint({
+        connectorInstanceId: 'connector-instance-fixture',
+        filterSignature: 'filters:{"roleKeywords":["intern"]}',
+      }),
+    ).resolves.toEqual({
       connectorInstanceId: 'connector-instance-fixture',
+      filterSignature: 'filters:{"roleKeywords":["intern"]}',
       checkpoint: {
         cursor: 'fixture:2026-07-08T16:00:00.000Z',
       },
@@ -149,4 +162,110 @@ describe('SQLite connector repository', () => {
     ])
     expect(database.select().from(sourcingFindings).all()).toHaveLength(0)
   })
+
+  it('keeps checkpoint scopes separate when filters change on the same connector instance', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await repository.upsertInstance({
+      id: 'connector-instance-filtered',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Filtered fixture jobs',
+      enabled: true,
+      config: { listUrl: 'https://example.test/jobs' },
+      filters: { roleKeywords: ['intern'] },
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await repository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-filtered',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:00.000Z',
+      completedAt: '2026-07-08T16:00:01.000Z',
+      config: { listUrl: 'https://example.test/jobs' },
+      filters: { roleKeywords: ['intern'] },
+      filterSignature: 'filters:{"roleKeywords":["intern"]}',
+      result: emptyConnectorRefreshResult({
+        checkpoint: { cursor: 'intern-cursor' },
+        coverage: {
+          start: '2026-07-01T00:00:00.000Z',
+          end: '2026-07-08T16:00:00.000Z',
+        },
+      }),
+    })
+
+    await repository.upsertInstance({
+      id: 'connector-instance-filtered',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Filtered fixture jobs',
+      enabled: true,
+      config: { listUrl: 'https://example.test/jobs' },
+      filters: { roleKeywords: ['new grad'] },
+    })
+
+    await repository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-filtered',
+      mode: 'manual',
+      startedAt: '2026-07-08T17:00:00.000Z',
+      completedAt: '2026-07-08T17:00:01.000Z',
+      config: { listUrl: 'https://example.test/jobs' },
+      filters: { roleKeywords: ['new grad'] },
+      filterSignature: 'filters:{"roleKeywords":["new grad"]}',
+      result: emptyConnectorRefreshResult({
+        checkpoint: { cursor: 'new-grad-cursor' },
+        coverage: {
+          start: '2026-07-08T16:00:00.000Z',
+          end: '2026-07-08T17:00:00.000Z',
+        },
+      }),
+    })
+
+    await expect(repository.getInstance('connector-instance-filtered')).resolves.toMatchObject({
+      config: { listUrl: 'https://example.test/jobs' },
+      filters: { roleKeywords: ['new grad'] },
+    })
+    await expect(
+      repository.getCheckpoint({
+        connectorInstanceId: 'connector-instance-filtered',
+        filterSignature: 'filters:{"roleKeywords":["intern"]}',
+      }),
+    ).resolves.toMatchObject({
+      filterSignature: 'filters:{"roleKeywords":["intern"]}',
+      checkpoint: { cursor: 'intern-cursor' },
+    })
+    await expect(
+      repository.getCheckpoint({
+        connectorInstanceId: 'connector-instance-filtered',
+        filterSignature: 'filters:{"roleKeywords":["new grad"]}',
+      }),
+    ).resolves.toMatchObject({
+      filterSignature: 'filters:{"roleKeywords":["new grad"]}',
+      checkpoint: { cursor: 'new-grad-cursor' },
+    })
+  })
 })
+
+function emptyConnectorRefreshResult({
+  checkpoint,
+  coverage,
+}: {
+  checkpoint: unknown
+  coverage: { start: string; end: string }
+}) {
+  return {
+    coverage,
+    stats: {
+      observations: 0,
+    },
+    warnings: [],
+    nextCheckpoint: {
+      checkpoint,
+      schemaVersion: 'fixture-checkpoint@1',
+    },
+    observations: [],
+  }
+}
