@@ -1,10 +1,15 @@
 import type {
+  ConnectorAuthGrant,
+  ConnectorAuthReference,
+  ConnectorAuthRequirement,
+  ConnectorAuthResolveInput,
   ConnectorCoverageWindow,
   ConnectorDefinition,
   ConnectorRefreshStatus,
   ConnectorRefreshInput,
   ConnectorRefreshMode,
   ConnectorRefreshResult,
+  ConnectorRuntime,
   JobConnector,
   JobObservation,
 } from "@valedictorian-connectors/core"
@@ -136,6 +141,7 @@ export type ConnectorInstanceRecord = {
   workspaceId: string
   displayName: string
   enabled: boolean
+  auth?: ConnectorAuthReference[]
   config?: unknown
   filters?: unknown
   createdAt: string
@@ -192,7 +198,19 @@ export type InMemoryConnectorHost = {
   snapshot: () => InMemoryConnectorHostSnapshot
 }
 
-export function createInMemoryConnectorHost(): InMemoryConnectorHost {
+export type InMemoryConnectorBrowserSession = Pick<
+  ConnectorAuthGrant,
+  "expiresAt" | "reason" | "sessionId" | "status"
+>
+
+export type InMemoryConnectorHostOptions = {
+  browserSessions?: Record<string, InMemoryConnectorBrowserSession>
+  secrets?: Record<string, string>
+}
+
+export function createInMemoryConnectorHost(
+  options: InMemoryConnectorHostOptions = {},
+): InMemoryConnectorHost {
   const instances = new Map<string, ConnectorInstanceRecord>()
   const runs: ConnectorRunRecord[] = []
   const checkpoints = new Map<string, ConnectorCheckpointRecord>()
@@ -236,7 +254,11 @@ export function createInMemoryConnectorHost(): InMemoryConnectorHost {
             ? { checkpoint: cloneJsonLike(existingCheckpoint.checkpoint) }
             : {}),
         },
-        {},
+        createConnectorRuntime(
+          instance.auth ?? [],
+          connector.definition.auth?.requirements ?? [],
+          options,
+        ),
       )
 
       runCounter += 1
@@ -289,12 +311,146 @@ function cloneConnectorInstance(
 ): ConnectorInstanceRecord {
   return {
     ...instance,
+    ...(instance.auth === undefined
+      ? {}
+      : { auth: cloneJsonLike(instance.auth) }),
     ...(instance.config === undefined
       ? {}
       : { config: cloneJsonLike(instance.config) }),
     ...(instance.filters === undefined
       ? {}
       : { filters: cloneJsonLike(instance.filters) }),
+  }
+}
+
+function createConnectorRuntime(
+  authReferences: ConnectorAuthReference[],
+  authRequirements: ConnectorAuthRequirement[],
+  options: InMemoryConnectorHostOptions,
+): ConnectorRuntime {
+  return {
+    auth: {
+      async resolve(input) {
+        return resolveAuthGrant(input, authReferences, authRequirements, options)
+      },
+    },
+  }
+}
+
+function resolveAuthGrant(
+  input: ConnectorAuthResolveInput,
+  authReferences: ConnectorAuthReference[],
+  authRequirements: ConnectorAuthRequirement[],
+  options: InMemoryConnectorHostOptions,
+): ConnectorAuthGrant {
+  const reference = authReferences.find(
+    (authReference) =>
+      authReference.id === input.id &&
+      (input.mode === undefined || authReference.mode === input.mode),
+  )
+  const requirement = authRequirements.find(
+    (authRequirement) =>
+      authRequirement.id === input.id &&
+      (input.mode === undefined || authRequirement.mode === input.mode),
+  )
+  const mode = input.mode ?? reference?.mode ?? requirement?.mode
+
+  if (mode === "none") {
+    return {
+      id: input.id,
+      mode,
+      status: "ready",
+    }
+  }
+
+  if (!reference) {
+    return {
+      id: input.id,
+      mode: mode ?? "none",
+      reason: "auth_reference_missing",
+      status: "missing",
+    }
+  }
+  const referenceMode = reference.mode
+
+  if (
+    referenceMode === "api_key" ||
+    referenceMode === "bearer_token" ||
+    referenceMode === "oauth" ||
+    referenceMode === "cookie_jar"
+  ) {
+    return resolveSecretGrant(reference, options)
+  }
+
+  const sessionKey = reference.sessionKey
+
+  if (!sessionKey) {
+    return {
+      id: reference.id,
+      mode: referenceMode,
+      reason: "session_reference_missing",
+      status: "missing",
+    }
+  }
+
+  const sessionGrant = options.browserSessions?.[sessionKey]
+
+  if (sessionGrant) {
+    return {
+      id: reference.id,
+      mode: referenceMode,
+      sessionKey,
+      status: sessionGrant.status,
+      ...(sessionGrant.expiresAt === undefined
+        ? {}
+        : { expiresAt: sessionGrant.expiresAt }),
+      ...(sessionGrant.reason === undefined ? {} : { reason: sessionGrant.reason }),
+      ...(sessionGrant.sessionId === undefined
+        ? {}
+        : { sessionId: sessionGrant.sessionId }),
+    }
+  }
+
+  return {
+    id: reference.id,
+    mode: referenceMode,
+    sessionKey,
+    reason: "browser_session_action_required",
+    status: "action_required",
+  }
+}
+
+function resolveSecretGrant(
+  reference: ConnectorAuthReference,
+  options: InMemoryConnectorHostOptions,
+): ConnectorAuthGrant {
+  if (!reference.secretKey) {
+    return {
+      id: reference.id,
+      mode: reference.mode,
+      reason: "secret_reference_missing",
+      status: "missing",
+    }
+  }
+
+  const value = options.secrets?.[reference.secretKey]
+
+  if (value === undefined) {
+    return {
+      id: reference.id,
+      mode: reference.mode,
+      reason: "secret_missing",
+      secretKey: reference.secretKey,
+      status: "missing",
+    }
+  }
+
+  return {
+    id: reference.id,
+    mode: reference.mode,
+    secretKey: reference.secretKey,
+    status: "ready",
+    value,
   }
 }
 

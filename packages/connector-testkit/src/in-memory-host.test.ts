@@ -4,7 +4,11 @@ import {
   createFixtureConnector,
   createInMemoryConnectorHost,
 } from "./index.js"
-import type { ConnectorRefreshInput, ConnectorRefreshResult, JobConnector } from "@valedictorian-connectors/core"
+import type {
+  ConnectorRefreshInput,
+  ConnectorRefreshResult,
+  JobConnector,
+} from "@valedictorian-connectors/core"
 
 describe("in-memory connector host", () => {
   it("exposes connector definition metadata for host validation and policy", () => {
@@ -120,6 +124,415 @@ describe("in-memory connector host", () => {
         }),
       ]),
     )
+  })
+
+  it("provides a ready no-auth grant through the runtime port", async () => {
+    const receivedGrants: unknown[] = []
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.public-jobs",
+        version: "0.0.0-fixture",
+        auth: {
+          modes: ["none"],
+          requirements: [
+            {
+              id: "public",
+              mode: "none",
+            },
+          ],
+        },
+      },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: "public",
+          }),
+        )
+
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost()
+
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_public",
+      workspaceId: "workspace_alpha",
+      displayName: "Public jobs",
+      enabled: true,
+      createdAt: "2026-07-08T15:00:00.000Z",
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_public",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: {
+        start: "2026-07-08T15:00:00.000Z",
+        end: "2026-07-08T16:00:00.000Z",
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: "public",
+        mode: "none",
+        status: "ready",
+      },
+    ])
+  })
+
+  it("resolves secret-backed auth grants without persisting plaintext in host state", async () => {
+    const receivedGrants: unknown[] = []
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.secret-jobs",
+        version: "0.0.0-fixture",
+        auth: {
+          modes: ["api_key"],
+          requirements: [
+            {
+              id: "internlist",
+              mode: "api_key",
+              label: "InternList API key",
+            },
+          ],
+        },
+      },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: "internlist",
+            mode: "api_key",
+          }),
+        )
+
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost({
+      secrets: {
+        internlist_api_key: "il-secret",
+      },
+    })
+
+    host.registerInstance({
+      auth: [
+        {
+          id: "internlist",
+          mode: "api_key",
+          secretKey: "internlist_api_key",
+        },
+      ],
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_secret",
+      workspaceId: "workspace_alpha",
+      displayName: "Secret jobs",
+      enabled: true,
+      createdAt: "2026-07-08T15:00:00.000Z",
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_secret",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: {
+        start: "2026-07-08T15:00:00.000Z",
+        end: "2026-07-08T16:00:00.000Z",
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: "internlist",
+        mode: "api_key",
+        secretKey: "internlist_api_key",
+        status: "ready",
+        value: "il-secret",
+      },
+    ])
+    expect(JSON.stringify(host.snapshot())).not.toContain("il-secret")
+  })
+
+  it("resolves browser-session grants by the instance session reference", async () => {
+    const receivedGrants: unknown[] = []
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.browser-jobs",
+        version: "0.0.0-fixture",
+        auth: {
+          modes: ["browser_session"],
+          requirements: [
+            {
+              id: "jobright",
+              mode: "browser_session",
+              label: "Jobright browser session",
+            },
+          ],
+        },
+      },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: "jobright",
+            mode: "browser_session",
+          }),
+        )
+
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost({
+      browserSessions: {
+        workspace_session_1: {
+          expiresAt: "2026-07-08T18:00:00.000Z",
+          secretKey: "should-not-cross-session-boundary",
+          sessionId: "session_123",
+          sessionKey: "should-not-override-instance-reference",
+          status: "ready",
+          value: "should-not-cross-session-boundary",
+        } as never,
+      },
+    })
+
+    host.registerInstance({
+      auth: [
+        {
+          id: "jobright",
+          mode: "browser_session",
+          sessionKey: "workspace_session_1",
+        },
+      ],
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_browser_ready",
+      workspaceId: "workspace_alpha",
+      displayName: "Browser jobs",
+      enabled: true,
+      createdAt: "2026-07-08T15:00:00.000Z",
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_browser_ready",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: {
+        start: "2026-07-08T15:00:00.000Z",
+        end: "2026-07-08T16:00:00.000Z",
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: "jobright",
+        mode: "browser_session",
+        sessionKey: "workspace_session_1",
+        expiresAt: "2026-07-08T18:00:00.000Z",
+        sessionId: "session_123",
+        status: "ready",
+      },
+    ])
+  })
+
+  it("returns browser-session action-required grants when no session is available", async () => {
+    const receivedGrants: unknown[] = []
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.browser-jobs",
+        version: "0.0.0-fixture",
+        auth: {
+          modes: ["browser_session"],
+          requirements: [
+            {
+              id: "jobright",
+              mode: "browser_session",
+              label: "Jobright browser session",
+            },
+          ],
+        },
+      },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: "jobright",
+            mode: "browser_session",
+          }),
+        )
+
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost()
+
+    host.registerInstance({
+      auth: [
+        {
+          id: "jobright",
+          mode: "browser_session",
+          sessionKey: "workspace_session_1",
+        },
+      ],
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_browser",
+      workspaceId: "workspace_alpha",
+      displayName: "Browser jobs",
+      enabled: true,
+      createdAt: "2026-07-08T15:00:00.000Z",
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_browser",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: {
+        start: "2026-07-08T15:00:00.000Z",
+        end: "2026-07-08T16:00:00.000Z",
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: "jobright",
+        mode: "browser_session",
+        sessionKey: "workspace_session_1",
+        reason: "browser_session_action_required",
+        status: "action_required",
+      },
+    ])
+  })
+
+  it("returns expired browser-session grants by the instance session reference", async () => {
+    const receivedGrants: unknown[] = []
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.browser-jobs",
+        version: "0.0.0-fixture",
+        auth: {
+          modes: ["browser_session"],
+        },
+      },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: "jobright",
+            mode: "browser_session",
+          }),
+        )
+
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost({
+      browserSessions: {
+        workspace_session_1: {
+          expiresAt: "2026-07-08T14:00:00.000Z",
+          reason: "session_expired",
+          sessionId: "session_123",
+          status: "expired",
+        },
+      },
+    })
+
+    host.registerInstance({
+      auth: [
+        {
+          id: "jobright",
+          mode: "browser_session",
+          sessionKey: "workspace_session_1",
+        },
+      ],
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_browser_expired",
+      workspaceId: "workspace_alpha",
+      displayName: "Browser jobs",
+      enabled: true,
+      createdAt: "2026-07-08T15:00:00.000Z",
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_browser_expired",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: {
+        start: "2026-07-08T15:00:00.000Z",
+        end: "2026-07-08T16:00:00.000Z",
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: "jobright",
+        mode: "browser_session",
+        sessionKey: "workspace_session_1",
+        expiresAt: "2026-07-08T14:00:00.000Z",
+        reason: "session_expired",
+        sessionId: "session_123",
+        status: "expired",
+      },
+    ])
+  })
+
+  it("returns missing browser-session grants when no session reference is stored", async () => {
+    const receivedGrants: unknown[] = []
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.browser-jobs",
+        version: "0.0.0-fixture",
+        auth: {
+          modes: ["browser_session"],
+        },
+      },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: "jobright",
+            mode: "browser_session",
+          }),
+        )
+
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost()
+
+    host.registerInstance({
+      auth: [
+        {
+          id: "jobright",
+          mode: "browser_session",
+        },
+      ],
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_browser_missing_reference",
+      workspaceId: "workspace_alpha",
+      displayName: "Browser jobs",
+      enabled: true,
+      createdAt: "2026-07-08T15:00:00.000Z",
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_browser_missing_reference",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: {
+        start: "2026-07-08T15:00:00.000Z",
+        end: "2026-07-08T16:00:00.000Z",
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: "jobright",
+        mode: "browser_session",
+        reason: "session_reference_missing",
+        status: "missing",
+      },
+    ])
   })
 
   it("passes instance config and filters into refresh and scopes checkpoints by filter signature", async () => {
@@ -394,3 +807,20 @@ describe("in-memory connector host", () => {
     })
   })
 })
+
+function emptyRefreshResult(input: ConnectorRefreshInput): ConnectorRefreshResult {
+  return {
+    observations: [],
+    nextCheckpoint: {
+      checkpoint: {
+        cursor: input.coverage.end,
+      },
+      schemaVersion: "fixture-checkpoint@1",
+    },
+    coverage: input.coverage,
+    stats: {
+      observations: 0,
+    },
+    warnings: [],
+  }
+}

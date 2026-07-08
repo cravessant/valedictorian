@@ -25,6 +25,49 @@ export type ConnectorAuthMode =
 
 export type ConnectorAuthDeclaration = {
   modes: ConnectorAuthMode[]
+  requirements?: ConnectorAuthRequirement[]
+}
+
+export type ConnectorAuthRequirement = {
+  id: string
+  mode: ConnectorAuthMode
+  label?: string
+  required?: boolean
+}
+
+export type ConnectorAuthReference = {
+  id: string
+  mode: ConnectorAuthMode
+  label?: string
+  secretKey?: string
+  sessionKey?: string
+}
+
+export type ConnectorAuthGrantStatus =
+  | "ready"
+  | "missing"
+  | "expired"
+  | "action_required"
+
+export type ConnectorAuthGrant = {
+  id: string
+  mode: ConnectorAuthMode
+  status: ConnectorAuthGrantStatus
+  secretKey?: string
+  sessionKey?: string
+  value?: string
+  sessionId?: string
+  expiresAt?: string
+  reason?: string
+}
+
+export type ConnectorAuthResolveInput = {
+  id: string
+  mode?: ConnectorAuthMode
+}
+
+export type ConnectorAuthRuntime = {
+  resolve(input: ConnectorAuthResolveInput): Promise<ConnectorAuthGrant>
 }
 
 export type ConnectorCapabilityDeclaration = {
@@ -65,7 +108,9 @@ export type ConnectorRefreshInput = {
   budget?: unknown
 }
 
-export type ConnectorRuntime = Record<string, never>
+export type ConnectorRuntime = {
+  auth: ConnectorAuthRuntime
+}
 
 export type JobObservationLinks = {
   source: string | null
