@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import {
   connectorCheckpoints,
   connectorInstances,
   connectorObservations,
+  connectorProjectionKeys,
   connectorRuns,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
@@ -127,12 +128,30 @@ export interface ConnectorObservationRecord extends ConnectorObservationInput {
   connectorInstanceId: string
   connectorRunId: string
   sourceMetadata: JsonRecord
+  sourcingFindingId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ConnectorProjectionKeyRecord {
+  dedupeKey: string
+  sourcingFindingId: string
   createdAt: string
   updatedAt: string
 }
 
 export interface ListConnectorObservationsInput {
   connectorInstanceId: string
+}
+
+export interface LinkObservationToSourcingFindingInput {
+  connectorObservationId: string
+  sourcingFindingId: string
+}
+
+export interface RecordProjectionKeysInput {
+  sourcingFindingId: string
+  dedupeKeys: string[]
 }
 
 export function createSqliteConnectorRepository(database: DrizzleDatabase) {
@@ -331,6 +350,134 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
         .all()
         .map(mapConnectorObservation)
     },
+
+    async getObservation(connectorObservationId: string): Promise<ConnectorObservationRecord | null> {
+      const row = database
+        .select()
+        .from(connectorObservations)
+        .where(
+          and(
+            eq(connectorObservations.id, connectorObservationId),
+            isNull(connectorObservations.deletedAt),
+          ),
+        )
+        .get()
+
+      return row ? mapConnectorObservation(row) : null
+    },
+
+    async linkObservationToSourcingFinding(
+      input: LinkObservationToSourcingFindingInput,
+    ): Promise<ConnectorObservationRecord> {
+      const now = new Date().toISOString()
+      const existing = database
+        .select({ id: connectorObservations.id })
+        .from(connectorObservations)
+        .where(
+          and(
+            eq(connectorObservations.id, input.connectorObservationId),
+            isNull(connectorObservations.deletedAt),
+          ),
+        )
+        .get()
+
+      if (!existing) {
+        throw new Error(`Connector observation not found: ${input.connectorObservationId}`)
+      }
+
+      database
+        .update(connectorObservations)
+        .set({
+          sourcingFindingId: input.sourcingFindingId,
+          updatedAt: now,
+        })
+        .where(eq(connectorObservations.id, input.connectorObservationId))
+        .run()
+
+      const observation = await this.getObservation(input.connectorObservationId)
+
+      if (!observation) {
+        throw new Error(`Connector observation not found: ${input.connectorObservationId}`)
+      }
+
+      return observation
+    },
+
+    async findProjectionByDedupeKeys(
+      dedupeKeys: string[],
+    ): Promise<ConnectorProjectionKeyRecord | null> {
+      if (dedupeKeys.length === 0) {
+        return null
+      }
+
+      const rows = database
+        .select()
+        .from(connectorProjectionKeys)
+        .where(
+          and(
+            inArray(connectorProjectionKeys.dedupeKey, dedupeKeys),
+            isNull(connectorProjectionKeys.deletedAt),
+          ),
+        )
+        .all()
+      const rowsByKey = new Map(rows.map((row) => [row.dedupeKey, row]))
+      const row = dedupeKeys.map((key) => rowsByKey.get(key)).find((row) => row !== undefined)
+
+      return row
+        ? {
+            dedupeKey: row.dedupeKey,
+            sourcingFindingId: row.sourcingFindingId,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          }
+        : null
+    },
+
+    async recordProjectionKeys(input: RecordProjectionKeysInput): Promise<void> {
+      if (input.dedupeKeys.length === 0) {
+        return
+      }
+
+      const now = new Date().toISOString()
+
+      for (const dedupeKey of input.dedupeKeys) {
+        const existing = database
+          .select({
+            dedupeKey: connectorProjectionKeys.dedupeKey,
+            sourcingFindingId: connectorProjectionKeys.sourcingFindingId,
+          })
+          .from(connectorProjectionKeys)
+          .where(eq(connectorProjectionKeys.dedupeKey, dedupeKey))
+          .get()
+
+        if (existing) {
+          if (existing.sourcingFindingId !== input.sourcingFindingId) {
+            continue
+          }
+
+          database
+            .update(connectorProjectionKeys)
+            .set({
+              sourcingFindingId: input.sourcingFindingId,
+              updatedAt: now,
+              deletedAt: null,
+            })
+            .where(eq(connectorProjectionKeys.dedupeKey, dedupeKey))
+            .run()
+        } else {
+          database
+            .insert(connectorProjectionKeys)
+            .values({
+              dedupeKey,
+              sourcingFindingId: input.sourcingFindingId,
+              createdAt: now,
+              updatedAt: now,
+              deletedAt: null,
+            })
+            .run()
+        }
+      }
+    },
   }
 }
 
@@ -415,6 +562,7 @@ function mapConnectorObservation(
     dedupeKeys: JSON.parse(row.dedupeKeysJson) as string[],
     sourceMetadata: JSON.parse(row.sourceMetadataJson) as JsonRecord,
     evidence: JSON.parse(row.evidenceJson) as ConnectorObservationEvidence[],
+    sourcingFindingId: row.sourcingFindingId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

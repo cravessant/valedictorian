@@ -159,6 +159,7 @@ function hasApplicationTables(database: SqliteDatabase) {
     'connector_checkpoints',
     'connector_instances',
     'connector_observations',
+    'connector_projection_keys',
     'connector_runs',
     'policy_config',
     'policy_evidence',
@@ -641,6 +642,7 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       source_metadata_json text not null,
       evidence_json text not null,
       raw_json text not null,
+      sourcing_finding_id text,
       created_at text not null,
       updated_at text not null,
       deleted_at text
@@ -707,6 +709,16 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on connector_observations(connector_run_id);
     create index if not exists idx_connector_observations_source_record
       on connector_observations(connector_instance_id, source_record_key);
+
+    create table if not exists connector_projection_keys (
+      dedupe_key text primary key,
+      sourcing_finding_id text not null references sourcing_findings(id),
+      created_at text not null,
+      updated_at text not null,
+      deleted_at text
+    );
+    create index if not exists idx_connector_projection_keys_sourcing_finding
+      on connector_projection_keys(sourcing_finding_id);
   `)
 
   ensureColumns(database, 'user_profile', [
@@ -759,6 +771,13 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     ['policy_blocker', 'text'],
     ['disposition_reason', 'text'],
   ])
+  ensureColumns(database, 'connector_observations', [
+    ['sourcing_finding_id', 'text'],
+  ])
+  database.exec(`
+    create index if not exists idx_connector_observations_sourcing_finding
+      on connector_observations(sourcing_finding_id);
+  `)
 }
 
 function ensureColumns(database: SqliteDatabase, tableName: string, columns: Array<[string, string]>) {

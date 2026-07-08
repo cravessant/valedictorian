@@ -397,6 +397,7 @@ export const connectorObservations = sqliteTable(
     sourceMetadataJson: text('source_metadata_json').notNull(),
     evidenceJson: text('evidence_json').notNull(),
     rawJson: text('raw_json').notNull(),
+    sourcingFindingId: text('sourcing_finding_id').references(() => sourcingFindings.id),
     ...timestamps,
   },
   (table) => ({
@@ -405,6 +406,9 @@ export const connectorObservations = sqliteTable(
     sourceRecordIdx: index('idx_connector_observations_source_record').on(
       table.connectorInstanceId,
       table.sourceRecordKey,
+    ),
+    sourcingFindingIdx: index('idx_connector_observations_sourcing_finding').on(
+      table.sourcingFindingId,
     ),
   }),
 )
@@ -458,6 +462,22 @@ export const sourcingFindings = sqliteTable(
   }),
 )
 
+export const connectorProjectionKeys = sqliteTable(
+  'connector_projection_keys',
+  {
+    dedupeKey: text('dedupe_key').primaryKey(),
+    sourcingFindingId: text('sourcing_finding_id')
+      .notNull()
+      .references(() => sourcingFindings.id),
+    ...timestamps,
+  },
+  (table) => ({
+    sourcingFindingIdx: index('idx_connector_projection_keys_sourcing_finding').on(
+      table.sourcingFindingId,
+    ),
+  }),
+)
+
 export const schema = {
   applicationAttemptSteps,
   applicationAttempts,
@@ -470,6 +490,7 @@ export const schema = {
   connectorCheckpoints,
   connectorInstances,
   connectorObservations,
+  connectorProjectionKeys,
   connectorRuns,
   policyConfig,
   policyEvidence,

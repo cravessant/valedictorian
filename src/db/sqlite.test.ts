@@ -30,6 +30,7 @@ describe('SQLite database', () => {
     expect(tables).toContain('connector_runs')
     expect(tables).toContain('connector_checkpoints')
     expect(tables).toContain('connector_observations')
+    expect(tables).toContain('connector_projection_keys')
 
     expect(tableColumns(database, 'applications')).toEqual(
       expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
@@ -102,9 +103,53 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(5)
+    expect(migrationRows).toHaveLength(6)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
+  })
+
+  it('adds projection columns and indexes to legacy connector observation tables', () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table connector_observations (
+        id text primary key,
+        connector_instance_id text not null,
+        connector_run_id text not null,
+        connector_id text not null,
+        connector_version text not null,
+        source_record_key text not null,
+        observed_at text not null,
+        company_name text not null,
+        role_title text not null,
+        location_raw text,
+        description_text text,
+        pay_json text not null,
+        links_json text not null,
+        resolution_json text not null,
+        dedupe_keys_json text not null,
+        source_metadata_json text not null,
+        evidence_json text not null,
+        raw_json text not null,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+    `)
+
+    migrateDatabase(database)
+
+    const connectorObservationIndexes = database
+      .prepare("pragma index_list('connector_observations')")
+      .all()
+      .map((row) => (row as { name: string }).name)
+
+    expect(tableColumns(database, 'connector_observations')).toContain('sourcing_finding_id')
+    expect(connectorObservationIndexes).toContain('idx_connector_observations_sourcing_finding')
+    expect(
+      database
+        .prepare("select name from sqlite_master where type = 'table' and name = 'connector_projection_keys'")
+        .all(),
+    ).toHaveLength(1)
   })
 
   it('migrates legacy policy queue config to action queue config', () => {

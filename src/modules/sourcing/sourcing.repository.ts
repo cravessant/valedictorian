@@ -149,6 +149,9 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         return reclassifySourcingFinding(transaction, findingId, now)
       })
     },
+    async getFinding(findingId: string): Promise<SourcingFinding> {
+      return selectSourcingFindingById(database, findingId)
+    },
     async listFindings(
       input: SourcingFindingsListInput = {},
     ): Promise<SourcingFindingsListResult> {
