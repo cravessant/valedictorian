@@ -18,6 +18,53 @@ export function createFixtureConnector(
   const definition: ConnectorDefinition = {
     id: "fixture.jobs",
     version: "0.0.0-fixture",
+    displayName: "Fixture jobs",
+    configSchema: {
+      version: "fixture-config@1",
+      schema: {
+        type: "object",
+        properties: {
+          listUrl: {
+            type: "string",
+          },
+        },
+        additionalProperties: true,
+      },
+    },
+    filterSchema: {
+      version: "fixture-filters@1",
+      schema: {
+        type: "object",
+        properties: {
+          roleKeywords: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+        },
+        additionalProperties: true,
+      },
+    },
+    auth: {
+      modes: ["none"],
+    },
+    capabilities: {
+      fetchesPublicPages: false,
+      resolvesIntermediaryLinks: false,
+      usesBrowserSession: false,
+      supportsIncrementalRefresh: true,
+      supportsFiltering: true,
+    },
+    checkpoint: {
+      schemaVersion: "fixture-checkpoint@1",
+    },
+    politeness: {
+      concurrency: 1,
+      minDelayMs: 0,
+      maxDelayMs: 0,
+      maxRequestsPerRun: 1,
+    },
   }
 
   return {
@@ -87,6 +134,8 @@ export type ConnectorInstanceRecord = {
   workspaceId: string
   displayName: string
   enabled: boolean
+  config?: unknown
+  filters?: unknown
   createdAt: string
 }
 
@@ -97,6 +146,9 @@ export type ConnectorRunRecord = {
   mode: ConnectorRefreshMode
   status: "success" | "failed"
   coverage: ConnectorCoverageWindow
+  config: unknown
+  filters: unknown
+  filterSignature: string
   stats: {
     observations: number
   }
@@ -105,6 +157,7 @@ export type ConnectorRunRecord = {
 
 export type ConnectorCheckpointRecord = {
   connectorInstanceId: string
+  filterSignature: string
   checkpoint: unknown
   schemaVersion: string
 }
@@ -145,7 +198,7 @@ export function createInMemoryConnectorHost(): InMemoryConnectorHost {
 
   return {
     registerInstance(instance) {
-      instances.set(instance.id, { ...instance })
+      instances.set(instance.id, cloneConnectorInstance(instance))
     },
 
     async refresh(connector, request) {
@@ -161,15 +214,23 @@ export function createInMemoryConnectorHost(): InMemoryConnectorHost {
         )
       }
 
-      const existingCheckpoint = checkpoints.get(request.connectorInstanceId)
+      const config = cloneJsonLike(instance.config ?? {})
+      const filters = cloneJsonLike(instance.filters ?? {})
+      const runConfig = cloneJsonLike(config)
+      const runFilters = cloneJsonLike(filters)
+      const filterSignature = signatureForFilters(filters)
+      const checkpointKey = `${request.connectorInstanceId}:${filterSignature}`
+      const existingCheckpoint = checkpoints.get(checkpointKey)
       const result = await connector.refresh(
         {
           connectorInstanceId: request.connectorInstanceId,
           workspaceId: request.workspaceId,
           mode: request.mode,
           coverage: request.coverage,
+          config,
+          filters,
           ...(existingCheckpoint
-            ? { checkpoint: existingCheckpoint.checkpoint }
+            ? { checkpoint: cloneJsonLike(existingCheckpoint.checkpoint) }
             : {}),
         },
         {},
@@ -183,13 +244,17 @@ export function createInMemoryConnectorHost(): InMemoryConnectorHost {
         mode: request.mode,
         status: "success",
         coverage: result.coverage,
+        config: runConfig,
+        filters: runFilters,
+        filterSignature,
         stats: result.stats,
         warnings: result.warnings,
       }
       runs.push(run)
 
-      checkpoints.set(request.connectorInstanceId, {
+      checkpoints.set(checkpointKey, {
         connectorInstanceId: request.connectorInstanceId,
+        filterSignature,
         checkpoint: result.nextCheckpoint.checkpoint,
         schemaVersion: result.nextCheckpoint.schemaVersion,
       })
@@ -213,4 +278,41 @@ export function createInMemoryConnectorHost(): InMemoryConnectorHost {
       }
     },
   }
+}
+
+function cloneConnectorInstance(
+  instance: ConnectorInstanceRecord,
+): ConnectorInstanceRecord {
+  return {
+    ...instance,
+    ...(instance.config === undefined
+      ? {}
+      : { config: cloneJsonLike(instance.config) }),
+    ...(instance.filters === undefined
+      ? {}
+      : { filters: cloneJsonLike(instance.filters) }),
+  }
+}
+
+function signatureForFilters(filters: unknown): string {
+  return `filters:${stableJsonStringify(filters ?? {})}`
+}
+
+function cloneJsonLike<T>(value: T): T {
+  return JSON.parse(stableJsonStringify(value)) as T
+}
+
+function stableJsonStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJsonStringify(item)).join(",")}]`
+  }
+
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJsonStringify(item)}`)
+      .join(",")}}`
+  }
+
+  return JSON.stringify(value)
 }
