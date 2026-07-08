@@ -26,6 +26,10 @@ describe('SQLite database', () => {
     expect(tables).toContain('workflow_runs')
     expect(tables).toContain('workflow_run_steps')
     expect(tables).toContain('sourcing_findings')
+    expect(tables).toContain('connector_instances')
+    expect(tables).toContain('connector_runs')
+    expect(tables).toContain('connector_checkpoints')
+    expect(tables).toContain('connector_observations')
 
     expect(tableColumns(database, 'applications')).toEqual(
       expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
@@ -52,12 +56,24 @@ describe('SQLite database', () => {
       .prepare("pragma index_list('sources')")
       .all()
       .map((row) => (row as { name: string }).name)
+    const connectorRunIndexes = database
+      .prepare("pragma index_list('connector_runs')")
+      .all()
+      .map((row) => (row as { name: string }).name)
+    const connectorObservationIndexes = database
+      .prepare("pragma index_list('connector_observations')")
+      .all()
+      .map((row) => (row as { name: string }).name)
 
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_id')
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_type_status_started')
     expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_id')
     expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_status_discovered')
     expect(sourceIndexes).toContain('idx_sources_name')
+    expect(connectorRunIndexes).toContain('idx_connector_runs_instance')
+    expect(connectorRunIndexes).toContain('idx_connector_runs_instance_status_started')
+    expect(connectorObservationIndexes).toContain('idx_connector_observations_instance')
+    expect(connectorObservationIndexes).toContain('idx_connector_observations_run')
   })
 
   it('baselines legacy app databases into Drizzle migration history', () => {
@@ -82,9 +98,13 @@ describe('SQLite database', () => {
     const applicationTables = database
       .prepare("select name from sqlite_master where type = 'table' and name = 'applications'")
       .all()
+    const connectorTables = database
+      .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
+      .all()
 
-    expect(migrationRows).toHaveLength(4)
+    expect(migrationRows).toHaveLength(5)
     expect(applicationTables).toHaveLength(1)
+    expect(connectorTables).toHaveLength(1)
   })
 
   it('migrates legacy policy queue config to action queue config', () => {

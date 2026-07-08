@@ -156,6 +156,10 @@ function hasApplicationTables(database: SqliteDatabase) {
     'application_workflow_states',
     'applications',
     'companies',
+    'connector_checkpoints',
+    'connector_instances',
+    'connector_observations',
+    'connector_runs',
     'policy_config',
     'policy_evidence',
     'profile_answers',
@@ -575,6 +579,73 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       created_at text not null
     );
 
+    create table if not exists connector_instances (
+      id text primary key,
+      connector_id text not null,
+      connector_version text not null,
+      display_name text not null,
+      enabled integer not null,
+      config_json text not null,
+      created_at text not null,
+      updated_at text not null,
+      deleted_at text
+    );
+
+    create table if not exists connector_runs (
+      id text primary key,
+      connector_instance_id text not null references connector_instances(id),
+      mode text not null,
+      status text not null,
+      started_at text not null,
+      completed_at text,
+      coverage_started_at text,
+      coverage_ended_at text,
+      observation_count integer not null,
+      warning_count integer not null,
+      stats_json text not null,
+      warnings_json text not null,
+      retry_hints_json text not null,
+      created_at text not null,
+      updated_at text not null,
+      deleted_at text
+    );
+
+    create table if not exists connector_checkpoints (
+      connector_instance_id text primary key references connector_instances(id),
+      checkpoint_json text not null,
+      schema_version text not null,
+      coverage_started_at text,
+      coverage_ended_at text,
+      saved_at text not null,
+      created_at text not null,
+      updated_at text not null,
+      deleted_at text
+    );
+
+    create table if not exists connector_observations (
+      id text primary key,
+      connector_instance_id text not null references connector_instances(id),
+      connector_run_id text not null references connector_runs(id),
+      connector_id text not null,
+      connector_version text not null,
+      source_record_key text not null,
+      observed_at text not null,
+      company_name text not null,
+      role_title text not null,
+      location_raw text,
+      description_text text,
+      pay_json text not null,
+      links_json text not null,
+      resolution_json text not null,
+      dedupe_keys_json text not null,
+      source_metadata_json text not null,
+      evidence_json text not null,
+      raw_json text not null,
+      created_at text not null,
+      updated_at text not null,
+      deleted_at text
+    );
+
     create table if not exists sourcing_findings (
       id text primary key,
       workflow_run_id text not null references workflow_runs(id),
@@ -622,6 +693,20 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on policy_evidence(subject_type, subject_id);
     create index if not exists idx_policy_evidence_subject_tag
       on policy_evidence(subject_type, subject_id, tag);
+    create index if not exists idx_connector_instances_connector
+      on connector_instances(connector_id);
+    create index if not exists idx_connector_instances_enabled
+      on connector_instances(enabled);
+    create index if not exists idx_connector_runs_instance
+      on connector_runs(connector_instance_id);
+    create index if not exists idx_connector_runs_instance_status_started
+      on connector_runs(connector_instance_id, status, started_at);
+    create index if not exists idx_connector_observations_instance
+      on connector_observations(connector_instance_id);
+    create index if not exists idx_connector_observations_run
+      on connector_observations(connector_run_id);
+    create index if not exists idx_connector_observations_source_record
+      on connector_observations(connector_instance_id, source_record_key);
   `)
 
   ensureColumns(database, 'user_profile', [

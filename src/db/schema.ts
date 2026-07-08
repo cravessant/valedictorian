@@ -311,6 +311,104 @@ export const policyEvidence = sqliteTable(
   }),
 )
 
+export const connectorInstances = sqliteTable(
+  'connector_instances',
+  {
+    id: text('id').primaryKey(),
+    connectorId: text('connector_id').notNull(),
+    connectorVersion: text('connector_version').notNull(),
+    displayName: text('display_name').notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+    configJson: text('config_json').notNull(),
+    ...timestamps,
+  },
+  (table) => ({
+    connectorIdx: index('idx_connector_instances_connector').on(table.connectorId),
+    enabledIdx: index('idx_connector_instances_enabled').on(table.enabled),
+  }),
+)
+
+export const connectorRuns = sqliteTable(
+  'connector_runs',
+  {
+    id: text('id').primaryKey(),
+    connectorInstanceId: text('connector_instance_id')
+      .notNull()
+      .references(() => connectorInstances.id),
+    mode: text('mode').notNull(),
+    status: text('status').notNull(),
+    startedAt: text('started_at').notNull(),
+    completedAt: text('completed_at'),
+    coverageStartedAt: text('coverage_started_at'),
+    coverageEndedAt: text('coverage_ended_at'),
+    observationCount: integer('observation_count').notNull(),
+    warningCount: integer('warning_count').notNull(),
+    statsJson: text('stats_json').notNull(),
+    warningsJson: text('warnings_json').notNull(),
+    retryHintsJson: text('retry_hints_json').notNull(),
+    ...timestamps,
+  },
+  (table) => ({
+    instanceIdx: index('idx_connector_runs_instance').on(table.connectorInstanceId),
+    instanceStatusStartedIdx: index('idx_connector_runs_instance_status_started').on(
+      table.connectorInstanceId,
+      table.status,
+      table.startedAt,
+    ),
+  }),
+)
+
+export const connectorCheckpoints = sqliteTable('connector_checkpoints', {
+  connectorInstanceId: text('connector_instance_id')
+    .primaryKey()
+    .references(() => connectorInstances.id),
+  checkpointJson: text('checkpoint_json').notNull(),
+  schemaVersion: text('schema_version').notNull(),
+  coverageStartedAt: text('coverage_started_at'),
+  coverageEndedAt: text('coverage_ended_at'),
+  savedAt: text('saved_at').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+  deletedAt: text('deleted_at'),
+})
+
+export const connectorObservations = sqliteTable(
+  'connector_observations',
+  {
+    id: text('id').primaryKey(),
+    connectorInstanceId: text('connector_instance_id')
+      .notNull()
+      .references(() => connectorInstances.id),
+    connectorRunId: text('connector_run_id')
+      .notNull()
+      .references(() => connectorRuns.id),
+    connectorId: text('connector_id').notNull(),
+    connectorVersion: text('connector_version').notNull(),
+    sourceRecordKey: text('source_record_key').notNull(),
+    observedAt: text('observed_at').notNull(),
+    companyName: text('company_name').notNull(),
+    roleTitle: text('role_title').notNull(),
+    locationRaw: text('location_raw'),
+    descriptionText: text('description_text'),
+    payJson: text('pay_json').notNull(),
+    linksJson: text('links_json').notNull(),
+    resolutionJson: text('resolution_json').notNull(),
+    dedupeKeysJson: text('dedupe_keys_json').notNull(),
+    sourceMetadataJson: text('source_metadata_json').notNull(),
+    evidenceJson: text('evidence_json').notNull(),
+    rawJson: text('raw_json').notNull(),
+    ...timestamps,
+  },
+  (table) => ({
+    instanceIdx: index('idx_connector_observations_instance').on(table.connectorInstanceId),
+    runIdx: index('idx_connector_observations_run').on(table.connectorRunId),
+    sourceRecordIdx: index('idx_connector_observations_source_record').on(
+      table.connectorInstanceId,
+      table.sourceRecordKey,
+    ),
+  }),
+)
+
 export const sourcingFindings = sqliteTable(
   'sourcing_findings',
   {
@@ -369,6 +467,10 @@ export const schema = {
   applicationWorkflowStates,
   applications,
   companies,
+  connectorCheckpoints,
+  connectorInstances,
+  connectorObservations,
+  connectorRuns,
   policyConfig,
   policyEvidence,
   profileAnswers,
