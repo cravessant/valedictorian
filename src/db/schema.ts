@@ -320,6 +320,7 @@ export const connectorInstances = sqliteTable(
     displayName: text('display_name').notNull(),
     enabled: integer('enabled', { mode: 'boolean' }).notNull(),
     configJson: text('config_json').notNull(),
+    authJson: text('auth_json').notNull().default('[]'),
     filtersJson: text('filters_json').notNull().default('{}'),
     ...timestamps,
   },

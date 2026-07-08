@@ -1,4 +1,6 @@
 import type {
+  ConnectorAuthMode,
+  ConnectorAuthReference,
   ConnectorCoverageWindow,
   ConnectorInstanceRecord,
   ConnectorRefreshResultInput,
@@ -24,15 +26,18 @@ export interface AppConnectorSchemaDeclaration {
 }
 
 export type AppConnectorAuthMode =
-  | 'none'
-  | 'api_key'
-  | 'bearer_token'
-  | 'oauth'
-  | 'cookie_jar'
-  | 'browser_session'
+  ConnectorAuthMode
 
 export interface AppConnectorAuthDeclaration {
   modes: AppConnectorAuthMode[]
+  requirements?: AppConnectorAuthRequirement[]
+}
+
+export interface AppConnectorAuthRequirement {
+  id: string
+  mode: AppConnectorAuthMode
+  label?: string
+  required?: boolean
 }
 
 export interface AppConnectorCapabilityDeclaration {
@@ -72,7 +77,49 @@ export interface AppConnectorRunBudget {
   maxRequestsPerRun?: number
 }
 
-export type AppConnectorRuntime = Record<string, unknown>
+export type AppConnectorAuthGrantStatus =
+  | 'ready'
+  | 'missing'
+  | 'expired'
+  | 'action_required'
+
+export interface AppConnectorAuthGrant {
+  id: string
+  mode: AppConnectorAuthMode
+  status: AppConnectorAuthGrantStatus
+  secretKey?: string
+  sessionKey?: string
+  value?: string
+  sessionId?: string
+  expiresAt?: string
+  reason?: string
+}
+
+export interface AppConnectorAuthResolveInput {
+  id: string
+  mode?: AppConnectorAuthMode
+}
+
+export interface AppConnectorAuthRuntime {
+  resolve(input: AppConnectorAuthResolveInput): Promise<AppConnectorAuthGrant>
+}
+
+export type AppConnectorRuntime = Record<string, unknown> & {
+  auth: AppConnectorAuthRuntime
+}
+
+export interface AppConnectorSecretResolver {
+  revealSecret(key: string): Promise<{ key: string; value: string } | null>
+}
+
+export interface AppConnectorBrowserSessionResolver {
+  resolve(reference: ConnectorAuthReference): Promise<AppConnectorAuthGrant>
+}
+
+export interface AppConnectorAuthHost {
+  browserSessions?: AppConnectorBrowserSessionResolver
+  secrets?: AppConnectorSecretResolver
+}
 
 export interface AppJobConnector {
   definition: AppJobConnectorDefinition
@@ -87,6 +134,7 @@ export interface RegisterConnectorInstanceInput {
   connector: AppJobConnector
   displayName: string
   enabled: boolean
+  auth?: ConnectorAuthReference[]
   config?: Record<string, unknown>
   filters?: Record<string, unknown>
   createdAt?: string
@@ -120,8 +168,9 @@ export interface AppConnectorRunPolicy {
 }
 
 export interface CreateConnectorRunnerOptions {
+  auth?: AppConnectorAuthHost
   repository: ReturnType<typeof createSqliteConnectorRepository>
-  runtime?: AppConnectorRuntime
+  runtime?: Record<string, unknown>
   now?: () => Date
 }
 
@@ -130,8 +179,10 @@ const DEFAULT_MAX_BACKFILL_DAYS = 30
 const DEFAULT_OVERLAP_MINUTES = 30
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
 const MILLISECONDS_PER_MINUTE = 60 * 1000
+const REDACTED_SECRET_VALUE = '[redacted-secret]'
 
 export function createConnectorRunner({
+  auth,
   repository,
   runtime = {},
   now = () => new Date(),
@@ -157,6 +208,7 @@ export function createConnectorRunner({
       connectorInstanceId: input.connectorInstanceId,
       filterSignature,
     })
+    const sensitiveValues = new Set<string>()
     const result = await connector.refresh(
       {
         connectorInstanceId: input.connectorInstanceId,
@@ -167,8 +219,15 @@ export function createConnectorRunner({
         ...(input.budget ? { budget: input.budget } : {}),
         ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
       },
-      runtime,
+      createRunRuntime(
+        runtime,
+        connectorInstance.auth,
+        connector.definition.auth?.requirements ?? [],
+        auth,
+        sensitiveValues,
+      ),
     )
+    const safeResult = redactRefreshResult(result, sensitiveValues)
     const completedAt = input.completedAt ?? now().toISOString()
 
     return repository.recordRefreshResult({
@@ -179,7 +238,7 @@ export function createConnectorRunner({
       config: runConfig,
       filters: runFilters,
       filterSignature,
-      result,
+      result: safeResult,
     })
   }
 
@@ -191,6 +250,7 @@ export function createConnectorRunner({
         connectorVersion: input.connector.definition.version,
         displayName: input.displayName,
         enabled: input.enabled,
+        auth: input.auth,
         config: input.config,
         filters: input.filters,
         createdAt: input.createdAt,
@@ -247,6 +307,225 @@ export function createConnectorRunner({
         instance,
       )
     },
+  }
+}
+
+function createRunRuntime(
+  runtime: Record<string, unknown>,
+  authReferences: ConnectorAuthReference[],
+  authRequirements: AppConnectorAuthRequirement[],
+  authHost: AppConnectorAuthHost | undefined,
+  sensitiveValues: Set<string>,
+): AppConnectorRuntime {
+  return {
+    ...runtime,
+    auth: {
+      async resolve(input) {
+        return resolveAuthGrant(
+          input,
+          authReferences,
+          authRequirements,
+          authHost,
+          sensitiveValues,
+        )
+      },
+    },
+  }
+}
+
+async function resolveAuthGrant(
+  input: AppConnectorAuthResolveInput,
+  authReferences: ConnectorAuthReference[],
+  authRequirements: AppConnectorAuthRequirement[],
+  authHost: AppConnectorAuthHost | undefined,
+  sensitiveValues: Set<string>,
+): Promise<AppConnectorAuthGrant> {
+  const reference = authReferences.find(
+    (authReference) =>
+      authReference.id === input.id &&
+      (input.mode === undefined || authReference.mode === input.mode),
+  )
+  const requirement = authRequirements.find(
+    (authRequirement) =>
+      authRequirement.id === input.id &&
+      (input.mode === undefined || authRequirement.mode === input.mode),
+  )
+  const mode = input.mode ?? reference?.mode ?? requirement?.mode
+
+  if (mode === 'none') {
+    return {
+      id: input.id,
+      mode,
+      status: 'ready',
+    }
+  }
+
+  if (!reference) {
+    return {
+      id: input.id,
+      mode: mode ?? 'none',
+      reason: 'auth_reference_missing',
+      status: 'missing',
+    }
+  }
+  const referenceMode = reference.mode
+
+  if (
+    referenceMode === 'api_key' ||
+    referenceMode === 'bearer_token' ||
+    referenceMode === 'oauth' ||
+    referenceMode === 'cookie_jar'
+  ) {
+    return resolveSecretGrant(reference, authHost, sensitiveValues)
+  }
+
+  if (authHost?.browserSessions) {
+    const grant = sanitizeBrowserSessionGrant(
+      reference,
+      await authHost.browserSessions.resolve(browserSessionReference(reference)),
+      sensitiveValues,
+    )
+
+    return grant
+  }
+
+  return {
+    id: reference.id,
+    mode: referenceMode,
+    reason: 'browser_session_action_required',
+    status: 'action_required',
+  }
+}
+
+async function resolveSecretGrant(
+  reference: ConnectorAuthReference,
+  authHost: AppConnectorAuthHost | undefined,
+  sensitiveValues: Set<string>,
+): Promise<AppConnectorAuthGrant> {
+  if (!reference.secretKey) {
+    return {
+      id: reference.id,
+      mode: reference.mode,
+      reason: 'secret_reference_missing',
+      status: 'missing',
+    }
+  }
+
+  const secret = await authHost?.secrets?.revealSecret(reference.secretKey)
+
+  if (!secret) {
+    return {
+      id: reference.id,
+      mode: reference.mode,
+      reason: 'secret_missing',
+      secretKey: reference.secretKey,
+      status: 'missing',
+    }
+  }
+
+  if (secret.value.length > 0) {
+    sensitiveValues.add(secret.value)
+  }
+
+  return {
+    id: reference.id,
+    mode: reference.mode,
+    secretKey: reference.secretKey,
+    status: 'ready',
+    value: secret.value,
+  }
+}
+
+function browserSessionReference(reference: ConnectorAuthReference): ConnectorAuthReference {
+  return {
+    id: reference.id,
+    mode: reference.mode,
+    ...(reference.label === undefined ? {} : { label: reference.label }),
+    ...(reference.sessionKey === undefined ? {} : { sessionKey: reference.sessionKey }),
+  }
+}
+
+function sanitizeBrowserSessionGrant(
+  reference: ConnectorAuthReference,
+  grant: AppConnectorAuthGrant,
+  sensitiveValues: Set<string>,
+): AppConnectorAuthGrant {
+  trackSensitiveGrantValue(grant, sensitiveValues)
+
+  const sessionKey = reference.sessionKey ?? grant.sessionKey
+  const sanitizedGrant: AppConnectorAuthGrant = {
+    id: reference.id,
+    mode: reference.mode,
+    status: grant.status,
+    ...(grant.expiresAt === undefined ? {} : { expiresAt: grant.expiresAt }),
+    ...(grant.reason === undefined ? {} : { reason: grant.reason }),
+    ...(grant.sessionId === undefined ? {} : { sessionId: grant.sessionId }),
+    ...(sessionKey === undefined ? {} : { sessionKey }),
+  }
+
+  trackSensitiveGrantValue(sanitizedGrant, sensitiveValues)
+
+  return sanitizedGrant
+}
+
+function trackSensitiveGrantValue(
+  grant: AppConnectorAuthGrant,
+  sensitiveValues: Set<string>,
+): void {
+  addSensitiveValue(grant.value, sensitiveValues)
+  addSensitiveValue(grant.sessionId, sensitiveValues)
+  addSensitiveValue(grant.sessionKey, sensitiveValues)
+}
+
+function redactRefreshResult(
+  result: ConnectorRefreshResultInput,
+  sensitiveValues: Set<string>,
+): ConnectorRefreshResultInput {
+  if (sensitiveValues.size === 0) {
+    return result
+  }
+
+  return redactSensitiveValue(result, sensitiveValues) as ConnectorRefreshResultInput
+}
+
+function redactSensitiveValue(value: unknown, sensitiveValues: Set<string>): unknown {
+  if (typeof value === 'string') {
+    return redactSensitiveString(value, sensitiveValues)
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitiveValue(item, sensitiveValues))
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        redactSensitiveValue(item, sensitiveValues),
+      ]),
+    )
+  }
+
+  return value
+}
+
+function redactSensitiveString(value: string, sensitiveValues: Set<string>): string {
+  let next = value
+
+  const sortedSensitiveValues = [...sensitiveValues].sort(
+    (left, right) => right.length - left.length,
+  )
+
+  for (const sensitiveValue of sortedSensitiveValues) {
+    next = next.split(sensitiveValue).join(REDACTED_SECRET_VALUE)
+  }
+
+  return next
+}
+
+function addSensitiveValue(value: string | undefined, sensitiveValues: Set<string>): void {
+  if (value !== undefined && value.length > 0) {
+    sensitiveValues.add(value)
   }
 }
 

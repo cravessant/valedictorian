@@ -587,6 +587,7 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       display_name text not null,
       enabled integer not null,
       config_json text not null,
+      auth_json text not null default '[]',
       filters_json text not null default '{}',
       created_at text not null,
       updated_at text not null,
@@ -780,6 +781,7 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     ['disposition_reason', 'text'],
   ])
   ensureColumns(database, 'connector_instances', [
+    ['auth_json', "text not null default '[]'"],
     ['filters_json', "text not null default '{}'"],
   ])
   ensureColumns(database, 'connector_runs', [

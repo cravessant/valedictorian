@@ -39,7 +39,7 @@ describe('SQLite database', () => {
       expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
     )
     expect(tableColumns(database, 'connector_instances')).toEqual(
-      expect.arrayContaining(['config_json', 'filters_json']),
+      expect.arrayContaining(['config_json', 'auth_json', 'filters_json']),
     )
     expect(tableColumns(database, 'connector_runs')).toEqual(
       expect.arrayContaining(['config_json', 'filters_json', 'filter_signature']),
@@ -117,7 +117,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(7)
+    expect(migrationRows).toHaveLength(8)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -259,7 +259,9 @@ describe('SQLite database', () => {
 
     migrateDatabase(database)
 
-    expect(tableColumns(database, 'connector_instances')).toContain('filters_json')
+    expect(tableColumns(database, 'connector_instances')).toEqual(
+      expect.arrayContaining(['auth_json', 'filters_json']),
+    )
     expect(tableColumns(database, 'connector_runs')).toEqual(
       expect.arrayContaining(['config_json', 'filters_json', 'filter_signature']),
     )

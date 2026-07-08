@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from './connector.repository'
+import { createSqliteProfileRepository, type ProfileSecretCodec } from '../profile/profile.repository'
+import { createSqliteConnectorRepository, type ConnectorCoverageWindow } from './connector.repository'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
+
+const testCodec: ProfileSecretCodec = {
+  decrypt(value) {
+    return value.replace(/^enc:/, '')
+  },
+  encrypt(value) {
+    return `enc:${value}`
+  },
+}
 
 describe('connector runner', () => {
   it('invokes a fixture connector through the app host and stores its refresh result', async () => {
@@ -183,6 +193,572 @@ describe('connector runner', () => {
     await expect(
       repository.listObservations({ connectorInstanceId: 'connector-instance-fixture' }),
     ).resolves.toHaveLength(3)
+  })
+
+  it('provides a ready no-auth grant through the connector runtime', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const runner = createConnectorRunner({ repository })
+    const receivedGrants: unknown[] = []
+    const fixtureConnector: AppJobConnector = {
+      definition: {
+        id: 'fixture.public-jobs',
+        version: '0.0.0-fixture',
+        auth: {
+          modes: ['none'],
+          requirements: [
+            {
+              id: 'public',
+              mode: 'none',
+            },
+          ],
+        },
+      },
+      async refresh(input, runtime) {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: 'public',
+          }),
+        )
+
+        return emptyConnectorRefreshResult({
+          coverage: input.coverage,
+          checkpoint: { cursor: input.coverage.end },
+        })
+      },
+    }
+
+    await runner.registerInstance({
+      id: 'connector-instance-public',
+      connector: fixtureConnector,
+      displayName: 'Public jobs',
+      enabled: true,
+      createdAt: '2026-07-08T16:55:00.000Z',
+    })
+
+    await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-public',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T17:00:00.000Z',
+        end: '2026-07-08T18:00:00.000Z',
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: 'public',
+        mode: 'none',
+        status: 'ready',
+      },
+    ])
+  })
+
+  it('resolves secret-backed auth grants from app-owned encrypted profile secrets', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const profileRepository = createSqliteProfileRepository(database, testCodec)
+    const runner = createConnectorRunner({
+      repository,
+      auth: {
+        secrets: profileRepository,
+      },
+    })
+    const receivedGrants: unknown[] = []
+    const fixtureConnector: AppJobConnector = {
+      definition: {
+        id: 'fixture.secret-jobs',
+        version: '0.0.0-fixture',
+        auth: {
+          modes: ['api_key'],
+          requirements: [
+            {
+              id: 'internlist',
+              mode: 'api_key',
+              label: 'InternList API key',
+            },
+          ],
+        },
+      },
+      async refresh(input, runtime) {
+        const grant = await runtime.auth.resolve({
+          id: 'internlist',
+          mode: 'api_key',
+        })
+        receivedGrants.push(grant)
+
+        return {
+          ...emptyConnectorRefreshResult({
+            coverage: input.coverage,
+            checkpoint: { cursor: input.coverage.end },
+          }),
+          stats: {
+            observations: 0,
+            copiedValue: grant.value,
+            leakedGrant: grant,
+          },
+          warnings: [
+            {
+              code: 'fixture.leak',
+              message: `leaked ${grant.value}`,
+            },
+          ],
+          retryHints: {
+            copiedValue: grant.value,
+            grant,
+          },
+          nextCheckpoint: {
+            checkpoint: {
+              copiedValue: grant.value,
+              grant,
+            },
+            schemaVersion: 'fixture-checkpoint@1',
+          },
+        }
+      },
+    }
+
+    await profileRepository.upsertSecret({
+      key: 'internlist_api_key',
+      kind: 'token',
+      label: 'InternList API key',
+      value: 'il-secret',
+    })
+    await runner.registerInstance({
+      id: 'connector-instance-secret',
+      connector: fixtureConnector,
+      displayName: 'Secret jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'internlist',
+          mode: 'api_key',
+          secretKey: 'internlist_api_key',
+        },
+      ],
+      createdAt: '2026-07-08T16:55:00.000Z',
+    })
+
+    const run = await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-secret',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T17:00:00.000Z',
+        end: '2026-07-08T18:00:00.000Z',
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: 'internlist',
+        mode: 'api_key',
+        secretKey: 'internlist_api_key',
+        status: 'ready',
+        value: 'il-secret',
+      },
+    ])
+    expect(JSON.stringify(run)).not.toContain('il-secret')
+    expect(JSON.stringify(run)).toContain('[redacted-secret]')
+    await expect(
+      repository.getCheckpoint({
+        connectorInstanceId: 'connector-instance-secret',
+        filterSignature: 'filters:{}',
+      }),
+    ).resolves.toEqual({
+      connectorInstanceId: 'connector-instance-secret',
+      filterSignature: 'filters:{}',
+      checkpoint: {
+        copiedValue: '[redacted-secret]',
+        grant: {
+          id: 'internlist',
+          mode: 'api_key',
+          secretKey: 'internlist_api_key',
+          status: 'ready',
+          value: '[redacted-secret]',
+        },
+      },
+      schemaVersion: 'fixture-checkpoint@1',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+    })
+    expect(
+      JSON.stringify(
+        await repository.getCheckpoint({
+          connectorInstanceId: 'connector-instance-secret',
+          filterSignature: 'filters:{}',
+        }),
+      ),
+    ).not.toContain('il-secret')
+    await expect(repository.getInstance('connector-instance-secret')).resolves.toMatchObject({
+      auth: [
+        {
+          id: 'internlist',
+          mode: 'api_key',
+          secretKey: 'internlist_api_key',
+        },
+      ],
+    })
+    expect(JSON.stringify(await repository.getInstance('connector-instance-secret'))).not.toContain(
+      'il-secret',
+    )
+  })
+
+  it('redacts overlapping secret values longest-first before persisting connector results', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const profileRepository = createSqliteProfileRepository(database, testCodec)
+    const runner = createConnectorRunner({
+      repository,
+      auth: {
+        secrets: profileRepository,
+      },
+    })
+    const fixtureConnector: AppJobConnector = {
+      definition: {
+        id: 'fixture.overlap-secret-jobs',
+        version: '0.0.0-fixture',
+        auth: {
+          modes: ['api_key'],
+        },
+      },
+      async refresh(input, runtime) {
+        await runtime.auth.resolve({
+          id: 'short',
+          mode: 'api_key',
+        })
+        await runtime.auth.resolve({
+          id: 'long',
+          mode: 'api_key',
+        })
+
+        return {
+          ...emptyConnectorRefreshResult({
+            coverage: input.coverage,
+            checkpoint: { cursor: input.coverage.end },
+          }),
+          stats: {
+            observations: 0,
+            copiedValue: 'abc123',
+          },
+          warnings: [
+            {
+              code: 'fixture.leak',
+              message: 'leaked abc123',
+            },
+          ],
+          nextCheckpoint: {
+            checkpoint: {
+              copiedValue: 'abc123',
+            },
+            schemaVersion: 'fixture-checkpoint@1',
+          },
+        }
+      },
+    }
+
+    await profileRepository.upsertSecret({
+      key: 'short_key',
+      kind: 'token',
+      label: 'Short key',
+      value: 'abc',
+    })
+    await profileRepository.upsertSecret({
+      key: 'long_key',
+      kind: 'token',
+      label: 'Long key',
+      value: 'abc123',
+    })
+    await runner.registerInstance({
+      id: 'connector-instance-overlap-secret',
+      connector: fixtureConnector,
+      displayName: 'Overlap secret jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'short',
+          mode: 'api_key',
+          secretKey: 'short_key',
+        },
+        {
+          id: 'long',
+          mode: 'api_key',
+          secretKey: 'long_key',
+        },
+      ],
+      createdAt: '2026-07-08T16:55:00.000Z',
+    })
+
+    const run = await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-overlap-secret',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T17:00:00.000Z',
+        end: '2026-07-08T18:00:00.000Z',
+      },
+    })
+    const checkpoint = await repository.getCheckpoint({
+      connectorInstanceId: 'connector-instance-overlap-secret',
+      filterSignature: 'filters:{}',
+    })
+    const persisted = JSON.stringify({ run, checkpoint })
+
+    expect(persisted).toContain('[redacted-secret]')
+    expect(persisted).not.toContain('abc')
+    expect(persisted).not.toContain('123')
+  })
+
+  it('returns missing secret-backed grants without exposing persistence to connectors', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const profileRepository = createSqliteProfileRepository(database, testCodec)
+    const runner = createConnectorRunner({
+      repository,
+      auth: {
+        secrets: profileRepository,
+      },
+    })
+    const receivedGrants: unknown[] = []
+    const fixtureConnector: AppJobConnector = {
+      definition: {
+        id: 'fixture.missing-secret-jobs',
+        version: '0.0.0-fixture',
+        auth: {
+          modes: ['bearer_token'],
+        },
+      },
+      async refresh(input, runtime) {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: 'jobright',
+            mode: 'bearer_token',
+          }),
+        )
+
+        return emptyConnectorRefreshResult({
+          coverage: input.coverage,
+          checkpoint: { cursor: input.coverage.end },
+        })
+      },
+    }
+
+    await runner.registerInstance({
+      id: 'connector-instance-missing-secret',
+      connector: fixtureConnector,
+      displayName: 'Missing secret jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'jobright',
+          mode: 'bearer_token',
+          secretKey: 'jobright_token',
+        },
+      ],
+      createdAt: '2026-07-08T16:55:00.000Z',
+    })
+
+    await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-missing-secret',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T17:00:00.000Z',
+        end: '2026-07-08T18:00:00.000Z',
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: 'jobright',
+        mode: 'bearer_token',
+        reason: 'secret_missing',
+        secretKey: 'jobright_token',
+        status: 'missing',
+      },
+    ])
+  })
+
+  it('returns browser-session action-required grants when no local session resolver is configured', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const runner = createConnectorRunner({ repository })
+    const receivedGrants: unknown[] = []
+    const fixtureConnector: AppJobConnector = {
+      definition: {
+        id: 'fixture.browser-jobs',
+        version: '0.0.0-fixture',
+        auth: {
+          modes: ['browser_session'],
+        },
+      },
+      async refresh(input, runtime) {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: 'jobright',
+            mode: 'browser_session',
+          }),
+        )
+
+        return emptyConnectorRefreshResult({
+          coverage: input.coverage,
+          checkpoint: { cursor: input.coverage.end },
+        })
+      },
+    }
+
+    await runner.registerInstance({
+      id: 'connector-instance-browser',
+      connector: fixtureConnector,
+      displayName: 'Browser jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'jobright',
+          mode: 'browser_session',
+        },
+      ],
+      createdAt: '2026-07-08T16:55:00.000Z',
+    })
+
+    await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-browser',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T17:00:00.000Z',
+        end: '2026-07-08T18:00:00.000Z',
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: 'jobright',
+        mode: 'browser_session',
+        reason: 'browser_session_action_required',
+        status: 'action_required',
+      },
+    ])
+  })
+
+  it('redacts browser-session handles before persisting connector results', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const runner = createConnectorRunner({
+      repository,
+      auth: {
+        browserSessions: {
+          async resolve(reference) {
+            return {
+              id: 'ignored-id',
+              mode: 'browser_session',
+              secretKey: 'should-not-cross-session-boundary',
+              sessionId: 'jobright-session-123',
+              sessionKey: 'resolver-session-key',
+              status: 'ready',
+              value: 'should-not-cross-session-boundary',
+              ...(reference.sessionKey ? { reason: reference.sessionKey } : {}),
+            } as never
+          },
+        },
+      },
+    })
+    const receivedGrants: unknown[] = []
+    const fixtureConnector: AppJobConnector = {
+      definition: {
+        id: 'fixture.browser-jobs',
+        version: '0.0.0-fixture',
+        auth: {
+          modes: ['browser_session'],
+        },
+      },
+      async refresh(input, runtime) {
+        const grant = await runtime.auth.resolve({
+          id: 'jobright',
+          mode: 'browser_session',
+        })
+        receivedGrants.push(grant)
+
+        return {
+          ...emptyConnectorRefreshResult({
+            coverage: input.coverage,
+            checkpoint: { cursor: input.coverage.end },
+          }),
+          stats: {
+            observations: 0,
+            leakedGrant: grant,
+          },
+          warnings: [
+            {
+              code: 'fixture.session_leak',
+              message: `leaked ${grant.sessionId} ${grant.sessionKey}`,
+            },
+          ],
+          retryHints: {
+            grant,
+          },
+          nextCheckpoint: {
+            checkpoint: {
+              grant,
+            },
+            schemaVersion: 'fixture-checkpoint@1',
+          },
+        }
+      },
+    }
+
+    await runner.registerInstance({
+      id: 'connector-instance-browser-session',
+      connector: fixtureConnector,
+      displayName: 'Browser jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'jobright',
+          mode: 'browser_session',
+          sessionKey: 'workspace_session_1',
+        },
+      ],
+      createdAt: '2026-07-08T16:55:00.000Z',
+    })
+
+    const run = await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-browser-session',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T17:00:00.000Z',
+        end: '2026-07-08T18:00:00.000Z',
+      },
+    })
+    const checkpoint = await repository.getCheckpoint({
+      connectorInstanceId: 'connector-instance-browser-session',
+      filterSignature: 'filters:{}',
+    })
+    const persisted = JSON.stringify({ run, checkpoint })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: 'jobright',
+        mode: 'browser_session',
+        reason: 'workspace_session_1',
+        sessionId: 'jobright-session-123',
+        sessionKey: 'workspace_session_1',
+        status: 'ready',
+      },
+    ])
+    expect(persisted).toContain('[redacted-secret]')
+    expect(persisted).not.toContain('jobright-session-123')
+    expect(persisted).not.toContain('workspace_session_1')
+    expect(persisted).not.toContain('resolver-session-key')
+    expect(persisted).not.toContain('should-not-cross-session-boundary')
   })
 
   it('computes first catch-up coverage from connector-added time and the default backfill cap', async () => {
@@ -634,3 +1210,24 @@ describe('connector runner', () => {
     })
   })
 })
+
+function emptyConnectorRefreshResult({
+  checkpoint,
+  coverage,
+}: {
+  checkpoint: unknown
+  coverage: ConnectorCoverageWindow
+}) {
+  return {
+    coverage,
+    stats: {
+      observations: 0,
+    },
+    warnings: [],
+    nextCheckpoint: {
+      checkpoint,
+      schemaVersion: 'fixture-checkpoint@1',
+    },
+    observations: [],
+  }
+}

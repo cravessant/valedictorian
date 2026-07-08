@@ -28,6 +28,22 @@ export interface ConnectorCheckpointPayload {
 
 export type ConnectorRunStatus = 'completed' | 'partial_success'
 
+export type ConnectorAuthMode =
+  | 'none'
+  | 'api_key'
+  | 'bearer_token'
+  | 'oauth'
+  | 'cookie_jar'
+  | 'browser_session'
+
+export interface ConnectorAuthReference {
+  id: string
+  mode: ConnectorAuthMode
+  label?: string
+  secretKey?: string
+  sessionKey?: string
+}
+
 export interface ConnectorObservationLinks {
   source: string | null
   intermediary: string | null
@@ -79,6 +95,7 @@ export interface UpsertConnectorInstanceInput {
   connectorVersion: string
   displayName: string
   enabled: boolean
+  auth?: ConnectorAuthReference[]
   config?: JsonRecord
   filters?: JsonRecord
   createdAt?: string
@@ -106,6 +123,7 @@ export interface ConnectorInstanceRecord {
   connectorVersion: string
   displayName: string
   enabled: boolean
+  auth: ConnectorAuthReference[]
   config: unknown
   filters: unknown
   createdAt: string
@@ -176,6 +194,7 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
     async upsertInstance(input: UpsertConnectorInstanceInput): Promise<ConnectorInstanceRecord> {
       const now = new Date().toISOString()
       const createdAt = input.createdAt ?? now
+      const auth = normalizeConnectorAuthReferences(input.auth ?? [])
       const existing = database
         .select({ id: connectorInstances.id })
         .from(connectorInstances)
@@ -190,6 +209,7 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
             connectorVersion: input.connectorVersion,
             displayName: input.displayName,
             enabled: input.enabled,
+            authJson: JSON.stringify(auth),
             configJson: JSON.stringify(input.config ?? {}),
             filtersJson: JSON.stringify(input.filters ?? {}),
             updatedAt: now,
@@ -205,6 +225,7 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
             connectorVersion: input.connectorVersion,
             displayName: input.displayName,
             enabled: input.enabled,
+            authJson: JSON.stringify(auth),
             configJson: JSON.stringify(input.config ?? {}),
             filtersJson: JSON.stringify(input.filters ?? {}),
             createdAt,
@@ -554,11 +575,82 @@ function mapConnectorInstance(
     connectorVersion: row.connectorVersion,
     displayName: row.displayName,
     enabled: row.enabled,
+    auth: normalizeConnectorAuthReferences(JSON.parse(row.authJson) as unknown),
     config: JSON.parse(row.configJson) as unknown,
     filters: JSON.parse(row.filtersJson) as unknown,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
+}
+
+const connectorAuthModes = new Set<ConnectorAuthMode>([
+  'none',
+  'api_key',
+  'bearer_token',
+  'oauth',
+  'cookie_jar',
+  'browser_session',
+])
+
+function normalizeConnectorAuthReferences(input: unknown): ConnectorAuthReference[] {
+  if (!Array.isArray(input)) {
+    return []
+  }
+
+  return input.map((item) => {
+    const record = toJsonRecord(item)
+    const label = optionalNonEmptyString(record.label)
+    const secretKey = optionalNonEmptyString(record.secretKey)
+    const sessionKey = optionalNonEmptyString(record.sessionKey)
+    const mode = normalizeConnectorAuthMode(record.mode)
+
+    return {
+      id: requiredNonEmptyString(record.id, 'connector auth id'),
+      mode,
+      ...(label === undefined ? {} : { label }),
+      ...(isSecretBackedAuthMode(mode) && secretKey !== undefined ? { secretKey } : {}),
+      ...(mode === 'browser_session' && sessionKey !== undefined ? { sessionKey } : {}),
+    }
+  })
+}
+
+function normalizeConnectorAuthMode(value: unknown): ConnectorAuthMode {
+  if (typeof value !== 'string' || !connectorAuthModes.has(value as ConnectorAuthMode)) {
+    throw new Error(`Invalid connector auth mode: ${String(value)}`)
+  }
+
+  return value as ConnectorAuthMode
+}
+
+function isSecretBackedAuthMode(mode: ConnectorAuthMode): boolean {
+  return mode === 'api_key' ||
+    mode === 'bearer_token' ||
+    mode === 'oauth' ||
+    mode === 'cookie_jar'
+}
+
+function requiredNonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Invalid ${label}`)
+  }
+
+  return value.trim()
+}
+
+function optionalNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined
+  }
+
+  return value.trim()
+}
+
+function toJsonRecord(value: unknown): JsonRecord {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+
+  return value as JsonRecord
 }
 
 function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefined): ConnectorRunRecord {

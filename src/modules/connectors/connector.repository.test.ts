@@ -248,6 +248,59 @@ describe('SQLite connector repository', () => {
     })
   })
 
+  it('normalizes connector auth references before persisting instance state', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await repository.upsertInstance({
+      id: 'connector-instance-auth',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Auth fixture jobs',
+      enabled: true,
+      auth: [
+        {
+          id: ' internlist ',
+          mode: 'api_key',
+          label: ' InternList API key ',
+          secretKey: ' internlist_api_key ',
+          sessionKey: 'wrong_session_key',
+          value: 'il-secret',
+        } as never,
+        {
+          id: ' jobright ',
+          mode: 'browser_session',
+          secretKey: 'wrong_secret_key',
+          sessionKey: ' workspace_session_1 ',
+        } as never,
+      ],
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    const instance = await repository.getInstance('connector-instance-auth')
+
+    expect(instance).toMatchObject({
+      auth: [
+        {
+          id: 'internlist',
+          mode: 'api_key',
+          label: 'InternList API key',
+          secretKey: 'internlist_api_key',
+        },
+        {
+          id: 'jobright',
+          mode: 'browser_session',
+          sessionKey: 'workspace_session_1',
+        },
+      ],
+    })
+    expect(JSON.stringify(instance)).not.toContain('il-secret')
+    expect(JSON.stringify(instance)).not.toContain('wrong_secret_key')
+    expect(JSON.stringify(instance)).not.toContain('wrong_session_key')
+  })
+
   it('persists partial-success connector runs with retry hints', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
