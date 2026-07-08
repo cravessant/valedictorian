@@ -38,6 +38,7 @@ describe("in-memory connector host", () => {
       },
       politeness: {
         concurrency: 1,
+        maxBackfillDays: 7,
       },
     })
   })
@@ -67,7 +68,7 @@ describe("in-memory connector host", () => {
       },
     })
 
-    expect(run.status).toBe("success")
+    expect(run.status).toBe("completed")
     expect(run.stats.observations).toBe(1)
     expect(run.coverage).toEqual({
       start: "2026-07-01T00:00:00.000Z",
@@ -261,6 +262,63 @@ describe("in-memory connector host", () => {
         },
       }),
     ])
+  })
+
+  it("records partial-success connector results with retry hints", async () => {
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.partial-jobs",
+        version: "0.0.0-fixture",
+      },
+      async refresh(input): Promise<ConnectorRefreshResult> {
+        return {
+          status: "partial_success",
+          observations: [],
+          nextCheckpoint: {
+            checkpoint: {
+              cursor: "partial-cursor",
+            },
+            schemaVersion: "fixture-checkpoint@1",
+          },
+          coverage: input.coverage,
+          stats: {
+            observations: 0,
+          },
+          warnings: [],
+          retryHints: {
+            reason: "budget_exhausted",
+          },
+        }
+      },
+    }
+    const host = createInMemoryConnectorHost()
+
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_partial",
+      workspaceId: "workspace_alpha",
+      displayName: "Partial jobs",
+      enabled: true,
+      createdAt: "2026-07-08T15:00:00.000Z",
+    })
+
+    const run = await host.refresh(connector, {
+      connectorInstanceId: "instance_partial",
+      workspaceId: "workspace_alpha",
+      mode: "catch_up",
+      coverage: {
+        start: "2026-07-08T15:00:00.000Z",
+        end: "2026-07-08T16:00:00.000Z",
+      },
+    })
+
+    expect(run).toMatchObject({
+      status: "partial_success",
+      retryHints: {
+        reason: "budget_exhausted",
+      },
+    })
   })
 
   it("keeps host-owned config and filter snapshots stable when a connector mutates input", async () => {

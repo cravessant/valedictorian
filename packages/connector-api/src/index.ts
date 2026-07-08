@@ -44,6 +44,7 @@ export type ConnectorPolitenessDefaults = {
   minDelayMs?: number
   maxDelayMs?: number
   maxRequestsPerRun?: number
+  maxBackfillDays?: number
 }
 
 export type ConnectorCoverageWindow = {
@@ -122,12 +123,15 @@ export type ConnectorRefreshWarning = {
   message: string
 }
 
+export type ConnectorRefreshStatus = "completed" | "partial_success"
+
 export type ConnectorRefreshResult = {
   observations: JobObservation[]
   nextCheckpoint: ConnectorCheckpointPayload
   coverage: ConnectorCoverageWindow
   stats: ConnectorRefreshStats
   warnings: ConnectorRefreshWarning[]
+  status?: ConnectorRefreshStatus
   retryHints?: unknown
 }
 

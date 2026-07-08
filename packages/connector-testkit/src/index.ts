@@ -1,6 +1,7 @@
 import type {
   ConnectorCoverageWindow,
   ConnectorDefinition,
+  ConnectorRefreshStatus,
   ConnectorRefreshInput,
   ConnectorRefreshMode,
   ConnectorRefreshResult,
@@ -64,6 +65,7 @@ export function createFixtureConnector(
       minDelayMs: 0,
       maxDelayMs: 0,
       maxRequestsPerRun: 1,
+      maxBackfillDays: 7,
     },
   }
 
@@ -144,7 +146,7 @@ export type ConnectorRunRecord = {
   connectorInstanceId: string
   workspaceId: string
   mode: ConnectorRefreshMode
-  status: "success" | "failed"
+  status: ConnectorRefreshStatus | "failed"
   coverage: ConnectorCoverageWindow
   config: unknown
   filters: unknown
@@ -153,6 +155,7 @@ export type ConnectorRunRecord = {
     observations: number
   }
   warnings: ConnectorRefreshResult["warnings"]
+  retryHints: unknown
 }
 
 export type ConnectorCheckpointRecord = {
@@ -242,13 +245,14 @@ export function createInMemoryConnectorHost(): InMemoryConnectorHost {
         connectorInstanceId: request.connectorInstanceId,
         workspaceId: request.workspaceId,
         mode: request.mode,
-        status: "success",
+        status: result.status ?? "completed",
         coverage: result.coverage,
         config: runConfig,
         filters: runFilters,
         filterSignature,
         stats: result.stats,
         warnings: result.warnings,
+        retryHints: result.retryHints ?? null,
       }
       runs.push(run)
 
