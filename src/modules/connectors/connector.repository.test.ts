@@ -247,6 +247,52 @@ describe('SQLite connector repository', () => {
       checkpoint: { cursor: 'new-grad-cursor' },
     })
   })
+
+  it('persists partial-success connector runs with retry hints', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await repository.upsertInstance({
+      id: 'connector-instance-partial',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Partial fixture jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    const run = await repository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-partial',
+      mode: 'catch_up',
+      startedAt: '2026-07-08T16:00:00.000Z',
+      completedAt: '2026-07-08T16:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      result: {
+        ...emptyConnectorRefreshResult({
+          checkpoint: { cursor: 'partial-cursor' },
+          coverage: {
+            start: '2026-07-08T15:00:00.000Z',
+            end: '2026-07-08T15:05:00.000Z',
+          },
+        }),
+        status: 'partial_success',
+        retryHints: {
+          reason: 'budget_exhausted',
+        },
+      },
+    })
+
+    expect(run).toMatchObject({
+      status: 'partial_success',
+      retryHints: {
+        reason: 'budget_exhausted',
+      },
+    })
+  })
 })
 
 function emptyConnectorRefreshResult({

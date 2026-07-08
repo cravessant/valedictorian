@@ -26,6 +26,8 @@ export interface ConnectorCheckpointPayload {
   schemaVersion: string
 }
 
+export type ConnectorRunStatus = 'completed' | 'partial_success'
+
 export interface ConnectorObservationLinks {
   source: string | null
   intermediary: string | null
@@ -67,6 +69,7 @@ export interface ConnectorRefreshResultInput {
   coverage: ConnectorCoverageWindow
   stats: JsonRecord & { observations: number }
   warnings: ConnectorWarning[]
+  status?: ConnectorRunStatus
   retryHints?: unknown
 }
 
@@ -244,7 +247,7 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
             id: runId,
             connectorInstanceId: input.connectorInstanceId,
             mode: input.mode,
-            status: 'completed',
+            status: input.result.status ?? 'completed',
             startedAt: input.startedAt,
             completedAt: input.completedAt,
             coverageStartedAt: input.result.coverage.start,
