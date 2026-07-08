@@ -15,6 +15,7 @@ import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import {
   createLocalValedictorianClient,
+  type LocalValedictorianClient,
   type ValedictorianSeedDataMode,
   type LocalValedictorianClientOptions,
 } from './local-valedictorian-client'
@@ -43,6 +44,7 @@ export interface ValedictorianRuntimeConfig {
 
 export interface ValedictorianRuntime {
   client: ValedictorianWorkspaceClient
+  connectors: LocalValedictorianClient['connectors'] | null
   close: () => Promise<void>
   server: Pick<StartedValedictorianHttpServer, 'close' | 'url'> | null
 }
@@ -50,7 +52,7 @@ export interface ValedictorianRuntime {
 export interface CreateValedictorianRuntimeOptions {
   config: ValedictorianRuntimeConfig
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
-  createLocalClient?: (options: LocalValedictorianClientOptions) => ValedictorianWorkspaceClient
+  createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
   startServer?: (
     options: CreateValedictorianHttpServerOptions,
   ) => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>
@@ -102,6 +104,7 @@ export async function createValedictorianRuntime({
         baseUrl: config.apiUrl,
         token: config.apiToken,
       }).forWorkspace(config.workspaceId),
+      connectors: null,
       close: async () => undefined,
       server: null,
     }
@@ -127,6 +130,7 @@ export async function createValedictorianRuntime({
 
   return {
     client,
+    connectors: client.connectors,
     close: () => server.close(),
     server,
   }

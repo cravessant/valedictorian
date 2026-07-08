@@ -16,6 +16,12 @@ import { ApplicationDetailModal } from './modules/applications/ApplicationDetail
 import { ApplicationEditorModal } from './modules/applications/ApplicationEditorModal'
 import { ProfileSettingsPanel } from './modules/profile/ProfileSettingsPanel'
 import { ActionQueuePage } from './modules/action-queue/ActionQueuePage'
+import { ConnectorStatusPage } from './modules/connectors/ConnectorStatusPage'
+import type {
+  ConnectorStatusAction,
+  ConnectorStatusListResult,
+  ConnectorStatusView,
+} from './modules/connectors/connector.status'
 import { SourcingPage } from './modules/sourcing/SourcingPage'
 import { AppSidebar, AppTopbar } from './app/AppChrome'
 import { formatEnumLabel } from './app/labels'
@@ -83,6 +89,7 @@ import {
   defaultProfileApi,
   defaultPromoteSourcingFinding,
   defaultActionQueueLoader,
+  defaultConnectorStatusLoader,
   defaultScoreRecorder,
   defaultSettingsApi,
   defaultUpdatesApi,
@@ -94,6 +101,7 @@ import {
   emptyAttemptResult,
   emptyApplicationResult,
   emptyActionQueueResult,
+  emptyConnectorStatusResult,
   emptySourcingResult,
 } from './app/loaders'
 import { buildApplicationListQuery, buildActionQueueListQuery, buildSourcingFindingsListQuery } from './app/query'
@@ -114,6 +122,10 @@ import type { WorkspaceSummary } from './workspace/workspace.initializer'
 const narrowSidebarMediaQuery = '(max-width: 767px)'
 const DATA_AUTO_REFRESH_INTERVAL_MS = 15_000
 const filterControlClassName = 'h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground'
+const initialConnectorStatusResult: ConnectorStatusListResult = {
+  available: true,
+  items: [],
+}
 
 function getMediaQueryMatches(query: string) {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -161,6 +173,7 @@ interface AppProps {
   attemptLoader?: (applicationId: string) => Promise<ApplicationAttemptsListResult>
   createSourcingFinding?: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
   actionQueueLoader?: (query: ActionQueueListQuery) => Promise<ActionQueueListResult>
+  connectorStatusLoader?: () => Promise<ConnectorStatusListResult>
   scoreRecorder?: (input: ScoreInput) => Promise<ScoreRecord>
   sourcingLoader?: (input: SourcingFindingsListInput) => Promise<SourcingFindingsListResult>
   promoteSourcingFinding?: (input: PromoteSourcingFindingInput) => Promise<SourcingFinding>
@@ -188,6 +201,7 @@ function App({
   attemptLoader = defaultAttemptLoader,
   createSourcingFinding = defaultCreateSourcingFinding,
   actionQueueLoader = defaultActionQueueLoader,
+  connectorStatusLoader = defaultConnectorStatusLoader,
   scoreRecorder = defaultScoreRecorder,
   sourcingLoader = defaultSourcingLoader,
   promoteSourcingFinding = defaultPromoteSourcingFinding,
@@ -226,6 +240,11 @@ function App({
   const [isActionQueueLoading, setIsActionQueueLoading] = useState(false)
   const [hasLoadedActionQueue, setHasLoadedActionQueue] = useState(false)
   const [actionQueueError, setActionQueueError] = useState<string | null>(null)
+  const [connectorStatusReloadKey, setConnectorStatusReloadKey] = useState(0)
+  const [connectorStatusResult, setConnectorStatusResult] = useState<ConnectorStatusListResult>(initialConnectorStatusResult)
+  const [isConnectorStatusLoading, setIsConnectorStatusLoading] = useState(false)
+  const [hasLoadedConnectorStatus, setHasLoadedConnectorStatus] = useState(false)
+  const [connectorStatusError, setConnectorStatusError] = useState<string | null>(null)
   const [sourcingMergeStatus, setSourcingMergeStatus] = useState<SourcingMergeStatus | undefined>(undefined)
   const [sourcingSourceId, setSourcingSourceId] = useState('')
   const [sourcingOffset, setSourcingOffset] = useState(0)
@@ -269,9 +288,11 @@ function App({
       ? hasLoadedApplications && !isLoading
       : appView === APP_VIEWS.ACTION_QUEUE
         ? hasLoadedActionQueue && !isActionQueueLoading
-        : appView === APP_VIEWS.SOURCING
-          ? hasLoadedSourcing && !isSourcingLoading
-          : false
+        : appView === APP_VIEWS.CONNECTORS
+          ? hasLoadedConnectorStatus && !isConnectorStatusLoading
+          : appView === APP_VIEWS.SOURCING
+            ? hasLoadedSourcing && !isSourcingLoading
+            : false
 
   useEffect(() => {
     let isMounted = true
@@ -382,6 +403,39 @@ function App({
   }, [appView, actionQueueLoader, actionQueueQuery, actionQueueReloadKey])
 
   useEffect(() => {
+    if (appView !== APP_VIEWS.CONNECTORS) {
+      return undefined
+    }
+
+    let isMounted = true
+
+    setIsConnectorStatusLoading(true)
+    connectorStatusLoader()
+      .then((nextResult) => {
+        if (isMounted) {
+          setConnectorStatusResult(nextResult)
+          setHasLoadedConnectorStatus(true)
+          setConnectorStatusError(null)
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setConnectorStatusResult(emptyConnectorStatusResult)
+          setConnectorStatusError('Connector status could not be loaded.')
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsConnectorStatusLoading(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [appView, connectorStatusLoader, connectorStatusReloadKey])
+
+  useEffect(() => {
     if (appView !== APP_VIEWS.SOURCING) {
       return undefined
     }
@@ -443,6 +497,8 @@ function App({
         setApplicationReloadKey((current) => current + 1)
       } else if (appView === APP_VIEWS.ACTION_QUEUE) {
         setActionQueueReloadKey((current) => current + 1)
+      } else if (appView === APP_VIEWS.CONNECTORS) {
+        setConnectorStatusReloadKey((current) => current + 1)
       } else if (appView === APP_VIEWS.SOURCING) {
         setSourcingReloadKey((current) => current + 1)
       }
@@ -669,6 +725,20 @@ function App({
     setSourcingReloadKey((current) => current + 1)
   }
 
+  function handleConnectorStatusAction(
+    connector: ConnectorStatusView,
+    action: ConnectorStatusAction,
+  ) {
+    toast({
+      description: action.id === 'reconnect'
+        ? 'Connector auth recovery is ready for the local auth flow.'
+        : 'Connector refresh will wait for a later run.',
+      title: action.id === 'reconnect'
+        ? `Reconnect ${connector.displayName}`
+        : `Skip ${connector.displayName}`,
+    })
+  }
+
   function promoteFinding(findingId: string) {
     setPromotingFindingId(findingId)
     setSourcingError(null)
@@ -771,9 +841,11 @@ function App({
         ? 'Profile'
         : appView === APP_VIEWS.ACTION_QUEUE
           ? 'Action Queue'
-          : appView === APP_VIEWS.SOURCING
-            ? 'Sourcing'
-            : 'Applications'
+          : appView === APP_VIEWS.CONNECTORS
+            ? 'Connectors'
+            : appView === APP_VIEWS.SOURCING
+              ? 'Sourcing'
+              : 'Applications'
   const contentColumnClass = settings.sidebarCollapsed ? 'md:col-start-2' : ''
   const sidebarToggleCollapsed = isNarrowViewport ? !narrowSidebarOpen : settings.sidebarCollapsed
   const temporaryDesktopSidebar = !isNarrowViewport && desktopSidebarState === 'hover'
@@ -923,6 +995,14 @@ function App({
             onNextPage={() => setActionQueueOffset(actionQueueOffset + PAGE_LIMIT)}
             onOpenApplication={openApplicationDetail}
             onPreviousPage={() => setActionQueueOffset(Math.max(0, actionQueueOffset - PAGE_LIMIT))}
+          />
+        ) : appView === APP_VIEWS.CONNECTORS ? (
+          <ConnectorStatusPage
+            contentColumnClass={contentColumnClass}
+            error={connectorStatusError}
+            isLoading={isConnectorStatusLoading && !hasLoadedConnectorStatus}
+            result={connectorStatusResult}
+            onAction={handleConnectorStatusAction}
           />
         ) : appView === APP_VIEWS.SOURCING ? (
           <SourcingPage

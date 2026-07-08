@@ -1,0 +1,273 @@
+import type {
+  ConnectorStatusSummaryRecord,
+  ConnectorWarning,
+} from './connector.repository'
+
+export type ConnectorStatusSeverity = 'healthy' | 'warning' | 'blocked'
+
+export type ConnectorStatusState =
+  | 'auth_required'
+  | 'blocked'
+  | 'healthy'
+  | 'never_run'
+  | 'no_jobs'
+  | 'partial_success'
+
+export interface ConnectorStatusAction {
+  id: 'reconnect' | 'skip'
+  label: string
+}
+
+export interface ConnectorStatusWarningView {
+  code: string
+  label: string
+  message: string
+  severity: ConnectorStatusSeverity
+}
+
+export interface ConnectorStatusView {
+  id: string
+  connectorId: string
+  displayName: string
+  enabled: boolean
+  lastRunAt: string | null
+  latestRunId: string | null
+  observationCount: number
+  severity: ConnectorStatusSeverity
+  status: ConnectorStatusState
+  statusLabel: string
+  summary: string
+  warningCount: number
+  warnings: ConnectorStatusWarningView[]
+  actionLabel: string | null
+  actions: ConnectorStatusAction[]
+}
+
+export interface ConnectorStatusListResult {
+  available: boolean
+  items: ConnectorStatusView[]
+}
+
+type ConnectorStatusStateView = Pick<
+  ConnectorStatusView,
+  'actionLabel' | 'actions' | 'severity' | 'status' | 'statusLabel' | 'summary'
+>
+
+export function mapConnectorStatusSummaries(
+  records: ConnectorStatusSummaryRecord[],
+): ConnectorStatusListResult {
+  return {
+    available: true,
+    items: records.map(mapConnectorStatusSummary),
+  }
+}
+
+export function mapConnectorStatusSummary(
+  record: ConnectorStatusSummaryRecord,
+): ConnectorStatusView {
+  const latestRun = record.latestRun
+
+  if (!latestRun) {
+    return {
+      id: record.id,
+      connectorId: record.connectorId,
+      displayName: record.displayName,
+      enabled: record.enabled,
+      lastRunAt: null,
+      latestRunId: null,
+      observationCount: 0,
+      severity: 'warning',
+      status: 'never_run',
+      statusLabel: 'Never run',
+      summary: 'Connector is enabled but has not run yet.',
+      warningCount: 0,
+      warnings: [],
+      actionLabel: null,
+      actions: [],
+    }
+  }
+
+  const rawWarnings = readWarnings(latestRun.warnings)
+  const retryReason = readRetryReason(latestRun.retryHints)
+  const warnings = rawWarnings.map(mapConnectorWarning)
+  const hasAuthBlocker =
+    rawWarnings.some((warning) => isAuthWarningCode(warning.code)) ||
+    isAuthRetryReason(retryReason)
+  const hasBlockedWarning = warnings.some((warning) => warning.severity === 'blocked')
+  const isPartialSuccess = latestRun.status === 'partial_success'
+  const noJobs = latestRun.observationCount === 0
+  const state: ConnectorStatusStateView = hasAuthBlocker
+    ? {
+        actionLabel: 'Reconnect',
+        actions: [
+          { id: 'reconnect', label: 'Reconnect' },
+          { id: 'skip', label: 'Skip this run' },
+        ],
+        severity: 'blocked',
+        status: 'auth_required',
+        statusLabel: 'Auth required',
+        summary: 'Reconnect the connector session to continue refreshes.',
+      }
+    : hasBlockedWarning
+      ? {
+          actionLabel: null,
+          actions: [],
+          severity: 'blocked',
+          status: 'blocked',
+          statusLabel: 'Blocked',
+          summary: 'Latest run is blocked and needs review.',
+        }
+      : isPartialSuccess
+        ? {
+            actionLabel: null,
+            actions: [],
+            severity: 'warning',
+            status: 'partial_success',
+            statusLabel: 'Partial success',
+            summary: 'Latest run completed with warnings.',
+          }
+        : noJobs
+          ? {
+              actionLabel: null,
+              actions: [],
+              severity: 'healthy',
+              status: 'no_jobs',
+              statusLabel: 'No jobs',
+              summary: 'Latest run completed with no matching jobs.',
+            }
+          : {
+              actionLabel: null,
+              actions: [],
+              severity: 'healthy',
+              status: 'healthy',
+              statusLabel: 'Healthy',
+              summary: 'Latest run completed successfully.',
+            }
+
+  return {
+    id: record.id,
+    connectorId: record.connectorId,
+    displayName: record.displayName,
+    enabled: record.enabled,
+    lastRunAt: latestRun.completedAt ?? latestRun.startedAt,
+    latestRunId: latestRun.id,
+    observationCount: latestRun.observationCount,
+    warningCount: latestRun.warningCount,
+    warnings,
+    ...state,
+  }
+}
+
+function readWarnings(value: unknown): ConnectorWarning[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return []
+    }
+
+    const record = item as Record<string, unknown>
+
+    if (typeof record.code !== 'string' || typeof record.message !== 'string') {
+      return []
+    }
+
+    return [
+      {
+        code: record.code,
+        message: record.message,
+      },
+    ]
+  })
+}
+
+function mapConnectorWarning(warning: ConnectorWarning): ConnectorStatusWarningView {
+  const safeWarning = safeWarningForCode(warning.code)
+
+  return {
+    code: safeWarning.code,
+    label: safeWarning.label,
+    message: safeWarning.message,
+    severity: safeWarning.severity,
+  }
+}
+
+function safeWarningForCode(code: string): ConnectorStatusWarningView {
+  const warnings: Record<string, ConnectorStatusWarningView> = {
+    'auth.expired_session': {
+      code: 'auth.expired_session',
+      label: 'Expired session',
+      message: 'Connector auth expired.',
+      severity: 'blocked',
+    },
+    'auth.required': {
+      code: 'auth.required',
+      label: 'Auth required',
+      message: 'Connector auth needs attention.',
+      severity: 'blocked',
+    },
+    'source.rate_limited': {
+      code: 'source.rate_limited',
+      label: 'Rate limited',
+      message: 'Connector source rate-limited the latest run.',
+      severity: 'warning',
+    },
+    'source.captcha': {
+      code: 'source.captcha',
+      label: 'Captcha required',
+      message: 'Connector source requires manual verification.',
+      severity: 'blocked',
+    },
+    'parser.changed': {
+      code: 'parser.changed',
+      label: 'Parser changed',
+      message: 'Connector parser may need review.',
+      severity: 'warning',
+    },
+    'result.no_jobs': {
+      code: 'result.no_jobs',
+      label: 'No jobs',
+      message: 'Connector found no matching jobs.',
+      severity: 'warning',
+    },
+  }
+
+  if (warnings[code]) {
+    return warnings[code]
+  }
+
+  if (isAuthWarningCode(code)) {
+    return warnings['auth.required']
+  }
+
+  return {
+    code: 'connector.warning',
+    label: 'Connector warning',
+    message: 'Connector reported a warning.',
+    severity: 'warning',
+  }
+}
+
+function readRetryReason(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const reason = (value as Record<string, unknown>).reason
+
+  return typeof reason === 'string' ? reason : null
+}
+
+function isAuthWarningCode(code: string): boolean {
+  return code.startsWith('auth.')
+}
+
+function isAuthRetryReason(reason: string | null): boolean {
+  return reason === 'auth_required' ||
+    reason === 'auth_reference_missing' ||
+    reason === 'browser_session_action_required' ||
+    reason === 'secret_missing' ||
+    reason === 'secret_reference_missing'
+}

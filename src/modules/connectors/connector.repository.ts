@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import {
   connectorCheckpoints,
   connectorInstances,
@@ -166,6 +166,10 @@ export interface ConnectorObservationRecord extends ConnectorObservationInput {
   sourcingFindingId: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface ConnectorStatusSummaryRecord extends ConnectorInstanceRecord {
+  latestRun: ConnectorRunRecord | null
 }
 
 export interface ConnectorProjectionKeyRecord {
@@ -383,6 +387,34 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
         .get()
 
       return row ? mapConnectorInstance(row) : null
+    },
+
+    async listStatusSummaries(): Promise<ConnectorStatusSummaryRecord[]> {
+      return database
+        .select()
+        .from(connectorInstances)
+        .where(and(eq(connectorInstances.enabled, true), isNull(connectorInstances.deletedAt)))
+        .orderBy(asc(connectorInstances.displayName), asc(connectorInstances.createdAt))
+        .all()
+        .map((row) => {
+          const latestRun = database
+            .select()
+            .from(connectorRuns)
+            .where(
+              and(
+                eq(connectorRuns.connectorInstanceId, row.id),
+                isNull(connectorRuns.deletedAt),
+              ),
+            )
+            .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
+            .limit(1)
+            .get()
+
+          return {
+            ...mapConnectorInstance(row),
+            latestRun: latestRun ? mapConnectorRun(latestRun) : null,
+          }
+        })
     },
 
     async getCheckpoint(

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
-import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
+import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
 import { APP_VIEWS, type MainAppView } from './types'
@@ -203,6 +203,14 @@ function AppSidebar({
         >
           <Search className="h-4 w-4" aria-hidden="true" />
           Sourcing
+        </button>
+        <button
+          type="button"
+          className={applicationNavClass(currentView === APP_VIEWS.CONNECTORS)}
+          onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
+        >
+          <Plug className="h-4 w-4" aria-hidden="true" />
+          Connectors
         </button>
       </nav>
 

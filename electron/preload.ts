@@ -3,6 +3,7 @@ import { createApplicationsPreloadApi } from '../src/ipc/applications.preload'
 import { createPolicyPreloadApi } from '../src/ipc/policy.preload'
 import { createProfilePreloadApi } from '../src/ipc/profile.preload'
 import { createActionQueuePreloadApi } from '../src/ipc/action-queue.preload'
+import { createConnectorsPreloadApi } from '../src/ipc/connectors.preload'
 import { createScoresPreloadApi } from '../src/ipc/scores.preload'
 import { createSettingsPreloadApi } from '../src/ipc/settings.preload'
 import { createSourcingPreloadApi } from '../src/ipc/sourcing.preload'
@@ -21,6 +22,7 @@ contextBridge.exposeInMainWorld('applications', createApplicationsPreloadApi(ipc
 contextBridge.exposeInMainWorld('policy', createPolicyPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('profile', createProfilePreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('actionQueue', createActionQueuePreloadApi(ipcRenderer))
+contextBridge.exposeInMainWorld('connectors', createConnectorsPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('scores', createScoresPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('settings', createSettingsPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('sourcing', createSourcingPreloadApi(ipcRenderer))

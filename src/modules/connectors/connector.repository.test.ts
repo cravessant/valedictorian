@@ -346,6 +346,120 @@ describe('SQLite connector repository', () => {
       },
     })
   })
+
+  it('lists enabled connector instances with their latest run status', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await repository.upsertInstance({
+      id: 'connector-instance-internlist',
+      connectorId: 'internlist.jobs',
+      connectorVersion: '0.1.0',
+      displayName: 'InternList',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+    await repository.upsertInstance({
+      id: 'connector-instance-disabled',
+      connectorId: 'disabled.jobs',
+      connectorVersion: '0.1.0',
+      displayName: 'Disabled connector',
+      enabled: false,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await repository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-internlist',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:00.000Z',
+      completedAt: '2026-07-08T16:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      result: emptyConnectorRefreshResult({
+        checkpoint: { cursor: 'older-cursor' },
+        coverage: {
+          start: '2026-07-08T15:00:00.000Z',
+          end: '2026-07-08T16:00:00.000Z',
+        },
+      }),
+    })
+    await repository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-internlist',
+      mode: 'catch_up',
+      startedAt: '2026-07-08T17:00:00.000Z',
+      completedAt: '2026-07-08T17:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      result: {
+        ...emptyConnectorRefreshResult({
+          checkpoint: { cursor: 'latest-cursor' },
+          coverage: {
+            start: '2026-07-08T16:00:00.000Z',
+            end: '2026-07-08T17:00:00.000Z',
+          },
+        }),
+        status: 'partial_success',
+        warnings: [
+          {
+            code: 'auth.expired_session',
+            message: 'Jobright session expired.',
+          },
+        ],
+        retryHints: {
+          reason: 'auth_required',
+        },
+      },
+    })
+    await repository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-disabled',
+      mode: 'manual',
+      startedAt: '2026-07-08T18:00:00.000Z',
+      completedAt: '2026-07-08T18:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      result: emptyConnectorRefreshResult({
+        checkpoint: { cursor: 'disabled-cursor' },
+        coverage: {
+          start: '2026-07-08T17:00:00.000Z',
+          end: '2026-07-08T18:00:00.000Z',
+        },
+      }),
+    })
+
+    await expect(repository.listStatusSummaries()).resolves.toMatchObject([
+      {
+        connectorId: 'internlist.jobs',
+        connectorVersion: '0.1.0',
+        displayName: 'InternList',
+        enabled: true,
+        id: 'connector-instance-internlist',
+        latestRun: expect.objectContaining({
+          completedAt: '2026-07-08T17:00:01.000Z',
+          coverageEndedAt: '2026-07-08T17:00:00.000Z',
+          coverageStartedAt: '2026-07-08T16:00:00.000Z',
+          mode: 'catch_up',
+          observationCount: 0,
+          retryHints: {
+            reason: 'auth_required',
+          },
+          startedAt: '2026-07-08T17:00:00.000Z',
+          status: 'partial_success',
+          warningCount: 1,
+          warnings: [
+            {
+              code: 'auth.expired_session',
+              message: 'Jobright session expired.',
+            },
+          ],
+        }),
+      },
+    ])
+  })
 })
 
 function emptyConnectorRefreshResult({

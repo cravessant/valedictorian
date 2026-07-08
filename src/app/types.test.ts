@@ -8,6 +8,7 @@ describe('app navigation type constants', () => {
       APPLICATIONS: 'applications',
       PROFILE: 'profile',
       ACTION_QUEUE: 'action-queue',
+      CONNECTORS: 'connectors',
       SETTINGS: 'settings',
       SOURCING: 'sourcing',
     })

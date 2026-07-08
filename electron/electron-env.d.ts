@@ -26,6 +26,7 @@ interface Window {
   applications: import('../src/ipc/applications.preload').ApplicationsPreloadApi
   profile: import('../src/ipc/profile.preload').ProfilePreloadApi
   actionQueue: import('../src/ipc/action-queue.preload').ActionQueuePreloadApi
+  connectors: import('../src/ipc/connectors.preload').ConnectorsPreloadApi
   scores: import('../src/ipc/scores.preload').ScoresPreloadApi
   settings: import('../src/ipc/settings.preload').SettingsPreloadApi
   sourcing: import('../src/ipc/sourcing.preload').SourcingPreloadApi

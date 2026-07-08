@@ -9,6 +9,11 @@ import {
 } from '../modules/applications/application.fixtures'
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
 import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
+import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  mapConnectorStatusSummaries,
+  type ConnectorStatusListResult,
+} from '../modules/connectors/connector.status'
 import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
 import { createSqliteProfileRepository, type ProfileSecretCodec } from '../modules/profile/profile.repository'
 import { createSqliteScoringRepository } from '../modules/scoring/scoring.repository'
@@ -25,6 +30,14 @@ export interface LocalValedictorianClientOptions {
 
 export type ValedictorianSeedDataMode = 'none' | 'sample' | 'reference-tracker'
 
+export type LocalValedictorianClient = ValedictorianWorkspaceClient & {
+  connectors: {
+    status: {
+      list(): Promise<ConnectorStatusListResult>
+    }
+  }
+}
+
 const unavailableSecretCodec: ProfileSecretCodec = {
   decrypt() {
     throw new Error('Profile secrets are only available through local profile IPC')
@@ -39,7 +52,7 @@ export function createLocalValedictorianClient({
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
   sqlitePath,
-}: LocalValedictorianClientOptions): ValedictorianWorkspaceClient {
+}: LocalValedictorianClientOptions): LocalValedictorianClient {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
 
   const sqlite = createFileDatabase(sqlitePath)
@@ -54,6 +67,7 @@ export function createLocalValedictorianClient({
   const scoringRepository = createSqliteScoringRepository(database)
   const profileRepository = createSqliteProfileRepository(database, secretCodec)
   const actionQueueRepository = createSqliteActionQueueRepository(database)
+  const connectorRepository = createSqliteConnectorRepository(database)
   const policyRepository = createSqlitePolicyRepository(database)
   const workflowRunRepository = createSqliteWorkflowRunRepository(database)
   const sourcingProcessor = createSqliteSourcingProcessor(database)
@@ -93,6 +107,13 @@ export function createLocalValedictorianClient({
     },
     actionQueue: {
       list: (query) => actionQueueRepository.listActionQueue(query),
+    },
+    connectors: {
+      status: {
+        list: async () => mapConnectorStatusSummaries(
+          await connectorRepository.listStatusSummaries(),
+        ),
+      },
     },
     policy: {
       config: {

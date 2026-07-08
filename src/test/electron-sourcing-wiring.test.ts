@@ -30,6 +30,20 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("sourcing: import('../src/ipc/sourcing.preload').SourcingPreloadApi")
   })
 
+  it('exposes connector status preload APIs and registers connector IPC handlers', () => {
+    const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const envSource = fs.readFileSync(path.resolve('electron/electron-env.d.ts'), 'utf8')
+
+    expect(preloadSource).toContain('createConnectorsPreloadApi')
+    expect(preloadSource).toContain(
+      "contextBridge.exposeInMainWorld('connectors', createConnectorsPreloadApi(ipcRenderer))",
+    )
+    expect(mainSource).toContain('registerConnectorsIpc(runtime.connectors, ipcMain)')
+    expect(mainSource).toContain("'connectors:status:list'")
+    expect(envSource).toContain("connectors: import('../src/ipc/connectors.preload').ConnectorsPreloadApi")
+  })
+
   it('exposes workspace preload APIs and registers workspace IPC handlers', () => {
     const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')

@@ -5,6 +5,7 @@ import type { UpdatesPreloadApi, UpdateState } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
+import type { ConnectorStatusListResult, ConnectorStatusView } from './modules/connectors/connector.status'
 import type { WorkspaceSummary } from './workspace/workspace.initializer'
 import type {
   ApplicationAttempt,
@@ -246,6 +247,54 @@ export function createActionQueueResult(items: ActionQueueListItem[]): ActionQue
       blocked: items.filter((item) => item.actionBucket === 'blocked').length,
       skip_below_cutoff: items.filter((item) => item.actionBucket === 'skip_below_cutoff').length,
     },
+  }
+}
+
+export function createConnectorStatusView(
+  overrides: Partial<ConnectorStatusView> = {},
+): ConnectorStatusView {
+  return {
+    actionLabel: 'Reconnect',
+    actions: [
+      {
+        id: 'reconnect',
+        label: 'Reconnect',
+      },
+      {
+        id: 'skip',
+        label: 'Skip this run',
+      },
+    ],
+    connectorId: 'internlist.jobs',
+    displayName: 'InternList',
+    enabled: true,
+    id: 'connector-instance-internlist',
+    lastRunAt: '2026-07-08T17:00:01.000Z',
+    latestRunId: 'connector-run-1',
+    observationCount: 0,
+    severity: 'blocked',
+    status: 'auth_required',
+    statusLabel: 'Auth required',
+    summary: 'Reconnect the connector session to continue refreshes.',
+    warningCount: 1,
+    warnings: [
+      {
+        code: 'auth.expired_session',
+        label: 'Expired session',
+        message: 'Expired browser [redacted].',
+        severity: 'blocked',
+      },
+    ],
+    ...overrides,
+  }
+}
+
+export function createConnectorStatusResult(
+  items: ConnectorStatusView[] = [createConnectorStatusView()],
+): ConnectorStatusListResult {
+  return {
+    available: true,
+    items,
   }
 }
 

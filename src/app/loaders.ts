@@ -1,4 +1,5 @@
 import type { ApplicationsPreloadApi } from '../ipc/applications.preload'
+import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import type { ActionQueuePreloadApi } from '../ipc/action-queue.preload'
@@ -8,6 +9,7 @@ import type { SourcingPreloadApi } from '../ipc/sourcing.preload'
 import type { UpdatesPreloadApi } from '../ipc/updates.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { ProfileSensitiveDetails } from '../modules/profile/profile.repository'
+import type { ConnectorStatusListResult } from '../modules/connectors/connector.status'
 import type {
   ApplicationAttemptsListResult,
   ApplicationDetail,
@@ -83,6 +85,11 @@ export const emptyAttemptResult: ApplicationAttemptsListResult = {
   limit: PAGE_LIMIT,
   offset: 0,
   hasMore: false,
+}
+
+export const emptyConnectorStatusResult: ConnectorStatusListResult = {
+  available: false,
+  items: [],
 }
 
 export const emptyApplicationLinksResult: ApplicationLinksListResult = {
@@ -302,6 +309,12 @@ export const defaultSourcingLoader = (query: SourcingFindingsListInput) => {
   }
 
   return sourcingWindow.sourcing?.findings?.list(query) ?? Promise.resolve(emptySourcingResult)
+}
+
+export const defaultConnectorStatusLoader = () => {
+  const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+
+  return connectorsWindow.connectors?.status.list() ?? Promise.resolve(emptyConnectorStatusResult)
 }
 
 export const defaultPromoteSourcingFinding = (input: PromoteSourcingFindingInput) => {

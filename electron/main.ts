@@ -8,6 +8,7 @@ import { registerApplicationIpc } from '../src/ipc/applications.ipc'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
 import { registerProfileIpc } from '../src/ipc/profile.ipc'
 import { registerActionQueueIpc } from '../src/ipc/action-queue.ipc'
+import { registerConnectorsIpc } from '../src/ipc/connectors.ipc'
 import { registerScoresIpc } from '../src/ipc/scores.ipc'
 import { registerSettingsIpc } from '../src/ipc/settings.ipc'
 import { registerSourcingIpc } from '../src/ipc/sourcing.ipc'
@@ -100,6 +101,7 @@ const runtimeIpcChannels = [
   'applications:links:create',
   'applications:links:update',
   'applications:attempts:list',
+  'connectors:status:list',
   'policy:config:get',
   'policy:config:update',
   'policy:config:reset',
@@ -219,6 +221,7 @@ async function registerRuntimeServices(
   registerPolicyIpc(runtime.client, ipcMain)
   registerProfileIpc(profileRepository, ipcMain)
   registerActionQueueIpc(runtime.client, ipcMain)
+  registerConnectorsIpc(runtime.connectors, ipcMain)
   registerScoresIpc(runtime.client, ipcMain)
   registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain)

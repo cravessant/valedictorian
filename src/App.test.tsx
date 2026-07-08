@@ -21,6 +21,7 @@ import {
   createListResult,
   createActionQueueItem,
   createActionQueueResult,
+  createConnectorStatusResult,
   createSettingsApi,
   createSourcingFinding,
   createSourcingResult,
@@ -709,6 +710,58 @@ describe('App', () => {
         offset: 0,
       })
     })
+  })
+
+  it('renders connector status from the configured loader', async () => {
+    const connectorStatusLoader = vi.fn(async () => createConnectorStatusResult())
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorStatusLoader={connectorStatusLoader}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
+
+    const table = await screen.findByRole('table', { name: 'Connector status' })
+
+    expect(screen.getByRole('heading', { name: 'Connectors' })).toBeInTheDocument()
+    expect(within(table).getByText('InternList')).toBeInTheDocument()
+    expect(within(table).getByText('Auth required')).toBeInTheDocument()
+    expect(within(table).getByRole('button', { name: 'Reconnect InternList' })).toBeInTheDocument()
+    expect(connectorStatusLoader).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps connector status in loading state while the loader is pending', async () => {
+    let resolveConnectorStatus!: (result: ReturnType<typeof createConnectorStatusResult>) => void
+    const connectorStatusLoader = vi.fn(
+      () => new Promise<ReturnType<typeof createConnectorStatusResult>>((resolve) => {
+        resolveConnectorStatus = resolve
+      }),
+    )
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorStatusLoader={connectorStatusLoader}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
+
+    expect(screen.getByRole('status', { name: 'Connector status loading' })).toBeInTheDocument()
+    expect(screen.queryByText('Connector status is unavailable for this runtime.')).not.toBeInTheDocument()
+
+    await act(async () => {
+      resolveConnectorStatus(createConnectorStatusResult([]))
+    })
+
+    expect(await screen.findByText('No enabled connectors.')).toBeInTheDocument()
   })
 
   it('lets users edit the underlying application from an action queue row and reloads action queue', async () => {

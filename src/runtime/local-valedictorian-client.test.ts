@@ -12,6 +12,7 @@ import {
   workflowRunSteps,
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
+import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 
 function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
@@ -476,5 +477,80 @@ describe('runtime local Valedictorian client', () => {
         .all(),
     ).toHaveLength(0)
     seededSqlite.close()
+  })
+
+  it('lists connector status summaries through the local client', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({ sqlitePath }) as ReturnType<
+      typeof createRuntimeLocalValedictorianClient
+    > & {
+      connectors: {
+        status: {
+          list(): Promise<{
+            available: boolean
+            items: Array<{ displayName: string; status: string; summary: string }>
+          }>
+        }
+      }
+    }
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-internlist',
+      connectorId: 'internlist.jobs',
+      connectorVersion: '0.1.0',
+      displayName: 'InternList',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+    await connectorRepository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-internlist',
+      mode: 'catch_up',
+      startedAt: '2026-07-08T17:00:00.000Z',
+      completedAt: '2026-07-08T17:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      result: {
+        coverage: {
+          start: '2026-07-08T16:00:00.000Z',
+          end: '2026-07-08T17:00:00.000Z',
+        },
+        nextCheckpoint: {
+          checkpoint: { cursor: 'latest-cursor' },
+          schemaVersion: 'fixture-checkpoint@1',
+        },
+        observations: [],
+        retryHints: {
+          reason: 'auth_required',
+        },
+        stats: {
+          observations: 0,
+        },
+        status: 'partial_success',
+        warnings: [
+          {
+            code: 'auth.expired_session',
+            message: 'Expired browser session jobright-session-123.',
+          },
+        ],
+      },
+    })
+
+    const status = await client.connectors.status.list()
+
+    expect(status).toMatchObject({
+      items: [
+        {
+          displayName: 'InternList',
+          status: 'auth_required',
+          summary: 'Reconnect the connector session to continue refreshes.',
+        },
+      ],
+    })
+    expect(JSON.stringify(status)).not.toContain('jobright-session-123')
+    sqlite.close()
   })
 })

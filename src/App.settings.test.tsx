@@ -101,7 +101,7 @@ describe('App settings and chrome', () => {
     const appNavigation = within(sidebar).getByRole('navigation', { name: 'Application views' })
     expect(
       within(appNavigation).getAllByRole('button').map((button) => button.textContent),
-    ).toEqual(['Profile', 'Applications', 'Action Queue', 'Sourcing'])
+    ).toEqual(['Profile', 'Applications', 'Action Queue', 'Sourcing', 'Connectors'])
 
     fireEvent.click(within(sidebar).getByRole('button', { name: 'Profile' }))
 
