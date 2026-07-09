@@ -60,6 +60,9 @@ valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" --search "backend intern" --sort company_asc --limit 25
 valedictorian-cli --json applications get <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now --limit 25
+valedictorian-cli --json connectors list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json connectors inspect <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json connectors runs list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --limit 25
 valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --status in_progress --limit 25
 valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE" --workflow-run-id <run-id> --merge-status new --limit 25
 valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
@@ -152,6 +155,25 @@ For the full submitted-attempt safety sequence, run:
 ```sh
 valedictorian-cli examples attempts complete --outcome submitted
 ```
+
+## Connectors
+
+Connector commands are workspace-scoped and source-agnostic. Pass connector instance ids from `connectors list`; the CLI does not contain InternList, Jobright, or adapter-specific logic.
+
+```sh
+valedictorian-cli --json connectors list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json connectors inspect <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json connectors runs list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --status queued --limit 25
+valedictorian-cli --json connectors observations list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --connector-run-id <connector-run-id> --limit 25
+valedictorian-cli --json connectors trigger <connector-instance-id> \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --mode manual \
+  --coverage-started-at 2026-07-01T00:00:00.000Z \
+  --coverage-ended-at 2026-07-08T00:00:00.000Z \
+  --filter-signature "filters:{}"
+```
+
+`connectors trigger` records a connector run request through the app/backend contract. Adapter-specific auth, link resolution, refresh execution, and upsert logic remain outside the CLI.
 
 ## Workflow Runs
 

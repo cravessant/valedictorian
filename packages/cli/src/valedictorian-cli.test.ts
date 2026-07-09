@@ -525,6 +525,80 @@ describe('valedictorian-cli npm package', () => {
     )
   })
 
+  it('inspects connector status through workspace-scoped HTTP', async () => {
+    const payload = {
+      id: 'connector-instance-jobright',
+      displayName: 'Jobright',
+      status: 'auth_required',
+      actionRequired: [{ kind: 'auth' }],
+    }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValue(jsonResponse(payload))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const missingWorkspace = await runCli(['connectors', 'inspect', 'connector-instance-jobright'])
+    const result = await runCli([
+      'connectors',
+      'inspect',
+      'connector-instance-jobright',
+      '--workspace',
+      'workspace-1',
+      '--json',
+    ])
+
+    expect(missingWorkspace.exitCode).toBe(1)
+    expect(missingWorkspace.stderr).toContain('--workspace is required')
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://valedictorian.test/v1/workspaces/workspace-1/connectors/connector-instance-jobright/status',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('triggers connector runs through workspace-scoped HTTP without source-specific CLI logic', async () => {
+    const payload = {
+      id: 'run-queued',
+      connectorInstanceId: 'connector-instance-jobright',
+      mode: 'manual',
+      status: 'queued',
+    }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValue(jsonResponse(payload))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli([
+      'connectors',
+      'trigger',
+      'connector-instance-jobright',
+      '--workspace',
+      'workspace-1',
+      '--mode',
+      'manual',
+      '--coverage-started-at',
+      '2026-07-01T00:00:00.000Z',
+      '--coverage-ended-at',
+      '2026-07-08T00:00:00.000Z',
+      '--filter-signature',
+      'internships',
+      '--json',
+    ])
+
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(payload)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://valedictorian.test/v1/workspaces/workspace-1/connectors/connector-instance-jobright/runs',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      coverageStartedAt: '2026-07-01T00:00:00.000Z',
+      coverageEndedAt: '2026-07-08T00:00:00.000Z',
+      filterSignature: 'internships',
+      mode: 'manual',
+    })
+  })
+
   it('accepts global --workspace before the command for workspace-scoped commands', async () => {
     const payload = {
       items: [],
