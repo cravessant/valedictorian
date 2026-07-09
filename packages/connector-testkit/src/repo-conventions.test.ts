@@ -25,13 +25,13 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("@valedictorian-connectors/core")
     expect(readme).toContain("@valedictorian-connectors/test-harness")
     expect(readme).toContain("@valedictorian-connectors/browser-session")
-    expect(readme).toContain("@valedictorian-connectors/internlist")
     expect(readme).toContain("@valedictorian-connectors/jobright")
     expect(readme).toContain("Connectors are imported libraries, not mini servers")
     expect(readme).toContain("The app imports connector packages and calls `connector.refresh(...)`")
     expect(readme).toContain("`@valedictorian-connectors/core` is the app-to-adapter ABI")
     expect(readme).toContain("`sparxie` is not the connector runtime contract")
-    expect(readme).toContain("InternList is reconnaissance input for the Jobright path")
+    expect(readme).toContain("InternList was reconnaissance")
+    expect(readme).not.toContain("@valedictorian-connectors/internlist")
     expect(readme).not.toContain("the first real public discovery source package")
     expect(readme).toContain("Hosts own scheduling, auth persistence, run state, and upsert")
     expect(readme).toContain("Source packages must not depend on valedictorian-app")
@@ -59,10 +59,10 @@ describe("connector repository conventions", () => {
     const rootPackage = readPackageJson("package.json")
     const corePackage = readPackageJson("packages/core/package.json")
     const harnessPackage = readPackageJson("packages/test-harness/package.json")
-    const internListPackage = readPackageJson("packages/internlist/package.json")
     const jobrightPackage = readPackageJson("packages/jobright/package.json")
 
     expect(rootPackage.private).toBe(true)
+    expect(fs.existsSync(path.resolve("packages/internlist"))).toBe(false)
     expect(corePackage).toMatchObject({
       name: "@valedictorian-connectors/core",
       private: true,
@@ -70,11 +70,6 @@ describe("connector repository conventions", () => {
     })
     expect(harnessPackage).toMatchObject({
       name: "@valedictorian-connectors/test-harness",
-      private: true,
-      version: "0.0.0",
-    })
-    expect(internListPackage).toMatchObject({
-      name: "@valedictorian-connectors/internlist",
       private: true,
       version: "0.0.0",
     })
@@ -86,7 +81,6 @@ describe("connector repository conventions", () => {
     expect(Object.keys(corePackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
         "@valedictorian-connectors/test-harness",
-        "@valedictorian-connectors/internlist",
         "better-sqlite3",
         "drizzle-orm",
         "electron",
@@ -97,23 +91,6 @@ describe("connector repository conventions", () => {
     )
     expect(harnessPackage.dependencies).toEqual({
       "@valedictorian-connectors/core": "workspace:*",
-    })
-    expect(internListPackage.dependencies).toMatchObject({
-      "@valedictorian-connectors/core": "workspace:*",
-    })
-    expect(Object.keys(internListPackage.dependencies ?? {})).not.toEqual(
-      expect.arrayContaining([
-        "@valedictorian-connectors/test-harness",
-        "better-sqlite3",
-        "drizzle-orm",
-        "electron",
-        "playwright",
-        "sparxie",
-        "valedictorian-app",
-      ]),
-    )
-    expect(internListPackage.devDependencies).toMatchObject({
-      "@valedictorian-connectors/test-harness": "workspace:*",
     })
     expect(jobrightPackage.dependencies).toMatchObject({
       "@valedictorian-connectors/core": "workspace:*",

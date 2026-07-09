@@ -193,9 +193,9 @@ describe("in-memory connector host", () => {
           modes: ["api_key"],
           requirements: [
             {
-              id: "internlist",
+              id: "fixture_api",
               mode: "api_key",
-              label: "InternList API key",
+              label: "Fixture API key",
             },
           ],
         },
@@ -203,7 +203,7 @@ describe("in-memory connector host", () => {
       async refresh(input, runtime): Promise<ConnectorRefreshResult> {
         receivedGrants.push(
           await runtime.auth.resolve({
-            id: "internlist",
+            id: "fixture_api",
             mode: "api_key",
           }),
         )
@@ -213,16 +213,16 @@ describe("in-memory connector host", () => {
     }
     const host = createInMemoryConnectorHost({
       secrets: {
-        internlist_api_key: "il-secret",
+        fixture_api_key: "fixture-secret",
       },
     })
 
     host.registerInstance({
       auth: [
         {
-          id: "internlist",
+          id: "fixture_api",
           mode: "api_key",
-          secretKey: "internlist_api_key",
+          secretKey: "fixture_api_key",
         },
       ],
       connectorId: connector.definition.id,
@@ -246,14 +246,14 @@ describe("in-memory connector host", () => {
 
     expect(receivedGrants).toEqual([
       {
-        id: "internlist",
+        id: "fixture_api",
         mode: "api_key",
-        secretKey: "internlist_api_key",
+        secretKey: "fixture_api_key",
         status: "ready",
-        value: "il-secret",
+        value: "fixture-secret",
       },
     ])
-    expect(JSON.stringify(host.snapshot())).not.toContain("il-secret")
+    expect(JSON.stringify(host.snapshot())).not.toContain("fixture-secret")
   })
 
   it("resolves browser-session grants by the instance session reference", async () => {
