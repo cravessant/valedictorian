@@ -17,6 +17,9 @@ describe("in-memory connector host", () => {
     })
 
     expect(connector.definition).toMatchObject({
+      observation: {
+        schemaVersion: "job-observation@1",
+      },
       configSchema: {
         version: "fixture-config@1",
         schema: expect.objectContaining({
@@ -95,6 +98,8 @@ describe("in-memory connector host", () => {
     expect(snapshot.observations[0]).toMatchObject({
       connectorId: "fixture.jobs",
       connectorVersion: "0.0.0-fixture",
+      parserVersion: "fixture-parser@1",
+      observationSchemaVersion: "job-observation@1",
       connectorInstanceId: "instance_fixture",
       sourceRecordKey: "fixture.jobs:software-engineering-intern",
       companyName: "Example Robotics",

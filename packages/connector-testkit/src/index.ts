@@ -16,6 +16,7 @@ import type {
   JobConnector,
   JobObservation,
 } from "@sparxie/valedictorian-connectors-core"
+import { jobObservationSchemaVersion } from "@sparxie/valedictorian-connectors-core"
 
 export type FixtureConnectorOptions = {
   observedAt: string
@@ -24,6 +25,7 @@ export type FixtureConnectorOptions = {
 export function createFixtureConnector(
   options: FixtureConnectorOptions,
 ): JobConnector {
+  const parserVersion = "fixture-parser@1"
   const definition: ConnectorDefinition = {
     id: "fixture.jobs",
     version: "0.0.0-fixture",
@@ -68,6 +70,9 @@ export function createFixtureConnector(
     checkpoint: {
       schemaVersion: "fixture-checkpoint@1",
     },
+    observation: {
+      schemaVersion: jobObservationSchemaVersion,
+    },
     politeness: {
       concurrency: 1,
       minDelayMs: 0,
@@ -85,6 +90,8 @@ export function createFixtureConnector(
       const observation: JobObservation = {
         connectorId: definition.id,
         connectorVersion: definition.version,
+        parserVersion,
+        observationSchemaVersion: jobObservationSchemaVersion,
         sourceRecordKey: "fixture.jobs:software-engineering-intern",
         observedAt: options.observedAt,
         companyName: "Example Robotics",

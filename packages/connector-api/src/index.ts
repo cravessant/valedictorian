@@ -4,15 +4,22 @@ export type ConnectorDefinition = {
   displayName?: string
   configSchema?: ConnectorSchemaDeclaration
   filterSchema?: ConnectorSchemaDeclaration
+  observation?: ConnectorObservationDeclaration
   auth?: ConnectorAuthDeclaration
   capabilities?: ConnectorCapabilityDeclaration
   checkpoint?: ConnectorCheckpointDeclaration
   politeness?: ConnectorPolitenessDefaults
 }
 
+export const jobObservationSchemaVersion = "job-observation@1"
+
 export type ConnectorSchemaDeclaration = {
   version: string
   schema: Record<string, unknown>
+}
+
+export type ConnectorObservationDeclaration = {
+  schemaVersion: string
 }
 
 export type ConnectorAuthMode =
@@ -187,6 +194,8 @@ export type JobObservationEvidence = {
 export type JobObservation = {
   connectorId: string
   connectorVersion: string
+  parserVersion: string
+  observationSchemaVersion: string
   sourceRecordKey: string
   observedAt: string
   companyName: string
