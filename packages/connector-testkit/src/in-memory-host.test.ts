@@ -8,7 +8,7 @@ import type {
   ConnectorRefreshInput,
   ConnectorRefreshResult,
   JobConnector,
-} from "@valedictorian-connectors/core"
+} from "@sparxie/valedictorian-connectors-core"
 
 describe("in-memory connector host", () => {
   it("exposes connector definition metadata for host validation and policy", () => {
