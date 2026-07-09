@@ -159,6 +159,10 @@ export function createConnectorRunner({
       connectorInstanceId: input.connectorInstanceId,
       filterSignature,
     })
+    const budget = input.budget ?? budgetFromPoliteness(
+      normalizeRunPolicy(undefined, connector.definition.politeness?.maxBackfillDays),
+      connector.definition.politeness,
+    )
     const sensitiveValues = new Set<string>()
     const result = await connector.refresh(
       {
@@ -168,7 +172,7 @@ export function createConnectorRunner({
         coverage: input.coverage,
         config,
         filters,
-        ...(input.budget ? { budget: input.budget } : {}),
+        ...(budget ? { budget } : {}),
         ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
       },
       createRunRuntime(
