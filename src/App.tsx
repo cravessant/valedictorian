@@ -22,6 +22,12 @@ import type {
   ConnectorStatusListResult,
   ConnectorStatusView,
 } from './modules/connectors/connector.status'
+import type {
+  LocalConnectorReconnectActionResult,
+  LocalConnectorSkipActionInput,
+  LocalConnectorSkipActionResult,
+  LocalConnectorStatusActionInput,
+} from './runtime/local-valedictorian-client'
 import { SourcingPage } from './modules/sourcing/SourcingPage'
 import { AppSidebar, AppTopbar } from './app/AppChrome'
 import { formatEnumLabel } from './app/labels'
@@ -90,6 +96,8 @@ import {
   defaultPromoteSourcingFinding,
   defaultActionQueueLoader,
   defaultConnectorStatusLoader,
+  defaultConnectorStatusReconnector,
+  defaultConnectorStatusSkipper,
   defaultScoreRecorder,
   defaultSettingsApi,
   defaultUpdatesApi,
@@ -174,6 +182,12 @@ interface AppProps {
   createSourcingFinding?: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
   actionQueueLoader?: (query: ActionQueueListQuery) => Promise<ActionQueueListResult>
   connectorStatusLoader?: () => Promise<ConnectorStatusListResult>
+  connectorStatusReconnector?: (
+    input: LocalConnectorStatusActionInput
+  ) => Promise<LocalConnectorReconnectActionResult>
+  connectorStatusSkipper?: (
+    input: LocalConnectorSkipActionInput
+  ) => Promise<LocalConnectorSkipActionResult>
   scoreRecorder?: (input: ScoreInput) => Promise<ScoreRecord>
   sourcingLoader?: (input: SourcingFindingsListInput) => Promise<SourcingFindingsListResult>
   promoteSourcingFinding?: (input: PromoteSourcingFindingInput) => Promise<SourcingFinding>
@@ -202,6 +216,8 @@ function App({
   createSourcingFinding = defaultCreateSourcingFinding,
   actionQueueLoader = defaultActionQueueLoader,
   connectorStatusLoader = defaultConnectorStatusLoader,
+  connectorStatusReconnector = defaultConnectorStatusReconnector,
+  connectorStatusSkipper = defaultConnectorStatusSkipper,
   scoreRecorder = defaultScoreRecorder,
   sourcingLoader = defaultSourcingLoader,
   promoteSourcingFinding = defaultPromoteSourcingFinding,
@@ -729,14 +745,30 @@ function App({
     connector: ConnectorStatusView,
     action: ConnectorStatusAction,
   ) {
-    toast({
-      description: action.id === 'reconnect'
-        ? 'Connector auth recovery is ready for the local auth flow.'
-        : 'Connector refresh will wait for a later run.',
-      title: action.id === 'reconnect'
-        ? `Reconnect ${connector.displayName}`
-        : `Skip ${connector.displayName}`,
-    })
+    const title = action.id === 'reconnect'
+      ? `Reconnect ${connector.displayName}`
+      : `Skip ${connector.displayName}`
+    const actionPromise = action.id === 'reconnect'
+      ? connectorStatusReconnector({ connectorInstanceId: connector.id })
+      : connectorStatusSkipper({
+        connectorInstanceId: connector.id,
+        reason: 'user_skipped_auth_required_run',
+      })
+
+    void actionPromise
+      .then((result) => {
+        toast({
+          description: result.message,
+          title,
+        })
+        setConnectorStatusReloadKey((current) => current + 1)
+      })
+      .catch(() => {
+        toast({
+          description: 'Connector status action could not be completed.',
+          title,
+        })
+      })
   }
 
   function promoteFinding(findingId: string) {

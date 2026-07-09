@@ -27,9 +27,25 @@ describe('connectors IPC registration', () => {
       ],
     } as const
     const listStatus = vi.fn(async () => status)
+    const reconnect = vi.fn(async () => ({
+      action: 'reconnect',
+      connectorInstanceId: 'connector-instance-fixture',
+      grants: [{ id: 'fixture-session', mode: 'browser_session', status: 'ready' }],
+      message: 'Connector auth is ready.',
+      status: 'ready',
+    }))
+    const skip = vi.fn(async () => ({
+      action: 'skip',
+      connectorInstanceId: 'connector-instance-fixture',
+      message: 'Connector run skipped.',
+      run: { id: 'connector-run-skipped', status: 'skipped' },
+      status: 'skipped',
+    }))
     const connectors = {
       status: {
         list: listStatus,
+        reconnect,
+        skip,
       },
     } as unknown as LocalValedictorianClient['connectors']
     const handlers = new Map<string, (_event: unknown) => Promise<unknown>>()
@@ -41,7 +57,27 @@ describe('connectors IPC registration', () => {
     })
 
     await expect(handlers.get('connectors:status:list')?.({})).resolves.toEqual(status)
+    await expect(
+      handlers.get('connectors:status:reconnect')?.(
+        {},
+        { connectorInstanceId: 'connector-instance-fixture' },
+      ),
+    ).resolves.toMatchObject({ action: 'reconnect', status: 'ready' })
+    await expect(
+      handlers.get('connectors:status:skip')?.(
+        {},
+        {
+          connectorInstanceId: 'connector-instance-fixture',
+          reason: 'user_skipped_auth_required_run',
+        },
+      ),
+    ).resolves.toMatchObject({ action: 'skip', status: 'skipped' })
     expect(listStatus).toHaveBeenCalled()
+    expect(reconnect).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance-fixture' })
+    expect(skip).toHaveBeenCalledWith({
+      connectorInstanceId: 'connector-instance-fixture',
+      reason: 'user_skipped_auth_required_run',
+    })
   })
 
   it('returns an empty connector status list when local connectors are unavailable', async () => {

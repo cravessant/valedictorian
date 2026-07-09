@@ -146,6 +146,13 @@ export interface RecordConnectorRunFailureInput {
   warning: ConnectorWarning
 }
 
+export interface RecordConnectorRunSkippedInput {
+  connectorInstanceId: string
+  mode: string
+  reason?: string | null
+  skippedAt: string
+}
+
 export interface MarkConnectorRunFailedInput {
   connectorRunId: string
   completedAt: string
@@ -518,6 +525,55 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
           statsJson: JSON.stringify(input.stats ?? { failed: true }),
           warningsJson: JSON.stringify([input.warning]),
           retryHintsJson: JSON.stringify(input.retryHints ?? null),
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        })
+        .run()
+
+      return mapConnectorRun(
+        database
+          .select()
+          .from(connectorRuns)
+          .where(eq(connectorRuns.id, runId))
+          .get(),
+      )
+    },
+
+    async recordRunSkipped(input: RecordConnectorRunSkippedInput): Promise<ConnectorRunRecord> {
+      const instance = await this.getInstance(input.connectorInstanceId)
+
+      if (!instance) {
+        throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+      }
+
+      const now = new Date().toISOString()
+      const reason = input.reason ?? 'user_skipped_connector_run'
+      const filters = instance.filters
+      const runId = randomUUID()
+
+      database
+        .insert(connectorRuns)
+        .values({
+          id: runId,
+          connectorInstanceId: input.connectorInstanceId,
+          mode: input.mode,
+          status: 'skipped',
+          startedAt: input.skippedAt,
+          completedAt: input.skippedAt,
+          coverageStartedAt: null,
+          coverageEndedAt: null,
+          configJson: JSON.stringify(instance.config),
+          filtersJson: JSON.stringify(filters),
+          filterSignature: `filters:${stableJsonStringify(filters)}`,
+          observationCount: 0,
+          warningCount: 0,
+          statsJson: JSON.stringify({ skipped: true }),
+          warningsJson: JSON.stringify([]),
+          retryHintsJson: JSON.stringify({
+            reason,
+            skippedBy: 'user',
+          }),
           createdAt: now,
           updatedAt: now,
           deletedAt: null,

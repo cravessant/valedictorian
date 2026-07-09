@@ -23,6 +23,7 @@ import {
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
   createConnectorRunner,
+  type AppConnectorAuthGrant,
   type AppConnectorAuthHost,
   type AppConnectorRefreshRecord,
   type AppConnectorRuntimePorts,
@@ -142,6 +143,38 @@ export interface LocalConnectorStartupCatchUpResult {
   }>
 }
 
+export interface LocalConnectorStatusActionInput {
+  connectorInstanceId: string
+}
+
+export interface LocalConnectorSkipActionInput extends LocalConnectorStatusActionInput {
+  reason?: string | null
+}
+
+export interface LocalConnectorAuthGrantSummary {
+  id: string
+  mode: ConnectorAuthMode
+  status: AppConnectorAuthGrant['status']
+  expiresAt?: string
+  reason?: string
+}
+
+export interface LocalConnectorReconnectActionResult {
+  action: 'reconnect'
+  connectorInstanceId: string
+  grants: LocalConnectorAuthGrantSummary[]
+  message: string
+  status: AppConnectorAuthGrant['status'] | 'unsupported'
+}
+
+export interface LocalConnectorSkipActionResult {
+  action: 'skip'
+  connectorInstanceId: string
+  message: string
+  run: LocalConnectorRunSummary
+  status: 'skipped'
+}
+
 export interface LocalConnectorClient {
   list(): Promise<{ items: LocalConnectorInstanceSummary[] }>
   create(input: CreateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
@@ -189,6 +222,8 @@ export interface LocalConnectorClient {
   }
   status: {
     list(): Promise<ConnectorStatusListResult>
+    reconnect(input: LocalConnectorStatusActionInput): Promise<LocalConnectorReconnectActionResult>
+    skip(input: LocalConnectorSkipActionInput): Promise<LocalConnectorSkipActionResult>
   }
 }
 
@@ -412,6 +447,27 @@ export function createLocalValedictorianClient({
         list: async () => mapConnectorStatusSummaries(
           await connectorRepository.listStatusSummaries(),
         ),
+        reconnect: (input) => reconnectConnectorStatus({
+          auth: connectorAuth,
+          connectorRepository,
+          input,
+        }),
+        skip: async (input) => {
+          const run = await connectorRepository.recordRunSkipped({
+            connectorInstanceId: input.connectorInstanceId,
+            mode: 'manual',
+            reason: input.reason,
+            skippedAt: now().toISOString(),
+          })
+
+          return {
+            action: 'skip',
+            connectorInstanceId: input.connectorInstanceId,
+            message: 'Connector run skipped.',
+            run: mapConnectorRunSummary(run),
+            status: 'skipped',
+          }
+        },
       },
     },
     policy: {
@@ -478,6 +534,66 @@ export function createLocalValedictorianClient({
   }
 
   return client
+}
+
+async function reconnectConnectorStatus({
+  auth,
+  connectorRepository,
+  input,
+}: {
+  auth: AppConnectorAuthHost | undefined
+  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  input: LocalConnectorStatusActionInput
+}): Promise<LocalConnectorReconnectActionResult> {
+  const instance = await connectorRepository.getInstance(input.connectorInstanceId)
+
+  if (!instance) {
+    throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+  }
+
+  const browserSessionReferences = instance.auth.filter(
+    (reference) => reference.mode === 'browser_session',
+  )
+
+  if (browserSessionReferences.length === 0) {
+    return {
+      action: 'reconnect',
+      connectorInstanceId: input.connectorInstanceId,
+      grants: [],
+      message: 'Connector has no browser-session auth to reconnect.',
+      status: 'unsupported',
+    }
+  }
+
+  const grants = await Promise.all(
+    browserSessionReferences.map(async (reference) => {
+      if (!auth?.browserSessions) {
+        return {
+          id: reference.id,
+          mode: reference.mode,
+          reason: 'browser_session_action_required',
+          status: 'action_required',
+        } satisfies AppConnectorAuthGrant
+      }
+
+      return auth.browserSessions.resolve({
+        id: reference.id,
+        mode: reference.mode,
+        ...(reference.label === undefined ? {} : { label: reference.label }),
+        ...(reference.sessionKey === undefined ? {} : { sessionKey: reference.sessionKey }),
+      })
+    }),
+  )
+  const sanitizedGrants = grants.map(mapLocalConnectorAuthGrantSummary)
+  const status = reconnectStatus(sanitizedGrants)
+
+  return {
+    action: 'reconnect',
+    connectorInstanceId: input.connectorInstanceId,
+    grants: sanitizedGrants,
+    message: reconnectMessage(status),
+    status,
+  }
 }
 
 async function executeConnectorStartupCatchUp({
@@ -768,6 +884,56 @@ function actionRequiredForStatus(
   }
 
   return actions
+}
+
+function mapLocalConnectorAuthGrantSummary(
+  grant: AppConnectorAuthGrant,
+): LocalConnectorAuthGrantSummary {
+  return {
+    id: grant.id,
+    mode: grant.mode,
+    status: grant.status,
+    ...(grant.expiresAt === undefined ? {} : { expiresAt: grant.expiresAt }),
+    ...(grant.reason === undefined ? {} : { reason: grant.reason }),
+  }
+}
+
+function reconnectStatus(
+  grants: LocalConnectorAuthGrantSummary[],
+): LocalConnectorReconnectActionResult['status'] {
+  if (grants.some((grant) => grant.status === 'action_required')) {
+    return 'action_required'
+  }
+
+  if (grants.some((grant) => grant.status === 'missing')) {
+    return 'missing'
+  }
+
+  if (grants.some((grant) => grant.status === 'expired')) {
+    return 'expired'
+  }
+
+  return 'ready'
+}
+
+function reconnectMessage(status: LocalConnectorReconnectActionResult['status']): string {
+  if (status === 'ready') {
+    return 'Connector auth is ready.'
+  }
+
+  if (status === 'missing') {
+    return 'Connector browser-session reference is missing.'
+  }
+
+  if (status === 'expired') {
+    return 'Connector browser session is expired.'
+  }
+
+  if (status === 'unsupported') {
+    return 'Connector has no browser-session auth to reconnect.'
+  }
+
+  return 'Connector browser session needs local action before refreshes can continue.'
 }
 
 function mapConnectorRunSummary(record: ConnectorRunRecord): LocalConnectorRunSummary {

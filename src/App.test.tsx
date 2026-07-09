@@ -22,6 +22,7 @@ import {
   createActionQueueItem,
   createActionQueueResult,
   createConnectorStatusResult,
+  createConnectorStatusView,
   createSettingsApi,
   createSourcingFinding,
   createSourcingResult,
@@ -733,6 +734,96 @@ describe('App', () => {
     expect(within(table).getByText('Auth required')).toBeInTheDocument()
     expect(within(table).getByRole('button', { name: 'Reconnect Fixture Jobs' })).toBeInTheDocument()
     expect(connectorStatusLoader).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs connector status actions and reloads connector status', async () => {
+    const connectorStatusLoader = vi
+      .fn()
+      .mockResolvedValueOnce(createConnectorStatusResult())
+      .mockResolvedValueOnce(createConnectorStatusResult())
+      .mockResolvedValueOnce(
+        createConnectorStatusResult([
+          createConnectorStatusView({
+            actionLabel: null,
+            actions: [],
+            latestRunId: 'connector-run-skipped',
+            severity: 'warning',
+            status: 'skipped',
+            statusLabel: 'Skipped',
+            summary: 'Latest run was skipped.',
+            warnings: [],
+            warningCount: 0,
+          }),
+        ]),
+      )
+    const connectorStatusReconnector = vi.fn(async () => ({
+      action: 'reconnect' as const,
+      connectorInstanceId: 'connector-instance-fixture',
+      grants: [{ id: 'fixture-session', mode: 'browser_session' as const, status: 'ready' as const }],
+      message: 'Connector auth is ready.',
+      status: 'ready' as const,
+    }))
+    const connectorStatusSkipper = vi.fn(async () => ({
+      action: 'skip' as const,
+      connectorInstanceId: 'connector-instance-fixture',
+      message: 'Connector run skipped.',
+      run: {
+        completedAt: '2026-07-08T17:05:00.000Z',
+        connectorInstanceId: 'connector-instance-fixture',
+        coverage: { start: null, end: null },
+        filterSignature: 'filters:{}',
+        id: 'connector-run-skipped',
+        mode: 'manual',
+        observationCount: 0,
+        retryHints: {
+          reason: 'user_skipped_auth_required_run',
+          skippedBy: 'user',
+        },
+        startedAt: '2026-07-08T17:05:00.000Z',
+        stats: { skipped: true },
+        status: 'skipped',
+        warningCount: 0,
+        warnings: [],
+      },
+      status: 'skipped' as const,
+    }))
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorStatusLoader={connectorStatusLoader}
+        connectorStatusReconnector={connectorStatusReconnector}
+        connectorStatusSkipper={connectorStatusSkipper}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
+
+    const table = await screen.findByRole('table', { name: 'Connector status' })
+    fireEvent.click(within(table).getByRole('button', { name: 'Reconnect Fixture Jobs' }))
+
+    await waitFor(() => {
+      expect(connectorStatusReconnector).toHaveBeenCalledWith({
+        connectorInstanceId: 'connector-instance-fixture',
+      })
+      expect(connectorStatusLoader).toHaveBeenCalledTimes(2)
+    })
+
+    fireEvent.click(within(await screen.findByRole('table', { name: 'Connector status' })).getByRole(
+      'button',
+      { name: 'Skip this run for Fixture Jobs' },
+    ))
+
+    await waitFor(() => {
+      expect(connectorStatusSkipper).toHaveBeenCalledWith({
+        connectorInstanceId: 'connector-instance-fixture',
+        reason: 'user_skipped_auth_required_run',
+      })
+      expect(connectorStatusLoader).toHaveBeenCalledTimes(3)
+      expect(screen.getByText('Skipped')).toBeInTheDocument()
+    })
   })
 
   it('keeps connector status in loading state while the loader is pending', async () => {

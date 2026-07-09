@@ -11,6 +11,12 @@ import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { ProfileSensitiveDetails } from '../modules/profile/profile.repository'
 import type { ConnectorStatusListResult } from '../modules/connectors/connector.status'
 import type {
+  LocalConnectorReconnectActionResult,
+  LocalConnectorSkipActionInput,
+  LocalConnectorSkipActionResult,
+  LocalConnectorStatusActionInput,
+} from '../runtime/local-valedictorian-client'
+import type {
   ApplicationAttemptsListResult,
   ApplicationDetail,
   ApplicationEventsListInput,
@@ -315,6 +321,30 @@ export const defaultConnectorStatusLoader = () => {
   const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
 
   return connectorsWindow.connectors?.status.list() ?? Promise.resolve(emptyConnectorStatusResult)
+}
+
+export const defaultConnectorStatusReconnector = (
+  input: LocalConnectorStatusActionInput,
+): Promise<LocalConnectorReconnectActionResult> => {
+  const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+
+  if (!connectorsWindow.connectors?.status.reconnect) {
+    return Promise.reject(new Error('Connector reconnect is unavailable for this runtime.'))
+  }
+
+  return connectorsWindow.connectors.status.reconnect(input)
+}
+
+export const defaultConnectorStatusSkipper = (
+  input: LocalConnectorSkipActionInput,
+): Promise<LocalConnectorSkipActionResult> => {
+  const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+
+  if (!connectorsWindow.connectors?.status.skip) {
+    return Promise.reject(new Error('Connector skip is unavailable for this runtime.'))
+  }
+
+  return connectorsWindow.connectors.status.skip(input)
 }
 
 export const defaultPromoteSourcingFinding = (input: PromoteSourcingFindingInput) => {

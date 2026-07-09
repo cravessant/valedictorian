@@ -7,13 +7,38 @@ describe('connectors preload API', () => {
     const api = createConnectorsPreloadApi({
       invoke(...args) {
         invocations.push(args)
-        return Promise.resolve({
-          items: [],
-        })
+        if (args[0] === 'connectors:status:reconnect') {
+          return Promise.resolve({ action: 'reconnect', status: 'ready' })
+        }
+
+        if (args[0] === 'connectors:status:skip') {
+          return Promise.resolve({ action: 'skip', status: 'skipped' })
+        }
+
+        return Promise.resolve({ items: [] })
       },
     })
 
     await expect(api.status.list()).resolves.toEqual({ items: [] })
-    expect(invocations).toEqual([['connectors:status:list']])
+    await expect(
+      api.status.reconnect({ connectorInstanceId: 'connector-instance-fixture' }),
+    ).resolves.toEqual({ action: 'reconnect', status: 'ready' })
+    await expect(
+      api.status.skip({
+        connectorInstanceId: 'connector-instance-fixture',
+        reason: 'user_skipped_auth_required_run',
+      }),
+    ).resolves.toEqual({ action: 'skip', status: 'skipped' })
+    expect(invocations).toEqual([
+      ['connectors:status:list'],
+      ['connectors:status:reconnect', { connectorInstanceId: 'connector-instance-fixture' }],
+      [
+        'connectors:status:skip',
+        {
+          connectorInstanceId: 'connector-instance-fixture',
+          reason: 'user_skipped_auth_required_run',
+        },
+      ],
+    ])
   })
 })

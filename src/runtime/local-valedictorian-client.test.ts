@@ -685,6 +685,193 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
+  it('runs connector status reconnect and skip actions through the local client', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const resolvedReferences: unknown[] = []
+    const client = createRuntimeLocalValedictorianClient({
+      connectorAuth: {
+        browserSessions: {
+          async resolve(reference) {
+            resolvedReferences.push(reference)
+            return {
+              id: reference.id,
+              mode: reference.mode,
+              sessionId: 'sensitive-session-id',
+              sessionKey: reference.sessionKey,
+              status: 'ready',
+            }
+          },
+        },
+      },
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.1.0',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'fixture-session',
+          label: 'Fixture session',
+          mode: 'browser_session',
+          sessionKey: 'fixture-session-123',
+        },
+      ],
+      filters: { roleKeywords: ['intern'] },
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+    await connectorRepository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'catch_up',
+      startedAt: '2026-07-08T17:00:00.000Z',
+      completedAt: '2026-07-08T17:00:01.000Z',
+      config: {},
+      filters: { roleKeywords: ['intern'] },
+      filterSignature: 'filters:{"roleKeywords":["intern"]}',
+      result: {
+        coverage: {
+          start: '2026-07-08T16:00:00.000Z',
+          end: '2026-07-08T17:00:00.000Z',
+        },
+        nextCheckpoint: {
+          checkpoint: { cursor: 'latest-cursor' },
+          schemaVersion: 'fixture-checkpoint@1',
+        },
+        observations: [],
+        retryHints: {
+          reason: 'auth_required',
+        },
+        stats: {
+          observations: 0,
+        },
+        status: 'partial_success',
+        warnings: [
+          {
+            code: 'auth.expired_session',
+            message: 'Expired browser session fixture-session-123.',
+          },
+        ],
+      },
+    })
+
+    const reconnect = await client.connectors.status.reconnect({
+      connectorInstanceId: 'connector-instance-fixture',
+    })
+    const skipped = await client.connectors.status.skip({
+      connectorInstanceId: 'connector-instance-fixture',
+      reason: 'user_skipped_auth_required_run',
+    })
+    const runs = await client.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+      limit: 10,
+    })
+    const status = await client.connectors.status.list()
+
+    expect(reconnect).toMatchObject({
+      action: 'reconnect',
+      connectorInstanceId: 'connector-instance-fixture',
+      grants: [
+        {
+          id: 'fixture-session',
+          mode: 'browser_session',
+          status: 'ready',
+        },
+      ],
+      status: 'ready',
+    })
+    expect(resolvedReferences).toEqual([
+      {
+        id: 'fixture-session',
+        label: 'Fixture session',
+        mode: 'browser_session',
+        sessionKey: 'fixture-session-123',
+      },
+    ])
+    expect(skipped).toMatchObject({
+      action: 'skip',
+      connectorInstanceId: 'connector-instance-fixture',
+      run: {
+        connectorInstanceId: 'connector-instance-fixture',
+        mode: 'manual',
+        status: 'skipped',
+      },
+      status: 'skipped',
+    })
+    expect(runs.items).toEqual([
+      expect.objectContaining({
+        retryHints: {
+          reason: 'user_skipped_auth_required_run',
+          skippedBy: 'user',
+        },
+        status: 'skipped',
+      }),
+      expect.objectContaining({
+        status: 'partial_success',
+      }),
+    ])
+    expect(status.items).toMatchObject([
+      {
+        actions: [],
+        status: 'skipped',
+        summary: 'Latest run was skipped.',
+      },
+    ])
+    expect(JSON.stringify(reconnect)).not.toContain('sensitive-session-id')
+    expect(JSON.stringify(reconnect)).not.toContain('fixture-session-123')
+    sqlite.close()
+  })
+
+  it('returns an actionable reconnect result when browser-session auth is unavailable', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({ sqlitePath })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.1.0',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'fixture-session',
+          label: 'Fixture session',
+          mode: 'browser_session',
+          sessionKey: 'fixture-session-123',
+        },
+      ],
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await expect(
+      client.connectors.status.reconnect({
+        connectorInstanceId: 'connector-instance-fixture',
+      }),
+    ).resolves.toEqual({
+      action: 'reconnect',
+      connectorInstanceId: 'connector-instance-fixture',
+      grants: [
+        {
+          id: 'fixture-session',
+          mode: 'browser_session',
+          reason: 'browser_session_action_required',
+          status: 'action_required',
+        },
+      ],
+      message: 'Connector browser session needs local action before refreshes can continue.',
+      status: 'action_required',
+    })
+    sqlite.close()
+  })
+
   it('creates and updates connector instances through the local client', async () => {
     const sqlitePath = createTempSqlitePath()
     const client = createRuntimeLocalValedictorianClient({
