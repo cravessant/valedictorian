@@ -1070,36 +1070,7 @@ describe('connector runner', () => {
     const repository = createSqliteConnectorRepository(database)
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: unknown[] = []
-    const fixtureConnector: AppJobConnector = {
-      definition: {
-        id: 'fixture.jobs',
-        version: '0.0.0-fixture',
-        politeness: {
-          concurrency: 1,
-          minDelayMs: 1_000,
-          maxDelayMs: 10_000,
-          maxRequestsPerRun: 5,
-        },
-      },
-      async refresh(input) {
-        receivedInputs.push(input)
-
-        return {
-          coverage: input.coverage,
-          stats: {
-            observations: 0,
-          },
-          warnings: [],
-          nextCheckpoint: {
-            checkpoint: {
-              cursor: input.coverage.end,
-            },
-            schemaVersion: 'fixture-checkpoint@1',
-          },
-          observations: [],
-        }
-      },
-    }
+    const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
 
     await runner.registerInstance({
       id: 'connector-instance-fixture',
@@ -1123,6 +1094,118 @@ describe('connector runner', () => {
         maxDelayMs: 10_000,
         maxRequestsPerRun: 5,
       },
+    })
+  })
+
+  it('passes connector politeness defaults as a host-owned run budget during manual refresh', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
+    const receivedInputs: unknown[] = []
+    const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
+
+    await runner.registerInstance({
+      id: 'connector-instance-fixture',
+      connector: fixtureConnector,
+      displayName: 'Fixture jobs',
+      enabled: true,
+      createdAt: '2026-07-08T16:00:00.000Z',
+    })
+
+    await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-09T15:00:00.000Z',
+        end: '2026-07-09T16:00:00.000Z',
+      },
+      startedAt: '2026-07-09T16:00:00.000Z',
+      completedAt: '2026-07-09T16:00:01.000Z',
+    })
+
+    expect(receivedInputs[0]).toMatchObject({
+      budget: {
+        concurrency: 1,
+        minDelayMs: 1_000,
+        maxDelayMs: 10_000,
+        maxRequestsPerRun: 5,
+      },
+    })
+  })
+
+  it('passes connector politeness defaults as a host-owned run budget during scheduled deferred refresh', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
+    const receivedInputs: unknown[] = []
+    const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
+
+    await runner.registerInstance({
+      id: 'connector-instance-fixture',
+      connector: fixtureConnector,
+      displayName: 'Fixture jobs',
+      enabled: true,
+      createdAt: '2026-07-08T16:00:00.000Z',
+    })
+
+    await runner.refreshWithDeferredCheckpoint(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'scheduled',
+      coverage: {
+        start: '2026-07-09T15:00:00.000Z',
+        end: '2026-07-09T16:00:00.000Z',
+      },
+      startedAt: '2026-07-09T16:00:00.000Z',
+      completedAt: '2026-07-09T16:00:01.000Z',
+    })
+
+    expect(receivedInputs[0]).toMatchObject({
+      budget: {
+        concurrency: 1,
+        minDelayMs: 1_000,
+        maxDelayMs: 10_000,
+        maxRequestsPerRun: 5,
+      },
+    })
+  })
+
+  it('keeps explicit caller budgets for manual refreshes', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
+    const receivedInputs: unknown[] = []
+    const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
+
+    await runner.registerInstance({
+      id: 'connector-instance-fixture',
+      connector: fixtureConnector,
+      displayName: 'Fixture jobs',
+      enabled: true,
+      createdAt: '2026-07-08T16:00:00.000Z',
+    })
+
+    await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-09T15:00:00.000Z',
+        end: '2026-07-09T16:00:00.000Z',
+      },
+      startedAt: '2026-07-09T16:00:00.000Z',
+      completedAt: '2026-07-09T16:00:01.000Z',
+      budget: {
+        maxRequestsPerRun: 2,
+      },
+    })
+
+    expect((receivedInputs[0] as { budget?: unknown }).budget).toEqual({
+      maxRequestsPerRun: 2,
     })
   })
 
@@ -1289,5 +1372,30 @@ function emptyConnectorRefreshResult({
       schemaVersion: 'fixture-checkpoint@1',
     },
     observations: [],
+  }
+}
+
+function createBudgetCapturingConnector(receivedInputs: unknown[]): AppJobConnector {
+  return {
+    definition: {
+      id: 'fixture.jobs',
+      version: '0.0.0-fixture',
+      politeness: {
+        concurrency: 1,
+        minDelayMs: 1_000,
+        maxDelayMs: 10_000,
+        maxRequestsPerRun: 5,
+      },
+    },
+    async refresh(input) {
+      receivedInputs.push(input)
+
+      return emptyConnectorRefreshResult({
+        checkpoint: {
+          cursor: input.coverage.end,
+        },
+        coverage: input.coverage,
+      })
+    },
   }
 }
