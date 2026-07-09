@@ -234,6 +234,7 @@ describe('Valedictorian runtime creation', () => {
         },
       },
       referenceTrackerPath: undefined,
+      runConnectorStartupCatchUp: true,
       seedDataMode: 'none',
       sqlitePath: '/tmp/valedictorian-user-data/valedictorian.sqlite',
     })

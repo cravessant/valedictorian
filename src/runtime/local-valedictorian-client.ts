@@ -56,6 +56,7 @@ export interface LocalValedictorianClientOptions {
   connectorRuntime?: AppConnectorRuntimePorts
   now?: () => Date
   referenceTrackerPath?: string
+  runConnectorStartupCatchUp?: boolean
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: ProfileSecretCodec
   sqlitePath: string
@@ -133,6 +134,14 @@ export interface LocalConnectorRunTriggerInput {
   dryRun?: boolean
 }
 
+export interface LocalConnectorStartupCatchUpResult {
+  runs: LocalConnectorRunSummary[]
+  skipped: Array<{
+    connectorInstanceId: string
+    reason: 'disabled' | 'execution_failed' | 'unsupported_connector'
+  }>
+}
+
 export interface LocalConnectorClient {
   list(): Promise<{ items: LocalConnectorInstanceSummary[] }>
   create(input: CreateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
@@ -152,6 +161,7 @@ export interface LocalConnectorClient {
       offset: number
       hasMore: boolean
     }>
+    startupCatchUp(): Promise<LocalConnectorStartupCatchUpResult>
     trigger(input: LocalConnectorRunTriggerInput): Promise<LocalConnectorRunSummary>
   }
   checkpoints: {
@@ -201,6 +211,7 @@ export function createLocalValedictorianClient({
   connectorRuntime,
   now = () => new Date(),
   referenceTrackerPath,
+  runConnectorStartupCatchUp = false,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
   sqlitePath,
@@ -237,8 +248,21 @@ export function createLocalValedictorianClient({
     sourcingRepository,
     workflowRunRepository,
   })
+  let startupCatchUpPromise: Promise<LocalConnectorStartupCatchUpResult> | null = null
 
-  return {
+  const runStartupCatchUpOnce = () => {
+    startupCatchUpPromise ??= executeConnectorStartupCatchUp({
+      connectorRegistry,
+      connectorRepository,
+      connectorRunner,
+      now,
+      projectionService: connectorProjectionService,
+    })
+
+    return startupCatchUpPromise
+  }
+
+  const client: LocalValedictorianClient = {
     applications: {
       list: (query) => applicationService.listApplications(query),
       get: (id) => applicationService.getApplication(id),
@@ -346,6 +370,7 @@ export function createLocalValedictorianClient({
             items: result.items.map(mapConnectorRunSummary),
           }
         },
+        startupCatchUp: runStartupCatchUpOnce,
         trigger: async (input) => {
           const run = await executeConnectorRunTrigger({
             connectorRegistry,
@@ -447,6 +472,70 @@ export function createLocalValedictorianClient({
       },
     },
   }
+
+  if (runConnectorStartupCatchUp) {
+    void runStartupCatchUpOnce().catch(() => undefined)
+  }
+
+  return client
+}
+
+async function executeConnectorStartupCatchUp({
+  connectorRegistry,
+  connectorRepository,
+  connectorRunner,
+  now,
+  projectionService,
+}: {
+  connectorRegistry: LocalConnectorRegistry
+  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRunner: ReturnType<typeof createConnectorRunner>
+  now: () => Date
+  projectionService: ReturnType<typeof createSqliteConnectorProjectionService>
+}): Promise<LocalConnectorStartupCatchUpResult> {
+  const runs: LocalConnectorRunSummary[] = []
+  const skipped: LocalConnectorStartupCatchUpResult['skipped'] = []
+  const coverageEndedAt = now().toISOString()
+
+  for (const instance of await connectorRepository.listInstances()) {
+    if (!instance.enabled) {
+      skipped.push({
+        connectorInstanceId: instance.id,
+        reason: 'disabled',
+      })
+      continue
+    }
+
+    if (!connectorRegistry.get(instance.connectorId)) {
+      skipped.push({
+        connectorInstanceId: instance.id,
+        reason: 'unsupported_connector',
+      })
+      continue
+    }
+
+    try {
+      runs.push(mapConnectorRunSummary(await executeConnectorRunTrigger({
+        connectorRegistry,
+        connectorRepository,
+        connectorRunner,
+        input: {
+          connectorInstanceId: instance.id,
+          coverageEndedAt,
+          mode: 'catch_up',
+        },
+        now,
+        projectionService,
+      })))
+    } catch {
+      skipped.push({
+        connectorInstanceId: instance.id,
+        reason: 'execution_failed',
+      })
+    }
+  }
+
+  return { runs, skipped }
 }
 
 async function executeConnectorRunTrigger({

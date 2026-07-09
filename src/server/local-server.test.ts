@@ -697,6 +697,7 @@ describe('local Valedictorian HTTP server', () => {
             wait: expect.any(Function),
           },
         },
+        runConnectorStartupCatchUp: true,
         workspaceId: 'workspace-client',
       },
     ])
