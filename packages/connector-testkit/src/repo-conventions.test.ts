@@ -89,7 +89,8 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("Packages publish publicly to npm under the `@sparxie` scope")
     expect(readme).toContain("CI publishes packages from `.github/workflows/publish.yml`")
     expect(readme).toContain("Workflow filename: `publish.yml`")
-    expect(readme).toContain("publishes the tarballs with the npm CLI")
+    expect(readme).toContain("publishes the tarballs with the npm CLI for OIDC support")
+    expect(readme).toContain("Provenance is intentionally not requested while this GitHub repo is private")
   })
 
   it("keeps current packages public and separated by dependency direction", () => {
@@ -202,6 +203,7 @@ describe("connector repository conventions", () => {
     expect(publishWorkflow).toContain("npm \"${publish_args[@]}\" .local/packs/sparxie-valedictorian-connectors-core-*.tgz")
     expect(publishWorkflow).toContain("npm \"${publish_args[@]}\" .local/packs/sparxie-valedictorian-connectors-test-harness-*.tgz")
     expect(publishWorkflow).toContain("npm \"${publish_args[@]}\" .local/packs/sparxie-valedictorian-connectors-jobright-*.tgz")
+    expect(publishWorkflow).not.toContain("--provenance")
     expect(publishWorkflow).not.toContain("NODE_AUTH_TOKEN")
     expect(publishWorkflow).not.toContain("NPM_TOKEN")
   })
