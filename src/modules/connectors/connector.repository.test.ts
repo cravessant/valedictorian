@@ -248,6 +248,76 @@ describe('SQLite connector repository', () => {
     })
   })
 
+  it('can defer checkpoint persistence until a refresh run is accepted', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await repository.upsertInstance({
+      id: 'connector-instance-deferred',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Deferred fixture jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    const run = await repository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-deferred',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:00.000Z',
+      completedAt: '2026-07-08T16:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      checkpointPersistence: 'deferred',
+      result: emptyConnectorRefreshResult({
+        checkpoint: { cursor: 'deferred-cursor' },
+        coverage: {
+          start: '2026-07-08T15:00:00.000Z',
+          end: '2026-07-08T16:00:00.000Z',
+        },
+      }),
+    })
+
+    expect(run).toMatchObject({
+      connectorInstanceId: 'connector-instance-deferred',
+      status: 'completed',
+    })
+    await expect(
+      repository.getCheckpoint({
+        connectorInstanceId: 'connector-instance-deferred',
+        filterSignature: 'filters:{}',
+      }),
+    ).resolves.toBeNull()
+
+    await repository.recordCheckpoint({
+      connectorInstanceId: 'connector-instance-deferred',
+      filterSignature: 'filters:{}',
+      checkpoint: {
+        checkpoint: { cursor: 'deferred-cursor' },
+        schemaVersion: 'fixture-checkpoint@1',
+      },
+      coverage: {
+        start: '2026-07-08T15:00:00.000Z',
+        end: '2026-07-08T16:00:00.000Z',
+      },
+      savedAt: '2026-07-08T16:00:01.000Z',
+    })
+
+    await expect(
+      repository.getCheckpoint({
+        connectorInstanceId: 'connector-instance-deferred',
+        filterSignature: 'filters:{}',
+      }),
+    ).resolves.toMatchObject({
+      checkpoint: { cursor: 'deferred-cursor' },
+      coverageEndedAt: '2026-07-08T16:00:00.000Z',
+      coverageStartedAt: '2026-07-08T15:00:00.000Z',
+    })
+  })
+
   it('normalizes connector auth references before persisting instance state', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)

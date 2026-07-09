@@ -116,6 +116,7 @@ export interface RecordConnectorRefreshResultInput {
   config: JsonRecord
   filters: JsonRecord
   filterSignature: string
+  checkpointPersistence?: 'deferred' | 'immediate'
   result: ConnectorRefreshResultInput
 }
 
@@ -150,6 +151,14 @@ export interface MarkConnectorRunFailedInput {
   completedAt: string
   retryHints?: unknown
   warning: ConnectorWarning
+}
+
+export interface RecordConnectorCheckpointInput {
+  connectorInstanceId: string
+  filterSignature: string
+  checkpoint: ConnectorCheckpointPayload
+  coverage: ConnectorCoverageWindow
+  savedAt: string
 }
 
 export interface GetConnectorCheckpointInput {
@@ -353,51 +362,18 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
           })
           .run()
 
-        const existingCheckpoint = transaction
-          .select({
-            connectorInstanceId: connectorCheckpoints.connectorInstanceId,
-            filterSignature: connectorCheckpoints.filterSignature,
-          })
-          .from(connectorCheckpoints)
-          .where(
-            and(
-              eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
-              eq(connectorCheckpoints.filterSignature, input.filterSignature),
-              isNull(connectorCheckpoints.deletedAt),
-            ),
-          )
-          .get()
-        const checkpointValues = {
-          checkpointJson: JSON.stringify(input.result.nextCheckpoint.checkpoint),
-          schemaVersion: input.result.nextCheckpoint.schemaVersion,
-          coverageStartedAt: input.result.coverage.start,
-          coverageEndedAt: input.result.coverage.end,
-          savedAt: input.completedAt,
-          updatedAt: now,
-          deletedAt: null,
-        }
-
-        if (existingCheckpoint) {
-          transaction
-            .update(connectorCheckpoints)
-            .set(checkpointValues)
-            .where(
-              and(
-                eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
-                eq(connectorCheckpoints.filterSignature, input.filterSignature),
-              ),
-            )
-            .run()
-        } else {
-          transaction
-            .insert(connectorCheckpoints)
-            .values({
+        if ((input.checkpointPersistence ?? 'immediate') === 'immediate') {
+          upsertConnectorCheckpoint(
+            transaction,
+            {
               connectorInstanceId: input.connectorInstanceId,
               filterSignature: input.filterSignature,
-              ...checkpointValues,
-              createdAt: now,
-            })
-            .run()
+              checkpoint: input.result.nextCheckpoint,
+              coverage: input.result.coverage,
+              savedAt: input.completedAt,
+            },
+            now,
+          )
         }
 
         for (const observation of input.result.observations) {
@@ -437,6 +413,29 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
             .get(),
         )
       })
+    },
+
+    async recordCheckpoint(
+      input: RecordConnectorCheckpointInput,
+    ): Promise<ConnectorCheckpointRecord> {
+      const instance = await this.getInstance(input.connectorInstanceId)
+
+      if (!instance) {
+        throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+      }
+
+      upsertConnectorCheckpoint(database, input, new Date().toISOString())
+
+      const checkpoint = await this.getCheckpoint({
+        connectorInstanceId: input.connectorInstanceId,
+        filterSignature: input.filterSignature,
+      })
+
+      if (!checkpoint) {
+        throw new Error(`Connector checkpoint not found after insert: ${input.connectorInstanceId}`)
+      }
+
+      return checkpoint
     },
 
     async recordRunRequest(input: RecordConnectorRunRequestInput): Promise<ConnectorRunRecord> {
@@ -884,6 +883,60 @@ function selectConnectorInstance(
   }
 
   return mapConnectorInstance(row)
+}
+
+function upsertConnectorCheckpoint(
+  database: Pick<DrizzleDatabase, 'insert' | 'select' | 'update'>,
+  input: RecordConnectorCheckpointInput,
+  now: string,
+) {
+  const existingCheckpoint = database
+    .select({
+      connectorInstanceId: connectorCheckpoints.connectorInstanceId,
+      filterSignature: connectorCheckpoints.filterSignature,
+    })
+    .from(connectorCheckpoints)
+    .where(
+      and(
+        eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
+        eq(connectorCheckpoints.filterSignature, input.filterSignature),
+        isNull(connectorCheckpoints.deletedAt),
+      ),
+    )
+    .get()
+  const checkpointValues = {
+    checkpointJson: JSON.stringify(input.checkpoint.checkpoint),
+    schemaVersion: input.checkpoint.schemaVersion,
+    coverageStartedAt: input.coverage.start,
+    coverageEndedAt: input.coverage.end,
+    savedAt: input.savedAt,
+    updatedAt: now,
+    deletedAt: null,
+  }
+
+  if (existingCheckpoint) {
+    database
+      .update(connectorCheckpoints)
+      .set(checkpointValues)
+      .where(
+        and(
+          eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
+          eq(connectorCheckpoints.filterSignature, input.filterSignature),
+        ),
+      )
+      .run()
+    return
+  }
+
+  database
+    .insert(connectorCheckpoints)
+    .values({
+      connectorInstanceId: input.connectorInstanceId,
+      filterSignature: input.filterSignature,
+      ...checkpointValues,
+      createdAt: now,
+    })
+    .run()
 }
 
 function mapConnectorInstance(
