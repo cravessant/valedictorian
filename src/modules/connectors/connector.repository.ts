@@ -72,6 +72,8 @@ export interface ConnectorObservationEvidence {
 export interface ConnectorObservationInput {
   connectorId: string
   connectorVersion: string
+  parserVersion?: string | null
+  observationSchemaVersion?: string | null
   sourceRecordKey: string
   observedAt: string
   companyName: string
@@ -392,6 +394,8 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
               connectorRunId: runId,
               connectorId: observation.connectorId,
               connectorVersion: observation.connectorVersion,
+              parserVersion: observation.parserVersion ?? null,
+              observationSchemaVersion: observation.observationSchemaVersion ?? null,
               sourceRecordKey: observation.sourceRecordKey,
               observedAt: observation.observedAt,
               companyName: observation.companyName,
@@ -1167,6 +1171,8 @@ function mapConnectorObservation(
     connectorRunId: row.connectorRunId,
     connectorId: row.connectorId,
     connectorVersion: row.connectorVersion,
+    parserVersion: row.parserVersion ?? null,
+    observationSchemaVersion: row.observationSchemaVersion ?? null,
     sourceRecordKey: row.sourceRecordKey,
     observedAt: row.observedAt,
     companyName: row.companyName,

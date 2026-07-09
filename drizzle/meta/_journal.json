@@ -57,6 +57,13 @@
       "when": 1783550314868,
       "tag": "0007_lowly_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783606002219,
+      "tag": "0008_third_leo",
+      "breakpoints": true
     }
   ]
 }

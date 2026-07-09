@@ -57,6 +57,8 @@ describe('SQLite connector repository', () => {
           {
             connectorId: 'fixture.jobs',
             connectorVersion: '0.0.0-fixture',
+            parserVersion: 'fixture-parser@2026-07-09',
+            observationSchemaVersion: 'job-observation@2',
             sourceRecordKey: 'fixture.jobs:software-engineering-intern',
             observedAt: '2026-07-08T16:00:00.000Z',
             companyName: 'Example Robotics',
@@ -134,6 +136,8 @@ describe('SQLite connector repository', () => {
         connectorRunId: run.id,
         connectorId: 'fixture.jobs',
         connectorVersion: '0.0.0-fixture',
+        parserVersion: 'fixture-parser@2026-07-09',
+        observationSchemaVersion: 'job-observation@2',
         sourceRecordKey: 'fixture.jobs:software-engineering-intern',
         companyName: 'Example Robotics',
         roleTitle: 'Software Engineering Intern',

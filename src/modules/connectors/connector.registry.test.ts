@@ -8,7 +8,7 @@ describe('connector registry', () => {
     expect(registry.get('jobright.resolver')?.definition).toMatchObject({
       displayName: 'Jobright public jobs',
       id: 'jobright.resolver',
-      version: '0.1.0',
+      version: '0.3.0',
     })
     expect(registry.get('jobright.public')).toBeNull()
   })

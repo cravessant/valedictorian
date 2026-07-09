@@ -338,7 +338,23 @@ describe('local Valedictorian HTTP server', () => {
       observations: {
         async list(input) {
           calls.push(['observations', input])
-          return { hasMore: false, items: [], limit: 10, offset: 0, total: 0 }
+          return {
+            hasMore: false,
+            items: [
+              {
+                companyName: 'Delta Labs',
+                connectorId: 'jobright.resolver',
+                connectorVersion: '0.3.0',
+                parserVersion: 'jobright-parser@0.3.0',
+                observationSchemaVersion: 'job-observation@2',
+                roleTitle: 'Software Engineering Intern',
+                sourceRecordKey: 'jobright:delta',
+              },
+            ],
+            limit: 10,
+            offset: 0,
+            total: 1,
+          }
         },
       },
     }
@@ -442,10 +458,20 @@ describe('local Valedictorian HTTP server', () => {
     expect(observationsResponse.status).toBe(200)
     await expect(readJson(observationsResponse)).resolves.toEqual({
       hasMore: false,
-      items: [],
+      items: [
+        {
+          companyName: 'Delta Labs',
+          connectorId: 'jobright.resolver',
+          connectorVersion: '0.3.0',
+          parserVersion: 'jobright-parser@0.3.0',
+          observationSchemaVersion: 'job-observation@2',
+          roleTitle: 'Software Engineering Intern',
+          sourceRecordKey: 'jobright:delta',
+        },
+      ],
       limit: 10,
       offset: 0,
-      total: 0,
+      total: 1,
     })
     expect(calls).toEqual([
       ['list'],

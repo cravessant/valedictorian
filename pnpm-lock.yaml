@@ -15,8 +15,8 @@ importers:
         specifier: ^1.2.15
         version: 1.2.16(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@sparxie/valedictorian-connectors-jobright':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.3.0
+        version: 0.3.0
       '@tailwindcss/vite':
         specifier: ^4.3.0
         version: 4.3.0(vite@5.4.21(@types/node@25.9.2)(lightningcss@1.32.0))
@@ -82,8 +82,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@sparxie/valedictorian-connectors-core':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.3.0
+        version: 0.3.0
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
@@ -1434,11 +1434,11 @@ packages:
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
 
-  '@sparxie/valedictorian-connectors-core@0.1.0':
-    resolution: {integrity: sha512-h2BFqRUb1SMN2vLAgZTryG2OavY1xUUh0tMlUBcceArkZTjop2xEdLK4OpXzbaLOP98p341eACMyUiJxoIEeRg==}
+  '@sparxie/valedictorian-connectors-core@0.3.0':
+    resolution: {integrity: sha512-nNcs7YuftWKjr3veSMhQK8Y5jjwfoO3PgrydPr5b/RHvDhiys/xfaoI4SU4a2+JKMY0OaOC+dmr1KTuWyccpqQ==}
 
-  '@sparxie/valedictorian-connectors-jobright@0.1.0':
-    resolution: {integrity: sha512-0u5urzC9IxyH6q4n1K6+FRDhpon9FenkSnYk2wFcrmwi3Kc/pzkTGusKkJuXrFRRTIAs+m+iE18G3tIzXRYDBw==}
+  '@sparxie/valedictorian-connectors-jobright@0.3.0':
+    resolution: {integrity: sha512-qq2BLX6jBGpDKAiAJqzFO5qtV3ieXL/d7Y3I3PnYBFM5qpKX8v2oU1wmb7JFNF/0redgmkEMTIz0dQ99GnhSqw==}
 
   '@szmarczak/http-timer@4.0.6':
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
@@ -4521,11 +4521,11 @@ snapshots:
 
   '@sindresorhus/is@4.6.0': {}
 
-  '@sparxie/valedictorian-connectors-core@0.1.0': {}
+  '@sparxie/valedictorian-connectors-core@0.3.0': {}
 
-  '@sparxie/valedictorian-connectors-jobright@0.1.0':
+  '@sparxie/valedictorian-connectors-jobright@0.3.0':
     dependencies:
-      '@sparxie/valedictorian-connectors-core': 0.1.0
+      '@sparxie/valedictorian-connectors-core': 0.3.0
       cheerio: 1.2.0
 
   '@szmarczak/http-timer@4.0.6':

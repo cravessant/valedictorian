@@ -636,6 +636,8 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       connector_run_id text not null references connector_runs(id),
       connector_id text not null,
       connector_version text not null,
+      parser_version text,
+      observation_schema_version text,
       source_record_key text not null,
       observed_at text not null,
       company_name text not null,
@@ -792,6 +794,8 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
   ensureConnectorCheckpointFilterScope(database)
   ensureColumns(database, 'connector_observations', [
     ['sourcing_finding_id', 'text'],
+    ['parser_version', 'text'],
+    ['observation_schema_version', 'text'],
   ])
   database.exec(`
     create index if not exists idx_connector_observations_sourcing_finding

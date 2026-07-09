@@ -397,6 +397,8 @@ export const connectorObservations = sqliteTable(
       .references(() => connectorRuns.id),
     connectorId: text('connector_id').notNull(),
     connectorVersion: text('connector_version').notNull(),
+    parserVersion: text('parser_version'),
+    observationSchemaVersion: text('observation_schema_version'),
     sourceRecordKey: text('source_record_key').notNull(),
     observedAt: text('observed_at').notNull(),
     companyName: text('company_name').notNull(),

@@ -47,6 +47,9 @@ describe('SQLite database', () => {
     expect(tableColumns(database, 'connector_checkpoints')).toEqual(
       expect.arrayContaining(['filter_signature']),
     )
+    expect(tableColumns(database, 'connector_observations')).toEqual(
+      expect.arrayContaining(['parser_version', 'observation_schema_version']),
+    )
   })
 
   it('creates source indexes for workflow run and sourcing filters', () => {
@@ -117,12 +120,12 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(8)
+    expect(migrationRows).toHaveLength(9)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
 
-  it('adds projection columns and indexes to legacy connector observation tables', () => {
+  it('adds projection and version metadata columns to legacy connector observation tables', () => {
     const database = createInMemoryDatabase()
     database.exec(`
       create table connector_observations (
@@ -157,7 +160,13 @@ describe('SQLite database', () => {
       .all()
       .map((row) => (row as { name: string }).name)
 
-    expect(tableColumns(database, 'connector_observations')).toContain('sourcing_finding_id')
+    expect(tableColumns(database, 'connector_observations')).toEqual(
+      expect.arrayContaining([
+        'sourcing_finding_id',
+        'parser_version',
+        'observation_schema_version',
+      ]),
+    )
     expect(connectorObservationIndexes).toContain('idx_connector_observations_sourcing_finding')
     expect(
       database
