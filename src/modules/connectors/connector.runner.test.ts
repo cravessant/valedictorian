@@ -643,12 +643,24 @@ describe('connector runner', () => {
     ])
   })
 
-  it('returns browser-session action-required grants when no local session resolver is configured', async () => {
+  it('returns action-required for a missing session handle without starting interactive auth', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
+    let interactiveAuthAttempts = 0
+    const runner = createConnectorRunner({
+      auth: {
+        browserSessions: {
+          async resolve() {
+            interactiveAuthAttempts += 1
+            throw new Error('Interactive auth must not run during connector refreshes')
+          },
+        },
+      },
+      repository,
+      workspaceId: 'workspace-fixture',
+    })
     const receivedGrants: unknown[] = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -704,6 +716,83 @@ describe('connector runner', () => {
         status: 'action_required',
       },
     ])
+    expect(interactiveAuthAttempts).toBe(0)
+  })
+
+  it('uses a configured browser session during a run without starting interactive auth', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    let interactiveAuthAttempts = 0
+    const runner = createConnectorRunner({
+      auth: {
+        browserSessions: {
+          async resolve() {
+            interactiveAuthAttempts += 1
+            throw new Error('Interactive auth must not run during connector refreshes')
+          },
+        },
+      },
+      repository,
+      workspaceId: 'workspace-fixture',
+    })
+    const receivedGrants: unknown[] = []
+    const fixtureConnector: AppJobConnector = {
+      definition: {
+        id: 'fixture.browser-jobs',
+        version: '0.0.0-fixture',
+        auth: {
+          modes: ['browser_session'],
+        },
+      },
+      async refresh(input, runtime) {
+        receivedGrants.push(await runtime.auth.resolve({
+          id: 'fixture-auth',
+          mode: 'browser_session',
+        }))
+
+        return emptyConnectorRefreshResult({
+          coverage: input.coverage,
+          checkpoint: { cursor: input.coverage.end },
+        })
+      },
+    }
+
+    await runner.registerInstance({
+      id: 'connector-instance-browser-session',
+      connector: fixtureConnector,
+      displayName: 'Browser jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'fixture-auth',
+          mode: 'browser_session',
+          sessionKey: 'workspace_session_1',
+        },
+      ],
+      createdAt: '2026-07-08T16:55:00.000Z',
+    })
+
+    await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-browser-session',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T17:00:00.000Z',
+        end: '2026-07-08T18:00:00.000Z',
+      },
+    })
+
+    expect(interactiveAuthAttempts).toBe(0)
+    expect(receivedGrants).toEqual([
+      {
+        id: 'fixture-auth',
+        mode: 'browser_session',
+        sessionId: 'workspace_session_1',
+        sessionKey: 'workspace_session_1',
+        status: 'ready',
+      },
+    ])
   })
 
   it('redacts browser-session handles before persisting connector results', async () => {
@@ -714,22 +803,6 @@ describe('connector runner', () => {
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
-      auth: {
-        browserSessions: {
-          async resolve(reference) {
-            return {
-              id: 'ignored-id',
-              mode: 'browser_session',
-              secretKey: 'should-not-cross-session-boundary',
-              sessionId: 'fixture-session-123',
-              sessionKey: 'resolver-session-key',
-              status: 'ready',
-              value: 'should-not-cross-session-boundary',
-              ...(reference.sessionKey ? { reason: reference.sessionKey } : {}),
-            } as never
-          },
-        },
-      },
     })
     const receivedGrants: unknown[] = []
     const fixtureConnector: AppJobConnector = {
@@ -808,17 +881,13 @@ describe('connector runner', () => {
       {
         id: 'fixture-auth',
         mode: 'browser_session',
-        reason: 'workspace_session_1',
-        sessionId: 'fixture-session-123',
+        sessionId: 'workspace_session_1',
         sessionKey: 'workspace_session_1',
         status: 'ready',
       },
     ])
     expect(persisted).toContain('[redacted-secret]')
-    expect(persisted).not.toContain('fixture-session-123')
     expect(persisted).not.toContain('workspace_session_1')
-    expect(persisted).not.toContain('resolver-session-key')
-    expect(persisted).not.toContain('should-not-cross-session-boundary')
   })
 
   it('computes first catch-up coverage from connector-added time and the default backfill cap', async () => {

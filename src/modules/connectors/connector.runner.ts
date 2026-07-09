@@ -164,25 +164,62 @@ export function createConnectorRunner({
       connector.definition.politeness,
     )
     const sensitiveValues = new Set<string>()
-    const result = await connector.refresh(
-      {
-        connectorInstanceId: input.connectorInstanceId,
-        workspaceId,
-        mode: input.mode,
-        coverage: input.coverage,
-        config,
-        filters,
-        ...(budget ? { budget } : {}),
-        ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
-      },
-      createRunRuntime(
-        runtime,
-        connectorInstance.auth,
-        connector.definition.auth?.requirements ?? [],
-        auth,
-        sensitiveValues,
-      ),
+    const authRequirements = connector.definition.auth?.requirements ?? []
+    const runRuntime = createRunRuntime(
+      runtime,
+      connectorInstance.auth,
+      authRequirements,
+      auth,
+      sensitiveValues,
     )
+    const authBlocker = await preflightBrowserSessionAuth(authRequirements, runRuntime.auth)
+    const result = authBlocker
+      ? createAuthRequiredRefreshResult({
+        authBlocker,
+        checkpoint,
+        checkpointSchemaVersion: connector.definition.checkpoint?.schemaVersion,
+        coverage: input.coverage,
+      })
+      : await connector.refresh(
+        {
+          connectorInstanceId: input.connectorInstanceId,
+          workspaceId,
+          mode: input.mode,
+          coverage: input.coverage,
+          config,
+          filters,
+          ...(budget ? { budget } : {}),
+          ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
+        },
+        runRuntime,
+      )
+
+    if (refreshRequiresBrowserSessionReconnect(result)) {
+      const invalidatedAuth = connectorInstance.auth.map((reference) => {
+        if (reference.mode !== 'browser_session' || !reference.sessionKey) {
+          return reference
+        }
+
+        const invalidatedReference = { ...reference }
+        delete invalidatedReference.sessionKey
+        return invalidatedReference
+      })
+
+      if (invalidatedAuth.some((reference, index) => reference !== connectorInstance.auth[index])) {
+        await repository.upsertInstance({
+          id: connectorInstance.id,
+          connectorId: connectorInstance.connectorId,
+          connectorVersion: connectorInstance.connectorVersion,
+          displayName: connectorInstance.displayName,
+          enabled: connectorInstance.enabled,
+          auth: invalidatedAuth,
+          config: runConfig,
+          filters: runFilters,
+          createdAt: connectorInstance.createdAt,
+        })
+      }
+    }
+
     const safeResult = redactRefreshResult(result, sensitiveValues)
     const completedAt = input.completedAt ?? now().toISOString()
 
@@ -314,6 +351,87 @@ export function createConnectorRunner({
   }
 }
 
+function refreshRequiresBrowserSessionReconnect(result: AppConnectorRefreshResult): boolean {
+  if (result.observations.some((observation) => observation.resolution.status === 'auth_required')) {
+    return true
+  }
+
+  if (result.warnings.some((warning) => warning.code.startsWith('auth.'))) {
+    return true
+  }
+
+  if (!result.retryHints || typeof result.retryHints !== 'object' || Array.isArray(result.retryHints)) {
+    return false
+  }
+
+  const authRequired = (result.retryHints as Record<string, unknown>).authRequired
+
+  return authRequired === true || (typeof authRequired === 'number' && authRequired > 0)
+}
+
+async function preflightBrowserSessionAuth(
+  authRequirements: ConnectorAuthRequirement[],
+  authRuntime: AppConnectorAuthRuntime,
+): Promise<AppConnectorAuthGrant | null> {
+  for (const requirement of authRequirements) {
+    if (requirement.mode !== 'browser_session') {
+      continue
+    }
+
+    const grant = await authRuntime.resolve({
+      id: requirement.id,
+      mode: requirement.mode,
+    })
+
+    if (grant.status !== 'ready' || !grant.sessionId) {
+      return grant
+    }
+  }
+
+  return null
+}
+
+function createAuthRequiredRefreshResult({
+  authBlocker,
+  checkpoint,
+  checkpointSchemaVersion,
+  coverage,
+}: {
+  authBlocker: AppConnectorAuthGrant
+  checkpoint: ConnectorCheckpointPayload | null
+  checkpointSchemaVersion: string | undefined
+  coverage: ConnectorCoverageWindow
+}): AppConnectorRefreshResult {
+  return {
+    coverage,
+    nextCheckpoint: checkpoint
+      ? {
+        checkpoint: checkpoint.checkpoint,
+        schemaVersion: checkpoint.schemaVersion,
+      }
+      : {
+        checkpoint: { authRequired: true },
+        schemaVersion: checkpointSchemaVersion ?? 'connector-auth-required@1',
+      },
+    observations: [],
+    retryHints: {
+      authRequired: 1,
+      reason: authBlocker.reason ?? 'browser_session_action_required',
+    },
+    stats: {
+      authRequired: 1,
+      observations: 0,
+    },
+    status: 'partial_success',
+    warnings: [
+      {
+        code: 'auth.required',
+        message: 'Connector browser session needs attention.',
+      },
+    ],
+  }
+}
+
 function createRunRuntime(
   runtime: AppConnectorRuntimePorts,
   authReferences: ConnectorAuthReference[],
@@ -321,8 +439,11 @@ function createRunRuntime(
   authHost: AppConnectorAuthHost | undefined,
   sensitiveValues: Set<string>,
 ): AppConnectorRuntime {
+  const browserSession = createRunBrowserSessionRuntime(runtime.browserSession)
+
   return {
     ...runtime,
+    ...(browserSession ? { browserSession } : {}),
     auth: {
       async resolve(input) {
         return resolveAuthGrant(
@@ -333,6 +454,48 @@ function createRunRuntime(
           sensitiveValues,
         )
       },
+    },
+  }
+}
+
+function createRunBrowserSessionRuntime(
+  browserSession: ConnectorBrowserSessionRuntime | undefined,
+): ConnectorBrowserSessionRuntime | undefined {
+  if (!browserSession) {
+    return undefined
+  }
+
+  let authRequiredResult: Awaited<ReturnType<ConnectorBrowserSessionRuntime['resolveLink']>> | null = null
+
+  return {
+    async resolveLink(input) {
+      if (authRequiredResult) {
+        return authRequiredResult
+      }
+
+      let result: Awaited<ReturnType<ConnectorBrowserSessionRuntime['resolveLink']>>
+
+      try {
+        result = await browserSession.resolveLink(input)
+      } catch {
+        result = {
+          method: 'connector_browser_session',
+          officialUrl: null,
+          reason: 'browser_session_resolution_failed',
+          status: 'auth_required',
+        }
+      }
+
+      if (result.status === 'auth_required') {
+        authRequiredResult = {
+          status: 'auth_required',
+          officialUrl: null,
+          ...(result.method === undefined ? {} : { method: result.method }),
+          ...(result.reason === undefined ? {} : { reason: result.reason }),
+        }
+      }
+
+      return result
     },
   }
 }
@@ -383,14 +546,18 @@ async function resolveAuthGrant(
     return resolveSecretGrant(reference, authHost, sensitiveValues)
   }
 
-  if (authHost?.browserSessions) {
-    const grant = sanitizeBrowserSessionGrant(
+  if (reference.sessionKey) {
+    return sanitizeBrowserSessionGrant(
       reference,
-      await authHost.browserSessions.resolve(browserSessionReference(reference)),
+      {
+        id: reference.id,
+        mode: referenceMode,
+        sessionId: reference.sessionKey,
+        sessionKey: reference.sessionKey,
+        status: 'ready',
+      },
       sensitiveValues,
     )
-
-    return grant
   }
 
   return {
@@ -437,15 +604,6 @@ async function resolveSecretGrant(
     secretKey: reference.secretKey,
     status: 'ready',
     value: secret.value,
-  }
-}
-
-function browserSessionReference(reference: ConnectorAuthReference): ConnectorAuthReference {
-  return {
-    id: reference.id,
-    mode: reference.mode,
-    ...(reference.label === undefined ? {} : { label: reference.label }),
-    ...(reference.sessionKey === undefined ? {} : { sessionKey: reference.sessionKey }),
   }
 }
 

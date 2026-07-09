@@ -122,7 +122,6 @@ export function createLocalWorkspaceManager({
           connectorAuth: connectorPorts.connectorAuth,
           connectorRuntime: connectorPorts.connectorRuntime,
           referenceTrackerPath,
-          runConnectorStartupCatchUp: true,
           seedDataMode,
           secretCodec,
           sqlitePath: resolveWorkspaceLayout(workspace.path).sqlitePath,

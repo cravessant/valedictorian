@@ -31,14 +31,17 @@ export interface ElectronConnectorWindow {
 export interface CreateElectronConnectorPortsOptions {
   createBrowserWindow: (options: ElectronConnectorWindowOptions) => ElectronConnectorWindow
   jobrightLoginUrl?: string
+  navigationTimeoutMs?: number
   sessionNamespace: string
 }
 
 const defaultJobrightLoginUrl = 'https://jobright.ai/login'
+const defaultNavigationTimeoutMs = 15_000
 
 export function createElectronConnectorPorts({
   createBrowserWindow,
   jobrightLoginUrl = defaultJobrightLoginUrl,
+  navigationTimeoutMs = defaultNavigationTimeoutMs,
   sessionNamespace,
 }: CreateElectronConnectorPortsOptions): DefaultLocalConnectorPorts {
   return {
@@ -88,16 +91,29 @@ export function createElectronConnectorPorts({
             }
           }
 
-          const resolverWindow = createBrowserWindow({
-            height: 760,
-            show: false,
-            title: 'Jobright link resolver',
-            webPreferences: createSessionWebPreferences(sessionNamespace, input.sessionId),
-            width: 1100,
-          })
+          let resolverWindow: ElectronConnectorWindow | undefined
 
           try {
-            await resolverWindow.loadURL(input.url)
+            resolverWindow = createBrowserWindow({
+              height: 760,
+              show: false,
+              title: 'Jobright link resolver',
+              webPreferences: createSessionWebPreferences(sessionNamespace, input.sessionId),
+              width: 1100,
+            })
+            const navigation = await settleWithin(
+              resolverWindow.loadURL(input.url),
+              navigationTimeoutMs,
+            )
+
+            if (navigation.status === 'timed_out') {
+              return {
+                method: 'electron_browser_session',
+                officialUrl: null,
+                reason: 'browser_session_navigation_timed_out',
+                status: 'auth_required',
+              }
+            }
 
             const currentUrl = resolverWindow.webContents?.getURL() ?? input.url
             const directUrl = externalHttpUrl(currentUrl)
@@ -110,20 +126,31 @@ export function createElectronConnectorPorts({
               }
             }
 
-            const scrapeResult = await resolverWindow.webContents?.executeJavaScript(
-              jobrightApplyLinkScript,
+            const script = await settleWithin(
+              resolverWindow.webContents?.executeJavaScript(jobrightApplyLinkScript) ??
+                Promise.resolve(undefined),
+              navigationTimeoutMs,
             )
 
-            return normalizeBrowserSessionResult(scrapeResult)
-          } catch (error) {
+            if (script.status === 'timed_out') {
+              return {
+                method: 'electron_browser_session',
+                officialUrl: null,
+                reason: 'browser_session_script_timed_out',
+                status: 'auth_required',
+              }
+            }
+
+            return normalizeBrowserSessionResult(script.value)
+          } catch {
             return {
               method: 'electron_browser_session',
               officialUrl: null,
-              reason: `browser_session_resolution_failed:${messageFromError(error)}`,
-              status: 'unresolved',
+              reason: 'browser_session_resolution_failed',
+              status: 'auth_required',
             }
           } finally {
-            if (!resolverWindow.isDestroyed?.()) {
+            if (resolverWindow && !resolverWindow.isDestroyed?.()) {
               resolverWindow.close?.()
             }
           }
@@ -131,6 +158,28 @@ export function createElectronConnectorPorts({
       },
       delay: createJitterDelayRuntime(),
     },
+  }
+}
+
+async function settleWithin<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+): Promise<
+  | { status: 'completed'; value: T }
+  | { status: 'timed_out' }
+> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const boundedTimeoutMs = Number.isFinite(timeoutMs) ? Math.max(1, timeoutMs) : defaultNavigationTimeoutMs
+
+  try {
+    return await Promise.race([
+      operation.then((value) => ({ status: 'completed' as const, value })),
+      new Promise<{ status: 'timed_out' }>((resolve) => {
+        timeout = setTimeout(() => resolve({ status: 'timed_out' }), boundedTimeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -272,10 +321,6 @@ function externalHttpUrl(value: string) {
 
 function isJobrightHost(hostname: string) {
   return hostname === 'jobright.ai' || hostname.endsWith('.jobright.ai')
-}
-
-function messageFromError(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function createPersistentPartition(sessionNamespace: string, sessionKey: string) {

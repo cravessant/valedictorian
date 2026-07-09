@@ -692,7 +692,7 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('passes the explicit workspace id into local workspace clients', async () => {
+  it('resolves local workspace clients without scheduling startup connector work', async () => {
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-client-'))
     const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
     const clientOptions: Array<Parameters<typeof createRuntimeLocalValedictorianClient>[0]> = []
@@ -723,10 +723,10 @@ describe('local Valedictorian HTTP server', () => {
             wait: expect.any(Function),
           },
         },
-        runConnectorStartupCatchUp: true,
         workspaceId: 'workspace-client',
       },
     ])
+    expect(clientOptions[0]).not.toHaveProperty('runConnectorStartupCatchUp')
   })
 
   it('blocks opening a workspace when its manifest id is registered to a different path', async () => {

@@ -201,7 +201,7 @@ describe('Valedictorian runtime config', () => {
 })
 
 describe('Valedictorian runtime creation', () => {
-  it('starts a local HTTP server in local desktop mode', async () => {
+  it('starts a local HTTP server without scheduling connector catch-up', async () => {
     const localClient = createWorkspaceClient('local')
     const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:4317' }
     const createLocalClient = vi.fn(() => localClient)
@@ -234,7 +234,6 @@ describe('Valedictorian runtime creation', () => {
         },
       },
       referenceTrackerPath: undefined,
-      runConnectorStartupCatchUp: true,
       seedDataMode: 'none',
       sqlitePath: '/tmp/valedictorian-user-data/valedictorian.sqlite',
     })

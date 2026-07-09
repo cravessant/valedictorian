@@ -57,7 +57,6 @@ export interface LocalValedictorianClientOptions {
   connectorRuntime?: AppConnectorRuntimePorts
   now?: () => Date
   referenceTrackerPath?: string
-  runConnectorStartupCatchUp?: boolean
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: ProfileSecretCodec
   sqlitePath: string
@@ -246,7 +245,6 @@ export function createLocalValedictorianClient({
   connectorRuntime,
   now = () => new Date(),
   referenceTrackerPath,
-  runConnectorStartupCatchUp = false,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
   sqlitePath,
@@ -529,10 +527,6 @@ export function createLocalValedictorianClient({
     },
   }
 
-  if (runConnectorStartupCatchUp) {
-    void runStartupCatchUpOnce().catch(() => undefined)
-  }
-
   return client
 }
 
@@ -584,6 +578,33 @@ async function reconnectConnectorStatus({
       })
     }),
   )
+  const unavailableReferenceIds = new Set(
+    browserSessionReferences.flatMap((reference, index) =>
+      grants[index]?.status === 'ready' ? [] : [reference.id]),
+  )
+
+  if (unavailableReferenceIds.size > 0) {
+    await connectorRepository.upsertInstance({
+      id: instance.id,
+      connectorId: instance.connectorId,
+      connectorVersion: instance.connectorVersion,
+      displayName: instance.displayName,
+      enabled: instance.enabled,
+      auth: instance.auth.map((reference) => {
+        if (reference.mode !== 'browser_session' || !unavailableReferenceIds.has(reference.id)) {
+          return reference
+        }
+
+        const clearedReference = { ...reference }
+        delete clearedReference.sessionKey
+        return clearedReference
+      }),
+      config: toConnectorJsonRecord(instance.config, 'config'),
+      filters: toConnectorJsonRecord(instance.filters, 'filters'),
+      createdAt: instance.createdAt,
+    })
+  }
+
   const sanitizedGrants = grants.map(mapLocalConnectorAuthGrantSummary)
   const status = reconnectStatus(sanitizedGrants)
 

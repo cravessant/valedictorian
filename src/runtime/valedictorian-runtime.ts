@@ -121,7 +121,6 @@ export async function createValedictorianRuntime({
     connectorAuth: connectorPorts.connectorAuth,
     connectorRuntime: connectorPorts.connectorRuntime,
     referenceTrackerPath: config.referenceTrackerPath,
-    runConnectorStartupCatchUp: true,
     seedDataMode: config.seedDataMode,
     sqlitePath: config.sqlitePath,
   })
