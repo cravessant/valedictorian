@@ -1311,156 +1311,14 @@ async function workspaceClient(
     context,
     readRequiredText(optionValue(flags, 'workspace'), '--workspace'),
   )
-  const clientWithWorkspace = context.client as ValedictorianClient & {
-    forWorkspace?: (workspaceId: string) => ValedictorianWorkspaceClient
-  }
-
-  if (clientWithWorkspace.forWorkspace) {
-    return clientWithWorkspace.forWorkspace(workspaceId)
-  }
-
-  return createHttpValedictorianClient({
-    baseUrl: context.apiBaseUrl,
-    fetch: createWorkspaceFetch(workspaceId),
-    token: context.apiToken,
-  }) as unknown as ValedictorianWorkspaceClient
-}
-
-type WorkspaceConnectorClient = {
-  list(): Promise<unknown>
-  inspect(connectorInstanceId: string): Promise<unknown>
-  runs: {
-    list(input: {
-      connectorInstanceId: string
-      status?: string
-      mode?: string
-      limit?: number
-      offset?: number
-    }): Promise<unknown>
-    trigger(input: {
-      connectorInstanceId: string
-      mode?: 'manual' | 'scheduled' | 'catch_up'
-      coverageStartedAt?: string | null
-      coverageEndedAt?: string | null
-      filterSignature?: string | null
-      reason?: string | null
-      dryRun?: boolean
-    }): Promise<unknown>
-  }
-  observations: {
-    list(input: {
-      connectorInstanceId: string
-      connectorRunId?: string
-      limit?: number
-      offset?: number
-    }): Promise<unknown>
-  }
+  return context.client.forWorkspace(workspaceId)
 }
 
 async function workspaceConnectorClient(
   context: ValedictorianCliContext,
   flags: RawFlags,
-): Promise<WorkspaceConnectorClient> {
-  const workspaceId = await resolveWorkspaceId(
-    context,
-    readRequiredText(optionValue(flags, 'workspace'), '--workspace'),
-  )
-  const clientWithWorkspace = context.client as ValedictorianClient & {
-    forWorkspace?: (workspaceId: string) => ValedictorianWorkspaceClient & {
-      connectors?: WorkspaceConnectorClient
-    }
-  }
-  const workspace = clientWithWorkspace.forWorkspace?.(workspaceId) as
-    | (ValedictorianWorkspaceClient & { connectors?: WorkspaceConnectorClient })
-    | undefined
-
-  if (workspace?.connectors) {
-    return workspace.connectors
-  }
-
-  return createConnectorHttpFallback(context, workspaceId)
-}
-
-function createConnectorHttpFallback(
-  context: ValedictorianCliContext,
-  workspaceId: string,
-): WorkspaceConnectorClient {
-  return {
-    list() {
-      return requestJson(context, workspaceApiPath(workspaceId, '/v1/connectors'))
-    },
-    inspect(connectorInstanceId) {
-      return requestJson(
-        context,
-        workspaceApiPath(
-          workspaceId,
-          `/v1/connectors/${encodeURIComponent(connectorInstanceId)}/status`,
-        ),
-      )
-    },
-    runs: {
-      list(input) {
-        const { connectorInstanceId, ...query } = input
-
-        return requestJson(
-          context,
-          workspaceApiPath(
-            workspaceId,
-            withQuery(`/v1/connectors/${encodeURIComponent(connectorInstanceId)}/runs`, query),
-          ),
-        )
-      },
-      trigger(input) {
-        const { connectorInstanceId, ...body } = input
-
-        return requestJson(
-          context,
-          workspaceApiPath(
-            workspaceId,
-            `/v1/connectors/${encodeURIComponent(connectorInstanceId)}/runs`,
-          ),
-          {
-            body,
-            method: 'POST',
-          },
-        )
-      },
-    },
-    observations: {
-      list(input) {
-        const { connectorInstanceId, ...query } = input
-
-        return requestJson(
-          context,
-          workspaceApiPath(
-            workspaceId,
-            withQuery(
-              `/v1/connectors/${encodeURIComponent(connectorInstanceId)}/observations`,
-              query,
-            ),
-          ),
-        )
-      },
-    },
-  }
-}
-
-function workspaceApiPath(workspaceId: string, path: string) {
-  return `/v1/workspaces/${encodeURIComponent(workspaceId)}${path.slice('/v1'.length)}`
-}
-
-function withQuery(path: string, query: Record<string, string | number | undefined>) {
-  const params = new URLSearchParams()
-
-  for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined) {
-      params.set(key, String(value))
-    }
-  }
-
-  const search = params.toString()
-
-  return search ? `${path}?${search}` : path
+): Promise<ValedictorianWorkspaceClient['connectors']> {
+  return (await workspaceClient(context, flags)).connectors
 }
 
 async function resolveWorkspaceId(context: ValedictorianCliContext, selector: string) {
@@ -1627,31 +1485,6 @@ function readResponseMessage(body: unknown, fallback: string) {
   return fallback || 'Valedictorian request failed'
 }
 
-function createWorkspaceFetch(workspaceId: string): typeof fetch {
-  return (async (input, init) => {
-    const url = new URL(readFetchUrl(input))
-
-    if (url.pathname.startsWith('/v1/') && !url.pathname.startsWith('/v1/workspaces/')) {
-      url.pathname = `/v1/workspaces/${encodeURIComponent(workspaceId)}${url.pathname.slice(
-        '/v1'.length,
-      )}`
-    }
-
-    return fetch(url.toString(), init)
-  }) as typeof fetch
-}
-
-function readFetchUrl(input: Parameters<typeof fetch>[0]) {
-  if (typeof input === 'string') {
-    return input
-  }
-
-  if (input instanceof URL) {
-    return input.toString()
-  }
-
-  return input.url
-}
 
 function optionValue(flags: RawFlags, name: string) {
   const value = flags[name]

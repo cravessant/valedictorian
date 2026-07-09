@@ -23,7 +23,7 @@ describe('valedictorian-cli npm package', () => {
     expect(packageJson.scripts?.prepare).toBe('pnpm build')
     expect(packageJson.scripts?.prepublishOnly).toBe('pnpm lint && pnpm test && pnpm build')
     expect(packageJson.dependencies?.cosmiconfig).toBe('9.0.2')
-    expect(packageJson.dependencies?.sparxie).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(packageJson.dependencies?.sparxie).toBe('0.7.3')
     expect(packageJson.dependencies?.sparxie).not.toContain('github:')
     expect(packageJson.dependencies).not.toHaveProperty('conf')
     expect(packageJson.dependencies).not.toHaveProperty('configstore')

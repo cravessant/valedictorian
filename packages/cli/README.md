@@ -44,7 +44,7 @@ The CLI can read workspace defaults from `valedictorian.config.json`, `.valedict
 }
 ```
 
-Do not store tokens, passwords, or client secrets in project config.
+Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.
 
 ## Development
 
