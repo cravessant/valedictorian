@@ -15,6 +15,7 @@ import type {
   JobConnector,
 } from '@sparxie/valedictorian-connectors-core'
 import type {
+  ConnectorCheckpointPayload,
   ConnectorInstanceRecord,
   ConnectorRefreshResultInput,
   ConnectorRunRecord,
@@ -91,6 +92,19 @@ export interface RunConnectorCatchUpInput {
   policy?: Partial<AppConnectorRunPolicy>
 }
 
+export interface AppConnectorPendingCheckpoint {
+  connectorInstanceId: string
+  filterSignature: string
+  checkpoint: ConnectorCheckpointPayload
+  coverage: ConnectorCoverageWindow
+  savedAt: string
+}
+
+export interface AppConnectorRefreshRecord {
+  checkpoint: AppConnectorPendingCheckpoint
+  run: ConnectorRunRecord
+}
+
 export interface AppConnectorRunPolicy {
   backfillDays: number
   maxBackfillDays: number
@@ -127,7 +141,8 @@ export function createConnectorRunner({
     connector: AppJobConnector,
     input: RunConnectorRefreshInput,
     instance?: ConnectorInstanceRecord,
-  ): Promise<ConnectorRunRecord> {
+    options: { checkpointPersistence?: 'deferred' | 'immediate' } = {},
+  ): Promise<AppConnectorRefreshRecord> {
     const startedAt = input.startedAt ?? now().toISOString()
     const connectorInstance = instance ?? await repository.getInstance(input.connectorInstanceId)
 
@@ -167,7 +182,7 @@ export function createConnectorRunner({
     const safeResult = redactRefreshResult(result, sensitiveValues)
     const completedAt = input.completedAt ?? now().toISOString()
 
-    return repository.recordRefreshResult({
+    const run = await repository.recordRefreshResult({
       connectorInstanceId: input.connectorInstanceId,
       mode: input.mode,
       startedAt,
@@ -175,8 +190,66 @@ export function createConnectorRunner({
       config: runConfig,
       filters: runFilters,
       filterSignature,
+      checkpointPersistence: options.checkpointPersistence,
       result: safeResult,
     })
+
+    return {
+      checkpoint: {
+        connectorInstanceId: input.connectorInstanceId,
+        filterSignature,
+        checkpoint: safeResult.nextCheckpoint,
+        coverage: safeResult.coverage,
+        savedAt: completedAt,
+      },
+      run,
+    }
+  }
+
+  async function prepareCatchUpRefresh(
+    connector: AppJobConnector,
+    input: RunConnectorCatchUpInput,
+  ): Promise<{
+    instance: ConnectorInstanceRecord
+    refreshInput: RunConnectorRefreshInput
+  }> {
+    const instance = await repository.getInstance(input.connectorInstanceId)
+
+    if (!instance) {
+      throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+    }
+
+    const end = parseIsoDate(input.now ?? now().toISOString(), 'catch-up now')
+    const createdAt = parseIsoDate(instance.createdAt, 'connector instance createdAt')
+    const policy = normalizeRunPolicy(input.policy, connector.definition.politeness?.maxBackfillDays)
+    const filters = cloneJsonRecord(toJsonRecord(instance.filters))
+    const checkpoint = await repository.getCheckpoint({
+      connectorInstanceId: input.connectorInstanceId,
+      filterSignature: signatureForFilters(filters),
+    })
+    const lowerBound = new Date(createdAt.getTime() - policy.backfillDays * MILLISECONDS_PER_DAY)
+    const previousCoverageEndedAt = checkpoint?.coverageEndedAt
+      ? parseIsoDate(checkpoint.coverageEndedAt, 'checkpoint coverage end')
+      : null
+    const candidateStart = previousCoverageEndedAt
+      ? new Date(previousCoverageEndedAt.getTime() - policy.overlapMinutes * MILLISECONDS_PER_MINUTE)
+      : lowerBound
+    const coverageStart = candidateStart.getTime() < lowerBound.getTime() ? lowerBound : candidateStart
+
+    return {
+      instance,
+      refreshInput: {
+        connectorInstanceId: input.connectorInstanceId,
+        mode: 'catch_up',
+        coverage: {
+          start: coverageStart.toISOString(),
+          end: end.toISOString(),
+        },
+        startedAt: input.startedAt,
+        completedAt: input.completedAt,
+        budget: budgetFromPoliteness(policy, connector.definition.politeness),
+      },
+    }
   }
 
   return {
@@ -198,50 +271,40 @@ export function createConnectorRunner({
       connector: AppJobConnector,
       input: RunConnectorRefreshInput,
     ): Promise<ConnectorRunRecord> {
-      return runRefresh(connector, input)
+      return (await runRefresh(connector, input)).run
+    },
+
+    async refreshWithDeferredCheckpoint(
+      connector: AppJobConnector,
+      input: RunConnectorRefreshInput,
+    ): Promise<AppConnectorRefreshRecord> {
+      return runRefresh(connector, input, undefined, {
+        checkpointPersistence: 'deferred',
+      })
     },
 
     async catchUp(
       connector: AppJobConnector,
       input: RunConnectorCatchUpInput,
     ): Promise<ConnectorRunRecord> {
-      const instance = await repository.getInstance(input.connectorInstanceId)
+      const { instance, refreshInput } = await prepareCatchUpRefresh(connector, input)
 
-      if (!instance) {
-        throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
-      }
+      return (await runRefresh(connector, refreshInput, instance)).run
+    },
 
-      const end = parseIsoDate(input.now ?? now().toISOString(), 'catch-up now')
-      const createdAt = parseIsoDate(instance.createdAt, 'connector instance createdAt')
-      const policy = normalizeRunPolicy(input.policy, connector.definition.politeness?.maxBackfillDays)
-      const filters = cloneJsonRecord(toJsonRecord(instance.filters))
-      const checkpoint = await repository.getCheckpoint({
-        connectorInstanceId: input.connectorInstanceId,
-        filterSignature: signatureForFilters(filters),
-      })
-      const lowerBound = new Date(createdAt.getTime() - policy.backfillDays * MILLISECONDS_PER_DAY)
-      const previousCoverageEndedAt = checkpoint?.coverageEndedAt
-        ? parseIsoDate(checkpoint.coverageEndedAt, 'checkpoint coverage end')
-        : null
-      const candidateStart = previousCoverageEndedAt
-        ? new Date(previousCoverageEndedAt.getTime() - policy.overlapMinutes * MILLISECONDS_PER_MINUTE)
-        : lowerBound
-      const coverageStart = candidateStart.getTime() < lowerBound.getTime() ? lowerBound : candidateStart
+    async catchUpWithDeferredCheckpoint(
+      connector: AppJobConnector,
+      input: RunConnectorCatchUpInput,
+    ): Promise<AppConnectorRefreshRecord> {
+      const { instance, refreshInput } = await prepareCatchUpRefresh(connector, input)
 
       return runRefresh(
         connector,
-        {
-          connectorInstanceId: input.connectorInstanceId,
-          mode: 'catch_up',
-          coverage: {
-            start: coverageStart.toISOString(),
-            end: end.toISOString(),
-          },
-          startedAt: input.startedAt,
-          completedAt: input.completedAt,
-          budget: budgetFromPoliteness(policy, connector.definition.politeness),
-        },
+        refreshInput,
         instance,
+        {
+          checkpointPersistence: 'deferred',
+        },
       )
     },
   }

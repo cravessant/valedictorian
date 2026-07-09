@@ -18,6 +18,7 @@ import { createSqliteConnectorRepository } from '../modules/connectors/connector
 import {
   createConnectorRunner,
   type AppConnectorAuthHost,
+  type AppConnectorRefreshRecord,
   type AppConnectorRuntimePorts,
 } from '../modules/connectors/connector.runner'
 import {
@@ -420,16 +421,16 @@ async function executeConnectorRunTrigger({
   const mode = input.mode ?? 'manual'
   assertExecutableConnectorTrigger(input, mode)
 
-  let run: ConnectorRunRecord
+  let refreshRecord: AppConnectorRefreshRecord
 
   try {
-    run = mode === 'catch_up'
-      ? await connectorRunner.catchUp(connector, {
+    refreshRecord = mode === 'catch_up'
+      ? await connectorRunner.catchUpWithDeferredCheckpoint(connector, {
         connectorInstanceId: input.connectorInstanceId,
         now: input.coverageEndedAt ?? startedAt,
         startedAt,
       })
-      : await connectorRunner.refresh(
+      : await connectorRunner.refreshWithDeferredCheckpoint(
         connector,
         {
           connectorInstanceId: input.connectorInstanceId,
@@ -457,6 +458,8 @@ async function executeConnectorRunTrigger({
     throw error
   }
 
+  const { checkpoint, run } = refreshRecord
+
   try {
     const observations = await connectorRepository.listObservations({
       connectorInstanceId: input.connectorInstanceId,
@@ -468,6 +471,8 @@ async function executeConnectorRunTrigger({
         connectorObservationId: observation.id,
       })
     }
+
+    await connectorRepository.recordCheckpoint(checkpoint)
   } catch (error) {
     await connectorRepository.markRunFailed({
       connectorRunId: run.id,

@@ -727,6 +727,10 @@ describe('runtime local Valedictorian client', () => {
     const findings = await client.sourcing.findings.list({
       source: 'fixture.jobs',
     })
+    const checkpoints = await client.connectors.checkpoints.list({
+      connectorInstanceId: 'connector-instance-fixture',
+      filterSignature: 'filters:{}',
+    })
 
     expect(run).toMatchObject({
       connectorInstanceId: 'connector-instance-fixture',
@@ -755,6 +759,17 @@ describe('runtime local Valedictorian client', () => {
       ],
       total: 1,
     })
+    expect(checkpoints.items).toMatchObject([
+      {
+        checkpoint: {
+          cursor: 'fixture:2026-07-08T18:00:00.000Z',
+        },
+        coverage: {
+          end: '2026-07-08T18:00:00.000Z',
+          start: '2026-07-08T17:00:00.000Z',
+        },
+      },
+    ])
     sqlite.close()
   })
 
@@ -1021,6 +1036,32 @@ describe('runtime local Valedictorian client', () => {
       enabled: true,
       createdAt: '2026-07-08T15:00:00.000Z',
     })
+    await connectorRepository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:00.000Z',
+      completedAt: '2026-07-08T16:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      result: {
+        coverage: {
+          start: '2026-07-08T15:00:00.000Z',
+          end: '2026-07-08T16:00:00.000Z',
+        },
+        nextCheckpoint: {
+          checkpoint: {
+            cursor: 'previous-successful-cursor',
+          },
+          schemaVersion: 'fixture-checkpoint@1',
+        },
+        observations: [],
+        stats: {
+          observations: 0,
+        },
+        warnings: [],
+      },
+    })
 
     await expect(
       client.connectors.runs.trigger({
@@ -1030,30 +1071,151 @@ describe('runtime local Valedictorian client', () => {
         mode: 'manual',
       }),
     ).rejects.toThrow('companyName is required')
+    const runs = await client.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })
+
+    expect(runs.total).toBe(2)
+    expect(runs.items[0]).toMatchObject({
+      retryHints: {
+        reason: 'projection_failed',
+      },
+      status: 'failed',
+    })
     await expect(
-      client.connectors.runs.list({
+      client.connectors.checkpoints.list({
         connectorInstanceId: 'connector-instance-fixture',
+        filterSignature: 'filters:{}',
       }),
     ).resolves.toMatchObject({
       items: [
         {
-          retryHints: {
-            reason: 'projection_failed',
+          checkpoint: {
+            cursor: 'previous-successful-cursor',
           },
-          status: 'failed',
+          coverage: {
+            end: '2026-07-08T16:00:00.000Z',
+            start: '2026-07-08T15:00:00.000Z',
+          },
         },
       ],
-      total: 1,
+    })
+    sqlite.close()
+  })
+
+  it('keeps catch-up checkpoints unchanged until every observation projects', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              additionalCompanyNames: [''],
+              observedAt: '2026-07-08T18:00:00.000Z',
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+    await connectorRepository.recordRefreshResult({
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'catch_up',
+      startedAt: '2026-07-08T16:00:00.000Z',
+      completedAt: '2026-07-08T16:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      result: {
+        coverage: {
+          start: '2026-07-08T15:00:00.000Z',
+          end: '2026-07-08T16:00:00.000Z',
+        },
+        nextCheckpoint: {
+          checkpoint: {
+            cursor: 'previous-successful-cursor',
+          },
+          schemaVersion: 'fixture-checkpoint@1',
+        },
+        observations: [],
+        stats: {
+          observations: 0,
+        },
+        warnings: [],
+      },
+    })
+
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        coverageEndedAt: '2026-07-08T18:00:00.000Z',
+        mode: 'catch_up',
+      }),
+    ).rejects.toThrow('companyName is required')
+    const runs = await client.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })
+    const observations = await client.connectors.observations.list({
+      connectorInstanceId: 'connector-instance-fixture',
+      limit: 10,
+    })
+
+    expect(runs.total).toBe(2)
+    expect(runs.items[0]).toMatchObject({
+      coverage: {
+        end: '2026-07-08T18:00:00.000Z',
+        start: '2026-07-08T15:30:00.000Z',
+      },
+      mode: 'catch_up',
+      observationCount: 2,
+      retryHints: {
+        reason: 'projection_failed',
+      },
+      status: 'failed',
+    })
+    expect(observations.total).toBe(2)
+    await expect(
+      client.connectors.checkpoints.list({
+        connectorInstanceId: 'connector-instance-fixture',
+        filterSignature: 'filters:{}',
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          checkpoint: {
+            cursor: 'previous-successful-cursor',
+          },
+          coverage: {
+            end: '2026-07-08T16:00:00.000Z',
+            start: '2026-07-08T15:00:00.000Z',
+          },
+        },
+      ],
     })
     sqlite.close()
   })
 })
 
 function fixtureConnector({
+  additionalCompanyNames = [],
   companyName = 'Example Robotics',
   observedAt,
   throwOnRefresh = false,
 }: {
+  additionalCompanyNames?: string[]
   companyName?: string
   observedAt: string
   throwOnRefresh?: boolean
@@ -1067,6 +1229,44 @@ function fixtureConnector({
       if (throwOnRefresh) {
         throw new Error('Fixture connector refresh failed')
       }
+      const observations = [companyName, ...additionalCompanyNames].map((observationCompanyName, index) => {
+        const slug = index === 0
+          ? 'software-engineering-intern'
+          : `software-engineering-intern-${index + 1}`
+
+        return {
+          connectorId: 'fixture.jobs',
+          connectorVersion: '0.0.0-fixture',
+          sourceRecordKey: `fixture.jobs:${slug}`,
+          observedAt,
+          companyName: observationCompanyName,
+          roleTitle: 'Software Engineering Intern',
+          locationRaw: 'Remote',
+          descriptionText: 'Build fixture robots and connector proofs.',
+          pay: null,
+          links: {
+            source: `https://example.test/jobs/${slug}`,
+            intermediary: null,
+            official: `https://jobs.example.com/apply/${slug}`,
+          },
+          resolution: {
+            status: 'resolved',
+            method: 'fixture',
+            reason: null,
+          },
+          dedupeKeys: [`official:https://jobs.example.com/apply/${slug}`],
+          sourceMetadata: {
+            fixture: true,
+          },
+          evidence: [
+            {
+              type: 'fixture',
+              capturedAt: observedAt,
+              sourceUrl: `https://example.test/jobs/${slug}`,
+            },
+          ],
+        }
+      })
 
       return {
         coverage: input.coverage,
@@ -1076,42 +1276,9 @@ function fixtureConnector({
           },
           schemaVersion: 'fixture-checkpoint@1',
         },
-        observations: [
-          {
-            connectorId: 'fixture.jobs',
-            connectorVersion: '0.0.0-fixture',
-            sourceRecordKey: 'fixture.jobs:software-engineering-intern',
-            observedAt,
-            companyName,
-            roleTitle: 'Software Engineering Intern',
-            locationRaw: 'Remote',
-            descriptionText: 'Build fixture robots and connector proofs.',
-            pay: null,
-            links: {
-              source: 'https://example.test/jobs/software-engineering-intern',
-              intermediary: null,
-              official: 'https://jobs.example.com/apply/software-engineering-intern',
-            },
-            resolution: {
-              status: 'resolved',
-              method: 'fixture',
-              reason: null,
-            },
-            dedupeKeys: ['official:https://jobs.example.com/apply/software-engineering-intern'],
-            sourceMetadata: {
-              fixture: true,
-            },
-            evidence: [
-              {
-                type: 'fixture',
-                capturedAt: observedAt,
-                sourceUrl: 'https://example.test/jobs/software-engineering-intern',
-              },
-            ],
-          },
-        ],
+        observations,
         stats: {
-          observations: 1,
+          observations: observations.length,
         },
         warnings: [],
       }
