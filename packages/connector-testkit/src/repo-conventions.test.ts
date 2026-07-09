@@ -55,6 +55,18 @@ describe("connector repository conventions", () => {
     expect(agents).toContain("agent-owned support files in `.local/`, which is intentionally gitignored")
   })
 
+  it("documents connector package publishing and versioning expectations", () => {
+    const readme = readText("README.md")
+
+    expect(readme).toContain("## Package Publishing")
+    expect(readme).toContain("Release `@valedictorian-connectors/core` first")
+    expect(readme).toContain("Adapter ABI changes require a new core version")
+    expect(readme).toContain("Concrete connector packages declare a compatible core range")
+    expect(readme).toContain("The app bumps concrete connector packages directly")
+    expect(readme).toContain("Do not release or bump `sparxie` for adapter ABI changes")
+    expect(readme).toContain("HTTP/client exposure is a separate `sparxie` change")
+  })
+
   it("keeps current packages private and separated by dependency direction", () => {
     const rootPackage = readPackageJson("package.json")
     const corePackage = readPackageJson("packages/core/package.json")
