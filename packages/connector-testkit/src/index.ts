@@ -15,7 +15,7 @@ import type {
   ConnectorRuntime,
   JobConnector,
   JobObservation,
-} from "@valedictorian-connectors/core"
+} from "@sparxie/valedictorian-connectors-core"
 
 export type FixtureConnectorOptions = {
   observedAt: string
