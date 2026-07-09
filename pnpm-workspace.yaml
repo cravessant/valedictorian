@@ -1,5 +1,6 @@
 minimumReleaseAgeExclude:
   - "@sparxie/valedictorian-connectors-core"
+  - "@sparxie/valedictorian-connectors-jobright"
   - sparxie
 
 allowBuilds:

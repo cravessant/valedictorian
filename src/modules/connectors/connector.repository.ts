@@ -131,6 +131,27 @@ export interface RecordConnectorRunRequestInput {
   dryRun?: boolean
 }
 
+export interface RecordConnectorRunFailureInput {
+  connectorInstanceId: string
+  mode: string
+  startedAt: string
+  completedAt: string
+  coverageStartedAt?: string | null
+  coverageEndedAt?: string | null
+  filters?: unknown
+  filterSignature?: string | null
+  retryHints?: unknown
+  stats?: JsonRecord
+  warning: ConnectorWarning
+}
+
+export interface MarkConnectorRunFailedInput {
+  connectorRunId: string
+  completedAt: string
+  retryHints?: unknown
+  warning: ConnectorWarning
+}
+
 export interface GetConnectorCheckpointInput {
   connectorInstanceId: string
   filterSignature: string
@@ -463,6 +484,90 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
           .select()
           .from(connectorRuns)
           .where(eq(connectorRuns.id, runId))
+          .get(),
+      )
+    },
+
+    async recordRunFailure(input: RecordConnectorRunFailureInput): Promise<ConnectorRunRecord> {
+      const instance = await this.getInstance(input.connectorInstanceId)
+
+      if (!instance) {
+        throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+      }
+
+      const now = new Date().toISOString()
+      const filters = input.filters ?? instance.filters
+      const filterSignature = input.filterSignature ?? `filters:${stableJsonStringify(filters)}`
+      const runId = randomUUID()
+
+      database
+        .insert(connectorRuns)
+        .values({
+          id: runId,
+          connectorInstanceId: input.connectorInstanceId,
+          mode: input.mode,
+          status: 'failed',
+          startedAt: input.startedAt,
+          completedAt: input.completedAt,
+          coverageStartedAt: input.coverageStartedAt ?? null,
+          coverageEndedAt: input.coverageEndedAt ?? null,
+          configJson: JSON.stringify(instance.config),
+          filtersJson: JSON.stringify(filters),
+          filterSignature,
+          observationCount: 0,
+          warningCount: 1,
+          statsJson: JSON.stringify(input.stats ?? { failed: true }),
+          warningsJson: JSON.stringify([input.warning]),
+          retryHintsJson: JSON.stringify(input.retryHints ?? null),
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        })
+        .run()
+
+      return mapConnectorRun(
+        database
+          .select()
+          .from(connectorRuns)
+          .where(eq(connectorRuns.id, runId))
+          .get(),
+      )
+    },
+
+    async markRunFailed(input: MarkConnectorRunFailedInput): Promise<ConnectorRunRecord> {
+      const row = database
+        .select()
+        .from(connectorRuns)
+        .where(and(eq(connectorRuns.id, input.connectorRunId), isNull(connectorRuns.deletedAt)))
+        .get()
+
+      if (!row) {
+        throw new Error(`Connector run not found: ${input.connectorRunId}`)
+      }
+
+      const now = new Date().toISOString()
+      const warnings = readConnectorWarnings(row.warningsJson)
+      warnings.push(input.warning)
+      const retryHints = input.retryHints ?? (JSON.parse(row.retryHintsJson) as unknown)
+
+      database
+        .update(connectorRuns)
+        .set({
+          status: 'failed',
+          completedAt: input.completedAt,
+          warningCount: warnings.length,
+          warningsJson: JSON.stringify(warnings),
+          retryHintsJson: JSON.stringify(retryHints),
+          updatedAt: now,
+        })
+        .where(eq(connectorRuns.id, input.connectorRunId))
+        .run()
+
+      return mapConnectorRun(
+        database
+          .select()
+          .from(connectorRuns)
+          .where(eq(connectorRuns.id, input.connectorRunId))
           .get(),
       )
     },
@@ -881,6 +986,29 @@ function stableJsonStringify(value: unknown): string {
   }
 
   return JSON.stringify(value)
+}
+
+function readConnectorWarnings(value: string): ConnectorWarning[] {
+  const parsed = JSON.parse(value) as unknown
+
+  if (!Array.isArray(parsed)) {
+    return []
+  }
+
+  return parsed.flatMap((item) => {
+    const record = toJsonRecord(item)
+
+    if (typeof record.code !== 'string' || typeof record.message !== 'string') {
+      return []
+    }
+
+    return [
+      {
+        code: record.code,
+        message: record.message,
+      },
+    ]
+  })
 }
 
 function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefined): ConnectorRunRecord {

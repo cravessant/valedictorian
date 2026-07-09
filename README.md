@@ -1,24 +1,20 @@
 # Valedictorian
 
-Local-first desktop app for tracking job applications and preparing automation handoffs.
+Local-first desktop app for tracking job applications.
 
-## Alpha Scope
+## Workspace Data
 
-This repo currently targets a private Mac alpha. The packaged app is signed and notarized for distribution outside the Mac App Store, stores meaningful local state inside a user-chosen workspace folder, and does not include sync, auto-updates, or a secrets redesign yet.
-
-Workspace state lives under:
+Valedictorian stores workspace state in the selected workspace folder:
 
 ```text
 <workspace>/.valedictorian/
 ```
 
-The app keeps only a small recent-workspace registry in the Electron app-data folder so it can reopen the last valid workspace on launch.
+The workspace manifest lives at `<workspace>/.valedictorian/manifest.json`.
 
 ## Project config discovery
 
-When opening a new project folder as a workspace, the app can discover
-human-authored project config from `valedictorian.config.json`,
-`.valedictorianrc.json`, or the `valedictorian` key in `package.json`.
+When opening a new project folder, the app can read workspace defaults from `valedictorian.config.json`, `.valedictorianrc.json`, or the `valedictorian` key in `package.json`.
 
 ```json
 {
@@ -29,56 +25,23 @@ human-authored project config from `valedictorian.config.json`,
 }
 ```
 
-Project config is separate from app-owned workspace state. Once a workspace is
-initialized, `<workspace>/.valedictorian/manifest.json`,
-`<workspace>/.valedictorian/app.json`, and
-`<workspace>/.valedictorian/valedictorian.sqlite` remain the source of truth for
-app-managed data. Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.
+Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.
 
 ## Development
-
-Use the mise-managed runtimes from this machine, then run:
 
 ```sh
 pnpm install
 pnpm dev
-```
-
-Useful checks:
-
-```sh
 pnpm test
 pnpm typecheck
 pnpm lint
 ```
 
-`sparxie` is consumed from the public npm registry as a pinned dependency. Publish a new `sparxie` version before updating this app when shared contracts change.
+## Release
 
-## Mac Alpha Release
-
-The GitHub Actions workflow at `.github/workflows/release-mac.yml` supports:
-
-- manual runs from the Actions tab
-- tag-triggered releases for tags matching `v*`
-
-For a tagged alpha release:
+Mac releases are built by `.github/workflows/release-mac.yml` from manual runs or `v*` tags.
 
 ```sh
 git tag v0.1.0-alpha.1
 git push origin v0.1.0-alpha.1
 ```
-
-The workflow installs from `pnpm-lock.yaml`, runs tests, typecheck, and lint, builds the signed/notarized Mac DMG, uploads it as an Actions artifact, and attaches it to a GitHub prerelease.
-
-Signed Mac releases require these GitHub Actions secrets:
-
-```text
-MAC_CSC_LINK
-MAC_CSC_KEY_PASSWORD
-APPLE_API_KEY
-APPLE_API_KEY_ID
-APPLE_API_ISSUER
-APPLE_TEAM_ID
-```
-
-`MAC_CSC_LINK` is the base64-encoded `.p12` export of the Developer ID Application certificate. `MAC_CSC_KEY_PASSWORD` is the export password. `APPLE_API_KEY` is the base64-encoded App Store Connect API key `.p8` file.

@@ -347,6 +347,70 @@ describe('SQLite connector repository', () => {
     })
   })
 
+  it('records failed connector run attempts without advancing checkpoints', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await repository.upsertInstance({
+      id: 'connector-instance-failed',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Failed fixture jobs',
+      enabled: true,
+      filters: { roleKeywords: ['intern'] },
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    const run = await repository.recordRunFailure({
+      connectorInstanceId: 'connector-instance-failed',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:00.000Z',
+      completedAt: '2026-07-08T16:00:02.000Z',
+      coverageStartedAt: '2026-07-08T15:00:00.000Z',
+      coverageEndedAt: '2026-07-08T16:00:00.000Z',
+      retryHints: {
+        reason: 'connector_execution_failed',
+      },
+      warning: {
+        code: 'connector.execution_failed',
+        message: 'Connector execution failed.',
+      },
+    })
+
+    expect(run).toMatchObject({
+      connectorInstanceId: 'connector-instance-failed',
+      coverageEndedAt: '2026-07-08T16:00:00.000Z',
+      coverageStartedAt: '2026-07-08T15:00:00.000Z',
+      filterSignature: 'filters:{"roleKeywords":["intern"]}',
+      mode: 'manual',
+      observationCount: 0,
+      retryHints: {
+        reason: 'connector_execution_failed',
+      },
+      status: 'failed',
+      warningCount: 1,
+      warnings: [
+        {
+          code: 'connector.execution_failed',
+          message: 'Connector execution failed.',
+        },
+      ],
+    })
+    await expect(
+      repository.getCheckpoint({
+        connectorInstanceId: 'connector-instance-failed',
+        filterSignature: 'filters:{"roleKeywords":["intern"]}',
+      }),
+    ).resolves.toBeNull()
+    await expect(
+      repository.listObservations({
+        connectorInstanceId: 'connector-instance-failed',
+      }),
+    ).resolves.toEqual([])
+  })
+
   it('lists enabled connector instances with their latest run status', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
