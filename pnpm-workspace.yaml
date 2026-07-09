@@ -1,4 +1,5 @@
 minimumReleaseAgeExclude:
+  - "@sparxie/valedictorian-connectors-core"
   - sparxie
 
 allowBuilds:
