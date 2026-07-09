@@ -22,6 +22,15 @@ jobs:
         with:
           path: valedictorian-app
 
+      - name: Validate connector repo access token
+        env:
+          CONNECTORS_REPO_TOKEN: ${{ secrets.CONNECTORS_REPO_TOKEN }}
+        run: |
+          if [ -z "$CONNECTORS_REPO_TOKEN" ]; then
+            echo "::error::CONNECTORS_REPO_TOKEN is required to check out KennyKeni/valedictorian-connectors"
+            exit 1
+          fi
+
       - name: Check out connector packages
         uses: actions/checkout@v6
         with:
