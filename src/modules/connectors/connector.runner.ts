@@ -13,7 +13,7 @@ import type {
   ConnectorRefreshResult,
   ConnectorRuntime,
   JobConnector,
-} from '@valedictorian-connectors/core'
+} from '@sparxie/valedictorian-connectors-core'
 import type {
   ConnectorInstanceRecord,
   ConnectorRefreshResultInput,

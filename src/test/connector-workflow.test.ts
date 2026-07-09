@@ -8,17 +8,14 @@ function readWorkflow(name: string) {
 
 describe('connector workflow dependencies', () => {
   it.each(['ci.yml', 'release-mac.yml'])(
-    'validates connector repo access before checkout in %s',
+    'installs published connector packages without a private repo checkout in %s',
     (workflowName) => {
       const workflow = readWorkflow(workflowName)
-      const validationIndex = workflow.indexOf('Validate connector repo access token')
-      const checkoutIndex = workflow.indexOf('Check out connector packages')
 
-      expect(validationIndex).toBeGreaterThan(-1)
-      expect(checkoutIndex).toBeGreaterThan(-1)
-      expect(validationIndex).toBeLessThan(checkoutIndex)
-      expect(workflow).toContain('CONNECTORS_REPO_TOKEN: ${{ secrets.CONNECTORS_REPO_TOKEN }}')
-      expect(workflow).toContain('CONNECTORS_REPO_TOKEN is required to check out KennyKeni/valedictorian-connectors')
+      expect(workflow).toContain('pnpm install --frozen-lockfile')
+      expect(workflow).not.toContain('CONNECTORS_REPO_TOKEN')
+      expect(workflow).not.toContain('KennyKeni/valedictorian-connectors')
+      expect(workflow).not.toContain('Check out connector packages')
     },
   )
 })
