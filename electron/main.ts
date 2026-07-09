@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater'
 import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { createElectronConnectorPorts } from './connector-ports'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
 import { registerApplicationIpc } from '../src/ipc/applications.ipc'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
@@ -101,7 +102,15 @@ const runtimeIpcChannels = [
   'applications:links:create',
   'applications:links:update',
   'applications:attempts:list',
+  'connectors:list',
+  'connectors:create',
+  'connectors:update',
+  'connectors:inspect',
+  'connectors:runs:list',
+  'connectors:runs:trigger',
   'connectors:status:list',
+  'connectors:status:reconnect',
+  'connectors:status:skip',
   'policy:config:get',
   'policy:config:update',
   'policy:config:reset',
@@ -208,6 +217,7 @@ async function registerRuntimeServices(
       ...config,
       seedDataMode: options?.seedData ?? config.seedDataMode,
     },
+    createConnectorPorts: () => createElectronConnectorPortsForWorkspace(workspace.id),
     workspaceManager: workspaceManager ?? undefined,
   })
   const profileSqlite = createFileDatabase(config.sqlitePath)
@@ -244,6 +254,15 @@ function createElectronSecretCodec(): ProfileSecretCodec {
       return encrypted.toString('base64')
     },
   }
+}
+
+function createElectronConnectorPortsForWorkspace(workspaceId?: string) {
+  return createElectronConnectorPorts({
+    createBrowserWindow(options) {
+      return new BrowserWindow(options)
+    },
+    sessionNamespace: workspaceId ?? currentWorkspace?.id ?? 'local',
+  })
 }
 
 function createMainWindow() {
@@ -544,6 +563,7 @@ app.whenReady().then(async () => {
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
   workspaceManager = createLocalWorkspaceManager({
+    createConnectorPorts: createElectronConnectorPortsForWorkspace,
     referenceTrackerPath: process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
     registryStore,
     secretCodec: createElectronSecretCodec(),

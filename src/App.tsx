@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/use-toast'
 import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
+import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { UpdatesPreloadApi } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
@@ -98,6 +99,7 @@ import {
   defaultConnectorStatusLoader,
   defaultConnectorStatusReconnector,
   defaultConnectorStatusSkipper,
+  defaultConnectorsApi,
   defaultScoreRecorder,
   defaultSettingsApi,
   defaultUpdatesApi,
@@ -188,6 +190,7 @@ interface AppProps {
   connectorStatusSkipper?: (
     input: LocalConnectorSkipActionInput
   ) => Promise<LocalConnectorSkipActionResult>
+  connectorsApi?: ConnectorsPreloadApi
   scoreRecorder?: (input: ScoreInput) => Promise<ScoreRecord>
   sourcingLoader?: (input: SourcingFindingsListInput) => Promise<SourcingFindingsListResult>
   promoteSourcingFinding?: (input: PromoteSourcingFindingInput) => Promise<SourcingFinding>
@@ -218,6 +221,7 @@ function App({
   connectorStatusLoader = defaultConnectorStatusLoader,
   connectorStatusReconnector = defaultConnectorStatusReconnector,
   connectorStatusSkipper = defaultConnectorStatusSkipper,
+  connectorsApi = defaultConnectorsApi,
   scoreRecorder = defaultScoreRecorder,
   sourcingLoader = defaultSourcingLoader,
   promoteSourcingFinding = defaultPromoteSourcingFinding,
@@ -997,6 +1001,7 @@ function App({
 
         {appView === APP_VIEWS.SETTINGS ? (
           <SettingsPage
+            connectorsApi={connectorsApi}
             contentColumnClass={contentColumnClass}
             policyApi={policyApi}
             profileApi={profileApi}

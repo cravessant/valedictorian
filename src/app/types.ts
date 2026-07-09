@@ -53,6 +53,7 @@ export interface ApplicationDetailSeed {
 export const SETTINGS_PANELS = {
   PROFILE: 'profile',
   GENERAL: 'general',
+  CONNECTORS: 'connectors',
   POLICY: 'policy',
   APPEARANCE: 'appearance',
   CONFIGURATION: 'configuration',

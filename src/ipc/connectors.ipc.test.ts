@@ -80,6 +80,68 @@ describe('connectors IPC registration', () => {
     })
   })
 
+  it('registers connector lifecycle and run handlers against the local client', async () => {
+    const list = vi.fn(async () => ({ items: [] }))
+    const create = vi.fn(async (input: unknown) => ({ id: 'connector-instance', input }))
+    const update = vi.fn(async (input: unknown) => ({ id: 'connector-instance', input }))
+    const inspect = vi.fn(async (connectorInstanceId: string) => ({
+      id: connectorInstanceId,
+      status: 'healthy',
+    }))
+    const listRuns = vi.fn(async (input: unknown) => ({ items: [], input }))
+    const trigger = vi.fn(async (input: unknown) => ({ id: 'connector-run', input }))
+    const connectors = {
+      list,
+      create,
+      update,
+      inspect,
+      runs: {
+        list: listRuns,
+        trigger,
+      },
+      status: {
+        list: vi.fn(),
+        reconnect: vi.fn(),
+        skip: vi.fn(),
+      },
+    } as unknown as LocalValedictorianClient['connectors']
+    const handlers = new Map<string, (_event: unknown, input?: unknown) => Promise<unknown>>()
+
+    registerConnectorsIpc(connectors, {
+      handle(channel, handler) {
+        handlers.set(channel, handler)
+      },
+    })
+
+    await expect(handlers.get('connectors:list')?.({})).resolves.toEqual({ items: [] })
+    await expect(handlers.get('connectors:create')?.({}, { id: 'connector-instance' }))
+      .resolves.toMatchObject({ id: 'connector-instance' })
+    await expect(
+      handlers.get('connectors:update')?.(
+        {},
+        { connectorInstanceId: 'connector-instance', enabled: false },
+      ),
+    ).resolves.toMatchObject({ id: 'connector-instance' })
+    await expect(handlers.get('connectors:inspect')?.({}, 'connector-instance'))
+      .resolves.toMatchObject({ id: 'connector-instance', status: 'healthy' })
+    await expect(
+      handlers.get('connectors:runs:list')?.({}, { connectorInstanceId: 'connector-instance' }),
+    ).resolves.toMatchObject({ items: [] })
+    await expect(
+      handlers.get('connectors:runs:trigger')?.(
+        {},
+        { connectorInstanceId: 'connector-instance', mode: 'manual' },
+      ),
+    ).resolves.toMatchObject({ id: 'connector-run' })
+
+    expect(list).toHaveBeenCalled()
+    expect(create).toHaveBeenCalledWith({ id: 'connector-instance' })
+    expect(update).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance', enabled: false })
+    expect(inspect).toHaveBeenCalledWith('connector-instance')
+    expect(listRuns).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance' })
+    expect(trigger).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance', mode: 'manual' })
+  })
+
   it('returns an empty connector status list when local connectors are unavailable', async () => {
     const handlers = new Map<string, (_event: unknown) => Promise<unknown>>()
 

@@ -347,6 +347,58 @@ export const defaultConnectorStatusSkipper = (
   return connectorsWindow.connectors.status.skip(input)
 }
 
+export const defaultConnectorsApi: ConnectorsPreloadApi = {
+  list() {
+    const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+    const httpClient = getRendererHttpWorkspaceClient()
+
+    return connectorsWindow.connectors?.list() ?? httpClient?.connectors.list() ?? Promise.resolve({ items: [] })
+  },
+  create(input) {
+    const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+    const httpClient = getRendererHttpWorkspaceClient()
+
+    return connectorsWindow.connectors?.create(input) ?? httpClient?.connectors.create(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+  },
+  update(input) {
+    const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+    const httpClient = getRendererHttpWorkspaceClient()
+
+    return connectorsWindow.connectors?.update(input) ?? httpClient?.connectors.update(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+  },
+  inspect(connectorInstanceId) {
+    const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+    const httpClient = getRendererHttpWorkspaceClient()
+
+    return connectorsWindow.connectors?.inspect(connectorInstanceId) ?? httpClient?.connectors.inspect(connectorInstanceId) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+  },
+  runs: {
+    list(input) {
+      const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      return connectorsWindow.connectors?.runs.list(input) ?? httpClient?.connectors.runs.list(input) ?? Promise.resolve({
+        hasMore: false,
+        items: [],
+        limit: input.limit ?? 50,
+        offset: input.offset ?? 0,
+        total: 0,
+      })
+    },
+    trigger(input) {
+      const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+      const httpClient = getRendererHttpWorkspaceClient()
+
+      return connectorsWindow.connectors?.runs.trigger(input) ?? httpClient?.connectors.runs.trigger(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+    },
+  },
+  status: {
+    list: defaultConnectorStatusLoader,
+    reconnect: defaultConnectorStatusReconnector,
+    skip: defaultConnectorStatusSkipper,
+  },
+}
+
 export const defaultPromoteSourcingFinding = (input: PromoteSourcingFindingInput) => {
   const httpClient = getRendererHttpWorkspaceClient()
 
@@ -425,6 +477,7 @@ interface RendererHttpConfig {
 
 type RendererHttpWorkspaceClient = {
   applications: ApplicationsPreloadApi
+  connectors: Pick<ConnectorsPreloadApi, 'create' | 'inspect' | 'list' | 'runs' | 'update'>
   policy: PolicyPreloadApi
   profile: ProfilePreloadApi
   actionQueue: ActionQueuePreloadApi

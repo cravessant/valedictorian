@@ -40,6 +40,10 @@ function readElectronBuilderConfig() {
   }
 }
 
+function readViteConfig() {
+  return fs.readFileSync(path.resolve('vite.config.ts'), 'utf8')
+}
+
 describe('build configuration', () => {
   it('keeps the Electron app packaged separately from the standalone CLI', () => {
     const packageJson = readPackageJson()
@@ -119,6 +123,12 @@ describe('build configuration', () => {
     expect(config.asarUnpack).toEqual(
       expect.arrayContaining(['**/node_modules/better-sqlite3/**']),
     )
+  })
+
+  it('keeps Electron main runtime-probed packages out of the Vite bundle', () => {
+    const viteConfig = readViteConfig()
+
+    expect(viteConfig).toContain("export const nativeMainExternals = ['better-sqlite3', 'undici']")
   })
 
   it('documents project config discovery separately from app-owned workspace state', () => {

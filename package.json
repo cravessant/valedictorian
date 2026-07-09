@@ -1,7 +1,7 @@
 {
   "name": "valedictorian-app",
   "private": true,
-  "version": "0.1.0-alpha.23",
+  "version": "0.1.0-alpha.26",
   "description": "Local job application tracker and agent access app.",
   "author": "Keni",
   "type": "module",
@@ -47,6 +47,7 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
     "umzug": "^3.8.3",
+    "undici": "7.27.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

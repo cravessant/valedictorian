@@ -77,6 +77,9 @@ importers:
       umzug:
         specifier: ^3.8.3
         version: 3.8.3(@types/node@25.9.2)
+      undici:
+        specifier: 7.27.2
+        version: 7.27.2
       zod:
         specifier: ^4.4.3
         version: 4.4.3

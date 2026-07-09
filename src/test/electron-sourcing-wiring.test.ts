@@ -30,7 +30,7 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("sourcing: import('../src/ipc/sourcing.preload').SourcingPreloadApi")
   })
 
-  it('exposes connector status preload APIs and registers connector IPC handlers', () => {
+  it('exposes connector preload APIs and registers connector IPC handlers', () => {
     const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
     const envSource = fs.readFileSync(path.resolve('electron/electron-env.d.ts'), 'utf8')
@@ -40,7 +40,17 @@ describe('Electron sourcing wiring', () => {
       "contextBridge.exposeInMainWorld('connectors', createConnectorsPreloadApi(ipcRenderer))",
     )
     expect(mainSource).toContain('registerConnectorsIpc(runtime.connectors, ipcMain)')
+    expect(mainSource).toContain('createElectronConnectorPorts')
+    expect(mainSource).toContain('createConnectorPorts: () => createElectronConnectorPorts')
+    expect(mainSource).toContain("'connectors:list'")
+    expect(mainSource).toContain("'connectors:create'")
+    expect(mainSource).toContain("'connectors:update'")
+    expect(mainSource).toContain("'connectors:inspect'")
+    expect(mainSource).toContain("'connectors:runs:list'")
+    expect(mainSource).toContain("'connectors:runs:trigger'")
     expect(mainSource).toContain("'connectors:status:list'")
+    expect(mainSource).toContain("'connectors:status:reconnect'")
+    expect(mainSource).toContain("'connectors:status:skip'")
     expect(envSource).toContain("connectors: import('../src/ipc/connectors.preload').ConnectorsPreloadApi")
   })
 

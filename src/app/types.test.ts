@@ -20,6 +20,7 @@ describe('app navigation type constants', () => {
     expect(SETTINGS_PANELS).toEqual({
       PROFILE: 'profile',
       GENERAL: 'general',
+      CONNECTORS: 'connectors',
       POLICY: 'policy',
       APPEARANCE: 'appearance',
       CONFIGURATION: 'configuration',

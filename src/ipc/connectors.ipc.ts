@@ -8,6 +8,29 @@ export function registerConnectorsIpc(
   connectors: LocalValedictorianClient['connectors'] | null,
   ipcMain: IpcMainLike,
 ) {
+  ipcMain.handle('connectors:list', () =>
+    connectors?.list() ?? Promise.resolve({ items: [] }),
+  )
+  ipcMain.handle('connectors:create', (_event, input) => {
+    assertConnectorsAvailable(connectors)
+    return connectors.create(input as Parameters<typeof connectors.create>[0])
+  })
+  ipcMain.handle('connectors:update', (_event, input) => {
+    assertConnectorsAvailable(connectors)
+    return connectors.update(input as Parameters<typeof connectors.update>[0])
+  })
+  ipcMain.handle('connectors:inspect', (_event, connectorInstanceId) => {
+    assertConnectorsAvailable(connectors)
+    return connectors.inspect(parseConnectorInstanceId(connectorInstanceId))
+  })
+  ipcMain.handle('connectors:runs:list', (_event, input) => {
+    assertConnectorsAvailable(connectors)
+    return connectors.runs.list(input as Parameters<typeof connectors.runs.list>[0])
+  })
+  ipcMain.handle('connectors:runs:trigger', (_event, input) => {
+    assertConnectorsAvailable(connectors)
+    return connectors.runs.trigger(input as Parameters<typeof connectors.runs.trigger>[0])
+  })
   ipcMain.handle('connectors:status:list', () =>
     connectors?.status.list() ?? Promise.resolve({ available: false, items: [] }),
   )
@@ -27,6 +50,14 @@ function assertConnectorsAvailable(
   if (!connectors) {
     throw new Error('Connector status actions are unavailable for this runtime.')
   }
+}
+
+function parseConnectorInstanceId(input: unknown) {
+  if (typeof input !== 'string' || input.trim().length === 0) {
+    throw new Error('connectorInstanceId is required for connector inspection.')
+  }
+
+  return input.trim()
 }
 
 function parseConnectorStatusActionInput(input: unknown) {

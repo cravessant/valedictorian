@@ -12,6 +12,7 @@ import {
 } from 'sparxie'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
+import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { AppSettings, AppSettingsPatch } from './app-settings'
 import { SETTINGS_PANELS, type SettingsPanelId } from '../app/types'
@@ -21,6 +22,7 @@ import { SettingsTextInput } from './SettingsTextInput'
 import type { WorkspaceSummary } from '../workspace/workspace.initializer'
 
 interface SettingsPageProps {
+  connectorsApi: ConnectorsPreloadApi
   contentColumnClass: string
   policyApi: PolicyPreloadApi
   profileApi: ProfilePreloadApi
@@ -79,6 +81,11 @@ const settingsNavGroups: SettingsNavGroup[] = [
         icon: <Database className="h-4 w-4" aria-hidden="true" />,
         id: SETTINGS_PANELS.CONFIGURATION,
         label: 'Configuration',
+      },
+      {
+        icon: <Globe2 className="h-4 w-4" aria-hidden="true" />,
+        id: SETTINGS_PANELS.CONNECTORS,
+        label: 'Connectors',
       },
       {
         icon: <Terminal className="h-4 w-4" aria-hidden="true" />,
@@ -198,6 +205,7 @@ function SettingsSidebar({
 }
 
 function SettingsPage({
+  connectorsApi,
   contentColumnClass,
   policyApi,
   profileApi,
@@ -237,6 +245,9 @@ function SettingsPage({
           {selectedPanel === SETTINGS_PANELS.CONFIGURATION ? (
             <ConfigurationSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
           ) : null}
+          {selectedPanel === SETTINGS_PANELS.CONNECTORS ? (
+            <ConnectorSettingsPanel connectorsApi={connectorsApi} />
+          ) : null}
           {selectedPanel === SETTINGS_PANELS.AGENT_ACCESS ? (
             <AgentAccessSettingsPanel
               apiBaseUrl={apiBaseUrl}
@@ -263,6 +274,342 @@ function SettingsPage({
       </div>
     </main>
   )
+}
+
+type ConnectorSettingsInstance = Awaited<ReturnType<ConnectorsPreloadApi['list']>>['items'][number]
+
+interface ConnectorSettingsDraft {
+  maxResolutionCount: string
+  publicFeedUrl: string
+  roleTerms: string
+}
+
+const defaultJobrightPublicFeedUrl = 'https://jobright.ai/minisites-jobs/intern/us/swe?embed=true'
+
+function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPreloadApi }) {
+  const [instances, setInstances] = useState<ConnectorSettingsInstance[]>([])
+  const [drafts, setDrafts] = useState<Record<string, ConnectorSettingsDraft>>({})
+  const [isAdding, setIsAdding] = useState(false)
+  const [authenticatingInstanceId, setAuthenticatingInstanceId] = useState<string | null>(null)
+  const [savingInstanceId, setSavingInstanceId] = useState<string | null>(null)
+  const [runningInstanceId, setRunningInstanceId] = useState<string | null>(null)
+  const [latestRunStatuses, setLatestRunStatuses] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let cancelled = false
+
+    connectorsApi.list()
+      .then((result) => {
+        if (!cancelled) {
+          setInstances(result.items)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInstances([])
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [connectorsApi])
+
+  function addJobrightConnector() {
+    setIsAdding(true)
+    void connectorsApi.create({
+      id: 'jobright-default',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.3.0',
+      displayName: 'Jobright public jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'jobright',
+          label: 'Jobright browser session',
+          mode: 'browser_session',
+        },
+      ],
+      config: {
+        publicFeedUrl: defaultJobrightPublicFeedUrl,
+      },
+      filters: {
+        maxResolutionCount: 10,
+        roleTerms: ['intern'],
+      },
+    })
+      .then((created) => {
+        setInstances((currentInstances) => [
+          ...currentInstances.filter((instance) => instance.id !== created.id),
+          created,
+        ])
+      })
+      .finally(() => setIsAdding(false))
+  }
+
+  function loginJobrightConnector(
+    instance: ConnectorSettingsInstance,
+  ) {
+    const auth = instance.auth.map((reference) => (
+      reference.mode === 'browser_session'
+        ? {
+          id: reference.id,
+          label: reference.label,
+          mode: reference.mode,
+          sessionKey: 'jobright-browser-session',
+        }
+        : {
+          id: reference.id,
+          label: reference.label,
+          mode: reference.mode,
+        }
+    ))
+
+    setAuthenticatingInstanceId(instance.id)
+    void connectorsApi.update({
+      connectorInstanceId: instance.id,
+      auth,
+    })
+      .then((updated) => connectorsApi.status.reconnect({ connectorInstanceId: updated.id })
+        .then(() => updated))
+      .then((updated) => {
+        setInstances((currentInstances) => currentInstances.map((currentInstance) =>
+          currentInstance.id === updated.id ? updated : currentInstance,
+        ))
+      })
+      .finally(() => setAuthenticatingInstanceId(null))
+  }
+
+  function updateDraft(instanceId: string, patch: Partial<ConnectorSettingsDraft>) {
+    setDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [instanceId]: {
+        ...defaultConnectorSettingsDraft(instances.find((instance) => instance.id === instanceId)),
+        ...currentDrafts[instanceId],
+        ...patch,
+      },
+    }))
+  }
+
+  function saveConnectorSettings(instance: ConnectorSettingsInstance) {
+    const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
+    setSavingInstanceId(instance.id)
+    void connectorsApi.update({
+      connectorInstanceId: instance.id,
+      config: {
+        publicFeedUrl: draft.publicFeedUrl.trim(),
+      },
+      filters: {
+        maxResolutionCount: normalizePositiveInteger(draft.maxResolutionCount, 10),
+        roleTerms: parseCommaSeparatedList(draft.roleTerms),
+      },
+    })
+      .then((updated) => {
+        setInstances((currentInstances) => currentInstances.map((currentInstance) =>
+          currentInstance.id === updated.id ? updated : currentInstance,
+        ))
+      })
+      .finally(() => setSavingInstanceId(null))
+  }
+
+  function runConnectorNow(instance: ConnectorSettingsInstance) {
+    const coverageEndedAt = new Date().toISOString()
+    const coverageStartedAt = new Date(Date.parse(coverageEndedAt) - 60 * 60 * 1000).toISOString()
+
+    setRunningInstanceId(instance.id)
+    void connectorsApi.runs.trigger({
+      connectorInstanceId: instance.id,
+      coverageEndedAt,
+      coverageStartedAt,
+      mode: 'manual',
+      reason: 'settings_manual_refresh',
+    })
+      .then((run) => {
+        setLatestRunStatuses((currentStatuses) => ({
+          ...currentStatuses,
+          [instance.id]: run.status,
+        }))
+      })
+      .finally(() => setRunningInstanceId(null))
+  }
+
+  return (
+    <section aria-labelledby="connector-settings-title" className="space-y-7">
+      <div>
+        <h2 id="connector-settings-title" className="text-xl font-semibold text-foreground">
+          Connectors
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Add sources and manage connector auth for this workspace.
+        </p>
+      </div>
+
+      <div className="rounded-md border border-border bg-card p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Jobright public jobs</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Resolve Jobright listings into application-ready sourcing findings.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isAdding}
+            onClick={addJobrightConnector}
+          >
+            {isAdding ? 'Adding...' : 'Add Jobright public jobs'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+        {instances.length === 0 ? (
+          'No connector instances configured.'
+        ) : (
+          <>
+            <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
+            <div className="divide-y divide-border rounded-md border border-border">
+              {instances.map((instance) => {
+                const authConfigured = instance.auth.every((auth) => auth.configured)
+                const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
+
+                return (
+                  <div key={instance.id} className="grid gap-4 p-3 text-sm">
+                    <div className="grid gap-1 sm:grid-cols-[1fr_auto]">
+                      <div>
+                        <p className="font-medium text-foreground">{instance.displayName}</p>
+                        <p className="text-xs text-muted-foreground">{instance.connectorId}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {authConfigured ? 'Auth ready' : 'Auth required'}
+                        </p>
+                        {!authConfigured ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={authenticatingInstanceId === instance.id}
+                            onClick={() => loginJobrightConnector(instance)}
+                          >
+                            {authenticatingInstanceId === instance.id ? 'Logging in...' : 'Login to Jobright'}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] md:items-end">
+                      <label className="grid gap-1 text-xs font-medium text-muted-foreground md:col-span-4">
+                        Public feed URL
+                        <input
+                          aria-label="Public feed URL"
+                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          value={draft.publicFeedUrl}
+                          onChange={(event) =>
+                            updateDraft(instance.id, { publicFeedUrl: event.target.value })}
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        Role terms
+                        <input
+                          aria-label="Role terms"
+                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          value={draft.roleTerms}
+                          onChange={(event) =>
+                            updateDraft(instance.id, { roleTerms: event.target.value })}
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        Max links per refresh
+                        <input
+                          aria-label="Max links per refresh"
+                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          type="number"
+                          value={draft.maxResolutionCount}
+                          onChange={(event) =>
+                            updateDraft(instance.id, { maxResolutionCount: event.target.value })}
+                        />
+                      </label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={savingInstanceId === instance.id}
+                        onClick={() => saveConnectorSettings(instance)}
+                      >
+                        {savingInstanceId === instance.id ? 'Saving...' : 'Save Jobright settings'}
+                      </Button>
+                      <Button
+                        type="button"
+                        disabled={!authConfigured || runningInstanceId === instance.id}
+                        onClick={() => runConnectorNow(instance)}
+                      >
+                        {runningInstanceId === instance.id ? 'Running...' : 'Run Jobright now'}
+                      </Button>
+                    </div>
+                    {latestRunStatuses[instance.id] ? (
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Latest run: {latestRunStatuses[instance.id]}
+                      </p>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function defaultConnectorSettingsDraft(
+  instance: ConnectorSettingsInstance | undefined,
+): ConnectorSettingsDraft {
+  const config = recordFromUnknown(instance?.config)
+  const filters = recordFromUnknown(instance?.filters)
+
+  return {
+    maxResolutionCount: String(numberFromUnknown(filters.maxResolutionCount, 10)),
+    publicFeedUrl: stringFromUnknown(config.publicFeedUrl) || defaultJobrightPublicFeedUrl,
+    roleTerms: arrayTextFromUnknown(filters.roleTerms, 'intern'),
+  }
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function stringFromUnknown(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function numberFromUnknown(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function arrayTextFromUnknown(value: unknown, fallback: string): string {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string').join(', ')
+    : fallback
+}
+
+function parseCommaSeparatedList(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+}
+
+function normalizePositiveInteger(value: string, fallback: number): number {
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback
+  }
+
+  return Math.round(parsed)
 }
 
 function GeneralSettingsPanel({
@@ -1315,6 +1662,7 @@ function isFunctionalSettingsPanel(panel: SettingsPanelId) {
     panel === SETTINGS_PANELS.GENERAL ||
     panel === SETTINGS_PANELS.PROFILE ||
     panel === SETTINGS_PANELS.CONFIGURATION ||
+    panel === SETTINGS_PANELS.CONNECTORS ||
     panel === SETTINGS_PANELS.AGENT_ACCESS ||
     panel === SETTINGS_PANELS.APPEARANCE ||
     panel === SETTINGS_PANELS.POLICY ||

@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 
-export const nativeMainExternals = ['better-sqlite3']
+export const nativeMainExternals = ['better-sqlite3', 'undici']
 
 // https://vitejs.dev/config/
 export default defineConfig({

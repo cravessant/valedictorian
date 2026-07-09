@@ -55,7 +55,7 @@ export interface ValedictorianRuntime {
 
 export interface CreateValedictorianRuntimeOptions {
   config: ValedictorianRuntimeConfig
-  createConnectorPorts?: () => DefaultLocalConnectorPorts
+  createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
   createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
   startServer?: (
@@ -94,7 +94,7 @@ export function resolveValedictorianRuntimeConfig({
 
 export async function createValedictorianRuntime({
   config,
-  createConnectorPorts = createDefaultLocalConnectorPorts,
+  createConnectorPorts = () => createDefaultLocalConnectorPorts(),
   createHttpClient = createHttpValedictorianClient,
   createLocalClient = createLocalValedictorianClient,
   startServer = createValedictorianHttpServer,
@@ -116,7 +116,7 @@ export async function createValedictorianRuntime({
     }
   }
 
-  const connectorPorts = createConnectorPorts()
+  const connectorPorts = createConnectorPorts(config.workspaceId)
   const client = createLocalClient({
     connectorAuth: connectorPorts.connectorAuth,
     connectorRuntime: connectorPorts.connectorRuntime,

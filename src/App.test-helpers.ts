@@ -1,11 +1,16 @@
 import { fireEvent, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
+import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
 import type { UpdatesPreloadApi, UpdateState } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ConnectorStatusListResult, ConnectorStatusView } from './modules/connectors/connector.status'
+import type {
+  LocalConnectorReconnectActionResult,
+  LocalConnectorStatusActionInput,
+} from './runtime/local-valedictorian-client'
 import type { WorkspaceSummary } from './workspace/workspace.initializer'
 import type {
   ApplicationAttempt,
@@ -295,6 +300,109 @@ export function createConnectorStatusResult(
   return {
     available: true,
     items,
+  }
+}
+
+export function createConnectorsApi(): ConnectorsPreloadApi {
+  type ConnectorInstance = Awaited<ReturnType<ConnectorsPreloadApi['list']>>['items'][number]
+  type CreateConnectorInput = Parameters<ConnectorsPreloadApi['create']>[0]
+  type UpdateConnectorInput = Parameters<ConnectorsPreloadApi['update']>[0]
+  let instances: ConnectorInstance[] = []
+
+  return {
+    list: vi.fn(async () => ({ items: instances })),
+    create: vi.fn(async (input: CreateConnectorInput) => {
+      const now = '2026-07-09T15:00:00.000Z'
+      const instance: ConnectorInstance = {
+        id: input.id,
+        connectorId: input.connectorId,
+        connectorVersion: input.connectorVersion,
+        displayName: input.displayName,
+        enabled: input.enabled,
+        auth: (input.auth ?? []).map((auth) => ({
+          id: auth.id,
+          mode: auth.mode,
+          label: auth.label ?? null,
+          configured: auth.mode === 'none' || Boolean(auth.secretKey ?? auth.sessionKey),
+        })),
+        config: input.config ?? {},
+        filters: input.filters ?? {},
+        createdAt: now,
+        updatedAt: now,
+      }
+      instances = [...instances.filter((item) => item.id !== instance.id), instance]
+      return instance
+    }),
+    update: vi.fn(async (input: UpdateConnectorInput) => {
+      const existing = instances.find((instance) => instance.id === input.connectorInstanceId)
+
+      if (!existing) {
+        throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+      }
+
+      const updated: ConnectorInstance = {
+        ...existing,
+        auth: input.auth
+          ? input.auth.map((auth) => ({
+            id: auth.id,
+            mode: auth.mode,
+            label: auth.label ?? null,
+            configured: auth.mode === 'none' || Boolean(auth.secretKey ?? auth.sessionKey),
+          }))
+          : existing.auth,
+        config: input.config ?? existing.config,
+        connectorVersion: input.connectorVersion ?? existing.connectorVersion,
+        displayName: input.displayName ?? existing.displayName,
+        enabled: input.enabled ?? existing.enabled,
+        filters: input.filters ?? existing.filters,
+        updatedAt: '2026-07-09T15:01:00.000Z',
+      }
+      instances = instances.map((instance) => instance.id === updated.id ? updated : instance)
+      return updated
+    }),
+    inspect: vi.fn(),
+    runs: {
+      list: vi.fn(async (input) => ({
+        hasMore: false,
+        items: [],
+        limit: input.limit ?? 50,
+        offset: input.offset ?? 0,
+        total: 0,
+      })),
+      trigger: vi.fn(async (input) => ({
+        id: 'connector-run-1',
+        connectorInstanceId: input.connectorInstanceId,
+        mode: input.mode ?? 'manual',
+        status: 'completed',
+        coverage: {
+          start: input.coverageStartedAt ?? null,
+          end: input.coverageEndedAt ?? null,
+        },
+        filterSignature: 'filters:{}',
+        observationCount: 1,
+        warningCount: 0,
+        stats: {
+          observations: 1,
+        },
+        warnings: [],
+        retryHints: {},
+        startedAt: '2026-07-09T15:02:00.000Z',
+        completedAt: '2026-07-09T15:02:01.000Z',
+      })),
+    },
+    status: {
+      list: vi.fn(async () => createConnectorStatusResult([])),
+      reconnect: vi.fn(async (
+        input: LocalConnectorStatusActionInput,
+      ): Promise<LocalConnectorReconnectActionResult> => ({
+        action: 'reconnect',
+        connectorInstanceId: input.connectorInstanceId,
+        grants: [{ id: 'jobright', mode: 'browser_session', status: 'ready' }],
+        message: 'Connector auth is ready.',
+        status: 'ready',
+      })),
+      skip: vi.fn(),
+    },
   }
 }
 

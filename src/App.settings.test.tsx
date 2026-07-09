@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
   createApplication,
+  createConnectorsApi,
   createListResult,
   createPolicyApi,
   createProfileApi,
@@ -507,6 +508,183 @@ describe('App settings and chrome', () => {
 
     expect(within(navigation).queryByRole('button', { name: 'General' })).not.toBeInTheDocument()
     expect(within(navigation).getByRole('button', { name: 'Agent access' })).toBeInTheDocument()
+  })
+
+  it('opens a dedicated connectors settings tab for connector setup', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={createConnectorsApi()}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    expect(await screen.findByRole('heading', { name: 'Connectors' })).toBeInTheDocument()
+    expect(screen.getByText('Jobright public jobs')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Jobright public jobs' })).toBeInTheDocument()
+    expect(screen.getByText('No connector instances configured.')).toBeInTheDocument()
+  })
+
+  it('adds a Jobright connector instance from settings with default auth and filters', async () => {
+    const connectorsApi = createConnectorsApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+
+    await waitFor(() => {
+      expect(connectorsApi.create).toHaveBeenCalledWith({
+        auth: [
+          {
+            id: 'jobright',
+            label: 'Jobright browser session',
+            mode: 'browser_session',
+          },
+        ],
+        config: {
+          publicFeedUrl: 'https://jobright.ai/minisites-jobs/intern/us/swe?embed=true',
+        },
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.3.0',
+        displayName: 'Jobright public jobs',
+        enabled: true,
+        filters: {
+          maxResolutionCount: 10,
+          roleTerms: ['intern'],
+        },
+        id: 'jobright-default',
+      })
+    })
+    expect(await screen.findByText('jobright.resolver')).toBeInTheDocument()
+    expect(screen.getByText('Auth required')).toBeInTheDocument()
+    expect(screen.getByText('1 connector instance configured.')).toBeInTheDocument()
+  })
+
+  it('authenticates a Jobright connector from settings without rendering session handles', async () => {
+    const connectorsApi = createConnectorsApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
+
+    await waitFor(() => {
+      expect(connectorsApi.update).toHaveBeenCalledWith({
+        auth: [
+          {
+            id: 'jobright',
+            label: 'Jobright browser session',
+            mode: 'browser_session',
+            sessionKey: 'jobright-browser-session',
+          },
+        ],
+        connectorInstanceId: 'jobright-default',
+      })
+      expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
+        connectorInstanceId: 'jobright-default',
+      })
+    })
+    expect(await screen.findByText('Auth ready')).toBeInTheDocument()
+    expect(screen.queryByText('jobright-browser-session')).not.toBeInTheDocument()
+  })
+
+  it('saves Jobright filters from connector settings before refresh', async () => {
+    const connectorsApi = createConnectorsApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+
+    fireEvent.change(await screen.findByLabelText('Role terms'), {
+      target: { value: 'intern, backend' },
+    })
+    fireEvent.change(screen.getByLabelText('Max links per refresh'), {
+      target: { value: '3' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+
+    await waitFor(() => {
+      expect(connectorsApi.update).toHaveBeenCalledWith({
+        config: {
+          publicFeedUrl: 'https://jobright.ai/minisites-jobs/intern/us/swe?embed=true',
+        },
+        connectorInstanceId: 'jobright-default',
+        filters: {
+          maxResolutionCount: 3,
+          roleTerms: ['intern', 'backend'],
+        },
+      })
+    })
+  })
+
+  it('runs an authenticated Jobright connector from settings', async () => {
+    const connectorsApi = createConnectorsApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+
+    const runButtonBeforeAuth = await screen.findByRole('button', { name: 'Run Jobright now' })
+    expect(runButtonBeforeAuth).toBeDisabled()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
+    expect(await screen.findByText('Auth ready')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    await waitFor(() => {
+      expect(connectorsApi.runs.trigger).toHaveBeenCalledWith(expect.objectContaining({
+        connectorInstanceId: 'jobright-default',
+        mode: 'manual',
+        reason: 'settings_manual_refresh',
+      }))
+    })
+    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
   })
 
   it('keeps settings navigation responsive without squeezing the content column', async () => {
