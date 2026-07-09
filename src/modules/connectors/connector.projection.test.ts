@@ -311,7 +311,10 @@ function createProjectionTestContext() {
     sourcingRepository: createSqliteSourcingRepository(database),
     workflowRunRepository,
   })
-  const runner = createConnectorRunner({ repository: connectorRepository })
+  const runner = createConnectorRunner({
+    repository: connectorRepository,
+    workspaceId: 'workspace-fixture',
+  })
   let runIndex = 0
 
   return {

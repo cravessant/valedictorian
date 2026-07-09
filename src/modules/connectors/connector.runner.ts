@@ -1,111 +1,41 @@
 import type {
+  ConnectorAuthGrant,
   ConnectorAuthMode,
   ConnectorAuthReference,
+  ConnectorAuthRequirement,
+  ConnectorAuthResolveInput,
+  ConnectorBrowserSessionRuntime,
   ConnectorCoverageWindow,
+  ConnectorDefinition,
+  ConnectorDelayRuntime,
+  ConnectorRefreshInput,
+  ConnectorRefreshMode,
+  ConnectorRefreshResult,
+  ConnectorRuntime,
+  JobConnector,
+} from '@valedictorian-connectors/core'
+import type {
   ConnectorInstanceRecord,
   ConnectorRefreshResultInput,
   ConnectorRunRecord,
   createSqliteConnectorRepository,
 } from './connector.repository'
 
-export interface AppJobConnectorDefinition {
-  id: string
-  version: string
-  displayName?: string
-  configSchema?: AppConnectorSchemaDeclaration
-  filterSchema?: AppConnectorSchemaDeclaration
-  auth?: AppConnectorAuthDeclaration
-  capabilities?: AppConnectorCapabilityDeclaration
-  checkpoint?: AppConnectorCheckpointDeclaration
-  politeness?: AppConnectorPolitenessDefaults
-}
-
-export interface AppConnectorSchemaDeclaration {
-  version: string
-  schema: Record<string, unknown>
-}
-
-export type AppConnectorAuthMode =
-  ConnectorAuthMode
-
-export interface AppConnectorAuthDeclaration {
-  modes: AppConnectorAuthMode[]
-  requirements?: AppConnectorAuthRequirement[]
-}
-
-export interface AppConnectorAuthRequirement {
-  id: string
-  mode: AppConnectorAuthMode
-  label?: string
-  required?: boolean
-}
-
-export interface AppConnectorCapabilityDeclaration {
-  fetchesPublicPages?: boolean
-  resolvesIntermediaryLinks?: boolean
-  usesBrowserSession?: boolean
-  supportsIncrementalRefresh?: boolean
-  supportsFiltering?: boolean
-}
-
-export interface AppConnectorCheckpointDeclaration {
-  schemaVersion: string
-}
-
-export interface AppConnectorPolitenessDefaults {
-  concurrency?: number
-  minDelayMs?: number
-  maxDelayMs?: number
-  maxRequestsPerRun?: number
-  maxBackfillDays?: number
-}
-
-export interface AppConnectorRefreshInput {
-  connectorInstanceId: string
-  mode: string
-  coverage: ConnectorCoverageWindow
-  checkpoint?: unknown
-  config: Record<string, unknown>
-  filters: Record<string, unknown>
-  budget?: AppConnectorRunBudget
-}
+export type AppJobConnectorDefinition = ConnectorDefinition
+export type AppConnectorAuthMode = ConnectorAuthMode
+export type AppConnectorAuthRequirement = ConnectorAuthRequirement
+export type AppConnectorRefreshInput = ConnectorRefreshInput
+export type AppConnectorRefreshResult = ConnectorRefreshResult & ConnectorRefreshResultInput
+export type AppConnectorAuthGrant = ConnectorAuthGrant
+export type AppConnectorAuthResolveInput = ConnectorAuthResolveInput
+export type AppConnectorAuthRuntime = ConnectorRuntime['auth']
+export type AppConnectorRuntime = ConnectorRuntime
 
 export interface AppConnectorRunBudget {
   concurrency?: number
   minDelayMs?: number
   maxDelayMs?: number
   maxRequestsPerRun?: number
-}
-
-export type AppConnectorAuthGrantStatus =
-  | 'ready'
-  | 'missing'
-  | 'expired'
-  | 'action_required'
-
-export interface AppConnectorAuthGrant {
-  id: string
-  mode: AppConnectorAuthMode
-  status: AppConnectorAuthGrantStatus
-  secretKey?: string
-  sessionKey?: string
-  value?: string
-  sessionId?: string
-  expiresAt?: string
-  reason?: string
-}
-
-export interface AppConnectorAuthResolveInput {
-  id: string
-  mode?: AppConnectorAuthMode
-}
-
-export interface AppConnectorAuthRuntime {
-  resolve(input: AppConnectorAuthResolveInput): Promise<AppConnectorAuthGrant>
-}
-
-export type AppConnectorRuntime = Record<string, unknown> & {
-  auth: AppConnectorAuthRuntime
 }
 
 export interface AppConnectorSecretResolver {
@@ -121,12 +51,16 @@ export interface AppConnectorAuthHost {
   secrets?: AppConnectorSecretResolver
 }
 
-export interface AppJobConnector {
-  definition: AppJobConnectorDefinition
+export type AppConnectorRuntimePorts = {
+  browserSession?: ConnectorBrowserSessionRuntime
+  delay?: ConnectorDelayRuntime
+}
+
+export interface AppJobConnector extends Omit<JobConnector, 'refresh'> {
   refresh(
     input: AppConnectorRefreshInput,
     runtime: AppConnectorRuntime,
-  ): Promise<ConnectorRefreshResultInput>
+  ): Promise<AppConnectorRefreshResult>
 }
 
 export interface RegisterConnectorInstanceInput {
@@ -142,7 +76,7 @@ export interface RegisterConnectorInstanceInput {
 
 export interface RunConnectorRefreshInput {
   connectorInstanceId: string
-  mode: string
+  mode: ConnectorRefreshMode
   coverage: ConnectorCoverageWindow
   startedAt?: string
   completedAt?: string
@@ -170,7 +104,8 @@ export interface AppConnectorRunPolicy {
 export interface CreateConnectorRunnerOptions {
   auth?: AppConnectorAuthHost
   repository: ReturnType<typeof createSqliteConnectorRepository>
-  runtime?: Record<string, unknown>
+  runtime?: AppConnectorRuntimePorts
+  workspaceId: string
   now?: () => Date
 }
 
@@ -185,6 +120,7 @@ export function createConnectorRunner({
   auth,
   repository,
   runtime = {},
+  workspaceId,
   now = () => new Date(),
 }: CreateConnectorRunnerOptions) {
   async function runRefresh(
@@ -212,6 +148,7 @@ export function createConnectorRunner({
     const result = await connector.refresh(
       {
         connectorInstanceId: input.connectorInstanceId,
+        workspaceId,
         mode: input.mode,
         coverage: input.coverage,
         config,
@@ -311,9 +248,9 @@ export function createConnectorRunner({
 }
 
 function createRunRuntime(
-  runtime: Record<string, unknown>,
+  runtime: AppConnectorRuntimePorts,
   authReferences: ConnectorAuthReference[],
-  authRequirements: AppConnectorAuthRequirement[],
+  authRequirements: ConnectorAuthRequirement[],
   authHost: AppConnectorAuthHost | undefined,
   sensitiveValues: Set<string>,
 ): AppConnectorRuntime {
@@ -478,7 +415,7 @@ function trackSensitiveGrantValue(
 }
 
 function redactRefreshResult(
-  result: ConnectorRefreshResultInput,
+  result: AppConnectorRefreshResult,
   sensitiveValues: Set<string>,
 ): ConnectorRefreshResultInput {
   if (sensitiveValues.size === 0) {
@@ -531,7 +468,7 @@ function addSensitiveValue(value: string | undefined, sensitiveValues: Set<strin
 
 function budgetFromPoliteness(
   policy: AppConnectorRunPolicy,
-  politeness: AppConnectorPolitenessDefaults | undefined,
+  politeness: ConnectorDefinition['politeness'] | undefined,
 ): AppConnectorRunBudget | undefined {
   const budget: AppConnectorRunBudget = {}
   const concurrency = lowerPositive(policy.concurrency, politeness?.concurrency)

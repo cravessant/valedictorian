@@ -19,7 +19,34 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const delayInputs: unknown[] = []
+    const browserSessionInputs: unknown[] = []
+    const runner = createConnectorRunner({
+      repository,
+      workspaceId: 'workspace-fixture',
+      runtime: {
+        browserSession: {
+          async resolveLink(input) {
+            browserSessionInputs.push(input)
+
+            return {
+              status: 'resolved',
+              officialUrl: 'https://example.test/apply/software-engineering-intern',
+              method: 'fixture-browser-session',
+              reason: null,
+              evidence: [],
+            }
+          },
+        },
+        delay: {
+          async wait(input) {
+            delayInputs.push(input)
+
+            return input.minDelayMs
+          },
+        },
+      },
+    })
     const observedAt = '2026-07-08T17:00:00.000Z'
     const receivedInputs: unknown[] = []
     const fixtureConnector: AppJobConnector = {
@@ -27,8 +54,18 @@ describe('connector runner', () => {
         id: 'fixture.jobs',
         version: '0.0.0-fixture',
       },
-      async refresh(input) {
+      async refresh(input, runtime) {
         receivedInputs.push(input)
+        await runtime.delay?.wait({
+          minDelayMs: 1000,
+          maxDelayMs: 10_000,
+          reason: 'fixture-politeness',
+        })
+        await runtime.browserSession?.resolveLink({
+          sessionId: 'fixture-session',
+          source: 'fixture',
+          url: 'https://fixture.example/redirect/software-engineering-intern',
+        })
 
         return {
           coverage: input.coverage,
@@ -113,6 +150,7 @@ describe('connector runner', () => {
     expect(receivedInputs).toEqual([
       {
         connectorInstanceId: 'connector-instance-fixture',
+        workspaceId: 'workspace-fixture',
         mode: 'manual',
         coverage: {
           start: '2026-07-01T00:00:00.000Z',
@@ -124,6 +162,20 @@ describe('connector runner', () => {
         filters: {
           roleKeywords: ['intern'],
         },
+      },
+    ])
+    expect(delayInputs).toEqual([
+      {
+        minDelayMs: 1000,
+        maxDelayMs: 10_000,
+        reason: 'fixture-politeness',
+      },
+    ])
+    expect(browserSessionInputs).toEqual([
+      {
+        sessionId: 'fixture-session',
+        source: 'fixture',
+        url: 'https://fixture.example/redirect/software-engineering-intern',
       },
     ])
 
@@ -200,7 +252,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedGrants: unknown[] = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -264,6 +316,7 @@ describe('connector runner', () => {
     const profileRepository = createSqliteProfileRepository(database, testCodec)
     const runner = createConnectorRunner({
       repository,
+      workspaceId: 'workspace-fixture',
       auth: {
         secrets: profileRepository,
       },
@@ -415,6 +468,7 @@ describe('connector runner', () => {
     const profileRepository = createSqliteProfileRepository(database, testCodec)
     const runner = createConnectorRunner({
       repository,
+      workspaceId: 'workspace-fixture',
       auth: {
         secrets: profileRepository,
       },
@@ -525,6 +579,7 @@ describe('connector runner', () => {
     const profileRepository = createSqliteProfileRepository(database, testCodec)
     const runner = createConnectorRunner({
       repository,
+      workspaceId: 'workspace-fixture',
       auth: {
         secrets: profileRepository,
       },
@@ -593,7 +648,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedGrants: unknown[] = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -658,6 +713,7 @@ describe('connector runner', () => {
     const repository = createSqliteConnectorRepository(database)
     const runner = createConnectorRunner({
       repository,
+      workspaceId: 'workspace-fixture',
       auth: {
         browserSessions: {
           async resolve(reference) {
@@ -770,7 +826,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -828,7 +884,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -895,7 +951,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -952,7 +1008,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -1012,7 +1068,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: unknown[] = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -1075,7 +1131,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: unknown[] = []
     const fixtureConnector: AppJobConnector = {
       definition: {
@@ -1137,7 +1193,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository })
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const fixtureConnector: AppJobConnector = {
       definition: {
         id: 'fixture.jobs',
