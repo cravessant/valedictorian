@@ -3,7 +3,10 @@ import type {
   ConnectorAuthReference,
   ConnectorAuthRequirement,
   ConnectorAuthResolveInput,
+  ConnectorBrowserSessionResolveInput,
+  ConnectorBrowserSessionResolveResult,
   ConnectorCoverageWindow,
+  ConnectorDelayInput,
   ConnectorDefinition,
   ConnectorRefreshStatus,
   ConnectorRefreshInput,
@@ -204,7 +207,13 @@ export type InMemoryConnectorBrowserSession = Pick<
 >
 
 export type InMemoryConnectorHostOptions = {
+  browserSessionResolver?: (
+    input: ConnectorBrowserSessionResolveInput,
+  ) =>
+    | ConnectorBrowserSessionResolveResult
+    | Promise<ConnectorBrowserSessionResolveResult>
   browserSessions?: Record<string, InMemoryConnectorBrowserSession>
+  delay?: (input: ConnectorDelayInput) => number | Promise<number>
   secrets?: Record<string, string>
 }
 
@@ -242,6 +251,10 @@ export function createInMemoryConnectorHost(
       const filterSignature = signatureForFilters(filters)
       const checkpointKey = `${request.connectorInstanceId}:${filterSignature}`
       const existingCheckpoint = checkpoints.get(checkpointKey)
+      const connectorObservations =
+        connector.definition.capabilities?.resolvesIntermediaryLinks === true
+          ? observationsForWorkspace(observations, instances, request.workspaceId)
+          : null
       const result = await connector.refresh(
         {
           connectorInstanceId: request.connectorInstanceId,
@@ -253,6 +266,9 @@ export function createInMemoryConnectorHost(
           ...(existingCheckpoint
             ? { checkpoint: cloneJsonLike(existingCheckpoint.checkpoint) }
             : {}),
+          ...(connectorObservations === null
+            ? {}
+            : { observations: connectorObservations }),
         },
         createConnectorRuntime(
           instance.auth ?? [],
@@ -286,10 +302,13 @@ export function createInMemoryConnectorHost(
       })
 
       for (const observation of result.observations) {
-        observations.push({
-          ...observation,
-          connectorInstanceId: request.connectorInstanceId,
-        })
+        upsertObservation(
+          observations,
+          instances,
+          request.workspaceId,
+          request.connectorInstanceId,
+          observation,
+        )
       }
 
       return run
@@ -328,13 +347,77 @@ function createConnectorRuntime(
   authRequirements: ConnectorAuthRequirement[],
   options: InMemoryConnectorHostOptions,
 ): ConnectorRuntime {
-  return {
+  const runtime: ConnectorRuntime = {
     auth: {
       async resolve(input) {
         return resolveAuthGrant(input, authReferences, authRequirements, options)
       },
     },
   }
+
+  if (options.browserSessionResolver) {
+    runtime.browserSession = {
+      async resolveLink(input) {
+        return await options.browserSessionResolver!(input)
+      },
+    }
+  }
+
+  if (options.delay) {
+    runtime.delay = {
+      async wait(input) {
+        return await options.delay!(input)
+      },
+    }
+  }
+
+  return runtime
+}
+
+function observationsForWorkspace(
+  observations: HostObservationRecord[],
+  instances: Map<string, ConnectorInstanceRecord>,
+  workspaceId: string,
+): JobObservation[] {
+  return observations
+    .filter(
+      (observation) =>
+        instances.get(observation.connectorInstanceId)?.workspaceId ===
+        workspaceId,
+    )
+    .map(({ connectorInstanceId: _connectorInstanceId, ...observation }) =>
+      cloneJsonLike(observation),
+    )
+}
+
+function upsertObservation(
+  observations: HostObservationRecord[],
+  instances: Map<string, ConnectorInstanceRecord>,
+  workspaceId: string,
+  connectorInstanceId: string,
+  observation: JobObservation,
+): void {
+  const existingIndex = observations.findIndex(
+    (storedObservation) =>
+      storedObservation.sourceRecordKey === observation.sourceRecordKey &&
+      instances.get(storedObservation.connectorInstanceId)?.workspaceId ===
+        workspaceId,
+  )
+  const existingConnectorInstanceId =
+    existingIndex === -1
+      ? connectorInstanceId
+      : observations[existingIndex]?.connectorInstanceId ?? connectorInstanceId
+  const record = cloneJsonLike({
+    ...observation,
+    connectorInstanceId: existingConnectorInstanceId,
+  })
+
+  if (existingIndex === -1) {
+    observations.push(record)
+    return
+  }
+
+  observations[existingIndex] = record
 }
 
 function resolveAuthGrant(

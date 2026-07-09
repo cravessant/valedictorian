@@ -70,6 +70,46 @@ export type ConnectorAuthRuntime = {
   resolve(input: ConnectorAuthResolveInput): Promise<ConnectorAuthGrant>
 }
 
+export type ConnectorDelayInput = {
+  minDelayMs: number
+  maxDelayMs: number
+  reason?: string
+}
+
+export type ConnectorDelayRuntime = {
+  wait(input: ConnectorDelayInput): Promise<number>
+}
+
+export type ConnectorBrowserSessionResolveStatus =
+  | "resolved"
+  | "auth_required"
+  | "closed"
+  | "hidden"
+  | "direct_apply"
+  | "rate_limited"
+  | "captcha"
+  | "unresolved"
+
+export type ConnectorBrowserSessionResolveInput = {
+  sessionId: string
+  url: string
+  source: string
+}
+
+export type ConnectorBrowserSessionResolveResult = {
+  status: ConnectorBrowserSessionResolveStatus
+  officialUrl?: string | null
+  method?: string | null
+  reason?: string | null
+  evidence?: JobObservationEvidence[]
+}
+
+export type ConnectorBrowserSessionRuntime = {
+  resolveLink(
+    input: ConnectorBrowserSessionResolveInput,
+  ): Promise<ConnectorBrowserSessionResolveResult>
+}
+
 export type ConnectorCapabilityDeclaration = {
   fetchesPublicPages?: boolean
   resolvesIntermediaryLinks?: boolean
@@ -106,10 +146,13 @@ export type ConnectorRefreshInput = {
   config?: unknown
   filters?: unknown
   budget?: unknown
+  observations?: JobObservation[]
 }
 
 export type ConnectorRuntime = {
   auth: ConnectorAuthRuntime
+  browserSession?: ConnectorBrowserSessionRuntime
+  delay?: ConnectorDelayRuntime
 }
 
 export type JobObservationLinks = {
@@ -122,6 +165,10 @@ export type JobObservationResolutionStatus =
   | "resolved"
   | "auth_required"
   | "closed"
+  | "hidden"
+  | "direct_apply"
+  | "rate_limited"
+  | "captcha"
   | "unresolved"
   | "not_supported"
 
