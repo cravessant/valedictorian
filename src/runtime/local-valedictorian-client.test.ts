@@ -530,23 +530,23 @@ describe('runtime local Valedictorian client', () => {
     const connectorRepository = createSqliteConnectorRepository(database)
 
     await connectorRepository.upsertInstance({
-      id: 'connector-instance-internlist',
-      connectorId: 'internlist.jobs',
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
       connectorVersion: '0.1.0',
-      displayName: 'InternList',
+      displayName: 'Fixture Jobs',
       enabled: true,
       auth: [
         {
-          id: 'jobright-session',
-          label: 'Jobright',
+          id: 'fixture-session',
+          label: 'Fixture session',
           mode: 'browser_session',
-          sessionKey: 'jobright-session-123',
+          sessionKey: 'fixture-session-123',
         },
       ],
       createdAt: '2026-07-08T15:00:00.000Z',
     })
     await connectorRepository.recordRefreshResult({
-      connectorInstanceId: 'connector-instance-internlist',
+      connectorInstanceId: 'connector-instance-fixture',
       mode: 'catch_up',
       startedAt: '2026-07-08T17:00:00.000Z',
       completedAt: '2026-07-08T17:00:01.000Z',
@@ -564,15 +564,15 @@ describe('runtime local Valedictorian client', () => {
         },
         observations: [
           {
-            connectorId: 'internlist.jobs',
+            connectorId: 'fixture.jobs',
             connectorVersion: '0.1.0',
-            sourceRecordKey: 'internlist:delta-labs',
+            sourceRecordKey: 'fixture.jobs:delta-labs',
             observedAt: '2026-07-08T16:30:00.000Z',
             companyName: 'Delta Labs',
             roleTitle: 'Software Engineering Intern',
             links: {
-              source: 'https://internlist.example/jobs/delta',
-              intermediary: 'https://jobright.example/redirect/delta',
+              source: 'https://fixture.example/jobs/delta',
+              intermediary: 'https://fixture.example/redirect/delta',
               official: 'https://jobs.example.com/delta',
             },
             resolution: {
@@ -585,7 +585,7 @@ describe('runtime local Valedictorian client', () => {
               {
                 type: 'source_api',
                 capturedAt: '2026-07-08T16:30:00.000Z',
-                sourceUrl: 'https://internlist.example/jobs/delta',
+                sourceUrl: 'https://fixture.example/jobs/delta',
               },
             ],
           },
@@ -600,7 +600,7 @@ describe('runtime local Valedictorian client', () => {
         warnings: [
           {
             code: 'auth.expired_session',
-            message: 'Expired browser session jobright-session-123.',
+            message: 'Expired browser session fixture-session-123.',
           },
         ],
       },
@@ -608,32 +608,32 @@ describe('runtime local Valedictorian client', () => {
 
     const status = await client.connectors.status.list()
     const instances = await client.connectors.list()
-    const inspected = await client.connectors.inspect('connector-instance-internlist')
+    const inspected = await client.connectors.inspect('connector-instance-fixture')
     const runs = await client.connectors.runs.list({
-      connectorInstanceId: 'connector-instance-internlist',
+      connectorInstanceId: 'connector-instance-fixture',
       limit: 10,
     })
     const checkpoints = await client.connectors.checkpoints.list({
-      connectorInstanceId: 'connector-instance-internlist',
+      connectorInstanceId: 'connector-instance-fixture',
       filterSignature: 'filters:{}',
     })
     const observations = await client.connectors.observations.list({
-      connectorInstanceId: 'connector-instance-internlist',
+      connectorInstanceId: 'connector-instance-fixture',
       limit: 10,
     })
     const queuedRun = await client.connectors.runs.trigger({
-      connectorInstanceId: 'connector-instance-internlist',
+      connectorInstanceId: 'connector-instance-fixture',
       coverageStartedAt: '2026-07-08T17:00:00.000Z',
       coverageEndedAt: '2026-07-08T18:00:00.000Z',
       filterSignature: 'filters:{}',
       mode: 'manual',
     })
-    const queuedStatus = await client.connectors.inspect('connector-instance-internlist')
+    const queuedStatus = await client.connectors.inspect('connector-instance-fixture')
 
     expect(status).toMatchObject({
       items: [
         {
-          displayName: 'InternList',
+          displayName: 'Fixture Jobs',
           status: 'auth_required',
           summary: 'Reconnect the connector session to continue refreshes.',
         },
@@ -641,13 +641,13 @@ describe('runtime local Valedictorian client', () => {
     })
     expect(instances.items).toMatchObject([
       {
-        auth: [{ configured: true, id: 'jobright-session', mode: 'browser_session' }],
-        id: 'connector-instance-internlist',
+        auth: [{ configured: true, id: 'fixture-session', mode: 'browser_session' }],
+        id: 'connector-instance-fixture',
       },
     ])
     expect(inspected).toMatchObject({
       actionRequired: [{ kind: 'auth' }],
-      auth: [{ configured: true, id: 'jobright-session', mode: 'browser_session' }],
+      auth: [{ configured: true, id: 'fixture-session', mode: 'browser_session' }],
       status: 'auth_required',
     })
     expect(runs).toMatchObject({
@@ -677,7 +677,7 @@ describe('runtime local Valedictorian client', () => {
       total: 1,
     })
     expect(queuedRun).toMatchObject({
-      connectorInstanceId: 'connector-instance-internlist',
+      connectorInstanceId: 'connector-instance-fixture',
       status: 'queued',
     })
     expect(queuedStatus).toMatchObject({
@@ -685,10 +685,10 @@ describe('runtime local Valedictorian client', () => {
       statusLabel: 'Queued',
       summary: 'Connector run is queued.',
     })
-    expect(JSON.stringify(status)).not.toContain('jobright-session-123')
-    expect(JSON.stringify(instances)).not.toContain('jobright-session-123')
-    expect(JSON.stringify(inspected)).not.toContain('jobright-session-123')
-    expect(JSON.stringify(runs)).not.toContain('jobright-session-123')
+    expect(JSON.stringify(status)).not.toContain('fixture-session-123')
+    expect(JSON.stringify(instances)).not.toContain('fixture-session-123')
+    expect(JSON.stringify(inspected)).not.toContain('fixture-session-123')
+    expect(JSON.stringify(runs)).not.toContain('fixture-session-123')
     sqlite.close()
   })
 })

@@ -42,7 +42,7 @@ describe('ConnectorStatusPage', () => {
                 {
                   code: 'source.rate_limited',
                   label: 'Rate limited',
-                  message: 'Rate limited by Jobright for 10 minutes.',
+                  message: 'Rate limited by Fixture Jobs for 10 minutes.',
                   severity: 'warning',
                 },
               ],
@@ -56,15 +56,15 @@ describe('ConnectorStatusPage', () => {
     const table = screen.getByRole('table', { name: 'Connector status' })
 
     expect(screen.getByRole('heading', { name: 'Connectors' })).toBeInTheDocument()
-    expect(within(table).getByText('InternList')).toBeInTheDocument()
+    expect(within(table).getByText('Fixture Jobs')).toBeInTheDocument()
     expect(within(table).getByText('Auth required')).toBeInTheDocument()
     expect(within(table).getByText('Reconnect the connector session to continue refreshes.')).toBeInTheDocument()
     expect(within(table).getByText('Expired session')).toBeInTheDocument()
     expect(within(table).getByText('Rate limited')).toBeInTheDocument()
-    expect(within(table).getByRole('button', { name: 'Reconnect InternList' })).toBeInTheDocument()
-    expect(within(table).getByRole('button', { name: 'Skip this run for InternList' })).toBeInTheDocument()
-    expect(screen.queryByText(/jobright-session-123/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/il-secret-token/i)).not.toBeInTheDocument()
+    expect(within(table).getByRole('button', { name: 'Reconnect Fixture Jobs' })).toBeInTheDocument()
+    expect(within(table).getByRole('button', { name: 'Skip this run for Fixture Jobs' })).toBeInTheDocument()
+    expect(screen.queryByText(/fixture-session-123/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/fixture-secret-token/i)).not.toBeInTheDocument()
   })
 
   it('distinguishes unavailable connector status from no enabled connectors', () => {
@@ -91,10 +91,10 @@ function createConnectorStatusView(
   return {
     actionLabel: null,
     actions: [],
-    connectorId: 'internlist.jobs',
-    displayName: 'InternList',
+    connectorId: 'fixture.jobs',
+    displayName: 'Fixture Jobs',
     enabled: true,
-    id: 'connector-instance-internlist',
+    id: 'connector-instance-fixture',
     lastRunAt: '2026-07-08T17:00:01.000Z',
     latestRunId: 'connector-run-1',
     observationCount: 0,

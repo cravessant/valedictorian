@@ -10,22 +10,22 @@ describe('connector status mapping', () => {
           observationCount: 0,
           retryHints: {
             reason: 'browser_session_action_required',
-            sessionId: 'jobright-session-123',
+            sessionId: 'fixture-session-123',
           },
           status: 'partial_success',
           warningCount: 4,
           warnings: [
             {
               code: 'auth.expired_session',
-              message: 'Jobright session jobright-session-123 expired with il-secret-token.',
+              message: 'Fixture session fixture-session-123 expired with fixture-secret-token.',
             },
             {
               code: 'source.rate_limited',
-              message: 'Rate limited by Jobright for 10 minutes.',
+              message: 'Rate limited by Fixture Jobs for 10 minutes.',
             },
             {
               code: 'parser.changed',
-              message: 'InternList parser changed around pay metadata.',
+              message: 'Fixture Jobs parser changed around pay metadata.',
             },
             {
               code: 'connector.sk_live_abc123',
@@ -79,8 +79,8 @@ describe('connector status mapping', () => {
         label: 'Skip this run',
       },
     ])
-    expect(JSON.stringify(view)).not.toContain('jobright-session-123')
-    expect(JSON.stringify(view)).not.toContain('il-secret-token')
+    expect(JSON.stringify(view)).not.toContain('fixture-session-123')
+    expect(JSON.stringify(view)).not.toContain('fixture-secret-token')
     expect(JSON.stringify(view)).not.toContain('sk_live_abc123')
     expect(JSON.stringify(view)).not.toContain('cookie-value-123')
     expect(JSON.stringify(view)).not.toContain('connector.sk_live_abc123')
@@ -94,7 +94,7 @@ describe('connector status mapping', () => {
             observationCount: 0,
             retryHints: {
               reason: 'secret_missing',
-              secretKey: 'jobright-token-key',
+              secretKey: 'fixture-token-key',
             },
             status: 'partial_success',
           }),
@@ -149,13 +149,13 @@ function createStatusRecord(
   return {
     auth: [],
     config: {},
-    connectorId: 'internlist.jobs',
+    connectorId: 'fixture.jobs',
     connectorVersion: '0.1.0',
     createdAt: '2026-07-08T15:00:00.000Z',
-    displayName: 'InternList',
+    displayName: 'Fixture Jobs',
     enabled: true,
     filters: {},
-    id: 'connector-instance-internlist',
+    id: 'connector-instance-fixture',
     latestRun: null,
     updatedAt: '2026-07-08T15:00:00.000Z',
     ...overrides,
@@ -168,7 +168,7 @@ function createRunRecord(
   return {
     completedAt: '2026-07-08T17:00:01.000Z',
     config: {},
-    connectorInstanceId: 'connector-instance-internlist',
+    connectorInstanceId: 'connector-instance-fixture',
     coverageEndedAt: '2026-07-08T17:00:00.000Z',
     coverageStartedAt: '2026-07-08T16:00:00.000Z',
     filterSignature: 'filters:{}',

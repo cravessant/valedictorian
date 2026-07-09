@@ -262,15 +262,15 @@ describe('SQLite connector repository', () => {
       enabled: true,
       auth: [
         {
-          id: ' internlist ',
+          id: ' fixture-api ',
           mode: 'api_key',
-          label: ' InternList API key ',
-          secretKey: ' internlist_api_key ',
+          label: ' Fixture API key ',
+          secretKey: ' fixture_api_key ',
           sessionKey: 'wrong_session_key',
-          value: 'il-secret',
+          value: 'fixture-secret',
         } as never,
         {
-          id: ' jobright ',
+          id: ' fixture-auth ',
           mode: 'browser_session',
           secretKey: 'wrong_secret_key',
           sessionKey: ' workspace_session_1 ',
@@ -284,19 +284,19 @@ describe('SQLite connector repository', () => {
     expect(instance).toMatchObject({
       auth: [
         {
-          id: 'internlist',
+          id: 'fixture-api',
           mode: 'api_key',
-          label: 'InternList API key',
-          secretKey: 'internlist_api_key',
+          label: 'Fixture API key',
+          secretKey: 'fixture_api_key',
         },
         {
-          id: 'jobright',
+          id: 'fixture-auth',
           mode: 'browser_session',
           sessionKey: 'workspace_session_1',
         },
       ],
     })
-    expect(JSON.stringify(instance)).not.toContain('il-secret')
+    expect(JSON.stringify(instance)).not.toContain('fixture-secret')
     expect(JSON.stringify(instance)).not.toContain('wrong_secret_key')
     expect(JSON.stringify(instance)).not.toContain('wrong_session_key')
   })
@@ -354,10 +354,10 @@ describe('SQLite connector repository', () => {
     const repository = createSqliteConnectorRepository(database)
 
     await repository.upsertInstance({
-      id: 'connector-instance-internlist',
-      connectorId: 'internlist.jobs',
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
       connectorVersion: '0.1.0',
-      displayName: 'InternList',
+      displayName: 'Fixture Jobs',
       enabled: true,
       createdAt: '2026-07-08T15:00:00.000Z',
     })
@@ -371,7 +371,7 @@ describe('SQLite connector repository', () => {
     })
 
     await repository.recordRefreshResult({
-      connectorInstanceId: 'connector-instance-internlist',
+      connectorInstanceId: 'connector-instance-fixture',
       mode: 'manual',
       startedAt: '2026-07-08T16:00:00.000Z',
       completedAt: '2026-07-08T16:00:01.000Z',
@@ -387,7 +387,7 @@ describe('SQLite connector repository', () => {
       }),
     })
     await repository.recordRefreshResult({
-      connectorInstanceId: 'connector-instance-internlist',
+      connectorInstanceId: 'connector-instance-fixture',
       mode: 'catch_up',
       startedAt: '2026-07-08T17:00:00.000Z',
       completedAt: '2026-07-08T17:00:01.000Z',
@@ -406,7 +406,7 @@ describe('SQLite connector repository', () => {
         warnings: [
           {
             code: 'auth.expired_session',
-            message: 'Jobright session expired.',
+            message: 'Fixture session expired.',
           },
         ],
         retryHints: {
@@ -433,11 +433,11 @@ describe('SQLite connector repository', () => {
 
     await expect(repository.listStatusSummaries()).resolves.toMatchObject([
       {
-        connectorId: 'internlist.jobs',
+        connectorId: 'fixture.jobs',
         connectorVersion: '0.1.0',
-        displayName: 'InternList',
+        displayName: 'Fixture Jobs',
         enabled: true,
-        id: 'connector-instance-internlist',
+        id: 'connector-instance-fixture',
         latestRun: expect.objectContaining({
           completedAt: '2026-07-08T17:00:01.000Z',
           coverageEndedAt: '2026-07-08T17:00:00.000Z',
@@ -453,7 +453,7 @@ describe('SQLite connector repository', () => {
           warnings: [
             {
               code: 'auth.expired_session',
-              message: 'Jobright session expired.',
+              message: 'Fixture session expired.',
             },
           ],
         }),

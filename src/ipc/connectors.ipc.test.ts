@@ -8,9 +8,9 @@ describe('connectors IPC registration', () => {
       available: true,
       items: [
         {
-          id: 'connector-instance-internlist',
-          connectorId: 'internlist.jobs',
-          displayName: 'InternList',
+          id: 'connector-instance-fixture',
+          connectorId: 'fixture.jobs',
+          displayName: 'Fixture Jobs',
           enabled: true,
           lastRunAt: '2026-07-08T17:00:01.000Z',
           latestRunId: 'connector-run-1',

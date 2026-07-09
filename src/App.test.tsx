@@ -729,9 +729,9 @@ describe('App', () => {
     const table = await screen.findByRole('table', { name: 'Connector status' })
 
     expect(screen.getByRole('heading', { name: 'Connectors' })).toBeInTheDocument()
-    expect(within(table).getByText('InternList')).toBeInTheDocument()
+    expect(within(table).getByText('Fixture Jobs')).toBeInTheDocument()
     expect(within(table).getByText('Auth required')).toBeInTheDocument()
-    expect(within(table).getByRole('button', { name: 'Reconnect InternList' })).toBeInTheDocument()
+    expect(within(table).getByRole('button', { name: 'Reconnect Fixture Jobs' })).toBeInTheDocument()
     expect(connectorStatusLoader).toHaveBeenCalledTimes(1)
   })
 

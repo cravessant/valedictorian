@@ -277,16 +277,16 @@ describe('connector runner', () => {
           modes: ['api_key'],
           requirements: [
             {
-              id: 'internlist',
+              id: 'fixture-api',
               mode: 'api_key',
-              label: 'InternList API key',
+              label: 'Fixture API key',
             },
           ],
         },
       },
       async refresh(input, runtime) {
         const grant = await runtime.auth.resolve({
-          id: 'internlist',
+          id: 'fixture-api',
           mode: 'api_key',
         })
         receivedGrants.push(grant)
@@ -323,10 +323,10 @@ describe('connector runner', () => {
     }
 
     await profileRepository.upsertSecret({
-      key: 'internlist_api_key',
+      key: 'fixture_api_key',
       kind: 'token',
-      label: 'InternList API key',
-      value: 'il-secret',
+      label: 'Fixture API key',
+      value: 'fixture-secret',
     })
     await runner.registerInstance({
       id: 'connector-instance-secret',
@@ -335,9 +335,9 @@ describe('connector runner', () => {
       enabled: true,
       auth: [
         {
-          id: 'internlist',
+          id: 'fixture-api',
           mode: 'api_key',
-          secretKey: 'internlist_api_key',
+          secretKey: 'fixture_api_key',
         },
       ],
       createdAt: '2026-07-08T16:55:00.000Z',
@@ -354,14 +354,14 @@ describe('connector runner', () => {
 
     expect(receivedGrants).toEqual([
       {
-        id: 'internlist',
+        id: 'fixture-api',
         mode: 'api_key',
-        secretKey: 'internlist_api_key',
+        secretKey: 'fixture_api_key',
         status: 'ready',
-        value: 'il-secret',
+        value: 'fixture-secret',
       },
     ])
-    expect(JSON.stringify(run)).not.toContain('il-secret')
+    expect(JSON.stringify(run)).not.toContain('fixture-secret')
     expect(JSON.stringify(run)).toContain('[redacted-secret]')
     await expect(
       repository.getCheckpoint({
@@ -374,9 +374,9 @@ describe('connector runner', () => {
       checkpoint: {
         copiedValue: '[redacted-secret]',
         grant: {
-          id: 'internlist',
+          id: 'fixture-api',
           mode: 'api_key',
-          secretKey: 'internlist_api_key',
+          secretKey: 'fixture_api_key',
           status: 'ready',
           value: '[redacted-secret]',
         },
@@ -392,18 +392,18 @@ describe('connector runner', () => {
           filterSignature: 'filters:{}',
         }),
       ),
-    ).not.toContain('il-secret')
+    ).not.toContain('fixture-secret')
     await expect(repository.getInstance('connector-instance-secret')).resolves.toMatchObject({
       auth: [
         {
-          id: 'internlist',
+          id: 'fixture-api',
           mode: 'api_key',
-          secretKey: 'internlist_api_key',
+          secretKey: 'fixture_api_key',
         },
       ],
     })
     expect(JSON.stringify(await repository.getInstance('connector-instance-secret'))).not.toContain(
-      'il-secret',
+      'fixture-secret',
     )
   })
 
@@ -541,7 +541,7 @@ describe('connector runner', () => {
       async refresh(input, runtime) {
         receivedGrants.push(
           await runtime.auth.resolve({
-            id: 'jobright',
+            id: 'fixture-auth',
             mode: 'bearer_token',
           }),
         )
@@ -560,9 +560,9 @@ describe('connector runner', () => {
       enabled: true,
       auth: [
         {
-          id: 'jobright',
+          id: 'fixture-auth',
           mode: 'bearer_token',
-          secretKey: 'jobright_token',
+          secretKey: 'fixture_token',
         },
       ],
       createdAt: '2026-07-08T16:55:00.000Z',
@@ -579,10 +579,10 @@ describe('connector runner', () => {
 
     expect(receivedGrants).toEqual([
       {
-        id: 'jobright',
+        id: 'fixture-auth',
         mode: 'bearer_token',
         reason: 'secret_missing',
-        secretKey: 'jobright_token',
+        secretKey: 'fixture_token',
         status: 'missing',
       },
     ])
@@ -606,7 +606,7 @@ describe('connector runner', () => {
       async refresh(input, runtime) {
         receivedGrants.push(
           await runtime.auth.resolve({
-            id: 'jobright',
+            id: 'fixture-auth',
             mode: 'browser_session',
           }),
         )
@@ -625,7 +625,7 @@ describe('connector runner', () => {
       enabled: true,
       auth: [
         {
-          id: 'jobright',
+          id: 'fixture-auth',
           mode: 'browser_session',
         },
       ],
@@ -643,7 +643,7 @@ describe('connector runner', () => {
 
     expect(receivedGrants).toEqual([
       {
-        id: 'jobright',
+        id: 'fixture-auth',
         mode: 'browser_session',
         reason: 'browser_session_action_required',
         status: 'action_required',
@@ -665,7 +665,7 @@ describe('connector runner', () => {
               id: 'ignored-id',
               mode: 'browser_session',
               secretKey: 'should-not-cross-session-boundary',
-              sessionId: 'jobright-session-123',
+              sessionId: 'fixture-session-123',
               sessionKey: 'resolver-session-key',
               status: 'ready',
               value: 'should-not-cross-session-boundary',
@@ -686,7 +686,7 @@ describe('connector runner', () => {
       },
       async refresh(input, runtime) {
         const grant = await runtime.auth.resolve({
-          id: 'jobright',
+          id: 'fixture-auth',
           mode: 'browser_session',
         })
         receivedGrants.push(grant)
@@ -726,7 +726,7 @@ describe('connector runner', () => {
       enabled: true,
       auth: [
         {
-          id: 'jobright',
+          id: 'fixture-auth',
           mode: 'browser_session',
           sessionKey: 'workspace_session_1',
         },
@@ -750,16 +750,16 @@ describe('connector runner', () => {
 
     expect(receivedGrants).toEqual([
       {
-        id: 'jobright',
+        id: 'fixture-auth',
         mode: 'browser_session',
         reason: 'workspace_session_1',
-        sessionId: 'jobright-session-123',
+        sessionId: 'fixture-session-123',
         sessionKey: 'workspace_session_1',
         status: 'ready',
       },
     ])
     expect(persisted).toContain('[redacted-secret]')
-    expect(persisted).not.toContain('jobright-session-123')
+    expect(persisted).not.toContain('fixture-session-123')
     expect(persisted).not.toContain('workspace_session_1')
     expect(persisted).not.toContain('resolver-session-key')
     expect(persisted).not.toContain('should-not-cross-session-boundary')
