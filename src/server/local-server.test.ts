@@ -572,6 +572,29 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
+  it('passes the explicit workspace id into local workspace clients', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-client-'))
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const clientOptions: Array<Parameters<typeof createRuntimeLocalValedictorianClient>[0]> = []
+    const workspaceManager = createLocalWorkspaceManager({
+      createClient(options) {
+        clientOptions.push(options)
+        return createBoundaryTestClient(() => {})
+      },
+      createId: () => 'workspace-client',
+      registryStore,
+    })
+
+    await workspaceManager.open({ path: workspaceRoot })
+    await workspaceManager.resolveClient('workspace-client')
+
+    expect(clientOptions).toMatchObject([
+      {
+        workspaceId: 'workspace-client',
+      },
+    ])
+  })
+
   it('blocks opening a workspace when its manifest id is registered to a different path', async () => {
     const firstRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-collision-a-'))
     const secondRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-collision-b-'))

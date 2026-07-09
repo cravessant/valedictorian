@@ -10,6 +10,10 @@ Valedictorian stores workspace state in the selected workspace folder:
 <workspace>/.valedictorian/
 ```
 
+The workspace manifest lives at `<workspace>/.valedictorian/manifest.json`.
+
+## Project config discovery
+
 When opening a new project folder, the app can read workspace defaults from `valedictorian.config.json`, `.valedictorianrc.json`, or the `valedictorian` key in `package.json`.
 
 ```json
@@ -21,7 +25,7 @@ When opening a new project folder, the app can read workspace defaults from `val
 }
 ```
 
-Do not store tokens, passwords, or client secrets in project config.
+Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.
 
 ## Development
 

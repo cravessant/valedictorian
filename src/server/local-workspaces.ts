@@ -116,6 +116,7 @@ export function createLocalWorkspaceManager({
           seedDataMode,
           secretCodec,
           sqlitePath: resolveWorkspaceLayout(workspace.path).sqlitePath,
+          workspaceId,
         })
         clientCache.set(workspaceId, client)
         await registryStore.clearError(workspaceId)

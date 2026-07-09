@@ -93,11 +93,10 @@ export function mapConnectorStatusSummary(
   }
 
   const rawWarnings = readWarnings(latestRun.warnings)
-  const retryReason = readRetryReason(latestRun.retryHints)
   const warnings = mapConnectorWarnings(latestRun.warnings)
   const hasAuthBlocker =
     rawWarnings.some((warning) => isAuthWarningCode(warning.code)) ||
-    isAuthRetryReason(retryReason)
+    hasAuthRetryHint(latestRun.retryHints)
   const hasBlockedWarning = warnings.some((warning) => warning.severity === 'blocked')
   const latestRunStatus = latestRun.status
   const isPartialSuccess = latestRun.status === 'partial_success'
@@ -305,21 +304,27 @@ function safeWarningForCode(code: string): ConnectorStatusWarningView {
   }
 }
 
-function readRetryReason(value: unknown): string | null {
+function hasAuthRetryHint(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
+    return false
   }
 
-  const reason = (value as Record<string, unknown>).reason
+  const record = value as Record<string, unknown>
+  const reason = record.reason
+  const authRequired = record.authRequired
 
-  return typeof reason === 'string' ? reason : null
+  return (
+    (typeof reason === 'string' && isAuthRetryReason(reason)) ||
+    (typeof authRequired === 'number' && authRequired > 0) ||
+    authRequired === true
+  )
 }
 
 function isAuthWarningCode(code: string): boolean {
   return code.startsWith('auth.')
 }
 
-function isAuthRetryReason(reason: string | null): boolean {
+function isAuthRetryReason(reason: string): boolean {
   return reason === 'auth_required' ||
     reason === 'auth_reference_missing' ||
     reason === 'browser_session_action_required' ||

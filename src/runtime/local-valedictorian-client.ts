@@ -9,7 +9,17 @@ import {
 } from '../modules/applications/application.fixtures'
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
 import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
+import { createSqliteConnectorProjectionService } from '../modules/connectors/connector.projection'
+import {
+  createDefaultLocalConnectorRegistry,
+  type LocalConnectorRegistry,
+} from '../modules/connectors/connector.registry'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  createConnectorRunner,
+  type AppConnectorAuthHost,
+  type AppConnectorRuntimePorts,
+} from '../modules/connectors/connector.runner'
 import {
   mapConnectorWarnings,
   mapConnectorStatusSummaries,
@@ -34,10 +44,15 @@ import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.rep
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
 export interface LocalValedictorianClientOptions {
+  connectorAuth?: AppConnectorAuthHost
+  connectorRegistry?: LocalConnectorRegistry
+  connectorRuntime?: AppConnectorRuntimePorts
+  now?: () => Date
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: ProfileSecretCodec
   sqlitePath: string
+  workspaceId?: string
 }
 
 export type ValedictorianSeedDataMode = 'none' | 'sample' | 'reference-tracker'
@@ -172,10 +187,15 @@ const unavailableSecretCodec: ProfileSecretCodec = {
 }
 
 export function createLocalValedictorianClient({
+  connectorAuth,
+  connectorRegistry = createDefaultLocalConnectorRegistry(),
+  connectorRuntime,
+  now = () => new Date(),
   referenceTrackerPath,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
   sqlitePath,
+  workspaceId = 'local-workspace',
 }: LocalValedictorianClientOptions): LocalValedictorianClient {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
 
@@ -196,6 +216,18 @@ export function createLocalValedictorianClient({
   const workflowRunRepository = createSqliteWorkflowRunRepository(database)
   const sourcingProcessor = createSqliteSourcingProcessor(database)
   const sourcingRepository = createSqliteSourcingRepository(database)
+  const connectorRunner = createConnectorRunner({
+    auth: connectorAuth,
+    repository: connectorRepository,
+    runtime: connectorRuntime,
+    workspaceId,
+    now,
+  })
+  const connectorProjectionService = createSqliteConnectorProjectionService({
+    connectorRepository,
+    sourcingRepository,
+    workflowRunRepository,
+  })
 
   return {
     applications: {
@@ -254,19 +286,18 @@ export function createLocalValedictorianClient({
             items: result.items.map(mapConnectorRunSummary),
           }
         },
-        trigger: async (input) => mapConnectorRunSummary(
-          await connectorRepository.recordRunRequest({
-            connectorInstanceId: input.connectorInstanceId,
-            mode: input.mode ?? 'manual',
-            startedAt: new Date().toISOString(),
-            coverageStartedAt: input.coverageStartedAt,
-            coverageEndedAt: input.coverageEndedAt,
-            filters: input.filters,
-            filterSignature: input.filterSignature,
-            reason: input.reason,
-            dryRun: input.dryRun,
-          }),
-        ),
+        trigger: async (input) => {
+          const run = await executeConnectorRunTrigger({
+            connectorRegistry,
+            connectorRepository,
+            connectorRunner,
+            input,
+            now,
+            projectionService: connectorProjectionService,
+          })
+
+          return mapConnectorRunSummary(run)
+        },
       },
       checkpoints: {
         list: async (input) => ({
@@ -355,6 +386,138 @@ export function createLocalValedictorianClient({
         promote: (input) => sourcingRepository.promoteFinding(input),
       },
     },
+  }
+}
+
+async function executeConnectorRunTrigger({
+  connectorRegistry,
+  connectorRepository,
+  connectorRunner,
+  input,
+  now,
+  projectionService,
+}: {
+  connectorRegistry: LocalConnectorRegistry
+  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRunner: ReturnType<typeof createConnectorRunner>
+  input: LocalConnectorRunTriggerInput
+  now: () => Date
+  projectionService: ReturnType<typeof createSqliteConnectorProjectionService>
+}): Promise<ConnectorRunRecord> {
+  const startedAt = now().toISOString()
+  const instance = await connectorRepository.getInstance(input.connectorInstanceId)
+
+  if (!instance) {
+    throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+  }
+
+  const connector = connectorRegistry?.get(instance.connectorId) ?? null
+
+  if (!connector) {
+    throw new Error(`Unsupported connector id: ${instance.connectorId}`)
+  }
+
+  const mode = input.mode ?? 'manual'
+  assertExecutableConnectorTrigger(input, mode)
+
+  let run: ConnectorRunRecord
+
+  try {
+    run = mode === 'catch_up'
+      ? await connectorRunner.catchUp(connector, {
+        connectorInstanceId: input.connectorInstanceId,
+        now: input.coverageEndedAt ?? startedAt,
+        startedAt,
+      })
+      : await connectorRunner.refresh(
+        connector,
+        {
+          connectorInstanceId: input.connectorInstanceId,
+          mode,
+          coverage: requiredCoverageWindow(input, mode),
+          startedAt,
+        },
+      )
+  } catch (error) {
+    await connectorRepository.recordRunFailure({
+      connectorInstanceId: input.connectorInstanceId,
+      mode,
+      startedAt,
+      completedAt: now().toISOString(),
+      coverageStartedAt: input.coverageStartedAt,
+      coverageEndedAt: input.coverageEndedAt,
+      retryHints: {
+        reason: 'connector_execution_failed',
+      },
+      warning: {
+        code: 'connector.execution_failed',
+        message: 'Connector execution failed.',
+      },
+    })
+    throw error
+  }
+
+  try {
+    const observations = await connectorRepository.listObservations({
+      connectorInstanceId: input.connectorInstanceId,
+      connectorRunId: run.id,
+    })
+
+    for (const observation of observations) {
+      await projectionService.projectObservation({
+        connectorObservationId: observation.id,
+      })
+    }
+  } catch (error) {
+    await connectorRepository.markRunFailed({
+      connectorRunId: run.id,
+      completedAt: now().toISOString(),
+      retryHints: {
+        reason: 'projection_failed',
+      },
+      warning: {
+        code: 'connector.projection_failed',
+        message: 'Connector observation projection failed.',
+      },
+    })
+    throw error
+  }
+
+  return run
+}
+
+function assertExecutableConnectorTrigger(
+  input: LocalConnectorRunTriggerInput,
+  mode: NonNullable<LocalConnectorRunTriggerInput['mode']>,
+) {
+  if (input.dryRun) {
+    throw new Error('dryRun connector triggers are not supported for executed connector runs')
+  }
+
+  if (input.filters !== undefined || input.filterSignature !== undefined) {
+    throw new Error('Per-run connector filter overrides are not supported for executed connector runs')
+  }
+
+  if (mode === 'catch_up') {
+    return
+  }
+
+  if (!input.coverageStartedAt || !input.coverageEndedAt) {
+    throw new Error(`coverageStartedAt and coverageEndedAt are required for ${mode} connector runs`)
+  }
+}
+
+function requiredCoverageWindow(
+  input: LocalConnectorRunTriggerInput,
+  mode: Exclude<NonNullable<LocalConnectorRunTriggerInput['mode']>, 'catch_up'>,
+) {
+  if (!input.coverageStartedAt || !input.coverageEndedAt) {
+    throw new Error(`coverageStartedAt and coverageEndedAt are required for ${mode} connector runs`)
+  }
+
+  return {
+    start: input.coverageStartedAt,
+    end: input.coverageEndedAt,
   }
 }
 

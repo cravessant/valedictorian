@@ -13,6 +13,7 @@ import {
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 
 function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
@@ -621,14 +622,15 @@ describe('runtime local Valedictorian client', () => {
       connectorInstanceId: 'connector-instance-fixture',
       limit: 10,
     })
-    const queuedRun = await client.connectors.runs.trigger({
-      connectorInstanceId: 'connector-instance-fixture',
-      coverageStartedAt: '2026-07-08T17:00:00.000Z',
-      coverageEndedAt: '2026-07-08T18:00:00.000Z',
-      filterSignature: 'filters:{}',
-      mode: 'manual',
-    })
-    const queuedStatus = await client.connectors.inspect('connector-instance-fixture')
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        coverageStartedAt: '2026-07-08T17:00:00.000Z',
+        coverageEndedAt: '2026-07-08T18:00:00.000Z',
+        filterSignature: 'filters:{}',
+        mode: 'manual',
+      }),
+    ).rejects.toThrow('Unsupported connector id: fixture.jobs')
 
     expect(status).toMatchObject({
       items: [
@@ -676,19 +678,443 @@ describe('runtime local Valedictorian client', () => {
       items: [{ companyName: 'Delta Labs', roleTitle: 'Software Engineering Intern' }],
       total: 1,
     })
-    expect(queuedRun).toMatchObject({
-      connectorInstanceId: 'connector-instance-fixture',
-      status: 'queued',
-    })
-    expect(queuedStatus).toMatchObject({
-      status: 'queued',
-      statusLabel: 'Queued',
-      summary: 'Connector run is queued.',
-    })
     expect(JSON.stringify(status)).not.toContain('fixture-session-123')
     expect(JSON.stringify(instances)).not.toContain('fixture-session-123')
     expect(JSON.stringify(inspected)).not.toContain('fixture-session-123')
     expect(JSON.stringify(runs)).not.toContain('fixture-session-123')
     sqlite.close()
   })
+
+  it('executes registered connector runs through the local client', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              observedAt: '2026-07-08T18:00:00.000Z',
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-fixture',
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    const run = await client.connectors.runs.trigger({
+      connectorInstanceId: 'connector-instance-fixture',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual',
+    })
+    const observations = await client.connectors.observations.list({
+      connectorInstanceId: 'connector-instance-fixture',
+      connectorRunId: run.id,
+    })
+    const findings = await client.sourcing.findings.list({
+      source: 'fixture.jobs',
+    })
+
+    expect(run).toMatchObject({
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'manual',
+      observationCount: 1,
+      status: 'completed',
+    })
+    expect(observations).toMatchObject({
+      items: [
+        {
+          companyName: 'Example Robotics',
+          roleTitle: 'Software Engineering Intern',
+          sourcingFindingId: expect.any(String),
+        },
+      ],
+      total: 1,
+    })
+    expect(findings).toMatchObject({
+      items: [
+        {
+          companyName: 'Example Robotics',
+          officialUrl: 'https://jobs.example.com/apply/software-engineering-intern',
+          roleTitle: 'Software Engineering Intern',
+          sourceName: 'fixture.jobs',
+        },
+      ],
+      total: 1,
+    })
+    sqlite.close()
+  })
+
+  it('rejects unsupported connector run triggers instead of queueing them', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get() {
+          return null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        coverageStartedAt: '2026-07-08T17:00:00.000Z',
+        coverageEndedAt: '2026-07-08T18:00:00.000Z',
+        mode: 'manual',
+      }),
+    ).rejects.toThrow('Unsupported connector id: fixture.jobs')
+    await expect(
+      client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      }),
+    ).resolves.toMatchObject({
+      total: 0,
+    })
+    sqlite.close()
+  })
+
+  it('rejects dry-run connector triggers before executing registered connectors', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              observedAt: '2026-07-08T18:00:00.000Z',
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        coverageStartedAt: '2026-07-08T17:00:00.000Z',
+        coverageEndedAt: '2026-07-08T18:00:00.000Z',
+        dryRun: true,
+        mode: 'manual',
+      }),
+    ).rejects.toThrow('dryRun connector triggers are not supported')
+    await expect(
+      client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      }),
+    ).resolves.toMatchObject({
+      total: 0,
+    })
+    sqlite.close()
+  })
+
+  it('requires explicit coverage for manual connector execution', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              observedAt: '2026-07-08T18:00:00.000Z',
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        mode: 'manual',
+      }),
+    ).rejects.toThrow('coverageStartedAt and coverageEndedAt are required for manual connector runs')
+    await expect(
+      client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      }),
+    ).resolves.toMatchObject({
+      total: 0,
+    })
+    sqlite.close()
+  })
+
+  it('rejects per-run filter overrides before executing registered connectors', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              observedAt: '2026-07-08T18:00:00.000Z',
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        coverageStartedAt: '2026-07-08T17:00:00.000Z',
+        coverageEndedAt: '2026-07-08T18:00:00.000Z',
+        filters: { roleKeywords: ['intern'] },
+        mode: 'manual',
+      }),
+    ).rejects.toThrow('Per-run connector filter overrides are not supported')
+    await expect(
+      client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      }),
+    ).resolves.toMatchObject({
+      total: 0,
+    })
+    sqlite.close()
+  })
+
+  it('records failed runs when registered connectors throw', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              observedAt: '2026-07-08T18:00:00.000Z',
+              throwOnRefresh: true,
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        coverageStartedAt: '2026-07-08T17:00:00.000Z',
+        coverageEndedAt: '2026-07-08T18:00:00.000Z',
+        mode: 'manual',
+      }),
+    ).rejects.toThrow('Fixture connector refresh failed')
+    await expect(
+      client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          retryHints: {
+            reason: 'connector_execution_failed',
+          },
+          status: 'failed',
+        },
+      ],
+      total: 1,
+    })
+    sqlite.close()
+  })
+
+  it('marks connector runs failed when observation projection fails', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              companyName: '',
+              observedAt: '2026-07-08T18:00:00.000Z',
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        coverageStartedAt: '2026-07-08T17:00:00.000Z',
+        coverageEndedAt: '2026-07-08T18:00:00.000Z',
+        mode: 'manual',
+      }),
+    ).rejects.toThrow('companyName is required')
+    await expect(
+      client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      }),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          retryHints: {
+            reason: 'projection_failed',
+          },
+          status: 'failed',
+        },
+      ],
+      total: 1,
+    })
+    sqlite.close()
+  })
 })
+
+function fixtureConnector({
+  companyName = 'Example Robotics',
+  observedAt,
+  throwOnRefresh = false,
+}: {
+  companyName?: string
+  observedAt: string
+  throwOnRefresh?: boolean
+}): AppJobConnector {
+  return {
+    definition: {
+      id: 'fixture.jobs',
+      version: '0.0.0-fixture',
+    },
+    async refresh(input) {
+      if (throwOnRefresh) {
+        throw new Error('Fixture connector refresh failed')
+      }
+
+      return {
+        coverage: input.coverage,
+        nextCheckpoint: {
+          checkpoint: {
+            cursor: `fixture:${observedAt}`,
+          },
+          schemaVersion: 'fixture-checkpoint@1',
+        },
+        observations: [
+          {
+            connectorId: 'fixture.jobs',
+            connectorVersion: '0.0.0-fixture',
+            sourceRecordKey: 'fixture.jobs:software-engineering-intern',
+            observedAt,
+            companyName,
+            roleTitle: 'Software Engineering Intern',
+            locationRaw: 'Remote',
+            descriptionText: 'Build fixture robots and connector proofs.',
+            pay: null,
+            links: {
+              source: 'https://example.test/jobs/software-engineering-intern',
+              intermediary: null,
+              official: 'https://jobs.example.com/apply/software-engineering-intern',
+            },
+            resolution: {
+              status: 'resolved',
+              method: 'fixture',
+              reason: null,
+            },
+            dedupeKeys: ['official:https://jobs.example.com/apply/software-engineering-intern'],
+            sourceMetadata: {
+              fixture: true,
+            },
+            evidence: [
+              {
+                type: 'fixture',
+                capturedAt: observedAt,
+                sourceUrl: 'https://example.test/jobs/software-engineering-intern',
+              },
+            ],
+          },
+        ],
+        stats: {
+          observations: 1,
+        },
+        warnings: [],
+      }
+    },
+  }
+}

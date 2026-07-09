@@ -108,6 +108,30 @@ describe('connector status mapping', () => {
     })
   })
 
+  it('treats Jobright auth-required retry hints as auth-required blockers', () => {
+    expect(
+      mapConnectorStatusSummary(
+        createStatusRecord({
+          connectorId: 'jobright.resolver',
+          displayName: 'Jobright public jobs',
+          latestRun: createRunRecord({
+            observationCount: 3,
+            retryHints: {
+              authRequired: 2,
+              source: 'jobright',
+            },
+            status: 'completed',
+          }),
+        }),
+      ),
+    ).toMatchObject({
+      actionLabel: 'Reconnect',
+      severity: 'blocked',
+      status: 'auth_required',
+      statusLabel: 'Auth required',
+    })
+  })
+
   it('surfaces no-job and partial-success states from latest run data', () => {
     expect(
       mapConnectorStatusSummary(
