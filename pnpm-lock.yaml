@@ -78,6 +78,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@sparxie/valedictorian-connectors-core':
+        specifier: 0.1.0
+        version: 0.1.0
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
@@ -93,9 +96,6 @@ importers:
       '@types/react-dom':
         specifier: ^18.2.21
         version: 18.3.7(@types/react@18.3.31)
-      '@sparxie/valedictorian-connectors-core':
-        specifier: 0.1.0
-        version: 0.1.0
       '@typescript/native-preview':
         specifier: 7.0.0-dev.20260421.2
         version: 7.0.0-dev.20260421.2
@@ -143,9 +143,6 @@ packages:
 
   7zip-bin@5.2.0:
     resolution: {integrity: sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A==}
-
-  '@sparxie/valedictorian-connectors-core@0.1.0':
-    resolution: {integrity: sha512-yfRIUC1FbCJTvCVqMDNiv3YaSxTIi39UKsQsOXPxPTLttXHesnwgQvnbvyOUbajniDc0eLFVNsUvHswazx4vGw==}
 
   '@adobe/css-tools@4.5.0':
     resolution: {integrity: sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q==}
@@ -1433,6 +1430,9 @@ packages:
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
+
+  '@sparxie/valedictorian-connectors-core@0.1.0':
+    resolution: {integrity: sha512-h2BFqRUb1SMN2vLAgZTryG2OavY1xUUh0tMlUBcceArkZTjop2xEdLK4OpXzbaLOP98p341eACMyUiJxoIEeRg==}
 
   '@szmarczak/http-timer@4.0.6':
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
@@ -3559,8 +3559,6 @@ snapshots:
 
   7zip-bin@5.2.0: {}
 
-  '@sparxie/valedictorian-connectors-core@0.1.0': {}
-
   '@adobe/css-tools@4.5.0': {}
 
   '@asamuzakjp/css-color@5.1.11':
@@ -4447,6 +4445,8 @@ snapshots:
       - '@types/node'
 
   '@sindresorhus/is@4.6.0': {}
+
+  '@sparxie/valedictorian-connectors-core@0.1.0': {}
 
   '@szmarczak/http-timer@4.0.6':
     dependencies:
