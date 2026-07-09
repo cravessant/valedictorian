@@ -15,9 +15,11 @@ import {
   isManualSourcingDecisionStatus,
   isSourcingMergeStatus,
   isWorkMode,
+  connectorAuthModes,
   normalizeApplicationLinkKind,
   type ApplicationLinkInput,
   type ApplicationListQuery,
+  type CreateConnectorInstanceInput,
   type EvaluateApplicationPolicyInput,
   type EvaluateRunWindowPolicyInput,
   type EvaluateSourcingCandidatePolicyInput,
@@ -29,6 +31,7 @@ import {
   type JobTerm,
   type JobTimingMode,
   type SourcingFindingsListInput,
+  type UpdateConnectorInstanceInput,
   type WorkflowRunsListInput,
   type WorkMode,
 } from 'sparxie'
@@ -57,6 +60,7 @@ const attemptBlockerOutcomes = new Set([
 ])
 
 const connectorRunModes = new Set(['manual', 'scheduled', 'catch_up'])
+const connectorAuthModeSet = new Set(connectorAuthModes)
 
 export interface ConnectorRunsListQuery {
   connectorInstanceId: string
@@ -75,6 +79,74 @@ export interface ConnectorRunTriggerInput {
   filters?: unknown
   reason?: string | null
   dryRun?: boolean
+}
+
+export function parseCreateConnectorInstanceInput(body: unknown): CreateConnectorInstanceInput {
+  const record = readRecord(body)
+  const input: CreateConnectorInstanceInput = {
+    id: readStringField(record, 'id'),
+    connectorId: readStringField(record, 'connectorId'),
+    connectorVersion: readStringField(record, 'connectorVersion'),
+    displayName: readStringField(record, 'displayName'),
+    enabled: readBooleanField(record, 'enabled'),
+  }
+  const auth = readOptionalConnectorAuthReferences(record)
+  const config = readOptionalRecordField(record, 'config')
+  const filters = readOptionalRecordField(record, 'filters')
+
+  if (auth !== undefined) {
+    input.auth = auth
+  }
+
+  if (config !== undefined) {
+    input.config = config
+  }
+
+  if (filters !== undefined) {
+    input.filters = filters
+  }
+
+  return input
+}
+
+export function parseUpdateConnectorInstanceInput(
+  connectorInstanceId: string,
+  body: unknown,
+): UpdateConnectorInstanceInput {
+  const record = readRecord(body)
+  const input: UpdateConnectorInstanceInput = { connectorInstanceId }
+  const connectorVersion = readOptionalStringField(record, 'connectorVersion')
+  const displayName = readOptionalStringField(record, 'displayName')
+  const enabled = readOptionalBooleanField(record, 'enabled')
+  const auth = readOptionalConnectorAuthReferences(record)
+  const config = readOptionalRecordField(record, 'config')
+  const filters = readOptionalRecordField(record, 'filters')
+
+  if (connectorVersion !== undefined) {
+    input.connectorVersion = connectorVersion
+  }
+
+  if (displayName !== undefined) {
+    input.displayName = displayName
+  }
+
+  if (enabled !== undefined) {
+    input.enabled = enabled
+  }
+
+  if (auth !== undefined) {
+    input.auth = auth
+  }
+
+  if (config !== undefined) {
+    input.config = config
+  }
+
+  if (filters !== undefined) {
+    input.filters = filters
+  }
+
+  return input
 }
 
 export interface ConnectorCheckpointsListQuery {
@@ -1125,6 +1197,79 @@ export function setNumberQuery(requestUrl: URL, key: string, setter: (value: num
 
 export function hasText(value: string | null | undefined) {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function readBooleanField(record: Record<string, unknown>, field: string) {
+  const value = record[field]
+
+  if (typeof value === 'boolean') {
+    return value
+  }
+
+  throw new Error(`Missing ${field}`)
+}
+
+function readOptionalRecordField(record: Record<string, unknown>, field: string) {
+  if (!(field in record)) {
+    return undefined
+  }
+
+  const value = record[field]
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+
+  throw new Error(`Invalid ${field}`)
+}
+
+function readOptionalConnectorAuthReferences(record: Record<string, unknown>) {
+  if (!('auth' in record)) {
+    return undefined
+  }
+
+  const value = record.auth
+
+  if (!Array.isArray(value)) {
+    throw new Error('Invalid auth')
+  }
+
+  return value.map((entry, index) => {
+    const authRecord = readRecord(entry)
+    const mode = readStringField(authRecord, 'mode')
+
+    if (!connectorAuthModeSet.has(mode as never)) {
+      throw new Error(`Invalid auth[${index}].mode: ${mode}`)
+    }
+
+    const reference = {
+      id: readStringField(authRecord, 'id'),
+      mode: mode as (typeof connectorAuthModes)[number],
+    } as {
+      id: string
+      mode: (typeof connectorAuthModes)[number]
+      label?: string | null
+      secretKey?: string
+      sessionKey?: string
+    }
+    const label = readOptionalNullableStringField(authRecord, 'label')
+    const secretKey = readOptionalStringField(authRecord, 'secretKey')
+    const sessionKey = readOptionalStringField(authRecord, 'sessionKey')
+
+    if (label !== undefined) {
+      reference.label = label
+    }
+
+    if (secretKey !== undefined) {
+      reference.secretKey = secretKey
+    }
+
+    if (sessionKey !== undefined) {
+      reference.sessionKey = sessionKey
+    }
+
+    return reference
+  })
 }
 
 function validateConnectorTimestamp(value: string | null | undefined, fieldName: string) {

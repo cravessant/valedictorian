@@ -281,6 +281,8 @@ describe('local Valedictorian HTTP server', () => {
     const workspaceClient = createBoundaryTestClient(() => {}) as ValedictorianWorkspaceClient & {
       connectors: {
         list(): Promise<unknown>
+        create(input: unknown): Promise<unknown>
+        update(input: unknown): Promise<unknown>
         inspect(connectorInstanceId: string): Promise<unknown>
         runs: {
           trigger(input: unknown): Promise<unknown>
@@ -296,6 +298,14 @@ describe('local Valedictorian HTTP server', () => {
       async list() {
         calls.push(['list'])
         return { items: [{ id: 'connector one', displayName: 'Jobright' }] }
+      },
+      async create(input) {
+        calls.push(['create', input])
+        return { id: 'connector one', displayName: 'Jobright' }
+      },
+      async update(input) {
+        calls.push(['update', input])
+        return { id: 'connector one', displayName: 'Jobright Internships' }
       },
       async inspect(connectorInstanceId) {
         calls.push(['inspect', connectorInstanceId])
@@ -344,6 +354,45 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const listResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/connectors`)
+    const createResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/connectors`, {
+      body: JSON.stringify({
+        id: 'connector one',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.1.0',
+        displayName: 'Jobright',
+        enabled: true,
+        auth: [
+          {
+            id: 'jobright-session',
+            label: 'Jobright session',
+            mode: 'browser_session',
+            sessionKey: 'workspace-session',
+          },
+        ],
+        config: {
+          publicFeedUrl: 'https://jobright.test/feed.json',
+        },
+        filters: {
+          roleKeywords: ['intern'],
+        },
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+    const updateResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/connectors/connector%20one`,
+      {
+        body: JSON.stringify({
+          displayName: 'Jobright Internships',
+          enabled: false,
+          filters: {
+            roleKeywords: ['new grad'],
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'PATCH',
+      },
+    )
     const inspectResponse = await fetch(
       `${server.url}/v1/workspaces/workspace-1/connectors/connector%20one/status`,
     )
@@ -368,6 +417,16 @@ describe('local Valedictorian HTTP server', () => {
     await expect(readJson(listResponse)).resolves.toEqual({
       items: [{ id: 'connector one', displayName: 'Jobright' }],
     })
+    expect(createResponse.status).toBe(200)
+    await expect(readJson(createResponse)).resolves.toEqual({
+      id: 'connector one',
+      displayName: 'Jobright',
+    })
+    expect(updateResponse.status).toBe(200)
+    await expect(readJson(updateResponse)).resolves.toEqual({
+      id: 'connector one',
+      displayName: 'Jobright Internships',
+    })
     expect(inspectResponse.status).toBe(200)
     await expect(readJson(inspectResponse)).resolves.toMatchObject({
       actionRequired: [{ kind: 'auth' }],
@@ -390,6 +449,41 @@ describe('local Valedictorian HTTP server', () => {
     })
     expect(calls).toEqual([
       ['list'],
+      [
+        'create',
+        {
+          id: 'connector one',
+          connectorId: 'jobright.resolver',
+          connectorVersion: '0.1.0',
+          displayName: 'Jobright',
+          enabled: true,
+          auth: [
+            {
+              id: 'jobright-session',
+              label: 'Jobright session',
+              mode: 'browser_session',
+              sessionKey: 'workspace-session',
+            },
+          ],
+          config: {
+            publicFeedUrl: 'https://jobright.test/feed.json',
+          },
+          filters: {
+            roleKeywords: ['intern'],
+          },
+        },
+      ],
+      [
+        'update',
+        {
+          connectorInstanceId: 'connector one',
+          displayName: 'Jobright Internships',
+          enabled: false,
+          filters: {
+            roleKeywords: ['new grad'],
+          },
+        },
+      ],
       ['inspect', 'connector one'],
       [
         'trigger',

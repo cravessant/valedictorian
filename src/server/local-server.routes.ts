@@ -20,6 +20,8 @@ import {
   parseConnectorObservationsListQuery,
   parseConnectorRunsListQuery,
   parseConnectorRunTriggerInput,
+  parseCreateConnectorInstanceInput,
+  parseUpdateConnectorInstanceInput,
   parseCreateApplicationInput,
   parseEvaluateApplicationPolicyInput,
   parseEvaluateRunWindowPolicyInput,
@@ -172,6 +174,17 @@ export async function handleRequest({
       return
     }
 
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/connectors') {
+      writeJson(
+        response,
+        200,
+        await connectorExtensions(client).create(
+          parseCreateConnectorInstanceInput(await readJsonBody(request)),
+        ),
+      )
+      return
+    }
+
     if (request.method === 'GET' && requestUrl.pathname === '/v1/policy/config') {
       writeJson(response, 200, await client.policy.config.get())
       return
@@ -293,6 +306,22 @@ export async function handleRequest({
     }
 
     const connectorStatusMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)\/status$/)
+
+    const connectorInstanceMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)$/)
+
+    if (request.method === 'PATCH' && connectorInstanceMatch) {
+      writeJson(
+        response,
+        200,
+        await connectorExtensions(client).update(
+          parseUpdateConnectorInstanceInput(
+            decodeURIComponent(connectorInstanceMatch[1]),
+            await readJsonBody(request),
+          ),
+        ),
+      )
+      return
+    }
 
     if (request.method === 'GET' && connectorStatusMatch) {
       writeJson(
@@ -739,6 +768,8 @@ function isDomainRoute(pathname: string) {
 type ConnectorExtensionsClient = ValedictorianWorkspaceClient & {
   connectors: {
     list(): Promise<unknown>
+    create(input: unknown): Promise<unknown>
+    update(input: unknown): Promise<unknown>
     inspect(connectorInstanceId: string): Promise<unknown>
     runs: {
       list(input: unknown): Promise<unknown>

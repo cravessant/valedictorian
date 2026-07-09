@@ -1,5 +1,11 @@
 import fs from 'node:fs'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type {
+  ConnectorAuthReferenceInput,
+  ConnectorObservation,
+  CreateConnectorInstanceInput,
+  UpdateConnectorInstanceInput,
+  ValedictorianWorkspaceClient,
+} from 'sparxie'
 import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import {
@@ -129,6 +135,8 @@ export interface LocalConnectorRunTriggerInput {
 
 export interface LocalConnectorClient {
   list(): Promise<{ items: LocalConnectorInstanceSummary[] }>
+  create(input: CreateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
+  update(input: UpdateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
   inspect(connectorInstanceId: string): Promise<LocalConnectorStatusSummary>
   runs: {
     list(input: {
@@ -162,7 +170,7 @@ export interface LocalConnectorClient {
   }
   observations: {
     list(input: LocalConnectorObservationListInput): Promise<{
-      items: ConnectorObservationRecord[]
+      items: ConnectorObservation[]
       total: number
       limit: number
       offset: number
@@ -269,6 +277,57 @@ export function createLocalValedictorianClient({
       list: async () => ({
         items: (await connectorRepository.listInstances()).map(mapConnectorInstanceSummary),
       }),
+      create: async (input) => {
+        const connector = connectorRegistry.get(input.connectorId)
+
+        if (!connector) {
+          throw new Error(`Unsupported connector id: ${input.connectorId}`)
+        }
+
+        if (input.connectorVersion !== connector.definition.version) {
+          throw new Error(
+            `Connector version mismatch for ${input.connectorId}: expected ${connector.definition.version}`,
+          )
+        }
+
+        return mapConnectorInstanceSummary(await connectorRunner.registerInstance({
+          id: input.id,
+          connector,
+          displayName: input.displayName,
+          enabled: input.enabled,
+          auth: mapConnectorAuthReferenceInputs(input.auth),
+          config: input.config,
+          filters: input.filters,
+        }))
+      },
+      update: async (input) => {
+        const existing = await connectorRepository.getInstance(input.connectorInstanceId)
+
+        if (!existing) {
+          throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+        }
+
+        const connector = connectorRegistry.get(existing.connectorId)
+        const connectorVersion = input.connectorVersion ?? existing.connectorVersion
+
+        if (connector && connectorVersion !== connector.definition.version) {
+          throw new Error(
+            `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
+          )
+        }
+
+        return mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
+          id: existing.id,
+          connectorId: existing.connectorId,
+          connectorVersion,
+          displayName: input.displayName ?? existing.displayName,
+          enabled: input.enabled ?? existing.enabled,
+          auth: mapConnectorAuthReferenceInputs(input.auth) ?? existing.auth,
+          config: input.config ?? toConnectorJsonRecord(existing.config, 'config'),
+          filters: input.filters ?? toConnectorJsonRecord(existing.filters, 'filters'),
+          createdAt: existing.createdAt,
+        }))
+      },
       inspect: async (connectorInstanceId) => {
         const record = await connectorRepository.getStatusSummary(connectorInstanceId)
 
@@ -316,7 +375,7 @@ export function createLocalValedictorianClient({
           const pagedItems = items.slice(offset, offset + limit)
 
           return {
-            items: pagedItems,
+            items: pagedItems.map(mapConnectorObservation),
             total: items.length,
             limit,
             offset,
@@ -654,6 +713,35 @@ function mapConnectorCheckpoint(record: ConnectorCheckpointRecord) {
       end: record.coverageEndedAt,
     },
   }
+}
+
+function mapConnectorObservation(record: ConnectorObservationRecord): ConnectorObservation {
+  return {
+    ...record,
+    locationRaw: record.locationRaw ?? null,
+    descriptionText: record.descriptionText ?? null,
+    pay: record.pay ?? null,
+  }
+}
+
+function mapConnectorAuthReferenceInputs(
+  references: ConnectorAuthReferenceInput[] | undefined,
+): ConnectorAuthReference[] | undefined {
+  return references?.map((reference) => ({
+    id: reference.id,
+    mode: reference.mode,
+    ...(reference.label === undefined || reference.label === null ? {} : { label: reference.label }),
+    ...(reference.secretKey === undefined ? {} : { secretKey: reference.secretKey }),
+    ...(reference.sessionKey === undefined ? {} : { sessionKey: reference.sessionKey }),
+  }))
+}
+
+function toConnectorJsonRecord(value: unknown, fieldName: string): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+
+  throw new Error(`Invalid connector ${fieldName}`)
 }
 
 function seedLocalData(
