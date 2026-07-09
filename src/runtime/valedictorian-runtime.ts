@@ -11,6 +11,10 @@ import {
   type CreateValedictorianHttpServerOptions,
   type StartedValedictorianHttpServer,
 } from '../server/local-server'
+import {
+  createDefaultLocalConnectorPorts,
+  type DefaultLocalConnectorPorts,
+} from '../modules/connectors/connector.runtime-ports'
 import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import {
@@ -51,6 +55,7 @@ export interface ValedictorianRuntime {
 
 export interface CreateValedictorianRuntimeOptions {
   config: ValedictorianRuntimeConfig
+  createConnectorPorts?: () => DefaultLocalConnectorPorts
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
   createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
   startServer?: (
@@ -89,6 +94,7 @@ export function resolveValedictorianRuntimeConfig({
 
 export async function createValedictorianRuntime({
   config,
+  createConnectorPorts = createDefaultLocalConnectorPorts,
   createHttpClient = createHttpValedictorianClient,
   createLocalClient = createLocalValedictorianClient,
   startServer = createValedictorianHttpServer,
@@ -110,7 +116,10 @@ export async function createValedictorianRuntime({
     }
   }
 
+  const connectorPorts = createConnectorPorts()
   const client = createLocalClient({
+    connectorAuth: connectorPorts.connectorAuth,
+    connectorRuntime: connectorPorts.connectorRuntime,
     referenceTrackerPath: config.referenceTrackerPath,
     seedDataMode: config.seedDataMode,
     sqlitePath: config.sqlitePath,

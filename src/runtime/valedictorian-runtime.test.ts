@@ -220,6 +220,19 @@ describe('Valedictorian runtime creation', () => {
 
     expect(runtime.client).toBe(localClient)
     expect(createLocalClient).toHaveBeenCalledWith({
+      connectorAuth: {
+        browserSessions: {
+          resolve: expect.any(Function),
+        },
+      },
+      connectorRuntime: {
+        browserSession: {
+          resolveLink: expect.any(Function),
+        },
+        delay: {
+          wait: expect.any(Function),
+        },
+      },
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
       sqlitePath: '/tmp/valedictorian-user-data/valedictorian.sqlite',
@@ -256,6 +269,11 @@ describe('Valedictorian runtime creation', () => {
 
     expect(runtime.client).toBe(localClient)
     expect(runtime.server).toBe(server)
+    expect(runtime.connectors).toBe(localClient.connectors)
+    expect(startServer).toHaveBeenCalledTimes(1)
+    expect(
+      (startServer.mock.calls[0]?.[0].client as typeof localClient),
+    ).toBe(localClient)
     expect(startServer).toHaveBeenCalledWith({
       client: localClient,
       host: '127.0.0.1',

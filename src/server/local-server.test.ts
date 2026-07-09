@@ -684,6 +684,19 @@ describe('local Valedictorian HTTP server', () => {
 
     expect(clientOptions).toMatchObject([
       {
+        connectorAuth: {
+          browserSessions: {
+            resolve: expect.any(Function),
+          },
+        },
+        connectorRuntime: {
+          browserSession: {
+            resolveLink: expect.any(Function),
+          },
+          delay: {
+            wait: expect.any(Function),
+          },
+        },
         workspaceId: 'workspace-client',
       },
     ])

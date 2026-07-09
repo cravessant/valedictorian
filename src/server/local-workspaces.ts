@@ -5,6 +5,10 @@ import {
   createLocalValedictorianClient,
   type LocalValedictorianClientOptions,
 } from '../runtime/local-valedictorian-client'
+import {
+  createDefaultLocalConnectorPorts,
+  type DefaultLocalConnectorPorts,
+} from '../modules/connectors/connector.runtime-ports'
 import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
@@ -55,6 +59,7 @@ export interface LocalWorkspaceOpenInput {
 
 export interface CreateLocalWorkspaceManagerOptions {
   createClient?: (options: LocalValedictorianClientOptions) => ValedictorianWorkspaceClient
+  createConnectorPorts?: () => DefaultLocalConnectorPorts
   createId?: () => string
   now?: () => Date
   referenceTrackerPath?: string
@@ -65,6 +70,7 @@ export interface CreateLocalWorkspaceManagerOptions {
 
 export function createLocalWorkspaceManager({
   createClient = createLocalValedictorianClient,
+  createConnectorPorts = createDefaultLocalConnectorPorts,
   createId = () => crypto.randomUUID(),
   now = () => new Date(),
   referenceTrackerPath,
@@ -111,7 +117,10 @@ export function createLocalWorkspaceManager({
           throw new Error(`Workspace path does not exist: ${workspace.path}`)
         }
 
+        const connectorPorts = createConnectorPorts()
         const client = createClient({
+          connectorAuth: connectorPorts.connectorAuth,
+          connectorRuntime: connectorPorts.connectorRuntime,
           referenceTrackerPath,
           seedDataMode,
           secretCodec,
