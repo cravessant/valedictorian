@@ -10,6 +10,7 @@ function readPackageJson(relativePath: string) {
   return JSON.parse(readText(relativePath)) as {
     dependencies?: Record<string, string>
     description?: string
+    devDependencies?: Record<string, string>
     name?: string
     private?: boolean
     version?: string
@@ -52,6 +53,7 @@ describe("connector repository conventions", () => {
     const rootPackage = readPackageJson("package.json")
     const corePackage = readPackageJson("packages/core/package.json")
     const harnessPackage = readPackageJson("packages/test-harness/package.json")
+    const internListPackage = readPackageJson("packages/internlist/package.json")
 
     expect(rootPackage.private).toBe(true)
     expect(corePackage).toMatchObject({
@@ -64,9 +66,15 @@ describe("connector repository conventions", () => {
       private: true,
       version: "0.0.0",
     })
+    expect(internListPackage).toMatchObject({
+      name: "@valedictorian-connectors/internlist",
+      private: true,
+      version: "0.0.0",
+    })
     expect(Object.keys(corePackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
         "@valedictorian-connectors/test-harness",
+        "@valedictorian-connectors/internlist",
         "better-sqlite3",
         "drizzle-orm",
         "electron",
@@ -77,6 +85,23 @@ describe("connector repository conventions", () => {
     )
     expect(harnessPackage.dependencies).toEqual({
       "@valedictorian-connectors/core": "workspace:*",
+    })
+    expect(internListPackage.dependencies).toMatchObject({
+      "@valedictorian-connectors/core": "workspace:*",
+    })
+    expect(Object.keys(internListPackage.dependencies ?? {})).not.toEqual(
+      expect.arrayContaining([
+        "@valedictorian-connectors/test-harness",
+        "better-sqlite3",
+        "drizzle-orm",
+        "electron",
+        "playwright",
+        "sparxie",
+        "valedictorian-app",
+      ]),
+    )
+    expect(internListPackage.devDependencies).toMatchObject({
+      "@valedictorian-connectors/test-harness": "workspace:*",
     })
   })
 })
