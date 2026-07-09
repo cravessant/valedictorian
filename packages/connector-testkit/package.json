@@ -2,7 +2,24 @@
   "name": "@sparxie/valedictorian-connectors-test-harness",
   "version": "0.1.0",
   "description": "Test helpers for Valedictorian connector packages.",
+  "author": "Keni",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KennyKeni/valedictorian-connectors.git",
+    "directory": "packages/test-harness"
+  },
+  "bugs": {
+    "url": "https://github.com/KennyKeni/valedictorian-connectors/issues"
+  },
+  "homepage": "https://github.com/KennyKeni/valedictorian-connectors#readme",
+  "keywords": [
+    "connector",
+    "sparxie",
+    "test",
+    "valedictorian"
+  ],
   "files": [
     "dist"
   ],

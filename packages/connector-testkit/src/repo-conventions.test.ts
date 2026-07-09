@@ -18,11 +18,18 @@ function readPackageJson(relativePath: string) {
       }
     }
     files?: string[]
+    homepage?: string
+    license?: string
     name?: string
     private?: boolean
     publishConfig?: {
       access?: string
       registry?: string
+    }
+    repository?: {
+      directory?: string
+      type?: string
+      url?: string
     }
     scripts?: Record<string, string>
     types?: string
@@ -80,6 +87,9 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("Do not release or bump `sparxie` for adapter ABI changes")
     expect(readme).toContain("HTTP/client exposure is a separate `sparxie` change")
     expect(readme).toContain("Packages publish publicly to npm under the `@sparxie` scope")
+    expect(readme).toContain("CI publishes packages from `.github/workflows/publish.yml`")
+    expect(readme).toContain("Workflow filename: `publish.yml`")
+    expect(readme).toContain("publishes the tarballs with the npm CLI")
   })
 
   it("keeps current packages public and separated by dependency direction", () => {
@@ -97,6 +107,12 @@ describe("connector repository conventions", () => {
         registry: "https://registry.npmjs.org/",
       },
       files: ["dist"],
+      license: "MIT",
+      repository: {
+        type: "git",
+        url: "git+https://github.com/KennyKeni/valedictorian-connectors.git",
+        directory: "packages/core",
+      },
       types: "./dist/index.d.ts",
       version: "0.1.0",
     })
@@ -107,6 +123,12 @@ describe("connector repository conventions", () => {
         registry: "https://registry.npmjs.org/",
       },
       files: ["dist"],
+      license: "MIT",
+      repository: {
+        type: "git",
+        url: "git+https://github.com/KennyKeni/valedictorian-connectors.git",
+        directory: "packages/test-harness",
+      },
       types: "./dist/index.d.ts",
       version: "0.1.0",
     })
@@ -117,6 +139,12 @@ describe("connector repository conventions", () => {
         registry: "https://registry.npmjs.org/",
       },
       files: ["dist"],
+      license: "MIT",
+      repository: {
+        type: "git",
+        url: "git+https://github.com/KennyKeni/valedictorian-connectors.git",
+        directory: "packages/jobright",
+      },
       types: "./dist/index.d.ts",
       version: "0.1.0",
     })
@@ -159,5 +187,22 @@ describe("connector repository conventions", () => {
     expect(jobrightPackage.devDependencies).toMatchObject({
       "@sparxie/valedictorian-connectors-test-harness": "workspace:^",
     })
+  })
+
+  it("publishes from GitHub OIDC workflows", () => {
+    const ciWorkflow = readText(".github/workflows/ci.yml")
+    const publishWorkflow = readText(".github/workflows/publish.yml")
+
+    expect(ciWorkflow).toContain("pnpm install --frozen-lockfile")
+    expect(ciWorkflow).toContain("pnpm --filter @sparxie/valedictorian-connectors-core pack --dry-run")
+    expect(publishWorkflow).toContain("id-token: write")
+    expect(publishWorkflow).toContain("registry-url: https://registry.npmjs.org")
+    expect(publishWorkflow).toContain("pnpm --filter @sparxie/valedictorian-connectors-core pack --pack-destination .local/packs")
+    expect(publishWorkflow).toContain("npm publish \"$package_file\" --access public --dry-run")
+    expect(publishWorkflow).toContain("npm \"${publish_args[@]}\" .local/packs/sparxie-valedictorian-connectors-core-*.tgz")
+    expect(publishWorkflow).toContain("npm \"${publish_args[@]}\" .local/packs/sparxie-valedictorian-connectors-test-harness-*.tgz")
+    expect(publishWorkflow).toContain("npm \"${publish_args[@]}\" .local/packs/sparxie-valedictorian-connectors-jobright-*.tgz")
+    expect(publishWorkflow).not.toContain("NODE_AUTH_TOKEN")
+    expect(publishWorkflow).not.toContain("NPM_TOKEN")
   })
 })
