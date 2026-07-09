@@ -191,13 +191,18 @@ describe("connector repository conventions", () => {
   })
 
   it("publishes from GitHub OIDC workflows", () => {
+    const rootPackage = readPackageJson("package.json")
     const ciWorkflow = readText(".github/workflows/ci.yml")
     const publishWorkflow = readText(".github/workflows/publish.yml")
 
+    expect(rootPackage.scripts?.["publish:public"]).toBeUndefined()
     expect(ciWorkflow).toContain("pnpm install --frozen-lockfile")
     expect(ciWorkflow).toContain("pnpm --filter @sparxie/valedictorian-connectors-core pack --dry-run")
     expect(publishWorkflow).toContain("id-token: write")
+    expect(publishWorkflow).toContain("group: npm-publish-${{ github.ref }}")
     expect(publishWorkflow).toContain("registry-url: https://registry.npmjs.org")
+    expect(publishWorkflow).toContain("Verify npm trusted publishing prerequisites")
+    expect(publishWorkflow).toContain("need npm 11.5.1 or newer")
     expect(publishWorkflow).toContain("pnpm --filter @sparxie/valedictorian-connectors-core pack --pack-destination .local/packs")
     expect(publishWorkflow).toContain("npm publish \"$package_file\" --access public --dry-run")
     expect(publishWorkflow).toContain("npm \"${publish_args[@]}\" .local/packs/sparxie-valedictorian-connectors-core-*.tgz")
