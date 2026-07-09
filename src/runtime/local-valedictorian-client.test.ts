@@ -485,6 +485,38 @@ describe('runtime local Valedictorian client', () => {
       typeof createRuntimeLocalValedictorianClient
     > & {
       connectors: {
+        list(): Promise<{
+          items: Array<{ auth: Array<{ configured: boolean; id: string; mode: string }>; id: string }>
+        }>
+        inspect(connectorInstanceId: string): Promise<{
+          actionRequired: Array<{ kind: string }>
+          auth: Array<{ configured: boolean; id: string; mode: string }>
+          status: string
+        }>
+        runs: {
+          list(input: { connectorInstanceId: string; limit?: number }): Promise<{
+            items: Array<{ id: string; status: string }>
+            total: number
+          }>
+          trigger(input: {
+            connectorInstanceId: string
+            coverageStartedAt?: string | null
+            coverageEndedAt?: string | null
+            filterSignature?: string | null
+            mode?: 'manual'
+          }): Promise<{ connectorInstanceId: string; status: string }>
+        }
+        checkpoints: {
+          list(input: { connectorInstanceId: string; filterSignature?: string }): Promise<{
+            items: Array<{ checkpoint: unknown; filterSignature: string }>
+          }>
+        }
+        observations: {
+          list(input: { connectorInstanceId: string; limit?: number }): Promise<{
+            items: Array<{ companyName: string; roleTitle: string }>
+            total: number
+          }>
+        }
         status: {
           list(): Promise<{
             available: boolean
@@ -503,6 +535,14 @@ describe('runtime local Valedictorian client', () => {
       connectorVersion: '0.1.0',
       displayName: 'InternList',
       enabled: true,
+      auth: [
+        {
+          id: 'jobright-session',
+          label: 'Jobright',
+          mode: 'browser_session',
+          sessionKey: 'jobright-session-123',
+        },
+      ],
       createdAt: '2026-07-08T15:00:00.000Z',
     })
     await connectorRepository.recordRefreshResult({
@@ -522,7 +562,34 @@ describe('runtime local Valedictorian client', () => {
           checkpoint: { cursor: 'latest-cursor' },
           schemaVersion: 'fixture-checkpoint@1',
         },
-        observations: [],
+        observations: [
+          {
+            connectorId: 'internlist.jobs',
+            connectorVersion: '0.1.0',
+            sourceRecordKey: 'internlist:delta-labs',
+            observedAt: '2026-07-08T16:30:00.000Z',
+            companyName: 'Delta Labs',
+            roleTitle: 'Software Engineering Intern',
+            links: {
+              source: 'https://internlist.example/jobs/delta',
+              intermediary: 'https://jobright.example/redirect/delta',
+              official: 'https://jobs.example.com/delta',
+            },
+            resolution: {
+              status: 'resolved',
+              method: 'browser_session',
+              reason: null,
+            },
+            dedupeKeys: ['official:https://jobs.example.com/delta'],
+            evidence: [
+              {
+                type: 'source_api',
+                capturedAt: '2026-07-08T16:30:00.000Z',
+                sourceUrl: 'https://internlist.example/jobs/delta',
+              },
+            ],
+          },
+        ],
         retryHints: {
           reason: 'auth_required',
         },
@@ -540,6 +607,28 @@ describe('runtime local Valedictorian client', () => {
     })
 
     const status = await client.connectors.status.list()
+    const instances = await client.connectors.list()
+    const inspected = await client.connectors.inspect('connector-instance-internlist')
+    const runs = await client.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-internlist',
+      limit: 10,
+    })
+    const checkpoints = await client.connectors.checkpoints.list({
+      connectorInstanceId: 'connector-instance-internlist',
+      filterSignature: 'filters:{}',
+    })
+    const observations = await client.connectors.observations.list({
+      connectorInstanceId: 'connector-instance-internlist',
+      limit: 10,
+    })
+    const queuedRun = await client.connectors.runs.trigger({
+      connectorInstanceId: 'connector-instance-internlist',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      filterSignature: 'filters:{}',
+      mode: 'manual',
+    })
+    const queuedStatus = await client.connectors.inspect('connector-instance-internlist')
 
     expect(status).toMatchObject({
       items: [
@@ -550,7 +639,56 @@ describe('runtime local Valedictorian client', () => {
         },
       ],
     })
+    expect(instances.items).toMatchObject([
+      {
+        auth: [{ configured: true, id: 'jobright-session', mode: 'browser_session' }],
+        id: 'connector-instance-internlist',
+      },
+    ])
+    expect(inspected).toMatchObject({
+      actionRequired: [{ kind: 'auth' }],
+      auth: [{ configured: true, id: 'jobright-session', mode: 'browser_session' }],
+      status: 'auth_required',
+    })
+    expect(runs).toMatchObject({
+      items: [
+        {
+          status: 'partial_success',
+          warnings: [
+            {
+              code: 'auth.expired_session',
+              label: 'Expired session',
+              message: 'Connector auth expired.',
+              severity: 'blocked',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    })
+    expect(checkpoints.items).toMatchObject([
+      {
+        checkpoint: { cursor: 'latest-cursor' },
+        filterSignature: 'filters:{}',
+      },
+    ])
+    expect(observations).toMatchObject({
+      items: [{ companyName: 'Delta Labs', roleTitle: 'Software Engineering Intern' }],
+      total: 1,
+    })
+    expect(queuedRun).toMatchObject({
+      connectorInstanceId: 'connector-instance-internlist',
+      status: 'queued',
+    })
+    expect(queuedStatus).toMatchObject({
+      status: 'queued',
+      statusLabel: 'Queued',
+      summary: 'Connector run is queued.',
+    })
     expect(JSON.stringify(status)).not.toContain('jobright-session-123')
+    expect(JSON.stringify(instances)).not.toContain('jobright-session-123')
+    expect(JSON.stringify(inspected)).not.toContain('jobright-session-123')
+    expect(JSON.stringify(runs)).not.toContain('jobright-session-123')
     sqlite.close()
   })
 })

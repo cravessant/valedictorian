@@ -56,6 +56,39 @@ const attemptBlockerOutcomes = new Set([
   'not_pursued',
 ])
 
+const connectorRunModes = new Set(['manual', 'scheduled', 'catch_up'])
+
+export interface ConnectorRunsListQuery {
+  connectorInstanceId: string
+  status?: string
+  mode?: string
+  limit?: number
+  offset?: number
+}
+
+export interface ConnectorRunTriggerInput {
+  connectorInstanceId: string
+  mode?: 'manual' | 'scheduled' | 'catch_up'
+  coverageStartedAt?: string | null
+  coverageEndedAt?: string | null
+  filterSignature?: string | null
+  filters?: unknown
+  reason?: string | null
+  dryRun?: boolean
+}
+
+export interface ConnectorCheckpointsListQuery {
+  connectorInstanceId: string
+  filterSignature?: string
+}
+
+export interface ConnectorObservationsListQuery {
+  connectorInstanceId: string
+  connectorRunId?: string
+  limit?: number
+  offset?: number
+}
+
 export function parseActionQueueListQuery(requestUrl: URL): ActionQueueListQuery {
   const query: ActionQueueListQuery = {}
 
@@ -69,6 +102,114 @@ export function parseActionQueueListQuery(requestUrl: URL): ActionQueueListQuery
     query.actionBucket = actionBucket
   }
 
+  setNumberQuery(requestUrl, 'limit', (value) => {
+    query.limit = value
+  })
+  setNumberQuery(requestUrl, 'offset', (value) => {
+    query.offset = value
+  })
+
+  return query
+}
+
+export function parseConnectorRunsListQuery(
+  connectorInstanceId: string,
+  requestUrl: URL,
+): ConnectorRunsListQuery {
+  const query: ConnectorRunsListQuery = { connectorInstanceId }
+
+  setStringQuery(requestUrl, 'status', (value) => {
+    query.status = value
+  })
+  setStringQuery(requestUrl, 'mode', (value) => {
+    query.mode = value
+  })
+  setNumberQuery(requestUrl, 'limit', (value) => {
+    query.limit = value
+  })
+  setNumberQuery(requestUrl, 'offset', (value) => {
+    query.offset = value
+  })
+
+  return query
+}
+
+export function parseConnectorRunTriggerInput(
+  connectorInstanceId: string,
+  body: unknown,
+): ConnectorRunTriggerInput {
+  const record = readRecord(body)
+  const mode = readOptionalStringField(record, 'mode')
+  const input: ConnectorRunTriggerInput = {
+    connectorInstanceId,
+  }
+
+  if (mode !== undefined) {
+    if (!connectorRunModes.has(mode)) {
+      throw new Error(`Invalid connector run mode: ${mode}`)
+    }
+
+    input.mode = mode as ConnectorRunTriggerInput['mode']
+  }
+
+  const coverageStartedAt = readOptionalNullableStringField(record, 'coverageStartedAt')
+  const coverageEndedAt = readOptionalNullableStringField(record, 'coverageEndedAt')
+  const filterSignature = readOptionalNullableStringField(record, 'filterSignature')
+  const reason = readOptionalNullableStringField(record, 'reason')
+  const dryRun = readOptionalBooleanField(record, 'dryRun')
+
+  if (coverageStartedAt !== undefined) {
+    input.coverageStartedAt = coverageStartedAt
+  }
+
+  if (coverageEndedAt !== undefined) {
+    input.coverageEndedAt = coverageEndedAt
+  }
+
+  if (filterSignature !== undefined) {
+    input.filterSignature = filterSignature
+  }
+
+  if (reason !== undefined) {
+    input.reason = reason
+  }
+
+  if (dryRun !== undefined) {
+    input.dryRun = dryRun
+  }
+
+  if ('filters' in record) {
+    input.filters = record.filters
+  }
+
+  validateConnectorTimestamp(input.coverageStartedAt, 'coverageStartedAt')
+  validateConnectorTimestamp(input.coverageEndedAt, 'coverageEndedAt')
+
+  return input
+}
+
+export function parseConnectorCheckpointsListQuery(
+  connectorInstanceId: string,
+  requestUrl: URL,
+): ConnectorCheckpointsListQuery {
+  const query: ConnectorCheckpointsListQuery = { connectorInstanceId }
+
+  setStringQuery(requestUrl, 'filterSignature', (value) => {
+    query.filterSignature = value
+  })
+
+  return query
+}
+
+export function parseConnectorObservationsListQuery(
+  connectorInstanceId: string,
+  requestUrl: URL,
+): ConnectorObservationsListQuery {
+  const query: ConnectorObservationsListQuery = { connectorInstanceId }
+
+  setStringQuery(requestUrl, 'connectorRunId', (value) => {
+    query.connectorRunId = value
+  })
   setNumberQuery(requestUrl, 'limit', (value) => {
     query.limit = value
   })
@@ -984,4 +1125,14 @@ export function setNumberQuery(requestUrl: URL, key: string, setter: (value: num
 
 export function hasText(value: string | null | undefined) {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function validateConnectorTimestamp(value: string | null | undefined, fieldName: string) {
+  if (value === undefined || value === null) {
+    return
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value) || Number.isNaN(new Date(value).getTime())) {
+    throw new Error(`Invalid ${fieldName}: ${value}`)
+  }
 }

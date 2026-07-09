@@ -198,6 +198,7 @@ describe('local Valedictorian HTTP server', () => {
       workflowRuns: true,
       applicationAttempts: true,
       sourcing: true,
+      connectors: true,
       hostedSync: false,
     })
   })
@@ -273,6 +274,142 @@ describe('local Valedictorian HTTP server', () => {
     })
     expect(response.status).toBe(200)
     expect(listCalls).toEqual([{ limit: 10, offset: 0, status: 'queued' }])
+  })
+
+  it('routes workspace-scoped connector contract requests through the selected workspace client', async () => {
+    const rootClient = createBoundaryTestClient(() => {})
+    const workspaceClient = createBoundaryTestClient(() => {}) as ValedictorianWorkspaceClient & {
+      connectors: {
+        list(): Promise<unknown>
+        inspect(connectorInstanceId: string): Promise<unknown>
+        runs: {
+          trigger(input: unknown): Promise<unknown>
+        }
+        observations: {
+          list(input: unknown): Promise<unknown>
+        }
+      }
+    }
+    const calls: unknown[] = []
+
+    workspaceClient.connectors = {
+      async list() {
+        calls.push(['list'])
+        return { items: [{ id: 'connector one', displayName: 'Jobright' }] }
+      },
+      async inspect(connectorInstanceId) {
+        calls.push(['inspect', connectorInstanceId])
+        return {
+          id: connectorInstanceId,
+          auth: [{ id: 'jobright-session', configured: false, label: 'Jobright', mode: 'browser_session' }],
+          actionRequired: [
+            {
+              id: 'jobright-session',
+              kind: 'auth',
+              label: 'Reconnect',
+              message: 'Reconnect the connector session.',
+              severity: 'blocked',
+            },
+          ],
+          status: 'auth_required',
+        }
+      },
+      runs: {
+        async trigger(input) {
+          calls.push(['trigger', input])
+          return {
+            id: 'run-queued',
+            connectorInstanceId: 'connector one',
+            mode: 'manual',
+            status: 'queued',
+          }
+        },
+      },
+      observations: {
+        async list(input) {
+          calls.push(['observations', input])
+          return { hasMore: false, items: [], limit: 10, offset: 0, total: 0 }
+        },
+      },
+    }
+
+    server = await createValedictorianHttpServer({
+      client: rootClient,
+      host: '127.0.0.1',
+      port: 0,
+      resolveWorkspaceClient(workspaceId) {
+        expect(workspaceId).toBe('workspace-1')
+        return workspaceClient
+      },
+    })
+
+    const listResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/connectors`)
+    const inspectResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/connectors/connector%20one/status`,
+    )
+    const triggerResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/connectors/connector%20one/runs`,
+      {
+        body: JSON.stringify({
+          coverageStartedAt: '2026-07-01T00:00:00.000Z',
+          coverageEndedAt: '2026-07-08T00:00:00.000Z',
+          filterSignature: 'internships',
+          mode: 'manual',
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      },
+    )
+    const observationsResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-1/connectors/connector%20one/observations?connectorRunId=run-1&limit=10`,
+    )
+
+    expect(listResponse.status).toBe(200)
+    await expect(readJson(listResponse)).resolves.toEqual({
+      items: [{ id: 'connector one', displayName: 'Jobright' }],
+    })
+    expect(inspectResponse.status).toBe(200)
+    await expect(readJson(inspectResponse)).resolves.toMatchObject({
+      actionRequired: [{ kind: 'auth' }],
+      auth: [{ configured: false, id: 'jobright-session', mode: 'browser_session' }],
+      status: 'auth_required',
+    })
+    expect(triggerResponse.status).toBe(200)
+    await expect(readJson(triggerResponse)).resolves.toMatchObject({
+      connectorInstanceId: 'connector one',
+      id: 'run-queued',
+      status: 'queued',
+    })
+    expect(observationsResponse.status).toBe(200)
+    await expect(readJson(observationsResponse)).resolves.toEqual({
+      hasMore: false,
+      items: [],
+      limit: 10,
+      offset: 0,
+      total: 0,
+    })
+    expect(calls).toEqual([
+      ['list'],
+      ['inspect', 'connector one'],
+      [
+        'trigger',
+        {
+          connectorInstanceId: 'connector one',
+          coverageStartedAt: '2026-07-01T00:00:00.000Z',
+          coverageEndedAt: '2026-07-08T00:00:00.000Z',
+          filterSignature: 'internships',
+          mode: 'manual',
+        },
+      ],
+      [
+        'observations',
+        {
+          connectorInstanceId: 'connector one',
+          connectorRunId: 'run-1',
+          limit: 10,
+        },
+      ],
+    ])
   })
 
   it('does not expose old unscoped domain routes', async () => {

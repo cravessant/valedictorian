@@ -16,6 +16,10 @@ import {
   parseAttemptCompleteInput,
   parseAttemptStartInput,
   parseAttemptStepInput,
+  parseConnectorCheckpointsListQuery,
+  parseConnectorObservationsListQuery,
+  parseConnectorRunsListQuery,
+  parseConnectorRunTriggerInput,
   parseCreateApplicationInput,
   parseEvaluateApplicationPolicyInput,
   parseEvaluateRunWindowPolicyInput,
@@ -45,6 +49,7 @@ const localCapabilities = {
   workflowRuns: true,
   applicationAttempts: true,
   sourcing: true,
+  connectors: true,
 }
 
 export async function handleRequest({
@@ -159,6 +164,11 @@ export async function handleRequest({
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/action-queue') {
       writeJson(response, 200, await client.actionQueue.list(parseActionQueueListQuery(requestUrl)))
+      return
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/connectors') {
+      writeJson(response, 200, await connectorExtensions(client).list())
       return
     }
 
@@ -279,6 +289,80 @@ export async function handleRequest({
     if (request.method === 'DELETE' && secretMatch) {
       await profileExtensions(client).secrets.delete(decodeURIComponent(secretMatch[1]))
       writeJson(response, 200, { ok: true })
+      return
+    }
+
+    const connectorStatusMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)\/status$/)
+
+    if (request.method === 'GET' && connectorStatusMatch) {
+      writeJson(
+        response,
+        200,
+        await connectorExtensions(client).inspect(decodeURIComponent(connectorStatusMatch[1])),
+      )
+      return
+    }
+
+    const connectorRunsMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)\/runs$/)
+
+    if (request.method === 'GET' && connectorRunsMatch) {
+      writeJson(
+        response,
+        200,
+        await connectorExtensions(client).runs.list(
+          parseConnectorRunsListQuery(decodeURIComponent(connectorRunsMatch[1]), requestUrl),
+        ),
+      )
+      return
+    }
+
+    if (request.method === 'POST' && connectorRunsMatch) {
+      writeJson(
+        response,
+        200,
+        await connectorExtensions(client).runs.trigger(
+          parseConnectorRunTriggerInput(
+            decodeURIComponent(connectorRunsMatch[1]),
+            await readJsonBody(request),
+          ),
+        ),
+      )
+      return
+    }
+
+    const connectorCheckpointsMatch = requestUrl.pathname.match(
+      /^\/v1\/connectors\/([^/]+)\/checkpoints$/,
+    )
+
+    if (request.method === 'GET' && connectorCheckpointsMatch) {
+      writeJson(
+        response,
+        200,
+        await connectorExtensions(client).checkpoints.list(
+          parseConnectorCheckpointsListQuery(
+            decodeURIComponent(connectorCheckpointsMatch[1]),
+            requestUrl,
+          ),
+        ),
+      )
+      return
+    }
+
+    const connectorObservationsMatch = requestUrl.pathname.match(
+      /^\/v1\/connectors\/([^/]+)\/observations$/,
+    )
+
+    if (request.method === 'GET' && connectorObservationsMatch) {
+      writeJson(
+        response,
+        200,
+        await connectorExtensions(client).observations.list(
+          parseConnectorObservationsListQuery(
+            decodeURIComponent(connectorObservationsMatch[1]),
+            requestUrl,
+          ),
+        ),
+      )
       return
     }
 
@@ -647,9 +731,30 @@ function readErrorStatusCode(error: unknown) {
 }
 
 function isDomainRoute(pathname: string) {
-  return /^\/v1\/(applications|action-queue|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
+  return /^\/v1\/(applications|action-queue|connectors|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
     pathname,
   )
+}
+
+type ConnectorExtensionsClient = ValedictorianWorkspaceClient & {
+  connectors: {
+    list(): Promise<unknown>
+    inspect(connectorInstanceId: string): Promise<unknown>
+    runs: {
+      list(input: unknown): Promise<unknown>
+      trigger(input: unknown): Promise<unknown>
+    }
+    checkpoints: {
+      list(input: unknown): Promise<unknown>
+    }
+    observations: {
+      list(input: unknown): Promise<unknown>
+    }
+  }
+}
+
+function connectorExtensions(client: ValedictorianWorkspaceClient) {
+  return (client as ConnectorExtensionsClient).connectors
 }
 
 type ProfileExtensionsClient = ValedictorianWorkspaceClient & {

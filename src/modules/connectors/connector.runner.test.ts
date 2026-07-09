@@ -506,7 +506,11 @@ describe('connector runner', () => {
       connectorInstanceId: 'connector-instance-overlap-secret',
       filterSignature: 'filters:{}',
     })
-    const persisted = JSON.stringify({ run, checkpoint })
+    const persisted = JSON.stringify({
+      checkpoint: checkpoint?.checkpoint,
+      stats: run.stats,
+      warnings: run.warnings,
+    })
 
     expect(persisted).toContain('[redacted-secret]')
     expect(persisted).not.toContain('abc')

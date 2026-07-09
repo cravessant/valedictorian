@@ -26,7 +26,14 @@ export interface ConnectorCheckpointPayload {
   schemaVersion: string
 }
 
-export type ConnectorRunStatus = 'completed' | 'partial_success'
+export type ConnectorRunStatus =
+  | 'cancelled'
+  | 'completed'
+  | 'failed'
+  | 'partial_success'
+  | 'queued'
+  | 'running'
+  | 'skipped'
 
 export type ConnectorAuthMode =
   | 'none'
@@ -112,6 +119,18 @@ export interface RecordConnectorRefreshResultInput {
   result: ConnectorRefreshResultInput
 }
 
+export interface RecordConnectorRunRequestInput {
+  connectorInstanceId: string
+  mode: string
+  startedAt: string
+  coverageStartedAt?: string | null
+  coverageEndedAt?: string | null
+  filters?: unknown
+  filterSignature?: string | null
+  reason?: string | null
+  dryRun?: boolean
+}
+
 export interface GetConnectorCheckpointInput {
   connectorInstanceId: string
   filterSignature: string
@@ -179,8 +198,30 @@ export interface ConnectorProjectionKeyRecord {
   updatedAt: string
 }
 
+export interface ListConnectorRunsInput {
+  connectorInstanceId: string
+  status?: string
+  mode?: string
+  limit?: number
+  offset?: number
+}
+
+export interface ListConnectorRunsResult {
+  items: ConnectorRunRecord[]
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
+}
+
+export interface ListConnectorCheckpointsInput {
+  connectorInstanceId: string
+  filterSignature?: string
+}
+
 export interface ListConnectorObservationsInput {
   connectorInstanceId: string
+  connectorRunId?: string
 }
 
 export interface LinkObservationToSourcingFindingInput {
@@ -377,6 +418,55 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
       })
     },
 
+    async recordRunRequest(input: RecordConnectorRunRequestInput): Promise<ConnectorRunRecord> {
+      const instance = await this.getInstance(input.connectorInstanceId)
+
+      if (!instance) {
+        throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+      }
+
+      const now = input.startedAt
+      const filters = input.filters ?? instance.filters
+      const filterSignature = input.filterSignature ?? `filters:${stableJsonStringify(filters)}`
+      const runId = randomUUID()
+
+      database
+        .insert(connectorRuns)
+        .values({
+          id: runId,
+          connectorInstanceId: input.connectorInstanceId,
+          mode: input.mode,
+          status: 'queued',
+          startedAt: input.startedAt,
+          completedAt: null,
+          coverageStartedAt: input.coverageStartedAt ?? null,
+          coverageEndedAt: input.coverageEndedAt ?? null,
+          configJson: JSON.stringify(instance.config),
+          filtersJson: JSON.stringify(filters),
+          filterSignature,
+          observationCount: 0,
+          warningCount: 0,
+          statsJson: JSON.stringify({
+            queued: true,
+            ...(input.dryRun === undefined ? {} : { dryRun: input.dryRun }),
+          }),
+          warningsJson: JSON.stringify([]),
+          retryHintsJson: JSON.stringify(input.reason ? { reason: input.reason } : null),
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        })
+        .run()
+
+      return mapConnectorRun(
+        database
+          .select()
+          .from(connectorRuns)
+          .where(eq(connectorRuns.id, runId))
+          .get(),
+      )
+    },
+
     async getInstance(connectorInstanceId: string): Promise<ConnectorInstanceRecord | null> {
       const row = database
         .select()
@@ -387,6 +477,45 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
         .get()
 
       return row ? mapConnectorInstance(row) : null
+    },
+
+    async listInstances(): Promise<ConnectorInstanceRecord[]> {
+      return database
+        .select()
+        .from(connectorInstances)
+        .where(isNull(connectorInstances.deletedAt))
+        .orderBy(asc(connectorInstances.displayName), asc(connectorInstances.createdAt))
+        .all()
+        .map(mapConnectorInstance)
+    },
+
+    async getStatusSummary(
+      connectorInstanceId: string,
+    ): Promise<ConnectorStatusSummaryRecord | null> {
+      const row = database
+        .select()
+        .from(connectorInstances)
+        .where(
+          and(eq(connectorInstances.id, connectorInstanceId), isNull(connectorInstances.deletedAt)),
+        )
+        .get()
+
+      if (!row) {
+        return null
+      }
+
+      const latestRun = database
+        .select()
+        .from(connectorRuns)
+        .where(and(eq(connectorRuns.connectorInstanceId, row.id), isNull(connectorRuns.deletedAt)))
+        .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
+        .limit(1)
+        .get()
+
+      return {
+        ...mapConnectorInstance(row),
+        latestRun: latestRun ? mapConnectorRun(latestRun) : null,
+      }
     },
 
     async listStatusSummaries(): Promise<ConnectorStatusSummaryRecord[]> {
@@ -435,6 +564,55 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
       return row ? mapConnectorCheckpoint(row) : null
     },
 
+    async listRuns(input: ListConnectorRunsInput): Promise<ListConnectorRunsResult> {
+      const limit = input.limit ?? 50
+      const offset = input.offset ?? 0
+      const items = database
+        .select()
+        .from(connectorRuns)
+        .where(
+          and(
+            eq(connectorRuns.connectorInstanceId, input.connectorInstanceId),
+            isNull(connectorRuns.deletedAt),
+          ),
+        )
+        .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
+        .all()
+        .map(mapConnectorRun)
+        .filter((run) => input.status === undefined || run.status === input.status)
+        .filter((run) => input.mode === undefined || run.mode === input.mode)
+      const pagedItems = items.slice(offset, offset + limit)
+
+      return {
+        items: pagedItems,
+        total: items.length,
+        limit,
+        offset,
+        hasMore: offset + pagedItems.length < items.length,
+      }
+    },
+
+    async listCheckpoints(
+      input: ListConnectorCheckpointsInput,
+    ): Promise<ConnectorCheckpointRecord[]> {
+      return database
+        .select()
+        .from(connectorCheckpoints)
+        .where(
+          and(
+            eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
+            isNull(connectorCheckpoints.deletedAt),
+          ),
+        )
+        .all()
+        .map(mapConnectorCheckpoint)
+        .filter(
+          (checkpoint) =>
+            input.filterSignature === undefined ||
+            checkpoint.filterSignature === input.filterSignature,
+        )
+    },
+
     async listObservations(
       input: ListConnectorObservationsInput,
     ): Promise<ConnectorObservationRecord[]> {
@@ -449,6 +627,11 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
         )
         .all()
         .map(mapConnectorObservation)
+        .filter(
+          (observation) =>
+            input.connectorRunId === undefined ||
+            observation.connectorRunId === input.connectorRunId,
+        )
     },
 
     async getObservation(connectorObservationId: string): Promise<ConnectorObservationRecord | null> {
@@ -683,6 +866,21 @@ function toJsonRecord(value: unknown): JsonRecord {
   }
 
   return value as JsonRecord
+}
+
+function stableJsonStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJsonStringify(item)).join(',')}]`
+  }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJsonStringify(item)}`)
+      .join(',')}}`
+  }
+
+  return JSON.stringify(value)
 }
 
 function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefined): ConnectorRunRecord {

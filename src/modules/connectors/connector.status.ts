@@ -8,10 +8,15 @@ export type ConnectorStatusSeverity = 'healthy' | 'warning' | 'blocked'
 export type ConnectorStatusState =
   | 'auth_required'
   | 'blocked'
+  | 'cancelled'
+  | 'failed'
   | 'healthy'
   | 'never_run'
   | 'no_jobs'
   | 'partial_success'
+  | 'queued'
+  | 'running'
+  | 'skipped'
 
 export interface ConnectorStatusAction {
   id: 'reconnect' | 'skip'
@@ -89,11 +94,12 @@ export function mapConnectorStatusSummary(
 
   const rawWarnings = readWarnings(latestRun.warnings)
   const retryReason = readRetryReason(latestRun.retryHints)
-  const warnings = rawWarnings.map(mapConnectorWarning)
+  const warnings = mapConnectorWarnings(latestRun.warnings)
   const hasAuthBlocker =
     rawWarnings.some((warning) => isAuthWarningCode(warning.code)) ||
     isAuthRetryReason(retryReason)
   const hasBlockedWarning = warnings.some((warning) => warning.severity === 'blocked')
+  const latestRunStatus = latestRun.status
   const isPartialSuccess = latestRun.status === 'partial_success'
   const noJobs = latestRun.observationCount === 0
   const state: ConnectorStatusStateView = hasAuthBlocker
@@ -117,7 +123,52 @@ export function mapConnectorStatusSummary(
           statusLabel: 'Blocked',
           summary: 'Latest run is blocked and needs review.',
         }
-      : isPartialSuccess
+      : latestRunStatus === 'queued'
+        ? {
+            actionLabel: null,
+            actions: [],
+            severity: 'warning',
+            status: 'queued',
+            statusLabel: 'Queued',
+            summary: 'Connector run is queued.',
+          }
+        : latestRunStatus === 'running'
+          ? {
+              actionLabel: null,
+              actions: [],
+              severity: 'warning',
+              status: 'running',
+              statusLabel: 'Running',
+              summary: 'Connector run is in progress.',
+            }
+          : latestRunStatus === 'failed'
+            ? {
+                actionLabel: null,
+                actions: [],
+                severity: 'blocked',
+                status: 'failed',
+                statusLabel: 'Failed',
+                summary: 'Latest run failed and needs review.',
+              }
+            : latestRunStatus === 'cancelled'
+              ? {
+                  actionLabel: null,
+                  actions: [],
+                  severity: 'warning',
+                  status: 'cancelled',
+                  statusLabel: 'Cancelled',
+                  summary: 'Latest run was cancelled.',
+                }
+              : latestRunStatus === 'skipped'
+                ? {
+                    actionLabel: null,
+                    actions: [],
+                    severity: 'warning',
+                    status: 'skipped',
+                    statusLabel: 'Skipped',
+                    summary: 'Latest run was skipped.',
+                  }
+                : isPartialSuccess
         ? {
             actionLabel: null,
             actions: [],
@@ -141,8 +192,8 @@ export function mapConnectorStatusSummary(
               severity: 'healthy',
               status: 'healthy',
               statusLabel: 'Healthy',
-              summary: 'Latest run completed successfully.',
-            }
+            summary: 'Latest run completed successfully.',
+          }
 
   return {
     id: record.id,
@@ -156,6 +207,10 @@ export function mapConnectorStatusSummary(
     warnings,
     ...state,
   }
+}
+
+export function mapConnectorWarnings(value: unknown): ConnectorStatusWarningView[] {
+  return readWarnings(value).map(mapConnectorWarning)
 }
 
 function readWarnings(value: unknown): ConnectorWarning[] {
