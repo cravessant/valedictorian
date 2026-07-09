@@ -685,6 +685,87 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
+  it('creates and updates connector instances through the local client', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              observedAt: '2026-07-08T18:00:00.000Z',
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+
+    const created = await client.connectors.create({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'fixture-session',
+          label: 'Fixture session',
+          mode: 'browser_session',
+          sessionKey: 'fixture-session-123',
+        },
+      ],
+      config: {
+        publicFeedUrl: 'https://fixture.example/feed.json',
+      },
+      filters: {
+        roleKeywords: ['intern'],
+      },
+    })
+    const updated = await client.connectors.update({
+      connectorInstanceId: 'connector-instance-fixture',
+      displayName: 'Fixture Internships',
+      enabled: false,
+      filters: {
+        roleKeywords: ['new grad'],
+      },
+    })
+    const instances = await client.connectors.list()
+
+    expect(created).toMatchObject({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      auth: [{ configured: true, id: 'fixture-session', mode: 'browser_session' }],
+      config: {
+        publicFeedUrl: 'https://fixture.example/feed.json',
+      },
+      filters: {
+        roleKeywords: ['intern'],
+      },
+    })
+    expect(updated).toMatchObject({
+      id: 'connector-instance-fixture',
+      displayName: 'Fixture Internships',
+      enabled: false,
+      config: {
+        publicFeedUrl: 'https://fixture.example/feed.json',
+      },
+      filters: {
+        roleKeywords: ['new grad'],
+      },
+    })
+    expect(instances.items).toMatchObject([
+      {
+        id: 'connector-instance-fixture',
+        displayName: 'Fixture Internships',
+        enabled: false,
+      },
+    ])
+  })
+
   it('executes registered connector runs through the local client', async () => {
     const sqlitePath = createTempSqlitePath()
     const client = createRuntimeLocalValedictorianClient({
