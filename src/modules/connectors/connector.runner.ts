@@ -45,6 +45,7 @@ export interface AppConnectorSecretResolver {
 
 export interface AppConnectorBrowserSessionResolver {
   resolve(reference: ConnectorAuthReference): Promise<AppConnectorAuthGrant>
+  validate?(reference: ConnectorAuthReference): Promise<AppConnectorAuthGrant>
 }
 
 export interface AppConnectorAuthHost {
@@ -440,19 +441,35 @@ function createRunRuntime(
   sensitiveValues: Set<string>,
 ): AppConnectorRuntime {
   const browserSession = createRunBrowserSessionRuntime(runtime.browserSession)
+  const grants = new Map<string, Promise<AppConnectorAuthGrant>>()
 
   return {
     ...runtime,
     ...(browserSession ? { browserSession } : {}),
     auth: {
       async resolve(input) {
-        return resolveAuthGrant(
+        const cacheKey = `${input.id}\u0000${input.mode ?? ''}`
+        const cached = grants.get(cacheKey)
+
+        if (cached) {
+          return cached
+        }
+
+        const grant = resolveAuthGrant(
           input,
           authReferences,
           authRequirements,
           authHost,
           sensitiveValues,
         )
+        grants.set(cacheKey, grant)
+
+        try {
+          return await grant
+        } catch (error) {
+          grants.delete(cacheKey)
+          throw error
+        }
       },
     },
   }
@@ -547,15 +564,18 @@ async function resolveAuthGrant(
   }
 
   if (reference.sessionKey) {
-    return sanitizeBrowserSessionGrant(
-      reference,
-      {
+    if (!authHost?.browserSessions?.validate) {
+      return {
         id: reference.id,
         mode: referenceMode,
-        sessionId: reference.sessionKey,
-        sessionKey: reference.sessionKey,
-        status: 'ready',
-      },
+        reason: 'browser_session_verification_required',
+        status: 'action_required',
+      }
+    }
+
+    return sanitizeBrowserSessionGrant(
+      reference,
+      await authHost.browserSessions.validate(reference),
       sensitiveValues,
     )
   }

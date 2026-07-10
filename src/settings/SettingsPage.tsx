@@ -277,6 +277,7 @@ function SettingsPage({
 }
 
 type ConnectorSettingsInstance = Awaited<ReturnType<ConnectorsPreloadApi['list']>>['items'][number]
+type ConnectorReconnectResult = Awaited<ReturnType<ConnectorsPreloadApi['status']['reconnect']>>
 
 interface ConnectorSettingsDraft {
   maxResolutionCount: string
@@ -291,6 +292,7 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
   const [drafts, setDrafts] = useState<Record<string, ConnectorSettingsDraft>>({})
   const [isAdding, setIsAdding] = useState(false)
   const [authenticatingInstanceId, setAuthenticatingInstanceId] = useState<string | null>(null)
+  const [authResults, setAuthResults] = useState<Record<string, ConnectorReconnectResult>>({})
   const [savingInstanceId, setSavingInstanceId] = useState<string | null>(null)
   const [runningInstanceId, setRunningInstanceId] = useState<string | null>(null)
   const [latestRunStatuses, setLatestRunStatuses] = useState<Record<string, string>>({})
@@ -366,16 +368,53 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
     ))
 
     setAuthenticatingInstanceId(instance.id)
+    setAuthResults((currentResults) => {
+      const nextResults = { ...currentResults }
+      delete nextResults[instance.id]
+      return nextResults
+    })
     void connectorsApi.update({
       connectorInstanceId: instance.id,
       auth,
     })
-      .then((updated) => connectorsApi.status.reconnect({ connectorInstanceId: updated.id })
-        .then(() => updated))
-      .then((updated) => {
-        setInstances((currentInstances) => currentInstances.map((currentInstance) =>
-          currentInstance.id === updated.id ? updated : currentInstance,
-        ))
+      .then(async (updated) => ({
+        result: await connectorsApi.status.reconnect({ connectorInstanceId: updated.id }),
+        updated,
+      }))
+      .then(async ({ result, updated }) => {
+        const refreshed = await connectorsApi.list().catch(() => ({
+          items: result.status === 'ready'
+            ? instances.map((currentInstance) =>
+              currentInstance.id === updated.id ? updated : currentInstance)
+            : instances,
+        }))
+        setAuthResults((currentResults) => ({
+          ...currentResults,
+          [instance.id]: result,
+        }))
+        setInstances(refreshed.items)
+      })
+      .catch(async () => {
+        await connectorsApi.update({
+          connectorInstanceId: instance.id,
+          auth: instance.auth.map((reference) => ({
+            id: reference.id,
+            label: reference.label ?? undefined,
+            mode: reference.mode,
+          })),
+        }).catch(() => undefined)
+        const refreshed = await connectorsApi.list().catch(() => ({ items: instances }))
+        setInstances(refreshed.items)
+        setAuthResults((currentResults) => ({
+          ...currentResults,
+          [instance.id]: {
+            action: 'reconnect',
+            connectorInstanceId: instance.id,
+            grants: [],
+            message: 'Jobright authentication failed before the session could be verified.',
+            status: 'action_required',
+          },
+        }))
       })
       .finally(() => setAuthenticatingInstanceId(null))
   }
@@ -472,6 +511,7 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
             <div className="divide-y divide-border rounded-md border border-border">
               {instances.map((instance) => {
                 const authConfigured = instance.auth.every((auth) => auth.configured)
+                const authResult = authResults[instance.id]
                 const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
 
                 return (
@@ -497,6 +537,23 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
                         ) : null}
                       </div>
                     </div>
+
+                    {!authConfigured ? (
+                      <p className="text-xs text-muted-foreground">
+                        Use your Jobright email and password in the login window. Google sign-in is
+                        not supported in the embedded window.
+                      </p>
+                    ) : null}
+                    {authResult ? (
+                      <p
+                        className={authResult.status === 'ready'
+                          ? 'text-xs text-success'
+                          : 'text-xs text-warning'}
+                        role="status"
+                      >
+                        {authResult.message}
+                      </p>
+                    ) : null}
 
                     <div className="grid gap-3 md:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] md:items-end">
                       <label className="grid gap-1 text-xs font-medium text-muted-foreground md:col-span-4">

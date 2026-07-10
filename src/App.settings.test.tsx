@@ -613,6 +613,50 @@ describe('App settings and chrome', () => {
     expect(screen.queryByText('jobright-browser-session')).not.toBeInTheDocument()
   })
 
+  it('keeps cancelled Jobright login non-ready and displays the reconnect result', async () => {
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.status.reconnect).mockResolvedValue({
+      action: 'reconnect',
+      connectorInstanceId: 'jobright-default',
+      grants: [
+        {
+          id: 'jobright',
+          mode: 'browser_session',
+          reason: 'browser_session_login_cancelled',
+          status: 'action_required',
+        },
+      ],
+      message: 'Jobright login was cancelled before the session was verified.',
+      status: 'action_required',
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+
+    const created = await vi.mocked(connectorsApi.create).mock.results[0]?.value
+    vi.mocked(connectorsApi.list).mockResolvedValue({ items: created ? [created] : [] })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
+
+    expect(await screen.findByText(
+      'Jobright login was cancelled before the session was verified.',
+    )).toBeInTheDocument()
+    expect(screen.getByText('Auth required')).toBeInTheDocument()
+    expect(screen.queryByText('Auth ready')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+  })
+
   it('saves Jobright filters from connector settings before refresh', async () => {
     const connectorsApi = createConnectorsApi()
 

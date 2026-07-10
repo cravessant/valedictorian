@@ -15,7 +15,7 @@ import {
 import { createElectronConnectorPorts, type ElectronConnectorWindowOptions } from './connector-ports'
 
 describe('Electron connector ports', () => {
-  it('opens a persistent Jobright login window before marking browser-session auth ready', async () => {
+  it('keeps browser-session auth non-ready when the Jobright login window is closed', async () => {
     const windows: FakeConnectorWindow[] = []
     const ports = createElectronConnectorPorts({
       createBrowserWindow(options) {
@@ -38,17 +38,212 @@ describe('Electron connector ports', () => {
     expect(windows[0]?.options.webPreferences.partition).toBe(
       'persist:valedictorian-connector-workspace-1-jobright-browser-session',
     )
-    expect(windows[0]?.loadedUrls).toEqual(['https://jobright.ai/login'])
+    expect(windows[0]?.loadedUrls).toEqual(['https://jobright.ai'])
+
+    await vi.waitFor(() => {
+      expect(windows[0]?.webContents.executedScripts[0]).toContain('sign in')
+    })
 
     windows[0]?.emitClosed()
 
     await expect(pendingGrant).resolves.toEqual({
       id: 'jobright',
       mode: 'browser_session',
-      sessionId: 'jobright-browser-session',
-      sessionKey: 'jobright-browser-session',
-      status: 'ready',
+      reason: 'browser_session_login_cancelled',
+      status: 'action_required',
     })
+  })
+
+  it('marks browser-session auth ready only after Jobright verifies the session', async () => {
+    const windows: FakeConnectorWindow[] = []
+    const ports = createElectronConnectorPorts({
+      authProbeIntervalMs: 1,
+      authSetupTimeoutMs: 100,
+      createBrowserWindow(options) {
+        const window = new FakeConnectorWindow(options, true)
+        windows.push(window)
+        return window
+      },
+      sessionNamespace: 'workspace-1',
+    })
+
+    let grant: unknown
+    void ports.connectorAuth.browserSessions?.resolve({
+      id: 'jobright',
+      label: 'Jobright browser session',
+      mode: 'browser_session',
+      sessionKey: 'jobright-browser-session',
+    }).then((result) => {
+      grant = result
+    })
+
+    await vi.waitFor(() => {
+      expect(grant).toEqual({
+        id: 'jobright',
+        mode: 'browser_session',
+        sessionId: 'jobright-browser-session',
+        sessionKey: 'jobright-browser-session',
+        status: 'ready',
+      })
+    }, { timeout: 150 })
+    expect(windows).toHaveLength(1)
+    expect(windows[0]?.loadedUrls).toEqual(['https://jobright.ai'])
+    expect(windows[0]?.closed).toBe(true)
+  })
+
+  it('blocks embedded Google sign-in and reports the supported-login limitation', async () => {
+    const windows: FakeConnectorWindow[] = []
+    const ports = createElectronConnectorPorts({
+      authProbeIntervalMs: 1,
+      authSetupTimeoutMs: 100,
+      createBrowserWindow(options) {
+        const window = new FakeConnectorWindow(options, false)
+        windows.push(window)
+        return window
+      },
+      sessionNamespace: 'workspace-1',
+    })
+
+    const pendingGrant = ports.connectorAuth.browserSessions?.resolve({
+      id: 'jobright',
+      label: 'Jobright browser session',
+      mode: 'browser_session',
+      sessionKey: 'jobright-browser-session',
+    })
+
+    expect(windows[0]?.webContents.openWindow(
+      'https://accounts.google.com/gsi/select',
+    )).toEqual({ action: 'deny' })
+    await expect(pendingGrant).resolves.toEqual({
+      id: 'jobright',
+      mode: 'browser_session',
+      reason: 'browser_session_google_sign_in_unsupported',
+      status: 'action_required',
+    })
+    expect(windows[0]?.closed).toBe(true)
+  })
+
+  it('detects an expired Jobright session with a hidden non-interactive probe', async () => {
+    const windows: FakeConnectorWindow[] = []
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow(options) {
+        const window = new FakeConnectorWindow(options, false)
+        windows.push(window)
+        return window
+      },
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorAuth.browserSessions?.validate?.({
+      id: 'jobright',
+      label: 'Jobright browser session',
+      mode: 'browser_session',
+      sessionKey: 'jobright-browser-session',
+    })).resolves.toEqual({
+      id: 'jobright',
+      mode: 'browser_session',
+      reason: 'browser_session_expired',
+      status: 'expired',
+    })
+    expect(windows).toHaveLength(1)
+    expect(windows[0]?.options.show).toBe(false)
+    expect(windows[0]?.loadedUrls).toEqual(['https://jobright.ai'])
+    expect(windows[0]?.closed).toBe(true)
+  })
+
+  it('returns a sanitized failure when Jobright session verification rejects', async () => {
+    const windows: FakeConnectorWindow[] = []
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow(options) {
+        const window = new FakeConnectorWindow(
+          options,
+          new Error('sensitive account details from failed verification'),
+        )
+        windows.push(window)
+        return window
+      },
+      sessionNamespace: 'workspace-1',
+    })
+
+    const grant = await ports.connectorAuth.browserSessions?.resolve({
+      id: 'jobright',
+      label: 'Jobright browser session',
+      mode: 'browser_session',
+      sessionKey: 'jobright-browser-session',
+    })
+
+    expect(grant).toEqual({
+      id: 'jobright',
+      mode: 'browser_session',
+      reason: 'browser_session_verification_failed',
+      status: 'action_required',
+    })
+    expect(JSON.stringify(grant)).not.toContain('sensitive account details')
+    expect(JSON.stringify(grant)).not.toContain('jobright-browser-session')
+    expect(windows[0]?.closed).toBe(true)
+  })
+
+  it('returns a typed failure when the Jobright login window cannot be created', async () => {
+    const attemptedWindowOptions: ElectronConnectorWindowOptions[] = []
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow(options) {
+        attemptedWindowOptions.push(options)
+        throw new Error('sensitive login window construction failure')
+      },
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorAuth.browserSessions?.resolve({
+      id: 'jobright',
+      label: 'Jobright browser session',
+      mode: 'browser_session',
+      sessionKey: 'jobright-browser-session',
+    })).resolves.toEqual({
+      id: 'jobright',
+      mode: 'browser_session',
+      reason: 'browser_session_login_failed',
+      status: 'action_required',
+    })
+    expect(attemptedWindowOptions).toHaveLength(1)
+    expect(attemptedWindowOptions[0]?.show).toBe(true)
+  })
+
+  it('bounds a stalled visible Jobright login navigation', async () => {
+    vi.useFakeTimers()
+    const windows: FakeConnectorWindow[] = []
+
+    try {
+      const ports = createElectronConnectorPorts({
+        authSetupTimeoutMs: 2_000,
+        createBrowserWindow(options) {
+          const window = new StalledConnectorWindow(options)
+          windows.push(window)
+          return window
+        },
+        navigationTimeoutMs: 1_000,
+        sessionNamespace: 'workspace-1',
+      })
+      const pendingGrant = ports.connectorAuth.browserSessions?.resolve({
+        id: 'jobright',
+        label: 'Jobright browser session',
+        mode: 'browser_session',
+        sessionKey: 'jobright-browser-session',
+      })
+
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      await expect(pendingGrant).resolves.toEqual({
+        id: 'jobright',
+        mode: 'browser_session',
+        reason: 'browser_session_verification_timed_out',
+        status: 'action_required',
+      })
+      expect(windows).toHaveLength(1)
+      expect(windows[0]?.options.show).toBe(true)
+      expect(windows[0]?.closed).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('resolves a Jobright intermediary URL through the persistent browser session', async () => {
@@ -207,7 +402,7 @@ describe('Electron connector ports', () => {
       sessionNamespace: 'workspace-1',
     })
     const client = createJobrightTestClient({
-      connectorAuth: ports.connectorAuth,
+      connectorAuth: createVerifiedBrowserSessionAuth(),
       connector,
       connectorRuntime: {
         ...ports.connectorRuntime,
@@ -259,7 +454,7 @@ describe('Electron connector ports', () => {
       sessionNamespace: 'workspace-1',
     })
     const client = createJobrightTestClient({
-      connectorAuth: ports.connectorAuth,
+      connectorAuth: createVerifiedBrowserSessionAuth(),
       connector,
       connectorRuntime: {
         ...ports.connectorRuntime,
@@ -313,7 +508,7 @@ describe('Electron connector ports', () => {
       sessionNamespace: 'workspace-1',
     })
     const client = createJobrightTestClient({
-      connectorAuth: ports.connectorAuth,
+      connectorAuth: createVerifiedBrowserSessionAuth(),
       connector,
       connectorRuntime: {
         ...ports.connectorRuntime,
@@ -360,6 +555,7 @@ describe('Electron connector ports', () => {
     let resolverAttempts = 0
     const connector = createFixtureJobrightConnector(feedUrl)
     const client = createJobrightTestClient({
+      connectorAuth: createVerifiedBrowserSessionAuth(),
       connector,
       connectorRuntime: {
         browserSession: {
@@ -433,6 +629,7 @@ describe('Electron connector ports', () => {
       now: () => '2026-07-09T16:00:00.000Z',
     })
     const client = createJobrightTestClient({
+      connectorAuth: createVerifiedBrowserSessionAuth(),
       connector,
       connectorRuntime: {
         browserSession: {
@@ -786,6 +983,30 @@ const immediateDelay = {
   },
 }
 
+function createVerifiedBrowserSessionAuth(): AppConnectorAuthHost {
+  return {
+    browserSessions: {
+      async resolve(reference) {
+        return {
+          id: reference.id,
+          mode: reference.mode,
+          reason: 'browser_session_interactive_auth_not_expected',
+          status: 'action_required',
+        }
+      },
+      async validate(reference) {
+        return {
+          id: reference.id,
+          mode: reference.mode,
+          sessionId: reference.sessionKey,
+          sessionKey: reference.sessionKey,
+          status: 'ready',
+        }
+      },
+    },
+  }
+}
+
 function createJobrightFixtureFetch(feedUrl: string): typeof fetch {
   return async (input) => {
     const requestedUrl = typeof input === 'string'
@@ -872,6 +1093,8 @@ class FailingConnectorWindow extends FakeConnectorWindow {
 
 class FakeConnectorWebContents {
   currentUrl = 'about:blank'
+  readonly executedScripts: string[] = []
+  private windowOpenHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | undefined
 
   constructor(private readonly scriptResult: unknown) {}
 
@@ -879,7 +1102,23 @@ class FakeConnectorWebContents {
     return this.currentUrl
   }
 
-  async executeJavaScript<T = unknown>() {
+  async executeJavaScript<T = unknown>(script: string) {
+    this.executedScripts.push(script)
+
+    if (this.scriptResult instanceof Error) {
+      throw this.scriptResult
+    }
+
     return this.scriptResult as T
+  }
+
+  setWindowOpenHandler(
+    handler: (details: { url: string }) => { action: 'allow' | 'deny' },
+  ) {
+    this.windowOpenHandler = handler
+  }
+
+  openWindow(url: string) {
+    return this.windowOpenHandler?.({ url }) ?? { action: 'allow' as const }
   }
 }

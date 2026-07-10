@@ -612,7 +612,7 @@ async function reconnectConnectorStatus({
     action: 'reconnect',
     connectorInstanceId: input.connectorInstanceId,
     grants: sanitizedGrants,
-    message: reconnectMessage(status),
+    message: reconnectMessage(status, sanitizedGrants),
     status,
   }
 }
@@ -937,7 +937,10 @@ function reconnectStatus(
   return 'ready'
 }
 
-function reconnectMessage(status: LocalConnectorReconnectActionResult['status']): string {
+function reconnectMessage(
+  status: LocalConnectorReconnectActionResult['status'],
+  grants: LocalConnectorAuthGrantSummary[],
+): string {
   if (status === 'ready') {
     return 'Connector auth is ready.'
   }
@@ -952,6 +955,10 @@ function reconnectMessage(status: LocalConnectorReconnectActionResult['status'])
 
   if (status === 'unsupported') {
     return 'Connector has no browser-session auth to reconnect.'
+  }
+
+  if (grants.some((grant) => grant.reason === 'browser_session_login_cancelled')) {
+    return 'Jobright login was cancelled before the session was verified.'
   }
 
   return 'Connector browser session needs local action before refreshes can continue.'

@@ -872,6 +872,66 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
+  it('returns a safe explicit result when Jobright login is cancelled', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const client = createRuntimeLocalValedictorianClient({
+      connectorAuth: {
+        browserSessions: {
+          async resolve(reference) {
+            return {
+              id: reference.id,
+              mode: reference.mode,
+              reason: 'browser_session_login_cancelled',
+              status: 'action_required',
+            }
+          },
+        },
+      },
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'jobright-cancelled-login',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.3.0',
+      displayName: 'Jobright public jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'jobright',
+          label: 'Jobright browser session',
+          mode: 'browser_session',
+          sessionKey: 'sensitive-session-handle',
+        },
+      ],
+      createdAt: '2026-07-09T15:00:00.000Z',
+    })
+
+    const reconnect = await client.connectors.status.reconnect({
+      connectorInstanceId: 'jobright-cancelled-login',
+    })
+
+    expect(reconnect).toEqual({
+      action: 'reconnect',
+      connectorInstanceId: 'jobright-cancelled-login',
+      grants: [
+        {
+          id: 'jobright',
+          mode: 'browser_session',
+          reason: 'browser_session_login_cancelled',
+          status: 'action_required',
+        },
+      ],
+      message: 'Jobright login was cancelled before the session was verified.',
+      status: 'action_required',
+    })
+    expect(JSON.stringify(reconnect)).not.toContain('sensitive-session-handle')
+    sqlite.close()
+  })
+
   it('creates and updates connector instances through the local client', async () => {
     const sqlitePath = createTempSqlitePath()
     const client = createRuntimeLocalValedictorianClient({

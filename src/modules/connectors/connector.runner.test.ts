@@ -719,18 +719,133 @@ describe('connector runner', () => {
     expect(interactiveAuthAttempts).toBe(0)
   })
 
-  it('uses a configured browser session during a run without starting interactive auth', async () => {
+  it('blocks an expired browser session before refresh without starting interactive auth', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
     let interactiveAuthAttempts = 0
+    let validationAttempts = 0
+    let refreshAttempts = 0
     const runner = createConnectorRunner({
       auth: {
         browserSessions: {
           async resolve() {
             interactiveAuthAttempts += 1
             throw new Error('Interactive auth must not run during connector refreshes')
+          },
+          async validate(reference) {
+            validationAttempts += 1
+            return {
+              id: reference.id,
+              mode: reference.mode,
+              reason: 'browser_session_expired',
+              status: 'expired',
+            }
+          },
+        },
+      },
+      repository,
+      workspaceId: 'workspace-fixture',
+    })
+    const fixtureConnector: AppJobConnector = {
+      definition: {
+        id: 'fixture.browser-jobs',
+        version: '0.0.0-fixture',
+        auth: {
+          modes: ['browser_session'],
+          requirements: [
+            {
+              id: 'fixture-auth',
+              mode: 'browser_session',
+              required: true,
+            },
+          ],
+        },
+      },
+      async refresh(input) {
+        refreshAttempts += 1
+        return emptyConnectorRefreshResult({
+          coverage: input.coverage,
+          checkpoint: { cursor: input.coverage.end },
+        })
+      },
+    }
+
+    await runner.registerInstance({
+      id: 'connector-instance-expired-session',
+      connector: fixtureConnector,
+      displayName: 'Browser jobs',
+      enabled: true,
+      auth: [
+        {
+          id: 'fixture-auth',
+          mode: 'browser_session',
+          sessionKey: 'expired-workspace-session',
+        },
+      ],
+      createdAt: '2026-07-08T16:55:00.000Z',
+    })
+
+    const firstRun = await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-expired-session',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T17:00:00.000Z',
+        end: '2026-07-08T18:00:00.000Z',
+      },
+    })
+    const secondRun = await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-expired-session',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-08T18:00:00.000Z',
+        end: '2026-07-08T19:00:00.000Z',
+      },
+    })
+
+    expect(firstRun).toMatchObject({
+      retryHints: {
+        authRequired: 1,
+        reason: 'browser_session_expired',
+      },
+      status: 'partial_success',
+    })
+    expect(secondRun).toMatchObject({
+      retryHints: {
+        authRequired: 1,
+        reason: 'browser_session_action_required',
+      },
+      status: 'partial_success',
+    })
+    expect(validationAttempts).toBe(1)
+    expect(interactiveAuthAttempts).toBe(0)
+    expect(refreshAttempts).toBe(0)
+  })
+
+  it('uses a configured browser session during a run without starting interactive auth', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    let interactiveAuthAttempts = 0
+    let validationAttempts = 0
+    const runner = createConnectorRunner({
+      auth: {
+        browserSessions: {
+          async resolve() {
+            interactiveAuthAttempts += 1
+            throw new Error('Interactive auth must not run during connector refreshes')
+          },
+          async validate(reference) {
+            validationAttempts += 1
+            return {
+              id: reference.id,
+              mode: reference.mode,
+              sessionId: reference.sessionKey,
+              sessionKey: reference.sessionKey,
+              status: 'ready',
+            }
           },
         },
       },
@@ -744,6 +859,13 @@ describe('connector runner', () => {
         version: '0.0.0-fixture',
         auth: {
           modes: ['browser_session'],
+          requirements: [
+            {
+              id: 'fixture-auth',
+              mode: 'browser_session',
+              required: true,
+            },
+          ],
         },
       },
       async refresh(input, runtime) {
@@ -784,6 +906,7 @@ describe('connector runner', () => {
     })
 
     expect(interactiveAuthAttempts).toBe(0)
+    expect(validationAttempts).toBe(1)
     expect(receivedGrants).toEqual([
       {
         id: 'fixture-auth',
@@ -801,6 +924,27 @@ describe('connector runner', () => {
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
     const runner = createConnectorRunner({
+      auth: {
+        browserSessions: {
+          async resolve(reference) {
+            return {
+              id: reference.id,
+              mode: reference.mode,
+              reason: 'browser_session_interactive_auth_not_expected',
+              status: 'action_required',
+            }
+          },
+          async validate(reference) {
+            return {
+              id: reference.id,
+              mode: reference.mode,
+              sessionId: reference.sessionKey,
+              sessionKey: reference.sessionKey,
+              status: 'ready',
+            }
+          },
+        },
+      },
       repository,
       workspaceId: 'workspace-fixture',
     })
