@@ -773,6 +773,12 @@ async function executeConnectorRunTrigger({
       connectorRunId: run.id,
       stats: {
         projected: 0,
+        projectedEmployerOrAts: 0,
+        projectedThirdParty: 0,
+        projectedUsable: 0,
+        retainedForReview: 0,
+        stage: 'persisting',
+        lastProgressAt: now().toISOString(),
       },
     })
     const observations = await connectorRepository.listObservations({
@@ -780,18 +786,55 @@ async function executeConnectorRunTrigger({
       connectorRunId: run.id,
     })
 
-    for (const [index, observation] of observations.entries()) {
-      await projectionService.projectObservation({
+    const projectedFindings = new Map<
+      string,
+      'employer_or_ats' | 'review_only' | 'third_party_job_posting'
+    >()
+
+    for (const observation of observations) {
+      const { finding } = await projectionService.projectObservation({
         connectorObservationId: observation.id,
       })
+      if (finding.usability === 'review_only') {
+        projectedFindings.set(finding.id, 'review_only')
+      } else if (finding.destinationClass === 'employer_or_ats') {
+        projectedFindings.set(finding.id, 'employer_or_ats')
+      } else if (finding.destinationClass === 'third_party_job_posting') {
+        projectedFindings.set(finding.id, 'third_party_job_posting')
+      } else {
+        projectedFindings.set(finding.id, 'review_only')
+      }
+      const classifications = [...projectedFindings.values()]
+      const projectedEmployerOrAts = classifications.filter(
+        (classification) => classification === 'employer_or_ats',
+      ).length
+      const projectedThirdParty = classifications.filter(
+        (classification) => classification === 'third_party_job_posting',
+      ).length
+      const retainedForReview = classifications.filter(
+        (classification) => classification === 'review_only',
+      ).length
       projectedRun = await connectorRepository.updateRunProgress({
         connectorRunId: run.id,
         stats: {
-          projected: index + 1,
+          projected: projectedFindings.size,
+          projectedEmployerOrAts,
+          projectedThirdParty,
+          projectedUsable: projectedEmployerOrAts + projectedThirdParty,
+          retainedForReview,
+          stage: 'projecting',
+          lastProgressAt: now().toISOString(),
         },
       })
     }
 
+    projectedRun = await connectorRepository.updateRunProgress({
+      connectorRunId: run.id,
+      stats: {
+        stage: 'finalizing',
+        lastProgressAt: now().toISOString(),
+      },
+    })
     await connectorRepository.recordCheckpoint(checkpoint)
     projectedRun = await connectorRepository.completeRun({
       completedAt: now().toISOString(),

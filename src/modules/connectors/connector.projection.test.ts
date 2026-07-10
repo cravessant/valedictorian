@@ -8,6 +8,79 @@ import { createSqliteConnectorRepository } from './connector.repository'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
 
 describe('connector projection service', () => {
+  it('persists truthful destination provenance for a production-shaped 20 observation batch', async () => {
+    const context = createProjectionTestContext()
+
+    await context.register()
+    for (let index = 0; index < 20; index += 1) {
+      const destinationClass = index < 6
+        ? 'employer_or_ats'
+        : index < 8
+          ? 'third_party_job_posting'
+          : null
+      const destinationUrl = destinationClass === 'employer_or_ats'
+        ? `https://jobs.example.com/apply/intern-${index}`
+        : destinationClass === 'third_party_job_posting'
+          ? `https://www.linkedin.com/jobs/view/intern-${index}`
+          : null
+
+      await context.recordAndProject({
+        destinationClass,
+        observedAt: `2026-07-08T18:${String(index).padStart(2, '0')}:00.000Z`,
+        officialUrl: destinationClass === 'employer_or_ats' ? destinationUrl : null,
+        roleTitle: `Software Engineering Intern ${index}`,
+        sourceRecordKey: `jobright.resolver:job-${index}`,
+        sourceUrl: destinationClass === 'third_party_job_posting'
+          ? destinationUrl
+          : `https://jobright.ai/jobs/info/job-${index}`,
+        intermediaryUrl: `https://jobright.ai/jobs/info/job-${index}`,
+      })
+    }
+
+    const sourcingRepository = createSqliteSourcingRepository(context.database)
+    const usable = await sourcingRepository.listFindings({ usability: 'usable' })
+    const employerOrAts = await sourcingRepository.listFindings({
+      destinationClass: 'employer_or_ats',
+    })
+    const thirdParty = await sourcingRepository.listFindings({
+      destinationClass: 'third_party_job_posting',
+    })
+    const reviewOnly = await sourcingRepository.listFindings({ usability: 'review_only' })
+
+    expect({
+      employerOrAts: employerOrAts.total,
+      projectedUsable: usable.total,
+      retainedForReview: reviewOnly.total,
+      thirdParty: thirdParty.total,
+    }).toEqual({
+      employerOrAts: 6,
+      projectedUsable: 8,
+      retainedForReview: 12,
+      thirdParty: 2,
+    })
+    expect(employerOrAts.items[0]).toMatchObject({
+      destinationClass: 'employer_or_ats',
+      destinationUrl: expect.stringContaining('jobs.example.com/apply/'),
+      intermediaryUrl: expect.stringContaining('jobright.ai/jobs/info/'),
+      usability: 'usable',
+    })
+    expect(thirdParty.items[0]).toMatchObject({
+      destinationClass: 'third_party_job_posting',
+      destinationUrl: expect.stringContaining('linkedin.com/jobs/view/'),
+      officialUrl: null,
+      intermediaryUrl: expect.stringContaining('jobright.ai/jobs/info/'),
+      usability: 'usable',
+    })
+    expect(reviewOnly.items[0]).toMatchObject({
+      destinationClass: null,
+      destinationUrl: null,
+      officialUrl: null,
+      intermediaryUrl: expect.stringContaining('jobright.ai/jobs/info/'),
+      usability: 'review_only',
+      mergeStatus: 'blocked',
+    })
+  })
+
   it('projects fixture observations into one sourcing finding by normalized official URL and updates it', async () => {
     const context = createProjectionTestContext()
 
@@ -58,6 +131,7 @@ describe('connector projection service', () => {
         },
         sourceRecordKey: 'fixture.jobs:first-official',
         sourceMetadata: {
+          destinationClass: 'employer_or_ats',
           fixture: true,
         },
         sourcingFindingId: first.finding.id,
@@ -279,6 +353,74 @@ describe('connector projection service', () => {
     expect(context.database.select().from(sourcingFindings).all()).toHaveLength(1)
   })
 
+  it('preserves usable destination compatibility mapping after a later unresolved observation', async () => {
+    const thirdPartyContext = createProjectionTestContext()
+    await thirdPartyContext.register()
+    const thirdParty = await thirdPartyContext.recordAndProject({
+      dedupeKeys: ['provider:jobright:third-party-123'],
+      destinationClass: 'third_party_job_posting',
+      intermediaryUrl: 'https://jobright.ai/jobs/info/third-party-123',
+      observedAt: '2026-07-08T18:00:00.000Z',
+      officialUrl: null,
+      sourceRecordKey: 'jobright.resolver:third-party-123',
+      sourceUrl: 'https://www.linkedin.com/jobs/view/123',
+    })
+    const thirdPartyLater = await thirdPartyContext.recordAndProject({
+      dedupeKeys: ['provider:jobright:third-party-123'],
+      destinationClass: null,
+      intermediaryUrl: 'https://jobright.ai/jobs/info/third-party-123',
+      observedAt: '2026-07-08T19:00:00.000Z',
+      officialUrl: null,
+      roleTitle: 'Software Engineering Intern - Still Listed',
+      sourceRecordKey: 'jobright.resolver:third-party-123',
+      sourceUrl: 'https://jobright.ai/jobs/info/third-party-123',
+    })
+
+    expect(thirdPartyLater.finding.id).toBe(thirdParty.finding.id)
+    expect(thirdPartyLater.finding).toMatchObject({
+      destinationClass: 'third_party_job_posting',
+      destinationUrl: 'https://www.linkedin.com/jobs/view/123',
+      intermediaryUrl: 'https://jobright.ai/jobs/info/third-party-123',
+      officialUrl: null,
+      roleTitle: 'Software Engineering Intern - Still Listed',
+      sourceUrl: 'https://www.linkedin.com/jobs/view/123',
+      usability: 'usable',
+    })
+
+    const employerContext = createProjectionTestContext()
+    await employerContext.register()
+    const employer = await employerContext.recordAndProject({
+      dedupeKeys: ['provider:jobright:employer-123'],
+      destinationClass: 'employer_or_ats',
+      intermediaryUrl: 'https://jobright.ai/jobs/info/employer-123',
+      observedAt: '2026-07-08T18:00:00.000Z',
+      officialUrl: 'https://jobs.lever.co/example/employer-123',
+      sourceRecordKey: 'jobright.resolver:employer-123',
+      sourceUrl: 'https://jobright.ai/jobs/info/employer-123',
+    })
+    const employerLater = await employerContext.recordAndProject({
+      dedupeKeys: ['provider:jobright:employer-123'],
+      destinationClass: null,
+      intermediaryUrl: 'https://jobright.ai/jobs/info/employer-123',
+      observedAt: '2026-07-08T19:00:00.000Z',
+      officialUrl: null,
+      roleTitle: 'Software Engineering Intern - Employer Still Listed',
+      sourceRecordKey: 'jobright.resolver:employer-123',
+      sourceUrl: 'https://jobright.ai/jobs/info/employer-123',
+    })
+
+    expect(employerLater.finding.id).toBe(employer.finding.id)
+    expect(employerLater.finding).toMatchObject({
+      destinationClass: 'employer_or_ats',
+      destinationUrl: 'https://jobs.lever.co/example/employer-123',
+      intermediaryUrl: 'https://jobright.ai/jobs/info/employer-123',
+      officialUrl: 'https://jobs.lever.co/example/employer-123',
+      roleTitle: 'Software Engineering Intern - Employer Still Listed',
+      sourceUrl: 'https://jobright.ai/jobs/info/employer-123',
+      usability: 'usable',
+    })
+  })
+
   it('records projection workflow runs as completed for new sourcing findings', async () => {
     const context = createProjectionTestContext()
 
@@ -334,7 +476,7 @@ function createProjectionTestContext() {
     },
     async recordAndProject(options: FixtureConnectorOptions) {
       runIndex += 1
-      await runner.refresh(fixtureConnector(options), {
+      const run = await runner.refresh(fixtureConnector(options), {
         connectorInstanceId: 'connector-instance-fixture',
         mode: 'manual',
         coverage: {
@@ -347,9 +489,12 @@ function createProjectionTestContext() {
       const observations = await connectorRepository.listObservations({
         connectorInstanceId: 'connector-instance-fixture',
       })
+      const observation = observations.find(
+        (item) => item.connectorRunId === run.id,
+      ) ?? observations.at(-1)
 
       return projectionService.projectObservation({
-        connectorObservationId: observations.at(-1)?.id ?? '',
+        connectorObservationId: observation?.id ?? '',
       })
     },
   }
@@ -358,6 +503,8 @@ function createProjectionTestContext() {
 interface FixtureConnectorOptions {
   companyName?: string
   dedupeKeys?: string[]
+  destinationClass?: 'employer_or_ats' | 'third_party_job_posting' | null
+  intermediaryUrl?: string | null
   locationRaw?: string | null
   observedAt: string
   officialUrl?: string | null
@@ -369,6 +516,8 @@ interface FixtureConnectorOptions {
 function fixtureConnector({
   companyName = 'Example Robotics',
   dedupeKeys,
+  destinationClass,
+  intermediaryUrl = null,
   locationRaw = 'Remote',
   observedAt,
   officialUrl = 'https://jobs.example.com/apply/software-engineering-intern',
@@ -376,6 +525,12 @@ function fixtureConnector({
   sourceRecordKey = 'fixture.jobs:software-engineering-intern',
   sourceUrl = 'https://example.test/jobs/software-engineering-intern',
 }: FixtureConnectorOptions): AppJobConnector {
+  const resolvedDestinationClass = destinationClass === undefined
+    ? officialUrl
+      ? 'employer_or_ats'
+      : null
+    : destinationClass
+
   return {
     definition: {
       id: 'fixture.jobs',
@@ -407,13 +562,13 @@ function fixtureConnector({
             pay: null,
             links: {
               source: sourceUrl,
-              intermediary: null,
+              intermediary: intermediaryUrl,
               official: officialUrl,
             },
             resolution: {
-              status: officialUrl ? 'resolved' : 'unresolved',
-              method: officialUrl ? 'fixture' : null,
-              reason: officialUrl ? null : 'No fixture official URL.',
+              status: officialUrl || resolvedDestinationClass ? 'resolved' : 'unresolved',
+              method: officialUrl || resolvedDestinationClass ? 'fixture' : null,
+              reason: officialUrl || resolvedDestinationClass ? null : 'No fixture official URL.',
             },
             dedupeKeys:
               dedupeKeys ??
@@ -422,6 +577,7 @@ function fixtureConnector({
                 : [`source:${sourceRecordKey}`]),
             sourceMetadata: {
               fixture: true,
+              ...(resolvedDestinationClass ? { destinationClass: resolvedDestinationClass } : {}),
             },
             evidence: [
               {

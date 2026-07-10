@@ -570,7 +570,7 @@ describe('App settings and chrome', () => {
         ],
         config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.1',
+        connectorVersion: '0.4.3',
         displayName: 'Jobright internslist',
         enabled: true,
         filters: {
@@ -639,7 +639,7 @@ describe('App settings and chrome', () => {
           },
         ],
         connectorInstanceId: 'jobright-default',
-        connectorVersion: '0.4.1',
+        connectorVersion: '0.4.3',
       })
       expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
         connectorInstanceId: 'jobright-default',
@@ -768,7 +768,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.1',
+        connectorVersion: '0.4.3',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -930,7 +930,7 @@ describe('App settings and chrome', () => {
           },
         ],
         connectorInstanceId: 'jobright-default',
-        connectorVersion: '0.4.1',
+        connectorVersion: '0.4.3',
       })
       expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
         connectorInstanceId: 'jobright-default',
@@ -953,7 +953,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.1',
+        connectorVersion: '0.4.3',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -1044,7 +1044,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.1',
+        connectorVersion: '0.4.3',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -1107,7 +1107,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.1',
+        connectorVersion: '0.4.3',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -1283,7 +1283,7 @@ describe('App settings and chrome', () => {
     expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
   })
 
-  it('shows persisted run progress and terminal connector counts in settings', async () => {
+  it('shows two persisted non-terminal progress snapshots before terminal connector counts', async () => {
     const connectorsApi = createConnectorsApi()
     const profileApi = createProfileApi()
     const connectorStatusLoader = vi.fn(async () => createConnectorStatusResult([]))
@@ -1294,6 +1294,55 @@ describe('App settings and chrome', () => {
       resolveRun = resolve
     })
     vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(pendingRun)
+    const progressRun = (stage: string, stats: Record<string, unknown>): ConnectorRun => ({
+      id: 'connector-run-progress',
+      connectorInstanceId: 'jobright-default',
+      mode: 'manual',
+      status: 'running',
+      coverage: {
+        start: '2026-07-09T15:00:00.000Z',
+        end: '2026-07-09T16:00:00.000Z',
+      },
+      filterSignature: 'filters:{}',
+      observationCount: 0,
+      warningCount: 0,
+      stats: { stage, ...stats },
+      warnings: [],
+      retryHints: null,
+      startedAt: '2026-07-09T16:00:00.000Z',
+      completedAt: null,
+    })
+    vi.mocked(connectorsApi.runs.list)
+      .mockResolvedValueOnce({
+        items: [progressRun('authenticating', {
+          discovered: 0,
+          lastProgressAt: '2026-07-09T16:00:00.250Z',
+        })],
+        total: 1,
+        limit: 1,
+        offset: 0,
+        hasMore: false,
+      })
+      .mockResolvedValueOnce({
+        items: [progressRun('normalizing', {
+          attempted: 3,
+          discovered: 20,
+          lastProgressAt: '2026-07-09T16:00:01.000Z',
+          remainingTarget: 6,
+          resolvedEmployerOrAts: 1,
+          resolvedThirdParty: 1,
+          unresolved: 1,
+          wait: {
+            maxDelayMs: 2_000,
+            minDelayMs: 1_000,
+            reason: 'jobright_resolution',
+          },
+        })],
+        total: 1,
+        limit: 1,
+        offset: 0,
+        hasMore: false,
+      })
 
     render(
       <App
@@ -1314,7 +1363,19 @@ describe('App settings and chrome', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
-    expect(await screen.findByText('Latest run: running')).toBeInTheDocument()
+    expect(await screen.findByText('Stage: Authenticating')).toBeInTheDocument()
+    expect(await screen.findByText('Stage: Normalizing', {}, { timeout: 2_000 })).toBeInTheDocument()
+    expect(screen.getByText('Discovered: 20')).toBeInTheDocument()
+    expect(screen.getByText('Employer / ATS usable: 1')).toBeInTheDocument()
+    expect(screen.getByText('Third-party usable: 1')).toBeInTheDocument()
+    expect(screen.getByText('Remaining target: 6')).toBeInTheDocument()
+    expect(screen.getByText('Waiting between bounded Jobright API requests.')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Jobright internslist run progress' })).toHaveAttribute(
+      'aria-live',
+      'polite',
+    )
+    expect(screen.getByRole('button', { name: 'View connector-run-progress in Sourcing runs' }))
+      .toBeInTheDocument()
 
     await act(async () => {
       resolveRun?.({
@@ -1336,8 +1397,13 @@ describe('App settings and chrome', () => {
           eligible: 8,
           failures: 2,
           observations: 8,
-          projected: 2,
+          projectedUsable: 2,
+          retainedForReview: 6,
           resolved: 2,
+          resolvedEmployerOrAts: 1,
+          resolvedThirdParty: 1,
+          stage: 'finalizing',
+          stopReason: 'source_exhausted',
         },
         warnings: [],
         retryHints: {
@@ -1354,7 +1420,8 @@ describe('App settings and chrome', () => {
     expect(screen.getByText('Attempted: 3')).toBeInTheDocument()
     expect(screen.getByText('Resolved: 2')).toBeInTheDocument()
     expect(screen.getByText('Auth required: 1')).toBeInTheDocument()
-    expect(screen.getByText('Projected: 2')).toBeInTheDocument()
+    expect(screen.getByText('Projected usable: 2')).toBeInTheDocument()
+    expect(screen.getByText('Retained for review: 6')).toBeInTheDocument()
     expect(screen.getByText('Warnings: 1')).toBeInTheDocument()
     expect(screen.getByText('Failures: 2')).toBeInTheDocument()
     expect(screen.queryByText('auth_required')).not.toBeInTheDocument()
@@ -1362,6 +1429,128 @@ describe('App settings and chrome', () => {
       expect(connectorStatusLoader).toHaveBeenCalledTimes(1)
       expect(sourcingLoader).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('keeps persisted active progress visible after navigating to Sourcing runs', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(new Promise(() => {}))
+    const activeRun = {
+      id: 'connector-run-navigation',
+      connectorInstanceId: 'jobright-default',
+      mode: 'manual',
+      status: 'running',
+      coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
+      filterSignature: 'filters:{}',
+      observationCount: 0,
+      warningCount: 0,
+      stats: {
+        attempted: 3,
+        discovered: 20,
+        lastProgressAt: '2026-07-09T16:00:01.000Z',
+        stage: 'normalizing',
+      },
+      warnings: [],
+      retryHints: null,
+      startedAt: '2026-07-09T16:00:00.000Z',
+      completedAt: null,
+    }
+    vi.mocked(connectorsApi.runs.list)
+      .mockResolvedValue({
+        items: [activeRun],
+        total: 1,
+        limit: 20,
+        offset: 0,
+        hasMore: false,
+      })
+      .mockResolvedValueOnce({
+        items: [{ ...activeRun, stats: { discovered: 0, stage: 'authenticating' } }],
+        total: 1,
+        limit: 1,
+        offset: 0,
+        hasMore: false,
+      })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await authenticateJobrightInSettings({ connectorsApi, profileApi })
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    expect(await screen.findByText('Stage: Authenticating')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', {
+      name: 'View connector-run-navigation in Sourcing runs',
+    }))
+
+    expect(await screen.findByRole('heading', { name: 'Sourcing runs' })).toBeInTheDocument()
+    expect(await screen.findByText('Stage: Normalizing')).toBeInTheDocument()
+    expect(screen.getByText('Discovered: 20')).toBeInTheDocument()
+    expect(connectorsApi.runs.list).toHaveBeenCalledWith({
+      connectorInstanceId: 'jobright-default',
+      limit: 20,
+      offset: 0,
+    })
+  })
+
+  it('stops polling when persisted run state is terminal while trigger transport remains pending', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(new Promise(() => {}))
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      items: [{
+        id: 'connector-run-terminal-poll',
+        connectorInstanceId: 'jobright-default',
+        mode: 'manual',
+        status: 'completed',
+        coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
+        filterSignature: 'filters:{}',
+        observationCount: 1,
+        warningCount: 0,
+        stats: { completed: true, stage: 'finalizing' },
+        warnings: [],
+        retryHints: null,
+        startedAt: '2026-07-09T16:00:00.000Z',
+        completedAt: '2026-07-09T16:00:01.000Z',
+      }],
+      total: 1,
+      limit: 1,
+      offset: 0,
+      hasMore: false,
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await authenticateJobrightInSettings({ connectorsApi, profileApi })
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Running...' })).toBeDisabled()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 650))
+    })
+    expect(connectorsApi.runs.list).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Running...' })).toBeDisabled()
   })
 
   it('renders a sanitized error when a settings connector run rejects', async () => {
@@ -1424,7 +1613,7 @@ describe('App settings and chrome', () => {
             authRequired: 1,
             discovered: 12,
             eligible: 8,
-            projected: 2,
+            projectedUsable: 2,
             resolved: 2,
           },
           warnings: [
@@ -1465,7 +1654,7 @@ describe('App settings and chrome', () => {
     expect(screen.getByText('partial_success')).toBeInTheDocument()
     expect(screen.getByText('Authentication required')).toBeInTheDocument()
     expect(screen.getByText('Update and validate Jobright credentials, then run again.')).toBeInTheDocument()
-    expect(screen.getByText('Projected: 2')).toBeInTheDocument()
+    expect(screen.getByText('Projected usable: 2')).toBeInTheDocument()
     expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
   })
 
@@ -1474,7 +1663,7 @@ describe('App settings and chrome', () => {
     await connectorsApi.create({
       id: 'jobright-default',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.4.1',
+      connectorVersion: '0.4.3',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [],

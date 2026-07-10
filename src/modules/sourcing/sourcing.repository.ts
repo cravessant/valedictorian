@@ -8,7 +8,9 @@ import type {
   SourcingFinding,
   SourcingFindingsListInput,
   SourcingFindingsListResult,
+  SourcingDestinationClass,
   SourcingMergeStatus,
+  SourcingUsability,
   UpdateSourcingFindingInput,
 } from 'sparxie'
 import {
@@ -63,6 +65,10 @@ const sourcingFindingSelection = {
   locationRaw: sourcingFindings.locationRaw,
   officialUrl: sourcingFindings.officialUrl,
   sourceUrl: sourcingFindings.sourceUrl,
+  destinationClass: sourcingFindings.destinationClass,
+  destinationUrl: sourcingFindings.destinationUrl,
+  intermediaryUrl: sourcingFindings.intermediaryUrl,
+  usability: sourcingFindings.usability,
   postedAge: sourcingFindings.postedAge,
   priorityScore: sourcingFindings.priorityScore,
   priorityBand: sourcingFindings.priorityBand,
@@ -83,6 +89,57 @@ const sourcingFindingSelection = {
 
 export function createSqliteSourcingRepository(database: DrizzleDatabase) {
   return {
+    async setProjectionMetadata(input: {
+      findingId: string
+      destinationClass: SourcingDestinationClass | null
+      destinationUrl: string | null
+      intermediaryUrl: string | null
+      usability: SourcingUsability
+    }): Promise<SourcingFinding> {
+      const now = new Date().toISOString()
+      const current = selectSourcingFindingById(database, input.findingId)
+      const destinationUrl = input.destinationUrl
+        ? canonicalizeApplicationUrl(input.destinationUrl)
+        : null
+      const intermediaryUrl = input.intermediaryUrl
+        ? normalizeApplicationUrlPreservingQuery(input.intermediaryUrl)
+        : null
+      const reviewNote = 'No verified usable application destination; retained for review.'
+
+      database
+        .update(sourcingFindings)
+        .set({
+          destinationClass: input.destinationClass,
+          destinationUrl,
+          intermediaryUrl,
+          usability: input.usability,
+          officialUrl: input.destinationClass === 'employer_or_ats' ? destinationUrl : null,
+          sourceUrl: input.destinationClass === 'third_party_job_posting'
+            ? destinationUrl
+            : intermediaryUrl,
+          ...(input.usability === 'review_only'
+            ? {
+                blocker: reviewNote,
+                mergeStatus: 'blocked',
+                mergeNotes: reviewNote,
+              }
+            : current.mergeStatus === 'blocked'
+                && current.blocker === reviewNote
+                && current.mergeNotes === reviewNote
+              ? {
+                  blocker: null,
+                  mergeStatus: 'new',
+                  mergeNotes: null,
+                }
+              : {}),
+          updatedAt: now,
+        })
+        .where(eq(sourcingFindings.id, input.findingId))
+        .run()
+
+      return selectSourcingFindingById(database, input.findingId)
+    },
+
     async createFinding(input: CreateSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
       assertCompatibleSourcingDispositionInput(input)
@@ -367,6 +424,12 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
     },
     async promoteFinding(input: PromoteSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
+      const current = selectSourcingFindingById(database, input.findingId)
+
+      if (current.usability === 'review_only') {
+        throw new Error('Review-only sourcing findings cannot be promoted.')
+      }
+
       const finding = reclassifySourcingFinding(database, input.findingId, now)
 
       if (finding.mergeStatus !== 'new') {
@@ -494,6 +557,10 @@ function reclassifySourcingFinding(
   now: string,
 ) {
   const finding = selectSourcingFindingById(database, findingId)
+
+  if (finding.usability === 'review_only') {
+    return finding
+  }
 
   if (finding.mergeStatus === 'merged' || isManualDispositionFinding(finding)) {
     return finding
@@ -701,6 +768,14 @@ function buildFindingsWhere(input: SourcingFindingsListInput) {
     filters.push(like(sources.name, `%${input.source}%`))
   }
 
+  if (input.destinationClass) {
+    filters.push(eq(sourcingFindings.destinationClass, input.destinationClass))
+  }
+
+  if (input.usability) {
+    filters.push(eq(sourcingFindings.usability, input.usability))
+  }
+
   return and(...filters)
 }
 
@@ -747,6 +822,12 @@ function mapSourcingFinding(row: SourcingFindingRow): SourcingFinding {
     locationRaw: row.locationRaw as string | null,
     officialUrl: row.officialUrl as string | null,
     sourceUrl: row.sourceUrl as string | null,
+    destinationClass: row.destinationClass as SourcingDestinationClass | null,
+    destinationUrl: row.destinationUrl as string | null,
+    intermediaryUrl: row.intermediaryUrl as string | null,
+    ...(row.usability === 'usable' || row.usability === 'review_only'
+      ? { usability: row.usability as SourcingUsability }
+      : {}),
     postedAge: row.postedAge as string | null,
     priorityScore: row.priorityScore as number | null,
     priorityBand: row.priorityBand as string | null,

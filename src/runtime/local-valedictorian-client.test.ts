@@ -180,7 +180,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
   await connectorRepository.upsertInstance({
     id: connectorInstanceId,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.4.1',
+    connectorVersion: '0.4.3',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [
@@ -1046,7 +1046,7 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
-  it('migrates a legacy Jobright 0.3.x browser_session instance to 0.4.1 username_password', async () => {
+  it('migrates a legacy Jobright 0.3.x browser_session instance to 0.4.3 username_password', async () => {
     const sqlitePath = createTempSqlitePath()
     const secretCodec = {
       decrypt: (value: string) => value.replace(/^enc:/, ''),
@@ -1096,7 +1096,7 @@ describe('runtime local Valedictorian client', () => {
 
     const migrated = await client.connectors.update({
       connectorInstanceId: 'jobright-legacy',
-      connectorVersion: '0.4.1',
+      connectorVersion: '0.4.3',
       auth: [
         {
           id: 'jobright',
@@ -1110,7 +1110,7 @@ describe('runtime local Valedictorian client', () => {
     expect(migrated).toMatchObject({
       id: 'jobright-legacy',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.4.1',
+      connectorVersion: '0.4.3',
       auth: [
         {
           configured: true,
@@ -1127,7 +1127,7 @@ describe('runtime local Valedictorian client', () => {
 
     const persisted = await connectorRepository.getInstance('jobright-legacy')
     expect(persisted).toMatchObject({
-      connectorVersion: '0.4.1',
+      connectorVersion: '0.4.3',
       auth: [
         {
           id: 'jobright',
@@ -1207,7 +1207,7 @@ describe('runtime local Valedictorian client', () => {
     await connectorRepository.upsertInstance({
       id: 'jobright-default',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.4.1',
+      connectorVersion: '0.4.3',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [
@@ -1261,7 +1261,7 @@ describe('runtime local Valedictorian client', () => {
       encrypt: (value: string) => `enc:${value}`,
     }
     const sessionCookie = 'synthetic-session-cookie'
-    const officialApplyUrl = 'https://careers.example.com/jobs/software-engineering-intern'
+    const officialApplyUrl = 'https://jobs.lever.co/example/software-engineering-intern'
     const rejectedJobrightUrl = 'https://jobright.ai/jobs/info/job-intermediary-only'
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string'
@@ -1413,7 +1413,7 @@ describe('runtime local Valedictorian client', () => {
     await connectorRepository.upsertInstance({
       id: 'jobright-api',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.4.1',
+      connectorVersion: '0.4.3',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [
@@ -1456,7 +1456,7 @@ describe('runtime local Valedictorian client', () => {
 
     expect(run).toMatchObject({
       connectorInstanceId: 'jobright-api',
-      status: 'completed',
+      status: 'partial_success',
       observationCount: 2,
       stats: {
         attempted: 2,
@@ -1468,7 +1468,7 @@ describe('runtime local Valedictorian client', () => {
     expect(runs.total).toBe(1)
     expect(runs.items).toHaveLength(1)
     expect(runs.items[0]).toMatchObject({
-      status: 'completed',
+      status: 'partial_success',
       observationCount: 2,
       stats: {
         attempted: 2,
@@ -1482,9 +1482,13 @@ describe('runtime local Valedictorian client', () => {
     expect(checkpoints.items).toHaveLength(1)
     expect(checkpoints.items[0]).toMatchObject({
       checkpoint: {
-        attempted: 2,
-        discovered: 2,
-        resolved: 1,
+        attempts: 2,
+        seenSourceIds: expect.arrayContaining([
+          'jobright.public:job-resolved-1',
+          'jobright.public:job-intermediary-only',
+        ]),
+        usefulEmployerOrAts: 1,
+        usefulThirdParty: 0,
       },
     })
 
@@ -1510,7 +1514,7 @@ describe('runtime local Valedictorian client', () => {
       },
       resolution: {
         status: 'unresolved',
-        reason: 'jobright_application_url_missing',
+        reason: 'jobright_application_url_rejected',
       },
     })
 
@@ -1836,6 +1840,11 @@ describe('runtime local Valedictorian client', () => {
       stats: {
         observations: 1,
         projected: 1,
+        projectedEmployerOrAts: 1,
+        projectedThirdParty: 0,
+        projectedUsable: 1,
+        retainedForReview: 0,
+        stage: 'finalizing',
       },
       status: 'completed',
     })
@@ -1871,6 +1880,214 @@ describe('runtime local Valedictorian client', () => {
         },
       },
     ])
+    sqlite.close()
+  })
+
+  it('counts distinct persisted findings when same-run observations dedupe', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const baseConnector = fixtureConnector({
+      additionalCompanyNames: ['Example Robotics'],
+      observedAt: '2026-07-08T18:00:00.000Z',
+    })
+    const connector: AppJobConnector = {
+      ...baseConnector,
+      async refresh(input, runtime) {
+        const result = await baseConnector.refresh(input, runtime)
+        const first = result.observations[0]
+        const second = result.observations[1]
+
+        if (!first || !second) {
+          throw new Error('Expected duplicate fixture observations')
+        }
+
+        return {
+          ...result,
+          observations: [
+            {
+              ...first,
+              dedupeKeys: ['provider:fixture:shared-job'],
+            },
+            {
+              ...second,
+              companyName: first.companyName,
+              dedupeKeys: ['provider:fixture:shared-job'],
+              links: {
+                source: 'https://www.linkedin.com/jobs/view/shared-job',
+                intermediary: first.links.source,
+                official: null,
+              },
+              resolution: {
+                status: 'resolved',
+                method: 'fixture',
+                reason: null,
+              },
+              roleTitle: 'Software Engineering Intern - Updated',
+              sourceMetadata: {
+                fixture: true,
+                destinationClass: 'third_party_job_posting',
+              },
+            },
+          ],
+          stats: { observations: 2 },
+        }
+      },
+    }
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([connector]),
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-fixture',
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    await repository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+    })
+
+    const run = await client.connectors.runs.trigger({
+      connectorInstanceId: 'connector-instance-fixture',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual',
+    })
+    const findings = await client.sourcing.findings.list({ source: 'fixture.jobs' })
+
+    expect(run).toMatchObject({
+      observationCount: 2,
+      stats: {
+        projected: 1,
+        projectedEmployerOrAts: 0,
+        projectedThirdParty: 1,
+        projectedUsable: 1,
+        retainedForReview: 0,
+      },
+    })
+    expect(findings).toMatchObject({
+      total: 1,
+      items: [{
+        companyName: 'Example Robotics',
+        destinationClass: 'third_party_job_posting',
+        roleTitle: 'Software Engineering Intern - Updated',
+        usability: 'usable',
+      }],
+    })
+    sqlite.close()
+  })
+
+  it('persists two truthful non-terminal connector progress snapshots before completion', async () => {
+    const sqlitePath = createTempSqlitePath()
+    let releaseAuthentication: (() => void) | undefined
+    let releaseNormalization: (() => void) | undefined
+    const authenticationGate = new Promise<void>((resolve) => {
+      releaseAuthentication = resolve
+    })
+    const normalizationGate = new Promise<void>((resolve) => {
+      releaseNormalization = resolve
+    })
+    const baseConnector = fixtureConnector({ observedAt: '2026-07-08T18:00:00.000Z' })
+    const connector: AppJobConnector = {
+      ...baseConnector,
+      async refresh(input, runtime) {
+        await runtime.progress?.report({
+          stage: 'authenticating',
+          counts: {
+            attempted: 0,
+            discovered: 0,
+            eligible: 0,
+            filtered: 0,
+            remainingTarget: 8,
+            resolvedEmployerOrAts: 0,
+            resolvedThirdParty: 0,
+            skipped: 0,
+            unresolved: 0,
+          },
+        })
+        await authenticationGate
+        await runtime.progress?.report({
+          stage: 'normalizing',
+          counts: {
+            attempted: 3,
+            discovered: 20,
+            eligible: 20,
+            filtered: 0,
+            remainingTarget: 6,
+            resolvedEmployerOrAts: 1,
+            resolvedThirdParty: 1,
+            skipped: 0,
+            unresolved: 1,
+          },
+          wait: {
+            minDelayMs: 1_000,
+            maxDelayMs: 2_000,
+            reason: 'jobright_resolution',
+          },
+        })
+        await normalizationGate
+        return baseConnector.refresh(input, runtime)
+      },
+    }
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([connector]),
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-fixture',
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    await repository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+    })
+
+    const pendingRun = client.connectors.runs.trigger({
+      connectorInstanceId: 'connector-instance-fixture',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual',
+    })
+
+    await vi.waitFor(async () => {
+      await expect(client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      })).resolves.toMatchObject({
+        items: [{ status: 'running', stats: { stage: 'authenticating', discovered: 0 } }],
+      })
+    })
+
+    releaseAuthentication?.()
+    await vi.waitFor(async () => {
+      await expect(client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      })).resolves.toMatchObject({
+        items: [{
+          status: 'running',
+          stats: {
+            attempted: 3,
+            discovered: 20,
+            remainingTarget: 6,
+            resolvedEmployerOrAts: 1,
+            resolvedThirdParty: 1,
+            stage: 'normalizing',
+            unresolved: 1,
+            wait: {
+              maxDelayMs: 2_000,
+              minDelayMs: 1_000,
+              reason: 'jobright_resolution',
+            },
+          },
+        }],
+      })
+    })
+
+    releaseNormalization?.()
+    await expect(pendingRun).resolves.toMatchObject({ status: 'completed' })
     sqlite.close()
   })
 
@@ -2967,6 +3184,7 @@ function fixtureConnector({
           dedupeKeys: [`official:https://jobs.example.com/apply/${slug}`],
           sourceMetadata: {
             fixture: true,
+            destinationClass: 'employer_or_ats',
           },
           evidence: [
             {

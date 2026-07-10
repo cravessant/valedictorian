@@ -64,6 +64,13 @@
       "when": 1783606002219,
       "tag": "0008_third_leo",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1783711533158,
+      "tag": "0009_daily_rick_jones",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,8 @@ import type {
   ConnectorRefreshMode,
   ConnectorRefreshResult,
   ConnectorRuntime,
+  ConnectorProgressRuntime,
+  ConnectorProgressSnapshot,
   JobConnector,
 } from '@sparxie/valedictorian-connectors-core'
 import type {
@@ -51,6 +53,7 @@ export interface AppConnectorAuthHost {
 
 export type AppConnectorRuntimePorts = {
   delay?: ConnectorDelayRuntime
+  progress?: ConnectorProgressRuntime
 }
 
 export interface AppJobConnector extends Omit<JobConnector, 'refresh' | 'validateAuth'> {
@@ -187,6 +190,9 @@ export function createConnectorRunner({
       authRequirements,
       auth,
       sensitiveValues,
+      input.connectorRunId
+        ? createPersistedProgressRuntime(repository, input.connectorRunId, now, runtime.progress)
+        : runtime.progress,
     )
     const result = await connector.refresh(
       {
@@ -305,6 +311,7 @@ export function createConnectorRunner({
       authRequirements,
       auth,
       sensitiveValues,
+      runtime.progress,
     )
 
     let result: ConnectorAuthValidationResult
@@ -563,11 +570,13 @@ function createRunRuntime(
   authRequirements: ConnectorAuthRequirement[],
   authHost: AppConnectorAuthHost | undefined,
   sensitiveValues: Set<string>,
+  progress: ConnectorProgressRuntime | undefined,
 ): AppConnectorRuntime {
   const grants = new Map<string, Promise<AppConnectorAuthGrant>>()
 
   return {
     ...runtime,
+    ...(progress ? { progress } : {}),
     auth: {
       async resolve(input) {
         const cacheKey = `${input.id}\u0000${input.mode ?? ''}`
@@ -594,6 +603,62 @@ function createRunRuntime(
         }
       },
     },
+  }
+}
+
+const connectorProgressCountKeys = [
+  'attempted',
+  'discovered',
+  'eligible',
+  'filtered',
+  'remainingTarget',
+  'resolvedEmployerOrAts',
+  'resolvedThirdParty',
+  'skipped',
+  'unresolved',
+] as const
+
+function createPersistedProgressRuntime(
+  repository: ReturnType<typeof createSqliteConnectorRepository>,
+  connectorRunId: string,
+  now: () => Date,
+  downstream: ConnectorProgressRuntime | undefined,
+): ConnectorProgressRuntime {
+  return {
+    async report(snapshot) {
+      await repository.updateRunProgress({
+        connectorRunId,
+        stats: sanitizeProgressSnapshot(snapshot, now().toISOString()),
+      })
+      await downstream?.report(snapshot)
+    },
+  }
+}
+
+function sanitizeProgressSnapshot(
+  snapshot: ConnectorProgressSnapshot,
+  lastProgressAt: string,
+): Record<string, unknown> {
+  const counts: Record<string, number> = {}
+
+  for (const key of connectorProgressCountKeys) {
+    const value = snapshot.counts[key]
+    counts[key] = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+  }
+
+  return {
+    ...counts,
+    lastProgressAt,
+    stage: snapshot.stage,
+    wait: snapshot.wait
+      ? {
+          maxDelayMs: Math.max(0, Math.floor(snapshot.wait.maxDelayMs)),
+          minDelayMs: Math.max(0, Math.floor(snapshot.wait.minDelayMs)),
+          reason: snapshot.wait.reason === 'jobright_resolution'
+            ? 'jobright_resolution'
+            : 'connector_pacing',
+        }
+      : null,
   }
 }
 

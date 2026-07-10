@@ -120,7 +120,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(9)
+    expect(migrationRows).toHaveLength(10)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -369,6 +369,9 @@ describe('SQLite database', () => {
       {
         name: '20260702000000_job_timing_terms',
       },
+      {
+        name: '20260710000000_sourcing_destination_projection',
+      },
     ])
   })
 
@@ -424,6 +427,245 @@ describe('SQLite database', () => {
     })
   })
 
+  it('fails closed for connector 0.4.1 findings without inventing destination provenance', async () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table policy_config (
+        id text primary key,
+        config_json text not null,
+        created_at text not null,
+        updated_at text not null
+      );
+      create table sourcing_findings (
+        id text primary key,
+        term text,
+        timing_mode text not null default 'unknown',
+        terms_json text not null default '[]',
+        start_date text,
+        end_date text,
+        official_url text,
+        source_url text,
+        destination_class text,
+        destination_url text,
+        intermediary_url text,
+        usability text,
+        blocker text,
+        merge_status text not null,
+        merge_notes text,
+        updated_at text not null
+      );
+      create table connector_observations (
+        id text primary key,
+        connector_id text not null,
+        connector_version text not null,
+        links_json text not null,
+        sourcing_finding_id text,
+        observed_at text not null,
+        deleted_at text
+      );
+      insert into sourcing_findings (
+        id, official_url, source_url, merge_status, updated_at
+      ) values (
+        'finding-legacy',
+        'https://www.linkedin.com/jobs/view/123456',
+        'https://jobright.ai/jobs/info/job-123456',
+        'new',
+        '2026-07-09T18:00:00.000Z'
+      );
+      insert into sourcing_findings (
+        id, official_url, source_url, destination_class, destination_url,
+        intermediary_url, usability, merge_status, updated_at
+      ) values (
+        'finding-current',
+        'https://jobs.lever.co/example/current-role',
+        'https://jobright.ai/jobs/info/job-current',
+        'employer_or_ats',
+        'https://jobs.lever.co/example/current-role',
+        'https://jobright.ai/jobs/info/job-current',
+        'usable',
+        'new',
+        '2026-07-10T18:00:00.000Z'
+      );
+      insert into sourcing_findings (
+        id, official_url, source_url, merge_status, updated_at
+      ) values (
+        'finding-external-source',
+        'https://www.linkedin.com/jobs/view/external-role',
+        'https://www.linkedin.com/jobs/view/external-role',
+        'new',
+        '2026-07-09T19:00:00.000Z'
+      );
+      insert into sourcing_findings (
+        id, official_url, source_url, destination_class, destination_url,
+        intermediary_url, usability, merge_status, updated_at
+      ) values
+        (
+          'finding-prerelease',
+          'https://jobs.lever.co/example/prerelease',
+          'https://jobright.ai/jobs/info/prerelease',
+          'employer_or_ats',
+          'https://jobs.lever.co/example/prerelease',
+          'https://jobright.ai/jobs/info/prerelease',
+          'usable', 'new', '2026-07-09T20:00:00.000Z'
+        ),
+        (
+          'finding-garbage-version',
+          'https://jobs.lever.co/example/garbage',
+          'https://jobright.ai/jobs/info/garbage',
+          'employer_or_ats',
+          'https://jobs.lever.co/example/garbage',
+          'https://jobright.ai/jobs/info/garbage',
+          'usable', 'new', '2026-07-09T20:01:00.000Z'
+        ),
+        (
+          'finding-later-stable',
+          'https://jobs.lever.co/example/later',
+          'https://jobright.ai/jobs/info/later',
+          'employer_or_ats',
+          'https://jobs.lever.co/example/later',
+          'https://jobright.ai/jobs/info/later',
+          'usable', 'new', '2026-07-09T20:02:00.000Z'
+        );
+      insert into connector_observations (
+        id, connector_id, connector_version, links_json, sourcing_finding_id, observed_at, deleted_at
+      ) values (
+        'observation-legacy',
+        'jobright.resolver',
+        '0.4.1',
+        '{"source":"https://jobright.ai/jobs/info/job-123456","intermediary":"https://jobright.ai/jobs/info/job-123456","official":"https://www.linkedin.com/jobs/view/123456"}',
+        'finding-legacy',
+        '2026-07-09T18:00:00.000Z',
+        null
+      );
+      insert into connector_observations (
+        id, connector_id, connector_version, links_json, sourcing_finding_id, observed_at, deleted_at
+      ) values
+        (
+          'observation-prerelease', 'jobright.resolver', '0.4.3-beta.1',
+          '{"source":"https://jobright.ai/jobs/info/prerelease","intermediary":"https://jobright.ai/jobs/info/prerelease","official":"https://jobs.lever.co/example/prerelease"}',
+          'finding-prerelease', '2026-07-09T20:00:00.000Z', null
+        ),
+        (
+          'observation-garbage-version', 'jobright.resolver', '0.4.3garbage',
+          '{"source":"https://jobright.ai/jobs/info/garbage","intermediary":"https://jobright.ai/jobs/info/garbage","official":"https://jobs.lever.co/example/garbage"}',
+          'finding-garbage-version', '2026-07-09T20:01:00.000Z', null
+        ),
+        (
+          'observation-later-stable', 'jobright.resolver', '0.4.4',
+          '{"source":"https://jobright.ai/jobs/info/later","intermediary":"https://jobright.ai/jobs/info/later","official":"https://jobs.lever.co/example/later"}',
+          'finding-later-stable', '2026-07-09T20:02:00.000Z', null
+        );
+      insert into connector_observations (
+        id, connector_id, connector_version, links_json, sourcing_finding_id, observed_at, deleted_at
+      ) values
+        (
+          'observation-current-newest', 'jobright.resolver', '0.4.3',
+          '{"source":"https://jobright.ai/jobs/info/job-current","intermediary":"https://jobright.ai/jobs/info/job-current","official":"https://jobs.lever.co/example/current-role"}',
+          'finding-current', '2026-07-10T18:00:00.000Z', null
+        ),
+        (
+          'observation-current-older', 'jobright.resolver', '0.4.1',
+          '{"source":"https://jobright.ai/jobs/info/job-current","intermediary":"https://jobright.ai/jobs/info/job-current","official":"https://www.linkedin.com/jobs/view/stale"}',
+          'finding-current', '2026-07-09T17:00:00.000Z', null
+        );
+      insert into connector_observations (
+        id, connector_id, connector_version, links_json, sourcing_finding_id, observed_at, deleted_at
+      ) values (
+        'observation-external-source',
+        'jobright.resolver',
+        '0.4.1',
+        '{"source":"https://www.linkedin.com/jobs/view/external-role","intermediary":null,"official":"https://www.linkedin.com/jobs/view/external-role"}',
+        'finding-external-source',
+        '2026-07-09T19:00:00.000Z',
+        null
+      );
+    `)
+
+    await createDataMigrationUmzug(database).up()
+
+    expect(database.prepare(`
+      select destination_class, destination_url, intermediary_url, usability,
+        official_url, source_url, merge_status
+      from sourcing_findings where id = 'finding-legacy'
+    `).get()).toEqual({
+      destination_class: null,
+      destination_url: null,
+      intermediary_url: 'https://jobright.ai/jobs/info/job-123456',
+      usability: 'review_only',
+      official_url: null,
+      source_url: 'https://jobright.ai/jobs/info/job-123456',
+      merge_status: 'blocked',
+    })
+    expect(JSON.parse((database.prepare(`
+      select links_json from connector_observations where id = 'observation-legacy'
+    `).get() as { links_json: string }).links_json)).toEqual({
+      source: 'https://jobright.ai/jobs/info/job-123456',
+      intermediary: 'https://jobright.ai/jobs/info/job-123456',
+      official: 'https://www.linkedin.com/jobs/view/123456',
+    })
+    expect(database.prepare(`
+      select destination_class, destination_url, intermediary_url, usability, official_url
+      from sourcing_findings where id = 'finding-current'
+    `).get()).toEqual({
+      destination_class: 'employer_or_ats',
+      destination_url: 'https://jobs.lever.co/example/current-role',
+      intermediary_url: 'https://jobright.ai/jobs/info/job-current',
+      usability: 'usable',
+      official_url: 'https://jobs.lever.co/example/current-role',
+    })
+    expect(database.prepare(`
+      select destination_class, destination_url, intermediary_url, usability,
+        official_url, source_url, merge_status
+      from sourcing_findings where id = 'finding-external-source'
+    `).get()).toEqual({
+      destination_class: null,
+      destination_url: null,
+      intermediary_url: null,
+      usability: 'review_only',
+      official_url: null,
+      source_url: null,
+      merge_status: 'blocked',
+    })
+    expect(JSON.parse((database.prepare(`
+      select links_json from connector_observations where id = 'observation-external-source'
+    `).get() as { links_json: string }).links_json)).toEqual({
+      source: 'https://www.linkedin.com/jobs/view/external-role',
+      intermediary: null,
+      official: 'https://www.linkedin.com/jobs/view/external-role',
+    })
+    expect(database.prepare(`
+      select id, destination_class, destination_url, usability, official_url, merge_status
+      from sourcing_findings
+      where id in ('finding-prerelease', 'finding-garbage-version', 'finding-later-stable')
+      order by id
+    `).all()).toEqual([
+      {
+        id: 'finding-garbage-version',
+        destination_class: null,
+        destination_url: null,
+        usability: 'review_only',
+        official_url: null,
+        merge_status: 'blocked',
+      },
+      {
+        id: 'finding-later-stable',
+        destination_class: 'employer_or_ats',
+        destination_url: 'https://jobs.lever.co/example/later',
+        usability: 'usable',
+        official_url: 'https://jobs.lever.co/example/later',
+        merge_status: 'new',
+      },
+      {
+        id: 'finding-prerelease',
+        destination_class: null,
+        destination_url: null,
+        usability: 'review_only',
+        official_url: null,
+        merge_status: 'blocked',
+      },
+    ])
+  })
+
   it('records data migrations through Umzug SQLite storage', async () => {
     const database = createInMemoryDatabase()
     database.exec(`
@@ -446,6 +688,9 @@ describe('SQLite database', () => {
       },
       {
         name: '20260702000000_job_timing_terms',
+      },
+      {
+        name: '20260710000000_sourcing_destination_projection',
       },
     ])
   })

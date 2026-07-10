@@ -1486,6 +1486,11 @@ describe('local Valedictorian HTTP server', () => {
         headers: { authorization: 'Bearer server-token' },
       }).then(readJson),
     ).resolves.toMatchObject({ total: 1, items: [{ id: finding.id }] })
+    await expect(
+      fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings?usability=usable&destinationClass=employer_or_ats`, {
+        headers: { authorization: 'Bearer server-token' },
+      }).then(readJson),
+    ).resolves.toMatchObject({ total: 0, items: [] })
 
     const blockedFindingResponse = await fetch(`${server.url}/v1/workspaces/workspace-1/sourcing/findings`, {
       method: 'POST',

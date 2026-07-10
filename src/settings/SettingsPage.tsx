@@ -32,6 +32,7 @@ interface SettingsPageProps {
   workspace: WorkspaceSummary | null
   workspaceApi: WorkspacePreloadApi
   onConnectorRunSettled: () => void
+  onOpenSourcingRuns: () => void
   onSettingsPatch: (patch: AppSettingsPatch) => void
 }
 
@@ -216,6 +217,7 @@ function SettingsPage({
   workspace,
   workspaceApi,
   onConnectorRunSettled,
+  onOpenSourcingRuns,
   onSettingsPatch,
 }: SettingsPageProps) {
   const selectedItem = settingsNavGroups
@@ -250,6 +252,7 @@ function SettingsPage({
           {selectedPanel === SETTINGS_PANELS.CONNECTORS ? (
             <ConnectorSettingsPanel
               connectorsApi={connectorsApi}
+              onOpenSourcingRuns={onOpenSourcingRuns}
               onRunSettled={onConnectorRunSettled}
               profileApi={profileApi}
             />
@@ -306,17 +309,19 @@ type ConnectorAuthUiState =
   | { kind: 'cancelled'; message: string }
   | { kind: 'local'; message: string; status: 'action_required' | 'failed' }
 
-const jobrightConnectorVersion = '0.4.1'
+const jobrightConnectorVersion = '0.4.3'
 const jobrightConnectorId = 'jobright.resolver'
 const secureStorageUnavailableMessage =
   'Secure storage is unavailable. Enable platform encryption, then try again.'
 
 function ConnectorSettingsPanel({
   connectorsApi,
+  onOpenSourcingRuns,
   onRunSettled,
   profileApi,
 }: {
   connectorsApi: ConnectorsPreloadApi
+  onOpenSourcingRuns: () => void
   onRunSettled: () => void
   profileApi: ProfilePreloadApi
 }) {
@@ -333,6 +338,55 @@ function ConnectorSettingsPanel({
   const [latestRuns, setLatestRuns] = useState<Record<string, ConnectorSettingsRun>>({})
   const [connectorActionError, setConnectorActionError] = useState<string | null>(null)
   const authValidationGenerations = useRef<Record<string, number>>({})
+
+  useEffect(() => {
+    if (!runningInstanceId) {
+      return
+    }
+
+    let cancelled = false
+    let pollTimer: ReturnType<typeof setTimeout> | undefined
+
+    const poll = async () => {
+      try {
+        const result = await connectorsApi.runs.list({
+          connectorInstanceId: runningInstanceId,
+          limit: 1,
+          offset: 0,
+        })
+        const run = result.items[0]
+
+        if (cancelled) {
+          return
+        }
+
+        if (run) {
+          setLatestRuns((currentRuns) => ({ ...currentRuns, [runningInstanceId]: run }))
+          setLatestRunStatuses((currentStatuses) => ({
+            ...currentStatuses,
+            [runningInstanceId]: run.status,
+          }))
+        }
+
+        if (!run || run.status === 'queued' || run.status === 'running') {
+          pollTimer = setTimeout(poll, 500)
+        }
+      } catch {
+        if (!cancelled) {
+          pollTimer = setTimeout(poll, 1_000)
+        }
+      }
+    }
+
+    void poll()
+
+    return () => {
+      cancelled = true
+      if (pollTimer) {
+        clearTimeout(pollTimer)
+      }
+    }
+  }, [connectorsApi, runningInstanceId])
 
   function nextAuthValidationGeneration(instanceId: string): number {
     const nextGeneration = (authValidationGenerations.current[instanceId] ?? 0) + 1
@@ -952,16 +1006,35 @@ function ConnectorSettingsPanel({
                       </Button>
                     </div>
                     {latestRunStatuses[instance.id] ? (
-                      <div className="grid gap-2" aria-label={`Latest run details for ${instance.displayName}`}>
-                        <p className="text-xs font-medium text-muted-foreground" role="status">
+                      <div
+                        aria-atomic="true"
+                        aria-label={`${instance.displayName} run progress`}
+                        aria-live="polite"
+                        className="grid gap-2"
+                        role="status"
+                      >
+                        <p className="text-xs font-medium text-muted-foreground">
                           Latest run: {latestRunStatuses[instance.id]}
                         </p>
+                        {latestRun ? <ConnectorRunProgressDetails run={latestRun} /> : null}
                         {runMetrics.length > 0 ? (
                           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                             {runMetrics.map((metric) => (
                               <span key={metric.label}>{metric.label}: {metric.value}</span>
                             ))}
                           </div>
+                        ) : null}
+                        {latestRun ? (
+                          <Button
+                            aria-label={`View ${latestRun.id} in Sourcing runs`}
+                            className="w-fit"
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                            onClick={onOpenSourcingRuns}
+                          >
+                            View in Sourcing runs
+                          </Button>
                         ) : null}
                       </div>
                     ) : null}
@@ -1082,14 +1155,50 @@ function connectorRunMetrics(run: ConnectorSettingsRun): Array<{ label: string; 
     numericRunMetric(stats, 'eligible', 'Eligible'),
     numericRunMetric(stats, 'attempted', 'Attempted'),
     numericRunMetric(stats, 'resolved', 'Resolved'),
+    numericRunMetric(stats, 'resolvedEmployerOrAts', 'Employer / ATS usable'),
+    numericRunMetric(stats, 'resolvedThirdParty', 'Third-party usable'),
+    numericRunMetric(stats, 'unresolved', 'Unresolved'),
+    numericRunMetric(stats, 'remainingTarget', 'Remaining target'),
     numericRunMetric(stats, 'authRequired', 'Auth required'),
-    numericRunMetric(stats, 'projected', 'Projected'),
+    numericRunMetric(stats, 'projectedUsable', 'Projected usable'),
+    numericRunMetric(stats, 'retainedForReview', 'Retained for review'),
     { label: 'Observations', value: run.observationCount },
     { label: 'Warnings', value: run.warningCount },
     failureMetric,
   ]
 
   return metrics.filter((metric): metric is { label: string; value: number } => metric !== null)
+}
+
+function ConnectorRunProgressDetails({ run }: { run: ConnectorSettingsRun }) {
+  const stats = recordFromUnknown(run.stats)
+  const stage = stringFromUnknown(stats.stage)
+  const lastProgressAt = stringFromUnknown(stats.lastProgressAt)
+  const wait = recordFromUnknown(stats.wait)
+  const startedAtMs = Date.parse(run.startedAt)
+  const endAtMs = run.completedAt ? Date.parse(run.completedAt) : Date.now()
+  const elapsedSeconds = Number.isFinite(startedAtMs) && Number.isFinite(endAtMs)
+    ? Math.max(0, Math.floor((endAtMs - startedAtMs) / 1_000))
+    : null
+
+  return (
+    <div className="grid gap-1 text-xs text-muted-foreground">
+      {stage ? <span>Stage: {formatConnectorStage(stage)}</span> : null}
+      <span>Started: {run.startedAt}</span>
+      {elapsedSeconds !== null ? <span>Elapsed: {elapsedSeconds}s</span> : null}
+      {lastProgressAt ? <span>Last progress: {lastProgressAt}</span> : null}
+      {Object.keys(wait).length > 0 ? (
+        <span>Waiting between bounded Jobright API requests.</span>
+      ) : null}
+    </div>
+  )
+}
+
+function formatConnectorStage(stage: string): string {
+  return stage
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function numericRunMetric(
@@ -1117,8 +1226,9 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
 
   useEffect(() => {
     let cancelled = false
+    let pollTimer: ReturnType<typeof setTimeout> | undefined
 
-    connectorsApi.list()
+    const loadRuns = () => connectorsApi.list()
       .then(async ({ items: instances }) => {
         const runLists = await Promise.all(instances.map(async (instance) => ({
           connectorId: instance.connectorId,
@@ -1139,6 +1249,9 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
         if (!cancelled) {
           setItems(runs)
           setError(null)
+          if (runs.some(({ run }) => run.status === 'queued' || run.status === 'running')) {
+            pollTimer = setTimeout(loadRuns, 1_000)
+          }
         }
       })
       .catch(() => {
@@ -1153,8 +1266,13 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
         }
       })
 
+    void loadRuns()
+
     return () => {
       cancelled = true
+      if (pollTimer) {
+        clearTimeout(pollTimer)
+      }
     }
   }, [connectorsApi])
 
@@ -1194,7 +1312,11 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
             const retryGuidance = safeRunRetryGuidance(run, connectorId)
 
             return (
-              <article key={run.id} className="space-y-3 rounded-md border border-border bg-card p-4">
+              <article
+                key={run.id}
+                aria-live={run.status === 'queued' || run.status === 'running' ? 'polite' : undefined}
+                className="space-y-3 rounded-md border border-border bg-card p-4"
+              >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold text-foreground">{connectorName}</h3>
@@ -1206,6 +1328,7 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
                     {run.status}
                   </span>
                 </div>
+                <ConnectorRunProgressDetails run={run} />
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                   {connectorRunMetrics(run).map((metric) => (
                     <span key={metric.label}>{metric.label}: {metric.value}</span>

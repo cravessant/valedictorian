@@ -69,6 +69,8 @@ import {
   type SourcingFindingsListInput,
   type SourcingFindingsListResult,
   type SourcingMergeStatus,
+  type SourcingDestinationClass,
+  type SourcingUsability,
   type UpdateSourcingFindingInput,
 } from 'sparxie'
 import {
@@ -266,6 +268,8 @@ function App({
   const [hasLoadedConnectorStatus, setHasLoadedConnectorStatus] = useState(false)
   const [connectorStatusError, setConnectorStatusError] = useState<string | null>(null)
   const [sourcingMergeStatus, setSourcingMergeStatus] = useState<SourcingMergeStatus | undefined>(undefined)
+  const [sourcingDestinationClass, setSourcingDestinationClass] = useState<SourcingDestinationClass | undefined>(undefined)
+  const [sourcingUsability, setSourcingUsability] = useState<SourcingUsability | undefined>(undefined)
   const [sourcingSourceId, setSourcingSourceId] = useState('')
   const [sourcingOffset, setSourcingOffset] = useState(0)
   const [sourcingReloadKey, setSourcingReloadKey] = useState(0)
@@ -299,8 +303,14 @@ function App({
     [actionQueueBucket, actionQueueOffset],
   )
   const sourcingQuery = useMemo(
-    () => buildSourcingFindingsListQuery(sourcingMergeStatus, sourcingSourceId, sourcingOffset),
-    [sourcingMergeStatus, sourcingOffset, sourcingSourceId],
+    () => buildSourcingFindingsListQuery(
+      sourcingMergeStatus,
+      sourcingSourceId,
+      sourcingOffset,
+      sourcingDestinationClass,
+      sourcingUsability,
+    ),
+    [sourcingDestinationClass, sourcingMergeStatus, sourcingOffset, sourcingSourceId, sourcingUsability],
   )
   const isInitialLoading = isLoading && !hasLoadedApplications
   const canAutoRefreshData =
@@ -1035,6 +1045,7 @@ function App({
             workspace={workspace}
             workspaceApi={workspaceApi}
             onConnectorRunSettled={reloadConnectorRunOutcomes}
+            onOpenSourcingRuns={() => setSelectedSettingsPanel(SETTINGS_PANELS.SOURCING_RUNS)}
             onSettingsPatch={updateSettings}
           />
         ) : appView === APP_VIEWS.PROFILE ? (
@@ -1072,9 +1083,11 @@ function App({
             error={sourcingError}
             isLoading={isSourcingLoading && !hasLoadedSourcing}
             mergeStatus={sourcingMergeStatus}
+            destinationClass={sourcingDestinationClass}
             promotingFindingId={promotingFindingId}
             result={sourcingResult}
             sourceId={sourcingSourceId}
+            usability={sourcingUsability}
             onCreateFinding={async (input) => {
               const finding = await createSourcingFinding(input)
               reloadSourcing()
@@ -1086,11 +1099,19 @@ function App({
               return finding
             }}
             onMergeStatusChange={updateSourcingMergeStatus}
+            onDestinationClassChange={(destinationClass) => {
+              setSourcingDestinationClass(destinationClass)
+              setSourcingOffset(0)
+            }}
             onNextPage={() => setSourcingOffset(sourcingOffset + PAGE_LIMIT)}
             onOpenApplication={openApplicationDetail}
             onPreviousPage={() => setSourcingOffset(Math.max(0, sourcingOffset - PAGE_LIMIT))}
             onPromoteFinding={promoteFinding}
             onSourceChange={updateSourcingSource}
+            onUsabilityChange={(usability) => {
+              setSourcingUsability(usability)
+              setSourcingOffset(0)
+            }}
             onUpdateFinding={async (input) => {
               const finding = await updateSourcingFinding(input)
               reloadSourcing()

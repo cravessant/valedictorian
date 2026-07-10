@@ -12,7 +12,7 @@ describe('connector registry', () => {
     expect(connector?.definition).toMatchObject({
       displayName: 'Jobright internslist',
       id: 'jobright.resolver',
-      version: '0.4.1',
+      version: '0.4.3',
     })
     expect(connector?.definition.auth).toMatchObject({
       modes: ['username_password'],
@@ -44,11 +44,11 @@ describe('connector registry', () => {
       ),
     ) as { version: string }
 
-    expect(appPackage.dependencies.sparxie).toBe('0.7.4')
-    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.4.1')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.4.1')
-    expect(sparxiePackage.version).toBe('0.7.4')
-    expect(jobrightPackage.version).toBe('0.4.1')
-    expect(corePackage.version).toBe('0.4.1')
+    expect(appPackage.dependencies.sparxie).toBe('0.7.5')
+    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.4.3')
+    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.4.3')
+    expect(sparxiePackage.version).toBe('0.7.5')
+    expect(jobrightPackage.version).toBe('0.4.3')
+    expect(corePackage.version).toBe('0.4.3')
   })
 })

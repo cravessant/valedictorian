@@ -13,6 +13,8 @@ import {
   manualSourcingDecisionStatuses,
   roleKinds,
   sourcingMergeStatuses,
+  sourcingDestinationClasses,
+  sourcingUsabilities,
   type CreateSourcingFindingInput,
   type JobTerm,
   type JobTimingMode,
@@ -21,6 +23,8 @@ import {
   type SourcingFinding,
   type SourcingFindingsListResult,
   type SourcingMergeStatus,
+  type SourcingDestinationClass,
+  type SourcingUsability,
   type UpdateSourcingFindingInput,
 } from 'sparxie'
 import { formatSourcingLocation } from '../../app/format'
@@ -34,17 +38,21 @@ interface SourcingPageProps {
   error: string | null
   isLoading: boolean
   mergeStatus: SourcingMergeStatus | undefined
+  destinationClass: SourcingDestinationClass | undefined
   promotingFindingId: string | null
   result: SourcingFindingsListResult
   sourceId: string
+  usability: SourcingUsability | undefined
   onCreateFinding: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
   onDecideFinding: (input: SetSourcingFindingDecisionInput) => Promise<SourcingFinding>
   onMergeStatusChange: (mergeStatus: SourcingMergeStatus | undefined) => void
+  onDestinationClassChange: (destinationClass: SourcingDestinationClass | undefined) => void
   onOpenApplication: (application: ApplicationDetailSeed) => void
   onPreviousPage: () => void
   onNextPage: () => void
   onPromoteFinding: (findingId: string) => void
   onSourceChange: (sourceId: string) => void
+  onUsabilityChange: (usability: SourcingUsability | undefined) => void
   onUpdateFinding: (input: UpdateSourcingFindingInput) => Promise<SourcingFinding>
 }
 
@@ -53,17 +61,21 @@ function SourcingPage({
   error,
   isLoading,
   mergeStatus,
+  destinationClass,
   promotingFindingId,
   result,
   sourceId,
+  usability,
   onCreateFinding,
   onDecideFinding,
   onMergeStatusChange,
+  onDestinationClassChange,
   onOpenApplication,
   onPreviousPage,
   onNextPage,
   onPromoteFinding,
   onSourceChange,
+  onUsabilityChange,
   onUpdateFinding,
 }: SourcingPageProps) {
   const [addingFinding, setAddingFinding] = useState(false)
@@ -99,7 +111,7 @@ function SourcingPage({
         </header>
 
         <section aria-label="Sourcing filters" className="rounded-md border border-border bg-card p-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="grid gap-1 text-xs font-medium text-muted-foreground">
               Review
               <div className="flex gap-2">
@@ -134,6 +146,40 @@ function SourcingPage({
                   <option key={sourceOption.sourceId} value={sourceOption.sourceId}>
                     {sourceOption.sourceName}
                   </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+              Destination class
+              <select
+                aria-label="Destination class"
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                value={destinationClass ?? ''}
+                onChange={(event) => onDestinationClassChange(
+                  event.target.value
+                    ? event.target.value as SourcingDestinationClass
+                    : undefined,
+                )}
+              >
+                <option value="">Any destination</option>
+                {sourcingDestinationClasses.map((value) => (
+                  <option key={value} value={value}>{destinationClassLabel(value)}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+              Usability
+              <select
+                aria-label="Usability"
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                value={usability ?? ''}
+                onChange={(event) => onUsabilityChange(
+                  event.target.value ? event.target.value as SourcingUsability : undefined,
+                )}
+              >
+                <option value="">Any usability</option>
+                {sourcingUsabilities.map((value) => (
+                  <option key={value} value={value}>{usabilityLabel(value)}</option>
                 ))}
               </select>
             </label>
@@ -292,7 +338,7 @@ function SourcingFindingRow({
   onOpenApplication: (application: ApplicationDetailSeed) => void
   onPromoteFinding: (findingId: string) => void
 }) {
-  const canPromote = item.mergeStatus === 'new'
+  const canPromote = item.mergeStatus === 'new' && item.usability !== 'review_only'
   const decision = getSourcingDecision(item)
 
   return (
@@ -305,7 +351,16 @@ function SourcingFindingRow({
         <span className="mt-1 block text-xs text-muted-foreground">{formatSourcingTiming(item)}</span>
       </TableCell>
       <TableCell>
-        <Badge variant="secondary">{item.sourceName}</Badge>
+        <div className="grid gap-1">
+          <Badge className="w-fit" variant="secondary">{item.sourceName}</Badge>
+          {item.usability ? (
+            <Badge className="w-fit" variant="outline">
+              {item.usability === 'review_only'
+                ? 'Review only'
+                : destinationClassLabel(item.destinationClass)}
+            </Badge>
+          ) : null}
+        </div>
       </TableCell>
       <TableCell>
         <span className="font-mono text-xs text-muted-foreground">{item.workflowRunId}</span>
@@ -350,17 +405,19 @@ function SourcingFindingRow({
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap gap-1">
-          {item.officialUrl ? (
-            <ExternalLinkButton className="px-2" href={item.officialUrl}>
-              official
+          {item.destinationUrl ? (
+            <ExternalLinkButton className="px-2" href={item.destinationUrl}>
+              {item.destinationClass === 'third_party_job_posting' ? 'third-party' : 'employer / ATS'}
             </ExternalLinkButton>
+          ) : item.officialUrl ? (
+            <ExternalLinkButton className="px-2" href={item.officialUrl}>official</ExternalLinkButton>
           ) : null}
-          {item.sourceUrl ? (
-            <ExternalLinkButton className="px-2" href={item.sourceUrl}>
-              source
-            </ExternalLinkButton>
+          {item.intermediaryUrl ? (
+            <ExternalLinkButton className="px-2" href={item.intermediaryUrl}>intermediary</ExternalLinkButton>
+          ) : !item.destinationUrl && item.sourceUrl ? (
+            <ExternalLinkButton className="px-2" href={item.sourceUrl}>source</ExternalLinkButton>
           ) : null}
-          {!item.officialUrl && !item.sourceUrl ? (
+          {!item.destinationUrl && !item.intermediaryUrl && !item.officialUrl && !item.sourceUrl ? (
             <span className="text-muted-foreground">None</span>
           ) : null}
         </div>
@@ -415,6 +472,20 @@ function SourcingFindingRow({
       </TableCell>
     </TableRow>
   )
+}
+
+function destinationClassLabel(value: SourcingDestinationClass | null | undefined): string {
+  if (value === 'employer_or_ats') {
+    return 'Employer / ATS'
+  }
+  if (value === 'third_party_job_posting') {
+    return 'Third-party'
+  }
+  return 'Unresolved'
+}
+
+function usabilityLabel(value: SourcingUsability): string {
+  return value === 'usable' ? 'Projected usable' : 'Retained for review'
 }
 
 function SourcingFindingDispositionModal({

@@ -59,20 +59,27 @@ export function createSqliteConnectorProjectionService({
           })
         }
 
+        const applyProjection = shouldApplyProjection(observation, existingFinding)
         const finding = await sourcingRepository.updateFinding({
           findingId: existingProjection.sourcingFindingId,
-          ...sourcingFindingUpdatePatchForObservation(observation),
+          ...sourcingFindingUpdatePatchForObservation(observation, !applyProjection),
         })
+        const projectedFinding = applyProjection
+          ? await sourcingRepository.setProjectionMetadata({
+              findingId: finding.id,
+              ...projectionMetadataForObservation(observation),
+            })
+          : finding
         await connectorRepository.linkObservationToSourcingFinding({
           connectorObservationId: observation.id,
-          sourcingFindingId: finding.id,
+          sourcingFindingId: projectedFinding.id,
         })
         await connectorRepository.recordProjectionKeys({
-          sourcingFindingId: finding.id,
+          sourcingFindingId: projectedFinding.id,
           dedupeKeys: projectionKeys,
         })
 
-        return { finding }
+        return { finding: projectedFinding }
       }
 
       return projectNewObservation({
@@ -114,11 +121,15 @@ async function projectNewObservation({
     },
   })
 
-  const finding = await sourcingRepository.createFinding({
+  const createdFinding = await sourcingRepository.createFinding({
     workflowRunId: run.id,
     sourceName,
     ...sourcingFindingCreateInputForObservation(observation),
     mergeStatus: 'new',
+  })
+  const finding = await sourcingRepository.setProjectionMetadata({
+    findingId: createdFinding.id,
+    ...projectionMetadataForObservation(observation),
   })
 
   await connectorRepository.linkObservationToSourcingFinding({
@@ -143,6 +154,56 @@ async function projectNewObservation({
   })
 
   return { finding }
+}
+
+function projectionMetadataForObservation(observation: ConnectorObservationRecord): {
+  destinationClass: 'employer_or_ats' | 'third_party_job_posting' | null
+  destinationUrl: string | null
+  intermediaryUrl: string | null
+  usability: 'review_only' | 'usable'
+} {
+  const destinationClass = observation.resolution.status === 'resolved'
+    ? readDestinationClass(observation.sourceMetadata.destinationClass)
+    : null
+  const intermediaryUrl = observation.links.intermediary
+    ?? (destinationClass === 'third_party_job_posting' ? null : observation.links.source)
+  const destinationUrl = destinationClass === 'employer_or_ats'
+    ? observation.links.official
+    : destinationClass === 'third_party_job_posting'
+      ? observation.links.source
+      : null
+
+  if (!destinationClass || !destinationUrl) {
+    return {
+      destinationClass: null,
+      destinationUrl: null,
+      intermediaryUrl,
+      usability: 'review_only',
+    }
+  }
+
+  return {
+    destinationClass,
+    destinationUrl,
+    intermediaryUrl,
+    usability: 'usable',
+  }
+}
+
+function readDestinationClass(value: unknown): NonNullable<SourcingFinding['destinationClass']> | null {
+  if (value === 'employer_or_ats' || value === 'third_party_job_posting') {
+    return value
+  }
+
+  return null
+}
+
+function shouldApplyProjection(
+  observation: ConnectorObservationRecord,
+  finding: SourcingFinding,
+): boolean {
+  return projectionMetadataForObservation(observation).usability === 'usable'
+    || finding.usability !== 'usable'
 }
 
 function buildProjectionDedupeKeys(observation: ConnectorObservationRecord): string[] {
@@ -218,7 +279,10 @@ function sourcingFindingCreateInputForObservation(observation: ConnectorObservat
   }
 }
 
-function sourcingFindingUpdatePatchForObservation(observation: ConnectorObservationRecord) {
+function sourcingFindingUpdatePatchForObservation(
+  observation: ConnectorObservationRecord,
+  preserveProjectionUrls = false,
+) {
   const sourceUrl = observation.links.source ?? observation.links.intermediary
 
   return {
@@ -228,10 +292,12 @@ function sourcingFindingUpdatePatchForObservation(observation: ConnectorObservat
     workMode: inferWorkMode(observation.locationRaw),
     country: 'US',
     locationRaw: observation.locationRaw,
-    ...(observation.links.official
+    ...(!preserveProjectionUrls && observation.links.official
       ? { officialUrl: canonicalizeApplicationUrl(observation.links.official) }
       : {}),
-    ...(sourceUrl ? { sourceUrl: normalizeApplicationUrlPreservingQuery(sourceUrl) } : {}),
+    ...(!preserveProjectionUrls && sourceUrl
+      ? { sourceUrl: normalizeApplicationUrlPreservingQuery(sourceUrl) }
+      : {}),
   }
 }
 

@@ -1062,6 +1062,74 @@ describe('App', () => {
     expect(within(dialog).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
   })
 
+  it('distinguishes employer, third-party, and review-only sourcing destinations', async () => {
+    const queries: SourcingFindingsListInput[] = []
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        sourcingLoader={(query) => {
+          queries.push(query)
+          return Promise.resolve(createSourcingResult([
+            createSourcingFinding({
+              id: 'finding-employer',
+              companyName: 'Employer Co',
+              destinationClass: 'employer_or_ats',
+              destinationUrl: 'https://jobs.lever.co/employer/role-1',
+              intermediaryUrl: 'https://jobright.ai/jobs/info/employer-1',
+              officialUrl: 'https://jobs.lever.co/employer/role-1',
+              sourceUrl: 'https://jobright.ai/jobs/info/employer-1',
+              usability: 'usable',
+            }),
+            createSourcingFinding({
+              id: 'finding-third-party',
+              companyName: 'Third Party Co',
+              destinationClass: 'third_party_job_posting',
+              destinationUrl: 'https://www.linkedin.com/jobs/view/123456',
+              intermediaryUrl: 'https://jobright.ai/jobs/info/third-party-1',
+              officialUrl: null,
+              sourceUrl: 'https://www.linkedin.com/jobs/view/123456',
+              usability: 'usable',
+            }),
+            createSourcingFinding({
+              id: 'finding-review',
+              companyName: 'Review Co',
+              destinationClass: null,
+              destinationUrl: null,
+              intermediaryUrl: 'https://jobright.ai/jobs/info/review-1',
+              officialUrl: null,
+              sourceUrl: 'https://jobright.ai/jobs/info/review-1',
+              usability: 'review_only',
+              mergeStatus: 'blocked',
+            }),
+          ]))
+        }}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
+    const table = await screen.findByRole('table', { name: 'Sourcing findings' })
+
+    expect(within(table).getByText('Employer / ATS')).toBeInTheDocument()
+    expect(within(table).getByText('Third-party')).toBeInTheDocument()
+    expect(within(table).getByText('Review only')).toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: 'Promote Review Co' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Destination class'), {
+      target: { value: 'third_party_job_posting' },
+    })
+    fireEvent.change(screen.getByLabelText('Usability'), { target: { value: 'usable' } })
+
+    await waitFor(() => {
+      expect(queries.at(-1)).toMatchObject({
+        destinationClass: 'third_party_job_posting',
+        usability: 'usable',
+      })
+    })
+  })
+
   it('lets users add and edit sourcing findings from modals', async () => {
     const createFinding = vi.fn(async () => createSourcingFinding({ id: 'finding-new' }))
     const updateFinding = vi.fn(async () =>

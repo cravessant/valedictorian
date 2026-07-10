@@ -14,6 +14,8 @@ import {
   isRunType,
   isManualSourcingDecisionStatus,
   isSourcingMergeStatus,
+  isSourcingDestinationClass,
+  isSourcingUsability,
   isWorkMode,
   connectorAuthModes,
   normalizeApplicationLinkKind,
@@ -444,6 +446,22 @@ export function parseSourcingFindingsListQuery(requestUrl: URL): SourcingFinding
     }
 
     query.mergeStatus = mergeStatus
+  }
+
+  const destinationClass = requestUrl.searchParams.get('destinationClass')
+  if (destinationClass) {
+    if (!isSourcingDestinationClass(destinationClass)) {
+      throw new Error(`Invalid sourcing destination class: ${destinationClass}`)
+    }
+    query.destinationClass = destinationClass
+  }
+
+  const usability = requestUrl.searchParams.get('usability')
+  if (usability) {
+    if (!isSourcingUsability(usability)) {
+      throw new Error(`Invalid sourcing usability: ${usability}`)
+    }
+    query.usability = usability
   }
 
   setStringQuery(requestUrl, 'workflowRunId', (value) => {

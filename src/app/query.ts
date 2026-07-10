@@ -37,12 +37,16 @@ export function buildSourcingFindingsListQuery(
   mergeStatus: SourcingMergeStatus | undefined,
   sourceId: string,
   offset: number,
+  destinationClass?: SourcingFindingsListInput['destinationClass'],
+  usability?: SourcingFindingsListInput['usability'],
 ): SourcingFindingsListInput {
   return removeEmptySourcingValues({
     mergeStatus,
     sourceId,
     limit: PAGE_LIMIT,
     offset,
+    destinationClass,
+    usability,
   })
 }
 
