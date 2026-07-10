@@ -62,6 +62,8 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("authentication, discovery, and application-link normalization are API-only")
     expect(readme).toContain("Discover `internslist` jobs through `POST /swan/recommend/visitor-list/jobs")
     expect(readme).toContain("Normalize selected jobs with authenticated `GET /swan/share/job/{jobId}`")
+    expect(readme).toContain("External hostname alone is never employer evidence")
+    expect(readme).toContain("jobright_application_url_unclassified")
     expect(readme).toContain("Optional Jobright auth-only validation (`validateAuth`)")
     expect(readme).toContain("calls only `POST /swan/auth/login/pwd` and `GET /swan/auth/newinfo`")
     expect(readme).toContain("returns sanitized status/reason metadata")
@@ -134,7 +136,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.1",
+      version: "0.4.2",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -150,7 +152,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.1",
+      version: "0.4.2",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -166,7 +168,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.1",
+      version: "0.4.2",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
