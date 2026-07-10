@@ -57,12 +57,15 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("Source packages must not depend on valedictorian-app")
     expect(readme).toContain("## Jobright Architecture")
     expect(readme).toContain("authentication, discovery, and application-link normalization are API-only")
-    expect(readme).toContain("Call the Jobright `internslist` job-data endpoint")
-    expect(readme).toContain("Use authenticated API calls to normalize Jobright intermediary ids or links")
+    expect(readme).toContain("Discover `internslist` jobs through `POST /swan/recommend/visitor-list/jobs")
+    expect(readme).toContain("Normalize selected jobs with authenticated `GET /swan/share/job/{jobId}`")
     expect(readme).toContain("must not launch or control Electron `BrowserWindow`")
-    expect(readme).toContain("must not scrape HTML, inspect the DOM, or trigger a synthetic Apply action")
+    expect(readme).toContain("must not scrape HTML, inspect the DOM, depend on Cheerio, require `browser_session`")
     expect(readme).toContain("browser-session resolution behavior present in the `v0.3.1` implementation")
     expect(readme).toContain("deprecated architecture")
+    expect(readme).toContain("username_password")
+    expect(readme).toContain("SESSION_ID")
+    expect(readme).toContain("visitor-list")
   })
 
   it("documents stack and local agent-file conventions", () => {
@@ -123,7 +126,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.3.1",
+      version: "0.4.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -139,7 +142,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.3.1",
+      version: "0.4.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -155,7 +158,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.3.1",
+      version: "0.4.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -179,13 +182,14 @@ describe("connector repository conventions", () => {
     expect(harnessPackage.dependencies).toEqual({
       "@sparxie/valedictorian-connectors-core": "workspace:^",
     })
-    expect(jobrightPackage.dependencies).toMatchObject({
+    expect(jobrightPackage.dependencies).toEqual({
       "@sparxie/valedictorian-connectors-core": "workspace:^",
     })
     expect(Object.keys(jobrightPackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
         "@sparxie/valedictorian-connectors-test-harness",
         "better-sqlite3",
+        "cheerio",
         "drizzle-orm",
         "electron",
         "playwright",

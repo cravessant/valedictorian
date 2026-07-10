@@ -29,6 +29,7 @@ export type ConnectorAuthMode =
   | "oauth"
   | "cookie_jar"
   | "browser_session"
+  | "username_password"
 
 export type ConnectorAuthDeclaration = {
   modes: ConnectorAuthMode[]

@@ -1,6 +1,6 @@
 {
   "name": "@sparxie/valedictorian-connectors-test-harness",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Test helpers for Valedictorian connector packages.",
   "author": "Keni",
   "license": "MIT",

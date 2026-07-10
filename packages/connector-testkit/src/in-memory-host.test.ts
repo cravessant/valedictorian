@@ -188,6 +188,86 @@ describe("in-memory connector host", () => {
     ])
   })
 
+  it("resolves username_password grants as secret-backed JSON credentials", async () => {
+    const receivedGrants: unknown[] = []
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.username-password-jobs",
+        version: "0.0.0-fixture",
+        auth: {
+          modes: ["username_password"],
+          requirements: [
+            {
+              id: "jobright",
+              mode: "username_password",
+              label: "Jobright username and password",
+              required: true,
+            },
+          ],
+        },
+      },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        receivedGrants.push(
+          await runtime.auth.resolve({
+            id: "jobright",
+            mode: "username_password",
+          }),
+        )
+
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost({
+      secrets: {
+        jobright_credentials: JSON.stringify({
+          username: "user@example.test",
+          password: "fixture-password",
+        }),
+      },
+    })
+
+    host.registerInstance({
+      auth: [
+        {
+          id: "jobright",
+          mode: "username_password",
+          secretKey: "jobright_credentials",
+        },
+      ],
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_username_password",
+      workspaceId: "workspace_alpha",
+      displayName: "Username password jobs",
+      enabled: true,
+      createdAt: "2026-07-08T15:00:00.000Z",
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_username_password",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: {
+        start: "2026-07-08T15:00:00.000Z",
+        end: "2026-07-08T16:00:00.000Z",
+      },
+    })
+
+    expect(receivedGrants).toEqual([
+      {
+        id: "jobright",
+        mode: "username_password",
+        secretKey: "jobright_credentials",
+        status: "ready",
+        value: JSON.stringify({
+          username: "user@example.test",
+          password: "fixture-password",
+        }),
+      },
+    ])
+    expect(JSON.stringify(host.snapshot())).not.toContain("fixture-password")
+  })
+
   it("resolves secret-backed auth grants without persisting plaintext in host state", async () => {
     const receivedGrants: unknown[] = []
     const connector: JobConnector = {

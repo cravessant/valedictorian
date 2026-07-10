@@ -467,7 +467,8 @@ function resolveAuthGrant(
     referenceMode === "api_key" ||
     referenceMode === "bearer_token" ||
     referenceMode === "oauth" ||
-    referenceMode === "cookie_jar"
+    referenceMode === "cookie_jar" ||
+    referenceMode === "username_password"
   ) {
     return resolveSecretGrant(reference, options)
   }
