@@ -88,6 +88,55 @@ export type ConnectorDelayRuntime = {
   wait(input: ConnectorDelayInput): Promise<number>
 }
 
+export type ConnectorCancellationRuntime = {
+  /**
+   * Aborts when the host requests that the current connector operation stop.
+   * Connectors should preserve completed work in their returned checkpoint.
+   */
+  readonly signal: AbortSignal
+}
+
+export type ConnectorProgressStage =
+  | "authenticating"
+  | "discovering"
+  | "normalizing"
+  | "waiting"
+  | "finalizing"
+
+export type ConnectorProgressCounts = {
+  attempted: number
+  discovered: number
+  eligible: number
+  filtered: number
+  remainingTarget: number
+  resolvedEmployerOrAts: number
+  resolvedThirdParty: number
+  skipped: number
+  unresolved: number
+}
+
+export type ConnectorProgressWait = {
+  maxDelayMs: number
+  minDelayMs: number
+  reason: string
+}
+
+export type ConnectorProgressSnapshot = {
+  counts: ConnectorProgressCounts
+  stage: ConnectorProgressStage
+  wait?: ConnectorProgressWait
+}
+
+export type ConnectorProgressRuntime = {
+  /**
+   * Receives ordered, best-effort observability snapshots. Connectors must await
+   * async reporters only to a documented finite settlement deadline, isolate
+   * reporter failures, consume late rejections, and still return their refresh
+   * result and checkpoint instead of treating this port as a commit handshake.
+   */
+  report(snapshot: ConnectorProgressSnapshot): void | Promise<void>
+}
+
 export type ConnectorBrowserSessionResolveStatus =
   | "resolved"
   | "auth_required"
@@ -160,7 +209,9 @@ export type ConnectorRefreshInput = {
 export type ConnectorRuntime = {
   auth: ConnectorAuthRuntime
   browserSession?: ConnectorBrowserSessionRuntime
+  cancellation?: ConnectorCancellationRuntime
   delay?: ConnectorDelayRuntime
+  progress?: ConnectorProgressRuntime
 }
 
 export type JobObservationLinks = {
@@ -221,11 +272,17 @@ export type ConnectorRefreshStats = {
   attempted?: number
   authRequired?: number
   discovered?: number
+  discoveryPages?: number
   eligible?: number
   filtered?: number
+  remainingTarget?: number
   resolved?: number
+  resolvedEmployerOrAts?: number
+  resolvedThirdParty?: number
   skipped?: number
+  stopReason?: string
   totalAvailable?: number
+  unresolved?: number
 }
 
 export type ConnectorRefreshWarning = {

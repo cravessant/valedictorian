@@ -9,6 +9,7 @@ import type {
   ConnectorCoverageWindow,
   ConnectorDelayInput,
   ConnectorDefinition,
+  ConnectorProgressSnapshot,
   ConnectorRefreshStatus,
   ConnectorRefreshInput,
   ConnectorRefreshMode,
@@ -198,6 +199,7 @@ export type InMemoryConnectorHostRefreshRequest = {
   workspaceId: string
   mode: ConnectorRefreshMode
   coverage: ConnectorCoverageWindow
+  signal?: AbortSignal
 }
 
 export type InMemoryConnectorHostValidateAuthRequest = {
@@ -231,6 +233,9 @@ export type InMemoryConnectorHostOptions = {
     | Promise<ConnectorBrowserSessionResolveResult>
   browserSessions?: Record<string, InMemoryConnectorBrowserSession>
   delay?: (input: ConnectorDelayInput) => number | Promise<number>
+  progress?: (
+    snapshot: ConnectorProgressSnapshot,
+  ) => void | Promise<void>
   secrets?: Record<string, string>
 }
 
@@ -291,6 +296,7 @@ export function createInMemoryConnectorHost(
           instance.auth ?? [],
           connector.definition.auth?.requirements ?? [],
           options,
+          request.signal,
         ),
       )
 
@@ -395,6 +401,7 @@ function createConnectorRuntime(
   authReferences: ConnectorAuthReference[],
   authRequirements: ConnectorAuthRequirement[],
   options: InMemoryConnectorHostOptions,
+  signal?: AbortSignal,
 ): ConnectorRuntime {
   const runtime: ConnectorRuntime = {
     auth: {
@@ -402,6 +409,10 @@ function createConnectorRuntime(
         return resolveAuthGrant(input, authReferences, authRequirements, options)
       },
     },
+  }
+
+  if (signal) {
+    runtime.cancellation = { signal }
   }
 
   if (options.browserSessionResolver) {
@@ -416,6 +427,14 @@ function createConnectorRuntime(
     runtime.delay = {
       async wait(input) {
         return await options.delay!(input)
+      },
+    }
+  }
+
+  if (options.progress) {
+    runtime.progress = {
+      report(snapshot) {
+        return options.progress!(cloneJsonLike(snapshot))
       },
     }
   }

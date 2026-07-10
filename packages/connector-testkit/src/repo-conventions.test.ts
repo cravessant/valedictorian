@@ -76,6 +76,52 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("username_password")
     expect(readme).toContain("SESSION_ID")
     expect(readme).toContain("visitor-list")
+    expect(readme).toContain("## Bounded Jobright Backfill")
+    expect(readme).toContain("useful target defaults to 100")
+    expect(readme).toContain("`soft_batch_boundary`")
+    expect(readme).toContain("`jobright-resolution-checkpoint@3`")
+    expect(readme).toContain("processed source ids")
+    expect(readme).toContain("bounded retry/defer state")
+    expect(readme).toContain("canonical `jobright.public:<job-id>`")
+    expect(readme).toContain("`invalid_discovery_position`")
+    expect(readme).toContain("does not reuse observations from the terminal cycle")
+    expect(readme).toContain("before every costly upstream transition")
+    expect(readme).toContain("ECMAScript date bounds")
+    expect(readme).toContain("absolute per-request ingestion cap")
+    expect(readme).toContain("`runtime.cancellation.signal`")
+    expect(readme).toContain("resumable `cancelled`")
+    expect(readme).toContain("connector-owned timer fallback")
+    expect(readme).toContain("opaque cycle id")
+    expect(readme).toContain("matching active cycle id")
+    expect(readme).toContain("cumulative attempt capacity")
+    expect(readme).toContain("before normalization")
+    expect(readme).toContain("Response-body cancellation aborts")
+    expect(readme).toContain("earliest deadline wins")
+    expect(readme).toContain("persisted stop reason is never authoritative")
+    expect(readme).toContain("Only the released v2 count-only shape")
+    expect(readme).toContain("within canonical attempt capacity")
+    expect(readme).toContain("current page length is never substituted")
+    expect(readme).toContain("full page with an unknown total")
+    expect(readme).toContain("empty or short page")
+    expect(readme).toContain("request size that produced that page")
+    expect(readme).toContain("unexplained processed ids are removed")
+    expect(readme).toContain("capacity-blocked discovery-record")
+    expect(readme).toContain("schema hard ceilings")
+    expect(readme).toContain("without visitor-list rediscovery")
+    expect(readme).toContain("final allowed detail attempt")
+    expect(readme).toContain("current per-source retry setting")
+    expect(readme).toContain("never clears unrelated retry entries")
+    expect(readme).toContain("### Jobright stop precedence")
+    expect(readme).toContain("Cumulative cycle-attempt ceiling reached")
+    expect(readme).toContain("schema-hard retry")
+    expect(readme).toContain("## Sanitized Connector Progress")
+    expect(readme).toContain("optional `runtime.progress.report(...)`")
+    expect(readme).toContain("awaits async reports in order")
+    expect(readme).toContain("best-effort")
+    expect(readme).toContain("`connector_progress_reporting_failed`")
+    expect(readme).toContain("one-second settlement deadline")
+    expect(readme).toContain("30-second settlement deadline")
+    expect(readme).toContain("completed refresh batch")
   })
 
   it("documents stack and local agent-file conventions", () => {
@@ -136,7 +182,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.2",
+      version: "0.4.3",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -152,7 +198,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.2",
+      version: "0.4.3",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -168,7 +214,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.2",
+      version: "0.4.3",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
