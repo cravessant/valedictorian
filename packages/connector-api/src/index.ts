@@ -245,10 +245,33 @@ export type ConnectorRefreshResult = {
   retryHints?: unknown
 }
 
+export type ConnectorAuthValidationInput = {
+  connectorInstanceId: string
+  workspaceId: string
+}
+
+export type ConnectorAuthValidationStatus =
+  | "ready"
+  | "missing"
+  | "expired"
+  | "action_required"
+  | "rate_limited"
+  | "retryable"
+  | "failed"
+
+export type ConnectorAuthValidationResult = {
+  status: ConnectorAuthValidationStatus
+  reason?: string
+}
+
 export type JobConnector = {
   definition: ConnectorDefinition
   refresh(
     input: ConnectorRefreshInput,
     runtime: ConnectorRuntime,
   ): Promise<ConnectorRefreshResult>
+  validateAuth?(
+    input: ConnectorAuthValidationInput,
+    runtime: ConnectorRuntime,
+  ): Promise<ConnectorAuthValidationResult>
 }

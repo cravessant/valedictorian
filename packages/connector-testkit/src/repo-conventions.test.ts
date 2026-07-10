@@ -48,6 +48,9 @@ describe("connector repository conventions", () => {
     expect(readme).not.toContain("@sparxie/valedictorian-connectors-browser-session")
     expect(readme).toContain("Connectors are imported libraries, not mini servers")
     expect(readme).toContain("The app imports connector packages and calls `connector.refresh(...)`")
+    expect(readme).toContain("optional `connector.validateAuth(...)`")
+    expect(readme).toContain("Hosts own encrypted credential persistence and grant resolution")
+    expect(readme).toContain("connectors own upstream authentication semantics")
     expect(readme).toContain("`@sparxie/valedictorian-connectors-core` is the app-to-adapter ABI")
     expect(readme).toContain("`sparxie` is not the connector runtime contract")
     expect(readme).toContain("InternList was reconnaissance")
@@ -59,6 +62,11 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("authentication, discovery, and application-link normalization are API-only")
     expect(readme).toContain("Discover `internslist` jobs through `POST /swan/recommend/visitor-list/jobs")
     expect(readme).toContain("Normalize selected jobs with authenticated `GET /swan/share/job/{jobId}`")
+    expect(readme).toContain("Optional Jobright auth-only validation (`validateAuth`)")
+    expect(readme).toContain("calls only `POST /swan/auth/login/pwd` and `GET /swan/auth/newinfo`")
+    expect(readme).toContain("returns sanitized status/reason metadata")
+    expect(readme).toContain("does not persist the session cookie")
+    expect(readme).toContain("does not run refresh, visitor-list discovery, job-detail normalization, application calls")
     expect(readme).toContain("must not launch or control Electron `BrowserWindow`")
     expect(readme).toContain("must not scrape HTML, inspect the DOM, depend on Cheerio, require `browser_session`")
     expect(readme).toContain("browser-session resolution behavior present in the `v0.3.1` implementation")
@@ -126,7 +134,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.0",
+      version: "0.4.1",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -142,7 +150,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.0",
+      version: "0.4.1",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -158,7 +166,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.0",
+      version: "0.4.1",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({

@@ -3,6 +3,7 @@ import type {
   ConnectorAuthReference,
   ConnectorAuthRequirement,
   ConnectorAuthResolveInput,
+  ConnectorAuthValidationResult,
   ConnectorBrowserSessionResolveInput,
   ConnectorBrowserSessionResolveResult,
   ConnectorCoverageWindow,
@@ -199,12 +200,21 @@ export type InMemoryConnectorHostRefreshRequest = {
   coverage: ConnectorCoverageWindow
 }
 
+export type InMemoryConnectorHostValidateAuthRequest = {
+  connectorInstanceId: string
+  workspaceId: string
+}
+
 export type InMemoryConnectorHost = {
   registerInstance: (instance: ConnectorInstanceRecord) => void
   refresh: (
     connector: JobConnector,
     request: InMemoryConnectorHostRefreshRequest,
   ) => Promise<ConnectorRunRecord>
+  validateAuth: (
+    connector: JobConnector,
+    request: InMemoryConnectorHostValidateAuthRequest,
+  ) => Promise<ConnectorAuthValidationResult>
   snapshot: () => InMemoryConnectorHostSnapshot
 }
 
@@ -319,6 +329,38 @@ export function createInMemoryConnectorHost(
       }
 
       return run
+    },
+
+    async validateAuth(connector, request) {
+      if (typeof connector.validateAuth !== "function") {
+        throw new Error(
+          `Connector does not support auth validation: ${connector.definition.id}`,
+        )
+      }
+
+      const instance = instances.get(request.connectorInstanceId)
+      if (!instance) {
+        throw new Error(
+          `Unknown connector instance: ${request.connectorInstanceId}`,
+        )
+      }
+      if (instance.workspaceId !== request.workspaceId) {
+        throw new Error(
+          `Workspace mismatch for connector instance: ${request.connectorInstanceId}`,
+        )
+      }
+
+      return await connector.validateAuth(
+        {
+          connectorInstanceId: request.connectorInstanceId,
+          workspaceId: request.workspaceId,
+        },
+        createConnectorRuntime(
+          instance.auth ?? [],
+          connector.definition.auth?.requirements ?? [],
+          options,
+        ),
+      )
     },
 
     snapshot() {
