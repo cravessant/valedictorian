@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobright'
+import { JSDOM } from 'jsdom'
 import { describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../src/modules/connectors/connector.registry'
 import type {
@@ -247,26 +248,38 @@ describe('Electron connector ports', () => {
   })
 
   it('resolves a Jobright intermediary URL through the persistent browser session', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-123?utm_source=test'
+    const destinationUrl = 'https://boards.greenhouse.io/example/jobs/12345?gh_jid=12345#apply'
     const windows: FakeConnectorWindow[] = []
     const ports = createElectronConnectorPorts({
       createBrowserWindow(options) {
-        const window = new FakeConnectorWindow(options, {
-          officialUrl: 'https://example.com/jobs/software-engineering-intern',
-          status: 'resolved',
-        })
+        const window = new RedirectingConnectorWindow(options, destinationUrl)
         windows.push(window)
         return window
       },
+      now: () => new Date('2026-07-10T00:58:00.000Z'),
       sessionNamespace: 'workspace-1',
     })
 
     await expect(ports.connectorRuntime.browserSession?.resolveLink({
       sessionId: 'jobright-browser-session',
       source: 'jobright',
-      url: 'https://jobright.ai/jobs/info/job-123',
+      url: sourceUrl,
     })).resolves.toEqual({
-      method: 'electron_browser_session',
-      officialUrl: 'https://example.com/jobs/software-engineering-intern',
+      evidence: [
+        {
+          capturedAt: '2026-07-10T00:58:00.000Z',
+          sourceUrl: 'https://jobright.ai/jobs/info/job-123',
+          type: 'jobright_apply_redirect',
+        },
+        {
+          capturedAt: '2026-07-10T00:58:00.000Z',
+          sourceUrl: 'https://boards.greenhouse.io/example/jobs/12345',
+          type: 'jobright_apply_destination_accepted',
+        },
+      ],
+      method: 'jobright_apply_redirect',
+      officialUrl: destinationUrl,
       status: 'resolved',
     })
 
@@ -275,8 +288,543 @@ describe('Electron connector ports', () => {
     expect(windows[0]?.options.webPreferences.partition).toBe(
       'persist:valedictorian-connector-workspace-1-jobright-browser-session',
     )
-    expect(windows[0]?.loadedUrls).toEqual(['https://jobright.ai/jobs/info/job-123'])
+    expect(windows[0]?.loadedUrls).toEqual([sourceUrl])
     expect(windows[0]?.closed).toBe(true)
+  })
+
+  it('never promotes a social profile as the official application URL', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-social-first'
+    const destinationUrl = 'https://www.linkedin.com/company/example-robotics'
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow: (options) => new RedirectingConnectorWindow(options, destinationUrl),
+      now: () => new Date('2026-07-10T00:59:00.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T00:59:00.000Z',
+          sourceUrl,
+          type: 'jobright_apply_redirect',
+        },
+        {
+          capturedAt: '2026-07-10T00:59:00.000Z',
+          sourceUrl: destinationUrl,
+          type: 'jobright_apply_destination_rejected',
+        },
+      ],
+      method: 'jobright_apply_redirect',
+      officialUrl: null,
+      reason: 'jobright_apply_destination_unverified',
+      status: 'unresolved',
+    })
+  })
+
+  it('never promotes a company marketing page as the official application URL', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-marketing-page'
+    const destinationUrl = 'https://example.com/blog/job/interview-tips'
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow: (options) => new RedirectingConnectorWindow(options, destinationUrl),
+      now: () => new Date('2026-07-10T00:59:30.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T00:59:30.000Z',
+          sourceUrl,
+          type: 'jobright_apply_redirect',
+        },
+        {
+          capturedAt: '2026-07-10T00:59:30.000Z',
+          sourceUrl: destinationUrl,
+          type: 'jobright_apply_destination_rejected',
+        },
+      ],
+      method: 'jobright_apply_redirect',
+      officialUrl: null,
+      reason: 'jobright_apply_destination_unverified',
+      status: 'unresolved',
+    })
+  })
+
+  it('resolves only the destination opened by the Jobright employer-site apply action', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-apply-action'
+    const destinationUrl = 'https://boards.greenhouse.io/example/jobs/12345'
+    const dom = new JSDOM(`
+      <main>
+        <a href="https://www.linkedin.com/company/example-robotics">Company LinkedIn</a>
+        <section>
+          <span>Apply on Employer Site</span>
+          <button type="button">APPLY NOW</button>
+        </section>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    let resolverWindow: FakeConnectorWindow | undefined
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow(options) {
+        const window = new FakeConnectorWindow(
+          options,
+          (script: string) => dom.window.eval(script),
+        )
+        dom.window.document.querySelector('button')?.addEventListener('click', () => {
+          window.webContents.openWindow(destinationUrl)
+        })
+        resolverWindow = window
+        return window
+      },
+      now: () => new Date('2026-07-10T01:00:00.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T01:00:00.000Z',
+          sourceUrl,
+          type: 'jobright_apply_action',
+        },
+        {
+          capturedAt: '2026-07-10T01:00:00.000Z',
+          sourceUrl: destinationUrl,
+          type: 'jobright_apply_destination_accepted',
+        },
+      ],
+      method: 'jobright_apply_action',
+      officialUrl: destinationUrl,
+      status: 'resolved',
+    })
+    expect(resolverWindow?.webContents.executedScriptUserGestures).toEqual([
+      undefined,
+      true,
+    ])
+  })
+
+  it('ignores unrelated external navigation captured before the apply action', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-pre-activation-navigation'
+    const unrelatedUrl = 'https://boards.greenhouse.io/unrelated/jobs/99999'
+    const dom = new JSDOM(`
+      <main>
+        <section><span>Apply on Employer Site</span><button>APPLY NOW</button></section>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow: (options) => new PreActivationPopupWindow(
+        options,
+        (script: string) => dom.window.eval(script),
+        unrelatedUrl,
+      ),
+      navigationTimeoutMs: 10,
+      now: () => new Date('2026-07-10T01:00:30.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T01:00:30.000Z',
+          sourceUrl,
+          type: 'jobright_apply_destination_missing',
+        },
+      ],
+      method: 'jobright_apply_action',
+      officialUrl: null,
+      reason: 'jobright_apply_destination_missing',
+      status: 'unresolved',
+    })
+  })
+
+  it('captures a same-window navigation emitted by the apply action', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-same-window-navigation'
+    const destinationUrl = 'https://jobs.lever.co/example/12345678-abcd'
+    const dom = new JSDOM(`
+      <main>
+        <section><span>Apply on Employer Site</span><button>APPLY NOW</button></section>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow(options) {
+        const window = new FakeConnectorWindow(
+          options,
+          (script: string) => dom.window.eval(script),
+        )
+        dom.window.document.querySelector('button')?.addEventListener('click', () => {
+          window.webContents.navigate(destinationUrl)
+        })
+        return window
+      },
+      now: () => new Date('2026-07-10T01:00:45.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T01:00:45.000Z',
+          sourceUrl,
+          type: 'jobright_apply_action',
+        },
+        {
+          capturedAt: '2026-07-10T01:00:45.000Z',
+          sourceUrl: destinationUrl,
+          type: 'jobright_apply_destination_accepted',
+        },
+      ],
+      method: 'jobright_apply_action',
+      officialUrl: destinationUrl,
+      status: 'resolved',
+    })
+  })
+
+  it('waits for the client-rendered employer-site apply action before resolving', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-delayed-action'
+    const destinationUrl = 'https://boards.greenhouse.io/example/jobs/12345'
+    const dom = new JSDOM(`
+      <main>
+        <a href="https://www.linkedin.com/company/example">Company LinkedIn</a>
+        <p>Loading job details...</p>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    let detailChecks = 0
+    let resolverWindow: FakeConnectorWindow | undefined
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow(options) {
+        const window = new FakeConnectorWindow(options, (script: string) => {
+          if (script.includes('jobright_apply_action_not_ready')) {
+            detailChecks += 1
+
+            if (detailChecks === 2) {
+              dom.window.document.querySelector('main')?.insertAdjacentHTML('beforeend', `
+                <section>
+                  <span>Apply on Employer Site</span>
+                  <button type="button">APPLY NOW</button>
+                </section>
+              `)
+              dom.window.document.querySelector('button')?.addEventListener('click', () => {
+                window.webContents.openWindow(destinationUrl)
+              })
+            }
+          }
+
+          return dom.window.eval(script)
+        })
+        resolverWindow = window
+        return window
+      },
+      navigationTimeoutMs: 500,
+      now: () => new Date('2026-07-10T01:01:00.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toMatchObject({
+      method: 'jobright_apply_action',
+      officialUrl: destinationUrl,
+      status: 'resolved',
+    })
+    expect(detailChecks).toBe(2)
+    expect(resolverWindow?.options.show).toBe(false)
+  })
+
+  it('reports an auth prompt immediately after the apply action without waiting for timeout', async () => {
+    vi.useFakeTimers()
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-auth-required'
+    const dom = new JSDOM(`
+      <main>
+        <section>
+          <span>Apply on Employer Site</span>
+          <button type="button">APPLY NOW</button>
+        </section>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+
+    try {
+      const ports = createElectronConnectorPorts({
+        createBrowserWindow(options) {
+          const window = new FakeConnectorWindow(
+            options,
+            (script: string) => dom.window.eval(script),
+          )
+          dom.window.document.querySelector('button')?.addEventListener('click', () => {
+            dom.window.document.body.insertAdjacentHTML(
+              'beforeend',
+              '<div role="dialog"><h2>Sign Up to Apply</h2></div>',
+            )
+          })
+          return window
+        },
+        navigationTimeoutMs: 1_000,
+        now: () => new Date('2026-07-10T01:02:00.000Z'),
+        sessionNamespace: 'workspace-1',
+      })
+      let resolution: unknown
+      void ports.connectorRuntime.browserSession?.resolveLink({
+        sessionId: 'jobright-browser-session',
+        source: 'jobright',
+        url: sourceUrl,
+      }).then((value) => {
+        resolution = value
+      })
+
+      await vi.advanceTimersByTimeAsync(100)
+
+      expect(resolution).toEqual({
+        evidence: [
+          {
+            capturedAt: '2026-07-10T01:02:00.000Z',
+            sourceUrl,
+            type: 'browser_session_action_required',
+          },
+        ],
+        method: 'jobright_apply_action',
+        officialUrl: null,
+        reason: 'browser_session_action_required',
+        status: 'auth_required',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it.each([
+    {
+      name: 'captcha challenge',
+      body: '<main><p>Verify you are human to continue</p></main>',
+      reason: 'jobright_captcha_required',
+      status: 'captcha',
+    },
+    {
+      name: 'unavailable job',
+      body: '<main><p>This job is no longer available</p></main>',
+      reason: 'jobright_job_closed',
+      status: 'closed',
+    },
+    {
+      name: 'current public closed job',
+      body: '<main><p>This job has closed.</p></main>',
+      reason: 'jobright_job_closed',
+      status: 'closed',
+    },
+    {
+      name: 'stylesheet-hidden apply action',
+      body: `
+        <style>.hidden-apply { display: none; }</style>
+        <main>
+          <section class="hidden-apply">
+            <span>Apply on Employer Site</span>
+            <button type="button">APPLY NOW</button>
+          </section>
+        </main>
+      `,
+      reason: 'jobright_apply_action_hidden',
+      status: 'hidden',
+    },
+  ] as const)('fails closed for a current-shaped Jobright $name', async ({
+    body,
+    reason,
+    status,
+  }) => {
+    const sourceUrl = `https://jobright.ai/jobs/info/job-${status}`
+    const dom = new JSDOM(body, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow: (options) => new FakeConnectorWindow(
+        options,
+        (script: string) => dom.window.eval(script),
+      ),
+      navigationTimeoutMs: 50,
+      now: () => new Date('2026-07-10T01:03:00.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T01:03:00.000Z',
+          sourceUrl,
+          type: reason,
+        },
+      ],
+      method: 'jobright_apply_action',
+      officialUrl: null,
+      reason,
+      status,
+    })
+  })
+
+  it('fails closed with a stable reason when employer-site actions are ambiguous', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-ambiguous'
+    const dom = new JSDOM(`
+      <main>
+        <section><span>Apply on Employer Site</span><button>APPLY NOW</button></section>
+        <section><span>Apply on Employer Site</span><button>APPLY NOW</button></section>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow: (options) => new FakeConnectorWindow(
+        options,
+        (script: string) => dom.window.eval(script),
+      ),
+      now: () => new Date('2026-07-10T01:04:00.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T01:04:00.000Z',
+          sourceUrl,
+          type: 'jobright_apply_action_ambiguous',
+        },
+      ],
+      method: 'jobright_apply_action',
+      officialUrl: null,
+      reason: 'jobright_apply_action_ambiguous',
+      status: 'unresolved',
+    })
+  })
+
+  it('bounds a missing employer-site action with a stable unresolved reason', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-action-missing'
+    const dom = new JSDOM(`
+      <main>
+        <a href="https://example.com/careers">Company careers</a>
+        <p>Job details loaded without an application action.</p>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow: (options) => new FakeConnectorWindow(
+        options,
+        (script: string) => dom.window.eval(script),
+      ),
+      navigationTimeoutMs: 10,
+      now: () => new Date('2026-07-10T01:04:30.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T01:04:30.000Z',
+          sourceUrl,
+          type: 'jobright_apply_action_not_ready',
+        },
+      ],
+      method: 'jobright_apply_action',
+      officialUrl: null,
+      reason: 'jobright_apply_action_not_ready',
+      status: 'unresolved',
+    })
+  })
+
+  it('records sanitized rejection evidence for an analytics destination', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/job-analytics-redirect?utm_source=test'
+    const destinationUrl = 'https://www.google-analytics.com/collect/job?token=secret#result'
+    const dom = new JSDOM(`
+      <main>
+        <section><span>Apply on Employer Site</span><button>APPLY NOW</button></section>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow(options) {
+        const window = new FakeConnectorWindow(
+          options,
+          (script: string) => dom.window.eval(script),
+        )
+        dom.window.document.querySelector('button')?.addEventListener('click', () => {
+          window.webContents.openWindow(destinationUrl)
+        })
+        return window
+      },
+      now: () => new Date('2026-07-10T01:05:00.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T01:05:00.000Z',
+          sourceUrl: 'https://jobright.ai/jobs/info/job-analytics-redirect',
+          type: 'jobright_apply_action',
+        },
+        {
+          capturedAt: '2026-07-10T01:05:00.000Z',
+          sourceUrl: 'https://www.google-analytics.com/collect/job',
+          type: 'jobright_apply_destination_rejected',
+        },
+      ],
+      method: 'jobright_apply_action',
+      officialUrl: null,
+      reason: 'jobright_apply_destination_unverified',
+      status: 'unresolved',
+    })
   })
 
   it('bounds a stalled hidden Jobright navigation and reports auth required', async () => {
@@ -357,6 +905,48 @@ describe('Electron connector ports', () => {
     }
   })
 
+  it('bounds a stalled page-state script after activating the employer-site action', async () => {
+    const sourceUrl = 'https://jobright.ai/jobs/info/stalled-after-apply'
+    const dom = new JSDOM(`
+      <main>
+        <section><span>Apply on Employer Site</span><button>APPLY NOW</button></section>
+      </main>
+    `, {
+      runScripts: 'outside-only',
+      url: sourceUrl,
+    })
+    let scriptCalls = 0
+    const ports = createElectronConnectorPorts({
+      createBrowserWindow: (options) => new FakeConnectorWindow(options, (script: string) => {
+        scriptCalls += 1
+        return scriptCalls >= 3
+          ? new Promise<never>(() => undefined)
+          : dom.window.eval(script)
+      }),
+      navigationTimeoutMs: 10,
+      now: () => new Date('2026-07-10T01:06:00.000Z'),
+      sessionNamespace: 'workspace-1',
+    })
+
+    await expect(ports.connectorRuntime.browserSession?.resolveLink({
+      sessionId: 'jobright-browser-session',
+      source: 'jobright',
+      url: sourceUrl,
+    })).resolves.toEqual({
+      evidence: [
+        {
+          capturedAt: '2026-07-10T01:06:00.000Z',
+          sourceUrl,
+          type: 'browser_session_script_timed_out',
+        },
+      ],
+      method: 'jobright_apply_action',
+      officialUrl: null,
+      reason: 'browser_session_script_timed_out',
+      status: 'auth_required',
+    })
+  })
+
   it('reports auth required when the hidden Jobright window cannot be created', async () => {
     const attemptedWindowOptions: ElectronConnectorWindowOptions[] = []
     const ports = createElectronConnectorPorts({
@@ -387,10 +977,14 @@ describe('Electron connector ports', () => {
     const connector = createFixtureJobrightConnector(feedUrl)
     const ports = createElectronConnectorPorts({
       createBrowserWindow(options) {
-        const window = new FakeConnectorWindow(options, {
-          reason: 'browser_session_action_required',
-          status: 'auth_required',
-        })
+        const dom = new JSDOM(
+          '<main><div role="dialog"><h2>Sign Up to Apply</h2></div></main>',
+          { runScripts: 'outside-only', url: 'https://jobright.ai/jobs/info/auth-required' },
+        )
+        const window = new FakeConnectorWindow(
+          options,
+          (script: string) => dom.window.eval(script),
+        )
         windows.push(window)
 
         if (options.show) {
@@ -1045,7 +1639,7 @@ class FakeConnectorWindow {
 
   constructor(
     readonly options: ElectronConnectorWindowOptions,
-    scriptResult: unknown = null,
+    scriptResult: FakeScriptResult = null,
   ) {
     this.webContents = new FakeConnectorWebContents(scriptResult)
   }
@@ -1077,6 +1671,13 @@ class FakeConnectorWindow {
   }
 }
 
+type FakeScriptResult =
+  | ((script: string) => unknown)
+  | boolean
+  | Error
+  | Promise<unknown>
+  | null
+
 class StalledConnectorWindow extends FakeConnectorWindow {
   override async loadURL(url: string): Promise<never> {
     this.loadedUrls.push(url)
@@ -1091,19 +1692,58 @@ class FailingConnectorWindow extends FakeConnectorWindow {
   }
 }
 
+class RedirectingConnectorWindow extends FakeConnectorWindow {
+  constructor(
+    options: ElectronConnectorWindowOptions,
+    private readonly destinationUrl: string,
+  ) {
+    super(options)
+  }
+
+  override async loadURL(url: string) {
+    this.loadedUrls.push(url)
+    this.webContents.currentUrl = this.destinationUrl
+  }
+}
+
+class PreActivationPopupWindow extends FakeConnectorWindow {
+  constructor(
+    options: ElectronConnectorWindowOptions,
+    scriptResult: FakeScriptResult,
+    private readonly popupUrl: string,
+  ) {
+    super(options, scriptResult)
+  }
+
+  override async loadURL(url: string) {
+    await super.loadURL(url)
+    this.webContents.openWindow(this.popupUrl)
+  }
+}
+
 class FakeConnectorWebContents {
   currentUrl = 'about:blank'
   readonly executedScripts: string[] = []
+  readonly executedScriptUserGestures: Array<boolean | undefined> = []
   private windowOpenHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | undefined
+  private readonly willNavigateListeners: Array<(
+    event: { preventDefault?: () => void },
+    url: string,
+  ) => void> = []
 
-  constructor(private readonly scriptResult: unknown) {}
+  constructor(private readonly scriptResult: FakeScriptResult) {}
 
   getURL() {
     return this.currentUrl
   }
 
-  async executeJavaScript<T = unknown>(script: string) {
+  async executeJavaScript<T = unknown>(script: string, userGesture?: boolean) {
     this.executedScripts.push(script)
+    this.executedScriptUserGestures.push(userGesture)
+
+    if (typeof this.scriptResult === 'function') {
+      return await this.scriptResult(script) as T
+    }
 
     if (this.scriptResult instanceof Error) {
       throw this.scriptResult
@@ -1120,5 +1760,31 @@ class FakeConnectorWebContents {
 
   openWindow(url: string) {
     return this.windowOpenHandler?.({ url }) ?? { action: 'allow' as const }
+  }
+
+  on(
+    event: 'will-navigate',
+    listener: (event: { preventDefault?: () => void }, url: string) => void,
+  ) {
+    if (event === 'will-navigate') {
+      this.willNavigateListeners.push(listener)
+    }
+  }
+
+  navigate(url: string) {
+    let prevented = false
+    const event = {
+      preventDefault() {
+        prevented = true
+      },
+    }
+
+    for (const listener of this.willNavigateListeners) {
+      listener(event, url)
+    }
+
+    if (!prevented) {
+      this.currentUrl = url
+    }
   }
 }
