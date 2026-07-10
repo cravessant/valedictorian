@@ -1464,9 +1464,174 @@ describe('App settings and chrome', () => {
     expect(await screen.findByText('Jobright public jobs')).toBeInTheDocument()
     expect(screen.getByText('partial_success')).toBeInTheDocument()
     expect(screen.getByText('Authentication required')).toBeInTheDocument()
-    expect(screen.getByText('Reconnect the connector and run again.')).toBeInTheDocument()
+    expect(screen.getByText('Update and validate Jobright credentials, then run again.')).toBeInTheDocument()
     expect(screen.getByText('Projected: 2')).toBeInTheDocument()
     expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
+  })
+
+  it('renders actionable Jobright failure and retry guidance', async () => {
+    const connectorsApi = createConnectorsApi()
+    await connectorsApi.create({
+      id: 'jobright-default',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.4.1',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [],
+      config: {},
+      filters: {},
+    })
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      hasMore: false,
+      items: [
+        {
+          id: 'connector-run-auth-failed',
+          connectorInstanceId: 'jobright-default',
+          mode: 'manual',
+          status: 'partial_success',
+          coverage: {
+            start: '2026-07-09T17:00:00.000Z',
+            end: '2026-07-09T18:00:00.000Z',
+          },
+          filterSignature: 'filters:{}',
+          observationCount: 0,
+          warningCount: 1,
+          stats: {},
+          warnings: [
+            {
+              code: 'jobright_auth_failed',
+              label: 'raw sensitive label',
+              message: 'raw sensitive auth failure details',
+              severity: 'blocked',
+            },
+          ],
+          retryHints: {
+            recommended: false,
+            source: 'jobright',
+          },
+          startedAt: '2026-07-09T18:00:00.000Z',
+          completedAt: '2026-07-09T18:00:01.000Z',
+        },
+        {
+          id: 'connector-run-discovery-failed',
+          connectorInstanceId: 'jobright-default',
+          mode: 'manual',
+          status: 'partial_success',
+          coverage: {
+            start: '2026-07-09T16:00:00.000Z',
+            end: '2026-07-09T17:00:00.000Z',
+          },
+          filterSignature: 'filters:{}',
+          observationCount: 0,
+          warningCount: 1,
+          stats: {},
+          warnings: [
+            {
+              code: 'jobright_discovery_failed',
+              label: 'raw sensitive label',
+              message: 'raw sensitive discovery failure details',
+              severity: 'warning',
+            },
+          ],
+          retryHints: {
+            recommended: false,
+            source: 'jobright',
+          },
+          startedAt: '2026-07-09T17:00:00.000Z',
+          completedAt: '2026-07-09T17:00:01.000Z',
+        },
+        {
+          id: 'connector-run-parser-changed',
+          connectorInstanceId: 'jobright-default',
+          mode: 'manual',
+          status: 'partial_success',
+          coverage: {
+            start: '2026-07-09T15:00:00.000Z',
+            end: '2026-07-09T16:00:00.000Z',
+          },
+          filterSignature: 'filters:{}',
+          observationCount: 0,
+          warningCount: 1,
+          stats: { parserChanged: 1 },
+          warnings: [
+            {
+              code: 'jobright_parser_changed',
+              label: 'raw sensitive label',
+              message: 'raw sensitive response details',
+              severity: 'warning',
+            },
+          ],
+          retryHints: {
+            actions: ['update_jobright_parser'],
+            parserChanged: 1,
+            recommended: true,
+            source: 'jobright',
+          },
+          startedAt: '2026-07-09T16:00:00.000Z',
+          completedAt: '2026-07-09T16:00:01.000Z',
+        },
+        {
+          id: 'connector-run-zero-results',
+          connectorInstanceId: 'jobright-default',
+          mode: 'manual',
+          status: 'partial_success',
+          coverage: {
+            start: '2026-07-09T14:00:00.000Z',
+            end: '2026-07-09T15:00:00.000Z',
+          },
+          filterSignature: 'filters:{}',
+          observationCount: 1,
+          warningCount: 1,
+          stats: { attempted: 1, resolved: 0 },
+          warnings: [
+            {
+              code: 'jobright_zero_useful_results',
+              label: 'raw sensitive label',
+              message: 'raw sensitive URL details',
+              severity: 'warning',
+            },
+          ],
+          retryHints: {
+            actions: ['review_jobright_results'],
+            recommended: true,
+            source: 'jobright',
+          },
+          startedAt: '2026-07-09T15:00:00.000Z',
+          completedAt: '2026-07-09T15:00:01.000Z',
+        },
+      ],
+      limit: 20,
+      offset: 0,
+      total: 4,
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Sourcing runs' }))
+
+    expect(await screen.findByText('Jobright authentication failed')).toBeInTheDocument()
+    expect(screen.getByText('Jobright discovery failed')).toBeInTheDocument()
+    expect(screen.getByText(
+      'Jobright authentication failed. Validate credentials and retry the run.',
+    )).toBeInTheDocument()
+    expect(screen.getByText(
+      'Jobright discovery failed. Review API availability and connector configuration, then run again.',
+    )).toBeInTheDocument()
+    expect(screen.getByText('Jobright API changed')).toBeInTheDocument()
+    expect(screen.getByText('No usable Jobright URLs')).toBeInTheDocument()
+    expect(screen.getByText('Update the Jobright API parser, then run again.')).toBeInTheDocument()
+    expect(screen.getByText(
+      'Review unresolved Jobright results and URL normalization, then run again.',
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/raw sensitive/i)).not.toBeInTheDocument()
   })
 
   it('keeps settings navigation responsive without squeezing the content column', async () => {

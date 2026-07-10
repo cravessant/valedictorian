@@ -710,15 +710,7 @@ describe('local Valedictorian HTTP server', () => {
 
     expect(clientOptions).toMatchObject([
       {
-        connectorAuth: {
-          browserSessions: {
-            resolve: expect.any(Function),
-          },
-        },
         connectorRuntime: {
-          browserSession: {
-            resolveLink: expect.any(Function),
-          },
           delay: {
             wait: expect.any(Function),
           },
@@ -726,6 +718,7 @@ describe('local Valedictorian HTTP server', () => {
         workspaceId: 'workspace-client',
       },
     ])
+    expect(clientOptions[0]).not.toHaveProperty('connectorAuth')
     expect(clientOptions[0]).not.toHaveProperty('runConnectorStartupCatchUp')
   })
 

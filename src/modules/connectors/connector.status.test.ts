@@ -132,6 +132,69 @@ describe('connector status mapping', () => {
     })
   })
 
+  it('maps released Jobright failures to actionable sanitized guidance', () => {
+    const view = mapConnectorStatusSummary(
+      createStatusRecord({
+        connectorId: 'jobright.resolver',
+        displayName: 'Jobright internslist',
+        latestRun: createRunRecord({
+          observationCount: 1,
+          status: 'partial_success',
+          warningCount: 4,
+          warnings: [
+            {
+              code: 'jobright_auth_failed',
+              message: 'Raw auth failure contained sensitive fixture material.',
+            },
+            {
+              code: 'jobright_discovery_failed',
+              message: 'Raw discovery failure contained sensitive fixture material.',
+            },
+            {
+              code: 'jobright_parser_changed',
+              message: 'Raw parser response contained sensitive fixture material.',
+            },
+            {
+              code: 'jobright_zero_useful_results',
+              message: 'Raw URL failure contained sensitive fixture material.',
+            },
+          ],
+        }),
+      }),
+    )
+
+    expect(view).toMatchObject({
+      status: 'blocked',
+      warnings: [
+        {
+          code: 'jobright_auth_failed',
+          label: 'Jobright auth failed',
+          message: 'Jobright authentication failed. Validate credentials and retry this run.',
+          severity: 'blocked',
+        },
+        {
+          code: 'jobright_discovery_failed',
+          label: 'Jobright discovery failed',
+          message: 'Jobright discovery failed. Review API availability and retry this run.',
+          severity: 'warning',
+        },
+        {
+          code: 'jobright_parser_changed',
+          label: 'Jobright API changed',
+          message: 'Update the Jobright API parser before retrying this run.',
+          severity: 'warning',
+        },
+        {
+          code: 'jobright_zero_useful_results',
+          label: 'No usable Jobright URLs',
+          message: 'Review unresolved Jobright results before retrying this run.',
+          severity: 'warning',
+        },
+      ],
+    })
+    expect(JSON.stringify(view)).not.toContain('sensitive fixture material')
+  })
+
   it('surfaces no-job and partial-success states from latest run data', () => {
     expect(
       mapConnectorStatusSummary(

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobright'
 import {
   applicationScores,
   applications,
@@ -13,6 +14,7 @@ import {
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
@@ -26,6 +28,209 @@ function createLocalValedictorianClient(options: Parameters<typeof createRuntime
 
 function createTempSqlitePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
+}
+
+type JobrightFailureFixtureKind =
+  | 'auth_failed'
+  | 'discovery_failed'
+  | 'parser_changed'
+  | 'zero_useful_results'
+
+async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
+  const sqlitePath = createTempSqlitePath()
+  const username = 'fixture.user@example.test'
+  const password = 'fixture-password'
+  const sessionCookie = 'fixture-session-cookie'
+  const secretCodec = {
+    decrypt: (value: string) => value.replace(/^enc:/, ''),
+    encrypt: (value: string) => `enc:${value}`,
+  }
+  const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.href
+        : input.url
+    const headers = new Headers(init?.headers)
+    const cookie = headers.get('cookie') ?? ''
+
+    if (url.includes('/swan/auth/login/pwd')) {
+      if (kind === 'auth_failed') {
+        throw new Error('Synthetic Jobright login transport failure')
+      }
+
+      return new Response(JSON.stringify({ success: true, result: {} }), {
+        headers: {
+          'content-type': 'application/json',
+          'set-cookie': `SESSION_ID=${sessionCookie}; Path=/`,
+        },
+        status: 200,
+      })
+    }
+
+    if (url.includes('/swan/auth/newinfo')) {
+      expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
+      return new Response(JSON.stringify({
+        success: true,
+        result: { logined: true },
+      }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
+    }
+
+    if (url.includes('/swan/recommend/visitor-list/jobs')) {
+      expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
+
+      if (kind === 'discovery_failed') {
+        return new Response(JSON.stringify({ success: false }), {
+          headers: { 'content-type': 'application/json' },
+          status: 400,
+        })
+      }
+
+      if (kind === 'parser_changed') {
+        return new Response(JSON.stringify({
+          success: true,
+          result: { changedRecords: [] },
+        }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        })
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        result: {
+          jobNum: 1,
+          jobList: [
+            {
+              jobResult: {
+                jobId: 'job-no-external-url',
+                jobTitle: 'Software Engineering Intern',
+                companyName: 'Fixture Robotics',
+              },
+              companyResult: {
+                companyName: 'Fixture Robotics',
+              },
+            },
+          ],
+        },
+      }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
+    }
+
+    if (url.includes('/swan/share/job/job-no-external-url') && kind === 'zero_useful_results') {
+      expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
+      return new Response(JSON.stringify({
+        success: true,
+        result: {
+          logined: true,
+          jobDetail: {
+            jobResult: {
+              applyLink: 'https://jobright.ai/jobs/info/job-no-external-url',
+              originalUrl: 'https://swan-api.jobright.ai/jobs/job-no-external-url',
+            },
+          },
+        },
+      }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      })
+    }
+
+    throw new Error(`Unexpected fixture request: ${url}`)
+  }) as typeof fetch
+  const client = createRuntimeLocalValedictorianClient({
+    connectorRegistry: createStaticConnectorRegistry([
+      createJobrightConnector({
+        fetch: fetchImpl,
+        now: () => '2026-07-09T18:00:00.000Z',
+      }),
+    ]),
+    connectorRuntime: {
+      delay: {
+        async wait() {
+          return 0
+        },
+      },
+    },
+    now: () => new Date('2026-07-09T18:00:00.000Z'),
+    secretCodec,
+    seedDataMode: 'none',
+    sqlitePath,
+    workspaceId: `workspace-${kind}`,
+  })
+  const sqlite = createFileDatabase(sqlitePath)
+  const database = createDrizzleDatabase(sqlite)
+  const connectorRepository = createSqliteConnectorRepository(database)
+  const profileRepository = createSqliteProfileRepository(database, secretCodec)
+  const connectorInstanceId = `jobright-${kind}`
+  const secretKey = `connector_jobright_credentials_${kind}`
+
+  await profileRepository.upsertSecret({
+    key: secretKey,
+    kind: 'password',
+    label: 'Jobright username and password',
+    value: JSON.stringify({ username, password }),
+  })
+  await connectorRepository.upsertInstance({
+    id: connectorInstanceId,
+    connectorId: 'jobright.resolver',
+    connectorVersion: '0.4.1',
+    displayName: 'Jobright internslist',
+    enabled: true,
+    auth: [
+      {
+        id: 'jobright',
+        label: 'Jobright username and password',
+        mode: 'username_password',
+        secretKey,
+      },
+    ],
+    config: {
+      discoveryCount: 1,
+      maxRequestsPerRun: 3,
+    },
+    filters: {
+      maxResolutionCount: 1,
+      roleTerms: ['intern'],
+    },
+    createdAt: '2026-07-09T15:00:00.000Z',
+  })
+
+  const run = await client.connectors.runs.trigger({
+    connectorInstanceId,
+    mode: 'manual',
+    coverageStartedAt: '2026-07-09T17:00:00.000Z',
+    coverageEndedAt: '2026-07-09T18:00:00.000Z',
+  })
+  const runs = await client.connectors.runs.list({
+    connectorInstanceId,
+    limit: 10,
+  })
+  const status = await client.connectors.status.list()
+  const serialized = JSON.stringify({ run, runs, status })
+
+  sqlite.close()
+
+  return {
+    fetchUrls: fetchImpl.mock.calls.map((call) => {
+      const input = call[0]
+      return typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url
+    }),
+    run,
+    runs,
+    serialized,
+    status: status.items.find((item) => item.id === connectorInstanceId),
+    sensitiveValues: [username, password, sessionCookie],
+  }
 }
 
 describe('runtime local Valedictorian client', () => {
@@ -689,22 +894,7 @@ describe('runtime local Valedictorian client', () => {
 
   it('runs connector status reconnect and skip actions through the local client', async () => {
     const sqlitePath = createTempSqlitePath()
-    const resolvedReferences: unknown[] = []
     const client = createRuntimeLocalValedictorianClient({
-      connectorAuth: {
-        browserSessions: {
-          async resolve(reference) {
-            resolvedReferences.push(reference)
-            return {
-              id: reference.id,
-              mode: reference.mode,
-              sessionId: 'sensitive-session-id',
-              sessionKey: reference.sessionKey,
-              status: 'ready',
-            }
-          },
-        },
-      },
       sqlitePath,
     })
     const sqlite = createFileDatabase(sqlitePath)
@@ -778,23 +968,11 @@ describe('runtime local Valedictorian client', () => {
     expect(reconnect).toMatchObject({
       action: 'reconnect',
       connectorInstanceId: 'connector-instance-fixture',
-      grants: [
-        {
-          id: 'fixture-session',
-          mode: 'browser_session',
-          status: 'ready',
-        },
-      ],
-      status: 'ready',
+      grants: [],
+      message: 'Connector auth validation is not supported.',
+      reason: 'validate_auth_unsupported',
+      status: 'unsupported',
     })
-    expect(resolvedReferences).toEqual([
-      {
-        id: 'fixture-session',
-        label: 'Fixture session',
-        mode: 'browser_session',
-        sessionKey: 'fixture-session-123',
-      },
-    ])
     expect(skipped).toMatchObject({
       action: 'skip',
       connectorInstanceId: 'connector-instance-fixture',
@@ -824,12 +1002,11 @@ describe('runtime local Valedictorian client', () => {
         summary: 'Latest run was skipped.',
       },
     ])
-    expect(JSON.stringify(reconnect)).not.toContain('sensitive-session-id')
     expect(JSON.stringify(reconnect)).not.toContain('fixture-session-123')
     sqlite.close()
   })
 
-  it('returns an actionable reconnect result when browser-session auth is unavailable', async () => {
+  it('returns unsupported reconnect when connector-owned validateAuth is unavailable', async () => {
     const sqlitePath = createTempSqlitePath()
     const client = createRuntimeLocalValedictorianClient({ sqlitePath })
     const sqlite = createFileDatabase(sqlitePath)
@@ -860,16 +1037,10 @@ describe('runtime local Valedictorian client', () => {
     ).resolves.toEqual({
       action: 'reconnect',
       connectorInstanceId: 'connector-instance-fixture',
-      grants: [
-        {
-          id: 'fixture-session',
-          mode: 'browser_session',
-          reason: 'browser_session_action_required',
-          status: 'action_required',
-        },
-      ],
-      message: 'Connector credentials need attention before refreshes can continue.',
-      status: 'action_required',
+      grants: [],
+      message: 'Connector auth validation is not supported.',
+      reason: 'validate_auth_unsupported',
+      status: 'unsupported',
     })
     sqlite.close()
   })
@@ -1076,6 +1247,457 @@ describe('runtime local Valedictorian client', () => {
     expect(JSON.stringify(reconnect)).not.toContain(' pass with spaces ')
     expect(JSON.stringify(reconnect)).not.toContain('session-cookie')
     sqlite.close()
+  })
+
+  it('runs Jobright API-only discovery and detail through the local client with fake responses', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const secretValue = JSON.stringify({
+      username: 'demo@example.com',
+      password: 'synthetic-password',
+    })
+    const secretCodec = {
+      decrypt: (value: string) => value.replace(/^enc:/, ''),
+      encrypt: (value: string) => `enc:${value}`,
+    }
+    const sessionCookie = 'synthetic-session-cookie'
+    const officialApplyUrl = 'https://careers.example.com/jobs/software-engineering-intern'
+    const rejectedJobrightUrl = 'https://jobright.ai/jobs/info/job-intermediary-only'
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url
+      const headers = new Headers(init?.headers)
+      const cookie = headers.get('cookie') ?? ''
+      const body = typeof init?.body === 'string' ? init.body : ''
+
+      if (url.includes('/swan/auth/login/pwd')) {
+        expect(body).toContain('demo@example.com')
+        expect(body).toContain('synthetic-password')
+        return new Response(JSON.stringify({ success: true, result: {} }), {
+          headers: {
+            'content-type': 'application/json',
+            'set-cookie': `SESSION_ID=${sessionCookie}; Path=/`,
+          },
+          status: 200,
+        })
+      }
+
+      if (url.includes('/swan/auth/newinfo')) {
+        expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
+        return new Response(JSON.stringify({
+          success: true,
+          result: { logined: true },
+        }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        })
+      }
+
+      if (url.includes('/swan/recommend/visitor-list/jobs')) {
+        expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
+        expect(init?.method).toBe('POST')
+        expect(body).toContain('Internslist')
+        return new Response(JSON.stringify({
+          success: true,
+          result: {
+            jobNum: 2,
+            jobList: [
+              {
+                jobResult: {
+                  jobId: 'job-resolved-1',
+                  jobTitle: 'Software Engineering Intern',
+                  companyName: 'Example Robotics',
+                },
+                companyResult: {
+                  companyName: 'Example Robotics',
+                },
+              },
+              {
+                jobResult: {
+                  jobId: 'job-intermediary-only',
+                  jobTitle: 'Platform Intern',
+                  companyName: 'Intermediary Co',
+                },
+                companyResult: {
+                  companyName: 'Intermediary Co',
+                },
+              },
+            ],
+          },
+        }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        })
+      }
+
+      if (url.includes('/swan/share/job/job-resolved-1')) {
+        expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
+        return new Response(JSON.stringify({
+          success: true,
+          result: {
+            logined: true,
+            jobDetail: {
+              jobResult: {
+                applyLink: officialApplyUrl,
+                originalUrl: rejectedJobrightUrl,
+                jobTitle: 'Software Engineering Intern',
+                companyName: 'Example Robotics',
+              },
+            },
+          },
+        }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        })
+      }
+
+      if (url.includes('/swan/share/job/job-intermediary-only')) {
+        expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
+        return new Response(JSON.stringify({
+          success: true,
+          result: {
+            logined: true,
+            jobDetail: {
+              jobResult: {
+                applyLink: rejectedJobrightUrl,
+                originalUrl: 'https://jobright.ai/jobs/info/job-intermediary-only',
+                jobTitle: 'Platform Intern',
+                companyName: 'Intermediary Co',
+              },
+            },
+          },
+        }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        })
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    }) as typeof fetch
+    const { createJobrightConnector } = await import('@sparxie/valedictorian-connectors-jobright')
+    const { createStaticConnectorRegistry } = await import('../modules/connectors/connector.registry')
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([
+        createJobrightConnector({
+          fetch: fetchImpl,
+          now: () => '2026-07-09T18:00:00.000Z',
+        }),
+      ]),
+      connectorRuntime: {
+        delay: {
+          async wait() {
+            return 0
+          },
+        },
+      },
+      now: () => new Date('2026-07-09T18:00:00.000Z'),
+      secretCodec,
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-jobright-api',
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+    const profileRepository = createSqliteProfileRepository(database, secretCodec)
+
+    await profileRepository.upsertSecret({
+      key: 'connector_jobright_credentials_jobright_api',
+      kind: 'password',
+      label: 'Jobright username and password',
+      value: secretValue,
+    })
+    await connectorRepository.upsertInstance({
+      id: 'jobright-api',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.4.1',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [
+        {
+          id: 'jobright',
+          label: 'Jobright username and password',
+          mode: 'username_password',
+          secretKey: 'connector_jobright_credentials_jobright_api',
+        },
+      ],
+      config: {
+        discoveryCount: 2,
+        maxRequestsPerRun: 5,
+      },
+      filters: {
+        maxResolutionCount: 2,
+        roleTerms: ['intern'],
+      },
+      createdAt: '2026-07-09T15:00:00.000Z',
+    })
+
+    const run = await client.connectors.runs.trigger({
+      connectorInstanceId: 'jobright-api',
+      mode: 'manual',
+      coverageStartedAt: '2026-07-09T17:00:00.000Z',
+      coverageEndedAt: '2026-07-09T18:00:00.000Z',
+    })
+    const runs = await client.connectors.runs.list({
+      connectorInstanceId: 'jobright-api',
+      limit: 10,
+    })
+    const observations = await client.connectors.observations.list({
+      connectorInstanceId: 'jobright-api',
+      limit: 10,
+    })
+    const checkpoints = await client.connectors.checkpoints.list({
+      connectorInstanceId: 'jobright-api',
+    })
+    const findings = await client.sourcing.findings.list()
+
+    expect(run).toMatchObject({
+      connectorInstanceId: 'jobright-api',
+      status: 'completed',
+      observationCount: 2,
+      stats: {
+        attempted: 2,
+        discovered: 2,
+        observations: 2,
+        resolved: 1,
+      },
+    })
+    expect(runs.total).toBe(1)
+    expect(runs.items).toHaveLength(1)
+    expect(runs.items[0]).toMatchObject({
+      status: 'completed',
+      observationCount: 2,
+      stats: {
+        attempted: 2,
+        discovered: 2,
+        observations: 2,
+        resolved: 1,
+      },
+    })
+    expect(observations.total).toBe(2)
+    expect(observations.items).toHaveLength(2)
+    expect(checkpoints.items).toHaveLength(1)
+    expect(checkpoints.items[0]).toMatchObject({
+      checkpoint: {
+        attempted: 2,
+        discovered: 2,
+        resolved: 1,
+      },
+    })
+
+    const resolvedObservation = observations.items.find((item) =>
+      item.companyName === 'Example Robotics'
+      && item.roleTitle === 'Software Engineering Intern',
+    )
+    const unresolvedObservation = observations.items.find((item) =>
+      item.companyName === 'Intermediary Co'
+      && item.roleTitle === 'Platform Intern',
+    )
+    expect(resolvedObservation).toMatchObject({
+      links: {
+        official: officialApplyUrl,
+      },
+      resolution: {
+        status: 'resolved',
+      },
+    })
+    expect(unresolvedObservation).toMatchObject({
+      links: {
+        official: null,
+      },
+      resolution: {
+        status: 'unresolved',
+        reason: 'jobright_application_url_missing',
+      },
+    })
+
+    expect(findings.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'Example Robotics',
+        roleTitle: 'Software Engineering Intern',
+        officialUrl: officialApplyUrl,
+      }),
+    ]))
+    expect(findings.items.filter((finding) => finding.officialUrl === officialApplyUrl)).toHaveLength(1)
+    expect(findings.items.every((finding) =>
+      finding.officialUrl === null || !finding.officialUrl.includes('jobright.ai'),
+    )).toBe(true)
+
+    const fetchUrls = fetchImpl.mock.calls.map((call) => {
+      const input = call[0]
+      return typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url
+    })
+    expect(fetchUrls).toHaveLength(5)
+    expect(fetchUrls.filter((url) => url.includes('/swan/auth/login/pwd'))).toHaveLength(1)
+    expect(fetchUrls.filter((url) => url.includes('/swan/auth/newinfo'))).toHaveLength(1)
+    expect(fetchUrls.filter((url) => url.includes('/swan/recommend/visitor-list/jobs'))).toHaveLength(1)
+    expect(fetchUrls.filter((url) => url.includes('/swan/share/job/job-resolved-1'))).toHaveLength(1)
+    expect(fetchUrls.filter((url) => url.includes('/swan/share/job/job-intermediary-only'))).toHaveLength(1)
+
+    const serialized = JSON.stringify({ run, runs, observations, checkpoints, findings })
+    expect(serialized).toContain(officialApplyUrl)
+    expect(serialized).not.toContain(sessionCookie)
+    expect(serialized).not.toContain('demo@example.com')
+    expect(serialized).not.toContain('synthetic-password')
+    sqlite.close()
+  })
+
+  it('preserves sanitized Jobright failure and retry guidance through public APIs', async () => {
+    const authFailed = await runJobrightFailureFixture('auth_failed')
+
+    expect(authFailed.run).toMatchObject({
+      status: 'partial_success',
+      observationCount: 0,
+      warnings: [
+        {
+          code: 'jobright_auth_failed',
+          label: 'Jobright auth failed',
+          message: 'Jobright authentication failed. Validate credentials and retry this run.',
+          severity: 'blocked',
+        },
+      ],
+      retryHints: {
+        authRequired: 0,
+        captcha: 0,
+        parserChanged: 0,
+        rateLimited: 0,
+        recommended: false,
+        retryableFailures: 0,
+        source: 'jobright',
+      },
+    })
+    expect(authFailed.runs.items).toHaveLength(1)
+    expect(authFailed.runs.items[0]).toMatchObject({
+      warnings: authFailed.run.warnings,
+      retryHints: authFailed.run.retryHints,
+    })
+    expect(authFailed.status).toMatchObject({
+      status: 'blocked',
+      warnings: authFailed.run.warnings,
+    })
+    expect(authFailed.fetchUrls).toHaveLength(1)
+
+    const discoveryFailed = await runJobrightFailureFixture('discovery_failed')
+
+    expect(discoveryFailed.run).toMatchObject({
+      status: 'partial_success',
+      observationCount: 0,
+      warnings: [
+        {
+          code: 'jobright_discovery_failed',
+          label: 'Jobright discovery failed',
+          message: 'Jobright discovery failed. Review API availability and retry this run.',
+          severity: 'warning',
+        },
+      ],
+      retryHints: {
+        authRequired: 0,
+        captcha: 0,
+        parserChanged: 0,
+        rateLimited: 0,
+        recommended: false,
+        retryableFailures: 0,
+        source: 'jobright',
+      },
+    })
+    expect(discoveryFailed.runs.items).toHaveLength(1)
+    expect(discoveryFailed.runs.items[0]).toMatchObject({
+      warnings: discoveryFailed.run.warnings,
+      retryHints: discoveryFailed.run.retryHints,
+    })
+    expect(discoveryFailed.status).toMatchObject({
+      status: 'partial_success',
+      warnings: discoveryFailed.run.warnings,
+    })
+    expect(discoveryFailed.fetchUrls).toHaveLength(3)
+
+    const parserChanged = await runJobrightFailureFixture('parser_changed')
+
+    expect(parserChanged.run).toMatchObject({
+      status: 'partial_success',
+      observationCount: 0,
+      warnings: [
+        {
+          code: 'jobright_parser_changed',
+          label: 'Jobright API changed',
+          message: 'Update the Jobright API parser before retrying this run.',
+          severity: 'warning',
+        },
+      ],
+      retryHints: {
+        actions: ['update_jobright_parser'],
+        authRequired: 0,
+        captcha: 0,
+        parserChanged: 1,
+        rateLimited: 0,
+        recommended: true,
+        retryableFailures: 0,
+        source: 'jobright',
+      },
+    })
+    expect(parserChanged.runs.items).toHaveLength(1)
+    expect(parserChanged.runs.items[0]).toMatchObject({
+      warnings: parserChanged.run.warnings,
+      retryHints: parserChanged.run.retryHints,
+    })
+    expect(parserChanged.status).toMatchObject({
+      status: 'partial_success',
+      warnings: parserChanged.run.warnings,
+    })
+    expect(parserChanged.fetchUrls).toHaveLength(3)
+
+    const zeroUsefulResults = await runJobrightFailureFixture('zero_useful_results')
+
+    expect(zeroUsefulResults.run).toMatchObject({
+      status: 'partial_success',
+      observationCount: 1,
+      stats: {
+        attempted: 1,
+        discovered: 1,
+        observations: 1,
+        resolved: 0,
+      },
+      warnings: [
+        {
+          code: 'jobright_zero_useful_results',
+          label: 'No usable Jobright URLs',
+          message: 'Review unresolved Jobright results before retrying this run.',
+          severity: 'warning',
+        },
+      ],
+      retryHints: {
+        actions: ['review_jobright_results'],
+        authRequired: 0,
+        captcha: 0,
+        parserChanged: 0,
+        rateLimited: 0,
+        recommended: true,
+        retryableFailures: 0,
+        source: 'jobright',
+      },
+    })
+    expect(zeroUsefulResults.runs.items).toHaveLength(1)
+    expect(zeroUsefulResults.runs.items[0]).toMatchObject({
+      warnings: zeroUsefulResults.run.warnings,
+      retryHints: zeroUsefulResults.run.retryHints,
+    })
+    expect(zeroUsefulResults.status).toMatchObject({
+      status: 'partial_success',
+      warnings: zeroUsefulResults.run.warnings,
+    })
+    expect(zeroUsefulResults.fetchUrls).toHaveLength(4)
+
+    for (const fixture of [authFailed, discoveryFailed, parserChanged, zeroUsefulResults]) {
+      for (const sensitiveValue of fixture.sensitiveValues) {
+        expect(fixture.serialized).not.toContain(sensitiveValue)
+      }
+    }
   })
 
   it('creates and updates connector instances through the local client', async () => {

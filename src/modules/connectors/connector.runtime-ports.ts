@@ -1,5 +1,5 @@
-import type { ConnectorBrowserSessionRuntime, ConnectorDelayRuntime } from '@sparxie/valedictorian-connectors-core'
-import type { AppConnectorAuthHost, AppConnectorRuntimePorts } from './connector.runner'
+import type { ConnectorDelayRuntime } from '@sparxie/valedictorian-connectors-core'
+import type { AppConnectorRuntimePorts } from './connector.runner'
 
 export interface ConnectorDelayRuntimeOptions {
   random?: () => number
@@ -7,7 +7,6 @@ export interface ConnectorDelayRuntimeOptions {
 }
 
 export type DefaultLocalConnectorPorts = {
-  connectorAuth: AppConnectorAuthHost
   connectorRuntime: AppConnectorRuntimePorts
 }
 
@@ -31,42 +30,11 @@ export function createJitterDelayRuntime({
   }
 }
 
-export function createUnavailableBrowserSessionRuntime(): ConnectorBrowserSessionRuntime {
-  return {
-    async resolveLink(_input) {
-      return {
-        method: 'local_browser_session_unavailable',
-        officialUrl: null,
-        reason: 'browser_session_runtime_unavailable',
-        status: 'auth_required',
-      }
-    },
-  }
-}
-
-export function createUnavailableConnectorAuthHost(): AppConnectorAuthHost {
-  return {
-    browserSessions: {
-      async resolve(reference) {
-        return {
-          id: reference.id,
-          mode: reference.mode,
-          reason: 'browser_session_action_required',
-          ...(reference.sessionKey === undefined ? {} : { sessionKey: reference.sessionKey }),
-          status: 'action_required',
-        }
-      },
-    },
-  }
-}
-
 export function createDefaultLocalConnectorPorts(
   options: DefaultLocalConnectorPortsOptions = {},
 ): DefaultLocalConnectorPorts {
   return {
-    connectorAuth: createUnavailableConnectorAuthHost(),
     connectorRuntime: {
-      browserSession: createUnavailableBrowserSessionRuntime(),
       delay: createJitterDelayRuntime(options),
     },
   }

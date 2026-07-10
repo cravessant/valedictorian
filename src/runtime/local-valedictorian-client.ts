@@ -53,7 +53,6 @@ import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.rep
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
 export interface LocalValedictorianClientOptions {
-  connectorAuth?: AppConnectorAuthHost
   connectorRegistry?: LocalConnectorRegistry
   connectorRuntime?: AppConnectorRuntimePorts
   now?: () => Date
@@ -242,7 +241,6 @@ const unavailableSecretCodec: ProfileSecretCodec = {
 }
 
 export function createLocalValedictorianClient({
-  connectorAuth,
   connectorRegistry = createDefaultLocalConnectorRegistry(),
   connectorRuntime,
   now = () => new Date(),
@@ -274,7 +272,7 @@ export function createLocalValedictorianClient({
   const workflowRunRepository = createSqliteWorkflowRunRepository(database)
   const sourcingProcessor = createSqliteSourcingProcessor(database)
   const sourcingRepository = createSqliteSourcingRepository(database)
-  const trustedConnectorAuth = composeTrustedConnectorAuth(connectorAuth, profileRepository)
+  const trustedConnectorAuth = composeTrustedConnectorAuth(profileRepository)
   const connectorRunner = createConnectorRunner({
     auth: trustedConnectorAuth,
     repository: connectorRepository,
@@ -452,7 +450,6 @@ export function createLocalValedictorianClient({
           await connectorRepository.listStatusSummaries(),
         ),
         reconnect: (input) => reconnectConnectorStatus({
-          auth: trustedConnectorAuth,
           connectorRegistry,
           connectorRepository,
           connectorRunner,
@@ -539,13 +536,9 @@ export function createLocalValedictorianClient({
 }
 
 function composeTrustedConnectorAuth(
-  connectorAuth: AppConnectorAuthHost | undefined,
   profileRepository: ReturnType<typeof createSqliteProfileRepository>,
 ): AppConnectorAuthHost {
   return {
-    ...(connectorAuth?.browserSessions
-      ? { browserSessions: connectorAuth.browserSessions }
-      : {}),
     secrets: {
       revealSecret: (key) => profileRepository.revealSecret(key),
     },
@@ -553,13 +546,11 @@ function composeTrustedConnectorAuth(
 }
 
 async function reconnectConnectorStatus({
-  auth,
   connectorRegistry,
   connectorRepository,
   connectorRunner,
   input,
 }: {
-  auth: AppConnectorAuthHost | undefined
   connectorRegistry: LocalConnectorRegistry
   connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
@@ -596,76 +587,13 @@ async function reconnectConnectorStatus({
     }
   }
 
-  const browserSessionReferences = instance.auth.filter(
-    (reference) => reference.mode === 'browser_session',
-  )
-
-  if (browserSessionReferences.length === 0) {
-    return {
-      action: 'reconnect',
-      connectorInstanceId: input.connectorInstanceId,
-      grants: [],
-      message: 'Connector auth validation is not supported.',
-      reason: 'validate_auth_unsupported',
-      status: 'unsupported',
-    }
-  }
-
-  const grants = await Promise.all(
-    browserSessionReferences.map(async (reference) => {
-      if (!auth?.browserSessions) {
-        return {
-          id: reference.id,
-          mode: reference.mode,
-          reason: 'browser_session_action_required',
-          status: 'action_required',
-        } satisfies AppConnectorAuthGrant
-      }
-
-      return auth.browserSessions.resolve({
-        id: reference.id,
-        mode: reference.mode,
-        ...(reference.label === undefined ? {} : { label: reference.label }),
-        ...(reference.sessionKey === undefined ? {} : { sessionKey: reference.sessionKey }),
-      })
-    }),
-  )
-  const unavailableReferenceIds = new Set(
-    browserSessionReferences.flatMap((reference, index) =>
-      grants[index]?.status === 'ready' ? [] : [reference.id]),
-  )
-
-  if (unavailableReferenceIds.size > 0) {
-    await connectorRepository.upsertInstance({
-      id: instance.id,
-      connectorId: instance.connectorId,
-      connectorVersion: instance.connectorVersion,
-      displayName: instance.displayName,
-      enabled: instance.enabled,
-      auth: instance.auth.map((reference) => {
-        if (reference.mode !== 'browser_session' || !unavailableReferenceIds.has(reference.id)) {
-          return reference
-        }
-
-        const clearedReference = { ...reference }
-        delete clearedReference.sessionKey
-        return clearedReference
-      }),
-      config: toConnectorJsonRecord(instance.config, 'config'),
-      filters: toConnectorJsonRecord(instance.filters, 'filters'),
-      createdAt: instance.createdAt,
-    })
-  }
-
-  const sanitizedGrants = grants.map(mapLocalConnectorAuthGrantSummary)
-  const status = reconnectStatus(sanitizedGrants)
-
   return {
     action: 'reconnect',
     connectorInstanceId: input.connectorInstanceId,
-    grants: sanitizedGrants,
-    message: reconnectMessage(status, sanitizedGrants),
-    status,
+    grants: [],
+    message: 'Connector auth validation is not supported.',
+    reason: 'validate_auth_unsupported',
+    status: 'unsupported',
   }
 }
 
@@ -1002,75 +930,6 @@ function actionRequiredForStatus(
   return actions
 }
 
-function mapLocalConnectorAuthGrantSummary(
-  grant: AppConnectorAuthGrant,
-): LocalConnectorAuthGrantSummary {
-  return {
-    id: grant.id,
-    mode: grant.mode,
-    status: grant.status,
-    ...(grant.expiresAt === undefined ? {} : { expiresAt: grant.expiresAt }),
-    ...(grant.reason === undefined ? {} : { reason: grant.reason }),
-  }
-}
-
-function reconnectStatus(
-  grants: LocalConnectorAuthGrantSummary[],
-): LocalConnectorReconnectActionResult['status'] {
-  if (grants.some((grant) => grant.status === 'action_required')) {
-    return 'action_required'
-  }
-
-  if (grants.some((grant) => grant.status === 'missing')) {
-    return 'missing'
-  }
-
-  if (grants.some((grant) => grant.status === 'expired')) {
-    return 'expired'
-  }
-
-  return 'ready'
-}
-
-function reconnectMessage(
-  status: LocalConnectorReconnectActionResult['status'],
-  grants: LocalConnectorAuthGrantSummary[],
-): string {
-  if (status === 'ready') {
-    return 'Connector credentials are verified and ready.'
-  }
-
-  if (status === 'missing') {
-    return 'Connector credentials are missing. Save email and password, then validate again.'
-  }
-
-  if (status === 'expired') {
-    return 'Connector session expired. Update credentials and validate again.'
-  }
-
-  if (status === 'rate_limited') {
-    return 'Jobright rate limited the auth request. Retry later.'
-  }
-
-  if (status === 'retryable') {
-    return 'Temporary Jobright request failure. Retry validation.'
-  }
-
-  if (status === 'failed') {
-    return 'Connector auth validation failed.'
-  }
-
-  if (status === 'unsupported') {
-    return 'Connector auth validation is not supported.'
-  }
-
-  if (grants.some((grant) => grant.reason === 'jobright_login_rejected' || grant.reason === 'username_password_malformed')) {
-    return 'Connector credentials were rejected. Update email and password, then validate again.'
-  }
-
-  return 'Connector credentials need attention before refreshes can continue.'
-}
-
 function mapConnectorRunSummary(record: ConnectorRunRecord): LocalConnectorRunSummary {
   return {
     id: record.id,
@@ -1112,15 +971,24 @@ const safeConnectorRetryReasons = new Set([
   'connector_run_interrupted',
   'disabled',
   'execution_failed',
+  'jobright_auth_failed',
   'jobright_auth_ready',
   'jobright_auth_request_failed',
   'jobright_auth_required',
+  'jobright_auth_retryable',
+  'jobright_challenge_blocked',
+  'jobright_discovery_rate_limited',
+  'jobright_discovery_failed',
+  'jobright_discovery_retryable',
   'jobright_login_rejected',
   'jobright_login_retryable',
   'jobright_not_logged_in',
+  'jobright_parser_changed',
   'jobright_rate_limited',
+  'jobright_retryable_failure',
   'jobright_resolution',
   'jobright_resolution_deferred',
+  'jobright_zero_useful_results',
   'projection_failed',
   'secret_missing',
   'secret_reference_missing',
@@ -1133,6 +1001,14 @@ const safeConnectorRetryReasons = new Set([
   'validate_auth_unsupported',
 ])
 
+const safeConnectorRetryActions = new Set([
+  'refresh_jobright_auth',
+  'retry_jobright_after_challenge',
+  'retry_jobright_with_backoff',
+  'review_jobright_results',
+  'update_jobright_parser',
+])
+
 function safeConnectorRetryHints(value: unknown): Record<string, unknown> | null {
   const retryHints = safeJsonRecord(value)
   const safeHints: Record<string, unknown> = {}
@@ -1142,7 +1018,7 @@ function safeConnectorRetryHints(value: unknown): Record<string, unknown> | null
     safeHints.reason = reason
   }
 
-  for (const key of ['authRequired', 'rateLimited', 'retryAfterSeconds'] as const) {
+  for (const key of ['authRequired', 'rateLimited'] as const) {
     const metric = retryHints[key]
 
     if (typeof metric === 'boolean' || (
@@ -1150,6 +1026,32 @@ function safeConnectorRetryHints(value: unknown): Record<string, unknown> | null
     )) {
       safeHints[key] = metric
     }
+  }
+
+  for (const key of ['captcha', 'parserChanged', 'retryAfterSeconds', 'retryableFailures'] as const) {
+    const metric = retryHints[key]
+
+    if (typeof metric === 'number' && Number.isFinite(metric) && metric >= 0) {
+      safeHints[key] = metric
+    }
+  }
+
+  if (typeof retryHints.recommended === 'boolean') {
+    safeHints.recommended = retryHints.recommended
+  }
+
+  if (Array.isArray(retryHints.actions)) {
+    const actions = retryHints.actions.filter(
+      (action): action is string => typeof action === 'string' && safeConnectorRetryActions.has(action),
+    )
+
+    if (actions.length > 0) {
+      safeHints.actions = [...new Set(actions)]
+    }
+  }
+
+  if (retryHints.source === 'jobright') {
+    safeHints.source = 'jobright'
   }
 
   if (retryHints.skippedBy === 'user') {

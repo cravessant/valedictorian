@@ -220,15 +220,7 @@ describe('Valedictorian runtime creation', () => {
 
     expect(runtime.client).toBe(localClient)
     expect(createLocalClient).toHaveBeenCalledWith({
-      connectorAuth: {
-        browserSessions: {
-          resolve: expect.any(Function),
-        },
-      },
       connectorRuntime: {
-        browserSession: {
-          resolveLink: expect.any(Function),
-        },
         delay: {
           wait: expect.any(Function),
         },

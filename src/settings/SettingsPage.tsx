@@ -1105,6 +1105,7 @@ function numericRunMetric(
 }
 
 interface ConnectorRunHistoryItem {
+  connectorId: string
   connectorName: string
   run: ConnectorSettingsRun
 }
@@ -1120,6 +1121,7 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
     connectorsApi.list()
       .then(async ({ items: instances }) => {
         const runLists = await Promise.all(instances.map(async (instance) => ({
+          connectorId: instance.connectorId,
           connectorName: instance.displayName,
           runs: (await connectorsApi.runs.list({
             connectorInstanceId: instance.id,
@@ -1129,7 +1131,8 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
         })))
 
         return runLists
-          .flatMap(({ connectorName, runs }) => runs.map((run) => ({ connectorName, run })))
+          .flatMap(({ connectorId, connectorName, runs }) =>
+            runs.map((run) => ({ connectorId, connectorName, run })))
           .sort((left, right) => right.run.startedAt.localeCompare(left.run.startedAt))
       })
       .then((runs) => {
@@ -1185,10 +1188,10 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
       ) : null}
       {items.length > 0 ? (
         <div className="space-y-3" aria-label="Connector run history">
-          {items.map(({ connectorName, run }) => {
+          {items.map(({ connectorId, connectorName, run }) => {
             const warningLabels = [...new Set(run.warnings.map((warning) =>
               safeRunWarningLabel(warning.code)))]
-            const retryGuidance = safeRunRetryGuidance(run)
+            const retryGuidance = safeRunRetryGuidance(run, connectorId)
 
             return (
               <article key={run.id} className="space-y-3 rounded-md border border-border bg-card p-4">
@@ -1235,6 +1238,17 @@ function safeRunWarningLabel(code: string): string {
     'connector.execution_failed': 'Connector execution failed',
     'connector.interrupted': 'Run interrupted',
     'connector.projection_failed': 'Projection failed',
+    jobright_auth_failed: 'Jobright authentication failed',
+    jobright_auth_required: 'Jobright authentication required',
+    jobright_auth_retryable: 'Jobright authentication unavailable',
+    jobright_challenge_blocked: 'Jobright API challenge',
+    jobright_discovery_failed: 'Jobright discovery failed',
+    jobright_discovery_rate_limited: 'Jobright discovery rate limited',
+    jobright_discovery_retryable: 'Jobright discovery unavailable',
+    jobright_parser_changed: 'Jobright API changed',
+    jobright_rate_limited: 'Jobright rate limited',
+    jobright_retryable_failure: 'Jobright temporarily unavailable',
+    jobright_zero_useful_results: 'No usable Jobright URLs',
     'source.captcha': 'Captcha required',
     'source.rate_limited': 'Rate limited',
   }
@@ -1242,13 +1256,57 @@ function safeRunWarningLabel(code: string): string {
   return labels[code] ?? 'Connector warning'
 }
 
-function safeRunRetryGuidance(run: ConnectorSettingsRun): string | null {
+function safeRunRetryGuidance(run: ConnectorSettingsRun, connectorId: string): string | null {
   const retryHints = recordFromUnknown(run.retryHints)
   const reason = stringFromUnknown(retryHints.reason)
+  const retryActions = Array.isArray(retryHints.actions)
+    ? retryHints.actions.filter((action): action is string => typeof action === 'string')
+    : []
   const stats = recordFromUnknown(run.stats)
+  const warningCodes = new Set(run.warnings.map((warning) => warning.code))
 
-  if (reason.includes('auth') || numberFromUnknown(stats.authRequired, 0) > 0) {
-    return 'Reconnect the connector and run again.'
+  if (warningCodes.has('jobright_auth_failed')) {
+    return 'Jobright authentication failed. Validate credentials and retry the run.'
+  }
+
+  if (warningCodes.has('jobright_discovery_failed')) {
+    return 'Jobright discovery failed. Review API availability and connector configuration, then run again.'
+  }
+
+  if (
+    retryActions.includes('refresh_jobright_auth')
+    || reason.includes('auth')
+    || numberFromUnknown(stats.authRequired, 0) > 0
+  ) {
+    return connectorId === jobrightConnectorId || retryHints.source === 'jobright'
+      ? 'Update and validate Jobright credentials, then run again.'
+      : 'Reconnect the connector and run again.'
+  }
+
+  if (
+    retryActions.includes('retry_jobright_after_challenge')
+    || numberFromUnknown(retryHints.captcha, 0) > 0
+  ) {
+    return 'Jobright returned an API challenge. Refresh credentials or retry later.'
+  }
+
+  if (
+    retryActions.includes('update_jobright_parser')
+    || numberFromUnknown(retryHints.parserChanged, 0) > 0
+  ) {
+    return 'Update the Jobright API parser, then run again.'
+  }
+
+  if (
+    retryActions.includes('retry_jobright_with_backoff')
+    || numberFromUnknown(retryHints.rateLimited, 0) > 0
+    || numberFromUnknown(retryHints.retryableFailures, 0) > 0
+  ) {
+    return 'Retry the Jobright run later with backoff.'
+  }
+
+  if (retryActions.includes('review_jobright_results')) {
+    return 'Review unresolved Jobright results and URL normalization, then run again.'
   }
 
   if (reason === 'projection_failed') {

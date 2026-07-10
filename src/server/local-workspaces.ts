@@ -119,7 +119,6 @@ export function createLocalWorkspaceManager({
 
         const connectorPorts = createConnectorPorts(workspaceId)
         const client = createClient({
-          connectorAuth: connectorPorts.connectorAuth,
           connectorRuntime: connectorPorts.connectorRuntime,
           referenceTrackerPath,
           seedDataMode,

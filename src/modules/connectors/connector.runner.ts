@@ -7,7 +7,6 @@ import type {
   ConnectorAuthValidationInput,
   ConnectorAuthValidationResult,
   ConnectorAuthValidationStatus,
-  ConnectorBrowserSessionRuntime,
   ConnectorCoverageWindow,
   ConnectorDefinition,
   ConnectorDelayRuntime,
@@ -33,7 +32,6 @@ export type AppConnectorRefreshInput = ConnectorRefreshInput
 export type AppConnectorRefreshResult = ConnectorRefreshResult & ConnectorRefreshResultInput
 export type AppConnectorAuthGrant = ConnectorAuthGrant
 export type AppConnectorAuthResolveInput = ConnectorAuthResolveInput
-export type AppConnectorAuthRuntime = ConnectorRuntime['auth']
 export type AppConnectorRuntime = ConnectorRuntime
 
 export interface AppConnectorRunBudget {
@@ -47,18 +45,11 @@ export interface AppConnectorSecretResolver {
   revealSecret(key: string): Promise<{ key: string; value: string } | null>
 }
 
-export interface AppConnectorBrowserSessionResolver {
-  resolve(reference: ConnectorAuthReference): Promise<AppConnectorAuthGrant>
-  validate?(reference: ConnectorAuthReference): Promise<AppConnectorAuthGrant>
-}
-
 export interface AppConnectorAuthHost {
-  browserSessions?: AppConnectorBrowserSessionResolver
   secrets?: AppConnectorSecretResolver
 }
 
 export type AppConnectorRuntimePorts = {
-  browserSession?: ConnectorBrowserSessionRuntime
   delay?: ConnectorDelayRuntime
 }
 
@@ -197,53 +188,19 @@ export function createConnectorRunner({
       auth,
       sensitiveValues,
     )
-    const authBlocker = await preflightBrowserSessionAuth(authRequirements, runRuntime.auth)
-    const result = authBlocker
-      ? createAuthRequiredRefreshResult({
-        authBlocker,
-        checkpoint,
-        checkpointSchemaVersion: connector.definition.checkpoint?.schemaVersion,
+    const result = await connector.refresh(
+      {
+        connectorInstanceId: input.connectorInstanceId,
+        workspaceId,
+        mode: input.mode,
         coverage: input.coverage,
-      })
-      : await connector.refresh(
-        {
-          connectorInstanceId: input.connectorInstanceId,
-          workspaceId,
-          mode: input.mode,
-          coverage: input.coverage,
-          config,
-          filters,
-          ...(budget ? { budget } : {}),
-          ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
-        },
-        runRuntime,
-      )
-
-    if (refreshRequiresBrowserSessionReconnect(result)) {
-      const invalidatedAuth = connectorInstance.auth.map((reference) => {
-        if (reference.mode !== 'browser_session' || !reference.sessionKey) {
-          return reference
-        }
-
-        const invalidatedReference = { ...reference }
-        delete invalidatedReference.sessionKey
-        return invalidatedReference
-      })
-
-      if (invalidatedAuth.some((reference, index) => reference !== connectorInstance.auth[index])) {
-        await repository.upsertInstance({
-          id: connectorInstance.id,
-          connectorId: connectorInstance.connectorId,
-          connectorVersion: connectorInstance.connectorVersion,
-          displayName: connectorInstance.displayName,
-          enabled: connectorInstance.enabled,
-          auth: invalidatedAuth,
-          config: runConfig,
-          filters: runFilters,
-          createdAt: connectorInstance.createdAt,
-        })
-      }
-    }
+        config,
+        filters,
+        ...(budget ? { budget } : {}),
+        ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
+      },
+      runRuntime,
+    )
 
     const safeResult = withRunProgressStats(redactRefreshResult(result, sensitiveValues))
     const completedAt = input.completedAt ?? now().toISOString()
@@ -600,87 +557,6 @@ function withRunProgressStats(result: ConnectorRefreshResultInput): ConnectorRef
   }
 }
 
-function refreshRequiresBrowserSessionReconnect(result: AppConnectorRefreshResult): boolean {
-  if (result.observations.some((observation) => observation.resolution.status === 'auth_required')) {
-    return true
-  }
-
-  if (result.warnings.some((warning) => warning.code.startsWith('auth.'))) {
-    return true
-  }
-
-  if (!result.retryHints || typeof result.retryHints !== 'object' || Array.isArray(result.retryHints)) {
-    return false
-  }
-
-  const authRequired = (result.retryHints as Record<string, unknown>).authRequired
-
-  return authRequired === true || (typeof authRequired === 'number' && authRequired > 0)
-}
-
-async function preflightBrowserSessionAuth(
-  authRequirements: ConnectorAuthRequirement[],
-  authRuntime: AppConnectorAuthRuntime,
-): Promise<AppConnectorAuthGrant | null> {
-  for (const requirement of authRequirements) {
-    if (requirement.mode !== 'browser_session') {
-      continue
-    }
-
-    const grant = await authRuntime.resolve({
-      id: requirement.id,
-      mode: requirement.mode,
-    })
-
-    if (grant.status !== 'ready' || !grant.sessionId) {
-      return grant
-    }
-  }
-
-  return null
-}
-
-function createAuthRequiredRefreshResult({
-  authBlocker,
-  checkpoint,
-  checkpointSchemaVersion,
-  coverage,
-}: {
-  authBlocker: AppConnectorAuthGrant
-  checkpoint: ConnectorCheckpointPayload | null
-  checkpointSchemaVersion: string | undefined
-  coverage: ConnectorCoverageWindow
-}): AppConnectorRefreshResult {
-  return {
-    coverage,
-    nextCheckpoint: checkpoint
-      ? {
-        checkpoint: checkpoint.checkpoint,
-        schemaVersion: checkpoint.schemaVersion,
-      }
-      : {
-        checkpoint: { authRequired: true },
-        schemaVersion: checkpointSchemaVersion ?? 'connector-auth-required@1',
-      },
-    observations: [],
-    retryHints: {
-      authRequired: 1,
-      reason: authBlocker.reason ?? 'browser_session_action_required',
-    },
-    stats: {
-      authRequired: 1,
-      observations: 0,
-    },
-    status: 'partial_success',
-    warnings: [
-      {
-        code: 'auth.required',
-        message: 'Connector browser session needs attention.',
-      },
-    ],
-  }
-}
-
 function createRunRuntime(
   runtime: AppConnectorRuntimePorts,
   authReferences: ConnectorAuthReference[],
@@ -688,12 +564,10 @@ function createRunRuntime(
   authHost: AppConnectorAuthHost | undefined,
   sensitiveValues: Set<string>,
 ): AppConnectorRuntime {
-  const browserSession = createRunBrowserSessionRuntime(runtime.browserSession)
   const grants = new Map<string, Promise<AppConnectorAuthGrant>>()
 
   return {
     ...runtime,
-    ...(browserSession ? { browserSession } : {}),
     auth: {
       async resolve(input) {
         const cacheKey = `${input.id}\u0000${input.mode ?? ''}`
@@ -719,48 +593,6 @@ function createRunRuntime(
           throw error
         }
       },
-    },
-  }
-}
-
-function createRunBrowserSessionRuntime(
-  browserSession: ConnectorBrowserSessionRuntime | undefined,
-): ConnectorBrowserSessionRuntime | undefined {
-  if (!browserSession) {
-    return undefined
-  }
-
-  let authRequiredResult: Awaited<ReturnType<ConnectorBrowserSessionRuntime['resolveLink']>> | null = null
-
-  return {
-    async resolveLink(input) {
-      if (authRequiredResult) {
-        return authRequiredResult
-      }
-
-      let result: Awaited<ReturnType<ConnectorBrowserSessionRuntime['resolveLink']>>
-
-      try {
-        result = await browserSession.resolveLink(input)
-      } catch {
-        result = {
-          method: 'connector_browser_session',
-          officialUrl: null,
-          reason: 'browser_session_resolution_failed',
-          status: 'auth_required',
-        }
-      }
-
-      if (result.status === 'auth_required') {
-        authRequiredResult = {
-          status: 'auth_required',
-          officialUrl: null,
-          ...(result.method === undefined ? {} : { method: result.method }),
-          ...(result.reason === undefined ? {} : { reason: result.reason }),
-        }
-      }
-
-      return result
     },
   }
 }
@@ -812,23 +644,6 @@ async function resolveAuthGrant(
     return resolveSecretGrant(reference, authHost, sensitiveValues)
   }
 
-  if (reference.sessionKey) {
-    if (!authHost?.browserSessions?.validate) {
-      return {
-        id: reference.id,
-        mode: referenceMode,
-        reason: 'browser_session_verification_required',
-        status: 'action_required',
-      }
-    }
-
-    return sanitizeBrowserSessionGrant(
-      reference,
-      await authHost.browserSessions.validate(reference),
-      sensitiveValues,
-    )
-  }
-
   return {
     id: reference.id,
     mode: referenceMode,
@@ -876,38 +691,6 @@ async function resolveSecretGrant(
   }
 }
 
-function sanitizeBrowserSessionGrant(
-  reference: ConnectorAuthReference,
-  grant: AppConnectorAuthGrant,
-  sensitiveValues: Set<string>,
-): AppConnectorAuthGrant {
-  trackSensitiveGrantValue(grant, sensitiveValues)
-
-  const sessionKey = reference.sessionKey ?? grant.sessionKey
-  const sanitizedGrant: AppConnectorAuthGrant = {
-    id: reference.id,
-    mode: reference.mode,
-    status: grant.status,
-    ...(grant.expiresAt === undefined ? {} : { expiresAt: grant.expiresAt }),
-    ...(grant.reason === undefined ? {} : { reason: grant.reason }),
-    ...(grant.sessionId === undefined ? {} : { sessionId: grant.sessionId }),
-    ...(sessionKey === undefined ? {} : { sessionKey }),
-  }
-
-  trackSensitiveGrantValue(sanitizedGrant, sensitiveValues)
-
-  return sanitizedGrant
-}
-
-function trackSensitiveGrantValue(
-  grant: AppConnectorAuthGrant,
-  sensitiveValues: Set<string>,
-): void {
-  addSensitiveValue(grant.value, sensitiveValues)
-  addSensitiveValue(grant.sessionId, sensitiveValues)
-  addSensitiveValue(grant.sessionKey, sensitiveValues)
-}
-
 function redactRefreshResult(
   result: AppConnectorRefreshResult,
   sensitiveValues: Set<string>,
@@ -952,12 +735,6 @@ function redactSensitiveString(value: string, sensitiveValues: Set<string>): str
   }
 
   return next
-}
-
-function addSensitiveValue(value: string | undefined, sensitiveValues: Set<string>): void {
-  if (value !== undefined && value.length > 0) {
-    sensitiveValues.add(value)
-  }
 }
 
 function budgetFromPoliteness(

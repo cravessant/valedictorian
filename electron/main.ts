@@ -3,7 +3,6 @@ import { autoUpdater } from 'electron-updater'
 import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { createElectronConnectorPorts } from './connector-ports'
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
 import { registerApplicationIpc } from '../src/ipc/applications.ipc'
@@ -215,7 +214,6 @@ async function registerRuntimeServices(
       ...config,
       seedDataMode: options?.seedData ?? config.seedDataMode,
     },
-    createConnectorPorts: () => createElectronConnectorPortsForWorkspace(workspace.id),
     secretCodec,
     workspaceManager: workspaceManager ?? undefined,
   })
@@ -234,15 +232,6 @@ async function registerRuntimeServices(
   registerScoresIpc(runtime.client, ipcMain)
   registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain)
-}
-
-function createElectronConnectorPortsForWorkspace(workspaceId?: string) {
-  return createElectronConnectorPorts({
-    createBrowserWindow(options) {
-      return new BrowserWindow(options)
-    },
-    sessionNamespace: workspaceId ?? currentWorkspace?.id ?? 'local',
-  })
 }
 
 function createMainWindow() {
@@ -543,7 +532,6 @@ app.whenReady().then(async () => {
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
   )
   workspaceManager = createLocalWorkspaceManager({
-    createConnectorPorts: createElectronConnectorPortsForWorkspace,
     referenceTrackerPath: process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
     registryStore,
     secretCodec: createElectronSecretCodec(safeStorage),

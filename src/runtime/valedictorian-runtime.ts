@@ -121,7 +121,6 @@ export async function createValedictorianRuntime({
 
   const connectorPorts = createConnectorPorts(config.workspaceId)
   const client = createLocalClient({
-    connectorAuth: connectorPorts.connectorAuth,
     connectorRuntime: connectorPorts.connectorRuntime,
     referenceTrackerPath: config.referenceTrackerPath,
     seedDataMode: config.seedDataMode,

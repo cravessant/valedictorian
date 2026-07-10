@@ -304,6 +304,72 @@ function safeWarningForCode(code: string): ConnectorStatusWarningView {
       message: 'Connector found no matching jobs.',
       severity: 'warning',
     },
+    jobright_auth_required: {
+      code: 'jobright_auth_required',
+      label: 'Jobright auth required',
+      message: 'Update and validate Jobright credentials, then run again.',
+      severity: 'blocked',
+    },
+    jobright_auth_failed: {
+      code: 'jobright_auth_failed',
+      label: 'Jobright auth failed',
+      message: 'Jobright authentication failed. Validate credentials and retry this run.',
+      severity: 'blocked',
+    },
+    jobright_auth_retryable: {
+      code: 'jobright_auth_retryable',
+      label: 'Jobright auth unavailable',
+      message: 'Jobright authentication is temporarily unavailable. Retry later.',
+      severity: 'warning',
+    },
+    jobright_challenge_blocked: {
+      code: 'jobright_challenge_blocked',
+      label: 'Jobright challenge',
+      message: 'Jobright returned an API challenge. Refresh credentials or retry later.',
+      severity: 'blocked',
+    },
+    jobright_discovery_rate_limited: {
+      code: 'jobright_discovery_rate_limited',
+      label: 'Jobright discovery rate limited',
+      message: 'Jobright rate-limited discovery. Retry later.',
+      severity: 'warning',
+    },
+    jobright_discovery_failed: {
+      code: 'jobright_discovery_failed',
+      label: 'Jobright discovery failed',
+      message: 'Jobright discovery failed. Review API availability and retry this run.',
+      severity: 'warning',
+    },
+    jobright_discovery_retryable: {
+      code: 'jobright_discovery_retryable',
+      label: 'Jobright discovery unavailable',
+      message: 'Jobright discovery failed temporarily. Retry later.',
+      severity: 'warning',
+    },
+    jobright_parser_changed: {
+      code: 'jobright_parser_changed',
+      label: 'Jobright API changed',
+      message: 'Update the Jobright API parser before retrying this run.',
+      severity: 'warning',
+    },
+    jobright_rate_limited: {
+      code: 'jobright_rate_limited',
+      label: 'Jobright rate limited',
+      message: 'Jobright rate-limited one or more requests. Retry later.',
+      severity: 'warning',
+    },
+    jobright_retryable_failure: {
+      code: 'jobright_retryable_failure',
+      label: 'Jobright temporarily unavailable',
+      message: 'Jobright returned a retryable server failure. Retry later.',
+      severity: 'warning',
+    },
+    jobright_zero_useful_results: {
+      code: 'jobright_zero_useful_results',
+      label: 'No usable Jobright URLs',
+      message: 'Review unresolved Jobright results before retrying this run.',
+      severity: 'warning',
+    },
   }
 
   if (warnings[code]) {
@@ -339,7 +405,7 @@ function hasAuthRetryHint(value: unknown): boolean {
 }
 
 function isAuthWarningCode(code: string): boolean {
-  return code.startsWith('auth.')
+  return code.startsWith('auth.') || code === 'jobright_auth_required'
 }
 
 function isAuthRetryReason(reason: string): boolean {
