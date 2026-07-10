@@ -217,6 +217,14 @@ export type ConnectorCheckpointPayload = {
 
 export type ConnectorRefreshStats = {
   observations: number
+  attempted?: number
+  authRequired?: number
+  discovered?: number
+  eligible?: number
+  filtered?: number
+  resolved?: number
+  skipped?: number
+  totalAvailable?: number
 }
 
 export type ConnectorRefreshWarning = {
