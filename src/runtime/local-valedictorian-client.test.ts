@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   applicationScores,
   applications,
@@ -593,6 +593,7 @@ describe('runtime local Valedictorian client', () => {
         ],
         retryHints: {
           reason: 'auth_required',
+          sessionKey: 'fixture-session-123',
         },
         stats: {
           observations: 0,
@@ -1064,6 +1065,10 @@ describe('runtime local Valedictorian client', () => {
       connectorInstanceId: 'connector-instance-fixture',
       mode: 'manual',
       observationCount: 1,
+      stats: {
+        observations: 1,
+        projected: 1,
+      },
       status: 'completed',
     })
     expect(observations).toMatchObject({
@@ -1099,6 +1104,178 @@ describe('runtime local Valedictorian client', () => {
       },
     ])
     sqlite.close()
+  })
+
+  it('persists one running row before refresh settles and completes that same run', async () => {
+    const sqlitePath = createTempSqlitePath()
+    let releaseRefresh: (() => void) | undefined
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    })
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: {
+        get(connectorId) {
+          return connectorId === 'fixture.jobs'
+            ? fixtureConnector({
+              observedAt: '2026-07-08T18:00:00.000Z',
+              waitForRefresh: refreshGate,
+            })
+            : null
+        },
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-fixture',
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    const pendingRun = client.connectors.runs.trigger({
+      connectorInstanceId: 'connector-instance-fixture',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual',
+    })
+    let runningRunId: string | undefined
+
+    await vi.waitFor(async () => {
+      const runs = await client.connectors.runs.list({
+        connectorInstanceId: 'connector-instance-fixture',
+      })
+
+      expect(runs).toMatchObject({
+        items: [
+          {
+            completedAt: null,
+            status: 'running',
+          },
+        ],
+        total: 1,
+      })
+      runningRunId = runs.items[0]?.id
+    })
+
+    releaseRefresh?.()
+    const completedRun = await pendingRun
+    const persistedRuns = await client.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })
+
+    expect(completedRun).toMatchObject({
+      id: runningRunId,
+      status: 'completed',
+    })
+    expect(persistedRuns).toMatchObject({
+      items: [
+        {
+          id: runningRunId,
+          status: 'completed',
+        },
+      ],
+      total: 1,
+    })
+    sqlite.close()
+  })
+
+  it('recovers an interrupted running row as an explicit cancelled result on reopen', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const sqlite = createFileDatabase(sqlitePath)
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+    const requestedRun = await connectorRepository.recordRunRequest({
+      connectorInstanceId: 'connector-instance-fixture',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual',
+      startedAt: '2026-07-08T18:00:00.000Z',
+    })
+    await connectorRepository.markRunRunning({
+      connectorRunId: requestedRun.id,
+      startedAt: '2026-07-08T18:00:00.000Z',
+    })
+    await connectorRepository.recordRefreshResult({
+      connectorRunId: requestedRun.id,
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'manual',
+      startedAt: '2026-07-08T18:00:00.000Z',
+      completedAt: '2026-07-08T18:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      checkpointPersistence: 'deferred',
+      result: {
+        coverage: {
+          start: '2026-07-08T17:00:00.000Z',
+          end: '2026-07-08T18:00:00.000Z',
+        },
+        nextCheckpoint: {
+          checkpoint: { cursor: 'not-yet-committed' },
+          schemaVersion: 'fixture-checkpoint@1',
+        },
+        observations: [],
+        stats: { observations: 0 },
+        warnings: [{
+          code: 'source.rate_limited',
+          message: 'Sensitive raw rate-limit details.',
+        }],
+        status: 'partial_success',
+      },
+    })
+    sqlite.close()
+
+    const reopenedClient = createRuntimeLocalValedictorianClient({
+      now: () => new Date('2026-07-08T19:00:00.000Z'),
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-fixture',
+    })
+
+    await expect(reopenedClient.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })).resolves.toMatchObject({
+      items: [
+        {
+          completedAt: '2026-07-08T19:00:00.000Z',
+          id: requestedRun.id,
+          retryHints: {
+            reason: 'connector_run_interrupted',
+          },
+          status: 'cancelled',
+          warningCount: 2,
+          warnings: [
+            {
+              code: 'source.rate_limited',
+              label: 'Rate limited',
+            },
+            {
+              code: 'connector.interrupted',
+              label: 'Run interrupted',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    })
   })
 
   it('rejects unsupported connector run triggers instead of queueing them', async () => {
@@ -1327,6 +1504,10 @@ describe('runtime local Valedictorian client', () => {
         {
           retryHints: {
             reason: 'connector_execution_failed',
+          },
+          stats: {
+            failures: 1,
+            running: false,
           },
           status: 'failed',
         },
@@ -1661,11 +1842,13 @@ function fixtureConnector({
   companyName = 'Example Robotics',
   observedAt,
   throwOnRefresh = false,
+  waitForRefresh,
 }: {
   additionalCompanyNames?: string[]
   companyName?: string
   observedAt: string
   throwOnRefresh?: boolean
+  waitForRefresh?: Promise<void>
 }): AppJobConnector {
   return {
     definition: {
@@ -1673,6 +1856,8 @@ function fixtureConnector({
       version: '0.0.0-fixture',
     },
     async refresh(input) {
+      await waitForRefresh
+
       if (throwOnRefresh) {
         throw new Error('Fixture connector refresh failed')
       }

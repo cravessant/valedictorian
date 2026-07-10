@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,11 +11,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
   createApplication,
+  createConnectorStatusResult,
   createConnectorsApi,
   createListResult,
   createPolicyApi,
   createProfileApi,
   createSettingsApi,
+  createSourcingResult,
   createWorkspaceApi,
   openSettingsPage,
 } from './App.test-helpers'
@@ -729,6 +732,190 @@ describe('App settings and chrome', () => {
       }))
     })
     expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+  })
+
+  it('shows persisted run progress and terminal connector counts in settings', async () => {
+    const connectorsApi = createConnectorsApi()
+    const connectorStatusLoader = vi.fn(async () => createConnectorStatusResult([]))
+    const sourcingLoader = vi.fn(async () => createSourcingResult([]))
+    type ConnectorRun = Awaited<ReturnType<typeof connectorsApi.runs.trigger>>
+    let resolveRun: ((run: ConnectorRun) => void) | undefined
+    const pendingRun = new Promise<ConnectorRun>((resolve) => {
+      resolveRun = resolve
+    })
+    vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(pendingRun)
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorStatusLoader={connectorStatusLoader}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+        sourcingLoader={sourcingLoader}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
+    await screen.findByText('Auth ready')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    expect(await screen.findByText('Latest run: running')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveRun?.({
+        id: 'connector-run-progress',
+        connectorInstanceId: 'jobright-default',
+        mode: 'manual',
+        status: 'partial_success',
+        coverage: {
+          start: '2026-07-09T15:00:00.000Z',
+          end: '2026-07-09T16:00:00.000Z',
+        },
+        filterSignature: 'filters:{}',
+        observationCount: 8,
+        warningCount: 1,
+        stats: {
+          attempted: 3,
+          authRequired: 1,
+          discovered: 12,
+          eligible: 8,
+          failures: 2,
+          observations: 8,
+          projected: 2,
+          resolved: 2,
+        },
+        warnings: [],
+        retryHints: {
+          reason: 'auth_required',
+        },
+        startedAt: '2026-07-09T16:00:00.000Z',
+        completedAt: '2026-07-09T16:00:02.000Z',
+      })
+    })
+
+    expect(await screen.findByText('Latest run: partial_success')).toBeInTheDocument()
+    expect(screen.getByText('Discovered: 12')).toBeInTheDocument()
+    expect(screen.getByText('Eligible: 8')).toBeInTheDocument()
+    expect(screen.getByText('Attempted: 3')).toBeInTheDocument()
+    expect(screen.getByText('Resolved: 2')).toBeInTheDocument()
+    expect(screen.getByText('Auth required: 1')).toBeInTheDocument()
+    expect(screen.getByText('Projected: 2')).toBeInTheDocument()
+    expect(screen.getByText('Warnings: 1')).toBeInTheDocument()
+    expect(screen.getByText('Failures: 2')).toBeInTheDocument()
+    expect(screen.queryByText('auth_required')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(connectorStatusLoader).toHaveBeenCalledTimes(1)
+      expect(sourcingLoader).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('renders a sanitized error when a settings connector run rejects', async () => {
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.runs.trigger).mockRejectedValueOnce(
+      new Error('sensitive session handle from connector failure'),
+    )
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
+    await screen.findByText('Auth ready')
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    expect(await screen.findByText('Jobright run could not be completed.')).toBeInTheDocument()
+    expect(screen.queryByText(/sensitive session handle/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
+  })
+
+  it('renders sanitized connector run history with retry guidance', async () => {
+    const connectorsApi = createConnectorsApi()
+    await connectorsApi.create({
+      id: 'jobright-default',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.3.1',
+      displayName: 'Jobright public jobs',
+      enabled: true,
+      auth: [],
+      config: {},
+      filters: {},
+    })
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      hasMore: false,
+      items: [
+        {
+          id: 'connector-run-history',
+          connectorInstanceId: 'jobright-default',
+          mode: 'manual',
+          status: 'partial_success',
+          coverage: {
+            start: '2026-07-09T15:00:00.000Z',
+            end: '2026-07-09T16:00:00.000Z',
+          },
+          filterSignature: 'filters:{}',
+          observationCount: 8,
+          warningCount: 1,
+          stats: {
+            attempted: 3,
+            authRequired: 1,
+            discovered: 12,
+            eligible: 8,
+            projected: 2,
+            resolved: 2,
+          },
+          warnings: [
+            {
+              code: 'auth.required',
+              label: 'sensitive raw warning label',
+              message: 'sensitive session handle from run history',
+              severity: 'blocked',
+            },
+          ],
+          retryHints: {
+            reason: 'auth_required',
+            sessionKey: 'sensitive-session-key',
+          },
+          startedAt: '2026-07-09T16:00:00.000Z',
+          completedAt: '2026-07-09T16:00:02.000Z',
+        },
+      ],
+      limit: 20,
+      offset: 0,
+      total: 1,
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Sourcing runs' }))
+
+    expect(await screen.findByRole('heading', { name: 'Sourcing runs' })).toBeInTheDocument()
+    expect(await screen.findByText('Jobright public jobs')).toBeInTheDocument()
+    expect(screen.getByText('partial_success')).toBeInTheDocument()
+    expect(screen.getByText('Authentication required')).toBeInTheDocument()
+    expect(screen.getByText('Reconnect the connector and run again.')).toBeInTheDocument()
+    expect(screen.getByText('Projected: 2')).toBeInTheDocument()
+    expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
   })
 
   it('keeps settings navigation responsive without squeezing the content column', async () => {

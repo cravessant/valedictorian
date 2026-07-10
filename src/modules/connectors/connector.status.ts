@@ -262,6 +262,24 @@ function safeWarningForCode(code: string): ConnectorStatusWarningView {
       message: 'Connector auth needs attention.',
       severity: 'blocked',
     },
+    'connector.execution_failed': {
+      code: 'connector.execution_failed',
+      label: 'Execution failed',
+      message: 'Connector execution failed before completion.',
+      severity: 'warning',
+    },
+    'connector.interrupted': {
+      code: 'connector.interrupted',
+      label: 'Run interrupted',
+      message: 'The app closed before this connector run finished.',
+      severity: 'warning',
+    },
+    'connector.projection_failed': {
+      code: 'connector.projection_failed',
+      label: 'Projection failed',
+      message: 'Connector observations could not be projected.',
+      severity: 'warning',
+    },
     'source.rate_limited': {
       code: 'source.rate_limited',
       label: 'Rate limited',

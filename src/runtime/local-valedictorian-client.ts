@@ -265,6 +265,9 @@ export function createLocalValedictorianClient({
   const profileRepository = createSqliteProfileRepository(database, secretCodec)
   const actionQueueRepository = createSqliteActionQueueRepository(database)
   const connectorRepository = createSqliteConnectorRepository(database)
+  connectorRepository.recoverInterruptedRuns({
+    completedAt: now().toISOString(),
+  })
   const policyRepository = createSqlitePolicyRepository(database)
   const workflowRunRepository = createSqliteWorkflowRunRepository(database)
   const sourcingProcessor = createSqliteSourcingProcessor(database)
@@ -705,12 +708,26 @@ async function executeConnectorRunTrigger({
 
   const mode = input.mode ?? 'manual'
   assertExecutableConnectorTrigger(input, mode)
+  const runRequest = await connectorRepository.recordRunRequest({
+    connectorInstanceId: input.connectorInstanceId,
+    mode,
+    startedAt,
+    coverageStartedAt: input.coverageStartedAt,
+    coverageEndedAt: input.coverageEndedAt,
+    reason: input.reason,
+  })
+
+  await connectorRepository.markRunRunning({
+    connectorRunId: runRequest.id,
+    startedAt,
+  })
 
   let refreshRecord: AppConnectorRefreshRecord
 
   try {
     refreshRecord = mode === 'catch_up'
       ? await connectorRunner.catchUpWithDeferredCheckpoint(connector, {
+        connectorRunId: runRequest.id,
         connectorInstanceId: input.connectorInstanceId,
         now: input.coverageEndedAt ?? startedAt,
         startedAt,
@@ -718,6 +735,7 @@ async function executeConnectorRunTrigger({
       : await connectorRunner.refreshWithDeferredCheckpoint(
         connector,
         {
+          connectorRunId: runRequest.id,
           connectorInstanceId: input.connectorInstanceId,
           mode,
           coverage: requiredCoverageWindow(input, mode),
@@ -725,13 +743,9 @@ async function executeConnectorRunTrigger({
         },
       )
   } catch (error) {
-    await connectorRepository.recordRunFailure({
-      connectorInstanceId: input.connectorInstanceId,
-      mode,
-      startedAt,
+    await connectorRepository.markRunFailed({
+      connectorRunId: runRequest.id,
       completedAt: now().toISOString(),
-      coverageStartedAt: input.coverageStartedAt,
-      coverageEndedAt: input.coverageEndedAt,
       retryHints: {
         reason: 'connector_execution_failed',
       },
@@ -743,21 +757,39 @@ async function executeConnectorRunTrigger({
     throw error
   }
 
-  const { checkpoint, run } = refreshRecord
+  const { checkpoint, run, terminalStatus } = refreshRecord
+  let projectedRun = run
 
   try {
+    projectedRun = await connectorRepository.updateRunProgress({
+      connectorRunId: run.id,
+      stats: {
+        projected: 0,
+      },
+    })
     const observations = await connectorRepository.listObservations({
       connectorInstanceId: input.connectorInstanceId,
       connectorRunId: run.id,
     })
 
-    for (const observation of observations) {
+    for (const [index, observation] of observations.entries()) {
       await projectionService.projectObservation({
         connectorObservationId: observation.id,
+      })
+      projectedRun = await connectorRepository.updateRunProgress({
+        connectorRunId: run.id,
+        stats: {
+          projected: index + 1,
+        },
       })
     }
 
     await connectorRepository.recordCheckpoint(checkpoint)
+    projectedRun = await connectorRepository.completeRun({
+      completedAt: now().toISOString(),
+      connectorRunId: run.id,
+      status: terminalStatus,
+    })
   } catch (error) {
     await connectorRepository.markRunFailed({
       connectorRunId: run.id,
@@ -773,7 +805,7 @@ async function executeConnectorRunTrigger({
     throw error
   }
 
-  return run
+  return projectedRun
 }
 
 function assertExecutableConnectorTrigger(
@@ -979,10 +1011,72 @@ function mapConnectorRunSummary(record: ConnectorRunRecord): LocalConnectorRunSu
     warningCount: record.warningCount,
     stats: record.stats,
     warnings: mapConnectorWarnings(record.warnings),
-    retryHints: record.retryHints,
+    retryHints: safeConnectorRetryHints(record.retryHints),
     startedAt: record.startedAt,
     completedAt: record.completedAt,
   }
+}
+
+const safeConnectorRetryReasons = new Set([
+  'auth_reference_missing',
+  'auth_required',
+  'browser_session_action_required',
+  'browser_session_expired',
+  'browser_session_key_missing',
+  'browser_session_login_cancelled',
+  'browser_session_login_failed',
+  'browser_session_resolution_failed',
+  'browser_session_runtime_missing',
+  'browser_session_runtime_unavailable',
+  'browser_session_verification_failed',
+  'browser_session_verification_required',
+  'browser_session_verification_timed_out',
+  'budget_exhausted',
+  'connector_execution_failed',
+  'connector_run_interrupted',
+  'disabled',
+  'execution_failed',
+  'jobright_rate_limited',
+  'jobright_resolution',
+  'jobright_resolution_deferred',
+  'projection_failed',
+  'secret_missing',
+  'secret_reference_missing',
+  'settings_manual_refresh',
+  'unsupported_connector',
+  'user_skipped_auth_required_run',
+])
+
+function safeConnectorRetryHints(value: unknown): Record<string, unknown> | null {
+  const retryHints = safeJsonRecord(value)
+  const safeHints: Record<string, unknown> = {}
+  const reason = retryHints.reason
+
+  if (typeof reason === 'string' && safeConnectorRetryReasons.has(reason)) {
+    safeHints.reason = reason
+  }
+
+  for (const key of ['authRequired', 'rateLimited', 'retryAfterSeconds'] as const) {
+    const metric = retryHints[key]
+
+    if (typeof metric === 'boolean' || (
+      typeof metric === 'number' && Number.isFinite(metric) && metric >= 0
+    )) {
+      safeHints[key] = metric
+    }
+  }
+
+  if (retryHints.skippedBy === 'user') {
+    safeHints.skippedBy = 'user'
+  }
+
+  return Object.keys(safeHints).length > 0 ? safeHints : null
+}
+
+function safeJsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 function mapConnectorCheckpoint(record: ConnectorCheckpointRecord) {

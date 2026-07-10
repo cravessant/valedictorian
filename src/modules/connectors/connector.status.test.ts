@@ -165,6 +165,36 @@ describe('connector status mapping', () => {
       summary: 'Latest run completed with warnings.',
     })
   })
+
+  it('maps interrupted-run warnings without exposing raw failure details', () => {
+    const view = mapConnectorStatusSummary(
+      createStatusRecord({
+        latestRun: createRunRecord({
+          status: 'cancelled',
+          warningCount: 1,
+          warnings: [
+            {
+              code: 'connector.interrupted',
+              message: 'Interrupted with sensitive-session-handle.',
+            },
+          ],
+        }),
+      }),
+    )
+
+    expect(view).toMatchObject({
+      status: 'cancelled',
+      warnings: [
+        {
+          code: 'connector.interrupted',
+          label: 'Run interrupted',
+          message: 'The app closed before this connector run finished.',
+          severity: 'warning',
+        },
+      ],
+    })
+    expect(JSON.stringify(view)).not.toContain('sensitive-session-handle')
+  })
 })
 
 function createStatusRecord(

@@ -421,6 +421,69 @@ describe('SQLite connector repository', () => {
     })
   })
 
+  it('keeps an existing run non-terminal while deferred projection is pending', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await repository.upsertInstance({
+      id: 'connector-instance-deferred',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Deferred fixture jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+    const request = await repository.recordRunRequest({
+      connectorInstanceId: 'connector-instance-deferred',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:00.000Z',
+    })
+    await repository.markRunRunning({
+      connectorRunId: request.id,
+      startedAt: '2026-07-08T16:00:00.000Z',
+    })
+
+    const run = await repository.recordRefreshResult({
+      connectorRunId: request.id,
+      connectorInstanceId: 'connector-instance-deferred',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:00.000Z',
+      completedAt: '2026-07-08T16:00:01.000Z',
+      config: {},
+      filters: {},
+      filterSignature: 'filters:{}',
+      checkpointPersistence: 'deferred',
+      result: {
+        ...emptyConnectorRefreshResult({
+          checkpoint: { cursor: 'deferred-cursor' },
+          coverage: {
+            start: '2026-07-08T15:00:00.000Z',
+            end: '2026-07-08T16:00:00.000Z',
+          },
+        }),
+        status: 'partial_success',
+      },
+    })
+
+    expect(run).toMatchObject({
+      completedAt: null,
+      id: request.id,
+      status: 'running',
+    })
+
+    await expect(repository.completeRun({
+      completedAt: '2026-07-08T16:00:02.000Z',
+      connectorRunId: request.id,
+      status: 'partial_success',
+    })).resolves.toMatchObject({
+      completedAt: '2026-07-08T16:00:02.000Z',
+      id: request.id,
+      status: 'partial_success',
+    })
+  })
+
   it('records failed connector run attempts without advancing checkpoints', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)

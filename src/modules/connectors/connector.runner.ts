@@ -19,6 +19,7 @@ import type {
   ConnectorInstanceRecord,
   ConnectorRefreshResultInput,
   ConnectorRunRecord,
+  ConnectorRunTerminalStatus,
   createSqliteConnectorRepository,
 } from './connector.repository'
 
@@ -77,6 +78,7 @@ export interface RegisterConnectorInstanceInput {
 }
 
 export interface RunConnectorRefreshInput {
+  connectorRunId?: string
   connectorInstanceId: string
   mode: ConnectorRefreshMode
   coverage: ConnectorCoverageWindow
@@ -86,6 +88,7 @@ export interface RunConnectorRefreshInput {
 }
 
 export interface RunConnectorCatchUpInput {
+  connectorRunId?: string
   connectorInstanceId: string
   now?: string
   startedAt?: string
@@ -104,6 +107,7 @@ export interface AppConnectorPendingCheckpoint {
 export interface AppConnectorRefreshRecord {
   checkpoint: AppConnectorPendingCheckpoint
   run: ConnectorRunRecord
+  terminalStatus: ConnectorRunTerminalStatus
 }
 
 export interface AppConnectorRunPolicy {
@@ -221,10 +225,11 @@ export function createConnectorRunner({
       }
     }
 
-    const safeResult = redactRefreshResult(result, sensitiveValues)
+    const safeResult = withRunProgressStats(redactRefreshResult(result, sensitiveValues))
     const completedAt = input.completedAt ?? now().toISOString()
 
     const run = await repository.recordRefreshResult({
+      connectorRunId: input.connectorRunId,
       connectorInstanceId: input.connectorInstanceId,
       mode: input.mode,
       startedAt,
@@ -245,6 +250,7 @@ export function createConnectorRunner({
         savedAt: completedAt,
       },
       run,
+      terminalStatus: terminalConnectorRunStatus(safeResult.status),
     }
   }
 
@@ -281,6 +287,7 @@ export function createConnectorRunner({
     return {
       instance,
       refreshInput: {
+        connectorRunId: input.connectorRunId,
         connectorInstanceId: input.connectorInstanceId,
         mode: 'catch_up',
         coverage: {
@@ -348,6 +355,50 @@ export function createConnectorRunner({
           checkpointPersistence: 'deferred',
         },
       )
+    },
+  }
+}
+
+function terminalConnectorRunStatus(value: unknown): ConnectorRunTerminalStatus {
+  if (
+    value === 'cancelled' ||
+    value === 'failed' ||
+    value === 'partial_success' ||
+    value === 'skipped'
+  ) {
+    return value
+  }
+
+  return 'completed'
+}
+
+const connectorRunProgressMetricKeys = [
+  'attempted',
+  'authRequired',
+  'discovered',
+  'eligible',
+  'failed',
+  'failures',
+  'resolved',
+] as const
+
+function withRunProgressStats(result: ConnectorRefreshResultInput): ConnectorRefreshResultInput {
+  const checkpoint = toJsonRecord(result.nextCheckpoint.checkpoint)
+  const checkpointStats: Record<string, number> = {}
+
+  for (const key of connectorRunProgressMetricKeys) {
+    const value = checkpoint[key]
+
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+      checkpointStats[key] = value
+    }
+  }
+
+  return {
+    ...result,
+    stats: {
+      ...checkpointStats,
+      ...result.stats,
     },
   }
 }

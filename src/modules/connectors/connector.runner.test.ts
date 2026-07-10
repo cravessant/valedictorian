@@ -75,7 +75,13 @@ describe('connector runner', () => {
           warnings: [],
           nextCheckpoint: {
             checkpoint: {
+              attempted: 3,
+              authRequired: 1,
               cursor: `fixture:${observedAt}`,
+              discovered: 12,
+              eligible: 8,
+              resolved: 2,
+              sensitiveSessionKey: 'must-not-reach-run-stats',
             },
             schemaVersion: 'fixture-checkpoint@1',
           },
@@ -144,9 +150,18 @@ describe('connector runner', () => {
     expect(firstRun).toMatchObject({
       status: 'completed',
       observationCount: 1,
+      stats: {
+        attempted: 3,
+        authRequired: 1,
+        discovered: 12,
+        eligible: 8,
+        observations: 1,
+        resolved: 2,
+      },
       coverageStartedAt: '2026-07-01T00:00:00.000Z',
       coverageEndedAt: observedAt,
     })
+    expect(firstRun.stats).not.toHaveProperty('sensitiveSessionKey')
     expect(receivedInputs).toEqual([
       {
         connectorInstanceId: 'connector-instance-fixture',

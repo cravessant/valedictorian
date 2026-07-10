@@ -745,6 +745,30 @@ function App({
     setSourcingReloadKey((current) => current + 1)
   }
 
+  function reloadConnectorRunOutcomes() {
+    setConnectorStatusReloadKey((current) => current + 1)
+    reloadSourcing()
+    void connectorStatusLoader()
+      .then((nextResult) => {
+        setConnectorStatusResult(nextResult)
+        setHasLoadedConnectorStatus(true)
+        setConnectorStatusError(null)
+      })
+      .catch(() => {
+        setConnectorStatusResult(emptyConnectorStatusResult)
+        setConnectorStatusError('Connector status could not be loaded.')
+      })
+    void sourcingLoader(sourcingQuery)
+      .then((nextResult) => {
+        setSourcingResult(nextResult)
+        setHasLoadedSourcing(true)
+        setSourcingError(null)
+      })
+      .catch(() => {
+        setSourcingError('Sourcing findings could not be loaded.')
+      })
+  }
+
   function handleConnectorStatusAction(
     connector: ConnectorStatusView,
     action: ConnectorStatusAction,
@@ -1010,6 +1034,7 @@ function App({
             settings={settings}
             workspace={workspace}
             workspaceApi={workspaceApi}
+            onConnectorRunSettled={reloadConnectorRunOutcomes}
             onSettingsPatch={updateSettings}
           />
         ) : appView === APP_VIEWS.PROFILE ? (

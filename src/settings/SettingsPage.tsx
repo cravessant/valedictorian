@@ -31,6 +31,7 @@ interface SettingsPageProps {
   settings: AppSettings
   workspace: WorkspaceSummary | null
   workspaceApi: WorkspacePreloadApi
+  onConnectorRunSettled: () => void
   onSettingsPatch: (patch: AppSettingsPatch) => void
 }
 
@@ -214,6 +215,7 @@ function SettingsPage({
   settings,
   workspace,
   workspaceApi,
+  onConnectorRunSettled,
   onSettingsPatch,
 }: SettingsPageProps) {
   const selectedItem = settingsNavGroups
@@ -246,7 +248,10 @@ function SettingsPage({
             <ConfigurationSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.CONNECTORS ? (
-            <ConnectorSettingsPanel connectorsApi={connectorsApi} />
+            <ConnectorSettingsPanel
+              connectorsApi={connectorsApi}
+              onRunSettled={onConnectorRunSettled}
+            />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.AGENT_ACCESS ? (
             <AgentAccessSettingsPanel
@@ -267,6 +272,9 @@ function SettingsPage({
           {selectedPanel === SETTINGS_PANELS.POLICY ? (
             <PolicySettingsPanel policyApi={policyApi} />
           ) : null}
+          {selectedPanel === SETTINGS_PANELS.SOURCING_RUNS ? (
+            <SourcingRunsSettingsPanel connectorsApi={connectorsApi} />
+          ) : null}
           {!isFunctionalSettingsPanel(selectedPanel) ? (
             <ComingLaterSettingsPanel label={selectedLabel} />
           ) : null}
@@ -278,6 +286,7 @@ function SettingsPage({
 
 type ConnectorSettingsInstance = Awaited<ReturnType<ConnectorsPreloadApi['list']>>['items'][number]
 type ConnectorReconnectResult = Awaited<ReturnType<ConnectorsPreloadApi['status']['reconnect']>>
+type ConnectorSettingsRun = Awaited<ReturnType<ConnectorsPreloadApi['runs']['trigger']>>
 
 interface ConnectorSettingsDraft {
   maxResolutionCount: string
@@ -287,7 +296,13 @@ interface ConnectorSettingsDraft {
 
 const defaultJobrightPublicFeedUrl = 'https://jobright.ai/minisites-jobs/intern/us/swe?embed=true'
 
-function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPreloadApi }) {
+function ConnectorSettingsPanel({
+  connectorsApi,
+  onRunSettled,
+}: {
+  connectorsApi: ConnectorsPreloadApi
+  onRunSettled: () => void
+}) {
   const [instances, setInstances] = useState<ConnectorSettingsInstance[]>([])
   const [drafts, setDrafts] = useState<Record<string, ConnectorSettingsDraft>>({})
   const [isAdding, setIsAdding] = useState(false)
@@ -296,6 +311,8 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
   const [savingInstanceId, setSavingInstanceId] = useState<string | null>(null)
   const [runningInstanceId, setRunningInstanceId] = useState<string | null>(null)
   const [latestRunStatuses, setLatestRunStatuses] = useState<Record<string, string>>({})
+  const [latestRuns, setLatestRuns] = useState<Record<string, ConnectorSettingsRun>>({})
+  const [connectorActionError, setConnectorActionError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -318,6 +335,7 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
   }, [connectorsApi])
 
   function addJobrightConnector() {
+    setConnectorActionError(null)
     setIsAdding(true)
     void connectorsApi.create({
       id: 'jobright-default',
@@ -346,6 +364,9 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
           created,
         ])
       })
+      .catch(() => {
+        setConnectorActionError('Jobright connector could not be added.')
+      })
       .finally(() => setIsAdding(false))
   }
 
@@ -368,6 +389,7 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
     ))
 
     setAuthenticatingInstanceId(instance.id)
+    setConnectorActionError(null)
     setAuthResults((currentResults) => {
       const nextResults = { ...currentResults }
       delete nextResults[instance.id]
@@ -415,6 +437,7 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
             status: 'action_required',
           },
         }))
+        setConnectorActionError('Jobright authentication could not be completed.')
       })
       .finally(() => setAuthenticatingInstanceId(null))
   }
@@ -432,6 +455,7 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
 
   function saveConnectorSettings(instance: ConnectorSettingsInstance) {
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
+    setConnectorActionError(null)
     setSavingInstanceId(instance.id)
     void connectorsApi.update({
       connectorInstanceId: instance.id,
@@ -448,6 +472,9 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
           currentInstance.id === updated.id ? updated : currentInstance,
         ))
       })
+      .catch(() => {
+        setConnectorActionError('Jobright settings could not be saved.')
+      })
       .finally(() => setSavingInstanceId(null))
   }
 
@@ -455,7 +482,12 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
     const coverageEndedAt = new Date().toISOString()
     const coverageStartedAt = new Date(Date.parse(coverageEndedAt) - 60 * 60 * 1000).toISOString()
 
+    setConnectorActionError(null)
     setRunningInstanceId(instance.id)
+    setLatestRunStatuses((currentStatuses) => ({
+      ...currentStatuses,
+      [instance.id]: 'running',
+    }))
     void connectorsApi.runs.trigger({
       connectorInstanceId: instance.id,
       coverageEndedAt,
@@ -464,12 +496,26 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
       reason: 'settings_manual_refresh',
     })
       .then((run) => {
+        setLatestRuns((currentRuns) => ({
+          ...currentRuns,
+          [instance.id]: run,
+        }))
         setLatestRunStatuses((currentStatuses) => ({
           ...currentStatuses,
           [instance.id]: run.status,
         }))
       })
-      .finally(() => setRunningInstanceId(null))
+      .catch(() => {
+        setConnectorActionError('Jobright run could not be completed.')
+        setLatestRunStatuses((currentStatuses) => ({
+          ...currentStatuses,
+          [instance.id]: 'failed',
+        }))
+      })
+      .finally(() => {
+        setRunningInstanceId(null)
+        onRunSettled()
+      })
   }
 
   return (
@@ -482,6 +528,16 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
           Add sources and manage connector auth for this workspace.
         </p>
       </div>
+
+      {connectorActionError ? (
+        <Alert variant="destructive" className="bg-card" role="alert">
+          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
+          <div className="pl-7">
+            <AlertTitle>Connector action failed</AlertTitle>
+            <AlertDescription>{connectorActionError}</AlertDescription>
+          </div>
+        </Alert>
+      ) : null}
 
       <div className="rounded-md border border-border bg-card p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -513,6 +569,8 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
                 const authConfigured = instance.auth.every((auth) => auth.configured)
                 const authResult = authResults[instance.id]
                 const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
+                const latestRun = latestRuns[instance.id]
+                const runMetrics = latestRun ? connectorRunMetrics(latestRun) : []
 
                 return (
                   <div key={instance.id} className="grid gap-4 p-3 text-sm">
@@ -604,9 +662,18 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
                       </Button>
                     </div>
                     {latestRunStatuses[instance.id] ? (
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Latest run: {latestRunStatuses[instance.id]}
-                      </p>
+                      <div className="grid gap-2" aria-label={`Latest run details for ${instance.displayName}`}>
+                        <p className="text-xs font-medium text-muted-foreground" role="status">
+                          Latest run: {latestRunStatuses[instance.id]}
+                        </p>
+                        {runMetrics.length > 0 ? (
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            {runMetrics.map((metric) => (
+                              <span key={metric.label}>{metric.label}: {metric.value}</span>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 )
@@ -617,6 +684,196 @@ function ConnectorSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPr
       </div>
     </section>
   )
+}
+
+function connectorRunMetrics(run: ConnectorSettingsRun): Array<{ label: string; value: number }> {
+  const stats = recordFromUnknown(run.stats)
+  const failureMetric = numericRunMetric(stats, 'failures', 'Failures')
+    ?? numericRunMetric(stats, 'failed', 'Failures')
+    ?? (run.status === 'failed' ? { label: 'Failures', value: 1 } : null)
+  const metrics = [
+    numericRunMetric(stats, 'discovered', 'Discovered'),
+    numericRunMetric(stats, 'eligible', 'Eligible'),
+    numericRunMetric(stats, 'attempted', 'Attempted'),
+    numericRunMetric(stats, 'resolved', 'Resolved'),
+    numericRunMetric(stats, 'authRequired', 'Auth required'),
+    numericRunMetric(stats, 'projected', 'Projected'),
+    { label: 'Observations', value: run.observationCount },
+    { label: 'Warnings', value: run.warningCount },
+    failureMetric,
+  ]
+
+  return metrics.filter((metric): metric is { label: string; value: number } => metric !== null)
+}
+
+function numericRunMetric(
+  stats: Record<string, unknown>,
+  key: string,
+  label: string,
+): { label: string; value: number } | null {
+  const value = stats[key]
+
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? { label, value }
+    : null
+}
+
+interface ConnectorRunHistoryItem {
+  connectorName: string
+  run: ConnectorSettingsRun
+}
+
+function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPreloadApi }) {
+  const [items, setItems] = useState<ConnectorRunHistoryItem[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+
+    connectorsApi.list()
+      .then(async ({ items: instances }) => {
+        const runLists = await Promise.all(instances.map(async (instance) => ({
+          connectorName: instance.displayName,
+          runs: (await connectorsApi.runs.list({
+            connectorInstanceId: instance.id,
+            limit: 20,
+            offset: 0,
+          })).items,
+        })))
+
+        return runLists
+          .flatMap(({ connectorName, runs }) => runs.map((run) => ({ connectorName, run })))
+          .sort((left, right) => right.run.startedAt.localeCompare(left.run.startedAt))
+      })
+      .then((runs) => {
+        if (!cancelled) {
+          setItems(runs)
+          setError(null)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setItems([])
+          setError('Connector run history could not be loaded.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [connectorsApi])
+
+  return (
+    <section aria-labelledby="sourcing-runs-settings-title" className="space-y-7">
+      <div>
+        <h2 id="sourcing-runs-settings-title" className="text-xl font-semibold text-foreground">
+          Sourcing runs
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Inspect connector progress, results, warnings, and safe retry guidance.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground" role="status">Loading connector runs...</p>
+      ) : null}
+      {error ? (
+        <Alert variant="destructive" className="bg-card" role="alert">
+          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
+          <div className="pl-7">
+            <AlertTitle>Run history unavailable</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </div>
+        </Alert>
+      ) : null}
+      {!isLoading && !error && items.length === 0 ? (
+        <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+          No connector runs recorded yet.
+        </p>
+      ) : null}
+      {items.length > 0 ? (
+        <div className="space-y-3" aria-label="Connector run history">
+          {items.map(({ connectorName, run }) => {
+            const warningLabels = [...new Set(run.warnings.map((warning) =>
+              safeRunWarningLabel(warning.code)))]
+            const retryGuidance = safeRunRetryGuidance(run)
+
+            return (
+              <article key={run.id} className="space-y-3 rounded-md border border-border bg-card p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">{connectorName}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {run.mode} · {run.startedAt}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-border px-2 py-1 text-xs font-medium text-foreground">
+                    {run.status}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                  {connectorRunMetrics(run).map((metric) => (
+                    <span key={metric.label}>{metric.label}: {metric.value}</span>
+                  ))}
+                </div>
+                {warningLabels.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {warningLabels.map((label) => (
+                      <span key={label} className="rounded-full bg-muted px-2 py-1 text-xs text-foreground">
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {retryGuidance ? (
+                  <p className="text-xs font-medium text-muted-foreground">{retryGuidance}</p>
+                ) : null}
+              </article>
+            )
+          })}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function safeRunWarningLabel(code: string): string {
+  const labels: Record<string, string> = {
+    'auth.required': 'Authentication required',
+    'connector.execution_failed': 'Connector execution failed',
+    'connector.interrupted': 'Run interrupted',
+    'connector.projection_failed': 'Projection failed',
+    'source.captcha': 'Captcha required',
+    'source.rate_limited': 'Rate limited',
+  }
+
+  return labels[code] ?? 'Connector warning'
+}
+
+function safeRunRetryGuidance(run: ConnectorSettingsRun): string | null {
+  const retryHints = recordFromUnknown(run.retryHints)
+  const reason = stringFromUnknown(retryHints.reason)
+  const stats = recordFromUnknown(run.stats)
+
+  if (reason.includes('auth') || numberFromUnknown(stats.authRequired, 0) > 0) {
+    return 'Reconnect the connector and run again.'
+  }
+
+  if (reason === 'projection_failed') {
+    return 'Review the projection failure, then run the connector again.'
+  }
+
+  if (reason === 'connector_run_interrupted') {
+    return 'The app interrupted this run. Start a new connector run.'
+  }
+
+  return run.status === 'failed' ? 'Review the connector configuration and run again.' : null
 }
 
 function defaultConnectorSettingsDraft(
@@ -1723,6 +1980,7 @@ function isFunctionalSettingsPanel(panel: SettingsPanelId) {
     panel === SETTINGS_PANELS.AGENT_ACCESS ||
     panel === SETTINGS_PANELS.APPEARANCE ||
     panel === SETTINGS_PANELS.POLICY ||
+    panel === SETTINGS_PANELS.SOURCING_RUNS ||
     panel === SETTINGS_PANELS.DATA
   )
 }

@@ -35,6 +35,8 @@ export type ConnectorRunStatus =
   | 'running'
   | 'skipped'
 
+export type ConnectorRunTerminalStatus = Exclude<ConnectorRunStatus, 'queued' | 'running'>
+
 export type ConnectorAuthMode =
   | 'none'
   | 'api_key'
@@ -111,6 +113,7 @@ export interface UpsertConnectorInstanceInput {
 }
 
 export interface RecordConnectorRefreshResultInput {
+  connectorRunId?: string
   connectorInstanceId: string
   mode: string
   startedAt: string
@@ -160,6 +163,26 @@ export interface MarkConnectorRunFailedInput {
   completedAt: string
   retryHints?: unknown
   warning: ConnectorWarning
+}
+
+export interface MarkConnectorRunRunningInput {
+  connectorRunId: string
+  startedAt: string
+}
+
+export interface RecoverInterruptedConnectorRunsInput {
+  completedAt: string
+}
+
+export interface UpdateConnectorRunProgressInput {
+  connectorRunId: string
+  stats: JsonRecord
+}
+
+export interface CompleteConnectorRunInput {
+  completedAt: string
+  connectorRunId: string
+  status: ConnectorRunTerminalStatus
 }
 
 export interface RecordConnectorCheckpointInput {
@@ -342,34 +365,70 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
         }
 
         const now = new Date().toISOString()
-        const runId = randomUUID()
+        const runId = input.connectorRunId ?? randomUUID()
         const observationCount = input.result.observations.length
         const warningCount = input.result.warnings.length
+        const activeRun = input.connectorRunId
+          ? transaction
+            .select({ id: connectorRuns.id })
+            .from(connectorRuns)
+            .where(
+              and(
+                eq(connectorRuns.id, input.connectorRunId),
+                eq(connectorRuns.connectorInstanceId, input.connectorInstanceId),
+                inArray(connectorRuns.status, ['queued', 'running']),
+                isNull(connectorRuns.deletedAt),
+              ),
+            )
+            .get()
+          : null
 
-        transaction
-          .insert(connectorRuns)
-          .values({
-            id: runId,
-            connectorInstanceId: input.connectorInstanceId,
-            mode: input.mode,
-            status: input.result.status ?? 'completed',
-            startedAt: input.startedAt,
-            completedAt: input.completedAt,
-            coverageStartedAt: input.result.coverage.start,
-            coverageEndedAt: input.result.coverage.end,
-            configJson: JSON.stringify(input.config),
-            filtersJson: JSON.stringify(input.filters),
-            filterSignature: input.filterSignature,
-            observationCount,
-            warningCount,
-            statsJson: JSON.stringify(input.result.stats),
-            warningsJson: JSON.stringify(input.result.warnings),
-            retryHintsJson: JSON.stringify(input.result.retryHints ?? null),
-            createdAt: now,
-            updatedAt: now,
-            deletedAt: null,
-          })
-          .run()
+        if (input.connectorRunId && !activeRun) {
+          throw new Error(`Active connector run not found: ${input.connectorRunId}`)
+        }
+
+        const deferTerminal = Boolean(
+          activeRun && (input.checkpointPersistence ?? 'immediate') === 'deferred',
+        )
+        const terminalValues = {
+          mode: input.mode,
+          status: deferTerminal ? 'running' : input.result.status ?? 'completed',
+          startedAt: input.startedAt,
+          completedAt: deferTerminal ? null : input.completedAt,
+          coverageStartedAt: input.result.coverage.start,
+          coverageEndedAt: input.result.coverage.end,
+          configJson: JSON.stringify(input.config),
+          filtersJson: JSON.stringify(input.filters),
+          filterSignature: input.filterSignature,
+          observationCount,
+          warningCount,
+          statsJson: JSON.stringify({
+            ...input.result.stats,
+            ...(deferTerminal ? { refreshCompleted: true, running: true } : {}),
+          }),
+          warningsJson: JSON.stringify(input.result.warnings),
+          retryHintsJson: JSON.stringify(input.result.retryHints ?? null),
+          updatedAt: now,
+          deletedAt: null,
+        }
+
+        if (activeRun) {
+          transaction
+            .update(connectorRuns)
+            .set(terminalValues)
+            .where(eq(connectorRuns.id, runId))
+            .run()
+        } else {
+          transaction
+            .insert(connectorRuns)
+            .values({
+              id: runId,
+              connectorInstanceId: input.connectorInstanceId,
+              ...terminalValues,
+              createdAt: now,
+            })
+            .run()
+        }
 
         if ((input.checkpointPersistence ?? 'immediate') === 'immediate') {
           upsertConnectorCheckpoint(
@@ -544,6 +603,176 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
       )
     },
 
+    async markRunRunning(input: MarkConnectorRunRunningInput): Promise<ConnectorRunRecord> {
+      const row = database
+        .select()
+        .from(connectorRuns)
+        .where(
+          and(
+            eq(connectorRuns.id, input.connectorRunId),
+            eq(connectorRuns.status, 'queued'),
+            isNull(connectorRuns.deletedAt),
+          ),
+        )
+        .get()
+
+      if (!row) {
+        throw new Error(`Queued connector run not found: ${input.connectorRunId}`)
+      }
+
+      const now = new Date().toISOString()
+      const stats = toJsonRecord(JSON.parse(row.statsJson))
+
+      database
+        .update(connectorRuns)
+        .set({
+          status: 'running',
+          startedAt: input.startedAt,
+          statsJson: JSON.stringify({
+            ...stats,
+            queued: false,
+            running: true,
+          }),
+          updatedAt: now,
+        })
+        .where(eq(connectorRuns.id, input.connectorRunId))
+        .run()
+
+      return mapConnectorRun(
+        database
+          .select()
+          .from(connectorRuns)
+          .where(eq(connectorRuns.id, input.connectorRunId))
+          .get(),
+      )
+    },
+
+    recoverInterruptedRuns(input: RecoverInterruptedConnectorRunsInput): number {
+      const interruptedRuns = database
+        .select()
+        .from(connectorRuns)
+        .where(
+          and(
+            inArray(connectorRuns.status, ['queued', 'running']),
+            isNull(connectorRuns.deletedAt),
+          ),
+        )
+        .all()
+      const warning = {
+        code: 'connector.interrupted',
+        message: 'Connector run was interrupted before completion.',
+      }
+
+      for (const run of interruptedRuns) {
+        const stats = toJsonRecord(JSON.parse(run.statsJson))
+        const warnings = readConnectorWarnings(run.warningsJson)
+        warnings.push(warning)
+
+        database
+          .update(connectorRuns)
+          .set({
+            status: 'cancelled',
+            completedAt: input.completedAt,
+            warningCount: warnings.length,
+            statsJson: JSON.stringify({
+              ...stats,
+              interrupted: true,
+              queued: false,
+              running: false,
+            }),
+            warningsJson: JSON.stringify(warnings),
+            retryHintsJson: JSON.stringify({
+              reason: 'connector_run_interrupted',
+            }),
+            updatedAt: input.completedAt,
+          })
+          .where(eq(connectorRuns.id, run.id))
+          .run()
+      }
+
+      return interruptedRuns.length
+    },
+
+    async updateRunProgress(
+      input: UpdateConnectorRunProgressInput,
+    ): Promise<ConnectorRunRecord> {
+      const row = database
+        .select()
+        .from(connectorRuns)
+        .where(and(eq(connectorRuns.id, input.connectorRunId), isNull(connectorRuns.deletedAt)))
+        .get()
+
+      if (!row) {
+        throw new Error(`Connector run not found: ${input.connectorRunId}`)
+      }
+
+      const now = new Date().toISOString()
+      const currentStats = toJsonRecord(JSON.parse(row.statsJson))
+
+      database
+        .update(connectorRuns)
+        .set({
+          statsJson: JSON.stringify({
+            ...currentStats,
+            ...input.stats,
+          }),
+          updatedAt: now,
+        })
+        .where(eq(connectorRuns.id, input.connectorRunId))
+        .run()
+
+      return mapConnectorRun(
+        database
+          .select()
+          .from(connectorRuns)
+          .where(eq(connectorRuns.id, input.connectorRunId))
+          .get(),
+      )
+    },
+
+    async completeRun(input: CompleteConnectorRunInput): Promise<ConnectorRunRecord> {
+      const row = database
+        .select()
+        .from(connectorRuns)
+        .where(
+          and(
+            eq(connectorRuns.id, input.connectorRunId),
+            eq(connectorRuns.status, 'running'),
+            isNull(connectorRuns.deletedAt),
+          ),
+        )
+        .get()
+
+      if (!row) {
+        throw new Error(`Running connector run not found: ${input.connectorRunId}`)
+      }
+
+      const stats = toJsonRecord(JSON.parse(row.statsJson))
+
+      database
+        .update(connectorRuns)
+        .set({
+          status: input.status,
+          completedAt: input.completedAt,
+          statsJson: JSON.stringify({
+            ...stats,
+            completed: true,
+            running: false,
+          }),
+          updatedAt: input.completedAt,
+        })
+        .where(eq(connectorRuns.id, input.connectorRunId))
+        .run()
+
+      return mapConnectorRun(
+        database
+          .select()
+          .from(connectorRuns)
+          .where(eq(connectorRuns.id, input.connectorRunId))
+          .get(),
+      )
+    },
+
     async recordRunSkipped(input: RecordConnectorRunSkippedInput): Promise<ConnectorRunRecord> {
       const instance = await this.getInstance(input.connectorInstanceId)
 
@@ -604,10 +833,11 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
         throw new Error(`Connector run not found: ${input.connectorRunId}`)
       }
 
-      const now = new Date().toISOString()
       const warnings = readConnectorWarnings(row.warningsJson)
       warnings.push(input.warning)
       const retryHints = input.retryHints ?? (JSON.parse(row.retryHintsJson) as unknown)
+      const stats = toJsonRecord(JSON.parse(row.statsJson))
+      const recordedFailures = stats.failures
 
       database
         .update(connectorRuns)
@@ -615,9 +845,17 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
           status: 'failed',
           completedAt: input.completedAt,
           warningCount: warnings.length,
+          statsJson: JSON.stringify({
+            ...stats,
+            failures: typeof recordedFailures === 'number' && recordedFailures >= 1
+              ? recordedFailures
+              : 1,
+            queued: false,
+            running: false,
+          }),
           warningsJson: JSON.stringify(warnings),
           retryHintsJson: JSON.stringify(retryHints),
-          updatedAt: now,
+          updatedAt: input.completedAt,
         })
         .where(eq(connectorRuns.id, input.connectorRunId))
         .run()
