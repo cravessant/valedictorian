@@ -4,6 +4,7 @@ import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { createElectronConnectorPorts } from './connector-ports'
+import { createElectronSecretCodec } from './profile-secret-codec'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
 import { registerApplicationIpc } from '../src/ipc/applications.ipc'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
@@ -16,10 +17,7 @@ import { registerSourcingIpc } from '../src/ipc/sourcing.ipc'
 import { registerUpdatesIpc } from '../src/ipc/updates.ipc'
 import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
 import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '../src/server/local-workspaces'
-import {
-  createSqliteProfileRepository,
-  type ProfileSecretCodec,
-} from '../src/modules/profile/profile.repository'
+import { createSqliteProfileRepository } from '../src/modules/profile/profile.repository'
 import {
   createValedictorianRuntime,
   resolveValedictorianRuntimeConfig,
@@ -224,7 +222,7 @@ async function registerRuntimeServices(
   migrateDatabase(profileSqlite)
   const profileRepository = createSqliteProfileRepository(
     createDrizzleDatabase(profileSqlite),
-    createElectronSecretCodec(),
+    createElectronSecretCodec(safeStorage),
   )
 
   registerApplicationIpc(runtime.client, ipcMain)
@@ -235,25 +233,6 @@ async function registerRuntimeServices(
   registerScoresIpc(runtime.client, ipcMain)
   registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain)
-}
-
-function createElectronSecretCodec(): ProfileSecretCodec {
-  return {
-    decrypt(value) {
-      if (safeStorage.isEncryptionAvailable()) {
-        return safeStorage.decryptString(Buffer.from(value, 'base64'))
-      }
-
-      return Buffer.from(value, 'base64').toString('utf8')
-    },
-    encrypt(value) {
-      const encrypted = safeStorage.isEncryptionAvailable()
-        ? safeStorage.encryptString(value)
-        : Buffer.from(value, 'utf8')
-
-      return encrypted.toString('base64')
-    },
-  }
 }
 
 function createElectronConnectorPortsForWorkspace(workspaceId?: string) {
@@ -566,7 +545,7 @@ app.whenReady().then(async () => {
     createConnectorPorts: createElectronConnectorPortsForWorkspace,
     referenceTrackerPath: process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
     registryStore,
-    secretCodec: createElectronSecretCodec(),
+    secretCodec: createElectronSecretCodec(safeStorage),
   })
   const canSeedSampleData = Boolean(VITE_DEV_SERVER_URL)
   let workspaceService: WorkspaceService<BrowserWindow>
