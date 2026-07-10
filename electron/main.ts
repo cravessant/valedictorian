@@ -3,6 +3,7 @@ import { autoUpdater } from 'electron-updater'
 import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { runLegacyJobrightBrowserPartitionCleanup } from './legacy-jobright-partition-cleanup'
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
 import { registerApplicationIpc } from '../src/ipc/applications.ipc'
@@ -522,6 +523,8 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
+  await runLegacyJobrightBrowserPartitionCleanup({ userDataPath: app.getPath('userData') })
+
   ipcMain.handle('window-chrome:get-state', (event) =>
     getWindowChromeState(BrowserWindow.fromWebContents(event.sender)),
   )
