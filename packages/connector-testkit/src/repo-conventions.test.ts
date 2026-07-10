@@ -38,14 +38,14 @@ function readPackageJson(relativePath: string) {
 }
 
 describe("connector repository conventions", () => {
-  it("documents package boundaries before source-specific connectors depend on them", () => {
+  it("documents package boundaries and the API-only Jobright architecture", () => {
     const readme = readText("README.md")
 
     expect(readme).toContain("## Package Boundaries")
     expect(readme).toContain("@sparxie/valedictorian-connectors-core")
     expect(readme).toContain("@sparxie/valedictorian-connectors-test-harness")
-    expect(readme).toContain("@sparxie/valedictorian-connectors-browser-session")
     expect(readme).toContain("@sparxie/valedictorian-connectors-jobright")
+    expect(readme).not.toContain("@sparxie/valedictorian-connectors-browser-session")
     expect(readme).toContain("Connectors are imported libraries, not mini servers")
     expect(readme).toContain("The app imports connector packages and calls `connector.refresh(...)`")
     expect(readme).toContain("`@sparxie/valedictorian-connectors-core` is the app-to-adapter ABI")
@@ -55,6 +55,14 @@ describe("connector repository conventions", () => {
     expect(readme).not.toContain("the first real public discovery source package")
     expect(readme).toContain("Hosts own scheduling, auth persistence, run state, and upsert")
     expect(readme).toContain("Source packages must not depend on valedictorian-app")
+    expect(readme).toContain("## Jobright Architecture")
+    expect(readme).toContain("authentication, discovery, and application-link normalization are API-only")
+    expect(readme).toContain("Call the Jobright `internslist` job-data endpoint")
+    expect(readme).toContain("Use authenticated API calls to normalize Jobright intermediary ids or links")
+    expect(readme).toContain("must not launch or control Electron `BrowserWindow`")
+    expect(readme).toContain("must not scrape HTML, inspect the DOM, or trigger a synthetic Apply action")
+    expect(readme).toContain("browser-session resolution behavior present in the `v0.3.1` implementation")
+    expect(readme).toContain("deprecated architecture")
   })
 
   it("documents stack and local agent-file conventions", () => {
