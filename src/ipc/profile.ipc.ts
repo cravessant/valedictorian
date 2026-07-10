@@ -26,6 +26,5 @@ export function registerProfileIpc(repository: ProfileRepository, ipcMain: IpcMa
   ipcMain.handle('profile:secrets:upsert', (_event, input) =>
     repository.upsertSecret(input as UpsertProfileSecretInput),
   )
-  ipcMain.handle('profile:secrets:reveal', (_event, key) => repository.revealSecret(key as string))
   ipcMain.handle('profile:secrets:delete', (_event, key) => repository.deleteSecret(key as string))
 }

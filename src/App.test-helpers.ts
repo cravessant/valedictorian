@@ -397,8 +397,9 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
       ): Promise<LocalConnectorReconnectActionResult> => ({
         action: 'reconnect',
         connectorInstanceId: input.connectorInstanceId,
-        grants: [{ id: 'jobright', mode: 'browser_session', status: 'ready' }],
-        message: 'Connector auth is ready.',
+        grants: [{ id: 'jobright', mode: 'username_password', status: 'ready' }],
+        message: 'Connector credentials are verified and ready.',
+        reason: 'jobright_auth_ready',
         status: 'ready',
       })),
       skip: vi.fn(),
@@ -697,10 +698,6 @@ export function createProfileApi(): ProfilePreloadApi {
           updatedAt: secret.updatedAt,
         })),
       ),
-      reveal: vi.fn(async (key: string) => {
-        const secret = secrets.find((item) => item.key === key)
-        return secret ?? null
-      }),
       upsert: vi.fn(async (input) => {
         const nextSecret = {
           ...input,

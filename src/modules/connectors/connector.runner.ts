@@ -4,6 +4,9 @@ import type {
   ConnectorAuthReference,
   ConnectorAuthRequirement,
   ConnectorAuthResolveInput,
+  ConnectorAuthValidationInput,
+  ConnectorAuthValidationResult,
+  ConnectorAuthValidationStatus,
   ConnectorBrowserSessionRuntime,
   ConnectorCoverageWindow,
   ConnectorDefinition,
@@ -59,11 +62,28 @@ export type AppConnectorRuntimePorts = {
   delay?: ConnectorDelayRuntime
 }
 
-export interface AppJobConnector extends Omit<JobConnector, 'refresh'> {
+export interface AppJobConnector extends Omit<JobConnector, 'refresh' | 'validateAuth'> {
   refresh(
     input: AppConnectorRefreshInput,
     runtime: AppConnectorRuntime,
   ): Promise<AppConnectorRefreshResult>
+  validateAuth?(
+    input: ConnectorAuthValidationInput,
+    runtime: AppConnectorRuntime,
+  ): Promise<ConnectorAuthValidationResult>
+}
+
+export interface ValidateConnectorAuthInput {
+  connectorInstanceId: string
+}
+
+export type AppConnectorAuthValidationStatus = ConnectorAuthValidationStatus | 'unsupported'
+
+export interface AppConnectorAuthValidationResult {
+  connectorInstanceId: string
+  message: string
+  reason: string
+  status: AppConnectorAuthValidationStatus
 }
 
 export interface RegisterConnectorInstanceInput {
@@ -301,6 +321,66 @@ export function createConnectorRunner({
     }
   }
 
+  async function validateAuth(
+    connector: AppJobConnector,
+    input: ValidateConnectorAuthInput,
+  ): Promise<AppConnectorAuthValidationResult> {
+    const connectorInstance = await repository.getInstance(input.connectorInstanceId)
+
+    if (!connectorInstance) {
+      throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+    }
+
+    if (typeof connector.validateAuth !== 'function') {
+      return {
+        connectorInstanceId: input.connectorInstanceId,
+        message: 'Connector auth validation is not supported.',
+        reason: 'validate_auth_unsupported',
+        status: 'unsupported',
+      }
+    }
+
+    const sensitiveValues = new Set<string>()
+    const authRequirements = connector.definition.auth?.requirements ?? []
+    const runRuntime = createRunRuntime(
+      runtime,
+      connectorInstance.auth,
+      authRequirements,
+      auth,
+      sensitiveValues,
+    )
+
+    let result: ConnectorAuthValidationResult
+
+    try {
+      result = await connector.validateAuth(
+        {
+          connectorInstanceId: input.connectorInstanceId,
+          workspaceId,
+        },
+        runRuntime,
+      )
+    } catch (error) {
+      if (isSecureStorageUnavailableError(error)) {
+        return {
+          connectorInstanceId: input.connectorInstanceId,
+          message: authValidationMessage('failed', 'secure_storage_unavailable'),
+          reason: 'secure_storage_unavailable',
+          status: 'failed',
+        }
+      }
+
+      return {
+        connectorInstanceId: input.connectorInstanceId,
+        message: 'Connector auth validation failed.',
+        reason: 'validate_auth_failed',
+        status: 'failed',
+      }
+    }
+
+    return sanitizeAuthValidationResult(input.connectorInstanceId, result, sensitiveValues)
+  }
+
   return {
     async registerInstance(input: RegisterConnectorInstanceInput) {
       return repository.upsertInstance({
@@ -356,7 +436,124 @@ export function createConnectorRunner({
         },
       )
     },
+
+    validateAuth,
   }
+}
+
+const allowedAuthValidationStatuses = new Set<ConnectorAuthValidationStatus>([
+  'ready',
+  'missing',
+  'expired',
+  'action_required',
+  'rate_limited',
+  'retryable',
+  'failed',
+])
+
+const allowedAuthValidationReasons = new Set([
+  'auth_validation_failed',
+  'jobright_auth_ready',
+  'jobright_auth_request_failed',
+  'jobright_auth_required',
+  'jobright_login_rejected',
+  'jobright_login_retryable',
+  'jobright_login_schema_invalid',
+  'jobright_newinfo_logined_missing',
+  'jobright_newinfo_retryable',
+  'jobright_newinfo_schema_invalid',
+  'jobright_not_logged_in',
+  'jobright_rate_limited',
+  'jobright_session_cookie_missing',
+  'secret_missing',
+  'secret_reference_missing',
+  'secure_storage_unavailable',
+  'username_password_malformed',
+  'username_password_missing',
+  'validate_auth_failed',
+  'validate_auth_unsupported',
+])
+
+function sanitizeAuthValidationResult(
+  connectorInstanceId: string,
+  result: ConnectorAuthValidationResult,
+  sensitiveValues: Set<string>,
+): AppConnectorAuthValidationResult {
+  const status = allowedAuthValidationStatuses.has(result.status)
+    ? result.status
+    : 'failed'
+  const rawReason = typeof result.reason === 'string' ? result.reason : undefined
+  const redactedReason = rawReason === undefined
+    ? undefined
+    : redactSensitiveString(rawReason, sensitiveValues)
+  const reason = redactedReason && allowedAuthValidationReasons.has(redactedReason)
+    ? redactedReason
+    : status === 'ready'
+      ? 'jobright_auth_ready'
+      : 'auth_validation_failed'
+
+  return {
+    connectorInstanceId,
+    message: authValidationMessage(status, reason),
+    reason,
+    status,
+  }
+}
+
+function isSecureStorageUnavailableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  if ('code' in error && (error as { code?: unknown }).code === 'secure_storage_unavailable') {
+    return true
+  }
+
+  return error instanceof Error && error.message.includes('secure_storage_unavailable')
+}
+
+function authValidationMessage(
+  status: AppConnectorAuthValidationStatus,
+  reason: string,
+): string {
+  if (status === 'ready') {
+    return 'Connector credentials are verified and ready.'
+  }
+
+  if (reason === 'secure_storage_unavailable') {
+    return 'Secure storage is unavailable. Enable platform encryption, then try again.'
+  }
+
+  if (status === 'missing' || reason === 'secret_missing' || reason === 'secret_reference_missing' || reason === 'username_password_missing') {
+    return 'Connector credentials are missing. Save email and password, then validate again.'
+  }
+
+  if (status === 'expired' || reason === 'jobright_not_logged_in') {
+    return 'Connector session expired. Update credentials and validate again.'
+  }
+
+  if (status === 'rate_limited' || reason === 'jobright_rate_limited') {
+    return 'Jobright rate limited the auth request. Retry later.'
+  }
+
+  if (status === 'retryable' || reason === 'jobright_login_retryable' || reason === 'jobright_newinfo_retryable' || reason === 'jobright_auth_request_failed') {
+    return 'Temporary Jobright request failure. Retry validation.'
+  }
+
+  if (
+    status === 'action_required'
+    || reason === 'jobright_login_rejected'
+    || reason === 'username_password_malformed'
+    || reason === 'jobright_auth_required'
+  ) {
+    return 'Connector credentials were rejected. Update email and password, then validate again.'
+  }
+
+  if (status === 'unsupported') {
+    return 'Connector auth validation is not supported.'
+  }
+
+  return 'Connector auth validation failed.'
 }
 
 function terminalConnectorRunStatus(value: unknown): ConnectorRunTerminalStatus {
@@ -609,7 +806,8 @@ async function resolveAuthGrant(
     referenceMode === 'api_key' ||
     referenceMode === 'bearer_token' ||
     referenceMode === 'oauth' ||
-    referenceMode === 'cookie_jar'
+    referenceMode === 'cookie_jar' ||
+    referenceMode === 'username_password'
   ) {
     return resolveSecretGrant(reference, authHost, sensitiveValues)
   }

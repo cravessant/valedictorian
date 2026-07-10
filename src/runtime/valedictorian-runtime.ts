@@ -17,6 +17,7 @@ import {
 } from '../modules/connectors/connector.runtime-ports'
 import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
+import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
 import {
   createLocalValedictorianClient,
   type LocalValedictorianClient,
@@ -58,6 +59,7 @@ export interface CreateValedictorianRuntimeOptions {
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
   createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
+  secretCodec?: ProfileSecretCodec
   startServer?: (
     options: CreateValedictorianHttpServerOptions,
   ) => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>
@@ -97,6 +99,7 @@ export async function createValedictorianRuntime({
   createConnectorPorts = () => createDefaultLocalConnectorPorts(),
   createHttpClient = createHttpValedictorianClient,
   createLocalClient = createLocalValedictorianClient,
+  secretCodec,
   startServer = createValedictorianHttpServer,
   workspaceManager,
 }: CreateValedictorianRuntimeOptions): Promise<ValedictorianRuntime> {
@@ -122,7 +125,9 @@ export async function createValedictorianRuntime({
     connectorRuntime: connectorPorts.connectorRuntime,
     referenceTrackerPath: config.referenceTrackerPath,
     seedDataMode: config.seedDataMode,
+    ...(secretCodec === undefined ? {} : { secretCodec }),
     sqlitePath: config.sqlitePath,
+    ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
   })
 
   const serverOptions: CreateValedictorianHttpServerOptions = {

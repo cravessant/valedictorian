@@ -124,7 +124,6 @@ const runtimeIpcChannels = [
   'profile:sensitive:update',
   'profile:secrets:list',
   'profile:secrets:upsert',
-  'profile:secrets:reveal',
   'profile:secrets:delete',
   'scores:record',
   'settings:get',
@@ -210,19 +209,21 @@ async function registerRuntimeServices(
     workspaceId: workspace.id,
   })
 
+  const secretCodec = createElectronSecretCodec(safeStorage)
   runtime = await createValedictorianRuntime({
     config: {
       ...config,
       seedDataMode: options?.seedData ?? config.seedDataMode,
     },
     createConnectorPorts: () => createElectronConnectorPortsForWorkspace(workspace.id),
+    secretCodec,
     workspaceManager: workspaceManager ?? undefined,
   })
   const profileSqlite = createFileDatabase(config.sqlitePath)
   migrateDatabase(profileSqlite)
   const profileRepository = createSqliteProfileRepository(
     createDrizzleDatabase(profileSqlite),
-    createElectronSecretCodec(safeStorage),
+    secretCodec,
   )
 
   registerApplicationIpc(runtime.client, ipcMain)

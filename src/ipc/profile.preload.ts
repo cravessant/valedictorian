@@ -3,7 +3,6 @@ import type {
   ProfileSensitiveDetails,
   ProfileSensitiveDetailsInput,
   ProfileSecretSummary,
-  ProfileSecretValue,
   UpsertProfileSecretInput,
 } from '../modules/profile/profile.repository'
 
@@ -23,7 +22,6 @@ export interface ProfilePreloadApi {
   secrets: {
     delete: (key: string) => Promise<void>
     list: () => Promise<ProfileSecretSummary[]>
-    reveal: (key: string) => Promise<ProfileSecretValue | null>
     upsert: (input: UpsertProfileSecretInput) => Promise<ProfileSecretSummary>
   }
   update: (input: ProfileUpdateInput) => Promise<UserProfile>
@@ -43,8 +41,6 @@ export function createProfilePreloadApi(ipcRenderer: IpcRendererLike): ProfilePr
     secrets: {
       delete: (key) => ipcRenderer.invoke('profile:secrets:delete', key) as Promise<void>,
       list: () => ipcRenderer.invoke('profile:secrets:list') as Promise<ProfileSecretSummary[]>,
-      reveal: (key) =>
-        ipcRenderer.invoke('profile:secrets:reveal', key) as Promise<ProfileSecretValue | null>,
       upsert: (input) =>
         ipcRenderer.invoke('profile:secrets:upsert', input) as Promise<ProfileSecretSummary>,
     },

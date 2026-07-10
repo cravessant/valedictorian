@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
@@ -251,6 +251,7 @@ function SettingsPage({
             <ConnectorSettingsPanel
               connectorsApi={connectorsApi}
               onRunSettled={onConnectorRunSettled}
+              profileApi={profileApi}
             />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.AGENT_ACCESS ? (
@@ -290,38 +291,143 @@ type ConnectorSettingsRun = Awaited<ReturnType<ConnectorsPreloadApi['runs']['tri
 
 interface ConnectorSettingsDraft {
   maxResolutionCount: string
-  publicFeedUrl: string
   roleTerms: string
 }
 
-const defaultJobrightPublicFeedUrl = 'https://jobright.ai/minisites-jobs/intern/us/swe?embed=true'
+interface ConnectorAuthCredentialDraft {
+  email: string
+  password: string
+}
+
+type ConnectorAuthUiState =
+  | { kind: 'idle' }
+  | { kind: 'checking'; message: string }
+  | { kind: 'result'; result: ConnectorReconnectResult }
+  | { kind: 'cancelled'; message: string }
+  | { kind: 'local'; message: string; status: 'action_required' | 'failed' }
+
+const jobrightConnectorVersion = '0.4.1'
+const jobrightConnectorId = 'jobright.resolver'
+const secureStorageUnavailableMessage =
+  'Secure storage is unavailable. Enable platform encryption, then try again.'
 
 function ConnectorSettingsPanel({
   connectorsApi,
   onRunSettled,
+  profileApi,
 }: {
   connectorsApi: ConnectorsPreloadApi
   onRunSettled: () => void
+  profileApi: ProfilePreloadApi
 }) {
   const [instances, setInstances] = useState<ConnectorSettingsInstance[]>([])
   const [drafts, setDrafts] = useState<Record<string, ConnectorSettingsDraft>>({})
+  const [credentialDrafts, setCredentialDrafts] = useState<Record<string, ConnectorAuthCredentialDraft>>({})
+  const [editingAuthInstanceId, setEditingAuthInstanceId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
   const [authenticatingInstanceId, setAuthenticatingInstanceId] = useState<string | null>(null)
-  const [authResults, setAuthResults] = useState<Record<string, ConnectorReconnectResult>>({})
+  const [authStates, setAuthStates] = useState<Record<string, ConnectorAuthUiState>>({})
   const [savingInstanceId, setSavingInstanceId] = useState<string | null>(null)
   const [runningInstanceId, setRunningInstanceId] = useState<string | null>(null)
   const [latestRunStatuses, setLatestRunStatuses] = useState<Record<string, string>>({})
   const [latestRuns, setLatestRuns] = useState<Record<string, ConnectorSettingsRun>>({})
   const [connectorActionError, setConnectorActionError] = useState<string | null>(null)
+  const authValidationGenerations = useRef<Record<string, number>>({})
+
+  function nextAuthValidationGeneration(instanceId: string): number {
+    const nextGeneration = (authValidationGenerations.current[instanceId] ?? 0) + 1
+    authValidationGenerations.current[instanceId] = nextGeneration
+    return nextGeneration
+  }
+
+  function isCurrentAuthValidationGeneration(instanceId: string, generation: number): boolean {
+    return authValidationGenerations.current[instanceId] === generation
+  }
+
+  function invalidateAuthValidation(instanceId: string): number {
+    return nextAuthValidationGeneration(instanceId)
+  }
 
   useEffect(() => {
     let cancelled = false
+    const validationGenerations = authValidationGenerations.current
 
     connectorsApi.list()
-      .then((result) => {
-        if (!cancelled) {
-          setInstances(result.items)
+      .then(async (result) => {
+        if (cancelled) {
+          return
         }
+
+        setInstances(result.items)
+
+        const autoValidateInstances = result.items.filter(shouldAutoValidateJobrightAuth)
+
+        if (autoValidateInstances.length === 0) {
+          return
+        }
+
+        const generations = Object.fromEntries(
+          autoValidateInstances.map((instance) => [
+            instance.id,
+            nextAuthValidationGeneration(instance.id),
+          ]),
+        )
+
+        setAuthStates((currentStates) => {
+          const nextStates = { ...currentStates }
+
+          for (const instance of autoValidateInstances) {
+            nextStates[instance.id] = {
+              kind: 'checking',
+              message: 'Checking Jobright credentials...',
+            }
+          }
+
+          return nextStates
+        })
+
+        await Promise.all(autoValidateInstances.map(async (instance) => {
+          const generation = generations[instance.id]
+
+          try {
+            const validation = await connectorsApi.status.reconnect({
+              connectorInstanceId: instance.id,
+            })
+
+            if (
+              cancelled
+              || generation === undefined
+              || !isCurrentAuthValidationGeneration(instance.id, generation)
+            ) {
+              return
+            }
+
+            setAuthStates((currentStates) => ({
+              ...currentStates,
+              [instance.id]: {
+                kind: 'result',
+                result: validation,
+              },
+            }))
+          } catch (error) {
+            if (
+              cancelled
+              || generation === undefined
+              || !isCurrentAuthValidationGeneration(instance.id, generation)
+            ) {
+              return
+            }
+
+            setAuthStates((currentStates) => ({
+              ...currentStates,
+              [instance.id]: {
+                kind: 'local',
+                message: sanitizedConnectorAuthErrorMessage(error),
+                status: 'failed',
+              },
+            }))
+          }
+        }))
       })
       .catch(() => {
         if (!cancelled) {
@@ -331,6 +437,9 @@ function ConnectorSettingsPanel({
 
     return () => {
       cancelled = true
+      for (const instanceId of Object.keys(validationGenerations)) {
+        validationGenerations[instanceId] = (validationGenerations[instanceId] ?? 0) + 1
+      }
     }
   }, [connectorsApi])
 
@@ -339,30 +448,33 @@ function ConnectorSettingsPanel({
     setIsAdding(true)
     void connectorsApi.create({
       id: 'jobright-default',
-      connectorId: 'jobright.resolver',
-      connectorVersion: '0.3.0',
-      displayName: 'Jobright public jobs',
+      connectorId: jobrightConnectorId,
+      connectorVersion: jobrightConnectorVersion,
+      displayName: 'Jobright internslist',
       enabled: true,
       auth: [
         {
           id: 'jobright',
-          label: 'Jobright browser session',
-          mode: 'browser_session',
+          label: 'Jobright username and password',
+          mode: 'username_password',
         },
       ],
-      config: {
-        publicFeedUrl: defaultJobrightPublicFeedUrl,
-      },
+      config: {},
       filters: {
         maxResolutionCount: 10,
         roleTerms: ['intern'],
       },
     })
       .then((created) => {
+        invalidateAuthValidation(created.id)
         setInstances((currentInstances) => [
           ...currentInstances.filter((instance) => instance.id !== created.id),
           created,
         ])
+        setAuthStates((currentStates) => ({
+          ...currentStates,
+          [created.id]: { kind: 'idle' },
+        }))
       })
       .catch(() => {
         setConnectorActionError('Jobright connector could not be added.')
@@ -370,76 +482,208 @@ function ConnectorSettingsPanel({
       .finally(() => setIsAdding(false))
   }
 
-  function loginJobrightConnector(
-    instance: ConnectorSettingsInstance,
-  ) {
-    const auth = instance.auth.map((reference) => (
-      reference.mode === 'browser_session'
-        ? {
-          id: reference.id,
-          label: reference.label,
-          mode: reference.mode,
-          sessionKey: 'jobright-browser-session',
-        }
-        : {
-          id: reference.id,
-          label: reference.label,
-          mode: reference.mode,
-        }
-    ))
+  function beginCredentialEdit(instance: ConnectorSettingsInstance) {
+    invalidateAuthValidation(instance.id)
+    setEditingAuthInstanceId(instance.id)
+    setCredentialDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [instance.id]: {
+        email: '',
+        password: '',
+      },
+    }))
+    setAuthStates((currentStates) => {
+      const nextStates = { ...currentStates }
+      delete nextStates[instance.id]
+      return nextStates
+    })
+    setConnectorActionError(null)
+  }
 
+  function cancelCredentialEdit(instanceId: string) {
+    invalidateAuthValidation(instanceId)
+    setEditingAuthInstanceId((current) => (current === instanceId ? null : current))
+    setCredentialDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [instanceId]: {
+        email: '',
+        password: '',
+      },
+    }))
+    setAuthStates((currentStates) => ({
+      ...currentStates,
+      [instanceId]: {
+        kind: 'cancelled',
+        message: 'Credential update cancelled.',
+      },
+    }))
+  }
+
+  function updateCredentialDraft(
+    instanceId: string,
+    patch: Partial<ConnectorAuthCredentialDraft>,
+  ) {
+    setCredentialDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [instanceId]: {
+        email: currentDrafts[instanceId]?.email ?? '',
+        password: currentDrafts[instanceId]?.password ?? '',
+        ...patch,
+      },
+    }))
+  }
+
+  function saveAndValidateJobrightCredentials(instance: ConnectorSettingsInstance) {
+    const credentials = credentialDrafts[instance.id] ?? { email: '', password: '' }
+    const email = credentials.email.trim()
+    const password = credentials.password
+    const secretKey = jobrightSecretKeyForInstance(instance.id)
+
+    if (email.length === 0 || password.length === 0) {
+      setAuthStates((currentStates) => ({
+        ...currentStates,
+        [instance.id]: {
+          kind: 'local',
+          message: 'Enter a Jobright email and password before validating.',
+          status: 'action_required',
+        },
+      }))
+      return
+    }
+
+    const generation = nextAuthValidationGeneration(instance.id)
     setAuthenticatingInstanceId(instance.id)
     setConnectorActionError(null)
-    setAuthResults((currentResults) => {
-      const nextResults = { ...currentResults }
-      delete nextResults[instance.id]
-      return nextResults
+    setAuthStates((currentStates) => ({
+      ...currentStates,
+      [instance.id]: {
+        kind: 'checking',
+        message: 'Saving and validating Jobright credentials...',
+      },
+    }))
+
+    void profileApi.secrets.upsert({
+      key: secretKey,
+      kind: 'password',
+      label: 'Jobright username and password',
+      value: JSON.stringify({ username: email, password }),
     })
-    void connectorsApi.update({
-      connectorInstanceId: instance.id,
-      auth,
-    })
+      .then(() => connectorsApi.update({
+        connectorInstanceId: instance.id,
+        connectorVersion: jobrightConnectorVersion,
+        auth: [
+          {
+            id: 'jobright',
+            label: 'Jobright username and password',
+            mode: 'username_password',
+            secretKey,
+          },
+        ],
+      }))
       .then(async (updated) => ({
         result: await connectorsApi.status.reconnect({ connectorInstanceId: updated.id }),
         updated,
       }))
       .then(async ({ result, updated }) => {
+        if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
+          return
+        }
+
         const refreshed = await connectorsApi.list().catch(() => ({
-          items: result.status === 'ready'
-            ? instances.map((currentInstance) =>
-              currentInstance.id === updated.id ? updated : currentInstance)
-            : instances,
+          items: instances.map((currentInstance) =>
+            currentInstance.id === updated.id ? updated : currentInstance),
         }))
-        setAuthResults((currentResults) => ({
-          ...currentResults,
-          [instance.id]: result,
-        }))
+
+        if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
+          return
+        }
+
         setInstances(refreshed.items)
-      })
-      .catch(async () => {
-        await connectorsApi.update({
-          connectorInstanceId: instance.id,
-          auth: instance.auth.map((reference) => ({
-            id: reference.id,
-            label: reference.label ?? undefined,
-            mode: reference.mode,
-          })),
-        }).catch(() => undefined)
-        const refreshed = await connectorsApi.list().catch(() => ({ items: instances }))
-        setInstances(refreshed.items)
-        setAuthResults((currentResults) => ({
-          ...currentResults,
+        setAuthStates((currentStates) => ({
+          ...currentStates,
           [instance.id]: {
-            action: 'reconnect',
-            connectorInstanceId: instance.id,
-            grants: [],
-            message: 'Jobright authentication failed before the session could be verified.',
-            status: 'action_required',
+            kind: 'result',
+            result,
           },
         }))
-        setConnectorActionError('Jobright authentication could not be completed.')
       })
-      .finally(() => setAuthenticatingInstanceId(null))
+      .catch((error) => {
+        if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
+          return
+        }
+
+        setAuthStates((currentStates) => ({
+          ...currentStates,
+          [instance.id]: {
+            kind: 'local',
+            message: sanitizedConnectorAuthErrorMessage(error),
+            status: 'failed',
+          },
+        }))
+        setConnectorActionError('Jobright credentials could not be saved or validated.')
+      })
+      .finally(() => {
+        if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
+          return
+        }
+
+        setCredentialDrafts((currentDrafts) => ({
+          ...currentDrafts,
+          [instance.id]: {
+            email: '',
+            password: '',
+          },
+        }))
+        setEditingAuthInstanceId((current) => (current === instance.id ? null : current))
+        setAuthenticatingInstanceId(null)
+      })
+  }
+
+  function revalidateJobrightCredentials(instance: ConnectorSettingsInstance) {
+    const generation = nextAuthValidationGeneration(instance.id)
+    setAuthenticatingInstanceId(instance.id)
+    setConnectorActionError(null)
+    setAuthStates((currentStates) => ({
+      ...currentStates,
+      [instance.id]: {
+        kind: 'checking',
+        message: 'Checking Jobright credentials...',
+      },
+    }))
+
+    void connectorsApi.status.reconnect({ connectorInstanceId: instance.id })
+      .then((result) => {
+        if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
+          return
+        }
+
+        setAuthStates((currentStates) => ({
+          ...currentStates,
+          [instance.id]: {
+            kind: 'result',
+            result,
+          },
+        }))
+      })
+      .catch((error) => {
+        if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
+          return
+        }
+
+        setAuthStates((currentStates) => ({
+          ...currentStates,
+          [instance.id]: {
+            kind: 'local',
+            message: sanitizedConnectorAuthErrorMessage(error),
+            status: 'failed',
+          },
+        }))
+      })
+      .finally(() => {
+        if (isCurrentAuthValidationGeneration(instance.id, generation)) {
+          setAuthenticatingInstanceId(null)
+        }
+      })
   }
 
   function updateDraft(instanceId: string, patch: Partial<ConnectorSettingsDraft>) {
@@ -459,9 +703,7 @@ function ConnectorSettingsPanel({
     setSavingInstanceId(instance.id)
     void connectorsApi.update({
       connectorInstanceId: instance.id,
-      config: {
-        publicFeedUrl: draft.publicFeedUrl.trim(),
-      },
+      config: {},
       filters: {
         maxResolutionCount: normalizePositiveInteger(draft.maxResolutionCount, 10),
         roleTerms: parseCommaSeparatedList(draft.roleTerms),
@@ -542,9 +784,9 @@ function ConnectorSettingsPanel({
       <div className="rounded-md border border-border bg-card p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Jobright public jobs</h3>
+            <h3 className="text-sm font-semibold text-foreground">Jobright internslist</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Resolve Jobright listings into application-ready sourcing findings.
+              Authenticate with Jobright API credentials and run connector refresh.
             </p>
           </div>
           <Button
@@ -553,7 +795,7 @@ function ConnectorSettingsPanel({
             disabled={isAdding}
             onClick={addJobrightConnector}
           >
-            {isAdding ? 'Adding...' : 'Add Jobright public jobs'}
+            {isAdding ? 'Adding...' : 'Add Jobright connector'}
           </Button>
         </div>
       </div>
@@ -566,9 +808,14 @@ function ConnectorSettingsPanel({
             <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
             <div className="divide-y divide-border rounded-md border border-border">
               {instances.map((instance) => {
-                const authConfigured = instance.auth.every((auth) => auth.configured)
-                const authResult = authResults[instance.id]
+                const authConfigured = isJobrightCredentialsConfigured(instance)
+                const authState = authStates[instance.id] ?? { kind: 'idle' as const }
+                const authReady = isConnectorAuthReady(authState)
+                const authLabel = connectorAuthStatusLabel(authState, authConfigured)
+                const authMessage = connectorAuthStatusMessage(authState)
                 const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
+                const credentialDraft = credentialDrafts[instance.id] ?? { email: '', password: '' }
+                const isEditingAuth = editingAuthInstanceId === instance.id
                 const latestRun = latestRuns[instance.id]
                 const runMetrics = latestRun ? connectorRunMetrics(latestRun) : []
 
@@ -581,49 +828,92 @@ function ConnectorSettingsPanel({
                       </div>
                       <div className="flex items-center gap-2">
                         <p className="text-xs font-medium text-muted-foreground">
-                          {authConfigured ? 'Auth ready' : 'Auth required'}
+                          {authLabel}
                         </p>
-                        {!authConfigured ? (
+                        {!isEditingAuth ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={authenticatingInstanceId === instance.id}
+                            onClick={() => beginCredentialEdit(instance)}
+                          >
+                            {authConfigured ? 'Update credentials' : 'Add credentials'}
+                          </Button>
+                        ) : null}
+                        {authConfigured && !isEditingAuth ? (
                           <Button
                             type="button"
                             size="sm"
                             disabled={authenticatingInstanceId === instance.id}
-                            onClick={() => loginJobrightConnector(instance)}
+                            onClick={() => revalidateJobrightCredentials(instance)}
                           >
-                            {authenticatingInstanceId === instance.id ? 'Logging in...' : 'Login to Jobright'}
+                            {authenticatingInstanceId === instance.id ? 'Validating...' : 'Validate'}
                           </Button>
                         ) : null}
                       </div>
                     </div>
 
-                    {!authConfigured ? (
+                    {isEditingAuth ? (
+                      <div className="grid gap-3 rounded-md border border-border p-3 md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] md:items-end">
+                        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                          Jobright email
+                          <input
+                            aria-label="Jobright email"
+                            autoComplete="off"
+                            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                            type="email"
+                            value={credentialDraft.email}
+                            onChange={(event) =>
+                              updateCredentialDraft(instance.id, { email: event.target.value })}
+                          />
+                        </label>
+                        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                          Jobright password
+                          <input
+                            aria-label="Jobright password"
+                            autoComplete="new-password"
+                            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                            type="password"
+                            value={credentialDraft.password}
+                            onChange={(event) =>
+                              updateCredentialDraft(instance.id, { password: event.target.value })}
+                          />
+                        </label>
+                        <Button
+                          type="button"
+                          disabled={authenticatingInstanceId === instance.id}
+                          onClick={() => saveAndValidateJobrightCredentials(instance)}
+                        >
+                          {authenticatingInstanceId === instance.id ? 'Validating...' : 'Save and validate'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={authenticatingInstanceId === instance.id}
+                          onClick={() => cancelCredentialEdit(instance.id)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
                       <p className="text-xs text-muted-foreground">
-                        Use your Jobright email and password in the login window. Google sign-in is
-                        not supported in the embedded window.
+                        Credentials are write-only. Saved values are never shown again.
                       </p>
-                    ) : null}
-                    {authResult ? (
+                    )}
+
+                    {authMessage ? (
                       <p
-                        className={authResult.status === 'ready'
+                        className={authReady
                           ? 'text-xs text-success'
                           : 'text-xs text-warning'}
                         role="status"
                       >
-                        {authResult.message}
+                        {authMessage}
                       </p>
                     ) : null}
 
                     <div className="grid gap-3 md:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] md:items-end">
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground md:col-span-4">
-                        Public feed URL
-                        <input
-                          aria-label="Public feed URL"
-                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                          value={draft.publicFeedUrl}
-                          onChange={(event) =>
-                            updateDraft(instance.id, { publicFeedUrl: event.target.value })}
-                        />
-                      </label>
                       <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Role terms
                         <input
@@ -655,7 +945,7 @@ function ConnectorSettingsPanel({
                       </Button>
                       <Button
                         type="button"
-                        disabled={!authConfigured || runningInstanceId === instance.id}
+                        disabled={!authReady || runningInstanceId === instance.id}
                         onClick={() => runConnectorNow(instance)}
                       >
                         {runningInstanceId === instance.id ? 'Running...' : 'Run Jobright now'}
@@ -684,6 +974,102 @@ function ConnectorSettingsPanel({
       </div>
     </section>
   )
+}
+
+function jobrightSecretKeyForInstance(instanceId: string): string {
+  const normalizedInstanceId = instanceId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
+  return `connector_jobright_credentials_${normalizedInstanceId || 'default'}`
+}
+
+function isJobrightCredentialsConfigured(instance: ConnectorSettingsInstance): boolean {
+  if (instance.connectorId === jobrightConnectorId) {
+    return instance.auth.some((auth) =>
+      auth.mode === 'username_password' && auth.configured)
+  }
+
+  return instance.auth.some((auth) => auth.configured)
+}
+
+function shouldAutoValidateJobrightAuth(instance: ConnectorSettingsInstance): boolean {
+  return instance.connectorId === jobrightConnectorId
+    && isJobrightCredentialsConfigured(instance)
+}
+
+function isConnectorAuthReady(state: ConnectorAuthUiState): boolean {
+  return state.kind === 'result' && state.result.status === 'ready'
+}
+
+function connectorAuthStatusLabel(
+  state: ConnectorAuthUiState,
+  authConfigured: boolean,
+): string {
+  if (state.kind === 'checking') {
+    return 'Checking auth...'
+  }
+
+  if (state.kind === 'cancelled') {
+    return 'Auth cancelled'
+  }
+
+  if (state.kind === 'result') {
+    if (state.result.status === 'ready') {
+      return 'Auth verified'
+    }
+
+    if (state.result.status === 'missing') {
+      return 'Auth missing'
+    }
+
+    if (state.result.status === 'expired') {
+      return 'Auth expired'
+    }
+
+    if (state.result.reason === 'secure_storage_unavailable') {
+      return 'Auth failed'
+    }
+
+    return 'Auth required'
+  }
+
+  if (state.kind === 'local') {
+    return state.status === 'failed' ? 'Auth failed' : 'Auth required'
+  }
+
+  return authConfigured ? 'Credentials stored' : 'Auth required'
+}
+
+function connectorAuthStatusMessage(state: ConnectorAuthUiState): string | null {
+  if (state.kind === 'checking' || state.kind === 'cancelled' || state.kind === 'local') {
+    return state.message
+  }
+
+  if (state.kind === 'result') {
+    return state.result.message
+  }
+
+  return null
+}
+
+function sanitizedConnectorAuthErrorMessage(error: unknown): string {
+  if (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && (error as { code?: unknown }).code === 'secure_storage_unavailable'
+  ) {
+    return secureStorageUnavailableMessage
+  }
+
+  if (error instanceof Error && error.message.includes('secure_storage_unavailable')) {
+    return secureStorageUnavailableMessage
+  }
+
+  return 'Jobright credentials could not be validated.'
 }
 
 function connectorRunMetrics(run: ConnectorSettingsRun): Array<{ label: string; value: number }> {
@@ -879,12 +1265,10 @@ function safeRunRetryGuidance(run: ConnectorSettingsRun): string | null {
 function defaultConnectorSettingsDraft(
   instance: ConnectorSettingsInstance | undefined,
 ): ConnectorSettingsDraft {
-  const config = recordFromUnknown(instance?.config)
   const filters = recordFromUnknown(instance?.filters)
 
   return {
     maxResolutionCount: String(numberFromUnknown(filters.maxResolutionCount, 10)),
-    publicFeedUrl: stringFromUnknown(config.publicFeedUrl) || defaultJobrightPublicFeedUrl,
     roleTerms: arrayTextFromUnknown(filters.roleTerms, 'intern'),
   }
 }

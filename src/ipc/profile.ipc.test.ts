@@ -160,9 +160,7 @@ describe('profile IPC registration', () => {
         { key: 'greenhouse_password', kind: 'password', label: 'Greenhouse', value: 'secret' },
       ),
     ).resolves.toMatchObject({ key: 'greenhouse_password' })
-    await expect(
-      handlers.get('profile:secrets:reveal')?.({}, 'greenhouse_password'),
-    ).resolves.toMatchObject({ value: 'secret' })
+    expect(handlers.has('profile:secrets:reveal')).toBe(false)
     await expect(
       handlers.get('profile:secrets:delete')?.({}, 'greenhouse_password'),
     ).resolves.toBeUndefined()

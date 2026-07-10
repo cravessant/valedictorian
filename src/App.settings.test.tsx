@@ -49,6 +49,36 @@ function mockNarrowViewport() {
   vi.stubGlobal('matchMedia', vi.fn(() => mediaQueryList))
 }
 
+
+async function authenticateJobrightInSettings({
+  connectorsApi,
+  profileApi,
+  email = 'demo@example.com',
+  password = ' pass with spaces ',
+}: {
+  connectorsApi: ReturnType<typeof createConnectorsApi>
+  profileApi: ReturnType<typeof createProfileApi>
+  email?: string
+  password?: string
+}) {
+  const editButton = await screen.findByRole('button', {
+    name: /^(Add credentials|Update credentials)$/,
+  })
+  fireEvent.click(editButton)
+  fireEvent.change(await screen.findByLabelText('Jobright email'), {
+    target: { value: email },
+  })
+  fireEvent.change(screen.getByLabelText('Jobright password'), {
+    target: { value: password },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
+  await screen.findByText('Auth verified')
+  expect(profileApi.secrets.upsert).toHaveBeenCalled()
+  expect(connectorsApi.status.reconnect).toHaveBeenCalled()
+  expect(screen.queryByDisplayValue(email)).not.toBeInTheDocument()
+  expect(screen.queryByDisplayValue(password)).not.toBeInTheDocument()
+}
+
 describe('App settings and chrome', () => {
   it('renders the home page inside a left app sidebar with settings at the bottom', async () => {
     render(
@@ -510,27 +540,6 @@ describe('App settings and chrome', () => {
     })
 
     expect(within(navigation).queryByRole('button', { name: 'General' })).not.toBeInTheDocument()
-    expect(within(navigation).getByRole('button', { name: 'Agent access' })).toBeInTheDocument()
-  })
-
-  it('opens a dedicated connectors settings tab for connector setup', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        connectorsApi={createConnectorsApi()}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-
-    expect(await screen.findByRole('heading', { name: 'Connectors' })).toBeInTheDocument()
-    expect(screen.getByText('Jobright public jobs')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add Jobright public jobs' })).toBeInTheDocument()
-    expect(screen.getByText('No connector instances configured.')).toBeInTheDocument()
   })
 
   it('adds a Jobright connector instance from settings with default auth and filters', async () => {
@@ -548,23 +557,21 @@ describe('App settings and chrome', () => {
 
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
 
     await waitFor(() => {
       expect(connectorsApi.create).toHaveBeenCalledWith({
         auth: [
           {
             id: 'jobright',
-            label: 'Jobright browser session',
-            mode: 'browser_session',
+            label: 'Jobright username and password',
+            mode: 'username_password',
           },
         ],
-        config: {
-          publicFeedUrl: 'https://jobright.ai/minisites-jobs/intern/us/swe?embed=true',
-        },
+        config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.3.0',
-        displayName: 'Jobright public jobs',
+        connectorVersion: '0.4.1',
+        displayName: 'Jobright internslist',
         enabled: true,
         filters: {
           maxResolutionCount: 10,
@@ -575,11 +582,211 @@ describe('App settings and chrome', () => {
     })
     expect(await screen.findByText('jobright.resolver')).toBeInTheDocument()
     expect(screen.getByText('Auth required')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add credentials' })).toBeInTheDocument()
     expect(screen.getByText('1 connector instance configured.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+    expect(screen.queryByText('Credentials stored')).not.toBeInTheDocument()
+    expect(screen.queryByText(/login window/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Login to Jobright' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Auth verified')).not.toBeInTheDocument()
   })
 
-  it('authenticates a Jobright connector from settings without rendering session handles', async () => {
+  it('saves and validates Jobright credentials without revealing saved secrets', async () => {
     const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
+    fireEvent.change(await screen.findByLabelText('Jobright email'), {
+      target: { value: ' demo@example.com ' },
+    })
+    fireEvent.change(screen.getByLabelText('Jobright password'), {
+      target: { value: ' pass with spaces ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
+
+    await waitFor(() => {
+      expect(profileApi.secrets.upsert).toHaveBeenCalledWith({
+        key: 'connector_jobright_credentials_jobright_default',
+        kind: 'password',
+        label: 'Jobright username and password',
+        value: JSON.stringify({
+          username: 'demo@example.com',
+          password: ' pass with spaces ',
+        }),
+      })
+      expect(connectorsApi.update).toHaveBeenCalledWith({
+        auth: [
+          {
+            id: 'jobright',
+            label: 'Jobright username and password',
+            mode: 'username_password',
+            secretKey: 'connector_jobright_credentials_jobright_default',
+          },
+        ],
+        connectorInstanceId: 'jobright-default',
+        connectorVersion: '0.4.1',
+      })
+      expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
+        connectorInstanceId: 'jobright-default',
+      })
+    })
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('demo@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue(' pass with spaces ')).not.toBeInTheDocument()
+    expect(screen.queryByText('demo@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByText(' pass with spaces ')).not.toBeInTheDocument()
+    expect(Object.keys(profileApi.secrets)).not.toContain('reveal')
+  })
+
+  it('cancels credential editing without secret or validation calls', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
+    fireEvent.change(await screen.findByLabelText('Jobright email'), {
+      target: { value: 'demo@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Jobright password'), {
+      target: { value: 'secret' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(await screen.findByText('Credential update cancelled.')).toBeInTheDocument()
+    expect(screen.getByText('Auth cancelled')).toBeInTheDocument()
+    expect(profileApi.secrets.upsert).not.toHaveBeenCalled()
+    expect(connectorsApi.update).not.toHaveBeenCalled()
+    expect(connectorsApi.status.reconnect).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+  })
+
+  it('keeps invalid empty credentials in the editor without secret calls', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
+
+    expect(await screen.findByText(
+      'Enter a Jobright email and password before validating.',
+    )).toBeInTheDocument()
+    expect(screen.getByLabelText('Jobright email')).toBeInTheDocument()
+    expect(screen.getByLabelText('Jobright password')).toBeInTheDocument()
+    expect(profileApi.secrets.upsert).not.toHaveBeenCalled()
+    expect(connectorsApi.update).not.toHaveBeenCalled()
+    expect(connectorsApi.status.reconnect).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+  })
+
+  it('surfaces sanitized secure-storage upsert failures without secret content', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    const secureStorageError = new Error('Secure storage is unavailable') as Error & { code: string }
+    secureStorageError.code = 'secure_storage_unavailable'
+    vi.mocked(profileApi.secrets.upsert).mockRejectedValueOnce(secureStorageError)
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
+    fireEvent.change(await screen.findByLabelText('Jobright email'), {
+      target: { value: 'demo@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Jobright password'), {
+      target: { value: 'secret-password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
+
+    expect(await screen.findByText(
+      'Secure storage is unavailable. Enable platform encryption, then try again.',
+    )).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('demo@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('secret-password')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Jobright email')).not.toBeInTheDocument()
+    expect(connectorsApi.update).not.toHaveBeenCalled()
+    expect(connectorsApi.status.reconnect).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+  })
+
+  it('auto-validates configured Jobright credentials on settings load', async () => {
+    const connectorsApi = createConnectorsApi()
+    let resolveReconnect: ((value: Awaited<ReturnType<typeof connectorsApi.status.reconnect>>) => void) | undefined
+    const pendingReconnect = new Promise<Awaited<ReturnType<typeof connectorsApi.status.reconnect>>>((resolve) => {
+      resolveReconnect = resolve
+    })
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.4.1',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {},
+        filters: {
+          maxResolutionCount: 10,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+    vi.mocked(connectorsApi.status.reconnect).mockReturnValueOnce(pendingReconnect)
 
     render(
       <App
@@ -590,46 +797,384 @@ describe('App settings and chrome', () => {
     )
 
     await openSettingsPage()
-
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
+
+    expect(await screen.findByText('Checking auth...')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+
+    await act(async () => {
+      resolveReconnect?.({
+        action: 'reconnect',
+        connectorInstanceId: 'jobright-default',
+        grants: [{
+          id: 'jobright',
+          mode: 'username_password',
+          status: 'ready',
+        }],
+        message: 'Connector credentials are verified and ready.',
+        reason: 'jobright_auth_ready',
+        status: 'ready',
+      })
+    })
+
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
+    expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
+      connectorInstanceId: 'jobright-default',
+    })
+  })
+
+  it('does not auto-validate non-Jobright configured connectors on settings load', async () => {
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'fixture-default',
+        connectorId: 'fixture.jobs',
+        connectorVersion: '0.0.0-fixture',
+        displayName: 'Fixture jobs',
+        enabled: true,
+        auth: [{
+          id: 'fixture-api',
+          mode: 'api_key',
+          label: 'Fixture API key',
+          configured: true,
+        }],
+        config: {},
+        filters: {},
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    expect(await screen.findByText('fixture.jobs')).toBeInTheDocument()
+    expect(connectorsApi.status.reconnect).not.toHaveBeenCalled()
+    expect(screen.queryByText('Checking auth...')).not.toBeInTheDocument()
+  })
+
+  it('treats legacy Jobright browser_session auth as unconfigured API credentials', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    await connectorsApi.create({
+      id: 'jobright-default',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.3.0',
+      displayName: 'Jobright public jobs',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'browser_session',
+        label: 'Jobright browser session',
+        sessionKey: 'legacy-jobright-session',
+      }],
+      config: {},
+      filters: {
+        maxResolutionCount: 10,
+        roleTerms: ['intern'],
+      },
+    })
+    vi.mocked(connectorsApi.create).mockClear()
+    vi.mocked(connectorsApi.update).mockClear()
+    vi.mocked(connectorsApi.status.reconnect).mockClear()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    expect(await screen.findByText('jobright.resolver')).toBeInTheDocument()
+    expect(screen.getByText('Auth required')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add credentials' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Validate' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+    expect(connectorsApi.status.reconnect).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add credentials' }))
+    fireEvent.change(await screen.findByLabelText('Jobright email'), {
+      target: { value: 'demo@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Jobright password'), {
+      target: { value: ' pass with spaces ' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
 
     await waitFor(() => {
+      expect(profileApi.secrets.upsert).toHaveBeenCalled()
       expect(connectorsApi.update).toHaveBeenCalledWith({
         auth: [
           {
             id: 'jobright',
-            label: 'Jobright browser session',
-            mode: 'browser_session',
-            sessionKey: 'jobright-browser-session',
+            label: 'Jobright username and password',
+            mode: 'username_password',
+            secretKey: 'connector_jobright_credentials_jobright_default',
           },
         ],
         connectorInstanceId: 'jobright-default',
+        connectorVersion: '0.4.1',
       })
       expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
         connectorInstanceId: 'jobright-default',
       })
     })
-    expect(await screen.findByText('Auth ready')).toBeInTheDocument()
-    expect(screen.queryByText('jobright-browser-session')).not.toBeInTheDocument()
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
   })
 
-  it('keeps cancelled Jobright login non-ready and displays the reconnect result', async () => {
+  it('ignores stale ready validation after a newer failed validation settles', async () => {
     const connectorsApi = createConnectorsApi()
+    let resolveOlder: ((value: Awaited<ReturnType<typeof connectorsApi.status.reconnect>>) => void) | undefined
+    let resolveNewer: ((value: Awaited<ReturnType<typeof connectorsApi.status.reconnect>>) => void) | undefined
+    const olderReconnect = new Promise<Awaited<ReturnType<typeof connectorsApi.status.reconnect>>>((resolve) => {
+      resolveOlder = resolve
+    })
+    const newerReconnect = new Promise<Awaited<ReturnType<typeof connectorsApi.status.reconnect>>>((resolve) => {
+      resolveNewer = resolve
+    })
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.4.1',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {},
+        filters: {
+          maxResolutionCount: 10,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+    vi.mocked(connectorsApi.status.reconnect)
+      .mockReturnValueOnce(olderReconnect)
+      .mockReturnValueOnce(newerReconnect)
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    expect(await screen.findByText('Checking auth...')).toBeInTheDocument()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Validate' }))
+    expect(await screen.findByText('Checking auth...')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveNewer?.({
+        action: 'reconnect',
+        connectorInstanceId: 'jobright-default',
+        grants: [{
+          id: 'jobright',
+          mode: 'username_password',
+          reason: 'jobright_login_rejected',
+          status: 'action_required',
+        }],
+        message: 'Connector credentials were rejected. Update email and password, then validate again.',
+        reason: 'jobright_login_rejected',
+        status: 'action_required',
+      })
+    })
+
+    expect(await screen.findByText(
+      'Connector credentials were rejected. Update email and password, then validate again.',
+    )).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+
+    await act(async () => {
+      resolveOlder?.({
+        action: 'reconnect',
+        connectorInstanceId: 'jobright-default',
+        grants: [{
+          id: 'jobright',
+          mode: 'username_password',
+          status: 'ready',
+        }],
+        message: 'Connector credentials are verified and ready.',
+        reason: 'jobright_auth_ready',
+        status: 'ready',
+      })
+    })
+
+    expect(screen.queryByText('Auth verified')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+    expect(screen.getByText(
+      'Connector credentials were rejected. Update email and password, then validate again.',
+    )).toBeInTheDocument()
+  })
+
+  it('ignores stale auto-validation after credential editing begins', async () => {
+    const connectorsApi = createConnectorsApi()
+    let resolveAutoValidate: ((value: Awaited<ReturnType<typeof connectorsApi.status.reconnect>>) => void) | undefined
+    const autoValidate = new Promise<Awaited<ReturnType<typeof connectorsApi.status.reconnect>>>((resolve) => {
+      resolveAutoValidate = resolve
+    })
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.4.1',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {},
+        filters: {
+          maxResolutionCount: 10,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+    vi.mocked(connectorsApi.status.reconnect).mockReturnValueOnce(autoValidate)
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    expect(await screen.findByText('Checking auth...')).toBeInTheDocument()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Update credentials' }))
+    expect(await screen.findByLabelText('Jobright email')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+
+    await act(async () => {
+      resolveAutoValidate?.({
+        action: 'reconnect',
+        connectorInstanceId: 'jobright-default',
+        grants: [{
+          id: 'jobright',
+          mode: 'username_password',
+          status: 'ready',
+        }],
+        message: 'Connector credentials are verified and ready.',
+        reason: 'jobright_auth_ready',
+        status: 'ready',
+      })
+    })
+
+    expect(screen.queryByText('Auth verified')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Jobright email')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+  })
+
+  it('shows sanitized secure-storage failure when revalidation returns it', async () => {
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.4.1',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {},
+        filters: {
+          maxResolutionCount: 10,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+    vi.mocked(connectorsApi.status.reconnect).mockResolvedValue({
+      action: 'reconnect',
+      connectorInstanceId: 'jobright-default',
+      grants: [{
+        id: 'jobright',
+        mode: 'username_password',
+        reason: 'secure_storage_unavailable',
+        status: 'action_required',
+      }],
+      message: 'Secure storage is unavailable. Enable platform encryption, then try again.',
+      reason: 'secure_storage_unavailable',
+      status: 'failed',
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    expect(await screen.findByText(
+      'Secure storage is unavailable. Enable platform encryption, then try again.',
+    )).toBeInTheDocument()
+    expect(screen.getByText('Auth failed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+    expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps failed validation non-ready and clears credential inputs', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
     vi.mocked(connectorsApi.status.reconnect).mockResolvedValue({
       action: 'reconnect',
       connectorInstanceId: 'jobright-default',
       grants: [
         {
           id: 'jobright',
-          mode: 'browser_session',
-          reason: 'browser_session_login_cancelled',
+          mode: 'username_password',
+          reason: 'jobright_login_rejected',
           status: 'action_required',
         },
       ],
-      message: 'Jobright login was cancelled before the session was verified.',
+      message: 'Connector credentials were rejected. Update email and password, then validate again.',
+      reason: 'jobright_login_rejected',
       status: 'action_required',
     })
 
@@ -637,26 +1182,31 @@ describe('App settings and chrome', () => {
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
+        profileApi={profileApi}
         settingsApi={createSettingsApi()}
       />,
     )
 
     await openSettingsPage()
-
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
-
-    const created = await vi.mocked(connectorsApi.create).mock.results[0]?.value
-    vi.mocked(connectorsApi.list).mockResolvedValue({ items: created ? [created] : [] })
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
+    fireEvent.change(await screen.findByLabelText('Jobright email'), {
+      target: { value: 'demo@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Jobright password'), {
+      target: { value: 'wrong-password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
 
     expect(await screen.findByText(
-      'Jobright login was cancelled before the session was verified.',
+      'Connector credentials were rejected. Update email and password, then validate again.',
     )).toBeInTheDocument()
     expect(screen.getByText('Auth required')).toBeInTheDocument()
-    expect(screen.queryByText('Auth ready')).not.toBeInTheDocument()
+    expect(screen.queryByText('Auth verified')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('demo@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('wrong-password')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
   })
 
@@ -675,7 +1225,7 @@ describe('App settings and chrome', () => {
 
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
 
     fireEvent.change(await screen.findByLabelText('Role terms'), {
       target: { value: 'intern, backend' },
@@ -687,9 +1237,7 @@ describe('App settings and chrome', () => {
 
     await waitFor(() => {
       expect(connectorsApi.update).toHaveBeenCalledWith({
-        config: {
-          publicFeedUrl: 'https://jobright.ai/minisites-jobs/intern/us/swe?embed=true',
-        },
+        config: {},
         connectorInstanceId: 'jobright-default',
         filters: {
           maxResolutionCount: 3,
@@ -701,11 +1249,13 @@ describe('App settings and chrome', () => {
 
   it('runs an authenticated Jobright connector from settings', async () => {
     const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
 
     render(
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
+        profileApi={profileApi}
         settingsApi={createSettingsApi()}
       />,
     )
@@ -714,13 +1264,12 @@ describe('App settings and chrome', () => {
 
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
 
     const runButtonBeforeAuth = await screen.findByRole('button', { name: 'Run Jobright now' })
     expect(runButtonBeforeAuth).toBeDisabled()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
-    expect(await screen.findByText('Auth ready')).toBeInTheDocument()
+    await authenticateJobrightInSettings({ connectorsApi, profileApi })
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
@@ -736,6 +1285,7 @@ describe('App settings and chrome', () => {
 
   it('shows persisted run progress and terminal connector counts in settings', async () => {
     const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
     const connectorStatusLoader = vi.fn(async () => createConnectorStatusResult([]))
     const sourcingLoader = vi.fn(async () => createSourcingResult([]))
     type ConnectorRun = Awaited<ReturnType<typeof connectorsApi.runs.trigger>>
@@ -750,6 +1300,7 @@ describe('App settings and chrome', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorStatusLoader={connectorStatusLoader}
         connectorsApi={connectorsApi}
+        profileApi={profileApi}
         settingsApi={createSettingsApi()}
         sourcingLoader={sourcingLoader}
       />,
@@ -758,9 +1309,8 @@ describe('App settings and chrome', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
-    await screen.findByText('Auth ready')
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await authenticateJobrightInSettings({ connectorsApi, profileApi })
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
@@ -816,6 +1366,7 @@ describe('App settings and chrome', () => {
 
   it('renders a sanitized error when a settings connector run rejects', async () => {
     const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
     vi.mocked(connectorsApi.runs.trigger).mockRejectedValueOnce(
       new Error('sensitive session handle from connector failure'),
     )
@@ -824,6 +1375,7 @@ describe('App settings and chrome', () => {
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
+        profileApi={profileApi}
         settingsApi={createSettingsApi()}
       />,
     )
@@ -831,9 +1383,8 @@ describe('App settings and chrome', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright public jobs' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Login to Jobright' }))
-    await screen.findByText('Auth ready')
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByText('Jobright run could not be completed.')).toBeInTheDocument()

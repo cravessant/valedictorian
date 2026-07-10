@@ -28,7 +28,6 @@ describe('profile preload API', () => {
       label: 'Greenhouse password',
       value: 'secret',
     })
-    await api.secrets.reveal('greenhouse_password')
     await api.secrets.delete('greenhouse_password')
 
     expect(invocations).toEqual([
@@ -55,8 +54,8 @@ describe('profile preload API', () => {
           value: 'secret',
         },
       ],
-      ['profile:secrets:reveal', 'greenhouse_password'],
       ['profile:secrets:delete', 'greenhouse_password'],
     ])
+    expect(Object.keys(api.secrets)).toEqual(['delete', 'list', 'upsert'])
   })
 })

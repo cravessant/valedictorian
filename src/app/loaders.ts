@@ -874,9 +874,6 @@ export const defaultProfileApi: ProfilePreloadApi = {
 
       return getWindowProfileApi()?.secrets.list() ?? Promise.resolve([])
     },
-    reveal(key) {
-      return getWindowProfileApi()?.secrets.reveal(key) ?? Promise.resolve(null)
-    },
     upsert(input) {
       const httpClient = getRendererHttpWorkspaceClient()
 

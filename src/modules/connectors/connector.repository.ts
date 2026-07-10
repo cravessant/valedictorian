@@ -44,6 +44,7 @@ export type ConnectorAuthMode =
   | 'oauth'
   | 'cookie_jar'
   | 'browser_session'
+  | 'username_password'
 
 export interface ConnectorAuthReference {
   id: string
@@ -1261,6 +1262,7 @@ const connectorAuthModes = new Set<ConnectorAuthMode>([
   'oauth',
   'cookie_jar',
   'browser_session',
+  'username_password',
 ])
 
 function normalizeConnectorAuthReferences(input: unknown): ConnectorAuthReference[] {
@@ -1297,7 +1299,8 @@ function isSecretBackedAuthMode(mode: ConnectorAuthMode): boolean {
   return mode === 'api_key' ||
     mode === 'bearer_token' ||
     mode === 'oauth' ||
-    mode === 'cookie_jar'
+    mode === 'cookie_jar' ||
+    mode === 'username_password'
 }
 
 function requiredNonEmptyString(value: unknown, label: string): string {

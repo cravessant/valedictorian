@@ -349,6 +349,14 @@ describe('SQLite connector repository', () => {
           secretKey: 'wrong_secret_key',
           sessionKey: ' workspace_session_1 ',
         } as never,
+        {
+          id: ' fixture-password ',
+          mode: 'username_password',
+          label: ' Jobright credentials ',
+          secretKey: ' connector.jobright.credentials.fixture ',
+          sessionKey: 'wrong_session_key',
+          value: 'plaintext-password-json',
+        } as never,
       ],
       createdAt: '2026-07-08T15:00:00.000Z',
     })
@@ -368,11 +376,18 @@ describe('SQLite connector repository', () => {
           mode: 'browser_session',
           sessionKey: 'workspace_session_1',
         },
+        {
+          id: 'fixture-password',
+          mode: 'username_password',
+          label: 'Jobright credentials',
+          secretKey: 'connector.jobright.credentials.fixture',
+        },
       ],
     })
     expect(JSON.stringify(instance)).not.toContain('fixture-secret')
     expect(JSON.stringify(instance)).not.toContain('wrong_secret_key')
     expect(JSON.stringify(instance)).not.toContain('wrong_session_key')
+    expect(JSON.stringify(instance)).not.toContain('plaintext-password-json')
   })
 
   it('persists partial-success connector runs with retry hints', async () => {

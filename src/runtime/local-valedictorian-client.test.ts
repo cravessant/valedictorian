@@ -14,6 +14,7 @@ import {
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 
 function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
@@ -867,27 +868,20 @@ describe('runtime local Valedictorian client', () => {
           status: 'action_required',
         },
       ],
-      message: 'Connector browser session needs local action before refreshes can continue.',
+      message: 'Connector credentials need attention before refreshes can continue.',
       status: 'action_required',
     })
     sqlite.close()
   })
 
-  it('returns a safe explicit result when Jobright login is cancelled', async () => {
+  it('migrates a legacy Jobright 0.3.x browser_session instance to 0.4.1 username_password', async () => {
     const sqlitePath = createTempSqlitePath()
+    const secretCodec = {
+      decrypt: (value: string) => value.replace(/^enc:/, ''),
+      encrypt: (value: string) => `enc:${value}`,
+    }
     const client = createRuntimeLocalValedictorianClient({
-      connectorAuth: {
-        browserSessions: {
-          async resolve(reference) {
-            return {
-              id: reference.id,
-              mode: reference.mode,
-              reason: 'browser_session_login_cancelled',
-              status: 'action_required',
-            }
-          },
-        },
-      },
+      secretCodec,
       sqlitePath,
     })
     const sqlite = createFileDatabase(sqlitePath)
@@ -895,7 +889,7 @@ describe('runtime local Valedictorian client', () => {
     const connectorRepository = createSqliteConnectorRepository(database)
 
     await connectorRepository.upsertInstance({
-      id: 'jobright-cancelled-login',
+      id: 'jobright-legacy',
       connectorId: 'jobright.resolver',
       connectorVersion: '0.3.0',
       displayName: 'Jobright public jobs',
@@ -905,31 +899,182 @@ describe('runtime local Valedictorian client', () => {
           id: 'jobright',
           label: 'Jobright browser session',
           mode: 'browser_session',
-          sessionKey: 'sensitive-session-handle',
+          sessionKey: 'legacy-jobright-session',
+        },
+      ],
+      config: {},
+      filters: {
+        maxResolutionCount: 10,
+        roleTerms: ['intern'],
+      },
+      createdAt: '2026-07-09T15:00:00.000Z',
+    })
+
+    await expect(client.connectors.update({
+      connectorInstanceId: 'jobright-legacy',
+      auth: [
+        {
+          id: 'jobright',
+          label: 'Jobright username and password',
+          mode: 'username_password',
+          secretKey: 'connector_jobright_credentials_jobright_legacy',
+        },
+      ],
+    })).rejects.toThrow(/Connector version mismatch/)
+
+    const migrated = await client.connectors.update({
+      connectorInstanceId: 'jobright-legacy',
+      connectorVersion: '0.4.1',
+      auth: [
+        {
+          id: 'jobright',
+          label: 'Jobright username and password',
+          mode: 'username_password',
+          secretKey: 'connector_jobright_credentials_jobright_legacy',
+        },
+      ],
+    })
+
+    expect(migrated).toMatchObject({
+      id: 'jobright-legacy',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.4.1',
+      auth: [
+        {
+          configured: true,
+          id: 'jobright',
+          label: 'Jobright username and password',
+          mode: 'username_password',
+        },
+      ],
+    })
+    expect(JSON.stringify(migrated)).not.toContain('legacy-jobright-session')
+    expect(JSON.stringify(migrated)).not.toContain('connector_jobright_credentials_jobright_legacy')
+    expect(JSON.stringify(migrated)).not.toContain('sessionKey')
+    expect(JSON.stringify(migrated)).not.toContain('secretKey')
+
+    const persisted = await connectorRepository.getInstance('jobright-legacy')
+    expect(persisted).toMatchObject({
+      connectorVersion: '0.4.1',
+      auth: [
+        {
+          id: 'jobright',
+          mode: 'username_password',
+          secretKey: 'connector_jobright_credentials_jobright_legacy',
+        },
+      ],
+    })
+    expect(JSON.stringify(persisted)).not.toContain('legacy-jobright-session')
+    expect(JSON.stringify(persisted)).not.toContain('browser_session')
+
+    sqlite.close()
+  })
+
+  it('validates Jobright credentials through connector-owned validateAuth without plaintext', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const secretValue = JSON.stringify({
+      username: 'demo@example.com',
+      password: ' pass with spaces ',
+    })
+    const secretCodec = {
+      decrypt: (value: string) => value.replace(/^enc:/, ''),
+      encrypt: (value: string) => `enc:${value}`,
+    }
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url
+      const body = typeof init?.body === 'string' ? init.body : ''
+
+      if (url.includes('/swan/auth/login/pwd')) {
+        expect(body).toContain('demo@example.com')
+        expect(body).toContain(' pass with spaces ')
+        return new Response(JSON.stringify({ success: true, result: {} }), {
+          headers: {
+            'content-type': 'application/json',
+            'set-cookie': 'SESSION_ID=session-cookie; Path=/',
+          },
+          status: 200,
+        })
+      }
+
+      if (url.includes('/swan/auth/newinfo')) {
+        return new Response(JSON.stringify({
+          success: true,
+          result: { logined: true },
+        }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        })
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    }) as typeof fetch
+    const { createJobrightConnector } = await import('@sparxie/valedictorian-connectors-jobright')
+    const { createStaticConnectorRegistry } = await import('../modules/connectors/connector.registry')
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([
+        createJobrightConnector({ fetch: fetchImpl }),
+      ]),
+      secretCodec,
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+    const profileRepository = createSqliteProfileRepository(database, secretCodec)
+
+    await profileRepository.upsertSecret({
+      key: 'connector_jobright_credentials_jobright_default',
+      kind: 'password',
+      label: 'Jobright username and password',
+      value: secretValue,
+    })
+    await connectorRepository.upsertInstance({
+      id: 'jobright-default',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.4.1',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [
+        {
+          id: 'jobright',
+          label: 'Jobright username and password',
+          mode: 'username_password',
+          secretKey: 'connector_jobright_credentials_jobright_default',
         },
       ],
       createdAt: '2026-07-09T15:00:00.000Z',
     })
 
     const reconnect = await client.connectors.status.reconnect({
-      connectorInstanceId: 'jobright-cancelled-login',
+      connectorInstanceId: 'jobright-default',
+    })
+    const runs = await client.connectors.runs.list({
+      connectorInstanceId: 'jobright-default',
+      limit: 10,
+    })
+    const observations = await client.connectors.observations.list({
+      connectorInstanceId: 'jobright-default',
+    })
+    const checkpoints = await client.connectors.checkpoints.list({
+      connectorInstanceId: 'jobright-default',
     })
 
-    expect(reconnect).toEqual({
+    expect(reconnect).toMatchObject({
       action: 'reconnect',
-      connectorInstanceId: 'jobright-cancelled-login',
-      grants: [
-        {
-          id: 'jobright',
-          mode: 'browser_session',
-          reason: 'browser_session_login_cancelled',
-          status: 'action_required',
-        },
-      ],
-      message: 'Jobright login was cancelled before the session was verified.',
-      status: 'action_required',
+      connectorInstanceId: 'jobright-default',
+      reason: 'jobright_auth_ready',
+      status: 'ready',
     })
-    expect(JSON.stringify(reconnect)).not.toContain('sensitive-session-handle')
+    expect(runs.total).toBe(0)
+    expect(observations.total).toBe(0)
+    expect(checkpoints.items).toEqual([])
+    expect(JSON.stringify(reconnect)).not.toContain('demo@example.com')
+    expect(JSON.stringify(reconnect)).not.toContain(' pass with spaces ')
+    expect(JSON.stringify(reconnect)).not.toContain('session-cookie')
     sqlite.close()
   })
 
