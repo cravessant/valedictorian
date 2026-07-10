@@ -450,11 +450,11 @@ describe('SQLite connector repository', () => {
       enabled: true,
       createdAt: '2026-07-08T15:00:00.000Z',
     })
-    const request = await repository.recordRunRequest({
+    const request = (await repository.recordRunRequest({
       connectorInstanceId: 'connector-instance-deferred',
       mode: 'manual',
       startedAt: '2026-07-08T16:00:00.000Z',
-    })
+    })).run
     await repository.markRunRunning({
       connectorRunId: request.id,
       startedAt: '2026-07-08T16:00:00.000Z',
@@ -497,6 +497,72 @@ describe('SQLite connector repository', () => {
       id: request.id,
       status: 'partial_success',
     })
+  })
+
+  it('returns the active run request until failure releases the connector instance', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await repository.upsertInstance({
+      id: 'connector-instance-single-flight',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Single-flight fixture jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    const first = await repository.recordRunRequest({
+      connectorInstanceId: 'connector-instance-single-flight',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:00.000Z',
+    })
+    const queuedDuplicate = await repository.recordRunRequest({
+      connectorInstanceId: 'connector-instance-single-flight',
+      mode: 'scheduled',
+      startedAt: '2026-07-08T16:00:01.000Z',
+    })
+
+    expect(first).toMatchObject({ acquired: true, run: { status: 'queued' } })
+    expect(queuedDuplicate).toMatchObject({
+      acquired: false,
+      run: { id: first.run.id, mode: 'manual', status: 'queued' },
+    })
+
+    await repository.markRunRunning({
+      connectorRunId: first.run.id,
+      startedAt: '2026-07-08T16:00:00.000Z',
+    })
+    await expect(repository.recordRunRequest({
+      connectorInstanceId: 'connector-instance-single-flight',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:02.000Z',
+    })).resolves.toMatchObject({
+      acquired: false,
+      run: { id: first.run.id, status: 'running' },
+    })
+
+    await repository.markRunFailed({
+      connectorRunId: first.run.id,
+      completedAt: '2026-07-08T16:00:03.000Z',
+      warning: {
+        code: 'connector.execution_failed',
+        message: 'Connector execution failed.',
+      },
+    })
+    const retry = await repository.recordRunRequest({
+      connectorInstanceId: 'connector-instance-single-flight',
+      mode: 'manual',
+      startedAt: '2026-07-08T16:00:04.000Z',
+    })
+
+    expect(retry).toMatchObject({ acquired: true, run: { status: 'queued' } })
+    expect(retry.run.id).not.toBe(first.run.id)
+    await expect(repository.listRuns({
+      connectorInstanceId: 'connector-instance-single-flight',
+    })).resolves.toMatchObject({ total: 2 })
   })
 
   it('records failed connector run attempts without advancing checkpoints', async () => {

@@ -16,6 +16,7 @@ import {
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
 import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createSqliteConnectorProjectionService } from '../modules/connectors/connector.projection'
+import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import {
   createDefaultLocalConnectorRegistry,
   type LocalConnectorRegistry,
@@ -53,6 +54,7 @@ import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.rep
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
 export interface LocalValedictorianClientOptions {
+  connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   connectorRegistry?: LocalConnectorRegistry
   connectorRuntime?: AppConnectorRuntimePorts
   now?: () => Date
@@ -241,6 +243,7 @@ const unavailableSecretCodec: ProfileSecretCodec = {
 }
 
 export function createLocalValedictorianClient({
+  connectorRunRecovery,
   connectorRegistry = createDefaultLocalConnectorRegistry(),
   connectorRuntime,
   now = () => new Date(),
@@ -265,9 +268,17 @@ export function createLocalValedictorianClient({
   const profileRepository = createSqliteProfileRepository(database, secretCodec)
   const actionQueueRepository = createSqliteActionQueueRepository(database)
   const connectorRepository = createSqliteConnectorRepository(database)
-  connectorRepository.recoverInterruptedRuns({
-    completedAt: now().toISOString(),
-  })
+  const recoverInterruptedRuns = () => {
+    connectorRepository.recoverInterruptedRuns({
+      completedAt: now().toISOString(),
+    })
+  }
+
+  if (connectorRunRecovery) {
+    connectorRunRecovery.activate({ sqlitePath, workspaceId }, recoverInterruptedRuns)
+  } else {
+    recoverInterruptedRuns()
+  }
   const policyRepository = createSqlitePolicyRepository(database)
   const workflowRunRepository = createSqliteWorkflowRunRepository(database)
   const sourcingProcessor = createSqliteSourcingProcessor(database)
@@ -699,7 +710,7 @@ async function executeConnectorRunTrigger({
 
   const mode = input.mode ?? 'manual'
   assertExecutableConnectorTrigger(input, mode)
-  const runRequest = await connectorRepository.recordRunRequest({
+  const runRequestResult = await connectorRepository.recordRunRequest({
     connectorInstanceId: input.connectorInstanceId,
     mode,
     startedAt,
@@ -707,6 +718,12 @@ async function executeConnectorRunTrigger({
     coverageEndedAt: input.coverageEndedAt,
     reason: input.reason,
   })
+
+  if (!runRequestResult.acquired) {
+    return runRequestResult.run
+  }
+
+  const runRequest = runRequestResult.run
 
   await connectorRepository.markRunRunning({
     connectorRunId: runRequest.id,

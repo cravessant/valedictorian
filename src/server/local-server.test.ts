@@ -2,8 +2,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { ValedictorianWorkspaceClient } from 'sparxie'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
+import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { createValedictorianRuntime } from '../runtime/valedictorian-runtime'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
 import { createLocalWorkspaceManager } from './local-workspaces'
@@ -690,6 +693,310 @@ describe('local Valedictorian HTTP server', () => {
       companyName: 'Astranis Space Technologies',
       status: 'needs_user_info',
     })
+  })
+
+  it('returns the IPC active connector run when the workspace HTTP surface attaches late', async () => {
+    const workspaceId = 'workspace-connector-surfaces'
+    const connectorInstanceId = 'connector-instance-surfaces'
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-surfaces-'))
+    const workspace = initializeWorkspace(workspaceRoot, { createId: () => workspaceId })
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    let releaseRefresh: (() => void) | undefined
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    })
+    let refreshCount = 0
+    const connector: AppJobConnector = {
+      definition: {
+        id: 'fixture.surfaces',
+        version: '0.0.0-fixture',
+      },
+      async refresh(input) {
+        refreshCount += 1
+        await refreshGate
+
+        return {
+          coverage: input.coverage,
+          nextCheckpoint: {
+            checkpoint: { cursor: input.coverage.end },
+            schemaVersion: 'fixture-checkpoint@1',
+          },
+          observations: [],
+          stats: { observations: 0 },
+          warnings: [],
+        }
+      },
+    }
+    const connectorRegistry = createStaticConnectorRegistry([connector])
+    let createdClientCount = 0
+    const createClient = (
+      options: Parameters<typeof createRuntimeLocalValedictorianClient>[0],
+    ) => {
+      createdClientCount += 1
+      return createRuntimeLocalValedictorianClient({
+        ...options,
+        connectorRegistry,
+        seedDataMode: 'none',
+      })
+    }
+    const workspaceManager = createLocalWorkspaceManager({
+      createClient,
+      registryStore,
+    })
+
+    await workspaceManager.open({ path: workspaceRoot })
+
+    const runtime = await createValedictorianRuntime({
+      config: {
+        apiHost: '127.0.0.1',
+        apiPort: 0,
+        apiUrl: 'http://127.0.0.1:0',
+        mode: 'local-desktop',
+        seedDataMode: 'none',
+        sqlitePath: workspace.sqlitePath,
+        workspaceId,
+      },
+      createLocalClient: createClient,
+      workspaceManager,
+    })
+    const connectors = runtime.connectors
+
+    if (!connectors || !runtime.server) {
+      await runtime.close()
+      throw new Error('Expected local connector and HTTP runtime surfaces')
+    }
+
+    await connectors.create({
+      id: connectorInstanceId,
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      displayName: 'Surface fixture jobs',
+      enabled: true,
+    })
+
+    const triggerInput = {
+      connectorInstanceId,
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual' as const,
+    }
+    const ipcRunPromise = connectors.runs.trigger(triggerInput)
+
+    await vi.waitFor(() => {
+      expect(refreshCount).toBe(1)
+    })
+
+    let httpRun: Record<string, unknown> | undefined
+    const httpRunPromise = fetch(
+      `${runtime.server.url}/v1/workspaces/${workspaceId}/connectors/${connectorInstanceId}/runs`,
+      {
+        body: JSON.stringify(triggerInput),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      },
+    ).then(async (response) => {
+      const run = await readJson(response) as Record<string, unknown>
+      httpRun = run
+      return { response, run }
+    })
+    let regressionError: unknown
+
+    try {
+      await vi.waitFor(() => {
+        expect(httpRun).toMatchObject({
+          connectorInstanceId,
+          status: 'running',
+        })
+      }, { timeout: 250 })
+      expect(createdClientCount).toBe(1)
+      expect(refreshCount).toBe(1)
+    } catch (error) {
+      regressionError = error
+    } finally {
+      releaseRefresh?.()
+    }
+
+    const [ipcResult, httpResult] = await Promise.allSettled([ipcRunPromise, httpRunPromise])
+    await runtime.close()
+
+    if (regressionError) {
+      throw regressionError
+    }
+
+    if (ipcResult.status === 'rejected') {
+      throw ipcResult.reason
+    }
+
+    if (httpResult.status === 'rejected') {
+      throw httpResult.reason
+    }
+
+    expect(ipcResult.value).toMatchObject({ status: 'completed' })
+    expect(httpResult.value).toMatchObject({
+      response: { status: 200 },
+      run: { id: ipcResult.value.id },
+    })
+  })
+
+  it('keeps a live connector run owned when its workspace is reopened through the real path after a symlink alias', async () => {
+    const workspaceAId = 'workspace-lifecycle-a'
+    const workspaceBId = 'workspace-lifecycle-b'
+    const connectorInstanceId = 'connector-instance-lifecycle'
+    const workspaceAReal = initializeWorkspace(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-lifecycle-a-real-')),
+      { createId: () => workspaceAId },
+    )
+    const workspaceAAliasRoot = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-lifecycle-a-alias-')),
+      'workspace',
+    )
+    fs.symlinkSync(workspaceAReal.rootPath, workspaceAAliasRoot, 'dir')
+    const workspaceAAlias = initializeWorkspace(workspaceAAliasRoot)
+    const workspaceB = initializeWorkspace(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-lifecycle-b-')),
+      { createId: () => workspaceBId },
+    )
+    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    let releaseRefresh: (() => void) | undefined
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    })
+    let refreshCount = 0
+    const connector: AppJobConnector = {
+      definition: {
+        id: 'fixture.lifecycle',
+        version: '0.0.0-fixture',
+      },
+      async refresh(input) {
+        refreshCount += 1
+        await refreshGate
+
+        return {
+          coverage: input.coverage,
+          nextCheckpoint: {
+            checkpoint: { cursor: input.coverage.end },
+            schemaVersion: 'fixture-checkpoint@1',
+          },
+          observations: [],
+          stats: { observations: 0 },
+          warnings: [],
+        }
+      },
+    }
+    const connectorRegistry = createStaticConnectorRegistry([connector])
+    const createClient = (
+      options: Parameters<typeof createRuntimeLocalValedictorianClient>[0],
+    ) => createRuntimeLocalValedictorianClient({
+      ...options,
+      connectorRegistry,
+      seedDataMode: 'none',
+    })
+    const workspaceManager = createLocalWorkspaceManager({
+      createClient,
+      registryStore,
+    })
+    const createRuntime = (workspace: typeof workspaceAAlias) => createValedictorianRuntime({
+      config: {
+        apiHost: '127.0.0.1',
+        apiPort: 0,
+        apiUrl: 'http://127.0.0.1:0',
+        mode: 'local-desktop',
+        seedDataMode: 'none',
+        sqlitePath: workspace.sqlitePath,
+        workspaceId: workspace.id,
+      },
+      createLocalClient: createClient,
+      workspaceManager,
+    })
+
+    await workspaceManager.open({ path: workspaceAAlias.rootPath })
+    await workspaceManager.open({ path: workspaceB.rootPath })
+
+    const firstRuntime = await createRuntime(workspaceAAlias)
+    const firstConnectors = firstRuntime.connectors
+
+    if (!firstConnectors) {
+      await firstRuntime.close()
+      throw new Error('Expected connector IPC surface for workspace A')
+    }
+
+    await firstConnectors.create({
+      id: connectorInstanceId,
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      displayName: 'Lifecycle fixture jobs',
+      enabled: true,
+    })
+    const triggerInput = {
+      connectorInstanceId,
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual' as const,
+    }
+    const firstRunPromise = firstConnectors.runs.trigger(triggerInput)
+
+    await vi.waitFor(() => {
+      expect(refreshCount).toBe(1)
+    })
+    expect(fs.realpathSync(workspaceAAlias.sqlitePath)).toBe(
+      fs.realpathSync(workspaceAReal.sqlitePath),
+    )
+    await firstRuntime.close()
+
+    const secondWorkspaceRuntime = await createRuntime(workspaceB)
+    await secondWorkspaceRuntime.close()
+
+    const reopenedRuntime = await createRuntime(workspaceAReal)
+    const reopenedConnectors = reopenedRuntime.connectors
+
+    if (!reopenedConnectors) {
+      releaseRefresh?.()
+      await firstRunPromise.catch(() => undefined)
+      await reopenedRuntime.close()
+      throw new Error('Expected reopened connector IPC surface for workspace A')
+    }
+
+    let reopenedRun: Awaited<typeof firstRunPromise> | undefined
+    const reopenedRunPromise = reopenedConnectors.runs.trigger(triggerInput).then((run) => {
+      reopenedRun = run
+      return run
+    })
+    let regressionError: unknown
+
+    try {
+      await vi.waitFor(() => {
+        expect(reopenedRun).toMatchObject({
+          connectorInstanceId,
+          status: 'running',
+        })
+      }, { timeout: 250 })
+      expect(refreshCount).toBe(1)
+    } catch (error) {
+      regressionError = error
+    } finally {
+      releaseRefresh?.()
+    }
+
+    const [firstResult, reopenedResult] = await Promise.allSettled([
+      firstRunPromise,
+      reopenedRunPromise,
+    ])
+    await reopenedRuntime.close()
+
+    if (regressionError) {
+      throw regressionError
+    }
+
+    if (firstResult.status === 'rejected') {
+      throw firstResult.reason
+    }
+
+    if (reopenedResult.status === 'rejected') {
+      throw reopenedResult.reason
+    }
+
+    expect(firstResult.value).toMatchObject({ status: 'completed' })
+    expect(reopenedResult.value.id).toBe(firstResult.value.id)
   })
 
   it('resolves local workspace clients without scheduling startup connector work', async () => {

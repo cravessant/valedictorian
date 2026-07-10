@@ -14,6 +14,7 @@ import {
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
@@ -1954,6 +1955,278 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
+  it('returns one active run across clients when concurrent triggers target the same connector instance', async () => {
+    const sqlitePath = createTempSqlitePath()
+    let releaseRefresh: (() => void) | undefined
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve
+    })
+    const connector = fixtureConnector({
+      observedAt: '2026-07-08T18:00:00.000Z',
+      waitForRefresh: refreshGate,
+    })
+    const refresh = vi.fn((
+      input: Parameters<AppJobConnector['refresh']>[0],
+      runtime: Parameters<AppJobConnector['refresh']>[1],
+    ) => connector.refresh(input, runtime))
+    const clientOptions = {
+      connectorRegistry: createStaticConnectorRegistry([{ ...connector, refresh }]),
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-fixture',
+    } as const
+    const firstClient = createRuntimeLocalValedictorianClient(clientOptions)
+    const secondClient = createRuntimeLocalValedictorianClient(clientOptions)
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    await connectorRepository.upsertInstance({
+      id: 'connector-instance-fixture',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Fixture Jobs',
+      enabled: true,
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })
+
+    const triggerInput = {
+      connectorInstanceId: 'connector-instance-fixture',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual' as const,
+    }
+    const firstRunPromise = firstClient.connectors.runs.trigger(triggerInput)
+
+    await vi.waitFor(() => {
+      expect(refresh).toHaveBeenCalledTimes(1)
+    })
+
+    let activeRun: Awaited<typeof firstRunPromise> | undefined
+    const secondRunPromise = secondClient.connectors.runs.trigger(triggerInput).then((run) => {
+      activeRun = run
+      return run
+    })
+
+    try {
+      await vi.waitFor(() => {
+        expect(activeRun).toMatchObject({
+          connectorInstanceId: 'connector-instance-fixture',
+          status: 'running',
+        })
+      }, { timeout: 250 })
+      expect(refresh).toHaveBeenCalledTimes(1)
+    } finally {
+      releaseRefresh?.()
+    }
+
+    const [completedRun, returnedActiveRun] = await Promise.all([
+      firstRunPromise,
+      secondRunPromise,
+    ])
+    const runs = await secondClient.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })
+    const observations = await secondClient.connectors.observations.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })
+    const checkpoints = await secondClient.connectors.checkpoints.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })
+
+    expect(returnedActiveRun.id).toBe(completedRun.id)
+    expect(runs).toMatchObject({
+      items: [{ id: completedRun.id, status: 'completed' }],
+      total: 1,
+    })
+    expect(observations.total).toBe(1)
+    expect(checkpoints.items).toHaveLength(1)
+
+    const laterRun = await firstClient.connectors.runs.trigger({
+      ...triggerInput,
+      coverageStartedAt: '2026-07-08T18:00:00.000Z',
+      coverageEndedAt: '2026-07-08T19:00:00.000Z',
+    })
+
+    expect(laterRun.id).not.toBe(completedRun.id)
+    expect(laterRun.status).toBe('completed')
+    expect(refresh).toHaveBeenCalledTimes(2)
+    await expect(secondClient.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })).resolves.toMatchObject({ total: 2 })
+    sqlite.close()
+  })
+
+  it('runs different connector instances independently in the same workspace', async () => {
+    const sqlitePath = createTempSqlitePath()
+    let releaseFirstRefresh: (() => void) | undefined
+    const firstRefreshGate = new Promise<void>((resolve) => {
+      releaseFirstRefresh = resolve
+    })
+    const baseConnector = fixtureConnector({
+      observedAt: '2026-07-08T18:00:00.000Z',
+    })
+    const refreshedInstances: string[] = []
+    const connector: AppJobConnector = {
+      ...baseConnector,
+      async refresh(input, runtime) {
+        refreshedInstances.push(input.connectorInstanceId)
+
+        if (input.connectorInstanceId === 'connector-instance-first') {
+          await firstRefreshGate
+        }
+
+        return baseConnector.refresh(input, runtime)
+      },
+    }
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([connector]),
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-fixture',
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+
+    for (const [id, displayName] of [
+      ['connector-instance-first', 'First fixture jobs'],
+      ['connector-instance-second', 'Second fixture jobs'],
+    ] as const) {
+      await connectorRepository.upsertInstance({
+        id,
+        connectorId: 'fixture.jobs',
+        connectorVersion: '0.0.0-fixture',
+        displayName,
+        enabled: true,
+        createdAt: '2026-07-08T15:00:00.000Z',
+      })
+    }
+
+    const firstRunPromise = client.connectors.runs.trigger({
+      connectorInstanceId: 'connector-instance-first',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual',
+    })
+
+    await vi.waitFor(() => {
+      expect(refreshedInstances).toEqual(['connector-instance-first'])
+    })
+
+    const secondRun = await client.connectors.runs.trigger({
+      connectorInstanceId: 'connector-instance-second',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual',
+    })
+
+    expect(secondRun).toMatchObject({
+      connectorInstanceId: 'connector-instance-second',
+      status: 'completed',
+    })
+    await expect(client.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-first',
+    })).resolves.toMatchObject({
+      items: [{ status: 'running' }],
+      total: 1,
+    })
+
+    releaseFirstRefresh?.()
+    await expect(firstRunPromise).resolves.toMatchObject({
+      connectorInstanceId: 'connector-instance-first',
+      status: 'completed',
+    })
+    expect(refreshedInstances).toEqual([
+      'connector-instance-first',
+      'connector-instance-second',
+    ])
+    sqlite.close()
+  })
+
+  it('runs the same connector instance id independently in different workspace databases', async () => {
+    const firstSqlitePath = createTempSqlitePath()
+    const secondSqlitePath = createTempSqlitePath()
+    let releaseFirstRefresh: (() => void) | undefined
+    const firstRefreshGate = new Promise<void>((resolve) => {
+      releaseFirstRefresh = resolve
+    })
+    const baseConnector = fixtureConnector({
+      observedAt: '2026-07-08T18:00:00.000Z',
+    })
+    const refreshedWorkspaces: string[] = []
+    const connector: AppJobConnector = {
+      ...baseConnector,
+      async refresh(input, runtime) {
+        refreshedWorkspaces.push(input.workspaceId)
+
+        if (input.workspaceId === 'workspace-first') {
+          await firstRefreshGate
+        }
+
+        return baseConnector.refresh(input, runtime)
+      },
+    }
+    const connectorRegistry = createStaticConnectorRegistry([connector])
+    const firstClient = createRuntimeLocalValedictorianClient({
+      connectorRegistry,
+      seedDataMode: 'none',
+      sqlitePath: firstSqlitePath,
+      workspaceId: 'workspace-first',
+    })
+    const secondClient = createRuntimeLocalValedictorianClient({
+      connectorRegistry,
+      seedDataMode: 'none',
+      sqlitePath: secondSqlitePath,
+      workspaceId: 'workspace-second',
+    })
+    const firstSqlite = createFileDatabase(firstSqlitePath)
+    const secondSqlite = createFileDatabase(secondSqlitePath)
+
+    for (const database of [
+      createDrizzleDatabase(firstSqlite),
+      createDrizzleDatabase(secondSqlite),
+    ]) {
+      await createSqliteConnectorRepository(database).upsertInstance({
+        id: 'connector-instance-fixture',
+        connectorId: 'fixture.jobs',
+        connectorVersion: '0.0.0-fixture',
+        displayName: 'Fixture Jobs',
+        enabled: true,
+        createdAt: '2026-07-08T15:00:00.000Z',
+      })
+    }
+
+    const triggerInput = {
+      connectorInstanceId: 'connector-instance-fixture',
+      coverageStartedAt: '2026-07-08T17:00:00.000Z',
+      coverageEndedAt: '2026-07-08T18:00:00.000Z',
+      mode: 'manual' as const,
+    }
+    const firstRunPromise = firstClient.connectors.runs.trigger(triggerInput)
+
+    await vi.waitFor(() => {
+      expect(refreshedWorkspaces).toEqual(['workspace-first'])
+    })
+
+    await expect(secondClient.connectors.runs.trigger(triggerInput)).resolves.toMatchObject({
+      connectorInstanceId: 'connector-instance-fixture',
+      status: 'completed',
+    })
+    await expect(firstClient.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })).resolves.toMatchObject({
+      items: [{ status: 'running' }],
+      total: 1,
+    })
+
+    releaseFirstRefresh?.()
+    await expect(firstRunPromise).resolves.toMatchObject({ status: 'completed' })
+    expect(refreshedWorkspaces).toEqual(['workspace-first', 'workspace-second'])
+    firstSqlite.close()
+    secondSqlite.close()
+  })
+
   it('recovers an interrupted running row as an explicit cancelled result on reopen', async () => {
     const sqlitePath = createTempSqlitePath()
     const sqlite = createFileDatabase(sqlitePath)
@@ -1969,13 +2242,13 @@ describe('runtime local Valedictorian client', () => {
       enabled: true,
       createdAt: '2026-07-08T15:00:00.000Z',
     })
-    const requestedRun = await connectorRepository.recordRunRequest({
+    const requestedRun = (await connectorRepository.recordRunRequest({
       connectorInstanceId: 'connector-instance-fixture',
       coverageStartedAt: '2026-07-08T17:00:00.000Z',
       coverageEndedAt: '2026-07-08T18:00:00.000Z',
       mode: 'manual',
       startedAt: '2026-07-08T18:00:00.000Z',
-    })
+    })).run
     await connectorRepository.markRunRunning({
       connectorRunId: requestedRun.id,
       startedAt: '2026-07-08T18:00:00.000Z',
@@ -2011,6 +2284,10 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
 
     const reopenedClient = createRuntimeLocalValedictorianClient({
+      connectorRunRecovery: createConnectorRunRecoveryLifecycle(),
+      connectorRegistry: createStaticConnectorRegistry([
+        fixtureConnector({ observedAt: '2026-07-08T19:00:00.000Z' }),
+      ]),
       now: () => new Date('2026-07-08T19:00:00.000Z'),
       seedDataMode: 'none',
       sqlitePath,
@@ -2042,6 +2319,25 @@ describe('runtime local Valedictorian client', () => {
         },
       ],
       total: 1,
+    })
+
+    const retry = await reopenedClient.connectors.runs.trigger({
+      connectorInstanceId: 'connector-instance-fixture',
+      coverageStartedAt: '2026-07-08T18:00:00.000Z',
+      coverageEndedAt: '2026-07-08T19:00:00.000Z',
+      mode: 'manual',
+    })
+
+    expect(retry).toMatchObject({ status: 'completed' })
+    expect(retry.id).not.toBe(requestedRun.id)
+    await expect(reopenedClient.connectors.runs.list({
+      connectorInstanceId: 'connector-instance-fixture',
+    })).resolves.toMatchObject({
+      items: [
+        { id: retry.id, status: 'completed' },
+        { id: requestedRun.id, status: 'cancelled' },
+      ],
+      total: 2,
     })
   })
 
@@ -2225,7 +2521,7 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
-  it('records failed runs when registered connectors throw', async () => {
+  it('records failed runs and allows a later trigger when registered connectors throw', async () => {
     const sqlitePath = createTempSqlitePath()
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: {
@@ -2262,6 +2558,15 @@ describe('runtime local Valedictorian client', () => {
         mode: 'manual',
       }),
     ).rejects.toThrow('Fixture connector refresh failed')
+
+    await expect(
+      client.connectors.runs.trigger({
+        connectorInstanceId: 'connector-instance-fixture',
+        coverageStartedAt: '2026-07-08T18:00:00.000Z',
+        coverageEndedAt: '2026-07-08T19:00:00.000Z',
+        mode: 'manual',
+      }),
+    ).rejects.toThrow('Fixture connector refresh failed')
     await expect(
       client.connectors.runs.list({
         connectorInstanceId: 'connector-instance-fixture',
@@ -2278,8 +2583,14 @@ describe('runtime local Valedictorian client', () => {
           },
           status: 'failed',
         },
+        {
+          retryHints: {
+            reason: 'connector_execution_failed',
+          },
+          status: 'failed',
+        },
       ],
-      total: 1,
+      total: 2,
     })
     sqlite.close()
   })

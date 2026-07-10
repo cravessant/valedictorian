@@ -10,6 +10,10 @@ import {
   type DefaultLocalConnectorPorts,
 } from '../modules/connectors/connector.runtime-ports'
 import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
+import {
+  createConnectorRunRecoveryLifecycle,
+  type ConnectorRunRecoveryLifecycle,
+} from '../modules/connectors/connector.recovery'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 import type { WorkspaceRecord, WorkspaceRegistryStore } from '../workspace/workspace.registry'
@@ -41,6 +45,7 @@ export interface LocalWorkspaceListResult {
 }
 
 export interface LocalWorkspaceManager {
+  connectorRunRecovery: ConnectorRunRecoveryLifecycle
   create(input: LocalWorkspaceCreateInput): Promise<LocalWorkspaceListItem>
   list(): Promise<LocalWorkspaceListResult>
   open(input: LocalWorkspaceOpenInput): Promise<LocalWorkspaceListItem>
@@ -61,6 +66,7 @@ export interface CreateLocalWorkspaceManagerOptions {
   createClient?: (options: LocalValedictorianClientOptions) => ValedictorianWorkspaceClient
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createId?: () => string
+  connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   now?: () => Date
   referenceTrackerPath?: string
   registryStore: WorkspaceRegistryStore
@@ -72,6 +78,7 @@ export function createLocalWorkspaceManager({
   createClient = createLocalValedictorianClient,
   createConnectorPorts = () => createDefaultLocalConnectorPorts(),
   createId = () => crypto.randomUUID(),
+  connectorRunRecovery = createConnectorRunRecoveryLifecycle(),
   now = () => new Date(),
   referenceTrackerPath,
   registryStore,
@@ -81,6 +88,7 @@ export function createLocalWorkspaceManager({
   const clientCache = new Map<string, ValedictorianWorkspaceClient>()
 
   return {
+    connectorRunRecovery,
     async create(input) {
       fs.mkdirSync(input.path, { recursive: true })
       return openWorkspace({ createId, input, now, registryStore })
@@ -119,6 +127,7 @@ export function createLocalWorkspaceManager({
 
         const connectorPorts = createConnectorPorts(workspaceId)
         const client = createClient({
+          connectorRunRecovery,
           connectorRuntime: connectorPorts.connectorRuntime,
           referenceTrackerPath,
           seedDataMode,

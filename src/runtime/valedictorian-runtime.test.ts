@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ValedictorianClient, ValedictorianWorkspaceClient } from 'sparxie'
+import { createConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import { createValedictorianRuntime, resolveValedictorianRuntimeConfig } from './valedictorian-runtime'
 
 function createWorkspaceClient(name: string): ValedictorianWorkspaceClient {
@@ -276,14 +277,16 @@ describe('Valedictorian runtime creation', () => {
     expect(server.close).toHaveBeenCalled()
   })
 
-  it('passes a local workspace manager to the local HTTP server', async () => {
+  it('reuses the active workspace client for HTTP and delegates other workspaces', async () => {
     const localClient = createWorkspaceClient('local')
+    const otherWorkspaceClient = createWorkspaceClient('other-workspace')
     const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:4317' }
     const workspaceManager = {
+      connectorRunRecovery: createConnectorRunRecoveryLifecycle(),
       create: vi.fn(),
       list: vi.fn(),
       open: vi.fn(),
-      resolveClient: vi.fn(),
+      resolveClient: vi.fn(async () => otherWorkspaceClient),
     }
     const startServer = vi.fn(async () => server)
 
@@ -291,6 +294,7 @@ describe('Valedictorian runtime creation', () => {
       config: resolveValedictorianRuntimeConfig({
         env: {},
         userDataPath: '/tmp/valedictorian-user-data',
+        workspaceId: 'workspace-local',
       }),
       createLocalClient: vi.fn(() => localClient),
       startServer,
@@ -301,8 +305,15 @@ describe('Valedictorian runtime creation', () => {
       client: localClient,
       host: '127.0.0.1',
       port: 4317,
+      resolveWorkspaceClient: expect.any(Function),
       workspaceManager,
     })
+    const resolveWorkspaceClient = startServer.mock.calls[0]?.[0].resolveWorkspaceClient
+
+    expect(await resolveWorkspaceClient?.('workspace-local')).toBe(localClient)
+    expect(await resolveWorkspaceClient?.('workspace-other')).toBe(otherWorkspaceClient)
+    expect(workspaceManager.resolveClient).toHaveBeenCalledTimes(1)
+    expect(workspaceManager.resolveClient).toHaveBeenCalledWith('workspace-other')
 
     await runtime.close()
     expect(server.close).toHaveBeenCalled()

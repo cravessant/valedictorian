@@ -18,6 +18,7 @@ import {
 import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
+import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import {
   createLocalValedictorianClient,
   type LocalValedictorianClient,
@@ -59,6 +60,7 @@ export interface CreateValedictorianRuntimeOptions {
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
   createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
+  connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   secretCodec?: ProfileSecretCodec
   startServer?: (
     options: CreateValedictorianHttpServerOptions,
@@ -99,6 +101,7 @@ export async function createValedictorianRuntime({
   createConnectorPorts = () => createDefaultLocalConnectorPorts(),
   createHttpClient = createHttpValedictorianClient,
   createLocalClient = createLocalValedictorianClient,
+  connectorRunRecovery,
   secretCodec,
   startServer = createValedictorianHttpServer,
   workspaceManager,
@@ -120,7 +123,11 @@ export async function createValedictorianRuntime({
   }
 
   const connectorPorts = createConnectorPorts(config.workspaceId)
+  const effectiveConnectorRunRecovery = connectorRunRecovery ?? workspaceManager?.connectorRunRecovery
   const client = createLocalClient({
+    ...(effectiveConnectorRunRecovery === undefined
+      ? {}
+      : { connectorRunRecovery: effectiveConnectorRunRecovery }),
     connectorRuntime: connectorPorts.connectorRuntime,
     referenceTrackerPath: config.referenceTrackerPath,
     seedDataMode: config.seedDataMode,
@@ -137,6 +144,14 @@ export async function createValedictorianRuntime({
 
   if (workspaceManager) {
     serverOptions.workspaceManager = workspaceManager
+
+    if (config.workspaceId) {
+      // IPC and HTTP must share the already-recovered client for the active workspace.
+      serverOptions.resolveWorkspaceClient = (workspaceId) =>
+        workspaceId === config.workspaceId
+          ? client
+          : workspaceManager.resolveClient(workspaceId)
+    }
   }
 
   const server = await startServer(serverOptions)

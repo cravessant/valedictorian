@@ -138,6 +138,11 @@ export interface RecordConnectorRunRequestInput {
   dryRun?: boolean
 }
 
+export interface RecordConnectorRunRequestResult {
+  acquired: boolean
+  run: ConnectorRunRecord
+}
+
 export interface RecordConnectorRunFailureInput {
   connectorInstanceId: string
   mode: string
@@ -509,53 +514,90 @@ export function createSqliteConnectorRepository(database: DrizzleDatabase) {
       return checkpoint
     },
 
-    async recordRunRequest(input: RecordConnectorRunRequestInput): Promise<ConnectorRunRecord> {
-      const instance = await this.getInstance(input.connectorInstanceId)
+    async recordRunRequest(
+      input: RecordConnectorRunRequestInput,
+    ): Promise<RecordConnectorRunRequestResult> {
+      return database.transaction((transaction) => {
+        const instanceRow = transaction
+          .select()
+          .from(connectorInstances)
+          .where(
+            and(
+              eq(connectorInstances.id, input.connectorInstanceId),
+              isNull(connectorInstances.deletedAt),
+            ),
+          )
+          .get()
 
-      if (!instance) {
-        throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
-      }
+        if (!instanceRow) {
+          throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+        }
 
-      const now = input.startedAt
-      const filters = input.filters ?? instance.filters
-      const filterSignature = input.filterSignature ?? `filters:${stableJsonStringify(filters)}`
-      const runId = randomUUID()
-
-      database
-        .insert(connectorRuns)
-        .values({
-          id: runId,
-          connectorInstanceId: input.connectorInstanceId,
-          mode: input.mode,
-          status: 'queued',
-          startedAt: input.startedAt,
-          completedAt: null,
-          coverageStartedAt: input.coverageStartedAt ?? null,
-          coverageEndedAt: input.coverageEndedAt ?? null,
-          configJson: JSON.stringify(instance.config),
-          filtersJson: JSON.stringify(filters),
-          filterSignature,
-          observationCount: 0,
-          warningCount: 0,
-          statsJson: JSON.stringify({
-            queued: true,
-            ...(input.dryRun === undefined ? {} : { dryRun: input.dryRun }),
-          }),
-          warningsJson: JSON.stringify([]),
-          retryHintsJson: JSON.stringify(input.reason ? { reason: input.reason } : null),
-          createdAt: now,
-          updatedAt: now,
-          deletedAt: null,
-        })
-        .run()
-
-      return mapConnectorRun(
-        database
+        const activeRun = transaction
           .select()
           .from(connectorRuns)
-          .where(eq(connectorRuns.id, runId))
-          .get(),
-      )
+          .where(
+            and(
+              eq(connectorRuns.connectorInstanceId, input.connectorInstanceId),
+              inArray(connectorRuns.status, ['queued', 'running']),
+              isNull(connectorRuns.deletedAt),
+            ),
+          )
+          .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
+          .get()
+
+        if (activeRun) {
+          return {
+            acquired: false,
+            run: mapConnectorRun(activeRun),
+          }
+        }
+
+        const instance = mapConnectorInstance(instanceRow)
+        const now = input.startedAt
+        const filters = input.filters ?? instance.filters
+        const filterSignature = input.filterSignature ?? `filters:${stableJsonStringify(filters)}`
+        const runId = randomUUID()
+
+        transaction
+          .insert(connectorRuns)
+          .values({
+            id: runId,
+            connectorInstanceId: input.connectorInstanceId,
+            mode: input.mode,
+            status: 'queued',
+            startedAt: input.startedAt,
+            completedAt: null,
+            coverageStartedAt: input.coverageStartedAt ?? null,
+            coverageEndedAt: input.coverageEndedAt ?? null,
+            configJson: JSON.stringify(instance.config),
+            filtersJson: JSON.stringify(filters),
+            filterSignature,
+            observationCount: 0,
+            warningCount: 0,
+            statsJson: JSON.stringify({
+              queued: true,
+              ...(input.dryRun === undefined ? {} : { dryRun: input.dryRun }),
+            }),
+            warningsJson: JSON.stringify([]),
+            retryHintsJson: JSON.stringify(input.reason ? { reason: input.reason } : null),
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+          })
+          .run()
+
+        return {
+          acquired: true,
+          run: mapConnectorRun(
+            transaction
+              .select()
+              .from(connectorRuns)
+              .where(eq(connectorRuns.id, runId))
+              .get(),
+          ),
+        }
+      }, { behavior: 'immediate' })
     },
 
     async recordRunFailure(input: RecordConnectorRunFailureInput): Promise<ConnectorRunRecord> {
