@@ -282,10 +282,7 @@ describe('App settings and chrome', () => {
               severity: 'blocked',
             },
           ],
-          retryHints: {
-            reason: 'auth_required',
-            sessionKey: 'sensitive-session-key',
-          },
+          retryHints: null,
           startedAt: '2026-07-09T16:00:00.000Z',
           completedAt: '2026-07-09T16:00:02.000Z',
         },
@@ -644,10 +641,7 @@ describe('App settings and chrome', () => {
               severity: 'blocked',
             },
           ],
-          retryHints: {
-            recommended: false,
-            source: 'jobright',
-          },
+          retryHints: null,
           startedAt: '2026-07-09T18:00:00.000Z',
           completedAt: '2026-07-09T18:00:01.000Z',
         },
@@ -672,10 +666,7 @@ describe('App settings and chrome', () => {
               severity: 'warning',
             },
           ],
-          retryHints: {
-            recommended: false,
-            source: 'jobright',
-          },
+          retryHints: null,
           startedAt: '2026-07-09T17:00:00.000Z',
           completedAt: '2026-07-09T17:00:01.000Z',
         },
@@ -700,12 +691,7 @@ describe('App settings and chrome', () => {
               severity: 'warning',
             },
           ],
-          retryHints: {
-            actions: ['update_jobright_parser'],
-            parserChanged: 1,
-            recommended: true,
-            source: 'jobright',
-          },
+          retryHints: null,
           startedAt: '2026-07-09T16:00:00.000Z',
           completedAt: '2026-07-09T16:00:01.000Z',
         },
@@ -730,11 +716,7 @@ describe('App settings and chrome', () => {
               severity: 'warning',
             },
           ],
-          retryHints: {
-            actions: ['review_jobright_results'],
-            recommended: true,
-            source: 'jobright',
-          },
+          retryHints: null,
           startedAt: '2026-07-09T15:00:00.000Z',
           completedAt: '2026-07-09T15:00:01.000Z',
         },
@@ -949,6 +931,39 @@ describe('App settings and chrome', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to app' }))
 
     expect(await screen.findByLabelText('Status')).toBeInTheDocument()
+  })
+
+
+  it('renders persisted not-due retry timing separately from failure', async () => {
+    const connectorsApi = createConnectorsApi()
+    await connectorsApi.create({
+      id: 'retry-ui', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
+      displayName: 'Retry fixture', enabled: true, auth: [], config: {}, filters: {},
+    })
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      hasMore: false, limit: 20, offset: 0, total: 1,
+      items: [{
+        id: 'retry-not-due', connectorInstanceId: 'retry-ui', mode: 'manual', status: 'skipped',
+        coverage: { start: null, end: null }, filterSignature: 'filters:{}',
+        observationCount: 0, warningCount: 0, stats: { skipped: true }, warnings: [],
+        retryHints: {
+          state: 'not_due', reason: 'rate_limit', attempt: 2, maxAttempts: 4,
+          lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
+          nextAttemptAt: '2026-07-11T12:01:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z',
+        },
+        startedAt: '2026-07-11T12:00:30.000Z', completedAt: '2026-07-11T12:00:30.000Z',
+      }],
+    })
+
+    render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+      connectorsApi={connectorsApi} settingsApi={createSettingsApi()} />)
+    await screen.findByRole('table', { name: 'Applications' })
+    openConnectorRuns()
+
+    expect(await screen.findByText(
+      `Skipped — not due · Rate limited · Attempt 2 of 4 · Next attempt ${new Date('2026-07-11T12:01:00.000Z').toLocaleString()}`,
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/failed/i)).not.toBeInTheDocument()
   })
 
 })

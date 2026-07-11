@@ -591,10 +591,7 @@ describe('runtime local Valedictorian client', () => {
             ],
           },
         ],
-        retryHints: {
-          reason: 'auth_required',
-          sessionKey: 'fixture-session-123',
-        },
+        retryHints: null,
         stats: {
           observations: 0,
         },

@@ -479,12 +479,16 @@ export async function handleRequest({
     )
 
     if (request.method === 'GET' && rawRecordNormalizationMatch) {
+      const normalization = await client.sourcing.rawRecords.normalization.get(
+        decodeURIComponent(rawRecordNormalizationMatch[1]),
+      )
+      const { triggerOccurrence: _internalTriggerOccurrence, ...publicNormalization } = normalization as typeof normalization & {
+        triggerOccurrence?: unknown
+      }
       writeJson(
         response,
         200,
-        await client.sourcing.rawRecords.normalization.get(
-          decodeURIComponent(rawRecordNormalizationMatch[1]),
-        ),
+        publicNormalization,
       )
       return
     }

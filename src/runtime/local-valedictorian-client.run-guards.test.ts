@@ -189,9 +189,7 @@ describe('runtime local Valedictorian client', () => {
         {
           completedAt: '2026-07-08T19:00:00.000Z',
           id: requestedRun.id,
-          retryHints: {
-            reason: 'connector_run_interrupted',
-          },
+          retryHints: null,
           status: 'cancelled',
           warningCount: 2,
           warnings: [
@@ -462,9 +460,7 @@ describe('runtime local Valedictorian client', () => {
     ).resolves.toMatchObject({
       items: [
         {
-          retryHints: {
-            reason: 'connector_execution_failed',
-          },
+          retryHints: null,
           stats: {
             failures: 1,
             running: false,
@@ -472,9 +468,7 @@ describe('runtime local Valedictorian client', () => {
           status: 'failed',
         },
         {
-          retryHints: {
-            reason: 'connector_execution_failed',
-          },
+          retryHints: null,
           status: 'failed',
         },
       ],
@@ -678,6 +672,135 @@ describe('runtime local Valedictorian client', () => {
     })
     sqlite.close()
   })
+
+
+  it('gates a manual retry before connector refresh and returns the persisted not-due run', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const base = fixtureConnector({ observedAt: '2026-07-11T12:00:00.000Z' })
+    const refresh = vi.fn(async (input: Parameters<AppJobConnector['refresh']>[0], runtime: Parameters<AppJobConnector['refresh']>[1]) => ({
+      ...await base.refresh(input, runtime),
+      observations: [],
+      stats: { observations: 0 },
+      retryHints: {
+        state: 'scheduled' as const, reason: 'rate_limit' as const,
+        attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z',
+        computedDelayMs: 60_000, serverMinimumDelayMs: null,
+        nextAttemptAt: '2026-07-11T12:01:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z',
+      },
+    }))
+    const connector: AppJobConnector = { ...base, refresh }
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([connector]),
+      now: () => new Date('2026-07-11T12:00:30.000Z'), seedDataMode: 'none', sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    await repository.upsertInstance({
+      id: 'retry-runtime', connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version, displayName: 'Retry runtime', enabled: true,
+      filters: {}, createdAt: '2026-07-11T11:00:00.000Z',
+    })
+
+    await client.connectors.runs.trigger({
+      connectorInstanceId: 'retry-runtime', mode: 'manual',
+      coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: '2026-07-11T12:00:00.000Z',
+    })
+    const early = await client.connectors.runs.trigger({
+      connectorInstanceId: 'retry-runtime', mode: 'manual',
+      coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: '2026-07-11T12:00:00.000Z',
+    })
+    const repeated = await client.connectors.runs.trigger({
+      connectorInstanceId: 'retry-runtime', mode: 'manual',
+      coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: '2026-07-11T12:00:00.000Z',
+    })
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(early).toMatchObject({ status: 'skipped', retryHints: { state: 'not_due', reason: 'rate_limit' } })
+    expect(repeated.id).toBe(early.id)
+    sqlite.close()
+  })
+
+
+  it('gates Jobright capture retries with the exact provider-state signature across direct, startup, and repeated triggers', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const refresh = vi.fn(async () => {
+      throw new Error('Jobright refresh must not run before due')
+    })
+    const connector = {
+      definition: {
+        id: 'jobright.resolver',
+        version: '0.7.0',
+        capabilities: { supportsFiltering: false },
+      },
+      refresh,
+    } as AppJobConnector
+    const client = createRuntimeLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([connector]),
+      now: () => new Date('2026-07-11T12:00:30.000Z'),
+      seedDataMode: 'none',
+      sqlitePath,
+    })
+    const sqlite = createFileDatabase(sqlitePath)
+    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    await repository.upsertInstance({
+      id: 'jobright-capture-retry',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.7.0',
+      displayName: 'Jobright capture retry',
+      enabled: true,
+      filters: { roleTerms: ['intern'] },
+      createdAt: '2026-07-11T11:00:00.000Z',
+    })
+    await repository.recordRefreshResult({
+      connectorInstanceId: 'jobright-capture-retry',
+      mode: 'manual',
+      startedAt: '2026-07-11T12:00:00.000Z',
+      completedAt: '2026-07-11T12:00:01.000Z',
+      config: {},
+      filters: { roleTerms: ['intern'] },
+      filterSignature: 'provider-state:jobright.resolver@0.7.0',
+      result: {
+        observations: [],
+        warnings: [],
+        stats: { observations: 0 },
+        coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
+        nextCheckpoint: {
+          checkpoint: { retryState: [], cycleId: 'capture-cycle' },
+          schemaVersion: 'jobright-resolution-checkpoint@4',
+        },
+        retryHints: {
+          state: 'scheduled', reason: 'rate_limit', attempt: 1, maxAttempts: 3,
+          lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
+          nextAttemptAt: '2026-07-11T12:01:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z',
+        },
+      },
+    })
+
+    const direct = await client.connectors.runs.trigger({
+      connectorInstanceId: 'jobright-capture-retry',
+      mode: 'manual',
+      coverageStartedAt: '2026-07-11T11:00:00.000Z',
+      coverageEndedAt: '2026-07-11T12:00:00.000Z',
+    })
+    const repeated = await client.connectors.runs.trigger({
+      connectorInstanceId: 'jobright-capture-retry',
+      mode: 'manual',
+      coverageStartedAt: '2026-07-11T11:00:00.000Z',
+      coverageEndedAt: '2026-07-11T12:00:00.000Z',
+    })
+    const startup = await client.connectors.runs.startupCatchUp()
+
+    expect(direct).toMatchObject({
+      status: 'skipped',
+      filterSignature: 'provider-state:jobright.resolver@0.7.0',
+      retryHints: { state: 'not_due', reason: 'rate_limit' },
+    })
+    expect(repeated.id).toBe(direct.id)
+    expect(startup.runs).toEqual([expect.objectContaining({ id: direct.id, status: 'skipped' })])
+    expect(refresh).not.toHaveBeenCalled()
+    sqlite.close()
+  })
+
 
 })
 

@@ -354,10 +354,7 @@ describe('connector runner', () => {
               message: 'Run stopped after exhausting its host budget.',
             },
           ],
-          retryHints: {
-            reason: 'budget_exhausted',
-            resumeAfter: '2026-07-09T16:10:00.000Z',
-          },
+          retryHints: null,
           nextCheckpoint: {
             checkpoint: {
               cursor: 'partial:2026-07-09T16:05:00.000Z',
@@ -387,10 +384,7 @@ describe('connector runner', () => {
     expect(run).toMatchObject({
       status: 'partial_success',
       coverageEndedAt: '2026-07-09T16:05:00.000Z',
-      retryHints: {
-        reason: 'budget_exhausted',
-        resumeAfter: '2026-07-09T16:10:00.000Z',
-      },
+      retryHints: null,
     })
     await expect(
       repository.getCheckpoint({

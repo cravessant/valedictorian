@@ -2,6 +2,7 @@ import type {
   ConnectorStatusSummaryRecord,
   ConnectorWarning,
 } from './connector.repository'
+import type { RetryAdvice } from 'sparxie'
 
 export type ConnectorStatusSeverity = 'healthy' | 'warning' | 'blocked'
 
@@ -38,6 +39,7 @@ export interface ConnectorStatusView {
   lastRunAt: string | null
   latestRunId: string | null
   observationCount: number
+  retryAdvice: RetryAdvice | null
   severity: ConnectorStatusSeverity
   status: ConnectorStatusState
   statusLabel: string
@@ -81,6 +83,7 @@ export function mapConnectorStatusSummary(
       lastRunAt: null,
       latestRunId: null,
       observationCount: 0,
+      retryAdvice: null,
       severity: 'warning',
       status: 'never_run',
       statusLabel: 'Never run',
@@ -95,8 +98,7 @@ export function mapConnectorStatusSummary(
   const rawWarnings = readWarnings(latestRun.warnings)
   const warnings = mapConnectorWarnings(latestRun.warnings)
   const hasAuthBlocker =
-    rawWarnings.some((warning) => isAuthWarningCode(warning.code)) ||
-    hasAuthRetryHint(latestRun.retryHints)
+    rawWarnings.some((warning) => isAuthWarningCode(warning.code))
   const hasBlockedWarning = warnings.some((warning) => warning.severity === 'blocked')
   const latestRunStatus = latestRun.status
   const isPartialSuccess = latestRun.status === 'partial_success'
@@ -164,8 +166,12 @@ export function mapConnectorStatusSummary(
                     actions: [],
                     severity: 'warning',
                     status: 'skipped',
-                    statusLabel: 'Skipped',
-                    summary: 'Latest run was skipped.',
+                    statusLabel: latestRun.retryHints?.state === 'not_due'
+                      ? 'Skipped / not due'
+                      : 'Skipped',
+                    summary: latestRun.retryHints?.state === 'not_due'
+                      ? 'Latest run was skipped because retry work is not due yet.'
+                      : 'Latest run was skipped.',
                   }
                 : isPartialSuccess
         ? {
@@ -202,6 +208,7 @@ export function mapConnectorStatusSummary(
     lastRunAt: latestRun.completedAt ?? latestRun.startedAt,
     latestRunId: latestRun.id,
     observationCount: latestRun.observationCount,
+    retryAdvice: latestRun.retryHints,
     warningCount: latestRun.warningCount,
     warnings,
     ...state,
@@ -400,30 +407,6 @@ function safeWarningForCode(code: string): ConnectorStatusWarningView {
   }
 }
 
-function hasAuthRetryHint(value: unknown): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return false
-  }
-
-  const record = value as Record<string, unknown>
-  const reason = record.reason
-  const authRequired = record.authRequired
-
-  return (
-    (typeof reason === 'string' && isAuthRetryReason(reason)) ||
-    (typeof authRequired === 'number' && authRequired > 0) ||
-    authRequired === true
-  )
-}
-
 function isAuthWarningCode(code: string): boolean {
   return code.startsWith('auth.') || code === 'jobright_auth_required'
-}
-
-function isAuthRetryReason(reason: string): boolean {
-  return reason === 'auth_required' ||
-    reason === 'auth_reference_missing' ||
-    reason === 'browser_session_action_required' ||
-    reason === 'secret_missing' ||
-    reason === 'secret_reference_missing'
 }

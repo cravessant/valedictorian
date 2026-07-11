@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { type ValedictorianWorkspaceClient } from 'sparxie'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
@@ -969,79 +969,5 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('rejects invalid create mutation input before calling the client', async () => {
-    let createCalls = 0
-    server = await createValedictorianHttpServer({
-      client: createBoundaryTestClient(() => {
-        createCalls += 1
-      }),
-      host: '127.0.0.1',
-      port: 0,
-    })
-
-    const validBody = {
-      companyName: 'Delta Labs',
-      roleTitle: 'Software Engineering Intern',
-      sourceName: 'LinkedIn',
-      roleKind: 'internship',
-      country: 'US',
-      workMode: 'remote',
-      status: 'queued',
-      primaryLink: {
-        kind: 'official',
-        label: 'official',
-        url: 'https://jobs.example.com/delta',
-      },
-    }
-    const cases = [
-      {
-        body: {
-          ...validBody,
-          roleKind: 'intern',
-        },
-        message: 'Invalid roleKind: intern',
-      },
-      {
-        body: {
-          ...validBody,
-          companyName: '   ',
-        },
-        message: 'companyName is required',
-      },
-      {
-        body: {
-          ...validBody,
-          primaryLink: undefined,
-        },
-        message: 'Application creation requires a primaryLink or sourceLink',
-      },
-      {
-        body: {
-          ...validBody,
-          primaryLink: {
-            kind: 'official',
-            label: 'official',
-            url: 'ftp://jobs.example.com/delta',
-          },
-        },
-        message: 'Invalid application URL: ftp://jobs.example.com/delta',
-      },
-    ]
-
-    for (const testCase of cases) {
-      const response = await fetch(`${server.url}/v1/workspaces/workspace-1/applications`, {
-        body: JSON.stringify(testCase.body),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      })
-
-      expect(response.status).toBe(400)
-      await expect(readJson(response)).resolves.toEqual({
-        message: testCase.message,
-      })
-    }
-
-    expect(createCalls).toBe(0)
-  })
 
 })

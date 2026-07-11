@@ -74,9 +74,7 @@ describe('runtime local Valedictorian client', () => {
           schemaVersion: 'fixture-checkpoint@1',
         },
         observations: [],
-        retryHints: {
-          reason: 'auth_required',
-        },
+        retryHints: null,
         stats: {
           observations: 0,
         },
@@ -123,11 +121,12 @@ describe('runtime local Valedictorian client', () => {
     })
     expect(runs.items).toEqual([
       expect.objectContaining({
-        retryHints: {
-          reason: 'user_skipped_auth_required_run',
-          skippedBy: 'user',
-        },
+        retryHints: null,
         status: 'skipped',
+        stats: expect.objectContaining({
+          reason: 'user_skipped_auth_required_run',
+          skipped: true,
+        }),
       }),
       expect.objectContaining({
         status: 'partial_success',

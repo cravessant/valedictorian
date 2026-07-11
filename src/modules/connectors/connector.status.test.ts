@@ -3,15 +3,32 @@ import type { ConnectorStatusSummaryRecord } from './connector.repository'
 import { mapConnectorStatusSummary } from './connector.status'
 
 describe('connector status mapping', () => {
+  it('describes a skipped not-due run without classifying it as failed', () => {
+    expect(mapConnectorStatusSummary(createStatusRecord({
+      latestRun: createRunRecord({
+        status: 'skipped',
+        retryHints: {
+          state: 'not_due', reason: 'operation_timeout', attempt: 2, maxAttempts: 3,
+          lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
+          nextAttemptAt: '2026-07-11T12:01:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z',
+        },
+      }),
+    }))).toMatchObject({
+      severity: 'warning', status: 'skipped', statusLabel: 'Skipped / not due',
+      summary: 'Latest run was skipped because retry work is not due yet.',
+      retryAdvice: expect.objectContaining({
+        state: 'not_due', reason: 'operation_timeout', attempt: 2, maxAttempts: 3,
+        nextAttemptAt: '2026-07-11T12:01:00.000Z',
+      }),
+    })
+  })
+
   it('classifies auth blockers without forwarding sensitive warning details', () => {
     const view = mapConnectorStatusSummary(
       createStatusRecord({
         latestRun: createRunRecord({
           observationCount: 0,
-          retryHints: {
-            reason: 'browser_session_action_required',
-            sessionId: 'fixture-session-123',
-          },
+          retryHints: null,
           status: 'partial_success',
           warningCount: 4,
           warnings: [
@@ -92,11 +109,9 @@ describe('connector status mapping', () => {
         createStatusRecord({
           latestRun: createRunRecord({
             observationCount: 0,
-            retryHints: {
-              reason: 'secret_missing',
-              secretKey: 'fixture-token-key',
-            },
+            retryHints: null,
             status: 'partial_success',
+            warnings: [{ code: 'auth.required', message: 'secret missing' }],
           }),
         }),
       ),
@@ -116,11 +131,9 @@ describe('connector status mapping', () => {
           displayName: 'Jobright public jobs',
           latestRun: createRunRecord({
             observationCount: 3,
-            retryHints: {
-              authRequired: 2,
-              source: 'jobright',
-            },
+            retryHints: null,
             status: 'completed',
+            warnings: [{ code: 'jobright_auth_required', message: 'auth required' }],
           }),
         }),
       ),

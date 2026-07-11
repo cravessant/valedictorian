@@ -10,6 +10,7 @@ import {
   fieldResolutionStatuses,
   normalizeApplicationUrlPreservingQuery,
   workModes,
+  retryAdviceSchema,
 } from 'sparxie'
 import { classifyDeterministicDestination } from './destination-classifier'
 import { createSqliteNormalizationRepository } from './normalization.repository'
@@ -26,6 +27,11 @@ export const CANONICAL_CANDIDATE_SCHEMA_VERSION = 'canonical-source-candidate/v1
 export const NORMALIZATION_GATE_POLICY_VERSION = 'sourcing-admission/v1'
 
 export interface NormalizationExecutionOptions {
+  acquiredRetryWork?: {
+    acquisitionRunId: string
+    retryWorkId: string
+  }
+  deferAcquiredRetryCompletion?: boolean
   baselineOutcomes?: readonly FieldResolutionOutcome[]
   cache?: boolean
   enabledCapabilities?: readonly ResolverCapability[]
@@ -67,12 +73,12 @@ export function createNormalizationOrchestrator(options: {
       const conflicts = new Set<CanonicalCandidateField>()
       const rejectedFields = new Set<CanonicalCandidateField>()
       const failedFields = new Set<CanonicalCandidateField>()
-      const terminalFields = new Map<CanonicalCandidateField, { status: 'blocked' | 'retry'; reason: string }>()
+      const terminalFields = new Map<CanonicalCandidateField, { status: 'blocked' | 'retry' | 'exhausted' | 'cancelled'; reason: string }>()
       let infrastructureFailure: string | null = null
 
       for (const outcome of execution.baselineOutcomes ?? []) {
-        if ((outcome.status === 'blocked' || outcome.status === 'retry') && !winners.has(outcome.field)) {
-          terminalFields.set(outcome.field, { status: outcome.status, reason: outcome.reason })
+        if (isTerminalFieldOutcome(outcome) && !winners.has(outcome.field)) {
+          terminalFields.set(outcome.field, { status: outcome.status, reason: retryOutcomeReason(outcome) })
         }
         reconcile(outcome, winners, conflicts, rejectedFields, failedFields)
       }
@@ -120,6 +126,7 @@ export function createNormalizationOrchestrator(options: {
             const context = Object.freeze({ rawRevision: deepFreeze(structuredClone(raw.revision)), sourceEntity: raw.sourceEntity ? deepFreeze(structuredClone(raw.sourceEntity)) : null, enabledCapabilities: Object.freeze([...enabledCapabilities]), resolverId: resolver.declaration.id, hashInput(value: JsonValue) { const hash = hashJson(value); issuedInputHashes.add(hash); return hash } })
             outcomes = await resolver.resolve(context)
             validateOutcomes(resolver.declaration.id, resolver.declaration.version, resolver.declaration.outputFields, outcomes, issuedInputHashes)
+            outcomes = outcomes.map((outcome) => ({ ...outcome, inputHash: attemptInputHash }))
             outcomes = outcomes.map((outcome) => isSuppressionBarrier(outcome.field, winners, rejectedFields, failedFields, terminalFields)
               ? suppressedOutcome(resolver.declaration.id, resolver.declaration.version, outcome.field, outcome.inputHash)
               : outcome)
@@ -131,7 +138,7 @@ export function createNormalizationOrchestrator(options: {
         const persistedConflicts: FieldResolutionOutcome[] = []
         for (const outcome of outcomes) {
           if (outcome.status === 'failed' && infrastructureFailure === null) infrastructureFailure = outcome.reason
-          if (invoked && (outcome.status === 'blocked' || outcome.status === 'retry') && !winners.has(outcome.field)) terminalFields.set(outcome.field, { status: outcome.status, reason: outcome.reason })
+          if (invoked && isTerminalFieldOutcome(outcome) && !winners.has(outcome.field)) terminalFields.set(outcome.field, { status: outcome.status, reason: retryOutcomeReason(outcome) })
           const current = winners.get(outcome.field)
           if (current && (outcome.status === 'resolved' || outcome.status === 'locked')) {
             const currentStrength = current.status === 'locked' ? 2 : current.confidence
@@ -218,7 +225,7 @@ export function createNormalizationOrchestrator(options: {
         } else {
           gate = { ...gateBase, status: 'needs_enrichment', candidate: null }
         }
-        return { runId, rawRecordId, rawRevisionId, triggerOccurrence: execution.triggerOccurrence, inputHash, resolverSetHash: registry.resolverSetHash, canonicalSchemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION, gatePolicyVersion: NORMALIZATION_GATE_POLICY_VERSION, status: status === 'failed' ? 'failed' as const : 'completed' as const, attempts, candidate, gate, now: evaluatedAt, triggerId: trigger.kind === 'replay' ? trigger.replayId : undefined }
+        return { runId, rawRecordId, rawRevisionId, triggerOccurrence: execution.triggerOccurrence, acquiredRetryWork: execution.acquiredRetryWork, deferAcquiredRetryCompletion: execution.deferAcquiredRetryCompletion, inputHash, resolverSetHash: registry.resolverSetHash, canonicalSchemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION, gatePolicyVersion: NORMALIZATION_GATE_POLICY_VERSION, status: status === 'failed' ? 'failed' as const : 'completed' as const, attempts, candidate, gate, now: evaluatedAt, triggerId: trigger.kind === 'replay' ? trigger.replayId : undefined }
       }
       if (initialStatus === 'passed' && destination) {
         const destinationOutcome = winners.get('destinationUrl')
@@ -268,7 +275,16 @@ function isValidFieldResolutionOutcome(value: unknown): value is FieldResolution
     return hasOnlyAllowedKeys(value, [...baseKeys,'reason']) && isNonblankString(value.reason)
   }
   if (value.status === 'retry') {
-    return hasOnlyAllowedKeys(value, [...baseKeys,'reason','retryAfter']) && isNonblankString(value.reason) && (!Object.prototype.hasOwnProperty.call(value, 'retryAfter') || value.retryAfter === null || isNonblankString(value.retryAfter))
+    return hasOnlyAllowedKeys(value, [...baseKeys,'retry'])
+      && retryAdviceSchema.safeParse(value.retry).success
+      && isUnknownRecord(value.retry)
+      && (value.retry.state === 'scheduled' || value.retry.state === 'not_due')
+  }
+  if (value.status === 'exhausted' || value.status === 'cancelled') {
+    return hasOnlyAllowedKeys(value, [...baseKeys,'retry'])
+      && retryAdviceSchema.safeParse(value.retry).success
+      && isUnknownRecord(value.retry)
+      && value.retry.state === value.status
   }
   if (value.status === 'conflict') {
     return hasOnlyAllowedKeys(value, [...baseKeys,'reason','values']) && isNonblankString(value.reason) && Array.isArray(value.values) && value.values.every(isJsonSafe)
@@ -294,6 +310,14 @@ function isJsonSafe(value: unknown): value is JsonValue {
 function isUnknownRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value) }
 function hasOnlyAllowedKeys(value: Record<string, unknown>, allowed: string[]) { return Object.keys(value).every((key) => allowed.includes(key)) }
 function isNonblankString(value: unknown): value is string { return typeof value === 'string' && Boolean(value.trim()) }
+function retryOutcomeReason(outcome: FieldResolutionOutcome): string {
+  if (outcome.status === 'retry' || outcome.status === 'exhausted' || outcome.status === 'cancelled') return outcome.retry.reason
+  if ('reason' in outcome) return outcome.reason
+  throw new Error(`Field outcome ${outcome.status} has no retry reason`)
+}
+function isTerminalFieldOutcome(outcome: FieldResolutionOutcome): outcome is Extract<FieldResolutionOutcome, { status: 'blocked' | 'retry' | 'exhausted' | 'cancelled' }> {
+  return outcome.status === 'blocked' || outcome.status === 'retry' || outcome.status === 'exhausted' || outcome.status === 'cancelled'
+}
 function isAuthoritative(outcome: FieldResolutionOutcome | undefined) { return outcome?.status === 'locked' || (outcome?.status === 'resolved' && outcome.authoritative === true) }
 function isSuppressionBarrier(field: CanonicalCandidateField, winners: Map<CanonicalCandidateField, Extract<FieldResolutionOutcome, { status: 'resolved' | 'locked' }>>, rejectedFields: Set<CanonicalCandidateField>, failedFields: Set<CanonicalCandidateField>, terminalFields: ReadonlyMap<CanonicalCandidateField, unknown>) { return rejectedFields.has(field) || failedFields.has(field) || terminalFields.has(field) || isAuthoritative(winners.get(field)) }
 function suppressedOutcome(resolverId: string, resolverVersion: string, field: CanonicalCandidateField, inputHash: string): FieldResolutionOutcome { return { resolverId, resolverVersion, field, inputHash, status: 'suppressed', reason: 'Higher-precedence field outcome is authoritative, locked, rejected, failed, blocked, or awaiting retry', policyVersion: RESOLVER_SUPPRESSION_POLICY_VERSION } }

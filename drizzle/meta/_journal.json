@@ -127,6 +127,13 @@
       "when": 1783785250659,
       "tag": "0017_dashing_wolf_cub",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1783797592818,
+      "tag": "0018_freezing_guardsmen",
+      "breakpoints": true
     }
   ]
 }

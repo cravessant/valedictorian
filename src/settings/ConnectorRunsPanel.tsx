@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
+import { retryAdviceSchema } from 'sparxie'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
+import { formatRetryAdviceGuidance } from '../modules/connectors/connector.retry-guidance'
 import {
   ConnectorRunLifecycleDetails,
   ConnectorRunProgressDetails,
   connectorRunMetrics,
 } from './ConnectorRunDetails'
-import { numberFromUnknown, recordFromUnknown, stringFromUnknown } from './connector-settings.helpers'
 import type { ConnectorSettingsRun } from './connector-settings.types'
 
 interface ConnectorRunHistoryItem {
@@ -328,13 +329,11 @@ function safeRunWarningLabel(code: string): string {
 }
 
 function safeRunRetryGuidance(run: ConnectorSettingsRun, connectorId: string): string | null {
-  const retryHints = recordFromUnknown(run.retryHints)
-  const reason = stringFromUnknown(retryHints.reason)
-  const retryActions = Array.isArray(retryHints.actions)
-    ? retryHints.actions.filter((action): action is string => typeof action === 'string')
-    : []
-  const stats = recordFromUnknown(run.stats)
   const warningCodes = new Set(run.warnings.map((warning) => warning.code))
+  const advice = retryAdviceSchema.safeParse(run.retryHints)
+  if (advice.success) {
+    return formatRetryAdviceGuidance(advice.data)
+  }
 
   if (warningCodes.has('jobright_auth_failed')) {
     return 'Jobright authentication failed. Validate credentials and retry the run.'
@@ -344,48 +343,31 @@ function safeRunRetryGuidance(run: ConnectorSettingsRun, connectorId: string): s
     return 'Jobright discovery failed. Review API availability and connector configuration, then run again.'
   }
 
-  if (
-    retryActions.includes('refresh_jobright_auth')
-    || reason.includes('auth')
-    || numberFromUnknown(stats.authRequired, 0) > 0
-  ) {
-    return connectorId === JOBRIGHT_CONNECTOR_ID || retryHints.source === 'jobright'
+  if (warningCodes.has('auth.required') || warningCodes.has('jobright_auth_required')) {
+    return connectorId === JOBRIGHT_CONNECTOR_ID
       ? 'Update and validate Jobright credentials, then run again.'
       : 'Reconnect the connector and run again.'
   }
 
-  if (
-    retryActions.includes('retry_jobright_after_challenge')
-    || numberFromUnknown(retryHints.captcha, 0) > 0
-  ) {
+  if (warningCodes.has('jobright_challenge_blocked')) {
     return 'Jobright returned an API challenge. Refresh credentials or retry later.'
   }
 
-  if (
-    retryActions.includes('update_jobright_parser')
-    || numberFromUnknown(retryHints.parserChanged, 0) > 0
-  ) {
+  if (warningCodes.has('jobright_parser_changed')) {
     return 'Update the Jobright API parser, then run again.'
   }
 
-  if (
-    retryActions.includes('retry_jobright_with_backoff')
-    || numberFromUnknown(retryHints.rateLimited, 0) > 0
-    || numberFromUnknown(retryHints.retryableFailures, 0) > 0
-  ) {
-    return 'Retry the Jobright run later with backoff.'
-  }
-
-  if (retryActions.includes('review_jobright_results')) {
+  if (warningCodes.has('jobright_zero_useful_results')) {
     return 'Review unresolved Jobright results and URL normalization, then run again.'
   }
 
-  if (reason === 'projection_failed') {
-    return 'Review the projection failure, then run the connector again.'
-  }
-
-  if (reason === 'connector_run_interrupted') {
-    return 'The app interrupted this run. Start a new connector run.'
+  if (
+    warningCodes.has('jobright_rate_limited')
+    || warningCodes.has('jobright_retryable_failure')
+    || warningCodes.has('jobright_discovery_rate_limited')
+    || warningCodes.has('jobright_discovery_retryable')
+  ) {
+    return 'Retry the Jobright run later with backoff.'
   }
 
   return run.status === 'failed' ? 'Review the connector configuration and run again.' : null

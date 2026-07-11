@@ -10,6 +10,7 @@ import type {
   RawSourceOccurrenceReceipt,
   RawSourceRevision,
 } from 'sparxie'
+import { retryAdviceSchema } from 'sparxie'
 import {
   canonicalSourceCandidates,
   normalizationAttempts,
@@ -19,6 +20,7 @@ import {
   rawSourceOccurrences,
   rawSourceRecords,
   rawSourceRevisions,
+  retryWork,
   sourceEntities,
   sourceEntityIdentities,
   sourceIdentityConflicts,
@@ -49,6 +51,11 @@ export interface PersistNormalizationInput {
   candidate: CanonicalSourceCandidate | null
   gate: NormalizationGateOutcome
   now: string
+  acquiredRetryWork?: {
+    acquisitionRunId: string
+    retryWorkId: string
+  }
+  deferAcquiredRetryCompletion?: boolean
   triggerOccurrence?: RawSourceOccurrenceReceipt
 }
 
@@ -279,7 +286,45 @@ export function createSqliteNormalizationRepository(
           sql`${normalizationRuns}.rowid desc`,
         ).all().map(({ run }) => mapResult(database, run))
     },
+    hasExactSuccessfulNormalizationAttempt(input: {
+      inputHash: string
+      rawRevisionId: string
+      resolverId: string
+      resolverVersion: string
+      retryWindowStartedAt: string
+    }): boolean {
+      return hasPersistedExactSuccessfulNormalizationAttempt(database, input)
+    },
   }
+}
+
+export function hasPersistedExactSuccessfulNormalizationAttempt(
+  database: Pick<DrizzleDatabase, 'select'>,
+  input: {
+    inputHash: string
+    rawRevisionId: string
+    resolverId: string
+    resolverVersion: string
+    retryWindowStartedAt: string
+  },
+): boolean {
+  const attempts = database.select().from(normalizationAttempts).where(and(
+    eq(normalizationAttempts.rawRevisionId, input.rawRevisionId),
+    eq(normalizationAttempts.resolverId, input.resolverId),
+    eq(normalizationAttempts.resolverVersion, input.resolverVersion),
+    eq(normalizationAttempts.inputHash, input.inputHash),
+    eq(normalizationAttempts.status, 'completed'),
+  )).orderBy(desc(normalizationAttempts.completedAt), desc(normalizationAttempts.startedAt)).all()
+  for (const attempt of attempts) {
+    const attemptAt = attempt.completedAt ?? attempt.startedAt
+    if (attemptAt <= input.retryWindowStartedAt) continue
+    const destination = database.select().from(normalizationFieldOutcomes).where(and(
+      eq(normalizationFieldOutcomes.attemptId, attempt.id),
+      eq(normalizationFieldOutcomes.field, 'destinationUrl'),
+    )).all().find((outcome) => outcome.status === 'resolved' || outcome.status === 'locked')
+    if (destination) return true
+  }
+  return false
 }
 
 function persistNormalization(
@@ -310,6 +355,7 @@ function persistNormalization(
       resolverId: outcome.resolverId, resolverVersion: outcome.resolverVersion, inputHash: outcome.inputHash,
       outcomeJson: JSON.stringify(outcome),
     }).run())
+    synchronizeNormalizationRetryWork(transaction, input, attempt)
   })
   if (input.candidate) transaction.insert(canonicalSourceCandidates).values({
     id: input.candidate.id, runId: input.runId, sourceEntityId: input.candidate.sourceEntityId,
@@ -319,6 +365,130 @@ function persistNormalization(
   transaction.insert(normalizationGates).values({
     id: crypto.randomUUID(), runId: input.runId, policyVersion: input.gatePolicyVersion, status: input.gate.status,
     candidateId: input.candidate?.id ?? null, gateJson: JSON.stringify(input.gate), evaluatedAt: input.gate.evaluatedAt,
+  }).run()
+}
+
+function synchronizeNormalizationRetryWork(
+  transaction: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
+  input: PersistNormalizationWithTriggerInput,
+  attempt: NormalizationAttempt,
+) {
+  const acquiredByIdentity = input.acquiredRetryWork
+    ? transaction.select().from(retryWork).where(and(
+        eq(retryWork.id, input.acquiredRetryWork.retryWorkId),
+        eq(retryWork.kind, 'normalization'),
+        eq(retryWork.state, 'acquired'),
+        eq(retryWork.acquisitionRunId, input.acquiredRetryWork.acquisitionRunId),
+        isNull(retryWork.deletedAt),
+      )).get()
+    : null
+  const executingConnectorRunId = input.triggerOccurrence?.capture?.connectorRunId
+  const acquiredByCaptureRun = !acquiredByIdentity && executingConnectorRunId
+    ? transaction.select().from(retryWork).where(and(
+        eq(retryWork.kind, 'normalization'),
+        eq(retryWork.state, 'acquired'),
+        eq(retryWork.acquisitionRunId, executingConnectorRunId),
+        eq(retryWork.resolverId, attempt.resolver.id),
+        eq(retryWork.resolverVersion, attempt.resolver.version),
+        isNull(retryWork.deletedAt),
+      )).get()
+    : null
+  const existing = transaction.select().from(retryWork).where(and(
+    eq(retryWork.kind, 'normalization'),
+    eq(retryWork.rawRevisionId, input.rawRevisionId),
+    eq(retryWork.resolverId, attempt.resolver.id),
+    eq(retryWork.resolverVersion, attempt.resolver.version),
+    eq(retryWork.inputHash, attempt.inputHash),
+    isNull(retryWork.deletedAt),
+  )).get()
+  if (acquiredByIdentity && acquiredByIdentity.id !== existing?.id) {
+    throw new Error(
+      'Acquired normalization retry identity does not match the persisted attempt identity',
+    )
+  }
+  const retryOutcomes = attempt.outcomes.filter((outcome): outcome is Extract<FieldResolutionOutcome, { status: 'retry' | 'exhausted' | 'cancelled' }> =>
+    outcome.status === 'retry' || outcome.status === 'exhausted' || outcome.status === 'cancelled')
+  if (acquiredByCaptureRun && acquiredByCaptureRun.id !== existing?.id) {
+    transaction.update(retryWork).set({
+      state: 'completed',
+      nextAttemptAt: null,
+      acquiredAt: null,
+      acquisitionToken: null,
+      acquisitionRunId: null,
+      updatedAt: input.now,
+    }).where(eq(retryWork.id, acquiredByCaptureRun.id)).run()
+  }
+  if (retryOutcomes.length === 0) {
+    if (existing && existing.state !== 'exhausted' && existing.state !== 'cancelled') {
+      if (
+        input.deferAcquiredRetryCompletion
+        && acquiredByIdentity
+        && acquiredByIdentity.id === existing.id
+      ) {
+        return
+      }
+      transaction.update(retryWork).set({
+        state: 'completed',
+        nextAttemptAt: null,
+        acquiredAt: null,
+        acquisitionToken: null,
+        acquisitionRunId: null,
+        updatedAt: input.now,
+      }).where(eq(retryWork.id, existing.id)).run()
+    }
+    return
+  }
+  const firstAdvice = retryOutcomes[0].retry
+  const advice = retryAdviceSchema.parse(firstAdvice)
+  if (retryOutcomes.some((outcome) =>
+    (outcome.status === 'retry' && advice.state !== 'scheduled' && advice.state !== 'not_due')
+    || (outcome.status === 'exhausted' && advice.state !== 'exhausted')
+    || (outcome.status === 'cancelled' && advice.state !== 'cancelled'))) {
+    throw new Error(`Resolver ${attempt.resolver.id}@${attempt.resolver.version} emitted retry advice that does not match its outcome status`)
+  }
+  if (retryOutcomes.some((outcome) => JSON.stringify(outcome.retry) !== JSON.stringify(firstAdvice))) {
+    throw new Error(`Resolver ${attempt.resolver.id}@${attempt.resolver.version} emitted inconsistent retry advice for one invocation`)
+  }
+  if (existing?.state === 'exhausted' || existing?.state === 'cancelled') return
+  const values = {
+    reason: advice.reason,
+    attempt: advice.attempt,
+    maxAttempts: advice.maxAttempts,
+    lastAttemptAt: advice.lastAttemptAt,
+    computedDelayMs: advice.computedDelayMs,
+    serverMinimumDelayMs: advice.serverMinimumDelayMs ?? null,
+    nextAttemptAt: advice.nextAttemptAt,
+    horizonAt: advice.horizonAt,
+    state: advice.state === 'not_due' ? 'scheduled' as const : advice.state,
+    ownerVersion: attempt.resolver.version,
+    lineageJson: JSON.stringify({
+      normalizationRunId: input.runId,
+      triggerOccurrenceId: input.triggerOccurrence?.id ?? null,
+      connectorInstanceId: input.triggerOccurrence?.capture?.connectorInstanceId ?? null,
+      connectorRunId: input.triggerOccurrence?.capture?.connectorRunId ?? null,
+      acquiredRetryWorkId: input.acquiredRetryWork?.retryWorkId ?? null,
+      acquisitionRunId: input.acquiredRetryWork?.acquisitionRunId ?? null,
+    }),
+    acquiredAt: null,
+    acquisitionToken: null,
+    acquisitionRunId: null,
+    skippedRunId: null,
+    updatedAt: input.now,
+  }
+  if (existing) {
+    transaction.update(retryWork).set(values).where(eq(retryWork.id, existing.id)).run()
+    return
+  }
+  transaction.insert(retryWork).values({
+    id: crypto.randomUUID(), kind: 'normalization', connectorInstanceId: null,
+    filterSignature: null, checkpointSchemaVersion: null, checkpointGeneration: null,
+    rawRevisionId: input.rawRevisionId,
+    resolverId: attempt.resolver.id,
+    resolverVersion: attempt.resolver.version,
+    inputHash: attempt.inputHash,
+    ...values,
+    createdAt: input.now,
+    deletedAt: null,
   }).run()
 }
 

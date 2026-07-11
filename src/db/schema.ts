@@ -578,6 +578,88 @@ export const rawSourceRevisions = sqliteTable(
   }),
 )
 
+export const retryWork = sqliteTable(
+  'retry_work',
+  {
+    id: text('id').primaryKey(),
+    kind: text('kind').notNull(),
+    connectorInstanceId: text('connector_instance_id').references(() => connectorInstances.id),
+    filterSignature: text('filter_signature'),
+    checkpointSchemaVersion: text('checkpoint_schema_version'),
+    checkpointGeneration: text('checkpoint_generation'),
+    rawRevisionId: text('raw_revision_id').references(() => rawSourceRevisions.id),
+    resolverId: text('resolver_id'),
+    resolverVersion: text('resolver_version'),
+    inputHash: text('input_hash'),
+    reason: text('reason').notNull(),
+    attempt: integer('attempt').notNull(),
+    maxAttempts: integer('max_attempts').notNull(),
+    lastAttemptAt: text('last_attempt_at').notNull(),
+    computedDelayMs: integer('computed_delay_ms'),
+    serverMinimumDelayMs: integer('server_minimum_delay_ms'),
+    nextAttemptAt: text('next_attempt_at'),
+    horizonAt: text('horizon_at').notNull(),
+    state: text('state').notNull(),
+    ownerVersion: text('owner_version').notNull(),
+    lineageJson: text('lineage_json').notNull(),
+    acquiredAt: text('acquired_at'),
+    acquisitionToken: text('acquisition_token'),
+    acquisitionRunId: text('acquisition_run_id').references(() => connectorRuns.id),
+    skippedRunId: text('skipped_run_id').references(() => connectorRuns.id),
+    ...timestamps,
+  },
+  (table) => ({
+    captureIdentityIdx: uniqueIndex('idx_retry_work_capture_identity').on(
+      table.connectorInstanceId,
+      table.filterSignature,
+      table.checkpointSchemaVersion,
+      table.checkpointGeneration,
+    ).where(sql`${table.kind} = 'connector_capture' and ${table.deletedAt} is null`),
+    normalizationIdentityIdx: uniqueIndex('idx_retry_work_normalization_identity').on(
+      table.rawRevisionId,
+      table.resolverId,
+      table.resolverVersion,
+      table.inputHash,
+    ).where(sql`${table.kind} = 'normalization' and ${table.deletedAt} is null`),
+    dueIdx: index('idx_retry_work_due').on(table.state, table.nextAttemptAt),
+    kindCheck: check('chk_retry_work_kind', sql`${table.kind} in ('connector_capture','normalization')`),
+    reasonCheck: check('chk_retry_work_reason', sql`${table.reason} in ('rate_limit','server_failure','network_interruption','operation_timeout')`),
+    stateCheck: check('chk_retry_work_state', sql`${table.state} in ('scheduled','acquired','completed','exhausted','cancelled')`),
+    attemptCheck: check('chk_retry_work_attempt', sql`${table.attempt} >= 1 and ${table.maxAttempts} >= ${table.attempt}`),
+    serverMinimumCheck: check('chk_retry_work_server_minimum', sql`${table.serverMinimumDelayMs} is null or ${table.serverMinimumDelayMs} >= 0`),
+    scopeCheck: check('chk_retry_work_scope', sql`(
+      ${table.kind} = 'connector_capture'
+      and ${table.connectorInstanceId} is not null
+      and ${table.filterSignature} is not null
+      and ${table.checkpointSchemaVersion} is not null
+      and ${table.checkpointGeneration} is not null
+      and ${table.rawRevisionId} is null
+      and ${table.resolverId} is null
+      and ${table.resolverVersion} is null
+      and ${table.inputHash} is null
+    ) or (
+      ${table.kind} = 'normalization'
+      and ${table.connectorInstanceId} is null
+      and ${table.filterSignature} is null
+      and ${table.checkpointSchemaVersion} is null
+      and ${table.checkpointGeneration} is null
+      and ${table.rawRevisionId} is not null
+      and ${table.resolverId} is not null
+      and ${table.resolverVersion} is not null
+      and ${table.inputHash} is not null
+    )`),
+    timingCheck: check('chk_retry_work_timing', sql`(
+      ${table.state} in ('scheduled','acquired')
+      and ${table.computedDelayMs} is not null
+      and ${table.computedDelayMs} >= 0
+      and ${table.nextAttemptAt} is not null
+    ) or (
+      ${table.state} in ('completed','exhausted','cancelled')
+      and ${table.nextAttemptAt} is null
+    )`),
+  }),
+)
+
 export const rawSourceOccurrences = sqliteTable(
   'raw_source_occurrences',
   {
@@ -883,6 +965,7 @@ export const schema = {
   rawSourceOccurrences,
   rawSourceRecords,
   rawSourceRevisions,
+  retryWork,
   sourceEntities,
   sourceEntityIdentities,
   sourceIdentityConflicts,

@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createInMemoryDatabase, migrateDatabase } from './sqlite'
+import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from './sqlite'
 
 const expectedIdentityTriggers = [
   'trg_source_entity_identities_bound',
@@ -141,9 +142,70 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(18)
+    expect(migrationRows).toHaveLength(19)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
+  })
+
+  it('executes migration 0018 for unmanaged legacy baselines and supports retry-ledger run requests', async () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table companies (
+        id text primary key,
+        name text not null,
+        normalized_name text not null,
+        website_url text,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+    `)
+
+    migrateDatabase(database)
+
+    expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
+      .toEqual({ name: 'retry_work' })
+    expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 19 })
+    const stampedTags = database
+      .prepare('select created_at from __drizzle_migrations order by created_at')
+      .all()
+      .map((row) => Number((row as { created_at: number | string }).created_at))
+    expect(stampedTags).toContain(1783785250659)
+    expect(stampedTags).toContain(1783797592818)
+    expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
+
+    const repository = createSqliteConnectorRepository(createDrizzleDatabase(database))
+    await repository.upsertInstance({
+      id: 'legacy-retry', connectorId: 'fixture.retry', connectorVersion: '1.0.0',
+      displayName: 'Legacy retry', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
+    })
+    await repository.recordRefreshResult({
+      connectorInstanceId: 'legacy-retry', mode: 'manual',
+      startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
+      config: {}, filters: {}, filterSignature: 'filters:{}',
+      result: {
+        observations: [], warnings: [], stats: { observations: 0 },
+        coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
+        nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-retry@1' },
+        retryHints: {
+          state: 'scheduled', reason: 'rate_limit', attempt: 1, maxAttempts: 3,
+          lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
+          nextAttemptAt: '2026-07-11T12:01:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z',
+        },
+      },
+    })
+    const skipped = await repository.recordRunRequest({
+      connectorInstanceId: 'legacy-retry', mode: 'manual', startedAt: '2026-07-11T12:00:30.000Z',
+      filterSignature: 'filters:{}',
+    })
+    expect(skipped).toMatchObject({
+      acquired: false,
+      acquiredWork: null,
+      run: { status: 'skipped', retryHints: { state: 'not_due', reason: 'rate_limit' } },
+    })
+    expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 1 })
+    database.close()
   })
 
   it('creates raw source ledger tables and indexes before stamping a legacy workspace', () => {
@@ -200,7 +262,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 18 })
+    ).toEqual({ count: 19 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -237,7 +299,7 @@ describe('SQLite database', () => {
       ...before,
       connector_instances: before.connector_instances.map((row) => ({
         ...row,
-        connector_version: '0.6.0',
+        connector_version: '0.7.0',
       })),
     })
     for (const table of disposableResetTables) {
@@ -276,7 +338,7 @@ describe('SQLite database', () => {
       drop table __drizzle_migrations;
       create trigger inject_legacy_reset_failure
       before update of connector_version on connector_instances
-      when new.connector_version = '0.6.0'
+      when new.connector_version = '0.7.0'
       begin select raise(abort, 'injected legacy reset failure'); end;
     `)
     const before = snapshotAllResetTables(database)
@@ -303,7 +365,7 @@ describe('SQLite database', () => {
       ...before,
       connector_instances: before.connector_instances.map((row) => ({
         ...row,
-        connector_version: '0.6.0',
+        connector_version: '0.7.0',
       })),
     })
     for (const table of disposableResetTables) {
@@ -316,7 +378,7 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 18 })
+      .toEqual({ count: 19 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
@@ -342,6 +404,58 @@ describe('SQLite database', () => {
     expect(() => migrateDatabase(database, { migrationsFolder: failingMigrations })).toThrow(/intentionally_missing_table/)
     expect(snapshotAllResetTables(database)).toEqual(before)
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 15 })
+    database.close()
+  })
+
+  it('migrates to an empty retry ledger while preserving raw records and revisions', () => {
+    const database = createInMemoryDatabase()
+    migrateDatabase(database, { migrationsFolder: migrationFolderThrough(17) })
+    seedReferencedOccurrenceFixture(database)
+    database.prepare("update connector_instances set connector_id = 'jobright.resolver', connector_version = '0.6.0' where id = 'instance-one'").run()
+    const records = database.prepare('select * from raw_source_records order by id').all()
+    const revisions = database.prepare('select * from raw_source_revisions order by id').all()
+
+    migrateDatabase(database)
+
+    expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
+    expect(database.prepare('select * from raw_source_records order by id').all()).toEqual(records)
+    expect(database.prepare('select * from raw_source_revisions order by id').all()).toEqual(revisions)
+    expect(database.prepare('select count(*) as count from raw_source_occurrences').get()).toEqual({ count: 0 })
+    expect(database.prepare('select count(*) as count from connector_runs').get()).toEqual({ count: 0 })
+    expect(database.prepare("select connector_version from connector_instances where connector_id = 'jobright.resolver'").get())
+      .toEqual({ connector_version: '0.7.0' })
+    expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
+    database.close()
+  })
+
+  it('rolls back the retry-ledger reset when migration 0018 fails', () => {
+    const failingMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-ledger-failure-'))
+    fs.cpSync(path.resolve('drizzle'), failingMigrations, { recursive: true })
+    const migrationName = fs.readdirSync(failingMigrations).find((name) => name.startsWith('0018_'))
+    if (!migrationName) throw new Error('Retry ledger migration fixture is missing')
+    fs.appendFileSync(path.join(failingMigrations, migrationName), '\n--> statement-breakpoint\nselect * from intentionally_missing_retry_table;\n')
+    const database = createInMemoryDatabase()
+    migrateDatabase(database, { migrationsFolder: migrationFolderThrough(17) })
+    seedReferencedOccurrenceFixture(database)
+    const before = {
+      instances: database.prepare('select * from connector_instances order by id').all(),
+      occurrences: database.prepare('select * from raw_source_occurrences order by id').all(),
+      records: database.prepare('select * from raw_source_records order by id').all(),
+      revisions: database.prepare('select * from raw_source_revisions order by id').all(),
+      runs: database.prepare('select * from connector_runs order by id').all(),
+    }
+
+    expect(() => migrateDatabase(database, { migrationsFolder: failingMigrations }))
+      .toThrow(/intentionally_missing_retry_table/)
+    expect(database.prepare("select count(*) as count from sqlite_master where type = 'table' and name = 'retry_work'").get())
+      .toEqual({ count: 0 })
+    expect({
+      instances: database.prepare('select * from connector_instances order by id').all(),
+      occurrences: database.prepare('select * from raw_source_occurrences order by id').all(),
+      records: database.prepare('select * from raw_source_records order by id').all(),
+      revisions: database.prepare('select * from raw_source_revisions order by id').all(),
+      runs: database.prepare('select * from connector_runs order by id').all(),
+    }).toEqual(before)
     database.close()
   })
 

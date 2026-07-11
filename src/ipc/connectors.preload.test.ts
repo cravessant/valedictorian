@@ -2,6 +2,23 @@ import { describe, expect, it } from 'vitest'
 import { createConnectorsPreloadApi } from './connectors.preload'
 
 describe('connectors preload API', () => {
+  it('rejects malformed retry advice returned by connector run IPC', async () => {
+    const api = createConnectorsPreloadApi({
+      invoke() {
+        return Promise.resolve({
+          id: 'malformed-run', connectorInstanceId: 'instance', mode: 'manual', status: 'skipped',
+          coverage: { start: null, end: null }, filterSignature: 'filters:{}',
+          observationCount: 0, warningCount: 0, stats: {}, warnings: [],
+          retryHints: { reason: 'legacy_unknown_reason' },
+          startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:00.000Z',
+        })
+      },
+    })
+
+    await expect(api.runs.trigger({ connectorInstanceId: 'instance', mode: 'manual' }))
+      .rejects.toThrow()
+  })
+
   it('invokes connector lifecycle and run IPC channels', async () => {
     const invocations: unknown[][] = []
     const api = createConnectorsPreloadApi({
@@ -17,7 +34,16 @@ describe('connectors preload API', () => {
         }
 
         if (args[0] === 'connectors:runs:trigger') {
-          return Promise.resolve({ id: 'connector-run' })
+          return Promise.resolve({
+            id: 'connector-run', connectorInstanceId: 'connector-instance', mode: 'manual', status: 'skipped',
+            coverage: { start: null, end: null }, filterSignature: 'filters:{}',
+            observationCount: 0, warningCount: 0, stats: {}, warnings: [], retryHints: null,
+            startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:00.000Z',
+          })
+        }
+
+        if (args[0] === 'connectors:runs:list') {
+          return Promise.resolve({ items: [], total: 0, limit: 5, offset: 0, hasMore: false })
         }
 
         return Promise.resolve({ items: [] })
@@ -47,8 +73,8 @@ describe('connectors preload API', () => {
       id: 'connector-instance',
       status: 'healthy',
     })
-    await expect(api.runs.list(runsListInput)).resolves.toEqual({ items: [] })
-    await expect(api.runs.trigger(runTriggerInput)).resolves.toEqual({ id: 'connector-run' })
+    await expect(api.runs.list(runsListInput)).resolves.toEqual({ items: [], total: 0, limit: 5, offset: 0, hasMore: false })
+    await expect(api.runs.trigger(runTriggerInput)).resolves.toMatchObject({ id: 'connector-run', retryHints: null })
     expect(invocations).toEqual([
       ['connectors:list'],
       ['connectors:create', createInput],

@@ -11,6 +11,7 @@ import type {
   ConnectorStatusSeverity,
   ConnectorStatusView,
 } from './connector.status'
+import { formatRetryAdviceGuidance } from './connector.retry-guidance'
 
 interface ConnectorStatusPageProps {
   contentColumnClass: string
@@ -148,6 +149,11 @@ function ConnectorStatusRow({
         <span className="block truncate text-sm text-muted-foreground" title={item.summary}>
           {item.summary}
         </span>
+        {item.retryAdvice ? (
+          <span className="block text-xs text-muted-foreground">
+            {formatRetryAdviceGuidance(item.retryAdvice)}
+          </span>
+        ) : null}
         <span className="block text-xs text-muted-foreground">
           {item.observationCount} observations
         </span>

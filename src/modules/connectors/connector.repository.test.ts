@@ -44,9 +44,7 @@ describe('SQLite connector repository', () => {
             message: 'Fixture warning for host persistence coverage.',
           },
         ],
-        retryHints: {
-          retryAfter: null,
-        },
+        retryHints: null,
         nextCheckpoint: {
           checkpoint: {
             cursor: 'fixture:2026-07-08T16:00:00.000Z',
@@ -422,17 +420,13 @@ describe('SQLite connector repository', () => {
           },
         }),
         status: 'partial_success',
-        retryHints: {
-          reason: 'budget_exhausted',
-        },
+        retryHints: null,
       },
     })
 
     expect(run).toMatchObject({
       status: 'partial_success',
-      retryHints: {
-        reason: 'budget_exhausted',
-      },
+      retryHints: null,
     })
   })
 
@@ -588,9 +582,7 @@ describe('SQLite connector repository', () => {
       completedAt: '2026-07-08T16:00:02.000Z',
       coverageStartedAt: '2026-07-08T15:00:00.000Z',
       coverageEndedAt: '2026-07-08T16:00:00.000Z',
-      retryHints: {
-        reason: 'connector_execution_failed',
-      },
+      retryHints: null,
       warning: {
         code: 'connector.execution_failed',
         message: 'Connector execution failed.',
@@ -604,9 +596,7 @@ describe('SQLite connector repository', () => {
       filterSignature: 'filters:{"roleKeywords":["intern"]}',
       mode: 'manual',
       observationCount: 0,
-      retryHints: {
-        reason: 'connector_execution_failed',
-      },
+      retryHints: null,
       status: 'failed',
       warningCount: 1,
       warnings: [
@@ -691,9 +681,7 @@ describe('SQLite connector repository', () => {
             message: 'Fixture session expired.',
           },
         ],
-        retryHints: {
-          reason: 'auth_required',
-        },
+        retryHints: null,
       },
     })
     await repository.recordRefreshResult({
@@ -726,9 +714,7 @@ describe('SQLite connector repository', () => {
           coverageStartedAt: '2026-07-08T16:00:00.000Z',
           mode: 'catch_up',
           observationCount: 0,
-          retryHints: {
-            reason: 'auth_required',
-          },
+          retryHints: null,
           startedAt: '2026-07-08T17:00:00.000Z',
           status: 'partial_success',
           warningCount: 1,
@@ -741,8 +727,7 @@ describe('SQLite connector repository', () => {
         }),
       },
     ])
-  })
-})
+  })})
 
 function emptyConnectorRefreshResult({
   checkpoint,

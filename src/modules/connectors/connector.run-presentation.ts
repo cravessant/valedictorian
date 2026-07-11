@@ -1,3 +1,5 @@
+import type { RetryAdvice } from 'sparxie'
+
 export interface ConnectorRunTerminalCopy {
   summary: string
   detail: string | null
@@ -7,21 +9,19 @@ export interface ConnectorRunTerminalCopy {
 export function connectorRunTerminalCopy(run: {
   status: string
   stats: unknown
-  retryHints: unknown
+  retryHints: RetryAdvice | null
   warnings?: unknown
 }): ConnectorRunTerminalCopy {
   const stats = recordFromUnknown(run.stats)
-  const retryHints = recordFromUnknown(run.retryHints)
   const lifecycle = recordFromUnknown(stats.lifecycleCounts)
   const destination = recordFromUnknown(lifecycle.destination)
   const sourcing = recordFromUnknown(lifecycle.sourcing)
   const pending = nonNegativeInteger(destination.pending)
   const stopReason = stringFromUnknown(stats.stopReason)
-    || stringFromUnknown(retryHints.stopReason)
   const warningCodes = Array.isArray(run.warnings)
     ? run.warnings.map((warning) => stringFromUnknown(recordFromUnknown(warning).code))
     : []
-  const summary = terminalSummary(run.status, stopReason, sourcing, warningCodes)
+  const summary = terminalSummary(run.status, stopReason, sourcing, warningCodes, run.retryHints)
   const resumes = new Set([
     'auth_required',
     'challenge',
@@ -29,7 +29,7 @@ export function connectorRunTerminalCopy(run: {
     'retryable_failure',
     'runtime_limit',
     'soft_batch_boundary',
-  ]).has(stopReason)
+  ]).has(stopReason) || run.retryHints?.state === 'scheduled' || run.retryHints?.state === 'not_due'
   const detail = pending > 0
     ? `${pending} unique ${pending === 1 ? 'job remains' : 'jobs remain'} pending.${resumes ? ' The next run resumes from the persisted checkpoint.' : ''}`
     : null
@@ -48,6 +48,7 @@ function terminalSummary(
   stopReason: string,
   sourcing: Record<string, unknown>,
   warningCodes: string[],
+  retryAdvice: RetryAdvice | null,
 ): string {
   if (status === 'cancelled' || stopReason === 'cancelled') return 'Cancelled'
   if (stopReason === 'target_met') return 'Target reached'
@@ -68,6 +69,12 @@ function terminalSummary(
     || stopReason === 'invalid_discovery_position'
   ) {
     return 'Needs action'
+  }
+  if (retryAdvice?.state === 'cancelled') return 'Cancelled'
+  if (retryAdvice?.state === 'exhausted') return 'Needs action'
+  if ((retryAdvice?.state === 'scheduled' || retryAdvice?.state === 'not_due')
+    && transientRetryReasons.has(retryAdvice.reason)) {
+    return 'Paused until retry'
   }
   if (warningCodes.some((code) =>
     code.includes('rate_limited') || code.includes('retryable'))) {
@@ -99,6 +106,13 @@ function terminalSummary(
   if (status === 'running') return 'Running'
   return 'Completed'
 }
+
+const transientRetryReasons = new Set<RetryAdvice['reason']>([
+  'network_interruption',
+  'operation_timeout',
+  'rate_limit',
+  'server_failure',
+])
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)

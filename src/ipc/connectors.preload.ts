@@ -10,6 +10,7 @@ import type {
   TriggerConnectorRunInput,
   UpdateConnectorInstanceInput,
 } from 'sparxie'
+import { connectorRunSummarySchema, connectorRunsListResultSchema } from 'sparxie'
 import type {
   LocalConnectorReconnectActionResult,
   LocalConnectorSkipActionInput,
@@ -55,10 +56,12 @@ export function createConnectorsPreloadApi(ipcRenderer: IpcRendererLike): Connec
     },
     runs: {
       list(input) {
-        return ipcRenderer.invoke('connectors:runs:list', input) as Promise<ConnectorRunsListResult>
+        return ipcRenderer.invoke('connectors:runs:list', input)
+          .then((value) => connectorRunsListResultSchema.parse(value))
       },
       trigger(input) {
-        return ipcRenderer.invoke('connectors:runs:trigger', input) as Promise<ConnectorRunSummary>
+        return ipcRenderer.invoke('connectors:runs:trigger', input)
+          .then((value) => connectorRunSummarySchema.parse(value))
       },
     },
     status: {

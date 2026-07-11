@@ -24,6 +24,7 @@ import type {
   JsonRecord,
   RecordConnectorCheckpointInput
 } from './connector.repository.types'
+import { parseRetryAdviceJson } from './connector.retry-work'
 
 export function selectConnectorInstance(
   database: DrizzleDatabase,
@@ -244,7 +245,7 @@ export function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefin
     warningCount: row.warningCount,
     stats: JSON.parse(row.statsJson) as unknown,
     warnings: JSON.parse(row.warningsJson) as unknown,
-    retryHints: JSON.parse(row.retryHintsJson) as unknown,
+    retryHints: parseRetryAdviceJson(row.retryHintsJson),
   }
 }
 

@@ -4,7 +4,8 @@ import {
   connectorCheckpoints,
   connectorInstances,
   connectorObservations,
-  connectorRuns
+  connectorRuns,
+  retryWork,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import {
@@ -23,7 +24,19 @@ import {
   mapConnectorCheckpoint,
   mapConnectorObservation
 } from './connector.repository.helpers'
+import {
+  mapAcquiredRetryWork,
+  parseRetryAdviceJson,
+  retryAdviceFromWork,
+  selectPendingRetryWork,
+  synchronizeConnectorRetryWork,
+} from './connector.retry-work'
+import {
+  finalizeExactAcquiredNormalizationRetry,
+  releaseAcquiredNormalizationWorkForRun,
+} from './connector.repository.exact-retry-finalize'
 export type {
+  AcquiredRetryWork,
   ConnectorCoverageWindow,
   ConnectorWarning,
   ConnectorCheckpointPayload,
@@ -60,6 +73,7 @@ export type {
   ListConnectorObservationsInput,
 } from './connector.repository.types'
 import type {
+  AcquiredRetryWork,
   UpsertConnectorInstanceInput,
   RecordConnectorRefreshResultInput,
   RecordConnectorRunRequestInput,
@@ -140,7 +154,7 @@ export function createSqliteConnectorRepository(
     ): Promise<ConnectorRunRecord> {
       return database.transaction((transaction) => {
         const instance = transaction
-          .select({ id: connectorInstances.id })
+          .select({ id: connectorInstances.id, connectorVersion: connectorInstances.connectorVersion })
           .from(connectorInstances)
           .where(
             and(
@@ -234,6 +248,18 @@ export function createSqliteConnectorRepository(
           )
         }
 
+        synchronizeConnectorRetryWork(transaction, {
+          advice: input.result.retryHints ?? null,
+          checkpoint: input.result.nextCheckpoint,
+          checkpointSchemaVersion: input.result.nextCheckpoint.schemaVersion,
+          connectorInstanceId: input.connectorInstanceId,
+          connectorVersion: instance.connectorVersion,
+          filterSignature: input.filterSignature,
+          now,
+          preserveAcquiredNormalizationWork: input.preserveAcquiredNormalizationWork === true,
+          runId,
+        })
+
         for (const observation of input.result.observations) {
           transaction
             .insert(connectorObservations)
@@ -298,6 +324,17 @@ export function createSqliteConnectorRepository(
       return checkpoint
     },
 
+    async releaseAcquiredNormalizationWorkForRun(input: {
+      connectorRunId: string
+      completedAt: string
+    }): Promise<void> {
+      releaseAcquiredNormalizationWorkForRun(database, input)
+    },
+
+    async finalizeExactAcquiredNormalizationRetry(input: Parameters<typeof finalizeExactAcquiredNormalizationRetry>[1]): Promise<ConnectorRunRecord> {
+      return finalizeExactAcquiredNormalizationRetry(database, input)
+    },
+
     async recordRunRequest(
       input: RecordConnectorRunRequestInput,
     ): Promise<RecordConnectorRunRequestResult> {
@@ -317,6 +354,10 @@ export function createSqliteConnectorRepository(
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
         }
 
+        const instance = mapConnectorInstance(instanceRow)
+        const now = input.startedAt
+        const filters = input.filters ?? instance.filters
+        const filterSignature = input.filterSignature ?? `filters:${stableJsonStringify(filters)}`
         const activeRun = transaction
           .select()
           .from(connectorRuns)
@@ -333,14 +374,81 @@ export function createSqliteConnectorRepository(
         if (activeRun) {
           return {
             acquired: false,
+            acquiredWork: null,
             run: mapConnectorRun(activeRun),
           }
         }
 
-        const instance = mapConnectorInstance(instanceRow)
-        const now = input.startedAt
-        const filters = input.filters ?? instance.filters
-        const filterSignature = input.filterSignature ?? `filters:${stableJsonStringify(filters)}`
+        const pendingRetry = selectPendingRetryWork(transaction, {
+          connectorInstanceId: input.connectorInstanceId,
+          filterSignature,
+          now,
+        })
+
+        if (pendingRetry?.acquisitionRunId) {
+          const acquiredRun = transaction.select().from(connectorRuns)
+            .where(eq(connectorRuns.id, pendingRetry.acquisitionRunId)).get()
+          if (acquiredRun) {
+            return {
+              acquired: false,
+              acquiredWork: null,
+              run: mapConnectorRun(acquiredRun),
+            }
+          }
+        }
+
+        const beforeDue = pendingRetry?.state === 'scheduled'
+          && pendingRetry.nextAttemptAt !== null
+          && Date.parse(now) < Date.parse(pendingRetry.nextAttemptAt)
+        const terminal = pendingRetry?.state === 'exhausted' || pendingRetry?.state === 'cancelled'
+        if (pendingRetry && (beforeDue || terminal)) {
+          if (pendingRetry.skippedRunId) {
+            const existingSkipped = transaction.select().from(connectorRuns)
+              .where(eq(connectorRuns.id, pendingRetry.skippedRunId)).get()
+            if (existingSkipped) {
+              return {
+                acquired: false,
+                acquiredWork: null,
+                run: mapConnectorRun(existingSkipped),
+              }
+            }
+          }
+          const skippedRunId = randomUUID()
+          const adviceState = beforeDue
+            ? 'not_due'
+            : pendingRetry.state === 'cancelled' ? 'cancelled' : 'exhausted'
+          const advice = retryAdviceFromWork(pendingRetry, adviceState)
+          transaction.insert(connectorRuns).values({
+            id: skippedRunId,
+            connectorInstanceId: input.connectorInstanceId,
+            mode: input.mode,
+            status: 'skipped',
+            startedAt: now,
+            completedAt: now,
+            coverageStartedAt: input.coverageStartedAt ?? null,
+            coverageEndedAt: input.coverageEndedAt ?? null,
+            configJson: JSON.stringify(instance.config),
+            filtersJson: JSON.stringify(filters),
+            filterSignature,
+            observationCount: 0,
+            warningCount: 0,
+            statsJson: JSON.stringify({ skipped: true, notDue: beforeDue }),
+            warningsJson: JSON.stringify([]),
+            retryHintsJson: JSON.stringify(advice),
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+          }).run()
+          transaction.update(retryWork).set({ skippedRunId, updatedAt: now })
+            .where(eq(retryWork.id, pendingRetry.id)).run()
+          return {
+            acquired: false,
+            acquiredWork: null,
+            run: mapConnectorRun(transaction.select().from(connectorRuns)
+              .where(eq(connectorRuns.id, skippedRunId)).get()),
+          }
+        }
+
         const runId = randomUUID()
 
         transaction
@@ -364,15 +472,29 @@ export function createSqliteConnectorRepository(
               ...(input.dryRun === undefined ? {} : { dryRun: input.dryRun }),
             }),
             warningsJson: JSON.stringify([]),
-            retryHintsJson: JSON.stringify(input.reason ? { reason: input.reason } : null),
+            retryHintsJson: JSON.stringify(null),
             createdAt: now,
             updatedAt: now,
             deletedAt: null,
           })
           .run()
 
+        let acquiredWork: AcquiredRetryWork | null = null
+        if (pendingRetry?.state === 'scheduled') {
+          transaction.update(retryWork).set({
+            state: 'acquired',
+            acquiredAt: now,
+            acquisitionToken: randomUUID(),
+            acquisitionRunId: runId,
+            skippedRunId: null,
+            updatedAt: now,
+          }).where(and(eq(retryWork.id, pendingRetry.id), eq(retryWork.state, 'scheduled'))).run()
+          acquiredWork = mapAcquiredRetryWork(pendingRetry)
+        }
+
         return {
           acquired: true,
+          acquiredWork,
           run: mapConnectorRun(
             transaction
               .select()
@@ -475,49 +597,57 @@ export function createSqliteConnectorRepository(
     },
 
     recoverInterruptedRuns(input: RecoverInterruptedConnectorRunsInput): number {
-      const interruptedRuns = database
-        .select()
-        .from(connectorRuns)
-        .where(
-          and(
-            inArray(connectorRuns.status, ['queued', 'running']),
-            isNull(connectorRuns.deletedAt),
-          ),
-        )
-        .all()
-      const warning = {
-        code: 'connector.interrupted',
-        message: 'Connector run was interrupted before completion.',
-      }
+      return database.transaction((transaction) => {
+        const interruptedRuns = transaction
+          .select()
+          .from(connectorRuns)
+          .where(
+            and(
+              inArray(connectorRuns.status, ['queued', 'running']),
+              isNull(connectorRuns.deletedAt),
+            ),
+          )
+          .all()
+        const warning = {
+          code: 'connector.interrupted',
+          message: 'Connector run was interrupted before completion.',
+        }
 
-      for (const run of interruptedRuns) {
-        const stats = toJsonRecord(JSON.parse(run.statsJson))
-        const warnings = readConnectorWarnings(run.warningsJson)
-        warnings.push(warning)
+        for (const run of interruptedRuns) {
+          const stats = toJsonRecord(JSON.parse(run.statsJson))
+          const warnings = readConnectorWarnings(run.warningsJson)
+          warnings.push(warning)
 
-        database
-          .update(connectorRuns)
-          .set({
-            status: 'cancelled',
-            completedAt: input.completedAt,
-            warningCount: warnings.length,
-            statsJson: JSON.stringify({
-              ...stats,
-              interrupted: true,
-              queued: false,
-              running: false,
-            }),
-            warningsJson: JSON.stringify(warnings),
-            retryHintsJson: JSON.stringify({
-              reason: 'connector_run_interrupted',
-            }),
-            updatedAt: input.completedAt,
-          })
-          .where(eq(connectorRuns.id, run.id))
-          .run()
-      }
+          transaction
+            .update(connectorRuns)
+            .set({
+              status: 'cancelled',
+              completedAt: input.completedAt,
+              warningCount: warnings.length,
+              statsJson: JSON.stringify({
+                ...stats,
+                interrupted: true,
+                queued: false,
+                running: false,
+              }),
+              warningsJson: JSON.stringify(warnings),
+              retryHintsJson: JSON.stringify(null),
+              updatedAt: input.completedAt,
+            })
+            .where(eq(connectorRuns.id, run.id))
+            .run()
+          transaction.update(retryWork).set({
+            state: 'cancelled', nextAttemptAt: null, acquiredAt: null,
+            acquisitionToken: null, acquisitionRunId: null, updatedAt: input.completedAt,
+          }).where(and(
+            eq(retryWork.state, 'acquired'),
+            eq(retryWork.acquisitionRunId, run.id),
+            isNull(retryWork.deletedAt),
+          )).run()
+        }
 
-      return interruptedRuns.length
+        return interruptedRuns.length
+      }, { behavior: 'immediate' })
     },
 
     async updateRunProgress(
@@ -630,12 +760,9 @@ export function createSqliteConnectorRepository(
           filterSignature: `filters:${stableJsonStringify(filters)}`,
           observationCount: 0,
           warningCount: 0,
-          statsJson: JSON.stringify({ skipped: true }),
+          statsJson: JSON.stringify({ skipped: true, reason }),
           warningsJson: JSON.stringify([]),
-          retryHintsJson: JSON.stringify({
-            reason,
-            skippedBy: 'user',
-          }),
+          retryHintsJson: JSON.stringify(null),
           createdAt: now,
           updatedAt: now,
           deletedAt: null,
@@ -652,50 +779,62 @@ export function createSqliteConnectorRepository(
     },
 
     async markRunFailed(input: MarkConnectorRunFailedInput): Promise<ConnectorRunRecord> {
-      const row = database
-        .select()
-        .from(connectorRuns)
-        .where(and(eq(connectorRuns.id, input.connectorRunId), isNull(connectorRuns.deletedAt)))
-        .get()
+      return database.transaction((transaction) => {
+        const row = transaction
+          .select()
+          .from(connectorRuns)
+          .where(and(eq(connectorRuns.id, input.connectorRunId), isNull(connectorRuns.deletedAt)))
+          .get()
 
-      if (!row) {
-        throw new Error(`Connector run not found: ${input.connectorRunId}`)
-      }
+        if (!row) {
+          throw new Error(`Connector run not found: ${input.connectorRunId}`)
+        }
 
-      const warnings = readConnectorWarnings(row.warningsJson)
-      warnings.push(input.warning)
-      const retryHints = input.retryHints ?? (JSON.parse(row.retryHintsJson) as unknown)
-      const stats = toJsonRecord(JSON.parse(row.statsJson))
-      const recordedFailures = stats.failures
+        const warnings = readConnectorWarnings(row.warningsJson)
+        warnings.push(input.warning)
+        const retryHints = input.retryHints === undefined
+          ? parseRetryAdviceJson(row.retryHintsJson)
+          : input.retryHints
+        const stats = toJsonRecord(JSON.parse(row.statsJson))
+        const recordedFailures = stats.failures
 
-      database
-        .update(connectorRuns)
-        .set({
-          status: 'failed',
-          completedAt: input.completedAt,
-          warningCount: warnings.length,
-          statsJson: JSON.stringify({
-            ...stats,
-            failures: typeof recordedFailures === 'number' && recordedFailures >= 1
-              ? recordedFailures
-              : 1,
-            queued: false,
-            running: false,
-          }),
-          warningsJson: JSON.stringify(warnings),
-          retryHintsJson: JSON.stringify(retryHints),
-          updatedAt: input.completedAt,
-        })
-        .where(eq(connectorRuns.id, input.connectorRunId))
-        .run()
+        transaction
+          .update(connectorRuns)
+          .set({
+            status: 'failed',
+            completedAt: input.completedAt,
+            warningCount: warnings.length,
+            statsJson: JSON.stringify({
+              ...stats,
+              failures: typeof recordedFailures === 'number' && recordedFailures >= 1
+                ? recordedFailures
+                : 1,
+              queued: false,
+              running: false,
+            }),
+            warningsJson: JSON.stringify(warnings),
+            retryHintsJson: JSON.stringify(retryHints),
+            updatedAt: input.completedAt,
+          })
+          .where(eq(connectorRuns.id, input.connectorRunId))
+          .run()
+        transaction.update(retryWork).set({
+          state: 'scheduled', acquiredAt: null, acquisitionToken: null,
+          acquisitionRunId: null, updatedAt: input.completedAt,
+        }).where(and(
+          eq(retryWork.state, 'acquired'),
+          eq(retryWork.acquisitionRunId, input.connectorRunId),
+          isNull(retryWork.deletedAt),
+        )).run()
 
-      return mapConnectorRun(
-        database
+        return mapConnectorRun(
+          transaction
           .select()
           .from(connectorRuns)
           .where(eq(connectorRuns.id, input.connectorRunId))
           .get(),
-      )
+        )
+      }, { behavior: 'immediate' })
     },
 
     async getInstance(connectorInstanceId: string): Promise<ConnectorInstanceRecord | null> {

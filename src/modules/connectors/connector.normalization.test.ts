@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { normalizationRuns, retryWork } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createDefaultNormalizationResolverRegistry } from '../sourcing/normalization.registry'
 import { createSqliteNormalizationRepository } from '../sourcing/normalization.repository'
@@ -89,5 +90,92 @@ describe('connector normalization host', () => {
         }),
       ]),
     })
+  })
+
+  it('persists one typed retry unit for a multi-field connector resolver invocation', async () => {
+    const sqlite = createInMemoryDatabase()
+    databases.push(sqlite)
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const rawRepository = createSqliteRawSourceRepository(database)
+    const connectorRepository = createSqliteConnectorRepository(database)
+    const normalizationRepository = createSqliteNormalizationRepository(database)
+    await connectorRepository.upsertInstance({
+      id: 'retry-instance', connectorId: 'fixture.connector', connectorVersion: '1.0.0',
+      displayName: 'Retry fixture', enabled: true,
+    })
+    const connectorRun = (await connectorRepository.recordRunRequest({
+      connectorInstanceId: 'retry-instance', mode: 'manual', startedAt: '2026-07-11T12:00:00.000Z',
+    })).run
+    const receipt = (await rawRepository.ingestBatch({ records: [{
+      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      capture: { connectorInstanceId: 'retry-instance', connectorRunId: connectorRun.id },
+      observedAt: '2026-07-11T12:00:00.000Z', providerRecordId: 'retry-job',
+      payload: { companyName: 'Retry Co', roleTitle: 'Intern' },
+    }] })).receipts[0]
+    const host = createConnectorNormalizationHost({
+      repository: normalizationRepository,
+      registry: createDefaultNormalizationResolverRegistry(),
+      now: () => new Date('2026-07-11T12:00:00.000Z'),
+    })
+    const retry = {
+      state: 'scheduled' as const, reason: 'operation_timeout' as const,
+      attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z',
+      computedDelayMs: 30_000, nextAttemptAt: '2026-07-11T12:00:30.000Z',
+      horizonAt: '2026-07-11T13:00:00.000Z',
+    }
+
+    await host.run({
+      rawRevision: receipt.revision,
+      resolver: {
+        id: 'fixture.network-details', version: '2.0.0', requiredInputs: ['rawRevision'],
+        outputFields: ['companyName', 'roleTitle'], capabilities: ['network'],
+        costClass: 'high', precedence: 500,
+      },
+      resolve: async () => [
+        { resolverId: 'fixture.network-details', resolverVersion: '2.0.0', field: 'companyName' as const, inputHash: receipt.revision.contentHash, status: 'retry' as const, retry },
+        { resolverId: 'fixture.network-details', resolverVersion: '2.0.0', field: 'roleTitle' as const, inputHash: receipt.revision.contentHash, status: 'retry' as const, retry },
+      ],
+    }, {
+      connectorRunId: connectorRun.id, enabledCapabilities: ['network'],
+      triggerOccurrence: receipt.occurrence,
+    })
+
+    expect(database.select().from(retryWork).all()).toEqual([
+      expect.objectContaining({
+        kind: 'normalization', rawRevisionId: receipt.revision.id,
+        resolverId: 'fixture.network-details', resolverVersion: '2.0.0',
+        reason: 'operation_timeout', attempt: 1, maxAttempts: 3,
+        nextAttemptAt: '2026-07-11T12:00:30.000Z', state: 'scheduled',
+      }),
+    ])
+
+    const beforeRunCount = database.select().from(normalizationRuns).all().length
+    sqlite.exec(`
+      create trigger inject_retry_work_failure
+      before insert on retry_work
+      begin select raise(abort, 'injected retry work failure'); end;
+    `)
+    const secondReceipt = (await rawRepository.ingestBatch({ records: [{
+      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      capture: { connectorInstanceId: 'retry-instance', connectorRunId: connectorRun.id },
+      observedAt: '2026-07-11T12:01:00.000Z', providerRecordId: 'retry-job-2',
+      payload: { companyName: 'Retry Co Two', roleTitle: 'Intern' },
+    }] })).receipts[0]
+    await expect(host.run({
+      rawRevision: secondReceipt.revision,
+      resolver: {
+        id: 'fixture.network-details', version: '2.0.0', requiredInputs: ['rawRevision'],
+        outputFields: ['companyName'], capabilities: ['network'], costClass: 'high', precedence: 500,
+      },
+      resolve: async () => [{
+        resolverId: 'fixture.network-details', resolverVersion: '2.0.0', field: 'companyName' as const,
+        inputHash: secondReceipt.revision.contentHash, status: 'retry' as const, retry,
+      }],
+    }, {
+      connectorRunId: connectorRun.id, enabledCapabilities: ['network'],
+      triggerOccurrence: secondReceipt.occurrence,
+    })).rejects.toThrow(/injected retry work failure/)
+    expect(database.select().from(normalizationRuns).all()).toHaveLength(beforeRunCount)
   })
 })

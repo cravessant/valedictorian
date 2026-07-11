@@ -8,7 +8,8 @@ import {
   normalizationAttempts,
   normalizationRuns,
   rawSourceOccurrences,
-  rawSourceRevisions
+  rawSourceRevisions,
+  retryWork,
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
@@ -169,7 +170,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
   await connectorRepository.upsertInstance({
     id: connectorInstanceId,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.6.0',
+    connectorVersion: '0.7.0',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [
@@ -203,6 +204,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
   })
   const status = await client.connectors.status.list()
   const findings = await client.sourcing.findings.list()
+  const retryItems = database.select().from(retryWork).all()
   const serialized = JSON.stringify({ findings, run, runs, status })
 
   sqlite.close()
@@ -219,6 +221,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
     findings,
     run,
     runs,
+    retryItems,
     serialized,
     status: status.items.find((item) => item.id === connectorInstanceId),
     sensitiveValues: [username, password, sessionCookie],
@@ -464,7 +467,7 @@ describe('runtime local Valedictorian client', () => {
     await connectorRepository.upsertInstance({
       id: 'jobright-api',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.6.0',
+      connectorVersion: '0.7.0',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [
@@ -743,20 +746,15 @@ describe('runtime local Valedictorian client', () => {
       observationCount: 0,
       warnings: [
         {
-          code: 'jobright_auth_failed',
-          label: 'Jobright auth failed',
-          message: 'Jobright authentication failed. Validate credentials and retry this run.',
-          severity: 'blocked',
+          code: 'jobright_auth_retryable',
+          label: 'Jobright auth unavailable',
+          message: 'Jobright authentication is temporarily unavailable. Retry later.',
+          severity: 'warning',
         },
       ],
       retryHints: {
-        authRequired: 0,
-        captcha: 0,
-        parserChanged: 0,
-        rateLimited: 0,
-        recommended: false,
-        retryableFailures: 0,
-        source: 'jobright',
+        state: 'scheduled', reason: 'network_interruption', attempt: 1, maxAttempts: 3,
+        lastAttemptAt: '2026-07-09T18:00:00.000Z',
       },
     })
     expect(authFailed.runs.items).toHaveLength(1)
@@ -765,10 +763,13 @@ describe('runtime local Valedictorian client', () => {
       retryHints: authFailed.run.retryHints,
     })
     expect(authFailed.status).toMatchObject({
-      status: 'blocked',
+      status: 'partial_success',
       warnings: authFailed.run.warnings,
     })
     expect(authFailed.fetchUrls).toHaveLength(1)
+    expect(authFailed.retryItems).toEqual([
+      expect.objectContaining({ kind: 'connector_capture', reason: 'network_interruption', state: 'scheduled' }),
+    ])
 
     const discoveryFailed = await runJobrightFailureFixture('discovery_failed')
 
@@ -783,15 +784,7 @@ describe('runtime local Valedictorian client', () => {
           severity: 'warning',
         },
       ],
-      retryHints: {
-        authRequired: 0,
-        captcha: 0,
-        parserChanged: 0,
-        rateLimited: 0,
-        recommended: false,
-        retryableFailures: 0,
-        source: 'jobright',
-      },
+      retryHints: null,
     })
     expect(discoveryFailed.runs.items).toHaveLength(1)
     expect(discoveryFailed.runs.items[0]).toMatchObject({
@@ -817,16 +810,7 @@ describe('runtime local Valedictorian client', () => {
           severity: 'warning',
         },
       ],
-      retryHints: {
-        actions: ['update_jobright_parser'],
-        authRequired: 0,
-        captcha: 0,
-        parserChanged: 1,
-        rateLimited: 0,
-        recommended: true,
-        retryableFailures: 0,
-        source: 'jobright',
-      },
+      retryHints: null,
     })
     expect(parserChanged.runs.items).toHaveLength(1)
     expect(parserChanged.runs.items[0]).toMatchObject({
@@ -858,15 +842,7 @@ describe('runtime local Valedictorian client', () => {
           severity: 'warning',
         },
       ],
-      retryHints: {
-        authRequired: 0,
-        captcha: 0,
-        parserChanged: 0,
-        rateLimited: 0,
-        recommended: true,
-        retryableFailures: 0,
-        source: 'jobright',
-      },
+      retryHints: null,
     })
     expect(zeroUsefulResults.runs.items).toHaveLength(1)
     expect(zeroUsefulResults.runs.items[0]).toMatchObject({
@@ -886,5 +862,4 @@ describe('runtime local Valedictorian client', () => {
       }
     }
   })
-
 })

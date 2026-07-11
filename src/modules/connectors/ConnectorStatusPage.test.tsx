@@ -83,6 +83,34 @@ describe('ConnectorStatusPage', () => {
     expect(screen.queryByText('0 enabled')).not.toBeInTheDocument()
     expect(screen.queryByText('No enabled connectors.')).not.toBeInTheDocument()
   })
+
+  it('shows full typed retry guidance for a skipped not-due run', () => {
+    const nextAttemptAt = '2026-07-11T12:01:00.000Z'
+    render(
+      <ConnectorStatusPage
+        contentColumnClass=""
+        error={null}
+        isLoading={false}
+        result={{
+          available: true,
+          items: [createConnectorStatusView({
+            retryAdvice: {
+              state: 'not_due', reason: 'rate_limit', attempt: 2, maxAttempts: 4,
+              lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
+              nextAttemptAt, horizonAt: '2026-07-11T13:00:00.000Z',
+            },
+            severity: 'warning', status: 'skipped', statusLabel: 'Skipped / not due',
+            summary: 'Latest run was skipped because retry work is not due yet.',
+          })],
+        }}
+        onAction={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(
+      `Skipped — not due · Rate limited · Attempt 2 of 4 · Next attempt ${new Date(nextAttemptAt).toLocaleString()}`,
+    )).toBeInTheDocument()
+  })
 })
 
 function createConnectorStatusView(
@@ -98,6 +126,7 @@ function createConnectorStatusView(
     lastRunAt: '2026-07-08T17:00:01.000Z',
     latestRunId: 'connector-run-1',
     observationCount: 0,
+    retryAdvice: null,
     severity: 'healthy',
     status: 'healthy',
     statusLabel: 'Healthy',

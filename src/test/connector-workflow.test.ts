@@ -17,9 +17,9 @@ describe('connector workflow dependencies', () => {
   it('adopts the released progress and destination-projection contracts exactly', () => {
     const packageJson = readPackageJson()
 
-    expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.6.0')
-    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.6.0')
-    expect(packageJson.dependencies.sparxie).toBe('0.10.0')
+    expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.7.0')
+    expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.7.0')
+    expect(packageJson.dependencies.sparxie).toBe('0.11.0')
   })
 
   it.each(['ci.yml', 'release-mac.yml'])(

@@ -17,16 +17,14 @@ import type {
   ConnectorProgressRuntime,
   ConnectorProgressSnapshot,
   ConnectorNormalizationInput,
-  ConnectorRawSourceCaptureInput,
   JobConnector,
 } from '@sparxie/valedictorian-connectors-core'
-import {
-  createBoundRawSourceRecordInputSchema,
-  type FieldResolutionOutcome,
-  type RawSourceIntakeReceipt,
-  type RawSourceOccurrenceReceipt,
-  type RawSourceRecordInput,
-  type ResolverCapability,
+import type {
+  FieldResolutionOutcome,
+  RawSourceIntakeReceipt,
+  RawSourceOccurrenceReceipt,
+  RawSourceRecordInput,
+  ResolverCapability,
 } from 'sparxie'
 import type {
   ConnectorCheckpointPayload,
@@ -36,7 +34,12 @@ import type {
   ConnectorRunTerminalStatus,
   createSqliteConnectorRepository,
 } from './connector.repository'
-import { JOBRIGHT_CONNECTOR_ID, JOBRIGHT_CONNECTOR_VERSION } from './jobright.constants'
+import * as connectorCheckpointSignatureModule from './connector.checkpoint-signature'
+import { restoreUnacquiredJobrightV4RetryEntries } from './connector.jobright-checkpoint-merge'
+import {
+  createBoundConnectorDataRuntime,
+  type AcquiredNormalizationReplayIdentity,
+} from './connector.runner.bound-data-runtime'
 
 export type AppJobConnectorDefinition = ConnectorDefinition
 export type AppConnectorAuthMode = ConnectorAuthMode
@@ -70,9 +73,14 @@ export interface AppConnectorNormalizationHost {
   run(
     input: ConnectorNormalizationInput,
     context: {
+      acquiredRetryWork?: {
+        acquisitionRunId: string
+        retryWorkId: string
+      }
       connectorRunId: string
+      deferAcquiredRetryCompletion?: boolean
       enabledCapabilities: readonly ResolverCapability[]
-      triggerOccurrence: RawSourceOccurrenceReceipt
+      triggerOccurrence?: RawSourceOccurrenceReceipt | null
     },
   ): Promise<FieldResolutionOutcome[]>
   release?(connectorRunId: string): void
@@ -126,6 +134,13 @@ export interface RunConnectorRefreshInput {
   startedAt?: string
   completedAt?: string
   budget?: AppConnectorRunBudget
+  observations?: AppConnectorRefreshInput['observations']
+  checkpointOverride?: unknown
+  restoreUnacquiredJobrightRetryEntries?: {
+    acquiredProviderRecordId: string
+    originalCheckpoint: unknown
+  }
+  acquiredNormalizationReplay?: AcquiredNormalizationReplayIdentity
 }
 
 export interface RunConnectorCatchUpInput {
@@ -135,6 +150,13 @@ export interface RunConnectorCatchUpInput {
   startedAt?: string
   completedAt?: string
   policy?: Partial<AppConnectorRunPolicy>
+  observations?: AppConnectorRefreshInput['observations']
+  checkpointOverride?: unknown
+  restoreUnacquiredJobrightRetryEntries?: {
+    acquiredProviderRecordId: string
+    originalCheckpoint: unknown
+  }
+  acquiredNormalizationReplay?: AcquiredNormalizationReplayIdentity
 }
 
 export interface AppConnectorPendingCheckpoint {
@@ -226,6 +248,7 @@ export function createConnectorRunner({
         : runtime.progress,
       input.connectorRunId
         ? createBoundConnectorDataRuntime({
+            acquiredNormalizationReplay: input.acquiredNormalizationReplay,
             connector,
             connectorInstanceId: connectorInstance.id,
             connectorRunId: input.connectorRunId,
@@ -246,7 +269,12 @@ export function createConnectorRunner({
         config,
         filters,
         ...(budget ? { budget } : {}),
-        ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
+        ...(input.checkpointOverride !== undefined
+          ? { checkpoint: input.checkpointOverride }
+          : checkpoint
+            ? { checkpoint: checkpoint.checkpoint }
+            : {}),
+        ...(input.observations ? { observations: input.observations } : {}),
       }, runRuntime)
     } finally {
       if (input.connectorRunId) {
@@ -258,6 +286,13 @@ export function createConnectorRunner({
       redactRefreshResult(result, sensitiveValues),
       budget,
     )
+    const nextCheckpoint = input.restoreUnacquiredJobrightRetryEntries
+      ? restoreUnacquiredJobrightV4RetryEntries({
+          acquiredProviderRecordId: input.restoreUnacquiredJobrightRetryEntries.acquiredProviderRecordId,
+          originalCheckpoint: input.restoreUnacquiredJobrightRetryEntries.originalCheckpoint,
+          returned: safeResult.nextCheckpoint,
+        })
+      : safeResult.nextCheckpoint
     const completedAt = input.completedAt ?? now().toISOString()
 
     const run = await repository.recordRefreshResult({
@@ -270,14 +305,18 @@ export function createConnectorRunner({
       filters: runFilters,
       filterSignature,
       checkpointPersistence: options.checkpointPersistence,
-      result: safeResult,
+      preserveAcquiredNormalizationWork: Boolean(input.acquiredNormalizationReplay),
+      result: {
+        ...safeResult,
+        nextCheckpoint,
+      },
     })
 
     return {
       checkpoint: {
         connectorInstanceId: input.connectorInstanceId,
         filterSignature,
-        checkpoint: safeResult.nextCheckpoint,
+        checkpoint: nextCheckpoint,
         coverage: safeResult.coverage,
         savedAt: completedAt,
       },
@@ -329,6 +368,16 @@ export function createConnectorRunner({
         startedAt: input.startedAt,
         completedAt: input.completedAt,
         budget: budgetFromPoliteness(policy, connector.definition.politeness),
+        ...(input.observations ? { observations: input.observations } : {}),
+        ...(input.checkpointOverride !== undefined
+          ? { checkpointOverride: input.checkpointOverride }
+          : {}),
+        ...(input.restoreUnacquiredJobrightRetryEntries
+          ? { restoreUnacquiredJobrightRetryEntries: input.restoreUnacquiredJobrightRetryEntries }
+          : {}),
+        ...(input.acquiredNormalizationReplay
+          ? { acquiredNormalizationReplay: input.acquiredNormalizationReplay }
+          : {}),
       },
     }
   }
@@ -668,81 +717,6 @@ function createRunRuntime(
   }
 }
 
-function createBoundConnectorDataRuntime({
-  connector,
-  connectorInstanceId,
-  connectorRunId,
-  normalization,
-  rawSource,
-  workspaceId,
-}: {
-  connector: AppJobConnector
-  connectorInstanceId: string
-  connectorRunId: string
-  normalization: AppConnectorNormalizationHost | undefined
-  rawSource: AppConnectorRawSourceHost | undefined
-  workspaceId: string
-}): Pick<AppConnectorRuntime, 'normalization' | 'rawSourceIntake'> {
-  const adapter = {
-    id: connector.definition.id,
-    kind: 'connector' as const,
-    version: connector.definition.version,
-  }
-  const enabledCapabilities: ResolverCapability[] = ['pure']
-  const occurrencesByRevisionId = new Map<string, RawSourceOccurrenceReceipt>()
-
-  if (connector.definition.capabilities?.resolvesIntermediaryLinks) {
-    enabledCapabilities.push('network')
-  }
-  if (connector.definition.capabilities?.usesBrowserSession) {
-    enabledCapabilities.push('browser')
-  }
-
-  return {
-    ...(rawSource
-      ? {
-          rawSourceIntake: {
-            async capture(input: ConnectorRawSourceCaptureInput) {
-              const record = {
-                ...input,
-                adapter,
-                capture: { connectorInstanceId, connectorRunId },
-              }
-              const validated = createBoundRawSourceRecordInputSchema({
-                adapter,
-                connectorInstanceId,
-                connectorRunId,
-                requestWorkspaceId: workspaceId,
-                workspaceId,
-              }).parse(record)
-
-              const receipt = await rawSource.ingest(validated as RawSourceRecordInput)
-              occurrencesByRevisionId.set(receipt.revision.id, receipt.occurrence)
-              return receipt
-            },
-          },
-        }
-      : {}),
-    ...(normalization
-      ? {
-          normalization: {
-            run: (input: ConnectorNormalizationInput) => {
-              const triggerOccurrence = occurrencesByRevisionId.get(input.rawRevision.id)
-              if (!triggerOccurrence) {
-                throw new Error('Connector normalization requires a captured raw occurrence')
-              }
-              return normalization.run(input, {
-                connectorRunId,
-                enabledCapabilities,
-                triggerOccurrence,
-              })
-            },
-          },
-        }
-      : {}),
-  }
-}
-
 const connectorProgressCountKeys = [
   'attempted',
   'discovered',
@@ -1039,23 +1013,24 @@ function cloneJsonRecord(value: Record<string, unknown>): Record<string, unknown
   return JSON.parse(stableJsonStringify(value)) as Record<string, unknown>
 }
 
-function signatureForFilters(filters: Record<string, unknown>): string {
-  return `filters:${stableJsonStringify(filters)}`
-}
-
 function checkpointSignatureForConnector(
   connector: AppJobConnector,
   filters: Record<string, unknown>,
 ): string {
-  return isJobrightRawFirstConnector(connector)
-    ? `provider-state:${connector.definition.id}@${connector.definition.version}`
-    : signatureForFilters(filters)
+  return connectorCheckpointSignatureModule.connectorCheckpointSignature({
+    connectorId: connector.definition.id,
+    connectorVersion: connector.definition.version,
+    supportsFiltering: connector.definition.capabilities?.supportsFiltering,
+    filters,
+  })
 }
 
 export function isJobrightRawFirstConnector(connector: AppJobConnector): boolean {
-  return connector.definition.id === JOBRIGHT_CONNECTOR_ID
-    && connector.definition.version === JOBRIGHT_CONNECTOR_VERSION
-    && connector.definition.capabilities?.supportsFiltering === false
+  return connectorCheckpointSignatureModule.isJobrightProviderStateSignature({
+    connectorId: connector.definition.id,
+    connectorVersion: connector.definition.version,
+    supportsFiltering: connector.definition.capabilities?.supportsFiltering,
+  })
 }
 
 function stableJsonStringify(value: unknown): string {

@@ -776,10 +776,7 @@ describe('App', () => {
         id: 'connector-run-skipped',
         mode: 'manual',
         observationCount: 0,
-        retryHints: {
-          reason: 'user_skipped_auth_required_run',
-          skippedBy: 'user',
-        },
+        retryHints: null,
         startedAt: '2026-07-08T17:05:00.000Z',
         stats: { skipped: true },
         status: 'skipped',

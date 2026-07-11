@@ -564,7 +564,11 @@ describe('local deterministic raw normalization', () => {
     const partial: NormalizationResolver = {
       declaration: { id: 'fixture.partial-retry', version: '1.0.0', requiredInputs: ['rawRevision'], outputFields: ['companyName', 'roleTitle'], capabilities: ['pure'], costClass: 'none', precedence: 1_000 },
       resolve(context) { return [
-        { resolverId: 'fixture.partial-retry', resolverVersion: '1.0.0', field: 'companyName', inputHash: context.hashInput('company'), status: 'retry', reason: 'Provider rate limit', retryAfter: '2026-07-10T12:05:00.000Z' },
+        { resolverId: 'fixture.partial-retry', resolverVersion: '1.0.0', field: 'companyName', inputHash: context.hashInput('company'), status: 'retry', retry: {
+          state: 'scheduled', reason: 'rate_limit', attempt: 1, maxAttempts: 3,
+          lastAttemptAt: '2026-07-10T12:00:00.000Z', computedDelayMs: 300_000,
+          nextAttemptAt: '2026-07-10T12:05:00.000Z', horizonAt: '2026-07-10T13:00:00.000Z',
+        } },
         { resolverId: 'fixture.partial-retry', resolverVersion: '1.0.0', field: 'roleTitle', inputHash: context.hashInput('Intern'), status: 'resolved', value: 'Intern', confidence: 1 },
       ] },
     }
@@ -576,11 +580,11 @@ describe('local deterministic raw normalization', () => {
     const result = await client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)
     expect(result).toMatchObject({
       status: 'completed', canonicalCandidate: null,
-      gate: { status: 'needs_enrichment', candidate: null, missingFields: expect.arrayContaining(['companyName']), reason: expect.stringContaining('Provider rate limit') },
+      gate: { status: 'needs_enrichment', candidate: null, missingFields: expect.arrayContaining(['companyName']), reason: expect.stringContaining('rate_limit') },
       attempts: expect.arrayContaining([expect.objectContaining({
         resolver: expect.objectContaining({ id: 'fixture.partial-retry' }), status: 'completed',
         outcomes: expect.arrayContaining([
-          expect.objectContaining({ field: 'companyName', status: 'retry', reason: 'Provider rate limit', retryAfter: '2026-07-10T12:05:00.000Z' }),
+          expect.objectContaining({ field: 'companyName', status: 'retry', retry: expect.objectContaining({ reason: 'rate_limit', nextAttemptAt: '2026-07-10T12:05:00.000Z' }) }),
           expect.objectContaining({ field: 'roleTitle', status: 'resolved', value: 'Intern' }),
         ]),
       })]),
@@ -598,7 +602,11 @@ describe('local deterministic raw normalization', () => {
     }])
     const retry = fixtureResolver('fixture.lower-company-retry', 900, ['pure'], (context) => [{
       resolverId: 'fixture.lower-company-retry', resolverVersion: '1.0.0', field: 'companyName',
-      inputHash: context.hashInput('company'), status: 'retry', reason: 'Lower resolver is transiently unavailable', retryAfter: null,
+      inputHash: context.hashInput('company'), status: 'retry', retry: {
+        state: 'scheduled', reason: 'network_interruption', attempt: 1, maxAttempts: 3,
+        lastAttemptAt: '2026-07-10T12:00:00.000Z', computedDelayMs: 60_000,
+        nextAttemptAt: '2026-07-10T12:01:00.000Z', horizonAt: '2026-07-10T13:00:00.000Z',
+      },
     }])
     const defaultsWithoutCompany = createDefaultNormalizationResolverRegistry().resolvers.filter(({ declaration }) => declaration.id !== 'deterministic.explicit-company')
     const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath(), normalizationRegistry: createNormalizationResolverRegistry([winner, retry, ...defaultsWithoutCompany]) })
@@ -612,7 +620,7 @@ describe('local deterministic raw normalization', () => {
     })
     expect(result.fieldOutcomes).toEqual(expect.arrayContaining([
       expect.objectContaining({ resolverId: 'fixture.company-winner', status: 'resolved', value: 'Higher Winner' }),
-      expect.objectContaining({ resolverId: 'fixture.lower-company-retry', status: 'retry', retryAfter: null }),
+      expect.objectContaining({ resolverId: 'fixture.lower-company-retry', status: 'retry', retry: expect.objectContaining({ reason: 'network_interruption' }) }),
     ]))
   })
 
@@ -953,6 +961,7 @@ describe('local deterministic raw normalization', () => {
     ]))
     await expect(client.sourcing.findings.list()).resolves.toMatchObject({ total: 0, items: [] })
   })
+
 
 })
 

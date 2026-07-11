@@ -1,3 +1,5 @@
+import type { RetryAdvice } from 'sparxie'
+
 export type JsonRecord = Record<string, unknown>
 
 export interface ConnectorCoverageWindow {
@@ -87,7 +89,7 @@ export interface ConnectorRefreshResultInput {
   stats: JsonRecord & { observations: number }
   warnings: ConnectorWarning[]
   status?: ConnectorRunStatus
-  retryHints?: unknown
+  retryHints?: RetryAdvice | null
 }
 
 export interface UpsertConnectorInstanceInput {
@@ -112,6 +114,7 @@ export interface RecordConnectorRefreshResultInput {
   filters: JsonRecord
   filterSignature: string
   checkpointPersistence?: 'deferred' | 'immediate'
+  preserveAcquiredNormalizationWork?: boolean
   result: ConnectorRefreshResultInput
 }
 
@@ -127,8 +130,24 @@ export interface RecordConnectorRunRequestInput {
   dryRun?: boolean
 }
 
+export type AcquiredRetryWork =
+  | {
+    kind: 'connector_capture'
+    retryWorkId: string
+  }
+  | {
+    kind: 'normalization'
+    retryWorkId: string
+    rawRevisionId: string
+    resolverId: string
+    resolverVersion: string
+    inputHash: string
+    lastAttemptAt: string
+  }
+
 export interface RecordConnectorRunRequestResult {
   acquired: boolean
+  acquiredWork: AcquiredRetryWork | null
   run: ConnectorRunRecord
 }
 
@@ -141,7 +160,7 @@ export interface RecordConnectorRunFailureInput {
   coverageEndedAt?: string | null
   filters?: unknown
   filterSignature?: string | null
-  retryHints?: unknown
+  retryHints?: RetryAdvice | null
   stats?: JsonRecord
   warning: ConnectorWarning
 }
@@ -156,7 +175,7 @@ export interface RecordConnectorRunSkippedInput {
 export interface MarkConnectorRunFailedInput {
   connectorRunId: string
   completedAt: string
-  retryHints?: unknown
+  retryHints?: RetryAdvice | null
   warning: ConnectorWarning
 }
 
@@ -222,7 +241,7 @@ export interface ConnectorRunRecord {
   warningCount: number
   stats: unknown
   warnings: unknown
-  retryHints: unknown
+  retryHints: RetryAdvice | null
 }
 
 export interface ConnectorCheckpointRecord {

@@ -2,8 +2,10 @@ import fs from 'node:fs'
 import type {
   ConnectorAuthReferenceInput,
   ConnectorObservation,
+  RetryAdvice,
   ValedictorianWorkspaceClient
 } from 'sparxie'
+import { retryAdviceSchema } from 'sparxie'
 import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import {
@@ -19,12 +21,13 @@ import {
   type LocalConnectorRegistry
 } from '../modules/connectors/connector.registry'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
 import {
   createConnectorRunner,
   type AppConnectorAuthGrant,
   type AppConnectorAuthHost,
   type AppConnectorAuthValidationResult,
-  type AppConnectorRefreshRecord
+  type AppConnectorRefreshRecord,
 } from '../modules/connectors/connector.runner'
 import {
   mapConnectorWarnings,
@@ -47,10 +50,14 @@ import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.rep
 import { createCanonicalCandidateProjectionService } from '../modules/sourcing/canonical-candidate.projection'
 import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
+import {
+  dispatchAcquiredNormalizationWork,
+  finalizeDeferredConnectorRefreshRecord,
+} from './local-connector-retry-dispatch'
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import {
-  createDefaultNormalizationResolverRegistry
+  createDefaultNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
@@ -180,6 +187,9 @@ export function createLocalValedictorianClient({
       connectorRegistry,
       connectorRepository,
       connectorRunner,
+      normalizationOrchestrator,
+      normalizationRegistry,
+      normalizationRepository,
       now,
     })
 
@@ -314,6 +324,9 @@ export function createLocalValedictorianClient({
             connectorRepository,
             connectorRunner,
             input,
+            normalizationOrchestrator,
+            normalizationRegistry,
+            normalizationRepository,
             now,
           })
 
@@ -552,11 +565,17 @@ async function executeConnectorStartupCatchUp({
   connectorRegistry,
   connectorRepository,
   connectorRunner,
+  normalizationOrchestrator,
+  normalizationRegistry,
+  normalizationRepository,
   now,
 }: {
   connectorRegistry: LocalConnectorRegistry
   connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
+  normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
+  normalizationRegistry: ReturnType<typeof createDefaultNormalizationResolverRegistry>
+  normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
   now: () => Date
 }): Promise<LocalConnectorStartupCatchUpResult> {
   const runs: LocalConnectorRunSummary[] = []
@@ -590,6 +609,9 @@ async function executeConnectorStartupCatchUp({
           coverageEndedAt,
           mode: 'catch_up',
         },
+        normalizationOrchestrator,
+        normalizationRegistry,
+        normalizationRepository,
         now,
       })))
     } catch {
@@ -608,12 +630,18 @@ async function executeConnectorRunTrigger({
   connectorRepository,
   connectorRunner,
   input,
+  normalizationOrchestrator,
+  normalizationRegistry,
+  normalizationRepository,
   now,
 }: {
   connectorRegistry: LocalConnectorRegistry
   connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   input: LocalConnectorRunTriggerInput
+  normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
+  normalizationRegistry: ReturnType<typeof createDefaultNormalizationResolverRegistry>
+  normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
   now: () => Date
 }): Promise<ConnectorRunRecord> {
   const startedAt = now().toISOString()
@@ -637,12 +665,21 @@ async function executeConnectorRunTrigger({
 
   const mode = input.mode ?? 'manual'
   assertExecutableConnectorTrigger(input, mode)
+  const filters = toJsonRecord(instance.filters)
+  const filterSignature = connectorCheckpointSignature({
+    connectorId: connector.definition.id,
+    connectorVersion: connector.definition.version,
+    supportsFiltering: connector.definition.capabilities?.supportsFiltering,
+    filters,
+  })
   const runRequestResult = await connectorRepository.recordRunRequest({
     connectorInstanceId: input.connectorInstanceId,
     mode,
     startedAt,
     coverageStartedAt: input.coverageStartedAt,
     coverageEndedAt: input.coverageEndedAt,
+    filterSignature,
+    filters,
     reason: input.reason,
   })
 
@@ -651,11 +688,29 @@ async function executeConnectorRunTrigger({
   }
 
   const runRequest = runRequestResult.run
+  const acquiredWork = runRequestResult.acquiredWork
 
   await connectorRepository.markRunRunning({
     connectorRunId: runRequest.id,
     startedAt,
   })
+
+  if (acquiredWork?.kind === 'normalization') {
+    return executeAcquiredNormalizationWork({
+      acquiredWork,
+      connector,
+      connectorRepository,
+      connectorRunner,
+      instanceId: input.connectorInstanceId,
+      normalizationOrchestrator,
+      normalizationRegistry,
+      normalizationRepository,
+      now,
+      runRequest,
+      startedAt,
+      coverageEndedAt: input.coverageEndedAt,
+    })
+  }
 
   let refreshRecord: AppConnectorRefreshRecord
 
@@ -681,9 +736,7 @@ async function executeConnectorRunTrigger({
     await connectorRepository.markRunFailed({
       connectorRunId: runRequest.id,
       completedAt: now().toISOString(),
-      retryHints: {
-        reason: 'connector_execution_failed',
-      },
+      retryHints: null,
       warning: {
         code: 'connector.execution_failed',
         message: 'Connector execution failed.',
@@ -692,39 +745,31 @@ async function executeConnectorRunTrigger({
     throw error
   }
 
-  const { checkpoint, run, terminalStatus } = refreshRecord
-  let projectedRun = run
+  return finalizeDeferredConnectorRefresh({
+    checkpoint: refreshRecord.checkpoint,
+    connectorRepository,
+    now,
+    run: refreshRecord.run,
+    terminalStatus: refreshRecord.terminalStatus,
+  })
+}
 
-  try {
-    projectedRun = await connectorRepository.updateRunProgress({
-      connectorRunId: run.id,
-      stats: {
-        stage: 'finalizing',
-        lastProgressAt: now().toISOString(),
-      },
-    })
-    await connectorRepository.recordCheckpoint(checkpoint)
-    projectedRun = await connectorRepository.completeRun({
-      completedAt: now().toISOString(),
-      connectorRunId: run.id,
-      status: terminalStatus,
-    })
-  } catch (error) {
-    await connectorRepository.markRunFailed({
-      connectorRunId: run.id,
-      completedAt: now().toISOString(),
-      retryHints: {
-        reason: 'sourcing_projection_failed',
-      },
-      warning: {
-        code: 'connector.sourcing_projection_failed',
-        message: 'Canonical sourcing projection failed.',
-      },
-    })
-    throw error
-  }
+async function executeAcquiredNormalizationWork(
+  input: Parameters<typeof dispatchAcquiredNormalizationWork>[0],
+): Promise<ConnectorRunRecord> {
+  return dispatchAcquiredNormalizationWork(input)
+}
 
-  return projectedRun
+async function finalizeDeferredConnectorRefresh(
+  input: Parameters<typeof finalizeDeferredConnectorRefreshRecord>[0],
+): Promise<ConnectorRunRecord> {
+  return finalizeDeferredConnectorRefreshRecord(input)
+}
+
+function toJsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 function assertExecutableConnectorTrigger(
@@ -873,126 +918,15 @@ function mapConnectorRunSummary(record: ConnectorRunRecord): LocalConnectorRunSu
     warningCount: record.warningCount,
     stats: record.stats,
     warnings: mapConnectorWarnings(record.warnings),
-    retryHints: safeConnectorRetryHints(record.retryHints),
+    retryHints: parseConnectorRetryAdvice(record.retryHints),
     startedAt: record.startedAt,
     completedAt: record.completedAt,
   }
 }
 
-const safeConnectorRetryReasons = new Set([
-  'auth_reference_missing',
-  'auth_required',
-  'auth_validation_failed',
-  'browser_session_action_required',
-  'browser_session_expired',
-  'browser_session_key_missing',
-  'browser_session_login_cancelled',
-  'browser_session_login_failed',
-  'browser_session_resolution_failed',
-  'browser_session_runtime_missing',
-  'browser_session_runtime_unavailable',
-  'browser_session_verification_failed',
-  'browser_session_verification_required',
-  'browser_session_verification_timed_out',
-  'budget_exhausted',
-  'connector_execution_failed',
-  'connector_run_interrupted',
-  'disabled',
-  'execution_failed',
-  'jobright_auth_failed',
-  'jobright_auth_ready',
-  'jobright_auth_request_failed',
-  'jobright_auth_required',
-  'jobright_auth_retryable',
-  'jobright_challenge_blocked',
-  'jobright_discovery_rate_limited',
-  'jobright_discovery_failed',
-  'jobright_discovery_retryable',
-  'jobright_login_rejected',
-  'jobright_login_retryable',
-  'jobright_not_logged_in',
-  'jobright_parser_changed',
-  'jobright_rate_limited',
-  'jobright_retryable_failure',
-  'jobright_resolution',
-  'jobright_resolution_deferred',
-  'jobright_zero_useful_results',
-  'projection_failed',
-  'secret_missing',
-  'secret_reference_missing',
-  'settings_manual_refresh',
-  'unsupported_connector',
-  'user_skipped_auth_required_run',
-  'username_password_malformed',
-  'username_password_missing',
-  'validate_auth_failed',
-  'validate_auth_unsupported',
-])
-
-const safeConnectorRetryActions = new Set([
-  'refresh_jobright_auth',
-  'retry_jobright_after_challenge',
-  'retry_jobright_with_backoff',
-  'review_jobright_results',
-  'update_jobright_parser',
-])
-
-function safeConnectorRetryHints(value: unknown): Record<string, unknown> | null {
-  const retryHints = safeJsonRecord(value)
-  const safeHints: Record<string, unknown> = {}
-  const reason = retryHints.reason
-
-  if (typeof reason === 'string' && safeConnectorRetryReasons.has(reason)) {
-    safeHints.reason = reason
-  }
-
-  for (const key of ['authRequired', 'rateLimited'] as const) {
-    const metric = retryHints[key]
-
-    if (typeof metric === 'boolean' || (
-      typeof metric === 'number' && Number.isFinite(metric) && metric >= 0
-    )) {
-      safeHints[key] = metric
-    }
-  }
-
-  for (const key of ['captcha', 'parserChanged', 'retryAfterSeconds', 'retryableFailures'] as const) {
-    const metric = retryHints[key]
-
-    if (typeof metric === 'number' && Number.isFinite(metric) && metric >= 0) {
-      safeHints[key] = metric
-    }
-  }
-
-  if (typeof retryHints.recommended === 'boolean') {
-    safeHints.recommended = retryHints.recommended
-  }
-
-  if (Array.isArray(retryHints.actions)) {
-    const actions = retryHints.actions.filter(
-      (action): action is string => typeof action === 'string' && safeConnectorRetryActions.has(action),
-    )
-
-    if (actions.length > 0) {
-      safeHints.actions = [...new Set(actions)]
-    }
-  }
-
-  if (retryHints.source === 'jobright') {
-    safeHints.source = 'jobright'
-  }
-
-  if (retryHints.skippedBy === 'user') {
-    safeHints.skippedBy = 'user'
-  }
-
-  return Object.keys(safeHints).length > 0 ? safeHints : null
-}
-
-function safeJsonRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
+function parseConnectorRetryAdvice(value: unknown): RetryAdvice | null {
+  if (value === null || value === undefined) return null
+  return retryAdviceSchema.parse(value)
 }
 
 function mapConnectorCheckpoint(record: ConnectorCheckpointRecord) {

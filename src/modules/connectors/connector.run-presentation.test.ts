@@ -54,6 +54,17 @@ describe('connector run terminal copy', () => {
       warnings: [{ code: 'jobright_retryable_failure' }],
     }).summary).toBe('Paused until retry')
   })
+
+  it('derives retry terminal copy from typed retry advice', () => {
+    expect(connectorRunTerminalCopy({
+      ...runFixture({ stopReason: null }),
+      retryHints: {
+        state: 'scheduled', reason: 'server_failure', attempt: 2, maxAttempts: 4,
+        lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
+        nextAttemptAt: '2026-07-11T12:01:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z',
+      },
+    }).summary).toBe('Paused until retry')
+  })
 })
 
 function runFixture({
@@ -74,6 +85,6 @@ function runFixture({
         sourcing: { ...sourcing, actionableReview: 0, unclassified: 0 },
       },
     },
-    retryHints: stopReason ? { stopReason } : null,
+    retryHints: null,
   }
 }

@@ -16,6 +16,8 @@ import {
   JOBRIGHT_PACING_MAX_DELAY_SECONDS,
   JOBRIGHT_PACING_MIN_DELAY_SECONDS,
 } from '../modules/connectors/jobright.constants'
+import { formatRetryAdviceGuidance } from '../modules/connectors/connector.retry-guidance'
+import { retryAdviceSchema } from 'sparxie'
 import {
   ConnectorRunLifecycleDetails,
   ConnectorRunProgressDetails,
@@ -86,6 +88,10 @@ export function ConnectorSettingsInstanceCard({
   const authLabel = connectorAuthStatusLabel(authState, authConfigured)
   const authMessage = connectorAuthStatusMessage(authState)
   const runMetrics = latestRun ? connectorRunMetrics(latestRun) : []
+  const retryGuidance = (() => {
+    const advice = retryAdviceSchema.safeParse(latestRun?.retryHints)
+    return advice.success ? formatRetryAdviceGuidance(advice.data) : null
+  })()
   const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
   const settingsInterpretation = isJobrightInstance
     ? interpretJobrightSettings(instance, draft)
@@ -362,6 +368,9 @@ export function ConnectorSettingsInstanceCard({
                         <p className="text-xs font-medium text-muted-foreground">
                           Latest run: {latestRunStatus}
                         </p>
+                        {retryGuidance ? (
+                          <p className="text-xs font-medium text-muted-foreground">{retryGuidance}</p>
+                        ) : null}
                         {latestRun ? <ConnectorRunProgressDetails run={latestRun} /> : null}
                         {latestRun ? <ConnectorRunLifecycleDetails run={latestRun} /> : null}
                         {runMetrics.length > 0 ? (

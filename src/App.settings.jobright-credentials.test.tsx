@@ -386,7 +386,7 @@ describe('App settings and chrome', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.6.0',
+        version: '0.7.0',
         capabilities: { supportsFiltering: false },
         auth: {
           modes: ['username_password'],
@@ -447,7 +447,7 @@ describe('App settings and chrome', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
     expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
     await expect(client.connectors.list()).resolves.toMatchObject({
-      items: [expect.objectContaining({ connectorVersion: '0.6.0' })],
+      items: [expect.objectContaining({ connectorVersion: '0.7.0' })],
     })
   })
 
@@ -479,7 +479,7 @@ describe('App settings and chrome', () => {
         ],
         config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.6.0',
+        connectorVersion: '0.7.0',
         displayName: 'Jobright internslist',
         enabled: true,
         filters: {
@@ -676,7 +676,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.6.0',
+        connectorVersion: '0.7.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -906,7 +906,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.6.0',
+        connectorVersion: '0.7.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -997,7 +997,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.6.0',
+        connectorVersion: '0.7.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{

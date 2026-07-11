@@ -31,6 +31,8 @@ interface DrizzleMigrationEntry {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DRIZZLE_MIGRATIONS_TABLE = '__drizzle_migrations'
+/** Static legacy schema matches bundled migrations through 0017; 0018+ run via Drizzle. */
+const LEGACY_STATIC_SCHEMA_BASELINE_WHEN = 1783785250659
 
 export function createInMemoryDatabase() {
   return new Database(':memory:')
@@ -64,8 +66,12 @@ export function migrateDatabase(database: SqliteDatabase, options: DatabaseMigra
   if (isLegacyUnmanagedDatabase(database)) {
     database.transaction(() => {
       migrateLegacyDatabaseSchema(database)
-      stampDrizzleMigrations(database, drizzleMigrations)
+      stampDrizzleMigrations(
+        database,
+        drizzleMigrations.filter((migration) => migration.when <= LEGACY_STATIC_SCHEMA_BASELINE_WHEN),
+      )
     })()
+    migrateDrizzle(createDrizzleDatabase(database), { migrationsFolder })
   } else {
     migrateDrizzle(createDrizzleDatabase(database), { migrationsFolder })
   }

@@ -311,7 +311,7 @@ describe('connector runner', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.6.0',
+        version: '0.7.0',
         capabilities: { supportsFiltering: false },
       },
       async refresh(input) {
@@ -319,11 +319,11 @@ describe('connector runner', () => {
         return {
           ...emptyConnectorRefreshResult({
             coverage: input.coverage,
-            checkpoint: { cycleId: 'continued-cycle' },
+            checkpoint: { cycleId: 'continued-cycle', retryState: [] },
           }),
           nextCheckpoint: {
-            checkpoint: { cycleId: 'continued-cycle' },
-            schemaVersion: 'jobright-resolution-checkpoint@3',
+            checkpoint: { cycleId: 'continued-cycle', retryState: [] },
+            schemaVersion: 'jobright-resolution-checkpoint@4',
           },
         }
       },
@@ -332,7 +332,7 @@ describe('connector runner', () => {
     await repository.upsertInstance({
       id: 'jobright-seeded',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.6.0',
+      connectorVersion: '0.7.0',
       displayName: 'Jobright internslist',
       enabled: true,
       filters: { roleTerms: ['intern'] },
@@ -351,7 +351,7 @@ describe('connector runner', () => {
             start: '2026-06-01T11:00:00.000Z',
             end: '2026-06-01T12:00:00.000Z',
           },
-          checkpoint: { attempted: 2 },
+          checkpoint: { attempted: 2, retryState: [] },
         }),
         observations: [
           jobrightSeedObservation('jobright.public:duplicate', '2026-06-01T10:00:00.000Z'),
@@ -363,10 +363,10 @@ describe('connector runner', () => {
     })
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-seeded',
-      filterSignature: 'provider-state:jobright.resolver@0.6.0',
+      filterSignature: 'provider-state:jobright.resolver@0.7.0',
       checkpoint: {
-        checkpoint: { attempted: 2 },
-        schemaVersion: 'jobright-resolution-checkpoint@3',
+        checkpoint: { attempted: 2, retryState: [] },
+        schemaVersion: 'jobright-resolution-checkpoint@4',
       },
       coverage: {
         start: '2026-06-01T11:00:00.000Z',
@@ -386,10 +386,10 @@ describe('connector runner', () => {
 
     expect(receivedInputs).toEqual([
       expect.objectContaining({
-        checkpoint: { attempted: 2 },
+        checkpoint: { attempted: 2, retryState: [] },
       }),
     ])
-    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.6.0')
+    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.7.0')
 
     await runner.refresh(connector, {
       connectorInstanceId: 'jobright-seeded',
@@ -401,7 +401,7 @@ describe('connector runner', () => {
     })
 
     expect(receivedInputs[1]).toMatchObject({
-      checkpoint: { cycleId: 'continued-cycle' },
+      checkpoint: { cycleId: 'continued-cycle', retryState: [] },
     })
     expect(receivedInputs[1]).not.toHaveProperty('observations')
   })
@@ -458,10 +458,7 @@ describe('connector runner', () => {
               message: `leaked ${grant.value}`,
             },
           ],
-          retryHints: {
-            copiedValue: grant.value,
-            grant,
-          },
+          retryHints: null,
           nextCheckpoint: {
             checkpoint: {
               copiedValue: grant.value,

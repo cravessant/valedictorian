@@ -1,6 +1,7 @@
 import type {
   ConnectorObservation,
   CreateConnectorInstanceInput,
+  RetryAdvice,
   UpdateConnectorInstanceInput,
   ValedictorianWorkspaceClient,
 } from 'sparxie'
@@ -77,7 +78,7 @@ export interface LocalConnectorRunSummary {
   warningCount: number
   stats: unknown
   warnings: ConnectorStatusWarningView[]
-  retryHints: unknown
+  retryHints: RetryAdvice | null
   startedAt: string
   completedAt: string | null
 }

@@ -1,5 +1,7 @@
 export const JOBRIGHT_CONNECTOR_ID = 'jobright.resolver'
-export const JOBRIGHT_CONNECTOR_VERSION = '0.6.0'
+export const JOBRIGHT_CONNECTOR_VERSION = '0.7.0'
+export const JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID = 'jobright.authenticated-destination'
+export const JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION = 'jobright-authenticated-destination@1'
 
 /** Connector default when config.usefulTarget is absent. */
 export const JOBRIGHT_DEFAULT_USEFUL_TARGET = 100

@@ -32,23 +32,42 @@ export function createConnectorNormalizationHost(options: {
       const executionRegistry = {
         ...registry,
         resolverSetHash: hashJson({
-          occurrenceId: context.triggerOccurrence.id,
+          occurrenceId: context.triggerOccurrence?.id
+            ?? (context.acquiredRetryWork
+              ? `retry-work:${context.acquiredRetryWork.retryWorkId}`
+              : null),
           resolverSetHash: registry.resolverSetHash,
         }),
       }
       const currentFields = new Set<CanonicalCandidateField>(input.resolver.outputFields)
       const baselineOutcomes = options.repository.getLatest(input.rawRevision.rawRecordId)
         ?.fieldOutcomes.filter(({ field }) => !currentFields.has(field)) ?? []
+      const exactReplay = context.acquiredRetryWork
       const result = await orchestrator.normalize(
         input.rawRevision.rawRecordId,
         input.rawRevision.id,
-        { kind: 'intake' },
+        exactReplay
+          ? {
+              kind: 'replay',
+              replayId: `retry-work:${exactReplay.retryWorkId}:${context.connectorRunId}`,
+              fieldDirectives: [],
+              targetResolverVersions: [{ resolverId: input.resolver.id, version: input.resolver.version }],
+            }
+          : { kind: 'intake' },
         {
+          ...(exactReplay
+            ? {
+                acquiredRetryWork: exactReplay,
+                deferAcquiredRetryCompletion: context.deferAcquiredRetryCompletion === true,
+              }
+            : {}),
           baselineOutcomes,
-          cache: true,
+          cache: !invokesNetwork && !exactReplay,
           enabledCapabilities: supportedCapabilities(context.enabledCapabilities),
           registry: executionRegistry,
-          triggerOccurrence: context.triggerOccurrence,
+          ...(context.triggerOccurrence
+            ? { triggerOccurrence: context.triggerOccurrence }
+            : {}),
         },
       )
       await options.onNormalized?.(result)
