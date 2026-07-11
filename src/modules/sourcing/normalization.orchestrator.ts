@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import type {
   CanonicalCandidateField, CanonicalSourceCandidate, FieldResolutionOutcome, JsonValue,
   NormalizationAttempt, NormalizationGateOutcome, RawSourceNormalizationResult,
-  ResolverApplicabilityDecision, ResolverCapability,
+  RawSourceFieldDirective, ResolverApplicabilityDecision, ResolverCapability, ResolverVersionRef,
 } from 'sparxie'
 import {
   canonicalEmploymentTypes,
@@ -18,6 +18,7 @@ import {
   isDeterministicCanonicalCompensation,
   isDeterministicCanonicalPostedAt,
   RESOLVER_SUPPRESSION_POLICY_VERSION,
+  createNormalizationResolverRegistry,
   type NormalizationResolverRegistry,
 } from './normalization.registry'
 
@@ -34,11 +35,20 @@ export function createNormalizationOrchestrator(options: {
   const enabledCapabilities = options.enabledCapabilities ?? ['pure']
 
   return {
-    async normalize(rawRecordId: string, rawRevisionId: string): Promise<RawSourceNormalizationResult> {
+    async normalize(
+      rawRecordId: string,
+      rawRevisionId: string,
+      trigger: { kind: 'intake' } | { kind: 'replay'; replayId: string; fieldDirectives: RawSourceFieldDirective[]; targetResolverVersions: ResolverVersionRef[] } = { kind: 'intake' },
+    ): Promise<RawSourceNormalizationResult> {
       const raw = options.repository.getRawContext(rawRevisionId)
       if (!raw || raw.revision.rawRecordId !== rawRecordId) throw new Error('Raw source revision not found')
+      const registry = trigger.kind === 'replay' && trigger.targetResolverVersions.length
+        ? selectTargetResolverVersions(options.registry, trigger.targetResolverVersions)
+        : options.registry
       const inputHash = hashJson({ rawRevisionId, contentHash: raw.revision.contentHash })
-      const cached = options.repository.findCached(rawRevisionId, inputHash, options.registry.resolverSetHash, CANONICAL_CANDIDATE_SCHEMA_VERSION, NORMALIZATION_GATE_POLICY_VERSION)
+      const cached = trigger.kind === 'intake'
+        ? options.repository.findCached(rawRevisionId, inputHash, registry.resolverSetHash, CANONICAL_CANDIDATE_SCHEMA_VERSION, NORMALIZATION_GATE_POLICY_VERSION)
+        : null
       if (cached) return cached
 
       const attempts: NormalizationAttempt[] = []
@@ -49,7 +59,26 @@ export function createNormalizationOrchestrator(options: {
       const terminalFields = new Map<CanonicalCandidateField, { status: 'blocked' | 'retry'; reason: string }>()
       let infrastructureFailure: string | null = null
 
-      for (const resolver of options.registry.resolvers) {
+      if (trigger.kind === 'replay') {
+        trigger.fieldDirectives.forEach((directive, index) => {
+          const resolverId = `replay.directive.${directive.action}.${index}`
+          const timestamp = now().toISOString()
+          const outcome: FieldResolutionOutcome = directive.action === 'lock'
+            ? { resolverId, resolverVersion: directive.policyVersion, field: directive.field, inputHash: directive.inputHash, status: 'locked', value: directive.value, reason: directive.reason, policyVersion: directive.policyVersion }
+            : { resolverId, resolverVersion: directive.policyVersion, field: directive.field, inputHash: directive.inputHash, status: 'suppressed', reason: directive.reason, policyVersion: directive.policyVersion }
+          attempts.push({
+            id: crypto.randomUUID(), rawRevisionId,
+            resolver: { id: resolverId, version: directive.policyVersion, requiredInputs: ['replayDirective'], outputFields: [directive.field], capabilities: ['pure'], costClass: 'none', precedence: Number.MAX_SAFE_INTEGER },
+            inputHash: directive.inputHash, status: 'completed',
+            applicability: [{ resolverId, resolverVersion: directive.policyVersion, field: directive.field, inputHash: directive.inputHash, status: 'applicable' }],
+            startedAt: timestamp, completedAt: timestamp, outcomes: [outcome],
+          })
+          if (outcome.status === 'locked') winners.set(directive.field, outcome)
+          else terminalFields.set(directive.field, { status: 'blocked', reason: directive.reason })
+        })
+      }
+
+      for (const resolver of registry.resolvers) {
         const startedAt = now().toISOString()
         const attemptInputHash = hashJson({ raw: raw.revision.contentHash, resolver: resolver.declaration })
         const applicability = resolver.declaration.outputFields.map((field): ResolverApplicabilityDecision => applicabilityFor(resolver.declaration, field, attemptInputHash, raw.revision.adapter, raw.revision.providerSchema, enabledCapabilities))
@@ -81,11 +110,26 @@ export function createNormalizationOrchestrator(options: {
           infrastructureFailure = error instanceof Error ? error.message : 'Resolver failed'
           outcomes = resolver.declaration.outputFields.map((field) => ({ resolverId: resolver.declaration.id, resolverVersion: resolver.declaration.version, field, inputHash: attemptInputHash, status: 'failed', reason: infrastructureFailure! }))
         }
+        const persistedConflicts: FieldResolutionOutcome[] = []
         for (const outcome of outcomes) {
           if (outcome.status === 'failed' && infrastructureFailure === null) infrastructureFailure = outcome.reason
           if (invoked && (outcome.status === 'blocked' || outcome.status === 'retry') && !winners.has(outcome.field)) terminalFields.set(outcome.field, { status: outcome.status, reason: outcome.reason })
+          const current = winners.get(outcome.field)
+          if (current && (outcome.status === 'resolved' || outcome.status === 'locked')) {
+            const currentStrength = current.status === 'locked' ? 2 : current.confidence
+            const nextStrength = outcome.status === 'locked' ? 2 : outcome.confidence
+            if (currentStrength === nextStrength && !jsonValuesEqual(valueOf(current), valueOf(outcome))) {
+              persistedConflicts.push({
+                resolverId: outcome.resolverId, resolverVersion: outcome.resolverVersion,
+                field: outcome.field, inputHash: outcome.inputHash, status: 'conflict',
+                reason: 'Equal-strength resolvers emitted distinct values',
+                values: [valueOf(current)!, valueOf(outcome)!],
+              })
+            }
+          }
           reconcile(outcome, winners, conflicts, rejectedFields, failedFields)
         }
+        outcomes.push(...persistedConflicts)
         attempts.push({ id: crypto.randomUUID(), rawRevisionId, resolver: resolver.declaration, inputHash: attemptInputHash, status: outcomes.some(({ status }) => status === 'failed') ? 'failed' : 'completed', applicability, startedAt, completedAt: now().toISOString(), outcomes })
       }
 
@@ -149,9 +193,20 @@ export function createNormalizationOrchestrator(options: {
       } else {
         gate = { ...gateBase, status: 'needs_enrichment', candidate: null }
       }
-      return options.repository.persist({ runId, rawRecordId, rawRevisionId, inputHash, resolverSetHash: options.registry.resolverSetHash, canonicalSchemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION, gatePolicyVersion: NORMALIZATION_GATE_POLICY_VERSION, status: status === 'failed' ? 'failed' : 'completed', attempts, candidate, gate, now: evaluatedAt })
+      return options.repository.persist({ runId, rawRecordId, rawRevisionId, inputHash, resolverSetHash: registry.resolverSetHash, canonicalSchemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION, gatePolicyVersion: NORMALIZATION_GATE_POLICY_VERSION, status: status === 'failed' ? 'failed' : 'completed', attempts, candidate, gate, now: evaluatedAt, triggerId: trigger.kind === 'replay' ? trigger.replayId : undefined })
     },
   }
+}
+
+function selectTargetResolverVersions(
+  registry: NormalizationResolverRegistry,
+  targets: ResolverVersionRef[],
+) {
+  const targetById = new Map(targets.map((target) => [target.resolverId, target.version]))
+  return createNormalizationResolverRegistry(registry.resolvers.filter(({ declaration }) => {
+    const targetVersion = targetById.get(declaration.id)
+    return targetVersion === undefined || declaration.version === targetVersion
+  }))
 }
 
 function applicabilityFor(declaration: NormalizationAttempt['resolver'], field: CanonicalCandidateField, inputHash: string, adapter: { id: string; kind: 'connector' | 'cli' | 'manual' | 'import'; version: string }, providerSchema: string | null, enabled: readonly ResolverCapability[]): ResolverApplicabilityDecision {
@@ -217,7 +272,7 @@ function jsonValuesEqual(left: JsonValue | undefined, right: JsonValue | undefin
 }
 function isObjectValue(value: JsonValue | undefined): value is { [key: string]: JsonValue } { return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value) }
 function deepFreeze<T>(value: T): T { if (value && typeof value === 'object') { Object.freeze(value); for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child) } return value }
-function isValidCanonicalFieldValue(field: CanonicalCandidateField, value: JsonValue): boolean {
+export function isValidCanonicalFieldValue(field: CanonicalCandidateField, value: JsonValue): boolean {
   if (field === 'companyName' || field === 'roleTitle' || field === 'providerJobId') return typeof value === 'string' && value.length > 0 && value === value.trim()
   if (field === 'employmentType') return typeof value === 'string' && canonicalEmploymentTypes.some((item) => item === value)
   if (field === 'seniority') return typeof value === 'string' && canonicalSeniorities.some((item) => item === value)

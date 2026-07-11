@@ -53,6 +53,7 @@ import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.proc
 import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
 import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
+import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import {
   createDefaultNormalizationResolverRegistry,
@@ -296,6 +297,12 @@ export function createLocalValedictorianClient({
   const normalizationRepository = createSqliteNormalizationRepository(database)
   const normalizationOrchestrator = createNormalizationOrchestrator({
     repository: normalizationRepository,
+    registry: normalizationRegistry,
+    now,
+  })
+  const normalizationReplayService = createNormalizationReplayService({
+    database,
+    orchestrator: normalizationOrchestrator,
     registry: normalizationRegistry,
     now,
   })
@@ -568,9 +575,7 @@ export function createLocalValedictorianClient({
 
           return record
         },
-        replay: async () => {
-          throw capabilityUnavailable('Raw source replay is unavailable in the local backend')
-        },
+        replay: (input) => normalizationReplayService.replay(input),
         normalization: {
           get: async (rawRecordId) => {
             const result = normalizationRepository.getLatest(rawRecordId)
@@ -597,13 +602,6 @@ export function createLocalValedictorianClient({
   }
 
   return client
-}
-
-function capabilityUnavailable(message: string) {
-  return Object.assign(new Error(message), {
-    code: 'capability_unavailable',
-    statusCode: 501,
-  })
 }
 
 function composeTrustedConnectorAuth(

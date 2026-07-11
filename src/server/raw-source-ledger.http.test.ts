@@ -630,14 +630,10 @@ describe('raw source ledger HTTP API', () => {
       total: findingCountBefore.total,
     })
 
-    await expect(
-      rawRecords.replay({ selector: { rawRecordIds: ['raw-record-id'] }, invalidate: {} }),
-    ).rejects.toMatchObject({
-      status: 501,
-      body: {
-        code: 'capability_unavailable',
-        message: 'Raw source replay is unavailable in the local backend',
-      },
+    await expect(rawRecords.replay({
+      selector: { rawRecordIds: ['raw-record-id'] }, invalidate: {},
+    })).resolves.toMatchObject({
+      replayId: expect.any(String), matchedRawRevisionIds: [], status: 'completed',
     })
   })
 
@@ -716,6 +712,76 @@ describe('raw source ledger HTTP API', () => {
     await expect(rawRecords.normalization.get(intake.receipts[1].rawRecordId)).resolves.toMatchObject({
       status: 'completed', gate: { status: 'passed' },
     })
+
+    const replay = await rawRecords.replay({
+      selector: { rawRevisionIds: intake.receipts.map(({ revision }) => revision.id) },
+      invalidate: {},
+    })
+    expect(replay).toMatchObject({
+      status: 'completed_with_failures',
+      matchedRawRevisionIds: expect.arrayContaining(intake.receipts.map(({ revision }) => revision.id)),
+      items: expect.arrayContaining([
+        {
+          status: 'failed', rawRecordId: intake.receipts[0].rawRecordId,
+          rawRevisionId: intake.receipts[0].revision.id,
+          normalizationRunId: expect.any(String),
+          failure: { code: 'normalization_failed', retryable: false },
+        },
+        {
+          status: 'completed', rawRecordId: intake.receipts[1].rawRecordId,
+          rawRevisionId: intake.receipts[1].revision.id,
+          normalizationRunId: expect.any(String),
+        },
+      ]),
+    })
+    expect(JSON.stringify(replay)).not.toContain('synthetic resolver failure')
+  })
+
+  it('returns persisted replay conflicts through the typed workspace client', async () => {
+    const companyResolver = (id: string, companyName: string) => ({
+      declaration: {
+        id, version: '1.0.0', requiredInputs: ['rawRevision'], outputFields: ['companyName'] as const,
+        capabilities: ['pure'] as const, costClass: 'none' as const, precedence: 1_000,
+      },
+      resolve(context: Parameters<ReturnType<typeof createDefaultNormalizationResolverRegistry>['resolvers'][number]['resolve']>[0]) {
+        return [{
+          resolverId: id, resolverVersion: '1.0.0', field: 'companyName' as const,
+          inputHash: context.hashInput(companyName), status: 'resolved' as const,
+          value: companyName, confidence: 0.8,
+        }]
+      },
+    })
+    const defaultsWithoutCompany = createDefaultNormalizationResolverRegistry().resolvers
+      .filter(({ declaration }) => declaration.id !== 'deterministic.explicit-company')
+    const registry = createNormalizationResolverRegistry([
+      companyResolver('fixture.http-company-a', 'HTTP Company A'),
+      companyResolver('fixture.http-company-b', 'HTTP Company B'),
+      ...defaultsWithoutCompany,
+    ])
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), normalizationRegistry: registry }),
+      host: '127.0.0.1', port: 0,
+    })
+    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
+      .forWorkspace('workspace-1').sourcing.rawRecords
+    const intake = await rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'manual', kind: 'manual', version: '1.0.0' },
+      observedAt: '2026-07-10T12:00:00.000Z',
+      payload: { title: 'Intern', url: 'https://jobs.lever.co/acme/http-conflict' },
+    }] })
+
+    await expect(rawRecords.replay({
+      selector: { rawRevisionIds: [intake.receipts[0].revision.id] }, invalidate: {},
+    })).resolves.toMatchObject({
+      status: 'completed', items: [expect.objectContaining({ status: 'completed' })],
+    })
+    await expect(rawRecords.normalization.get(intake.receipts[0].rawRecordId)).resolves.toMatchObject({
+      canonicalCandidate: null,
+      gate: { status: 'needs_enrichment', conflictingFields: ['companyName'] },
+      fieldOutcomes: expect.arrayContaining([expect.objectContaining({
+        field: 'companyName', status: 'conflict', values: ['HTTP Company A', 'HTTP Company B'],
+      })]),
+    })
   })
 
   it('keeps persisted normalization isolated behind encoded workspace routes', async () => {
@@ -736,7 +802,86 @@ describe('raw source ledger HTTP API', () => {
     await expect(second.normalization.get(intake.receipts[0].rawRecordId)).rejects.toMatchObject({ status: 404 })
   })
 
-  it('bounds unsupported replay request bodies before returning capability unavailable', async () => {
+  it('persists exact replay history across restart without crossing workspace boundaries', async () => {
+    const firstPath = createTempSqlitePath()
+    const firstClient = createLocalValedictorianClient({ sqlitePath: firstPath, workspaceId: 'workspace / one' })
+    const secondClient = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), workspaceId: 'workspace / two' })
+    server = await createValedictorianHttpServer({
+      client: firstClient, host: '127.0.0.1', port: 0,
+      resolveWorkspaceClient: (workspaceId) => workspaceId === 'workspace / one' ? firstClient : secondClient,
+    })
+    let root = createHttpValedictorianClient({ baseUrl: server.url })
+    let first = root.forWorkspace('workspace / one').sourcing.rawRecords
+    const second = root.forWorkspace('workspace / two').sourcing.rawRecords
+    const intake = await first.ingestBatch({ records: [{
+      adapter: { id: 'manual', kind: 'manual', version: '1.0.0' },
+      observedAt: '2026-07-10T12:00:00.000Z',
+      payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-replay' },
+    }] })
+    const before = await first.normalization.get(intake.receipts[0].rawRecordId)
+
+    await expect(first.replay({
+      selector: {
+        rawRecordIds: [intake.receipts[0].rawRecordId],
+        rawRevisionIds: ['another-revision'],
+      },
+      invalidate: {},
+    })).resolves.toMatchObject({ matchedRawRevisionIds: [] })
+    await expect(second.replay({
+      selector: { rawRevisionIds: [intake.receipts[0].revision.id] }, invalidate: {},
+    })).resolves.toMatchObject({ matchedRawRevisionIds: [] })
+    await expect(first.replay({
+      selector: { rawRevisionIds: [intake.receipts[0].revision.id] },
+      invalidate: { canonicalSchemaVersions: ['canonical-source-candidate/v0'] },
+    })).resolves.toMatchObject({ matchedRawRevisionIds: [], items: [] })
+    expect((await first.normalization.get(intake.receipts[0].rawRecordId)).attempts
+      .map(({ id }) => id)).toEqual(before.attempts.map(({ id }) => id))
+
+    await first.replay({
+      selector: { rawRevisionIds: [intake.receipts[0].revision.id] }, invalidate: {},
+      fieldDirectives: [{
+        action: 'suppress', field: 'companyName', reason: 'HTTP suppression proof',
+        inputHash: `sha256:${'e'.repeat(64)}`, policyVersion: 'user-suppression/v1',
+      }],
+    })
+    await expect(first.normalization.get(intake.receipts[0].rawRecordId)).resolves.toMatchObject({
+      canonicalCandidate: null,
+      gate: { status: 'needs_enrichment', missingFields: ['companyName'] },
+      fieldOutcomes: expect.arrayContaining([expect.objectContaining({
+        field: 'companyName', status: 'suppressed', policyVersion: 'user-suppression/v1',
+      })]),
+    })
+
+    const receipt = await first.replay({
+      selector: { rawRevisionIds: [intake.receipts[0].revision.id] }, invalidate: {},
+      fieldDirectives: [{
+        action: 'lock', field: 'companyName', value: 'HTTP Replacement',
+        reason: 'HTTP lock proof', inputHash: `sha256:${'f'.repeat(64)}`,
+        policyVersion: 'user-lock/v2',
+      }],
+    })
+    expect(receipt).toMatchObject({
+      matchedRawRevisionIds: [intake.receipts[0].revision.id], status: 'completed',
+      completedAt: expect.any(String),
+      items: [{
+        status: 'completed', rawRecordId: intake.receipts[0].rawRecordId,
+        rawRevisionId: intake.receipts[0].revision.id,
+        normalizationRunId: expect.any(String),
+      }],
+    })
+    const replayed = await first.normalization.get(intake.receipts[0].rawRecordId)
+    expect(replayed.canonicalCandidate?.companyName).toBe('HTTP Replacement')
+    expect(replayed.attempts.map(({ id }) => id)).not.toEqual(before.attempts.map(({ id }) => id))
+
+    await server.close()
+    const restarted = createLocalValedictorianClient({ sqlitePath: firstPath, workspaceId: 'workspace / one' })
+    server = await createValedictorianHttpServer({ client: restarted, host: '127.0.0.1', port: 0 })
+    root = createHttpValedictorianClient({ baseUrl: server.url })
+    first = root.forWorkspace('workspace / one').sourcing.rawRecords
+    await expect(first.normalization.get(intake.receipts[0].rawRecordId)).resolves.toEqual(replayed)
+  })
+
+  it('bounds replay request bodies before parsing or persistence', async () => {
     server = await createValedictorianHttpServer({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',

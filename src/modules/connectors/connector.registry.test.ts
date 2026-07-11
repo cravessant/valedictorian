@@ -44,10 +44,10 @@ describe('connector registry', () => {
       ),
     ) as { version: string }
 
-    expect(appPackage.dependencies.sparxie).toBe('0.7.6')
+    expect(appPackage.dependencies.sparxie).toBe('0.8.0')
     expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.4.3')
     expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.4.3')
-    expect(sparxiePackage.version).toBe('0.7.6')
+    expect(sparxiePackage.version).toBe('0.8.0')
     expect(jobrightPackage.version).toBe('0.4.3')
     expect(corePackage.version).toBe('0.4.3')
   })

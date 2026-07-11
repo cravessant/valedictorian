@@ -553,10 +553,49 @@ export const normalizationRuns = sqliteTable(
       table.resolverSetHash,
       table.canonicalSchemaVersion,
       table.gatePolicyVersion,
-    ),
+    ).where(sql`${table.triggerId} is null`),
     rawRecordIdx: index('idx_normalization_runs_raw_record').on(table.rawRecordId, table.createdAt),
     statusCheck: check('chk_normalization_runs_status', sql`${table.status} in ('pending','in_progress','completed','blocked','failed')`),
     triggerCheck: check('chk_normalization_runs_trigger_kind', sql`${table.triggerKind} in ('intake')`),
+  }),
+)
+
+export const normalizationReplayRequests = sqliteTable(
+  'normalization_replay_requests',
+  {
+    id: text('id').primaryKey(),
+    selectorJson: text('selector_json').notNull(),
+    invalidationJson: text('invalidation_json').notNull(),
+    targetVersionsJson: text('target_versions_json'),
+    fieldDirectivesJson: text('field_directives_json').notNull(),
+    status: text('status').notNull(),
+    acceptedAt: text('accepted_at').notNull(),
+    completedAt: text('completed_at'),
+  },
+  (table) => ({
+    chronologyIdx: index('idx_normalization_replay_requests_chronology').on(table.acceptedAt, table.id),
+    statusCheck: check('chk_normalization_replay_requests_status', sql`${table.status} in ('accepted','in_progress','completed','completed_with_failures')`),
+  }),
+)
+
+export const normalizationReplayItems = sqliteTable(
+  'normalization_replay_items',
+  {
+    id: text('id').primaryKey(),
+    replayId: text('replay_id').notNull().references(() => normalizationReplayRequests.id),
+    rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
+    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    inputHash: text('input_hash').notNull(),
+    sequence: integer('sequence').notNull(),
+    status: text('status').notNull(),
+    normalizationRunId: text('normalization_run_id').references(() => normalizationRuns.id),
+    failureJson: text('failure_json'),
+    completedAt: text('completed_at'),
+  },
+  (table) => ({
+    sequenceIdx: uniqueIndex('idx_normalization_replay_items_sequence').on(table.replayId, table.sequence),
+    revisionIdx: uniqueIndex('idx_normalization_replay_items_revision').on(table.replayId, table.rawRevisionId),
+    statusCheck: check('chk_normalization_replay_items_status', sql`${table.status} in ('pending','completed','failed')`),
   }),
 )
 
@@ -729,6 +768,8 @@ export const schema = {
   normalizationAttempts,
   normalizationFieldOutcomes,
   normalizationGates,
+  normalizationReplayItems,
+  normalizationReplayRequests,
   normalizationRuns,
   policyConfig,
   policyEvidence,

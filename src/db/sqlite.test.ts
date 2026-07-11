@@ -124,7 +124,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(12)
+    expect(migrationRows).toHaveLength(13)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -179,7 +179,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 12 })
+    ).toEqual({ count: 13 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -212,6 +212,7 @@ describe('SQLite database', () => {
     const tables = [
       'normalization_runs', 'normalization_attempts', 'normalization_field_outcomes',
       'canonical_source_candidates', 'normalization_gates',
+      'normalization_replay_requests', 'normalization_replay_items',
     ]
     const indexes = [
       'idx_normalization_runs_cache', 'idx_normalization_runs_raw_record',
@@ -220,15 +221,113 @@ describe('SQLite database', () => {
       'idx_normalization_field_outcomes_resolver', 'idx_canonical_source_candidates_run',
       'idx_canonical_source_candidates_revision_schema', 'idx_normalization_gates_run',
       'idx_normalization_gates_policy',
+      'idx_normalization_replay_requests_chronology',
+      'idx_normalization_replay_items_sequence', 'idx_normalization_replay_items_revision',
     ]
     for (const table of tables) expect(tableDefinition(legacy, table)).toEqual(tableDefinition(fresh, table))
     for (const index of indexes) expect(indexDefinition(legacy, index)).toEqual(indexDefinition(fresh, index))
+    expect(indexDefinition(fresh, 'idx_normalization_runs_cache')).toMatchObject({
+      unique: true,
+      predicate: expect.stringMatching(/trigger_id.*is null/i),
+    })
     expect(tableDefinition(fresh, 'normalization_gates').checks).toEqual([
       'chk_normalization_gates_status', 'chk_normalization_gates_candidate',
+    ])
+    expect(tableDefinition(fresh, 'normalization_replay_requests').checks).toEqual([
+      'chk_normalization_replay_requests_status',
+    ])
+    expect(tableDefinition(fresh, 'normalization_replay_items').checks).toEqual([
+      'chk_normalization_replay_items_status',
     ])
     expect(fresh.prepare('pragma foreign_key_check').all()).toEqual([])
     fresh.close()
     legacy.close()
+  })
+
+  it('upgrades persisted normalization history to replay support without breaking foreign keys', () => {
+    const oldMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-old-migrations-'))
+    fs.cpSync(path.resolve('drizzle'), oldMigrations, { recursive: true })
+    const replayMigration = fs.readdirSync(oldMigrations).find((name) => name.startsWith('0012_'))
+    if (!replayMigration) throw new Error('Replay migration fixture is missing')
+    fs.rmSync(path.join(oldMigrations, replayMigration))
+    const oldJournalPath = path.join(oldMigrations, 'meta', '_journal.json')
+    const oldJournal = JSON.parse(fs.readFileSync(oldJournalPath, 'utf8')) as {
+      entries: Array<{ idx: number }>
+    }
+    oldJournal.entries = oldJournal.entries.filter(({ idx }) => idx <= 11)
+    fs.writeFileSync(oldJournalPath, `${JSON.stringify(oldJournal, null, 2)}\n`)
+
+    const database = createInMemoryDatabase()
+    migrateDatabase(database, { migrationsFolder: oldMigrations })
+    database.exec(`
+      insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+      values ('entity-1', 'provider_job', 'fixture', 'job-1', '2026-07-10T12:00:00.000Z');
+      insert into raw_source_records (id, source_entity_id, created_at)
+      values ('record-1', 'entity-1', '2026-07-10T12:00:00.000Z');
+      insert into raw_source_revisions (
+        id, raw_record_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
+        observed_at, provider_record_id, payload_json, evidence_json, created_at
+      ) values (
+        'revision-1', 'record-1', 1, 'sha256:fixture', 'fixture', 'manual', '1.0.0',
+        '2026-07-10T12:00:00.000Z', 'job-1', '{}', '[]', '2026-07-10T12:00:00.000Z'
+      );
+      insert into normalization_runs (
+        id, raw_record_id, raw_revision_id, input_hash, resolver_set_hash,
+        canonical_schema_version, gate_policy_version, trigger_kind, trigger_id,
+        status, created_at, updated_at
+      ) values (
+        'run-1', 'record-1', 'revision-1', 'sha256:input', 'sha256:resolvers',
+        'canonical-source-candidate/v1', 'sourcing-admission/v1', 'intake', null,
+        'completed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'
+      );
+      insert into normalization_attempts (
+        id, run_id, raw_revision_id, sequence, resolver_id, resolver_version, input_hash,
+        declaration_json, applicability_json, status, started_at, completed_at
+      ) values (
+        'attempt-1', 'run-1', 'revision-1', 0, 'fixture', '1.0.0', 'sha256:attempt',
+        '{}', '[]', 'completed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'
+      );
+    `)
+
+    migrateDatabase(database)
+
+    expect(database.prepare('select id, trigger_kind, trigger_id from normalization_runs').all())
+      .toEqual([{ id: 'run-1', trigger_kind: 'intake', trigger_id: null }])
+    expect(database.prepare('select id, run_id from normalization_attempts').all())
+      .toEqual([{ id: 'attempt-1', run_id: 'run-1' }])
+    expect(() => database.exec(`
+      insert into normalization_runs (
+        id, raw_record_id, raw_revision_id, input_hash, resolver_set_hash,
+        canonical_schema_version, gate_policy_version, trigger_kind, trigger_id,
+        status, created_at, updated_at
+      ) values (
+        'run-duplicate-intake', 'record-1', 'revision-1', 'sha256:input', 'sha256:resolvers',
+        'canonical-source-candidate/v1', 'sourcing-admission/v1', 'intake', null,
+        'completed', '2026-07-10T12:01:00.000Z', '2026-07-10T12:01:00.000Z'
+      );
+    `)).toThrow(/unique/i)
+    database.exec(`
+      insert into normalization_runs (
+        id, raw_record_id, raw_revision_id, input_hash, resolver_set_hash,
+        canonical_schema_version, gate_policy_version, trigger_kind, trigger_id,
+        status, created_at, updated_at
+      ) values
+      (
+        'run-replay-1', 'record-1', 'revision-1', 'sha256:input', 'sha256:resolvers',
+        'canonical-source-candidate/v1', 'sourcing-admission/v1', 'intake', 'replay-1',
+        'completed', '2026-07-10T12:02:00.000Z', '2026-07-10T12:02:00.000Z'
+      ),
+      (
+        'run-replay-2', 'record-1', 'revision-1', 'sha256:input', 'sha256:resolvers',
+        'canonical-source-candidate/v1', 'sourcing-admission/v1', 'intake', 'replay-2',
+        'completed', '2026-07-10T12:03:00.000Z', '2026-07-10T12:03:00.000Z'
+      );
+    `)
+    expect(database.prepare("select id from normalization_runs where trigger_id is not null order by id").all())
+      .toEqual([{ id: 'run-replay-1' }, { id: 'run-replay-2' }])
+    expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
+    expect(tableColumns(database, 'normalization_replay_requests')).toContain('completed_at')
+    database.close()
   })
 
   it('adds projection and version metadata columns to legacy connector observation tables', () => {
@@ -930,6 +1029,7 @@ function indexDefinition(
 
   return {
     columns: database.prepare(`pragma index_info('${indexName}')`).all(),
+    predicate: row.sql.match(/\swhere\s(.+)$/i)?.[1] ?? null,
     unique: /^create unique index/i.test(row.sql),
   }
 }

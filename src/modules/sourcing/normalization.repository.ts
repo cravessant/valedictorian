@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { and, asc, desc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import type {
   CanonicalSourceCandidate,
   FieldResolutionOutcome,
@@ -56,6 +56,8 @@ export function createSqliteNormalizationRepository(database: DrizzleDatabase) {
         eq(normalizationRuns.rawRevisionId, rawRevisionId), eq(normalizationRuns.inputHash, inputHash),
         eq(normalizationRuns.resolverSetHash, resolverSetHash), eq(normalizationRuns.canonicalSchemaVersion, canonicalSchemaVersion),
         eq(normalizationRuns.gatePolicyVersion, gatePolicyVersion),
+        eq(normalizationRuns.triggerKind, 'intake'),
+        isNull(normalizationRuns.triggerId),
       )).get()
       return run && ['completed','failed','blocked'].includes(run.status) ? mapResult(database, run) : null
     },
@@ -68,13 +70,13 @@ export function createSqliteNormalizationRepository(database: DrizzleDatabase) {
       database.insert(sourceEntities).values(entity).run()
       return entity
     },
-    persist(input: PersistNormalizationInput) {
+    persist(input: PersistNormalizationInput & { triggerId?: string }) {
       database.transaction((transaction) => {
         transaction.insert(normalizationRuns).values({
           id: input.runId, rawRecordId: input.rawRecordId, rawRevisionId: input.rawRevisionId,
           inputHash: input.inputHash, resolverSetHash: input.resolverSetHash,
           canonicalSchemaVersion: input.canonicalSchemaVersion, gatePolicyVersion: input.gatePolicyVersion,
-          triggerKind: 'intake', triggerId: null, status: input.status, createdAt: input.now, updatedAt: input.now,
+          triggerKind: 'intake', triggerId: input.triggerId ?? null, status: input.status, createdAt: input.now, updatedAt: input.now,
         }).run()
         let outcomeSequence = 0
         input.attempts.forEach((attempt, attemptSequence) => {
@@ -109,8 +111,22 @@ export function createSqliteNormalizationRepository(database: DrizzleDatabase) {
       const run = database.select({ run: normalizationRuns }).from(normalizationRuns)
         .innerJoin(rawSourceRevisions, eq(rawSourceRevisions.id, normalizationRuns.rawRevisionId))
         .where(eq(normalizationRuns.rawRecordId, rawRecordId))
-        .orderBy(desc(rawSourceRevisions.revision), desc(normalizationRuns.createdAt), desc(normalizationRuns.id)).get()?.run
+        .orderBy(
+          desc(rawSourceRevisions.revision),
+          desc(normalizationRuns.createdAt),
+          sql`${normalizationRuns}.rowid desc`,
+        ).get()?.run
       return run ? mapResult(database, run) : null
+    },
+    listHistory(rawRecordId: string) {
+      return database.select({ run: normalizationRuns }).from(normalizationRuns)
+        .innerJoin(rawSourceRevisions, eq(rawSourceRevisions.id, normalizationRuns.rawRevisionId))
+        .where(eq(normalizationRuns.rawRecordId, rawRecordId))
+        .orderBy(
+          desc(rawSourceRevisions.revision),
+          desc(normalizationRuns.createdAt),
+          sql`${normalizationRuns}.rowid desc`,
+        ).all().map(({ run }) => mapResult(database, run))
     },
   }
 }

@@ -722,6 +722,32 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       constraint chk_normalization_runs_trigger_kind check(trigger_kind in ('intake'))
     );
 
+    create table if not exists normalization_replay_requests (
+      id text primary key not null,
+      selector_json text not null,
+      invalidation_json text not null,
+      target_versions_json text,
+      field_directives_json text not null,
+      status text not null,
+      accepted_at text not null,
+      completed_at text,
+      constraint chk_normalization_replay_requests_status check(status in ('accepted','in_progress','completed','completed_with_failures'))
+    );
+
+    create table if not exists normalization_replay_items (
+      id text primary key not null,
+      replay_id text not null references normalization_replay_requests(id),
+      raw_record_id text not null references raw_source_records(id),
+      raw_revision_id text not null references raw_source_revisions(id),
+      input_hash text not null,
+      sequence integer not null,
+      status text not null,
+      normalization_run_id text references normalization_runs(id),
+      failure_json text,
+      completed_at text,
+      constraint chk_normalization_replay_items_status check(status in ('pending','completed','failed'))
+    );
+
     create table if not exists normalization_attempts (
       id text primary key not null,
       run_id text not null references normalization_runs(id),
@@ -849,7 +875,8 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     create index if not exists idx_raw_source_occurrences_record_chronology
       on raw_source_occurrences(raw_record_id, observed_at, received_at, id);
     create unique index if not exists idx_normalization_runs_cache
-      on normalization_runs(raw_revision_id, input_hash, resolver_set_hash, canonical_schema_version, gate_policy_version);
+      on normalization_runs(raw_revision_id, input_hash, resolver_set_hash, canonical_schema_version, gate_policy_version)
+      where "normalization_runs"."trigger_id" is null;
     create index if not exists idx_normalization_runs_raw_record
       on normalization_runs(raw_record_id, created_at);
     create unique index if not exists idx_normalization_attempts_run_sequence
@@ -870,6 +897,12 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on normalization_gates(run_id);
     create index if not exists idx_normalization_gates_policy
       on normalization_gates(policy_version, status);
+    create index if not exists idx_normalization_replay_requests_chronology
+      on normalization_replay_requests(accepted_at, id);
+    create unique index if not exists idx_normalization_replay_items_sequence
+      on normalization_replay_items(replay_id, sequence);
+    create unique index if not exists idx_normalization_replay_items_revision
+      on normalization_replay_items(replay_id, raw_revision_id);
     create index if not exists idx_raw_source_occurrences_revision
       on raw_source_occurrences(raw_revision_id);
 
