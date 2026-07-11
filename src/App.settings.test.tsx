@@ -542,6 +542,67 @@ describe('App settings and chrome', () => {
     expect(within(navigation).queryByRole('button', { name: 'General' })).not.toBeInTheDocument()
   })
 
+  it('operates Jobright from the main Connectors page with responsive write-only controls', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    const appNavigation = screen.getByRole('complementary', { name: 'Application navigation' })
+    fireEvent.click(within(appNavigation).getByRole('button', { name: 'Connectors' }))
+
+    expect(await screen.findByRole('heading', { name: 'Operate connectors' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add Jobright connector' }))
+
+    expect(await screen.findByText('jobright.resolver')).toBeInTheDocument()
+    expect(screen.getByTestId('connector-auth-actions-jobright-default')).toHaveClass('flex-wrap')
+    const runActions = screen.getByTestId('connector-run-actions-jobright-default')
+    expect(runActions).toHaveClass('lg:grid-cols-2')
+    expect(runActions).not.toHaveClass('md:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto]')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add credentials' }))
+    const credentialForm = screen.getByTestId('connector-credential-form-jobright-default')
+    expect(credentialForm).toHaveClass('lg:grid-cols-2')
+    expect(credentialForm).not.toHaveClass(
+      'md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto]',
+    )
+    fireEvent.change(screen.getByLabelText('Jobright email'), {
+      target: { value: 'main-page@example.test' },
+    })
+    fireEvent.change(screen.getByLabelText('Jobright password'), {
+      target: { value: 'main-page-fixture-password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
+
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('main-page@example.test')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('main-page-fixture-password')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    await waitFor(() => {
+      expect(connectorsApi.runs.trigger).toHaveBeenCalledWith(expect.objectContaining({
+        connectorInstanceId: 'jobright-default',
+        mode: 'manual',
+        reason: 'settings_manual_refresh',
+      }))
+    })
+    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'View sourcing runs' }))
+
+    expect(await screen.findByRole('heading', { name: 'Sourcing runs' })).toBeInTheDocument()
+    expect(screen.getByRole('complementary', { name: 'Settings navigation' })).toBeInTheDocument()
+  })
+
   it('adds a Jobright connector instance from settings with default auth and filters', async () => {
     const connectorsApi = createConnectorsApi()
 

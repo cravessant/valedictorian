@@ -32,7 +32,7 @@ import type {
 import { SourcingPage } from './modules/sourcing/SourcingPage'
 import { AppSidebar, AppTopbar } from './app/AppChrome'
 import { formatEnumLabel } from './app/labels'
-import { SettingsPage, SettingsSidebar } from './settings/SettingsPage'
+import { ConnectorSettingsPanel, SettingsPage, SettingsSidebar } from './settings/SettingsPage'
 import { requiresRestart } from './settings/requiresRestart'
 import {
   applicationListSorts,
@@ -1074,6 +1074,21 @@ function App({
             contentColumnClass={contentColumnClass}
             error={connectorStatusError}
             isLoading={isConnectorStatusLoading && !hasLoadedConnectorStatus}
+            operations={(
+              <ConnectorSettingsPanel
+                connectorsApi={connectorsApi}
+                displayMode="main"
+                onConnectorChanged={reloadConnectorRunOutcomes}
+                profileApi={profileApi}
+                onOpenSourcingRuns={() => {
+                  setSettingsOpen(false)
+                  closeTransientSidebar()
+                  setSelectedSettingsPanel(SETTINGS_PANELS.SOURCING_RUNS)
+                  setAppView(APP_VIEWS.SETTINGS)
+                }}
+                onRunSettled={reloadConnectorRunOutcomes}
+              />
+            )}
             result={connectorStatusResult}
             onAction={handleConnectorStatusAction}
           />

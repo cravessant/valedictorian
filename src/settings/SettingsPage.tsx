@@ -316,12 +316,16 @@ const secureStorageUnavailableMessage =
 
 function ConnectorSettingsPanel({
   connectorsApi,
+  displayMode = 'settings',
+  onConnectorChanged = () => undefined,
   onOpenSourcingRuns,
   onRunSettled,
   profileApi,
 }: {
   connectorsApi: ConnectorsPreloadApi
-  onOpenSourcingRuns: () => void
+  displayMode?: 'main' | 'settings'
+  onConnectorChanged?: () => void
+  onOpenSourcingRuns?: () => void
   onRunSettled: () => void
   profileApi: ProfilePreloadApi
 }) {
@@ -529,6 +533,7 @@ function ConnectorSettingsPanel({
           ...currentStates,
           [created.id]: { kind: 'idle' },
         }))
+        onConnectorChanged()
       })
       .catch(() => {
         setConnectorActionError('Jobright connector could not be added.')
@@ -660,6 +665,7 @@ function ConnectorSettingsPanel({
             result,
           },
         }))
+        onConnectorChanged()
       })
       .catch((error) => {
         if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
@@ -718,6 +724,7 @@ function ConnectorSettingsPanel({
             result,
           },
         }))
+        onConnectorChanged()
       })
       .catch((error) => {
         if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
@@ -767,6 +774,7 @@ function ConnectorSettingsPanel({
         setInstances((currentInstances) => currentInstances.map((currentInstance) =>
           currentInstance.id === updated.id ? updated : currentInstance,
         ))
+        onConnectorChanged()
       })
       .catch(() => {
         setConnectorActionError('Jobright settings could not be saved.')
@@ -816,13 +824,25 @@ function ConnectorSettingsPanel({
 
   return (
     <section aria-labelledby="connector-settings-title" className="space-y-7">
-      <div>
-        <h2 id="connector-settings-title" className="text-xl font-semibold text-foreground">
-          Connectors
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Add sources and manage connector auth for this workspace.
-        </p>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          {displayMode === 'main' ? (
+            <p className="text-xs font-medium uppercase text-muted-foreground">Run desk</p>
+          ) : null}
+          <h2 id="connector-settings-title" className="text-xl font-semibold text-foreground">
+            {displayMode === 'main' ? 'Operate connectors' : 'Connectors'}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {displayMode === 'main'
+              ? 'Authenticate, tune, and start API-only sourcing from one place.'
+              : 'Add sources and manage connector auth for this workspace.'}
+          </p>
+        </div>
+        {onOpenSourcingRuns ? (
+          <Button type="button" variant="outline" onClick={onOpenSourcingRuns}>
+            View sourcing runs
+          </Button>
+        ) : null}
       </div>
 
       {connectorActionError ? (
@@ -836,8 +856,8 @@ function ConnectorSettingsPanel({
       ) : null}
 
       <div className="rounded-md border border-border bg-card p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground">Jobright internslist</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Authenticate with Jobright API credentials and run connector refresh.
@@ -854,7 +874,7 @@ function ConnectorSettingsPanel({
         </div>
       </div>
 
-      <div className="space-y-3 rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+      <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
         {instances.length === 0 ? (
           'No connector instances configured.'
         ) : (
@@ -875,12 +895,15 @@ function ConnectorSettingsPanel({
 
                 return (
                   <div key={instance.id} className="grid gap-4 p-3 text-sm">
-                    <div className="grid gap-1 sm:grid-cols-[1fr_auto]">
-                      <div>
+                    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                      <div className="min-w-0">
                         <p className="font-medium text-foreground">{instance.displayName}</p>
                         <p className="text-xs text-muted-foreground">{instance.connectorId}</p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div
+                        className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end"
+                        data-testid={`connector-auth-actions-${instance.id}`}
+                      >
                         <p className="text-xs font-medium text-muted-foreground">
                           {authLabel}
                         </p>
@@ -909,7 +932,10 @@ function ConnectorSettingsPanel({
                     </div>
 
                     {isEditingAuth ? (
-                      <div className="grid gap-3 rounded-md border border-border p-3 md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] md:items-end">
+                      <div
+                        className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
+                        data-testid={`connector-credential-form-${instance.id}`}
+                      >
                         <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                           Jobright email
                           <input
@@ -967,7 +993,10 @@ function ConnectorSettingsPanel({
                       </p>
                     ) : null}
 
-                    <div className="grid gap-3 md:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] md:items-end">
+                    <div
+                      className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] xl:items-end"
+                      data-testid={`connector-run-actions-${instance.id}`}
+                    >
                       <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Role terms
                         <input
@@ -2550,4 +2579,4 @@ function isFunctionalSettingsPanel(panel: SettingsPanelId) {
   )
 }
 
-export { SettingsPage, SettingsSidebar }
+export { ConnectorSettingsPanel, SettingsPage, SettingsSidebar }

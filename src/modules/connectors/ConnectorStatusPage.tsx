@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AlertCircle } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type {
   ConnectorStatusAction,
   ConnectorStatusListResult,
@@ -15,6 +16,7 @@ interface ConnectorStatusPageProps {
   contentColumnClass: string
   error: string | null
   isLoading: boolean
+  operations?: ReactNode
   result: ConnectorStatusListResult
   onAction: (connector: ConnectorStatusView, action: ConnectorStatusAction) => void
 }
@@ -23,14 +25,15 @@ function ConnectorStatusPage({
   contentColumnClass,
   error,
   isLoading,
+  operations,
   result,
   onAction,
 }: ConnectorStatusPageProps) {
   const showTable = result.available && !error && result.items.length > 0
 
   return (
-    <main className={`flex h-full min-w-0 flex-col overflow-hidden px-4 py-5 text-foreground md:h-[calc(100vh-3rem)] sm:px-6 lg:px-8 ${contentColumnClass}`}>
-      <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
+    <main className={`h-full min-w-0 overflow-auto px-4 py-5 text-foreground md:h-[calc(100vh-3rem)] sm:px-6 lg:px-8 ${contentColumnClass}`}>
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-6">
         <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">
@@ -44,6 +47,12 @@ function ConnectorStatusPage({
             {result.available ? `${result.items.length} enabled` : 'Unavailable'}
           </Badge>
         </header>
+
+        {operations ? (
+          <section aria-label="Connector operations">
+            {operations}
+          </section>
+        ) : null}
 
         {isLoading ? (
           <div
@@ -74,7 +83,7 @@ function ConnectorStatusPage({
             Connector status is unavailable for this runtime.
           </section>
         ) : showTable ? (
-          <section className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-card">
+          <section className="flex min-h-72 flex-col rounded-md border border-border bg-card">
             <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
               <p className="text-sm font-medium text-foreground">
                 {result.items.length} connector{result.items.length === 1 ? '' : 's'}
