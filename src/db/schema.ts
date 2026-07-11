@@ -530,6 +530,118 @@ export const rawSourceOccurrences = sqliteTable(
   }),
 )
 
+export const normalizationRuns = sqliteTable(
+  'normalization_runs',
+  {
+    id: text('id').primaryKey(),
+    rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
+    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    inputHash: text('input_hash').notNull(),
+    resolverSetHash: text('resolver_set_hash').notNull(),
+    canonicalSchemaVersion: text('canonical_schema_version').notNull(),
+    gatePolicyVersion: text('gate_policy_version').notNull(),
+    triggerKind: text('trigger_kind').notNull().default('intake'),
+    triggerId: text('trigger_id'),
+    status: text('status').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    cacheIdx: uniqueIndex('idx_normalization_runs_cache').on(
+      table.rawRevisionId,
+      table.inputHash,
+      table.resolverSetHash,
+      table.canonicalSchemaVersion,
+      table.gatePolicyVersion,
+    ),
+    rawRecordIdx: index('idx_normalization_runs_raw_record').on(table.rawRecordId, table.createdAt),
+    statusCheck: check('chk_normalization_runs_status', sql`${table.status} in ('pending','in_progress','completed','blocked','failed')`),
+    triggerCheck: check('chk_normalization_runs_trigger_kind', sql`${table.triggerKind} in ('intake')`),
+  }),
+)
+
+export const normalizationAttempts = sqliteTable(
+  'normalization_attempts',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull().references(() => normalizationRuns.id),
+    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    sequence: integer('sequence').notNull(),
+    resolverId: text('resolver_id').notNull(),
+    resolverVersion: text('resolver_version').notNull(),
+    inputHash: text('input_hash').notNull(),
+    declarationJson: text('declaration_json').notNull(),
+    applicabilityJson: text('applicability_json').notNull(),
+    status: text('status').notNull(),
+    startedAt: text('started_at').notNull(),
+    completedAt: text('completed_at'),
+  },
+  (table) => ({
+    sequenceIdx: uniqueIndex('idx_normalization_attempts_run_sequence').on(table.runId, table.sequence),
+    resolverIdx: index('idx_normalization_attempts_resolver').on(table.resolverId, table.resolverVersion, table.inputHash),
+  }),
+)
+
+export const normalizationFieldOutcomes = sqliteTable(
+  'normalization_field_outcomes',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull().references(() => normalizationRuns.id),
+    attemptId: text('attempt_id').notNull().references(() => normalizationAttempts.id),
+    sequence: integer('sequence').notNull(),
+    attemptSequence: integer('attempt_sequence').notNull(),
+    outcomeIndex: integer('outcome_index').notNull(),
+    field: text('field').notNull(),
+    status: text('status').notNull(),
+    resolverId: text('resolver_id').notNull(),
+    resolverVersion: text('resolver_version').notNull(),
+    inputHash: text('input_hash').notNull(),
+    outcomeJson: text('outcome_json').notNull(),
+  },
+  (table) => ({
+    sequenceIdx: uniqueIndex('idx_normalization_field_outcomes_run_sequence').on(table.runId, table.sequence),
+    selectorIdx: index('idx_normalization_field_outcomes_selector').on(table.runId, table.field, table.attemptSequence, table.outcomeIndex),
+    resolverIdx: index('idx_normalization_field_outcomes_resolver').on(table.resolverId, table.resolverVersion, table.inputHash),
+  }),
+)
+
+export const canonicalSourceCandidates = sqliteTable(
+  'canonical_source_candidates',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull().references(() => normalizationRuns.id),
+    sourceEntityId: text('source_entity_id').notNull().references(() => sourceEntities.id),
+    rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
+    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    schemaVersion: text('schema_version').notNull(),
+    candidateJson: text('candidate_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    runIdx: uniqueIndex('idx_canonical_source_candidates_run').on(table.runId),
+    revisionSchemaIdx: index('idx_canonical_source_candidates_revision_schema').on(table.rawRevisionId, table.schemaVersion),
+  }),
+)
+
+export const normalizationGates = sqliteTable(
+  'normalization_gates',
+  {
+    id: text('id').primaryKey(),
+    runId: text('run_id').notNull().references(() => normalizationRuns.id),
+    policyVersion: text('policy_version').notNull(),
+    status: text('status').notNull(),
+    candidateId: text('candidate_id').references(() => canonicalSourceCandidates.id),
+    gateJson: text('gate_json').notNull(),
+    evaluatedAt: text('evaluated_at').notNull(),
+  },
+  (table) => ({
+    runIdx: uniqueIndex('idx_normalization_gates_run').on(table.runId),
+    policyIdx: index('idx_normalization_gates_policy').on(table.policyVersion, table.status),
+    statusCheck: check('chk_normalization_gates_status', sql`${table.status} in ('passed','needs_enrichment','rejected','failed')`),
+    candidateCheck: check('chk_normalization_gates_candidate', sql`(${table.status} = 'passed' and ${table.candidateId} is not null) or (${table.status} <> 'passed' and ${table.candidateId} is null)`),
+  }),
+)
+
 export const sourcingFindings = sqliteTable(
   'sourcing_findings',
   {
@@ -613,6 +725,11 @@ export const schema = {
   connectorObservations,
   connectorProjectionKeys,
   connectorRuns,
+  canonicalSourceCandidates,
+  normalizationAttempts,
+  normalizationFieldOutcomes,
+  normalizationGates,
+  normalizationRuns,
   policyConfig,
   policyEvidence,
   profileAnswers,

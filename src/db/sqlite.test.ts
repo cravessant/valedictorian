@@ -124,7 +124,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(11)
+    expect(migrationRows).toHaveLength(12)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -179,7 +179,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 11 })
+    ).toEqual({ count: 12 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -191,6 +191,44 @@ describe('SQLite database', () => {
       expect(indexDefinition(database, index)).toEqual(indexDefinition(freshlyMigrated, index))
     }
     freshlyMigrated.close()
+  })
+
+  it('creates structurally equivalent normalization history for fresh and legacy workspaces', () => {
+    const legacy = createInMemoryDatabase()
+    legacy.exec(`
+      create table companies (
+        id text primary key,
+        name text not null,
+        normalized_name text not null,
+        website_url text,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+    `)
+    migrateDatabase(legacy)
+    const fresh = createInMemoryDatabase()
+    migrateDatabase(fresh)
+    const tables = [
+      'normalization_runs', 'normalization_attempts', 'normalization_field_outcomes',
+      'canonical_source_candidates', 'normalization_gates',
+    ]
+    const indexes = [
+      'idx_normalization_runs_cache', 'idx_normalization_runs_raw_record',
+      'idx_normalization_attempts_run_sequence', 'idx_normalization_attempts_resolver',
+      'idx_normalization_field_outcomes_run_sequence', 'idx_normalization_field_outcomes_selector',
+      'idx_normalization_field_outcomes_resolver', 'idx_canonical_source_candidates_run',
+      'idx_canonical_source_candidates_revision_schema', 'idx_normalization_gates_run',
+      'idx_normalization_gates_policy',
+    ]
+    for (const table of tables) expect(tableDefinition(legacy, table)).toEqual(tableDefinition(fresh, table))
+    for (const index of indexes) expect(indexDefinition(legacy, index)).toEqual(indexDefinition(fresh, index))
+    expect(tableDefinition(fresh, 'normalization_gates').checks).toEqual([
+      'chk_normalization_gates_status', 'chk_normalization_gates_candidate',
+    ])
+    expect(fresh.prepare('pragma foreign_key_check').all()).toEqual([])
+    fresh.close()
+    legacy.close()
   })
 
   it('adds projection and version metadata columns to legacy connector observation tables', () => {

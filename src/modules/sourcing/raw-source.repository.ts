@@ -328,6 +328,7 @@ function validateRecord(record: RawSourceRecordInput, index: number) {
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
     throw validationError(`records[${index}] must be an object`)
   }
+  assertNoCredentialBearingHttpUrls(record, `records[${index}]`)
   assertKnownKeys(
     record,
     [
@@ -508,6 +509,31 @@ function validateOptionalText(value: unknown, field: string, maximum: number) {
   if (typeof value !== 'string' || value.length > maximum) {
     throw validationError(`${field} must be at most ${maximum} characters`)
   }
+}
+
+function assertNoCredentialBearingHttpUrls(
+  value: unknown,
+  field: string,
+  ancestors = new Set<object>(),
+) {
+  if (typeof value === 'string') {
+    let url: URL
+    try {
+      url = new URL(value)
+    } catch {
+      return
+    }
+    if ((url.protocol === 'http:' || url.protocol === 'https:') && (url.username || url.password)) {
+      throw validationError(`${field} contains a credential-bearing HTTP URL`)
+    }
+    return
+  }
+  if (!value || typeof value !== 'object' || ancestors.has(value)) return
+  ancestors.add(value)
+  for (const child of Array.isArray(value) ? value : Object.values(value)) {
+    assertNoCredentialBearingHttpUrls(child, field, ancestors)
+  }
+  ancestors.delete(value)
 }
 
 function assertNoSensitiveKeys(

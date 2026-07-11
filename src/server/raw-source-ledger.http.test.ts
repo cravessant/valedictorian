@@ -5,6 +5,10 @@ import path from 'node:path'
 import { createHttpValedictorianClient, ValedictorianHttpError } from 'sparxie'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import {
+  createDefaultNormalizationResolverRegistry,
+  createNormalizationResolverRegistry,
+} from '../modules/sourcing/normalization.registry'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
 
 describe('raw source ledger HTTP API', () => {
@@ -386,6 +390,68 @@ describe('raw source ledger HTTP API', () => {
     }
   })
 
+  it('rejects credential-bearing HTTP URLs across raw envelopes atomically without echoing credentials', async () => {
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      host: '127.0.0.1',
+      port: 0,
+    })
+    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(
+      'workspace-1',
+    ).sourcing.rawRecords
+    const username = 'raw-user-must-not-leak'
+    const password = 'raw-password-must-not-leak'
+    const credentialUrl = `https://${username}:${password}@jobs.lever.co/acme/job-1`
+    const unsafeEnvelopes = [
+      { payload: { nested: [{ applicationUrl: credentialUrl }] } },
+      { evidence: [{ kind: 'fixture', label: 'nested URL', value: { applicationUrl: credentialUrl } }] },
+      { reportedOrigin: { kind: 'job_board' as const, name: 'Fixture', url: credentialUrl } },
+      { providerRecordId: credentialUrl },
+    ]
+
+    for (const [index, unsafeEnvelope] of unsafeEnvelopes.entries()) {
+      const base = {
+        adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
+        observedAt: '2026-07-10T12:00:00.000Z',
+        providerSchema: 'jobs@1',
+      }
+      const error = await rawRecords.ingestBatch({ records: [
+        { ...base, providerRecordId: `credential-canary-${index}`, payload: { safe: true } },
+        { ...base, providerRecordId: `credential-target-${index}`, ...unsafeEnvelope },
+      ] }).catch((caught: unknown) => caught) as ValedictorianHttpError
+
+      expect(error).toMatchObject({ status: 400 })
+      expect(error.message).not.toContain(username)
+      expect(error.message).not.toContain(password)
+      expect(JSON.stringify(error.body)).not.toContain(username)
+      expect(JSON.stringify(error.body)).not.toContain(password)
+
+      const accepted = await rawRecords.ingestBatch({ records: [
+        { ...base, providerRecordId: `credential-canary-${index}`, payload: { safe: true } },
+        {
+          ...base,
+          providerRecordId: `credential-target-${index}`,
+          payload: { contact: 'person@example.com', note: 'user:password@jobs.lever.co/acme/job-1' },
+        },
+      ] })
+      expect(accepted.receipts.map(({ revision }) => revision)).toEqual([
+        expect.objectContaining({ reused: false, revision: 1 }),
+        expect.objectContaining({ reused: false, revision: 1 }),
+      ])
+      const raw = await rawRecords.get(accepted.receipts[1].rawRecordId)
+      const serializedRaw = JSON.stringify(raw)
+      expect(serializedRaw).not.toContain(username)
+      expect(serializedRaw).not.toContain(password)
+      expect(raw.latestRevision.payload).toEqual({
+        contact: 'person@example.com', note: 'user:password@jobs.lever.co/acme/job-1',
+      })
+      const normalization = await rawRecords.normalization.get(accepted.receipts[1].rawRecordId)
+      expect(normalization.canonicalCandidate).toBeNull()
+      expect(JSON.stringify(normalization)).not.toContain(username)
+      expect(JSON.stringify(normalization)).not.toContain(password)
+    }
+  })
+
   it('rejects sensitive aliases and unknown properties across the raw envelope atomically', async () => {
     server = await createValedictorianHttpServer({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
@@ -511,7 +577,7 @@ describe('raw source ledger HTTP API', () => {
     expect(JSON.parse(response.body)).toEqual({ message: 'Request body exceeds the raw batch limit' })
   })
 
-  it('reports normalization and replay as capability unavailable', async () => {
+  it('commits raw intake then exposes a passed deterministic normalization result', async () => {
     server = await createValedictorianHttpServer({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
@@ -521,13 +587,49 @@ describe('raw source ledger HTTP API', () => {
       'workspace-1',
     ).sourcing.rawRecords
 
-    await expect(rawRecords.normalization.get('raw-record-id')).rejects.toMatchObject({
-      status: 501,
-      body: {
-        code: 'capability_unavailable',
-        message: 'Raw source normalization is unavailable in the local backend',
+    const findingCountBefore = await createHttpValedictorianClient({ baseUrl: server.url })
+      .forWorkspace('workspace-1').sourcing.findings.list()
+    const intake = await rawRecords.ingestBatch({
+      records: [{
+        adapter: { id: 'valedictorian.cli', kind: 'cli', version: '0.7.6' },
+        observedAt: '2026-07-10T12:00:00.000Z',
+        payload: {
+          companyName: '  Fixture Robotics  ',
+          roleTitle: ' Software Intern ',
+          applicationUrl: 'https://boards.greenhouse.io/fixture/jobs/123?ref=source',
+          sourceUrl: 'https://Example.com/source?id=42&utm_source=kept#fragment',
+        },
+      }],
+    })
+    const result = await rawRecords.normalization.get(intake.receipts[0].rawRecordId)
+
+    expect(result).toMatchObject({
+      rawRecordId: intake.receipts[0].rawRecordId,
+      rawRevisionId: intake.receipts[0].revision.id,
+      canonicalSchemaVersion: 'canonical-source-candidate/v1',
+      status: 'completed',
+      gate: { status: 'passed', policyVersion: 'sourcing-admission/v1' },
+      canonicalCandidate: {
+        companyName: 'Fixture Robotics',
+        roleTitle: 'Software Intern',
+        destination: {
+          class: 'employer_or_ats',
+          url: 'https://boards.greenhouse.io/fixture/jobs/123',
+        },
+        sourceUrl: 'https://example.com/source?id=42&utm_source=kept',
       },
     })
+    expect(result.attempts.length).toBeGreaterThan(0)
+    expect(result.fieldOutcomes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'companyName', status: 'resolved' }),
+      expect.objectContaining({ field: 'roleTitle', status: 'resolved' }),
+      expect.objectContaining({ field: 'destinationUrl', status: 'resolved' }),
+    ]))
+    await expect(createHttpValedictorianClient({ baseUrl: server.url })
+      .forWorkspace('workspace-1').sourcing.findings.list()).resolves.toMatchObject({
+      total: findingCountBefore.total,
+    })
+
     await expect(
       rawRecords.replay({ selector: { rawRecordIds: ['raw-record-id'] }, invalidate: {} }),
     ).rejects.toMatchObject({
@@ -537,6 +639,101 @@ describe('raw source ledger HTTP API', () => {
         message: 'Raw source replay is unavailable in the local backend',
       },
     })
+  })
+
+  it('persists needs-enrichment across restart and reuses an exact terminal run', async () => {
+    const sqlitePath = createTempSqlitePath()
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath }), host: '127.0.0.1', port: 0,
+    })
+    let rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
+      .forWorkspace('workspace-1').sourcing.rawRecords
+    const record = {
+      adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1.0.0' },
+      providerRecordId: 'missing-destination-1',
+      observedAt: '2026-07-10T12:00:00.000Z',
+      payload: { companyName: 'Fixture Robotics', roleTitle: 'Software Intern' },
+    }
+    const first = await rawRecords.ingestBatch({ records: [record] })
+    const firstResult = await rawRecords.normalization.get(first.receipts[0].rawRecordId)
+    expect(firstResult).toMatchObject({
+      status: 'completed',
+      gate: { status: 'needs_enrichment', missingFields: ['destinationUrl'] },
+      canonicalCandidate: null,
+    })
+
+    const second = await rawRecords.ingestBatch({ records: [record] })
+    const reused = await rawRecords.normalization.get(second.receipts[0].rawRecordId)
+    expect(second.receipts[0].revision.reused).toBe(true)
+    expect(reused.attempts.map(({ id }) => id)).toEqual(firstResult.attempts.map(({ id }) => id))
+    expect(reused.updatedAt).toBe(firstResult.updatedAt)
+
+    await server.close()
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath }), host: '127.0.0.1', port: 0,
+    })
+    rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
+      .forWorkspace('workspace-1').sourcing.rawRecords
+    await expect(rawRecords.normalization.get(first.receipts[0].rawRecordId)).resolves.toEqual(firstResult)
+  })
+
+  it('persists a throwing resolver failure without rolling back intake or stopping the batch', async () => {
+    const defaults = createDefaultNormalizationResolverRegistry()
+    const registry = createNormalizationResolverRegistry([
+      {
+        declaration: {
+          id: 'fixture.throwing', version: '1.0.0',
+          supportedAdapters: { ids: ['throw-adapter'] },
+          requiredInputs: ['rawRevision'], outputFields: ['companyName'],
+          capabilities: ['pure'], costClass: 'none', precedence: 1_000,
+        },
+        resolve() { throw new Error('synthetic resolver failure') },
+      },
+      ...defaults.resolvers,
+    ])
+    server = await createValedictorianHttpServer({
+      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), normalizationRegistry: registry }),
+      host: '127.0.0.1', port: 0,
+    })
+    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
+      .forWorkspace('workspace-1').sourcing.rawRecords
+    const common = {
+      observedAt: '2026-07-10T12:00:00.000Z',
+      payload: { companyName: 'Fixture', roleTitle: 'Intern', applicationUrl: 'https://jobs.lever.co/fixture/job-123' },
+    }
+    const intake = await rawRecords.ingestBatch({ records: [
+      { ...common, adapter: { id: 'throw-adapter', kind: 'manual', version: '1.0.0' } },
+      { ...common, adapter: { id: 'safe-adapter', kind: 'manual', version: '1.0.0' } },
+    ] })
+
+    expect(intake.receipts).toHaveLength(2)
+    await expect(rawRecords.get(intake.receipts[0].rawRecordId)).resolves.toBeTruthy()
+    await expect(rawRecords.get(intake.receipts[1].rawRecordId)).resolves.toBeTruthy()
+    await expect(rawRecords.normalization.get(intake.receipts[0].rawRecordId)).resolves.toMatchObject({
+      status: 'failed', gate: { status: 'failed', candidate: null },
+      attempts: expect.arrayContaining([expect.objectContaining({ resolver: expect.objectContaining({ id: 'fixture.throwing' }), status: 'failed' })]),
+    })
+    await expect(rawRecords.normalization.get(intake.receipts[1].rawRecordId)).resolves.toMatchObject({
+      status: 'completed', gate: { status: 'passed' },
+    })
+  })
+
+  it('keeps persisted normalization isolated behind encoded workspace routes', async () => {
+    const firstClient = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), workspaceId: 'workspace / one' })
+    const secondClient = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), workspaceId: 'workspace / two' })
+    server = await createValedictorianHttpServer({
+      client: firstClient, host: '127.0.0.1', port: 0,
+      resolveWorkspaceClient: (workspaceId) => workspaceId === 'workspace / one' ? firstClient : secondClient,
+    })
+    const root = createHttpValedictorianClient({ baseUrl: server.url })
+    const first = root.forWorkspace('workspace / one').sourcing.rawRecords
+    const second = root.forWorkspace('workspace / two').sourcing.rawRecords
+    const intake = await first.ingestBatch({ records: [{
+      adapter: { id: 'manual', kind: 'manual', version: '1.0.0' }, observedAt: '2026-07-10T12:00:00.000Z',
+      payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-1' },
+    }] })
+    await expect(first.normalization.get(intake.receipts[0].rawRecordId)).resolves.toMatchObject({ status: 'completed' })
+    await expect(second.normalization.get(intake.receipts[0].rawRecordId)).rejects.toMatchObject({ status: 404 })
   })
 
   it('bounds unsupported replay request bodies before returning capability unavailable', async () => {

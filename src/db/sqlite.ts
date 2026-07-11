@@ -705,6 +705,76 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       received_at text not null
     );
 
+    create table if not exists normalization_runs (
+      id text primary key not null,
+      raw_record_id text not null references raw_source_records(id),
+      raw_revision_id text not null references raw_source_revisions(id),
+      input_hash text not null,
+      resolver_set_hash text not null,
+      canonical_schema_version text not null,
+      gate_policy_version text not null,
+      trigger_kind text not null default 'intake',
+      trigger_id text,
+      status text not null,
+      created_at text not null,
+      updated_at text not null,
+      constraint chk_normalization_runs_status check(status in ('pending','in_progress','completed','blocked','failed')),
+      constraint chk_normalization_runs_trigger_kind check(trigger_kind in ('intake'))
+    );
+
+    create table if not exists normalization_attempts (
+      id text primary key not null,
+      run_id text not null references normalization_runs(id),
+      raw_revision_id text not null references raw_source_revisions(id),
+      sequence integer not null,
+      resolver_id text not null,
+      resolver_version text not null,
+      input_hash text not null,
+      declaration_json text not null,
+      applicability_json text not null,
+      status text not null,
+      started_at text not null,
+      completed_at text
+    );
+
+    create table if not exists normalization_field_outcomes (
+      id text primary key not null,
+      run_id text not null references normalization_runs(id),
+      attempt_id text not null references normalization_attempts(id),
+      sequence integer not null,
+      attempt_sequence integer not null,
+      outcome_index integer not null,
+      field text not null,
+      status text not null,
+      resolver_id text not null,
+      resolver_version text not null,
+      input_hash text not null,
+      outcome_json text not null
+    );
+
+    create table if not exists canonical_source_candidates (
+      id text primary key not null,
+      run_id text not null references normalization_runs(id),
+      source_entity_id text not null references source_entities(id),
+      raw_record_id text not null references raw_source_records(id),
+      raw_revision_id text not null references raw_source_revisions(id),
+      schema_version text not null,
+      candidate_json text not null,
+      created_at text not null
+    );
+
+    create table if not exists normalization_gates (
+      id text primary key not null,
+      run_id text not null references normalization_runs(id),
+      policy_version text not null,
+      status text not null,
+      candidate_id text references canonical_source_candidates(id),
+      gate_json text not null,
+      evaluated_at text not null,
+      constraint chk_normalization_gates_status check(status in ('passed','needs_enrichment','rejected','failed')),
+      constraint chk_normalization_gates_candidate check((status = 'passed' and candidate_id is not null) or (status <> 'passed' and candidate_id is null))
+    );
+
     create table if not exists sourcing_findings (
       id text primary key,
       workflow_run_id text not null references workflow_runs(id),
@@ -778,6 +848,28 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on raw_source_revisions(raw_record_id, content_hash);
     create index if not exists idx_raw_source_occurrences_record_chronology
       on raw_source_occurrences(raw_record_id, observed_at, received_at, id);
+    create unique index if not exists idx_normalization_runs_cache
+      on normalization_runs(raw_revision_id, input_hash, resolver_set_hash, canonical_schema_version, gate_policy_version);
+    create index if not exists idx_normalization_runs_raw_record
+      on normalization_runs(raw_record_id, created_at);
+    create unique index if not exists idx_normalization_attempts_run_sequence
+      on normalization_attempts(run_id, sequence);
+    create index if not exists idx_normalization_attempts_resolver
+      on normalization_attempts(resolver_id, resolver_version, input_hash);
+    create unique index if not exists idx_normalization_field_outcomes_run_sequence
+      on normalization_field_outcomes(run_id, sequence);
+    create index if not exists idx_normalization_field_outcomes_selector
+      on normalization_field_outcomes(run_id, field, attempt_sequence, outcome_index);
+    create index if not exists idx_normalization_field_outcomes_resolver
+      on normalization_field_outcomes(resolver_id, resolver_version, input_hash);
+    create unique index if not exists idx_canonical_source_candidates_run
+      on canonical_source_candidates(run_id);
+    create index if not exists idx_canonical_source_candidates_revision_schema
+      on canonical_source_candidates(raw_revision_id, schema_version);
+    create unique index if not exists idx_normalization_gates_run
+      on normalization_gates(run_id);
+    create index if not exists idx_normalization_gates_policy
+      on normalization_gates(policy_version, status);
     create index if not exists idx_raw_source_occurrences_revision
       on raw_source_occurrences(raw_revision_id);
 

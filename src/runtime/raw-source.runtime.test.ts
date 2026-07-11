@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
 
 describe('local raw source runtime', () => {
-  it('wires raw source persistence without enabling normalization execution', async () => {
+  it('wires raw source persistence to deterministic normalization', async () => {
     const client = createLocalValedictorianClient({
       sqlitePath: path.join(
         fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-runtime-')),
@@ -28,6 +28,13 @@ describe('local raw source runtime', () => {
     })
     await expect(
       client.sourcing.rawRecords.normalization.get(result.receipts[0].rawRecordId),
-    ).rejects.toMatchObject({ code: 'capability_unavailable', statusCode: 501 })
+    ).resolves.toMatchObject({
+      status: 'completed',
+      gate: {
+        status: 'needs_enrichment',
+        missingFields: ['canonicalIdentity', 'companyName', 'roleTitle', 'destinationUrl'],
+      },
+      canonicalCandidate: null,
+    })
   })
 })

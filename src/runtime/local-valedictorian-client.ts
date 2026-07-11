@@ -52,6 +52,12 @@ import { createSqliteScoringRepository } from '../modules/scoring/scoring.reposi
 import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.processor'
 import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
 import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
+import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
+import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
+import {
+  createDefaultNormalizationResolverRegistry,
+  type NormalizationResolverRegistry,
+} from '../modules/sourcing/normalization.registry'
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
 export interface LocalValedictorianClientOptions {
@@ -59,6 +65,7 @@ export interface LocalValedictorianClientOptions {
   connectorRegistry?: LocalConnectorRegistry
   connectorRuntime?: AppConnectorRuntimePorts
   now?: () => Date
+  normalizationRegistry?: NormalizationResolverRegistry
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: ProfileSecretCodec
@@ -248,6 +255,7 @@ export function createLocalValedictorianClient({
   connectorRegistry = createDefaultLocalConnectorRegistry(),
   connectorRuntime,
   now = () => new Date(),
+  normalizationRegistry = createDefaultNormalizationResolverRegistry(),
   referenceTrackerPath,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
@@ -285,6 +293,12 @@ export function createLocalValedictorianClient({
   const sourcingProcessor = createSqliteSourcingProcessor(database)
   const sourcingRepository = createSqliteSourcingRepository(database)
   const rawSourceRepository = createSqliteRawSourceRepository(database, now)
+  const normalizationRepository = createSqliteNormalizationRepository(database)
+  const normalizationOrchestrator = createNormalizationOrchestrator({
+    repository: normalizationRepository,
+    registry: normalizationRegistry,
+    now,
+  })
   const trustedConnectorAuth = composeTrustedConnectorAuth(profileRepository)
   const connectorRunner = createConnectorRunner({
     auth: trustedConnectorAuth,
@@ -533,7 +547,18 @@ export function createLocalValedictorianClient({
     },
     sourcing: {
       rawRecords: {
-        ingestBatch: (input) => rawSourceRepository.ingestBatch(input),
+        ingestBatch: async (input) => {
+          const result = await rawSourceRepository.ingestBatch(input)
+          for (const receipt of result.receipts) {
+            try {
+              await normalizationOrchestrator.normalize(receipt.rawRecordId, receipt.revision.id)
+            } catch {
+              // Intake is already durable. Normalization failures must never erase its receipt
+              // or prevent later records in the same batch from being admitted independently.
+            }
+          }
+          return result
+        },
         get: async (rawRecordId) => {
           const record = await rawSourceRepository.get(rawRecordId)
 
@@ -547,8 +572,14 @@ export function createLocalValedictorianClient({
           throw capabilityUnavailable('Raw source replay is unavailable in the local backend')
         },
         normalization: {
-          get: async () => {
-            throw capabilityUnavailable('Raw source normalization is unavailable in the local backend')
+          get: async (rawRecordId) => {
+            const result = normalizationRepository.getLatest(rawRecordId)
+            if (!result) {
+              throw Object.assign(new Error('Raw source normalization not found'), {
+                statusCode: 404,
+              })
+            }
+            return result
           },
         },
       },
