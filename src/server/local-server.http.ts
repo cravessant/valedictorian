@@ -1,14 +1,44 @@
 import http from 'node:http'
 
-export function readJsonBody(request: http.IncomingMessage) {
+export function readJsonBody(
+  request: http.IncomingMessage,
+  options: { maxBytes?: number; maxBytesMessage?: string } = {},
+) {
   return new Promise<unknown>((resolve, reject) => {
+    const declaredLength = Number(request.headers['content-length'])
+
+    if (
+      options.maxBytes !== undefined &&
+      Number.isFinite(declaredLength) &&
+      declaredLength > options.maxBytes
+    ) {
+      reject(bodyLimitError(options.maxBytesMessage))
+      return
+    }
+
     const chunks: Buffer[] = []
+    let receivedBytes = 0
+    let finished = false
 
     request.on('data', (chunk: Buffer) => {
+      if (finished) {
+        return
+      }
+      receivedBytes += chunk.byteLength
+
+      if (options.maxBytes !== undefined && receivedBytes > options.maxBytes) {
+        finished = true
+        chunks.length = 0
+        reject(bodyLimitError(options.maxBytesMessage))
+        return
+      }
       chunks.push(chunk)
     })
     request.on('error', reject)
     request.on('end', () => {
+      if (finished) {
+        return
+      }
       const text = Buffer.concat(chunks).toString('utf8')
 
       if (!text) {
@@ -23,6 +53,10 @@ export function readJsonBody(request: http.IncomingMessage) {
       }
     })
   })
+}
+
+function bodyLimitError(message = 'Request body exceeds the raw batch limit') {
+  return Object.assign(new Error(message), { statusCode: 413 })
 }
 
 export function readStringField(body: unknown, field: string) {

@@ -657,6 +657,54 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       deleted_at text
     );
 
+    create table if not exists source_entities (
+      id text primary key not null,
+      identity_kind text not null,
+      identity_namespace text not null,
+      identity_value text not null,
+      created_at text not null,
+      constraint chk_source_entities_identity_kind_length
+        check (length(identity_kind) between 1 and 64),
+      constraint chk_source_entities_identity_namespace_length
+        check (length(identity_namespace) between 1 and 4096),
+      constraint chk_source_entities_identity_value_length
+        check (length(identity_value) between 1 and 2048)
+    );
+
+    create table if not exists raw_source_records (
+      id text primary key not null,
+      source_entity_id text references source_entities(id),
+      created_at text not null
+    );
+
+    create table if not exists raw_source_revisions (
+      id text primary key not null,
+      raw_record_id text not null references raw_source_records(id),
+      revision integer not null,
+      content_hash text not null,
+      adapter_id text not null,
+      adapter_kind text not null,
+      adapter_version text not null,
+      reported_origin_kind text,
+      reported_origin_name text,
+      reported_origin_provider_id text,
+      reported_origin_url text,
+      observed_at text not null,
+      provider_record_id text,
+      provider_schema text,
+      payload_json text,
+      evidence_json text not null,
+      created_at text not null
+    );
+
+    create table if not exists raw_source_occurrences (
+      id text primary key not null,
+      raw_record_id text not null references raw_source_records(id),
+      raw_revision_id text not null references raw_source_revisions(id),
+      observed_at text not null,
+      received_at text not null
+    );
+
     create table if not exists sourcing_findings (
       id text primary key,
       workflow_run_id text not null references workflow_runs(id),
@@ -720,6 +768,18 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on connector_observations(connector_run_id);
     create index if not exists idx_connector_observations_source_record
       on connector_observations(connector_instance_id, source_record_key);
+    create unique index if not exists idx_source_entities_identity
+      on source_entities(identity_kind, identity_namespace, identity_value);
+    create unique index if not exists idx_raw_source_records_source_entity
+      on raw_source_records(source_entity_id);
+    create unique index if not exists idx_raw_source_revisions_record_revision
+      on raw_source_revisions(raw_record_id, revision);
+    create unique index if not exists idx_raw_source_revisions_record_hash
+      on raw_source_revisions(raw_record_id, content_hash);
+    create index if not exists idx_raw_source_occurrences_record_chronology
+      on raw_source_occurrences(raw_record_id, observed_at, received_at, id);
+    create index if not exists idx_raw_source_occurrences_revision
+      on raw_source_occurrences(raw_revision_id);
 
     create table if not exists connector_projection_keys (
       dedupe_key text primary key,

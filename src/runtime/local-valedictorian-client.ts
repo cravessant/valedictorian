@@ -51,6 +51,7 @@ import { createSqliteProfileRepository, type ProfileSecretCodec } from '../modul
 import { createSqliteScoringRepository } from '../modules/scoring/scoring.repository'
 import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.processor'
 import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
+import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
 export interface LocalValedictorianClientOptions {
@@ -283,6 +284,7 @@ export function createLocalValedictorianClient({
   const workflowRunRepository = createSqliteWorkflowRunRepository(database)
   const sourcingProcessor = createSqliteSourcingProcessor(database)
   const sourcingRepository = createSqliteSourcingRepository(database)
+  const rawSourceRepository = createSqliteRawSourceRepository(database, now)
   const trustedConnectorAuth = composeTrustedConnectorAuth(profileRepository)
   const connectorRunner = createConnectorRunner({
     auth: trustedConnectorAuth,
@@ -530,6 +532,26 @@ export function createLocalValedictorianClient({
       complete: (input) => workflowRunRepository.completeRun(input),
     },
     sourcing: {
+      rawRecords: {
+        ingestBatch: (input) => rawSourceRepository.ingestBatch(input),
+        get: async (rawRecordId) => {
+          const record = await rawSourceRepository.get(rawRecordId)
+
+          if (!record) {
+            throw Object.assign(new Error('Raw source record not found'), { statusCode: 404 })
+          }
+
+          return record
+        },
+        replay: async () => {
+          throw capabilityUnavailable('Raw source replay is unavailable in the local backend')
+        },
+        normalization: {
+          get: async () => {
+            throw capabilityUnavailable('Raw source normalization is unavailable in the local backend')
+          },
+        },
+      },
       candidates: {
         process: (input) => sourcingProcessor.processCandidate(input),
       },
@@ -544,6 +566,13 @@ export function createLocalValedictorianClient({
   }
 
   return client
+}
+
+function capabilityUnavailable(message: string) {
+  return Object.assign(new Error(message), {
+    code: 'capability_unavailable',
+    statusCode: 501,
+  })
 }
 
 function composeTrustedConnectorAuth(

@@ -31,6 +31,10 @@ describe('SQLite database', () => {
     expect(tables).toContain('connector_checkpoints')
     expect(tables).toContain('connector_observations')
     expect(tables).toContain('connector_projection_keys')
+    expect(tables).toContain('source_entities')
+    expect(tables).toContain('raw_source_records')
+    expect(tables).toContain('raw_source_revisions')
+    expect(tables).toContain('raw_source_occurrences')
 
     expect(tableColumns(database, 'applications')).toEqual(
       expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
@@ -120,9 +124,73 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(10)
+    expect(migrationRows).toHaveLength(11)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
+  })
+
+  it('creates raw source ledger tables and indexes before stamping a legacy workspace', () => {
+    const database = createInMemoryDatabase()
+    database.exec(`
+      create table companies (
+        id text primary key,
+        name text not null,
+        normalized_name text not null,
+        website_url text,
+        created_at text not null,
+        updated_at text not null,
+        deleted_at text
+      );
+    `)
+
+    migrateDatabase(database)
+
+    const tables = database
+      .prepare(
+        "select name from sqlite_master where type = 'table' and (name like '%raw_source%' or name = 'source_entities') order by name",
+      )
+      .all()
+      .map((row) => (row as { name: string }).name)
+    const indexes = database
+      .prepare("select name from sqlite_master where type = 'index' and (name like 'idx_raw_source_%' or name = 'idx_source_entities_identity') order by name")
+      .all()
+      .map((row) => (row as { name: string }).name)
+
+    expect(tables).toEqual([
+      'raw_source_occurrences',
+      'raw_source_records',
+      'raw_source_revisions',
+      'source_entities',
+    ])
+    expect(indexes).toEqual([
+      'idx_raw_source_occurrences_record_chronology',
+      'idx_raw_source_occurrences_revision',
+      'idx_raw_source_records_source_entity',
+      'idx_raw_source_revisions_record_hash',
+      'idx_raw_source_revisions_record_revision',
+      'idx_source_entities_identity',
+    ])
+    expect(tableColumns(database, 'source_entities')).toEqual([
+      'id',
+      'identity_kind',
+      'identity_namespace',
+      'identity_value',
+      'created_at',
+    ])
+    expect(
+      database.prepare('select count(*) as count from __drizzle_migrations').get(),
+    ).toEqual({ count: 11 })
+
+    const freshlyMigrated = createInMemoryDatabase()
+    migrateDatabase(freshlyMigrated)
+
+    for (const table of tables) {
+      expect(tableDefinition(database, table)).toEqual(tableDefinition(freshlyMigrated, table))
+    }
+    for (const index of indexes) {
+      expect(indexDefinition(database, index)).toEqual(indexDefinition(freshlyMigrated, index))
+    }
+    freshlyMigrated.close()
   })
 
   it('adds projection and version metadata columns to legacy connector observation tables', () => {
@@ -797,4 +865,33 @@ function tableColumns(database: ReturnType<typeof createInMemoryDatabase>, table
     .prepare(`pragma table_info('${tableName}')`)
     .all()
     .map((row) => (row as { name: string }).name)
+}
+
+function tableDefinition(
+  database: ReturnType<typeof createInMemoryDatabase>,
+  tableName: string,
+) {
+  const row = database
+    .prepare("select sql from sqlite_master where type = 'table' and name = ?")
+    .get(tableName) as { sql: string }
+
+  return {
+    checks: [...row.sql.matchAll(/constraint\s+["`]?([a-z0-9_]+)/gi)].map((match) => match[1]),
+    columns: database.prepare(`pragma table_info('${tableName}')`).all(),
+    foreignKeys: database.prepare(`pragma foreign_key_list('${tableName}')`).all(),
+  }
+}
+
+function indexDefinition(
+  database: ReturnType<typeof createInMemoryDatabase>,
+  indexName: string,
+) {
+  const row = database
+    .prepare("select sql from sqlite_master where type = 'index' and name = ?")
+    .get(indexName) as { sql: string }
+
+  return {
+    columns: database.prepare(`pragma index_info('${indexName}')`).all(),
+    unique: /^create unique index/i.test(row.sql),
+  }
 }

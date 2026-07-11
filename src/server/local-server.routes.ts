@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { defaultLocalCapabilities, isApplicationStatus, type ValedictorianWorkspaceClient, type ProfileUpdateInput } from 'sparxie'
+import { defaultLocalCapabilities, isApplicationStatus, type BatchRawSourceRecordsInput, type ValedictorianWorkspaceClient, type ProfileUpdateInput } from 'sparxie'
 import {
   readJsonBody,
   readOptionalBooleanField,
@@ -53,6 +53,9 @@ const localCapabilities = {
   sourcing: true,
   connectors: true,
 }
+
+const MAX_RAW_SOURCE_BATCH_BODY_BYTES = 128 * 1024 * 1024
+const MAX_RAW_SOURCE_REPLAY_BODY_BYTES = 1024 * 1024
 
 export async function handleRequest({
   client,
@@ -442,6 +445,61 @@ export async function handleRequest({
       return
     }
 
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/sourcing/raw-records/batch') {
+      writeJson(
+        response,
+        200,
+        await client.sourcing.rawRecords.ingestBatch(
+          (await readJsonBody(request, {
+            maxBytes: MAX_RAW_SOURCE_BATCH_BODY_BYTES,
+          })) as BatchRawSourceRecordsInput,
+        ),
+      )
+      return
+    }
+
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/sourcing/raw-records/replay') {
+      writeJson(
+        response,
+        200,
+        await client.sourcing.rawRecords.replay(
+          (await readJsonBody(request, {
+            maxBytes: MAX_RAW_SOURCE_REPLAY_BODY_BYTES,
+            maxBytesMessage: 'Request body exceeds the raw replay limit',
+          })) as Parameters<
+            ValedictorianWorkspaceClient['sourcing']['rawRecords']['replay']
+          >[0],
+        ),
+      )
+      return
+    }
+
+    const rawRecordNormalizationMatch = requestUrl.pathname.match(
+      /^\/v1\/sourcing\/raw-records\/([^/]+)\/normalization$/,
+    )
+
+    if (request.method === 'GET' && rawRecordNormalizationMatch) {
+      writeJson(
+        response,
+        200,
+        await client.sourcing.rawRecords.normalization.get(
+          decodeURIComponent(rawRecordNormalizationMatch[1]),
+        ),
+      )
+      return
+    }
+
+    const rawRecordMatch = requestUrl.pathname.match(/^\/v1\/sourcing\/raw-records\/([^/]+)$/)
+
+    if (request.method === 'GET' && rawRecordMatch) {
+      writeJson(
+        response,
+        200,
+        await client.sourcing.rawRecords.get(decodeURIComponent(rawRecordMatch[1])),
+      )
+      return
+    }
+
     if (request.method === 'GET' && requestUrl.pathname === '/v1/sourcing/findings') {
       writeJson(
         response,
@@ -740,9 +798,20 @@ export async function handleRequest({
 
     writeJson(response, 404, { message: 'Not found' })
   } catch (error) {
-    writeJson(response, readErrorStatusCode(error), {
+    const body: { code?: string; message: string } = {
       message: error instanceof Error ? error.message : String(error),
-    })
+    }
+
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'capability_unavailable'
+    ) {
+      body.code = 'capability_unavailable'
+    }
+
+    writeJson(response, readErrorStatusCode(error), body)
   }
 }
 

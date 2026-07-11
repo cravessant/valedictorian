@@ -1,4 +1,5 @@
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 const timestamps = {
   createdAt: text('created_at').notNull(),
@@ -428,6 +429,107 @@ export const connectorObservations = sqliteTable(
   }),
 )
 
+export const sourceEntities = sqliteTable(
+  'source_entities',
+  {
+    id: text('id').primaryKey(),
+    identityKind: text('identity_kind').notNull(),
+    identityNamespace: text('identity_namespace').notNull(),
+    identityValue: text('identity_value').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    identityIdx: uniqueIndex('idx_source_entities_identity').on(
+      table.identityKind,
+      table.identityNamespace,
+      table.identityValue,
+    ),
+    identityKindLength: check(
+      'chk_source_entities_identity_kind_length',
+      sql`length(${table.identityKind}) between 1 and 64`,
+    ),
+    identityNamespaceLength: check(
+      'chk_source_entities_identity_namespace_length',
+      sql`length(${table.identityNamespace}) between 1 and 4096`,
+    ),
+    identityValueLength: check(
+      'chk_source_entities_identity_value_length',
+      sql`length(${table.identityValue}) between 1 and 2048`,
+    ),
+  }),
+)
+
+export const rawSourceRecords = sqliteTable(
+  'raw_source_records',
+  {
+    id: text('id').primaryKey(),
+    sourceEntityId: text('source_entity_id').references(() => sourceEntities.id),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    sourceEntityIdx: uniqueIndex('idx_raw_source_records_source_entity').on(table.sourceEntityId),
+  }),
+)
+
+export const rawSourceRevisions = sqliteTable(
+  'raw_source_revisions',
+  {
+    id: text('id').primaryKey(),
+    rawRecordId: text('raw_record_id')
+      .notNull()
+      .references(() => rawSourceRecords.id),
+    revision: integer('revision').notNull(),
+    contentHash: text('content_hash').notNull(),
+    adapterId: text('adapter_id').notNull(),
+    adapterKind: text('adapter_kind').notNull(),
+    adapterVersion: text('adapter_version').notNull(),
+    reportedOriginKind: text('reported_origin_kind'),
+    reportedOriginName: text('reported_origin_name'),
+    reportedOriginProviderId: text('reported_origin_provider_id'),
+    reportedOriginUrl: text('reported_origin_url'),
+    observedAt: text('observed_at').notNull(),
+    providerRecordId: text('provider_record_id'),
+    providerSchema: text('provider_schema'),
+    payloadJson: text('payload_json'),
+    evidenceJson: text('evidence_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    recordRevisionIdx: uniqueIndex('idx_raw_source_revisions_record_revision').on(
+      table.rawRecordId,
+      table.revision,
+    ),
+    recordHashIdx: uniqueIndex('idx_raw_source_revisions_record_hash').on(
+      table.rawRecordId,
+      table.contentHash,
+    ),
+  }),
+)
+
+export const rawSourceOccurrences = sqliteTable(
+  'raw_source_occurrences',
+  {
+    id: text('id').primaryKey(),
+    rawRecordId: text('raw_record_id')
+      .notNull()
+      .references(() => rawSourceRecords.id),
+    rawRevisionId: text('raw_revision_id')
+      .notNull()
+      .references(() => rawSourceRevisions.id),
+    observedAt: text('observed_at').notNull(),
+    receivedAt: text('received_at').notNull(),
+  },
+  (table) => ({
+    recordChronologyIdx: index('idx_raw_source_occurrences_record_chronology').on(
+      table.rawRecordId,
+      table.observedAt,
+      table.receivedAt,
+      table.id,
+    ),
+    revisionIdx: index('idx_raw_source_occurrences_revision').on(table.rawRevisionId),
+  }),
+)
+
 export const sourcingFindings = sqliteTable(
   'sourcing_findings',
   {
@@ -517,6 +619,10 @@ export const schema = {
   profileEducation,
   profileSensitiveDetails,
   profileSecrets,
+  rawSourceOccurrences,
+  rawSourceRecords,
+  rawSourceRevisions,
+  sourceEntities,
   sourcingFindings,
   sources,
   userProfile,
