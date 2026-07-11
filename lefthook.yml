@@ -1,0 +1,5 @@
+pre-commit:
+  commands:
+    oxlint:
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx}"
+      run: pnpm exec oxlint {staged_files}

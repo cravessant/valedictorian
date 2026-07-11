@@ -64,6 +64,7 @@
     "electron": "^30.0.1",
     "electron-builder": "^24.13.3",
     "jsdom": "^29.1.1",
+    "lefthook": "^2.1.10",
     "oxlint": "^1.68.0",
     "oxlint-tsgolint": "^0.23.0",
     "prebuild-install": "^7.1.3",
