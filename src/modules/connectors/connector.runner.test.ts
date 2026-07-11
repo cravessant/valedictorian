@@ -1129,6 +1129,44 @@ describe('connector runner', () => {
     })
   })
 
+  it('records the effective host request budget into persisted run stats', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
+    const receivedInputs: unknown[] = []
+    const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
+
+    await runner.registerInstance({
+      id: 'connector-instance-fixture',
+      connector: fixtureConnector,
+      displayName: 'Fixture jobs',
+      enabled: true,
+      createdAt: '2026-07-08T16:00:00.000Z',
+    })
+
+    const run = await runner.refresh(fixtureConnector, {
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'manual',
+      coverage: {
+        start: '2026-07-09T15:00:00.000Z',
+        end: '2026-07-09T16:00:00.000Z',
+      },
+      startedAt: '2026-07-09T16:00:00.000Z',
+      completedAt: '2026-07-09T16:00:01.000Z',
+      budget: {
+        maxRequestsPerRun: 10,
+      },
+    })
+
+    expect((receivedInputs[0] as { budget?: { maxRequestsPerRun?: number } }).budget)
+      .toMatchObject({ maxRequestsPerRun: 10 })
+    expect(run.stats).toMatchObject({
+      maxRequestsPerRun: 10,
+    })
+  })
+
   it('uses the stricter host max requests policy when building a catch-up budget', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)

@@ -254,7 +254,10 @@ export function createConnectorRunner({
       }
     }
 
-    const safeResult = withRunProgressStats(redactRefreshResult(result, sensitiveValues))
+    const safeResult = withRunProgressStats(
+      redactRefreshResult(result, sensitiveValues),
+      budget,
+    )
     const completedAt = input.completedAt ?? now().toISOString()
 
     const run = await repository.recordRefreshResult({
@@ -589,7 +592,10 @@ const connectorRunProgressMetricKeys = [
   'resolved',
 ] as const
 
-function withRunProgressStats(result: ConnectorRefreshResultInput): ConnectorRefreshResultInput {
+function withRunProgressStats(
+  result: ConnectorRefreshResultInput,
+  budget?: AppConnectorRunBudget,
+): ConnectorRefreshResultInput {
   const checkpoint = toJsonRecord(result.nextCheckpoint.checkpoint)
   const checkpointStats: Record<string, number> = {}
 
@@ -601,11 +607,19 @@ function withRunProgressStats(result: ConnectorRefreshResultInput): ConnectorRef
     }
   }
 
+  const maxRequestsPerRun = budget?.maxRequestsPerRun
+  const budgetStats = typeof maxRequestsPerRun === 'number'
+    && Number.isFinite(maxRequestsPerRun)
+    && maxRequestsPerRun > 0
+    ? { maxRequestsPerRun }
+    : {}
+
   return {
     ...result,
     stats: {
       ...checkpointStats,
       ...result.stats,
+      ...budgetStats,
     },
   }
 }

@@ -14,7 +14,25 @@ import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
   JOBRIGHT_CONNECTOR_ID,
+  JOBRIGHT_CONNECTOR_MAX_REQUESTS_PER_RUN,
   JOBRIGHT_CONNECTOR_VERSION,
+  JOBRIGHT_DEFAULT_DISCOVERY_COUNT,
+  JOBRIGHT_DEFAULT_MAX_DISCOVERY_PAGES,
+  JOBRIGHT_DEFAULT_MAX_DISCOVERY_RECORDS,
+  JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT,
+  JOBRIGHT_DEFAULT_USEFUL_TARGET,
+  JOBRIGHT_HOST_REQUEST_BUDGET,
+  JOBRIGHT_MAX_DISCOVERY_COUNT,
+  JOBRIGHT_MAX_MAX_DISCOVERY_PAGES,
+  JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS,
+  JOBRIGHT_MAX_USEFUL_TARGET,
+  JOBRIGHT_MIN_DISCOVERY_COUNT,
+  JOBRIGHT_MIN_MAX_DISCOVERY_PAGES,
+  JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS,
+  JOBRIGHT_MIN_USEFUL_TARGET,
+  JOBRIGHT_PACING_CONCURRENCY,
+  JOBRIGHT_PACING_MAX_DELAY_SECONDS,
+  JOBRIGHT_PACING_MIN_DELAY_SECONDS,
 } from '../modules/connectors/jobright.constants'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
@@ -291,8 +309,12 @@ type ConnectorReconnectResult = Awaited<ReturnType<ConnectorsPreloadApi['status'
 type ConnectorSettingsRun = Awaited<ReturnType<ConnectorsPreloadApi['runs']['trigger']>>
 
 interface ConnectorSettingsDraft {
+  discoveryCount: string
+  maxDiscoveryPages: string
+  maxDiscoveryRecords: string
   maxResolutionCount: string
   roleTerms: string
+  usefulTarget: string
 }
 
 interface ConnectorAuthCredentialDraft {
@@ -332,7 +354,9 @@ function ConnectorSettingsPanel({
   const [isAdding, setIsAdding] = useState(false)
   const [authenticatingInstanceId, setAuthenticatingInstanceId] = useState<string | null>(null)
   const [authStates, setAuthStates] = useState<Record<string, ConnectorAuthUiState>>({})
-  const [savingInstanceId, setSavingInstanceId] = useState<string | null>(null)
+  const [savingInstanceIds, setSavingInstanceIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
   const [runningInstanceId, setRunningInstanceId] = useState<string | null>(null)
   const [latestRunStatuses, setLatestRunStatuses] = useState<Record<string, string>>({})
   const [latestRuns, setLatestRuns] = useState<Record<string, ConnectorSettingsRun>>({})
@@ -754,14 +778,133 @@ function ConnectorSettingsPanel({
   }
 
   function saveConnectorSettings(instance: ConnectorSettingsInstance) {
+    if (instance.connectorId !== JOBRIGHT_CONNECTOR_ID) {
+      return
+    }
+
+    if (savingInstanceIds.has(instance.id)) {
+      return
+    }
+
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
+    const savedDraft = defaultConnectorSettingsDraft(instance)
+    const usefulTarget = parseBoundedInteger(
+      draft.usefulTarget,
+      JOBRIGHT_MIN_USEFUL_TARGET,
+      JOBRIGHT_MAX_USEFUL_TARGET,
+    )
+    if (usefulTarget === null) {
+      setConnectorActionError(
+        `Useful results target must be an integer from ${JOBRIGHT_MIN_USEFUL_TARGET} to ${JOBRIGHT_MAX_USEFUL_TARGET}.`,
+      )
+      return
+    }
+
+    const discoveryCount = parseBoundedInteger(
+      draft.discoveryCount,
+      JOBRIGHT_MIN_DISCOVERY_COUNT,
+      JOBRIGHT_MAX_DISCOVERY_COUNT,
+    )
+    if (discoveryCount === null) {
+      setConnectorActionError(
+        `Discovery page size must be an integer from ${JOBRIGHT_MIN_DISCOVERY_COUNT} to ${JOBRIGHT_MAX_DISCOVERY_COUNT}.`,
+      )
+      return
+    }
+
+    const maxDiscoveryPages = parseBoundedInteger(
+      draft.maxDiscoveryPages,
+      JOBRIGHT_MIN_MAX_DISCOVERY_PAGES,
+      JOBRIGHT_MAX_MAX_DISCOVERY_PAGES,
+    )
+    if (maxDiscoveryPages === null) {
+      setConnectorActionError(
+        `Discovery page limit must be an integer from ${JOBRIGHT_MIN_MAX_DISCOVERY_PAGES} to ${JOBRIGHT_MAX_MAX_DISCOVERY_PAGES}.`,
+      )
+      return
+    }
+
+    const maxDiscoveryRecords = parseBoundedInteger(
+      draft.maxDiscoveryRecords,
+      JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS,
+      JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS,
+    )
+    if (maxDiscoveryRecords === null) {
+      setConnectorActionError(
+        `Discovery record limit must be an integer from ${JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS} to ${JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS}.`,
+      )
+      return
+    }
+
+    const existingFilters = recordFromUnknown(instance.filters)
+    const existingConfig = recordFromUnknown(instance.config)
+    const resolutionUnchanged = draft.maxResolutionCount === savedDraft.maxResolutionCount
+    let maxResolutionCount: number
+    if (resolutionUnchanged) {
+      maxResolutionCount = typeof existingFilters.maxResolutionCount === 'number'
+        && Number.isFinite(existingFilters.maxResolutionCount)
+        ? existingFilters.maxResolutionCount
+        : JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT
+    } else {
+      const parsedResolution = parseBoundedInteger(
+        draft.maxResolutionCount,
+        1,
+        JOBRIGHT_HOST_REQUEST_BUDGET,
+      )
+      if (parsedResolution === null) {
+        const parsed = Number(draft.maxResolutionCount.trim())
+        if (
+          Number.isSafeInteger(parsed)
+          && parsed > JOBRIGHT_HOST_REQUEST_BUDGET
+        ) {
+          setConnectorActionError(
+            `Requested detail-resolution attempts cannot exceed the effective host request budget of ${JOBRIGHT_HOST_REQUEST_BUDGET}.`,
+          )
+        } else {
+          setConnectorActionError(
+            `Requested detail-resolution attempts must be an integer from 1 to ${JOBRIGHT_HOST_REQUEST_BUDGET}.`,
+          )
+        }
+        return
+      }
+      maxResolutionCount = parsedResolution
+    }
+
+    const nextConfig: Record<string, unknown> = {
+      ...existingConfig,
+      usefulTarget,
+    }
+    if (
+      draft.discoveryCount !== savedDraft.discoveryCount
+      || Object.prototype.hasOwnProperty.call(existingConfig, 'discoveryCount')
+    ) {
+      nextConfig.discoveryCount = discoveryCount
+    }
+    if (
+      draft.maxDiscoveryPages !== savedDraft.maxDiscoveryPages
+      || Object.prototype.hasOwnProperty.call(existingConfig, 'maxDiscoveryPages')
+    ) {
+      nextConfig.maxDiscoveryPages = maxDiscoveryPages
+    }
+    if (
+      draft.maxDiscoveryRecords !== savedDraft.maxDiscoveryRecords
+      || Object.prototype.hasOwnProperty.call(existingConfig, 'maxDiscoveryRecords')
+    ) {
+      nextConfig.maxDiscoveryRecords = maxDiscoveryRecords
+    }
+
     setConnectorActionError(null)
-    setSavingInstanceId(instance.id)
+    setSavingInstanceIds((currentIds) => {
+      const nextIds = new Set(currentIds)
+      nextIds.add(instance.id)
+      return nextIds
+    })
     void connectorsApi.update({
       connectorInstanceId: instance.id,
-      config: {},
+      config: nextConfig,
       filters: {
-        maxResolutionCount: normalizePositiveInteger(draft.maxResolutionCount, 10),
+        ...existingFilters,
+        maxResolutionCount,
         roleTerms: parseCommaSeparatedList(draft.roleTerms),
       },
     })
@@ -769,15 +912,62 @@ function ConnectorSettingsPanel({
         setInstances((currentInstances) => currentInstances.map((currentInstance) =>
           currentInstance.id === updated.id ? updated : currentInstance,
         ))
+        setDrafts((currentDrafts) => ({
+          ...currentDrafts,
+          [updated.id]: defaultConnectorSettingsDraft(updated),
+        }))
         onConnectorChanged()
       })
       .catch(() => {
         setConnectorActionError('Jobright settings could not be saved.')
       })
-      .finally(() => setSavingInstanceId(null))
+      .finally(() => {
+        setSavingInstanceIds((currentIds) => {
+          const nextIds = new Set(currentIds)
+          nextIds.delete(instance.id)
+          return nextIds
+        })
+      })
+  }
+
+  function discardConnectorSettings(instance: ConnectorSettingsInstance) {
+    setConnectorActionError(null)
+    setDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [instance.id]: defaultConnectorSettingsDraft(instance),
+    }))
+  }
+
+  function isConnectorSettingsDraftDirty(instance: ConnectorSettingsInstance): boolean {
+    const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
+    const saved = defaultConnectorSettingsDraft(instance)
+    return draft.roleTerms !== saved.roleTerms
+      || draft.usefulTarget !== saved.usefulTarget
+      || draft.discoveryCount !== saved.discoveryCount
+      || draft.maxDiscoveryPages !== saved.maxDiscoveryPages
+      || draft.maxDiscoveryRecords !== saved.maxDiscoveryRecords
+      || draft.maxResolutionCount !== saved.maxResolutionCount
   }
 
   function runConnectorNow(instance: ConnectorSettingsInstance) {
+    if (instance.connectorId !== JOBRIGHT_CONNECTOR_ID) {
+      return
+    }
+
+    if (savingInstanceIds.has(instance.id)) {
+      setConnectorActionError(
+        'Wait for connector settings to finish saving before running.',
+      )
+      return
+    }
+
+    if (isConnectorSettingsDraftDirty(instance)) {
+      setConnectorActionError(
+        'Save or discard your unsaved connector settings before running.',
+      )
+      return
+    }
+
     const coverageEndedAt = new Date().toISOString()
     const coverageStartedAt = new Date(Date.parse(coverageEndedAt) - 60 * 60 * 1000).toISOString()
 
@@ -887,9 +1077,18 @@ function ConnectorSettingsPanel({
                 const isEditingAuth = editingAuthInstanceId === instance.id
                 const latestRun = latestRuns[instance.id]
                 const runMetrics = latestRun ? connectorRunMetrics(latestRun) : []
+                const isSavingSettings = savingInstanceIds.has(instance.id)
+                const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
+                const settingsInterpretation = isJobrightInstance
+                  ? interpretJobrightSettings(instance, draft)
+                  : null
 
                 return (
-                  <div key={instance.id} className="grid gap-4 p-3 text-sm">
+                  <div
+                    key={instance.id}
+                    className="grid gap-4 p-3 text-sm"
+                    data-testid={`connector-instance-card-${instance.id}`}
+                  >
                     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                       <div className="min-w-0">
                         <p className="font-medium text-foreground">{instance.displayName}</p>
@@ -988,6 +1187,8 @@ function ConnectorSettingsPanel({
                       </p>
                     ) : null}
 
+                    {isJobrightInstance ? (
+                    <>
                     <div
                       className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] xl:items-end"
                       data-testid={`connector-run-actions-${instance.id}`}
@@ -997,33 +1198,146 @@ function ConnectorSettingsPanel({
                         <input
                           aria-label="Role terms"
                           className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          disabled={isSavingSettings}
                           value={draft.roleTerms}
                           onChange={(event) =>
                             updateDraft(instance.id, { roleTerms: event.target.value })}
                         />
                       </label>
                       <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Max links per refresh
+                        Useful results target
                         <input
-                          aria-label="Max links per refresh"
+                          aria-label="Useful results target"
                           className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                          disabled={isSavingSettings}
+                          max={JOBRIGHT_MAX_USEFUL_TARGET}
+                          min={JOBRIGHT_MIN_USEFUL_TARGET}
                           type="number"
-                          value={draft.maxResolutionCount}
+                          value={draft.usefulTarget}
                           onChange={(event) =>
-                            updateDraft(instance.id, { maxResolutionCount: event.target.value })}
+                            updateDraft(instance.id, { usefulTarget: event.target.value })}
                         />
+                        <span className="font-normal text-muted-foreground">
+                          Bounded backfill intent across runs, not per-run discovery or resolution volume.
+                        </span>
                       </label>
+                      <div className="grid gap-1 text-xs text-muted-foreground xl:col-span-full">
+                        <p>{settingsInterpretation!.savedUsefulTargetLabel}</p>
+                        {settingsInterpretation!.draftUsefulTargetLabel ? (
+                          <p>{settingsInterpretation!.draftUsefulTargetLabel}</p>
+                        ) : null}
+                        <p>{settingsInterpretation!.requestedAttemptsLabel}</p>
+                        <p>{settingsInterpretation!.effectiveAttemptsLabel}</p>
+                      </div>
+                      <details className="xl:col-span-full">
+                        <summary className="cursor-pointer text-xs font-medium text-foreground">
+                          Advanced connector limits
+                        </summary>
+                        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                            Discovery page size
+                            <input
+                              aria-label="Discovery page size"
+                              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                              disabled={isSavingSettings}
+                              max={JOBRIGHT_MAX_DISCOVERY_COUNT}
+                              min={JOBRIGHT_MIN_DISCOVERY_COUNT}
+                              type="number"
+                              value={draft.discoveryCount}
+                              onChange={(event) =>
+                                updateDraft(instance.id, { discoveryCount: event.target.value })}
+                            />
+                          </label>
+                          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                            Discovery page limit
+                            <input
+                              aria-label="Discovery page limit"
+                              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                              disabled={isSavingSettings}
+                              max={JOBRIGHT_MAX_MAX_DISCOVERY_PAGES}
+                              min={JOBRIGHT_MIN_MAX_DISCOVERY_PAGES}
+                              type="number"
+                              value={draft.maxDiscoveryPages}
+                              onChange={(event) =>
+                                updateDraft(instance.id, {
+                                  maxDiscoveryPages: event.target.value,
+                                })}
+                            />
+                          </label>
+                          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                            Discovery record limit
+                            <input
+                              aria-label="Discovery record limit"
+                              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                              disabled={isSavingSettings}
+                              max={JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS}
+                              min={JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS}
+                              type="number"
+                              value={draft.maxDiscoveryRecords}
+                              onChange={(event) =>
+                                updateDraft(instance.id, {
+                                  maxDiscoveryRecords: event.target.value,
+                                })}
+                            />
+                          </label>
+                          <label className="grid gap-1 text-xs font-medium text-muted-foreground md:col-span-2 xl:col-span-3">
+                            Requested detail-resolution attempts
+                            <input
+                              aria-label="Requested detail-resolution attempts"
+                              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                              disabled={isSavingSettings}
+                              max={JOBRIGHT_HOST_REQUEST_BUDGET}
+                              min={1}
+                              type="number"
+                              value={draft.maxResolutionCount}
+                              onChange={(event) =>
+                                updateDraft(instance.id, {
+                                  maxResolutionCount: event.target.value,
+                                })}
+                            />
+                            {settingsInterpretation!.legacyResolution ? (
+                              <span className="font-normal">
+                                Saved value is labeled legacy; effective attempts remain
+                                {' '}
+                                {settingsInterpretation!.effectiveAttempts}
+                                .
+                              </span>
+                            ) : null}
+                          </label>
+                          <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-3">
+                            Host request budget: effective {JOBRIGHT_HOST_REQUEST_BUDGET} requests/run;
+                            connector-supported maximum {JOBRIGHT_CONNECTOR_MAX_REQUESTS_PER_RUN}.
+                            The host budget currently takes precedence, so this value is disclosure-only.
+                          </p>
+                          <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-3">
+                            Pacing: concurrency {JOBRIGHT_PACING_CONCURRENCY},
+                            {' '}
+                            {JOBRIGHT_PACING_MIN_DELAY_SECONDS}–{JOBRIGHT_PACING_MAX_DELAY_SECONDS}
+                            {' '}
+                            seconds between bounded requests (disclosure-only).
+                          </p>
+                        </div>
+                      </details>
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={savingInstanceId === instance.id}
+                        disabled={isSavingSettings}
                         onClick={() => saveConnectorSettings(instance)}
                       >
-                        {savingInstanceId === instance.id ? 'Saving...' : 'Save Jobright settings'}
+                        {isSavingSettings ? 'Saving...' : 'Save Jobright settings'}
                       </Button>
+                      {isConnectorSettingsDraftDirty(instance) && !isSavingSettings ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => discardConnectorSettings(instance)}
+                        >
+                          Discard unsaved settings
+                        </Button>
+                      ) : null}
                       <Button
                         type="button"
-                        disabled={!authReady || runningInstanceId === instance.id}
+                        disabled={!authReady || runningInstanceId === instance.id || isSavingSettings}
                         onClick={() => runConnectorNow(instance)}
                       >
                         {runningInstanceId === instance.id ? 'Running...' : 'Run Jobright now'}
@@ -1062,6 +1376,8 @@ function ConnectorSettingsPanel({
                           </Button>
                         ) : null}
                       </div>
+                    ) : null}
+                    </>
                     ) : null}
                   </div>
                 )
@@ -1201,6 +1517,13 @@ function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRun }) {
     numericRunMetric(stats, 'resolvedThirdParty', 'Resolved third-party'),
     numericRunMetric(stats, 'remainingTarget', 'Remaining target'),
   ].filter((metric): metric is { label: string; value: number } => metric !== null)
+  const stopReason = stringFromUnknown(stats.stopReason)
+    || stringFromUnknown(recordFromUnknown(run.retryHints).stopReason)
+  const requestBudget = typeof stats.maxRequestsPerRun === 'number'
+    && Number.isFinite(stats.maxRequestsPerRun)
+    && stats.maxRequestsPerRun > 0
+    ? stats.maxRequestsPerRun
+    : null
 
   return (
     <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 text-xs">
@@ -1208,6 +1531,14 @@ function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRun }) {
         <p className="font-semibold text-foreground">{terminal.summary}</p>
         {terminal.detail ? <p className="mt-1 text-muted-foreground">{terminal.detail}</p> : null}
         {terminal.technical ? <p className="mt-1 text-muted-foreground">{terminal.technical}</p> : null}
+        {stopReason ? (
+          <p className="mt-1 text-muted-foreground">Stop reason: {stopReason}</p>
+        ) : null}
+        {requestBudget !== null ? (
+          <p className="mt-1 text-muted-foreground">
+            Request budget per run: {requestBudget}
+          </p>
+        ) : null}
       </div>
       {lifecycle ? (
         <>
@@ -1772,10 +2103,67 @@ function defaultConnectorSettingsDraft(
   instance: ConnectorSettingsInstance | undefined,
 ): ConnectorSettingsDraft {
   const filters = recordFromUnknown(instance?.filters)
+  const config = recordFromUnknown(instance?.config)
 
   return {
-    maxResolutionCount: String(numberFromUnknown(filters.maxResolutionCount, 10)),
+    discoveryCount: String(numberFromUnknown(config.discoveryCount, JOBRIGHT_DEFAULT_DISCOVERY_COUNT)),
+    maxDiscoveryPages: String(numberFromUnknown(
+      config.maxDiscoveryPages,
+      JOBRIGHT_DEFAULT_MAX_DISCOVERY_PAGES,
+    )),
+    maxDiscoveryRecords: String(numberFromUnknown(
+      config.maxDiscoveryRecords,
+      JOBRIGHT_DEFAULT_MAX_DISCOVERY_RECORDS,
+    )),
+    maxResolutionCount: String(numberFromUnknown(
+      filters.maxResolutionCount,
+      JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT,
+    )),
     roleTerms: arrayTextFromUnknown(filters.roleTerms, 'intern'),
+    usefulTarget: String(numberFromUnknown(config.usefulTarget, JOBRIGHT_DEFAULT_USEFUL_TARGET)),
+  }
+}
+
+function interpretJobrightSettings(
+  instance: ConnectorSettingsInstance,
+  draft: ConnectorSettingsDraft,
+): {
+  savedUsefulTargetLabel: string
+  draftUsefulTargetLabel: string | null
+  requestedAttemptsLabel: string
+  effectiveAttemptsLabel: string
+  legacyResolution: boolean
+  effectiveAttempts: number
+} {
+  const config = recordFromUnknown(instance.config)
+  const filters = recordFromUnknown(instance.filters)
+  const savedUsefulTarget = typeof config.usefulTarget === 'number'
+    && Number.isFinite(config.usefulTarget)
+    ? config.usefulTarget
+    : null
+  const requestedAttempts = typeof filters.maxResolutionCount === 'number'
+    && Number.isFinite(filters.maxResolutionCount)
+    ? filters.maxResolutionCount
+    : JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT
+  const effectiveAttempts = Math.min(requestedAttempts, JOBRIGHT_HOST_REQUEST_BUDGET)
+  const legacyResolution = requestedAttempts > JOBRIGHT_HOST_REQUEST_BUDGET
+  const draftDirtyUsefulTarget = draft.usefulTarget
+    !== String(savedUsefulTarget ?? JOBRIGHT_DEFAULT_USEFUL_TARGET)
+
+  return {
+    savedUsefulTargetLabel: savedUsefulTarget === null
+      ? `Saved useful results target: default ${JOBRIGHT_DEFAULT_USEFUL_TARGET}`
+      : `Saved useful results target: ${savedUsefulTarget}`,
+    draftUsefulTargetLabel: draftDirtyUsefulTarget
+      ? `Unsaved draft useful results target: ${draft.usefulTarget}`
+      : null,
+    requestedAttemptsLabel: legacyResolution
+      ? `Requested detail-resolution attempts (saved): ${requestedAttempts} (legacy)`
+      : `Requested detail-resolution attempts (saved): ${requestedAttempts}`,
+    effectiveAttemptsLabel:
+      `Effective detail-resolution attempts: ${effectiveAttempts} (min of requested and host request budget ${JOBRIGHT_HOST_REQUEST_BUDGET})`,
+    legacyResolution,
+    effectiveAttempts,
   }
 }
 
@@ -1806,14 +2194,18 @@ function parseCommaSeparatedList(value: string): string[] {
     .filter((item) => item.length > 0)
 }
 
-function normalizePositiveInteger(value: string, fallback: number): number {
-  const parsed = Number(value)
-
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return fallback
+function parseBoundedInteger(value: string, minimum: number, maximum: number): number | null {
+  const trimmed = value.trim()
+  if (!/^\d+$/.test(trimmed)) {
+    return null
   }
 
-  return Math.round(parsed)
+  const parsed = Number(trimmed)
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    return null
+  }
+
+  return parsed
 }
 
 function GeneralSettingsPanel({

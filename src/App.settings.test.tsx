@@ -1774,6 +1774,52 @@ describe('App settings and chrome', () => {
     expect(screen.queryByText('Checking auth...')).not.toBeInTheDocument()
   })
 
+  it('keeps Jobright target and advanced settings off non-Jobright connector cards', async () => {
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'fixture-default',
+        connectorId: 'fixture.jobs',
+        connectorVersion: '0.0.0-fixture',
+        displayName: 'Fixture jobs',
+        enabled: true,
+        auth: [{
+          id: 'fixture-api',
+          mode: 'api_key',
+          label: 'Fixture API key',
+          configured: true,
+        }],
+        config: {},
+        filters: {},
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    const fixtureCard = await screen.findByTestId('connector-instance-card-fixture-default')
+    expect(within(fixtureCard).getByText('Fixture jobs')).toBeInTheDocument()
+    expect(within(fixtureCard).getByText('fixture.jobs')).toBeInTheDocument()
+    expect(within(fixtureCard).queryByLabelText('Useful results target')).not.toBeInTheDocument()
+    expect(within(fixtureCard).queryByText('Advanced connector limits')).not.toBeInTheDocument()
+    expect(within(fixtureCard).queryByRole('button', { name: 'Save Jobright settings' }))
+      .not.toBeInTheDocument()
+    expect(within(fixtureCard).queryByRole('button', { name: 'Run Jobright now' }))
+      .not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Jobright connector' })).toBeInTheDocument()
+  })
+
   it('treats legacy Jobright browser_session auth as unconfigured API credentials', async () => {
     const connectorsApi = createConnectorsApi()
     const profileApi = createProfileApi()
@@ -2139,18 +2185,559 @@ describe('App settings and chrome', () => {
     fireEvent.change(await screen.findByLabelText('Role terms'), {
       target: { value: 'intern, backend' },
     })
-    fireEvent.change(screen.getByLabelText('Max links per refresh'), {
+    fireEvent.change(screen.getByLabelText('Useful results target'), {
       target: { value: '3' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
 
     await waitFor(() => {
       expect(connectorsApi.update).toHaveBeenCalledWith({
-        config: {},
+        config: {
+          usefulTarget: 3,
+        },
         connectorInstanceId: 'jobright-default',
         filters: {
-          maxResolutionCount: 3,
+          maxResolutionCount: 10,
           roleTerms: ['intern', 'backend'],
+        },
+      })
+    })
+  })
+
+  it('saves exact useful results target 500 as bounded backfill intent without migrating legacy resolution caps', async () => {
+    const connectorsApi = createConnectorsApi()
+    await connectorsApi.create({
+      id: 'jobright-default',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.6.0',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password',
+        label: 'Jobright username and password',
+        secretKey: 'connector_jobright_credentials_jobright_default',
+      }],
+      config: {
+        customKeep: 'preserve-me',
+        discoveryCount: 25,
+      },
+      filters: {
+        maxResolutionCount: 50,
+        roleTerms: ['intern'],
+      },
+    })
+    vi.mocked(connectorsApi.create).mockClear()
+    vi.mocked(connectorsApi.update).mockClear()
+
+    const firstRender = render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    const usefulTarget = await screen.findByLabelText('Useful results target')
+    expect(usefulTarget).toHaveValue(100)
+    expect(screen.getByText(/bounded backfill intent across runs/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Max links per refresh')).not.toBeInTheDocument()
+
+    fireEvent.change(usefulTarget, { target: { value: '500' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+
+    await waitFor(() => {
+      expect(connectorsApi.update).toHaveBeenCalledWith({
+        config: {
+          customKeep: 'preserve-me',
+          discoveryCount: 25,
+          usefulTarget: 500,
+        },
+        connectorInstanceId: 'jobright-default',
+        filters: {
+          maxResolutionCount: 50,
+          roleTerms: ['intern'],
+        },
+      })
+    })
+    expect(connectorsApi.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      config: {},
+    }))
+
+    firstRender.unmount()
+    vi.mocked(connectorsApi.update).mockClear()
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const reloadedNavigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(reloadedNavigation).getByRole('button', { name: 'Connectors' }))
+
+    expect(await screen.findByLabelText('Useful results target')).toHaveValue(500)
+    expect(screen.getByText(/Saved useful results target: 500/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Advanced connector limits'))
+    expect(screen.getByLabelText('Discovery page size')).toHaveValue(25)
+    expect(screen.getByLabelText('Requested detail-resolution attempts')).toHaveValue(50)
+    expect(screen.getByText(/Requested detail-resolution attempts \(saved\): 50 \(legacy\)/i))
+      .toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Role terms'), {
+      target: { value: 'intern, backend' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+
+    await waitFor(() => {
+      expect(connectorsApi.update).toHaveBeenCalledWith({
+        config: {
+          customKeep: 'preserve-me',
+          discoveryCount: 25,
+          usefulTarget: 500,
+        },
+        connectorInstanceId: 'jobright-default',
+        filters: {
+          maxResolutionCount: 50,
+          roleTerms: ['intern', 'backend'],
+        },
+      })
+    })
+  })
+
+  it('blocks Run while connector settings draft is dirty without auto-saving', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.6.0',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {
+          usefulTarget: 100,
+        },
+        filters: {
+          maxResolutionCount: 10,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Useful results target'), {
+      target: { value: '250' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    expect(await screen.findByText(
+      'Save or discard your unsaved connector settings before running.',
+    )).toBeInTheDocument()
+    expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
+    expect(connectorsApi.update).not.toHaveBeenCalled()
+  })
+
+  it('blocks Run and freezes connector settings while a save is still pending', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    let resolveUpdate: ((value: Awaited<ReturnType<typeof connectorsApi.update>>) => void) | undefined
+    const pendingUpdate = new Promise<Awaited<ReturnType<typeof connectorsApi.update>>>((resolve) => {
+      resolveUpdate = resolve
+    })
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.6.0',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {
+          usefulTarget: 100,
+        },
+        filters: {
+          maxResolutionCount: 10,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+    vi.mocked(connectorsApi.update).mockReturnValueOnce(pendingUpdate)
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+
+    const usefulTarget = screen.getByLabelText('Useful results target')
+    fireEvent.change(usefulTarget, { target: { value: '250' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+
+    expect(await screen.findByRole('button', { name: 'Saving...' })).toBeDisabled()
+    expect(screen.getByLabelText('Useful results target')).toBeDisabled()
+    expect(screen.getByLabelText('Role terms')).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Discard unsaved settings' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+    expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveUpdate?.({
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.6.0',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {
+          usefulTarget: 250,
+        },
+        filters: {
+          maxResolutionCount: 10,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:01:00.000Z',
+      })
+    })
+
+    expect(await screen.findByRole('button', { name: 'Save Jobright settings' })).toBeEnabled()
+    expect(screen.getByLabelText('Useful results target')).toBeEnabled()
+    expect(screen.getByLabelText('Useful results target')).toHaveValue(250)
+    expect(screen.getByText(/Saved useful results target: 250/i)).toBeInTheDocument()
+    expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
+  })
+
+  it('keeps concurrent Jobright saves frozen independently per instance card', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    type UpdatedInstance = Awaited<ReturnType<typeof connectorsApi.update>>
+    let resolveUpdateA: ((value: UpdatedInstance) => void) | undefined
+    let resolveUpdateB: ((value: UpdatedInstance) => void) | undefined
+    const pendingUpdateA = new Promise<UpdatedInstance>((resolve) => {
+      resolveUpdateA = resolve
+    })
+    const pendingUpdateB = new Promise<UpdatedInstance>((resolve) => {
+      resolveUpdateB = resolve
+    })
+    const instanceA = {
+      id: 'jobright-a',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.6.0',
+      displayName: 'Jobright Alpha',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password' as const,
+        label: 'Jobright username and password',
+        configured: true,
+      }],
+      config: {
+        usefulTarget: 100,
+      },
+      filters: {
+        maxResolutionCount: 10,
+        roleTerms: ['intern'],
+      },
+      createdAt: '2026-07-09T15:00:00.000Z',
+      updatedAt: '2026-07-09T15:00:00.000Z',
+    }
+    const instanceB = {
+      ...instanceA,
+      id: 'jobright-b',
+      displayName: 'Jobright Beta',
+    }
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [instanceA, instanceB],
+    })
+    vi.mocked(connectorsApi.update).mockImplementation(async (input) => {
+      if (input.connectorInstanceId === 'jobright-a') {
+        return pendingUpdateA
+      }
+      if (input.connectorInstanceId === 'jobright-b') {
+        return pendingUpdateB
+      }
+      throw new Error(`Unexpected connector instance: ${input.connectorInstanceId}`)
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    const cardA = await screen.findByTestId('connector-instance-card-jobright-a')
+    const cardB = screen.getByTestId('connector-instance-card-jobright-b')
+    expect(await within(cardA).findByText('Auth verified')).toBeInTheDocument()
+    expect(await within(cardB).findByText('Auth verified')).toBeInTheDocument()
+
+    fireEvent.change(within(cardA).getByLabelText('Useful results target'), {
+      target: { value: '210' },
+    })
+    fireEvent.click(within(cardA).getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.change(within(cardB).getByLabelText('Useful results target'), {
+      target: { value: '220' },
+    })
+    fireEvent.click(within(cardB).getByRole('button', { name: 'Save Jobright settings' }))
+
+    expect(await within(cardA).findByRole('button', { name: 'Saving...' })).toBeDisabled()
+    expect(await within(cardB).findByRole('button', { name: 'Saving...' })).toBeDisabled()
+    expect(within(cardA).getByLabelText('Useful results target')).toBeDisabled()
+    expect(within(cardB).getByLabelText('Useful results target')).toBeDisabled()
+    expect(within(cardA).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+    expect(within(cardB).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+
+    fireEvent.click(within(cardA).getByRole('button', { name: 'Run Jobright now' }))
+    fireEvent.click(within(cardB).getByRole('button', { name: 'Run Jobright now' }))
+    expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveUpdateA?.({
+        ...instanceA,
+        config: { usefulTarget: 210 },
+        updatedAt: '2026-07-09T15:01:00.000Z',
+      })
+    })
+
+    expect(await within(cardA).findByRole('button', { name: 'Save Jobright settings' })).toBeEnabled()
+    expect(within(cardA).getByLabelText('Useful results target')).toBeEnabled()
+    expect(within(cardA).getByLabelText('Useful results target')).toHaveValue(210)
+    expect(within(cardB).getByRole('button', { name: 'Saving...' })).toBeDisabled()
+    expect(within(cardB).getByLabelText('Useful results target')).toBeDisabled()
+    expect(within(cardB).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+    fireEvent.click(within(cardB).getByRole('button', { name: 'Run Jobright now' }))
+    expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveUpdateB?.({
+        ...instanceB,
+        config: { usefulTarget: 220 },
+        updatedAt: '2026-07-09T15:02:00.000Z',
+      })
+    })
+
+    expect(await within(cardB).findByRole('button', { name: 'Save Jobright settings' })).toBeEnabled()
+    expect(within(cardB).getByLabelText('Useful results target')).toBeEnabled()
+    expect(within(cardB).getByLabelText('Useful results target')).toHaveValue(220)
+    expect(within(cardA).getByLabelText('Useful results target')).toHaveValue(210)
+    expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
+  })
+
+  it('distinguishes saved, draft, and effective values for legacy resolution caps', async () => {
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.6.0',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {},
+        filters: {
+          maxResolutionCount: 50,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    expect(await screen.findByLabelText('Useful results target')).toHaveValue(100)
+    expect(screen.getByText(/Saved useful results target: default 100/i)).toBeInTheDocument()
+    expect(screen.getByText(/Requested detail-resolution attempts \(saved\): 50 \(legacy\)/i))
+      .toBeInTheDocument()
+    expect(screen.getByText(/Effective detail-resolution attempts: 10/i)).toBeInTheDocument()
+    expect(screen.getByText(/host request budget 10/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Useful results target'), {
+      target: { value: '200' },
+    })
+    expect(screen.getByText(/Unsaved draft useful results target: 200/i)).toBeInTheDocument()
+    expect(screen.getByText(/Saved useful results target: default 100/i)).toBeInTheDocument()
+  })
+
+  it('exposes advanced discovery controls and rejects resolution attempts above the host budget', async () => {
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.6.0',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {
+          customKeep: 'still-here',
+        },
+        filters: {
+          maxResolutionCount: 50,
+          roleTerms: ['intern'],
+        },
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+    vi.mocked(connectorsApi.update).mockImplementation(async (input) => ({
+      id: 'jobright-default',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.6.0',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password',
+        label: 'Jobright username and password',
+        configured: true,
+      }],
+      config: input.config ?? { customKeep: 'still-here' },
+      filters: input.filters ?? {
+        maxResolutionCount: 50,
+        roleTerms: ['intern'],
+      },
+      createdAt: '2026-07-09T15:00:00.000Z',
+      updatedAt: '2026-07-09T15:01:00.000Z',
+    }))
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+
+    fireEvent.click(await screen.findByText('Advanced connector limits'))
+    expect(screen.getByLabelText('Discovery page size')).toHaveValue(20)
+    expect(screen.getByLabelText('Discovery page limit')).toHaveValue(40)
+    expect(screen.getByLabelText('Discovery record limit')).toHaveValue(500)
+    expect(screen.getByText(/Host request budget: effective 10 requests\/run/i)).toBeInTheDocument()
+    expect(screen.getByText(/connector-supported maximum 25/i)).toBeInTheDocument()
+    expect(screen.getByText(/takes precedence/i)).toBeInTheDocument()
+    expect(screen.getByText(/Pacing: concurrency 1, 1–10 seconds between bounded requests/i))
+      .toBeInTheDocument()
+    expect(screen.getByLabelText('Requested detail-resolution attempts')).toHaveValue(50)
+    expect(screen.getByText(/Saved value is labeled legacy/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Requested detail-resolution attempts'), {
+      target: { value: '11' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    expect(await screen.findByText(
+      'Requested detail-resolution attempts cannot exceed the effective host request budget of 10.',
+    )).toBeInTheDocument()
+    expect(connectorsApi.update).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Requested detail-resolution attempts'), {
+      target: { value: '8' },
+    })
+    fireEvent.change(screen.getByLabelText('Discovery page size'), {
+      target: { value: '30' },
+    })
+    fireEvent.change(screen.getByLabelText('Discovery page limit'), {
+      target: { value: '12' },
+    })
+    fireEvent.change(screen.getByLabelText('Discovery record limit'), {
+      target: { value: '200' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+
+    await waitFor(() => {
+      expect(connectorsApi.update).toHaveBeenCalledWith({
+        config: {
+          customKeep: 'still-here',
+          discoveryCount: 30,
+          maxDiscoveryPages: 12,
+          maxDiscoveryRecords: 200,
+          usefulTarget: 100,
+        },
+        connectorInstanceId: 'jobright-default',
+        filters: {
+          maxResolutionCount: 8,
+          roleTerms: ['intern'],
         },
       })
     })
@@ -2714,6 +3301,192 @@ describe('App settings and chrome', () => {
     fireEvent.click(explanation)
     expect(explanation).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText(/Returned rows equal valid unique records plus invalid rows plus source duplicates/)).toBeInTheDocument()
+  })
+
+  it('makes request budget and stop reason explicit without relabeling carried discovery counts', async () => {
+    const connectorsApi = createConnectorsApi()
+    await connectorsApi.create({
+      id: 'budget-jobright',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.6.0',
+      displayName: 'Budget Jobright',
+      enabled: true,
+      auth: [],
+      config: {},
+      filters: {},
+    })
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      hasMore: false,
+      items: [{
+        id: 'budget-stop-reason-run',
+        connectorInstanceId: 'budget-jobright',
+        mode: 'manual',
+        status: 'partial_success',
+        coverage: { start: null, end: null },
+        filterSignature: 'filters:{}',
+        observationCount: 0,
+        warningCount: 0,
+        stats: {
+          attempted: 50,
+          discovered: 50,
+          discoveryPages: 3,
+          maxRequestsPerRun: 10,
+          providerReturned: 0,
+          remainingTarget: 100,
+          stopReason: 'soft_batch_boundary',
+          lifecycleCounts: {
+            version: 'connector-run-lifecycle-counts/v1',
+            source: 'frozen_terminal',
+            scope: { kind: 'connector_run', connectorRunId: 'budget-stop-reason-run' },
+            provider: {
+              returnedRows: 0,
+              validRecords: 0,
+              invalidRecords: 0,
+              sourceDuplicates: 0,
+              capturedRecords: 0,
+              occurrenceCount: 0,
+              captureShortfall: 0,
+              unclassifiedRows: 0,
+              invariant: 'reconciled',
+              gaps: [],
+            },
+            destination: {
+              normalized: 0,
+              resolvedEmployerOrAts: 0,
+              resolvedThirdParty: 0,
+              unresolved: 0,
+              pending: 4,
+              gateRejected: 0,
+              unclassified: 0,
+              invariant: 'reconciled',
+            },
+            sourcing: {
+              added: 0,
+              queueDuplicate: 0,
+              notFit: 0,
+              rejected: 0,
+              actionableReview: 0,
+              unclassified: 0,
+              invariant: 'reconciled',
+            },
+          },
+        },
+        warnings: [],
+        retryHints: { stopReason: 'soft_batch_boundary' },
+        startedAt: '2026-07-11T14:00:00.000Z',
+        completedAt: '2026-07-11T14:00:01.000Z',
+      }],
+      limit: 20,
+      offset: 0,
+      total: 1,
+    })
+
+    render(<App
+      applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+      connectorsApi={connectorsApi}
+      settingsApi={createSettingsApi()}
+    />)
+    await screen.findByRole('table', { name: 'Applications' })
+    openConnectorRuns()
+
+    expect(await screen.findByText('Provider returned rows: 0')).toBeInTheDocument()
+    expect(screen.getByText('Captured records: 0')).toBeInTheDocument()
+    expect(screen.getByText('Carried connector cycle')).toBeInTheDocument()
+    expect(screen.getByText('Discovered jobs: 50')).toBeInTheDocument()
+    expect(screen.getByText('Detail attempts: 50')).toBeInTheDocument()
+    expect(screen.getByText('Request budget per run: 10')).toBeInTheDocument()
+    expect(screen.queryByText('Request budget: 50 / 10')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Request budget: 50\s*\/\s*10/)).not.toBeInTheDocument()
+    expect(screen.getByText('Stop reason: soft_batch_boundary')).toBeInTheDocument()
+    expect(screen.getByText('Paused at a finite batch boundary')).toBeInTheDocument()
+    expect(screen.queryByText('Discovered: 50')).not.toBeInTheDocument()
+  })
+
+  it('omits request budget label when run stats lack budget provenance', async () => {
+    const connectorsApi = createConnectorsApi()
+    await connectorsApi.create({
+      id: 'missing-budget-jobright',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.6.0',
+      displayName: 'Missing Budget Jobright',
+      enabled: true,
+      auth: [],
+      config: {},
+      filters: {},
+    })
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      hasMore: false,
+      items: [{
+        id: 'missing-budget-run',
+        connectorInstanceId: 'missing-budget-jobright',
+        mode: 'manual',
+        status: 'partial_success',
+        coverage: { start: null, end: null },
+        filterSignature: 'filters:{}',
+        observationCount: 0,
+        warningCount: 0,
+        stats: {
+          attempted: 50,
+          discovered: 50,
+          stopReason: 'soft_batch_boundary',
+          lifecycleCounts: {
+            version: 'connector-run-lifecycle-counts/v1',
+            source: 'frozen_terminal',
+            scope: { kind: 'connector_run', connectorRunId: 'missing-budget-run' },
+            provider: {
+              returnedRows: 0,
+              validRecords: 0,
+              invalidRecords: 0,
+              sourceDuplicates: 0,
+              capturedRecords: 0,
+              occurrenceCount: 0,
+              captureShortfall: 0,
+              unclassifiedRows: 0,
+              invariant: 'reconciled',
+              gaps: [],
+            },
+            destination: {
+              normalized: 0,
+              resolvedEmployerOrAts: 0,
+              resolvedThirdParty: 0,
+              unresolved: 0,
+              pending: 0,
+              gateRejected: 0,
+              unclassified: 0,
+              invariant: 'reconciled',
+            },
+            sourcing: {
+              added: 0,
+              queueDuplicate: 0,
+              notFit: 0,
+              rejected: 0,
+              actionableReview: 0,
+              unclassified: 0,
+              invariant: 'reconciled',
+            },
+          },
+        },
+        warnings: [],
+        retryHints: { stopReason: 'soft_batch_boundary' },
+        startedAt: '2026-07-11T14:00:00.000Z',
+        completedAt: '2026-07-11T14:00:01.000Z',
+      }],
+      limit: 20,
+      offset: 0,
+      total: 1,
+    })
+
+    render(<App
+      applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+      connectorsApi={connectorsApi}
+      settingsApi={createSettingsApi()}
+    />)
+    await screen.findByRole('table', { name: 'Applications' })
+    openConnectorRuns()
+
+    expect(await screen.findByText('Detail attempts: 50')).toBeInTheDocument()
+    expect(screen.getByText('Stop reason: soft_batch_boundary')).toBeInTheDocument()
+    expect(screen.queryByText(/Request budget per run:/i)).not.toBeInTheDocument()
   })
 
   it('renders actionable Jobright failure and retry guidance', async () => {
