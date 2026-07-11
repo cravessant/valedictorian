@@ -36,7 +36,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "tsc -p tsconfig.json --noEmit",
+    "lint": "oxlint . && tsc -p tsconfig.json --noEmit",
     "prepare": "pnpm build",
     "prepublishOnly": "pnpm lint && pnpm test && pnpm build",
     "prepack": "pnpm build",
@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
+    "oxlint": "^1.68.0",
     "typescript": "^5.2.2",
     "vitest": "^2.1.9"
   }
