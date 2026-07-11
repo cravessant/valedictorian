@@ -168,6 +168,183 @@ describe("in-memory connector host", () => {
     )
   })
 
+  it("binds connector lineage and acknowledges raw records through the host runtime", async () => {
+    const observedAt = "2026-07-08T16:00:00.000Z"
+    const connector: JobConnector = {
+      definition: {
+        id: "fixture.raw-jobs",
+        version: "0.0.0-fixture",
+      },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        if (!runtime.rawSourceIntake) {
+          throw new Error("raw source intake is required")
+        }
+        const receipt = await runtime.rawSourceIntake.capture({
+          observedAt,
+          providerRecordId: "provider-job-1",
+          providerSchema: "fixture-provider@1",
+          payload: { title: "Software Engineer" },
+        })
+        expect(receipt.revision.rawRecordId).toBe(receipt.rawRecordId)
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost()
+
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_raw_fixture",
+      workspaceId: "workspace_alpha",
+      displayName: "Raw fixture jobs",
+      enabled: true,
+      createdAt: observedAt,
+    })
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_raw_fixture",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: { start: observedAt, end: observedAt },
+    })
+
+    expect(host.snapshot().rawCaptures).toEqual([
+      expect.objectContaining({
+        input: {
+          adapter: {
+            id: "fixture.raw-jobs",
+            kind: "connector",
+            version: "0.0.0-fixture",
+          },
+          capture: {
+            connectorInstanceId: "instance_raw_fixture",
+            connectorRunId: "run_1",
+          },
+          observedAt,
+          providerRecordId: "provider-job-1",
+          providerSchema: "fixture-provider@1",
+          payload: { title: "Software Engineer" },
+        },
+      }),
+    ])
+  })
+
+  it("runs trusted resolver outcomes against an acknowledged raw revision", async () => {
+    const observedAt = "2026-07-08T16:00:00.000Z"
+    const connector: JobConnector = {
+      definition: { id: "fixture.resolved-raw", version: "0.0.0-fixture" },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        if (!runtime.rawSourceIntake || !runtime.normalization) {
+          throw new Error("raw normalization runtime is required")
+        }
+        const receipt = await runtime.rawSourceIntake.capture({
+          observedAt,
+          providerRecordId: "provider-job-1",
+          providerSchema: "fixture-provider@1",
+          payload: { employmentType: "FT" },
+        })
+        await runtime.normalization.run({
+          rawRevision: receipt.revision,
+          resolver: {
+            id: "fixture.employment",
+            version: "fixture-employment@1",
+            requiredInputs: ["payload.employmentType"],
+            outputFields: ["employmentType"],
+            capabilities: ["pure"],
+            costClass: "none",
+            precedence: 100,
+          },
+          async resolve() {
+            return [
+              {
+                resolverId: "fixture.employment",
+                resolverVersion: "fixture-employment@1",
+                field: "employmentType",
+                inputHash: receipt.revision.contentHash,
+                status: "resolved",
+                value: "full_time",
+                confidence: 1,
+              },
+            ]
+          },
+        })
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost()
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_resolved_raw",
+      workspaceId: "workspace_alpha",
+      displayName: "Resolved raw fixture",
+      enabled: true,
+      createdAt: observedAt,
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_resolved_raw",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: { start: observedAt, end: observedAt },
+    })
+
+    expect(host.snapshot().normalizations).toEqual([
+      expect.objectContaining({
+        rawRevisionId: "raw_revision_1",
+        resolver: expect.objectContaining({
+          id: "fixture.employment",
+          version: "fixture-employment@1",
+        }),
+        outcomes: [
+          expect.objectContaining({
+            field: "employmentType",
+            status: "resolved",
+            value: "full_time",
+          }),
+        ],
+      }),
+    ])
+  })
+
+  it("settles host raw persistence before returning the intake acknowledgement", async () => {
+    const events: string[] = []
+    const observedAt = "2026-07-08T16:00:00.000Z"
+    const connector: JobConnector = {
+      definition: { id: "fixture.raw-order", version: "0.0.0-fixture" },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        if (!runtime.rawSourceIntake) throw new Error("raw intake required")
+        await runtime.rawSourceIntake.capture({ observedAt, payload: { id: 1 } })
+        events.push("acknowledged")
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost({
+      async onRawCapture() {
+        events.push("persisting")
+        await Promise.resolve()
+        events.push("persisted")
+      },
+    })
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_raw_order",
+      workspaceId: "workspace_alpha",
+      displayName: "Raw order",
+      enabled: true,
+      createdAt: observedAt,
+    })
+
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_raw_order",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: { start: observedAt, end: observedAt },
+    })
+
+    expect(events).toEqual(["persisting", "persisted", "acknowledged"])
+  })
+
   it("provides a ready no-auth grant through the runtime port", async () => {
     const receivedGrants: unknown[] = []
     const connector: JobConnector = {

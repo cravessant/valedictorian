@@ -52,7 +52,7 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("Hosts own encrypted credential persistence and grant resolution")
     expect(readme).toContain("connectors own upstream authentication semantics")
     expect(readme).toContain("`@sparxie/valedictorian-connectors-core` is the app-to-adapter ABI")
-    expect(readme).toContain("`sparxie` is not the connector runtime contract")
+    expect(readme).toContain("core reuses its released raw-sourcing and resolver value types")
     expect(readme).toContain("InternList was reconnaissance")
     expect(readme).not.toContain("@sparxie/valedictorian-connectors-internlist")
     expect(readme).not.toContain("the first real public discovery source package")
@@ -61,7 +61,12 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("## Jobright Architecture")
     expect(readme).toContain("authentication, discovery, and application-link normalization are API-only")
     expect(readme).toContain("Discover `internslist` jobs through `POST /swan/recommend/visitor-list/jobs")
-    expect(readme).toContain("Normalize selected jobs with authenticated `GET /swan/share/job/{jobId}`")
+    expect(readme).toContain("Resolve pending intermediary jobs with authenticated `GET /swan/share/job/{jobId}`")
+    expect(readme).toContain("`runtime.rawSourceIntake.capture(...)`")
+    expect(readme).toContain("Sparse, malformed, irrelevant, and source-duplicate rows remain raw facts")
+    expect(readme).toContain("`runtime.normalization.run(...)`")
+    expect(readme).toContain("do not alter that request, reject returned rows")
+    expect(readme).toContain("They do not report `eligible` or fit-filtered buckets")
     expect(readme).toContain("External hostname alone is never employer evidence")
     expect(readme).toContain("jobright_application_url_unclassified")
     expect(readme).toContain("Optional Jobright auth-only validation (`validateAuth`)")
@@ -143,6 +148,16 @@ describe("connector repository conventions", () => {
     expect(agents).toContain("agent-owned support files in `.local/`, which is intentionally gitignored")
   })
 
+  it("limits release-age exceptions to internal sparxie packages", () => {
+    const workspace = readText("pnpm-workspace.yaml")
+
+    expect(workspace).toContain("minimumReleaseAgeExclude:")
+    expect(workspace).toContain("  - sparxie")
+    expect(workspace).toContain("  - '@sparxie/*'")
+    expect(workspace).not.toMatch(/minimumReleaseAge:\s*0/)
+    expect(workspace).not.toContain("sparxie@0.9.0")
+  })
+
   it("documents connector package publishing and versioning expectations", () => {
     const readme = readText("README.md")
 
@@ -182,7 +197,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.3",
+      version: "0.5.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -198,7 +213,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.3",
+      version: "0.5.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -214,7 +229,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.4.3",
+      version: "0.5.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -231,10 +246,12 @@ describe("connector repository conventions", () => {
         "drizzle-orm",
         "electron",
         "playwright",
-        "sparxie",
         "valedictorian-app",
       ]),
     )
+    expect(corePackage.dependencies).toEqual({
+      sparxie: "^0.9.0",
+    })
     expect(harnessPackage.dependencies).toEqual({
       "@sparxie/valedictorian-connectors-core": "workspace:^",
     })

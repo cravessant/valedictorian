@@ -1,3 +1,28 @@
+import type {
+  FieldResolutionOutcome,
+  RawSourceIntakeReceipt,
+  RawSourceRecordInput,
+  RawSourceRevisionReceipt,
+  ResolverDeclaration,
+} from "sparxie"
+
+export type {
+  CanonicalCompensation,
+  CanonicalEmploymentType,
+  CanonicalLocation,
+  CanonicalPostedAt,
+  FieldResolutionOutcome,
+  JsonObject,
+  JsonValue,
+  RawSourceEvidenceInput,
+  RawSourceIntakeReceipt,
+  RawSourceRecordInput,
+  RawSourceRevisionReceipt,
+  ResolutionEvidence,
+  ResolverDeclaration,
+  SourcingDestinationClass,
+} from "sparxie"
+
 export type ConnectorDefinition = {
   id: string
   version: string
@@ -106,8 +131,15 @@ export type ConnectorProgressStage =
 export type ConnectorProgressCounts = {
   attempted: number
   discovered: number
-  eligible: number
-  filtered: number
+  providerReturned?: number
+  providerValid?: number
+  providerInvalid?: number
+  sourceDuplicates?: number
+  pendingResolution?: number
+  /** @deprecated Connector-owned fit filtering is not a sourcing decision. */
+  eligible?: number
+  /** @deprecated Connector-owned fit filtering is not a sourcing decision. */
+  filtered?: number
   remainingTarget: number
   resolvedEmployerOrAts: number
   resolvedThirdParty: number
@@ -135,6 +167,35 @@ export type ConnectorProgressRuntime = {
    * result and checkpoint instead of treating this port as a commit handshake.
    */
   report(snapshot: ConnectorProgressSnapshot): void | Promise<void>
+}
+
+export type ConnectorRawSourceCaptureInput = Pick<
+  RawSourceRecordInput,
+  | "evidence"
+  | "observedAt"
+  | "payload"
+  | "providerRecordId"
+  | "providerSchema"
+  | "reportedOrigin"
+>
+
+export type ConnectorRawSourceIntakeRuntime = {
+  /**
+   * Persists a provider record with host-bound connector instance/run lineage.
+   * Resolution must not begin until this promise acknowledges the capture.
+   */
+  capture(input: ConnectorRawSourceCaptureInput): Promise<RawSourceIntakeReceipt>
+}
+
+export type ConnectorNormalizationInput = {
+  rawRevision: RawSourceRevisionReceipt
+  resolver: ResolverDeclaration
+  resolve(): Promise<FieldResolutionOutcome[]>
+}
+
+export type ConnectorNormalizationRuntime = {
+  /** Executes a connector resolver under the host's trusted normalization seam. */
+  run(input: ConnectorNormalizationInput): Promise<FieldResolutionOutcome[]>
 }
 
 export type ConnectorBrowserSessionResolveStatus =
@@ -212,6 +273,8 @@ export type ConnectorRuntime = {
   cancellation?: ConnectorCancellationRuntime
   delay?: ConnectorDelayRuntime
   progress?: ConnectorProgressRuntime
+  rawSourceIntake?: ConnectorRawSourceIntakeRuntime
+  normalization?: ConnectorNormalizationRuntime
 }
 
 export type JobObservationLinks = {
@@ -275,6 +338,11 @@ export type ConnectorRefreshStats = {
   discoveryPages?: number
   eligible?: number
   filtered?: number
+  providerReturned?: number
+  providerValid?: number
+  providerInvalid?: number
+  sourceDuplicates?: number
+  pendingResolution?: number
   remainingTarget?: number
   resolved?: number
   resolvedEmployerOrAts?: number

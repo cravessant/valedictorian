@@ -10,6 +10,7 @@ import type {
   ConnectorDelayInput,
   ConnectorDefinition,
   ConnectorProgressSnapshot,
+  ConnectorRawSourceCaptureInput,
   ConnectorRefreshStatus,
   ConnectorRefreshInput,
   ConnectorRefreshMode,
@@ -17,6 +18,10 @@ import type {
   ConnectorRuntime,
   JobConnector,
   JobObservation,
+  FieldResolutionOutcome,
+  RawSourceIntakeReceipt,
+  RawSourceRecordInput,
+  ResolverDeclaration,
 } from "@sparxie/valedictorian-connectors-core"
 import { jobObservationSchemaVersion } from "@sparxie/valedictorian-connectors-core"
 
@@ -169,9 +174,7 @@ export type ConnectorRunRecord = {
   config: unknown
   filters: unknown
   filterSignature: string
-  stats: {
-    observations: number
-  }
+  stats: ConnectorRefreshResult["stats"]
   warnings: ConnectorRefreshResult["warnings"]
   retryHints: unknown
 }
@@ -192,6 +195,19 @@ export type InMemoryConnectorHostSnapshot = {
   runs: ConnectorRunRecord[]
   checkpoints: ConnectorCheckpointRecord[]
   observations: HostObservationRecord[]
+  rawCaptures: InMemoryRawCaptureRecord[]
+  normalizations: InMemoryNormalizationRecord[]
+}
+
+export type InMemoryRawCaptureRecord = {
+  input: RawSourceRecordInput
+  receipt: RawSourceIntakeReceipt
+}
+
+export type InMemoryNormalizationRecord = {
+  rawRevisionId: string
+  resolver: ResolverDeclaration
+  outcomes: FieldResolutionOutcome[]
 }
 
 export type InMemoryConnectorHostRefreshRequest = {
@@ -237,6 +253,9 @@ export type InMemoryConnectorHostOptions = {
     snapshot: ConnectorProgressSnapshot,
   ) => void | Promise<void>
   secrets?: Record<string, string>
+  onRawCapture?: (
+    input: RawSourceRecordInput,
+  ) => void | Promise<void>
 }
 
 export function createInMemoryConnectorHost(
@@ -246,7 +265,10 @@ export function createInMemoryConnectorHost(
   const runs: ConnectorRunRecord[] = []
   const checkpoints = new Map<string, ConnectorCheckpointRecord>()
   const observations: HostObservationRecord[] = []
+  const rawCaptures: InMemoryRawCaptureRecord[] = []
+  const normalizations: InMemoryNormalizationRecord[] = []
   let runCounter = 0
+  let rawCounter = 0
 
   return {
     registerInstance(instance) {
@@ -277,6 +299,7 @@ export function createInMemoryConnectorHost(
         connector.definition.capabilities?.resolvesIntermediaryLinks === true
           ? observationsForWorkspace(observations, instances, request.workspaceId)
           : null
+      const connectorRunId = `run_${runCounter + 1}`
       const result = await connector.refresh(
         {
           connectorInstanceId: request.connectorInstanceId,
@@ -297,6 +320,17 @@ export function createInMemoryConnectorHost(
           connector.definition.auth?.requirements ?? [],
           options,
           request.signal,
+          {
+            connector,
+            connectorInstanceId: request.connectorInstanceId,
+            connectorRunId,
+            normalizations,
+            rawCaptures,
+            nextRawSequence: () => {
+              rawCounter += 1
+              return rawCounter
+            },
+          },
         ),
       )
 
@@ -375,6 +409,8 @@ export function createInMemoryConnectorHost(
         runs: [...runs],
         checkpoints: [...checkpoints.values()],
         observations: [...observations],
+        rawCaptures: cloneJsonLike(rawCaptures),
+        normalizations: cloneJsonLike(normalizations),
       }
     },
   }
@@ -402,6 +438,14 @@ function createConnectorRuntime(
   authRequirements: ConnectorAuthRequirement[],
   options: InMemoryConnectorHostOptions,
   signal?: AbortSignal,
+  rawContext?: {
+    connector: JobConnector
+    connectorInstanceId: string
+    connectorRunId: string
+    normalizations: InMemoryNormalizationRecord[]
+    rawCaptures: InMemoryRawCaptureRecord[]
+    nextRawSequence: () => number
+  },
 ): ConnectorRuntime {
   const runtime: ConnectorRuntime = {
     auth: {
@@ -409,6 +453,66 @@ function createConnectorRuntime(
         return resolveAuthGrant(input, authReferences, authRequirements, options)
       },
     },
+  }
+
+  if (rawContext) {
+    runtime.rawSourceIntake = {
+      async capture(input: ConnectorRawSourceCaptureInput) {
+        const sequence = rawContext.nextRawSequence()
+        const rawRecordId = `raw_${sequence}`
+        const rawRevisionId = `raw_revision_${sequence}`
+        const receivedAt = new Date().toISOString()
+        const boundInput: RawSourceRecordInput = {
+          ...cloneJsonLike(input),
+          adapter: {
+            id: rawContext.connector.definition.id,
+            kind: "connector",
+            version: rawContext.connector.definition.version,
+          },
+          capture: {
+            connectorInstanceId: rawContext.connectorInstanceId,
+            connectorRunId: rawContext.connectorRunId,
+          },
+        }
+        const receipt: RawSourceIntakeReceipt = {
+          rawRecordId,
+          sourceEntityId: null,
+          revision: {
+            id: rawRevisionId,
+            rawRecordId,
+            revision: 1,
+            contentHash: `fixture-content-${sequence}`,
+            reused: false,
+            createdAt: receivedAt,
+          },
+          occurrence: {
+            id: `raw_occurrence_${sequence}`,
+            rawRecordId,
+            rawRevisionId,
+            capture: boundInput.capture,
+            observedAt: input.observedAt,
+            receivedAt,
+          },
+        }
+        await options.onRawCapture?.(cloneJsonLike(boundInput))
+        rawContext.rawCaptures.push({
+          input: cloneJsonLike(boundInput),
+          receipt: cloneJsonLike(receipt),
+        })
+        return cloneJsonLike(receipt)
+      },
+    }
+    runtime.normalization = {
+      async run(input) {
+        const outcomes = await input.resolve()
+        rawContext.normalizations.push({
+          rawRevisionId: input.rawRevision.id,
+          resolver: cloneJsonLike(input.resolver),
+          outcomes: cloneJsonLike(outcomes),
+        })
+        return cloneJsonLike(outcomes)
+      },
+    }
   }
 
   if (signal) {
