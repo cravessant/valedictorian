@@ -12,6 +12,10 @@ import {
 } from 'sparxie'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
+import {
+  JOBRIGHT_CONNECTOR_ID,
+  JOBRIGHT_CONNECTOR_VERSION,
+} from '../modules/connectors/jobright.constants'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { AppSettings, AppSettingsPatch } from './app-settings'
@@ -309,8 +313,6 @@ type ConnectorAuthUiState =
   | { kind: 'cancelled'; message: string }
   | { kind: 'local'; message: string; status: 'action_required' | 'failed' }
 
-const jobrightConnectorVersion = '0.4.3'
-const jobrightConnectorId = 'jobright.resolver'
 const secureStorageUnavailableMessage =
   'Secure storage is unavailable. Enable platform encryption, then try again.'
 
@@ -506,8 +508,8 @@ function ConnectorSettingsPanel({
     setIsAdding(true)
     void connectorsApi.create({
       id: 'jobright-default',
-      connectorId: jobrightConnectorId,
-      connectorVersion: jobrightConnectorVersion,
+      connectorId: JOBRIGHT_CONNECTOR_ID,
+      connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [
@@ -1088,7 +1090,7 @@ function jobrightSecretKeyForInstance(instanceId: string): string {
 }
 
 function isJobrightCredentialsConfigured(instance: ConnectorSettingsInstance): boolean {
-  if (instance.connectorId === jobrightConnectorId) {
+  if (instance.connectorId === JOBRIGHT_CONNECTOR_ID) {
     return instance.auth.some((auth) =>
       auth.mode === 'username_password' && auth.configured)
   }
@@ -1097,7 +1099,7 @@ function isJobrightCredentialsConfigured(instance: ConnectorSettingsInstance): b
 }
 
 function shouldAutoValidateJobrightAuth(instance: ConnectorSettingsInstance): boolean {
-  return instance.connectorId === jobrightConnectorId
+  return instance.connectorId === JOBRIGHT_CONNECTOR_ID
     && isJobrightCredentialsConfigured(instance)
 }
 
@@ -1429,7 +1431,7 @@ function safeRunRetryGuidance(run: ConnectorSettingsRun, connectorId: string): s
     || reason.includes('auth')
     || numberFromUnknown(stats.authRequired, 0) > 0
   ) {
-    return connectorId === jobrightConnectorId || retryHints.source === 'jobright'
+    return connectorId === JOBRIGHT_CONNECTOR_ID || retryHints.source === 'jobright'
       ? 'Update and validate Jobright credentials, then run again.'
       : 'Reconnect the connector and run again.'
   }

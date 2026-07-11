@@ -7,6 +7,9 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import os from 'node:os'
+import path from 'node:path'
+import fs from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
@@ -22,6 +25,11 @@ import {
   openSettingsPage,
 } from './App.test-helpers'
 import { defaultPolicyConfig } from 'sparxie'
+import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
+import type { ProfilePreloadApi } from './ipc/profile.preload'
+import { createStaticConnectorRegistry } from './modules/connectors/connector.registry'
+import type { AppJobConnector } from './modules/connectors/connector.runner'
+import { createLocalValedictorianClient } from './runtime/local-valedictorian-client'
 
 afterEach(() => {
   cleanup()
@@ -603,6 +611,78 @@ describe('App settings and chrome', () => {
     expect(screen.getByRole('complementary', { name: 'Settings navigation' })).toBeInTheDocument()
   })
 
+  it('creates, configures, and runs the current Jobright connector through Settings', async () => {
+    const sqlitePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'settings-jobright-')), 'valedictorian.sqlite')
+    const connector: AppJobConnector = {
+      definition: {
+        id: 'jobright.resolver',
+        version: '0.6.0',
+        capabilities: { supportsFiltering: false },
+        auth: {
+          modes: ['username_password'],
+          requirements: [{
+            id: 'jobright',
+            label: 'Jobright username and password',
+            mode: 'username_password',
+            required: true,
+          }],
+        },
+      },
+      async validateAuth() {
+        return { status: 'ready', reason: 'jobright_auth_ready' }
+      },
+      async refresh(input) {
+        return {
+          observations: [],
+          nextCheckpoint: { checkpoint: {}, schemaVersion: 'jobright-test@1' },
+          coverage: input.coverage,
+          stats: { observations: 0 },
+          warnings: [],
+        }
+      },
+    }
+    const client = createLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([connector]),
+      secretCodec: {
+        decrypt: (value) => value.replace(/^enc:/, ''),
+        encrypt: (value) => `enc:${value}`,
+      },
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-settings-jobright',
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([]))}
+        connectorsApi={client.connectors as ConnectorsPreloadApi}
+        profileApi={client.profile as ProfilePreloadApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(within(
+      screen.getByRole('complementary', { name: 'Application navigation' }),
+    ).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
+    fireEvent.change(screen.getByLabelText('Jobright email'), {
+      target: { value: 'settings@example.test' },
+    })
+    fireEvent.change(screen.getByLabelText('Jobright password'), {
+      target: { value: 'settings-password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
+
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    await expect(client.connectors.list()).resolves.toMatchObject({
+      items: [expect.objectContaining({ connectorVersion: '0.6.0' })],
+    })
+  })
+
   it('adds a Jobright connector instance from settings with default auth and filters', async () => {
     const connectorsApi = createConnectorsApi()
 
@@ -631,7 +711,7 @@ describe('App settings and chrome', () => {
         ],
         config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.3',
+        connectorVersion: '0.6.0',
         displayName: 'Jobright internslist',
         enabled: true,
         filters: {
@@ -828,7 +908,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.3',
+        connectorVersion: '0.6.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -1012,7 +1092,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.3',
+        connectorVersion: '0.6.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -1103,7 +1183,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.3',
+        connectorVersion: '0.6.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -1166,7 +1246,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.4.3',
+        connectorVersion: '0.6.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -1722,7 +1802,7 @@ describe('App settings and chrome', () => {
     await connectorsApi.create({
       id: 'jobright-default',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.4.3',
+      connectorVersion: '0.6.0',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [],

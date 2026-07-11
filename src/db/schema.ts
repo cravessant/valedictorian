@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { check, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 const timestamps = {
   createdAt: text('created_at').notNull(),
@@ -355,6 +355,10 @@ export const connectorRuns = sqliteTable(
     ...timestamps,
   },
   (table) => ({
+    ownerIdx: uniqueIndex('idx_connector_runs_id_instance').on(
+      table.id,
+      table.connectorInstanceId,
+    ),
     instanceIdx: index('idx_connector_runs_instance').on(table.connectorInstanceId),
     instanceStatusStartedIdx: index('idx_connector_runs_instance_status_started').on(
       table.connectorInstanceId,
@@ -563,6 +567,10 @@ export const rawSourceRevisions = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
+    recordIdIdx: uniqueIndex('idx_raw_source_revisions_id_record').on(
+      table.id,
+      table.rawRecordId,
+    ),
     recordRevisionIdx: uniqueIndex('idx_raw_source_revisions_record_revision').on(
       table.rawRecordId,
       table.revision,
@@ -584,10 +592,24 @@ export const rawSourceOccurrences = sqliteTable(
     rawRevisionId: text('raw_revision_id')
       .notNull()
       .references(() => rawSourceRevisions.id),
+    connectorInstanceId: text('connector_instance_id').references(() => connectorInstances.id),
+    connectorRunId: text('connector_run_id').references(() => connectorRuns.id),
     observedAt: text('observed_at').notNull(),
     receivedAt: text('received_at').notNull(),
   },
   (table) => ({
+    lineageIdx: uniqueIndex('idx_raw_source_occurrences_lineage').on(
+      table.id,
+      table.rawRevisionId,
+      table.rawRecordId,
+    ),
+    connectorLineageIdx: uniqueIndex('idx_raw_source_occurrences_connector_lineage').on(
+      table.id,
+      table.rawRevisionId,
+      table.rawRecordId,
+      table.connectorInstanceId,
+      table.connectorRunId,
+    ),
     recordChronologyIdx: index('idx_raw_source_occurrences_record_chronology').on(
       table.rawRecordId,
       table.observedAt,
@@ -595,6 +617,21 @@ export const rawSourceOccurrences = sqliteTable(
       table.id,
     ),
     revisionIdx: index('idx_raw_source_occurrences_revision').on(table.rawRevisionId),
+    connectorRunIdx: index('idx_raw_source_occurrences_connector_run').on(table.connectorRunId),
+    connectorCaptureCheck: check(
+      'chk_raw_source_occurrences_connector_capture',
+      sql`(${table.connectorInstanceId} is null and ${table.connectorRunId} is null) or (${table.connectorInstanceId} is not null and ${table.connectorRunId} is not null)`,
+    ),
+    rawOwnerFk: foreignKey({
+      columns: [table.rawRevisionId, table.rawRecordId],
+      foreignColumns: [rawSourceRevisions.id, rawSourceRevisions.rawRecordId],
+      name: 'fk_raw_source_occurrences_revision_record',
+    }),
+    connectorOwnerFk: foreignKey({
+      columns: [table.connectorRunId, table.connectorInstanceId],
+      foreignColumns: [connectorRuns.id, connectorRuns.connectorInstanceId],
+      name: 'fk_raw_source_occurrences_run_instance',
+    }),
   }),
 )
 
@@ -604,6 +641,9 @@ export const normalizationRuns = sqliteTable(
     id: text('id').primaryKey(),
     rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
     rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    triggerOccurrenceId: text('trigger_occurrence_id'),
+    triggerConnectorInstanceId: text('trigger_connector_instance_id'),
+    triggerConnectorRunId: text('trigger_connector_run_id'),
     inputHash: text('input_hash').notNull(),
     resolverSetHash: text('resolver_set_hash').notNull(),
     canonicalSchemaVersion: text('canonical_schema_version').notNull(),

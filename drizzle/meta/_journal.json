@@ -106,6 +106,13 @@
       "when": 1783747591213,
       "tag": "0014_source_identity_immutability",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1783776028850,
+      "tag": "0015_connector_raw_capture_lineage",
+      "breakpoints": true
     }
   ]
 }

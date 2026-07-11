@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import type {
   CanonicalCandidateField, CanonicalSourceCandidate, FieldResolutionOutcome, JsonValue,
-  NormalizationAttempt, NormalizationGateOutcome, RawSourceNormalizationResult,
+  NormalizationAttempt, NormalizationGateOutcome, RawSourceNormalizationResult, RawSourceOccurrenceReceipt,
   RawSourceFieldDirective, ResolverApplicabilityDecision, ResolverCapability, ResolverVersionRef,
 } from 'sparxie'
 import {
@@ -25,6 +25,14 @@ import {
 export const CANONICAL_CANDIDATE_SCHEMA_VERSION = 'canonical-source-candidate/v1'
 export const NORMALIZATION_GATE_POLICY_VERSION = 'sourcing-admission/v1'
 
+export interface NormalizationExecutionOptions {
+  baselineOutcomes?: readonly FieldResolutionOutcome[]
+  cache?: boolean
+  enabledCapabilities?: readonly ResolverCapability[]
+  registry?: NormalizationResolverRegistry
+  triggerOccurrence?: RawSourceOccurrenceReceipt
+}
+
 export function createNormalizationOrchestrator(options: {
   repository: ReturnType<typeof createSqliteNormalizationRepository>
   registry: NormalizationResolverRegistry
@@ -32,21 +40,24 @@ export function createNormalizationOrchestrator(options: {
   enabledCapabilities?: readonly ResolverCapability[]
 }) {
   const now = options.now ?? (() => new Date())
-  const enabledCapabilities = options.enabledCapabilities ?? ['pure']
+  const defaultEnabledCapabilities = options.enabledCapabilities ?? ['pure']
 
   return {
     async normalize(
       rawRecordId: string,
       rawRevisionId: string,
       trigger: { kind: 'intake' } | { kind: 'replay'; replayId: string; fieldDirectives: RawSourceFieldDirective[]; targetResolverVersions: ResolverVersionRef[] } = { kind: 'intake' },
+      execution: NormalizationExecutionOptions = {},
     ): Promise<RawSourceNormalizationResult> {
       const raw = options.repository.getRawContext(rawRevisionId)
       if (!raw || raw.revision.rawRecordId !== rawRecordId) throw new Error('Raw source revision not found')
+      const configuredRegistry = execution.registry ?? options.registry
       const registry = trigger.kind === 'replay' && trigger.targetResolverVersions.length
-        ? selectTargetResolverVersions(options.registry, trigger.targetResolverVersions)
-        : options.registry
+        ? selectTargetResolverVersions(configuredRegistry, trigger.targetResolverVersions)
+        : configuredRegistry
+      const enabledCapabilities = execution.enabledCapabilities ?? defaultEnabledCapabilities
       const inputHash = hashJson({ rawRevisionId, contentHash: raw.revision.contentHash })
-      const cached = trigger.kind === 'intake'
+      const cached = trigger.kind === 'intake' && execution.cache !== false
         ? options.repository.findCached(rawRevisionId, inputHash, registry.resolverSetHash, CANONICAL_CANDIDATE_SCHEMA_VERSION, NORMALIZATION_GATE_POLICY_VERSION)
         : null
       if (cached) return cached
@@ -58,6 +69,13 @@ export function createNormalizationOrchestrator(options: {
       const failedFields = new Set<CanonicalCandidateField>()
       const terminalFields = new Map<CanonicalCandidateField, { status: 'blocked' | 'retry'; reason: string }>()
       let infrastructureFailure: string | null = null
+
+      for (const outcome of execution.baselineOutcomes ?? []) {
+        if ((outcome.status === 'blocked' || outcome.status === 'retry') && !winners.has(outcome.field)) {
+          terminalFields.set(outcome.field, { status: outcome.status, reason: outcome.reason })
+        }
+        reconcile(outcome, winners, conflicts, rejectedFields, failedFields)
+      }
 
       if (trigger.kind === 'replay') {
         trigger.fieldDirectives.forEach((directive, index) => {
@@ -98,7 +116,7 @@ export function createNormalizationOrchestrator(options: {
               : { resolverId: resolver.declaration.id, resolverVersion: resolver.declaration.version, field: decision.field, inputHash: decision.inputHash, status: 'not_applicable', reason: decision.reason ?? 'Resolver not applicable' })
           } else {
             invoked = true
-            const issuedInputHashes = new Set<string>()
+            const issuedInputHashes = new Set<string>([raw.revision.contentHash])
             const context = Object.freeze({ rawRevision: deepFreeze(structuredClone(raw.revision)), sourceEntity: raw.sourceEntity ? deepFreeze(structuredClone(raw.sourceEntity)) : null, enabledCapabilities: Object.freeze([...enabledCapabilities]), resolverId: resolver.declaration.id, hashInput(value: JsonValue) { const hash = hashJson(value); issuedInputHashes.add(hash); return hash } })
             outcomes = await resolver.resolve(context)
             validateOutcomes(resolver.declaration.id, resolver.declaration.version, resolver.declaration.outputFields, outcomes, issuedInputHashes)
@@ -200,7 +218,7 @@ export function createNormalizationOrchestrator(options: {
         } else {
           gate = { ...gateBase, status: 'needs_enrichment', candidate: null }
         }
-        return { runId, rawRecordId, rawRevisionId, inputHash, resolverSetHash: registry.resolverSetHash, canonicalSchemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION, gatePolicyVersion: NORMALIZATION_GATE_POLICY_VERSION, status: status === 'failed' ? 'failed' as const : 'completed' as const, attempts, candidate, gate, now: evaluatedAt, triggerId: trigger.kind === 'replay' ? trigger.replayId : undefined }
+        return { runId, rawRecordId, rawRevisionId, triggerOccurrence: execution.triggerOccurrence, inputHash, resolverSetHash: registry.resolverSetHash, canonicalSchemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION, gatePolicyVersion: NORMALIZATION_GATE_POLICY_VERSION, status: status === 'failed' ? 'failed' as const : 'completed' as const, attempts, candidate, gate, now: evaluatedAt, triggerId: trigger.kind === 'replay' ? trigger.replayId : undefined }
       }
       if (initialStatus === 'passed' && destination) {
         const destinationOutcome = winners.get('destinationUrl')

@@ -9,6 +9,7 @@ import {
   MAX_RAW_SOURCE_PAYLOAD_BYTES,
   type BatchRawSourceRecordsInput,
   type BatchRawSourceRecordsResult,
+  type ConnectorCaptureReference,
   type JsonObject,
   type JsonValue,
   type RawSourceEvidenceInput,
@@ -116,7 +117,7 @@ export function createSqliteRawSourceRepository(
         reportedOrigin: revision.reportedOrigin,
         createdAt: rawRecord.createdAt,
         latestRevision: revision,
-        occurrences,
+        occurrences: occurrences.map(mapOccurrence),
       }
     },
   }
@@ -262,6 +263,8 @@ function ingestRecord(
     id: crypto.randomUUID(),
     rawRecordId,
     rawRevisionId: revision.id,
+    connectorInstanceId: record.capture?.connectorInstanceId ?? null,
+    connectorRunId: record.capture?.connectorRunId ?? null,
     observedAt: record.observedAt,
     receivedAt,
   }
@@ -278,7 +281,7 @@ function ingestRecord(
       reused: Boolean(existingRevision),
       createdAt: revision.createdAt,
     },
-    occurrence,
+    occurrence: mapOccurrence(occurrence),
   }
 }
 
@@ -355,6 +358,7 @@ function validateRecord(record: RawSourceRecordInput, index: number) {
     record,
     [
       'adapter',
+      'capture',
       'observedAt',
       'reportedOrigin',
       'providerRecordId',
@@ -365,6 +369,7 @@ function validateRecord(record: RawSourceRecordInput, index: number) {
     `records[${index}]`,
   )
   validateAdapter(record.adapter, index)
+  validateCapture(record.capture, record.adapter.kind, index)
   validateTimestamp(record.observedAt, index)
   validateOptionalText(record.providerRecordId, `records[${index}].providerRecordId`, 2048)
   validateOptionalText(record.providerSchema, `records[${index}].providerSchema`, 2048)
@@ -393,6 +398,53 @@ function validateRecord(record: RawSourceRecordInput, index: number) {
     record.evidence.forEach((evidence, evidenceIndex) =>
       validateEvidence(evidence, index, evidenceIndex),
     )
+  }
+}
+
+function validateCapture(
+  capture: ConnectorCaptureReference | undefined,
+  adapterKind: SourceAdapterProvenance['kind'],
+  index: number,
+) {
+  if (capture === undefined) {
+    return
+  }
+  if (adapterKind !== 'connector') {
+    throw validationError(`records[${index}].capture requires a connector adapter`)
+  }
+  if (!capture || typeof capture !== 'object' || Array.isArray(capture)) {
+    throw validationError(`records[${index}].capture must be an object`)
+  }
+  assertKnownKeys(
+    capture,
+    ['connectorInstanceId', 'connectorRunId'],
+    `records[${index}].capture`,
+  )
+  validateRequiredText(
+    capture.connectorInstanceId,
+    `records[${index}].capture.connectorInstanceId`,
+    256,
+  )
+  validateRequiredText(
+    capture.connectorRunId,
+    `records[${index}].capture.connectorRunId`,
+    256,
+  )
+}
+
+function mapOccurrence(row: typeof rawSourceOccurrences.$inferSelect) {
+  return {
+    id: row.id,
+    rawRecordId: row.rawRecordId,
+    rawRevisionId: row.rawRevisionId,
+    capture: row.connectorInstanceId && row.connectorRunId
+      ? {
+          connectorInstanceId: row.connectorInstanceId,
+          connectorRunId: row.connectorRunId,
+        }
+      : null,
+    observedAt: row.observedAt,
+    receivedAt: row.receivedAt,
   }
 }
 

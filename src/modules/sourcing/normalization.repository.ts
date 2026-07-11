@@ -7,6 +7,7 @@ import type {
   NormalizationGateOutcome,
   NormalizationStatus,
   RawSourceNormalizationResult,
+  RawSourceOccurrenceReceipt,
   RawSourceRevision,
 } from 'sparxie'
 import {
@@ -15,6 +16,7 @@ import {
   normalizationFieldOutcomes,
   normalizationGates,
   normalizationRuns,
+  rawSourceOccurrences,
   rawSourceRecords,
   rawSourceRevisions,
   sourceEntities,
@@ -47,6 +49,11 @@ export interface PersistNormalizationInput {
   candidate: CanonicalSourceCandidate | null
   gate: NormalizationGateOutcome
   now: string
+  triggerOccurrence?: RawSourceOccurrenceReceipt
+}
+
+export type PersistedRawSourceNormalizationResult = RawSourceNormalizationResult & {
+  triggerOccurrence: RawSourceOccurrenceReceipt | null
 }
 
 export interface StrongDestinationReconciliation {
@@ -263,6 +270,9 @@ function persistNormalization(
 ) {
   transaction.insert(normalizationRuns).values({
     id: input.runId, rawRecordId: input.rawRecordId, rawRevisionId: input.rawRevisionId,
+    triggerOccurrenceId: input.triggerOccurrence?.id ?? null,
+    triggerConnectorInstanceId: input.triggerOccurrence?.capture?.connectorInstanceId ?? null,
+    triggerConnectorRunId: input.triggerOccurrence?.capture?.connectorRunId ?? null,
     inputHash: input.inputHash, resolverSetHash: input.resolverSetHash,
     canonicalSchemaVersion: input.canonicalSchemaVersion, gatePolicyVersion: input.gatePolicyVersion,
     triggerKind: 'intake', triggerId: input.triggerId ?? null, status: input.status,
@@ -323,13 +333,45 @@ function recordIdentityConflict(
   }).onConflictDoNothing().run()
 }
 
-function mapResult(database: DrizzleDatabase, run: typeof normalizationRuns.$inferSelect): RawSourceNormalizationResult {
+function mapResult(
+  database: DrizzleDatabase,
+  run: typeof normalizationRuns.$inferSelect,
+): PersistedRawSourceNormalizationResult {
   const attemptRows = database.select().from(normalizationAttempts).where(eq(normalizationAttempts.runId, run.id)).orderBy(asc(normalizationAttempts.sequence)).all()
   const outcomes = database.select().from(normalizationFieldOutcomes).where(eq(normalizationFieldOutcomes.runId, run.id)).orderBy(asc(normalizationFieldOutcomes.sequence)).all().map((row) => JSON.parse(row.outcomeJson) as FieldResolutionOutcome)
   const attempts = attemptRows.map((row) => ({ id: row.id, rawRevisionId: row.rawRevisionId, resolver: JSON.parse(row.declarationJson), inputHash: row.inputHash, status: row.status, applicability: JSON.parse(row.applicabilityJson), startedAt: row.startedAt, completedAt: row.completedAt, outcomes: outcomes.filter((outcome) => outcome.resolverId === row.resolverId && outcome.resolverVersion === row.resolverVersion) })) as NormalizationAttempt[]
   const gateRow = database.select().from(normalizationGates).where(eq(normalizationGates.runId, run.id)).get()
   const candidateRow = database.select().from(canonicalSourceCandidates).where(eq(canonicalSourceCandidates.runId, run.id)).get()
-  return { rawRecordId: run.rawRecordId, rawRevisionId: run.rawRevisionId, canonicalSchemaVersion: run.canonicalSchemaVersion, status: run.status, attempts, fieldOutcomes: outcomes, updatedAt: run.updatedAt, gate: gateRow ? JSON.parse(gateRow.gateJson) : null, canonicalCandidate: candidateRow ? JSON.parse(candidateRow.candidateJson) : null } as RawSourceNormalizationResult
+  const triggerOccurrence = run.triggerOccurrenceId
+    ? database.select().from(rawSourceOccurrences)
+        .where(eq(rawSourceOccurrences.id, run.triggerOccurrenceId)).get()
+    : null
+  return {
+    rawRecordId: run.rawRecordId,
+    rawRevisionId: run.rawRevisionId,
+    canonicalSchemaVersion: run.canonicalSchemaVersion,
+    status: run.status,
+    attempts,
+    fieldOutcomes: outcomes,
+    updatedAt: run.updatedAt,
+    gate: gateRow ? JSON.parse(gateRow.gateJson) : null,
+    canonicalCandidate: candidateRow ? JSON.parse(candidateRow.candidateJson) : null,
+    triggerOccurrence: triggerOccurrence
+      ? {
+          id: triggerOccurrence.id,
+          rawRecordId: triggerOccurrence.rawRecordId,
+          rawRevisionId: triggerOccurrence.rawRevisionId,
+          capture: triggerOccurrence.connectorInstanceId && triggerOccurrence.connectorRunId
+            ? {
+                connectorInstanceId: triggerOccurrence.connectorInstanceId,
+                connectorRunId: triggerOccurrence.connectorRunId,
+              }
+            : null,
+          observedAt: triggerOccurrence.observedAt,
+          receivedAt: triggerOccurrence.receivedAt,
+        }
+      : null,
+  } as PersistedRawSourceNormalizationResult
 }
 
 function mapRevision(row: typeof rawSourceRevisions.$inferSelect): RawSourceRevision {

@@ -132,7 +132,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(15)
+    expect(migrationRows).toHaveLength(16)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -171,9 +171,13 @@ describe('SQLite database', () => {
       'source_entities',
     ])
     expect(indexes).toEqual([
+      'idx_raw_source_occurrences_connector_lineage',
+      'idx_raw_source_occurrences_connector_run',
+      'idx_raw_source_occurrences_lineage',
       'idx_raw_source_occurrences_record_chronology',
       'idx_raw_source_occurrences_revision',
       'idx_raw_source_records_source_entity',
+      'idx_raw_source_revisions_id_record',
       'idx_raw_source_revisions_record_hash',
       'idx_raw_source_revisions_record_revision',
       'idx_source_entities_identity',
@@ -187,7 +191,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 15 })
+    ).toEqual({ count: 16 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -200,6 +204,198 @@ describe('SQLite database', () => {
     }
     freshlyMigrated.close()
   })
+
+  it('transactionally resets derived connector state while preserving protected workspace state', () => {
+    const oldMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-capture-migrations-'))
+    fs.cpSync(path.resolve('drizzle'), oldMigrations, { recursive: true })
+    const captureMigration = fs.readdirSync(oldMigrations).find((name) => name.startsWith('0015_'))
+    if (!captureMigration) throw new Error('Connector capture migration fixture is missing')
+    fs.rmSync(path.join(oldMigrations, captureMigration))
+    const oldJournalPath = path.join(oldMigrations, 'meta', '_journal.json')
+    const oldJournal = JSON.parse(fs.readFileSync(oldJournalPath, 'utf8')) as {
+      entries: Array<{ idx: number }>
+    }
+    oldJournal.entries = oldJournal.entries.filter(({ idx }) => idx <= 14)
+    fs.writeFileSync(oldJournalPath, `${JSON.stringify(oldJournal, null, 2)}\n`)
+    const database = createInMemoryDatabase()
+    migrateDatabase(database, { migrationsFolder: oldMigrations })
+    seedResetMigrationFixture(database)
+    const before = snapshotProtectedTables(database)
+
+    migrateDatabase(database)
+
+    expect(snapshotProtectedTables(database)).toEqual({
+      ...before,
+      connector_instances: before.connector_instances.map((row) => ({
+        ...row,
+        connector_version: '0.6.0',
+      })),
+    })
+    for (const table of disposableResetTables) {
+      expect(database.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 })
+    }
+    expect(tableColumns(database, 'normalization_runs')).toEqual(expect.arrayContaining([
+      'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
+    ]))
+    expect(database.prepare(`
+      select name from sqlite_master
+      where type = 'index' and name in (
+        'idx_raw_source_occurrences_lineage',
+        'idx_raw_source_occurrences_connector_lineage',
+        'idx_raw_source_occurrences_connector_run'
+      ) order by name
+    `).all()).toEqual([
+      { name: 'idx_raw_source_occurrences_connector_lineage' },
+      { name: 'idx_raw_source_occurrences_connector_run' },
+      { name: 'idx_raw_source_occurrences_lineage' },
+    ])
+    expect(normalizationLineageTriggerNames(database)).toEqual([
+      'trg_normalization_runs_trigger_lineage_insert',
+      'trg_normalization_runs_trigger_lineage_update',
+      'trg_raw_source_occurrences_normalization_lineage_delete',
+      'trg_raw_source_occurrences_normalization_lineage_update',
+    ])
+    expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
+    database.close()
+  })
+
+  it('rolls back an unstamped legacy reset when current schema creation fails', () => {
+    const database = createInMemoryDatabase()
+    migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
+    seedResetMigrationFixture(database)
+    database.exec(`
+      drop table __drizzle_migrations;
+      create trigger inject_legacy_reset_failure
+      before update of connector_version on connector_instances
+      when new.connector_version = '0.6.0'
+      begin select raise(abort, 'injected legacy reset failure'); end;
+    `)
+    const before = snapshotAllResetTables(database)
+
+    expect(() => migrateDatabase(database)).toThrow(/injected legacy reset failure/)
+    expect(snapshotAllResetTables(database)).toEqual(before)
+    expect(database.prepare(`
+      select count(*) as count from sqlite_master
+      where type = 'table' and name = '__drizzle_migrations'
+    `).get()).toEqual({ count: 0 })
+    database.close()
+  })
+
+  it('resets and stamps an unstamped application database shaped through 0014', () => {
+    const database = createInMemoryDatabase()
+    migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
+    seedResetMigrationFixture(database)
+    const before = snapshotProtectedTables(database)
+    database.exec('drop table __drizzle_migrations')
+
+    migrateDatabase(database)
+
+    expect(snapshotProtectedTables(database)).toEqual({
+      ...before,
+      connector_instances: before.connector_instances.map((row) => ({
+        ...row,
+        connector_version: '0.6.0',
+      })),
+    })
+    for (const table of disposableResetTables) {
+      expect(database.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 })
+    }
+    expect(tableColumns(database, 'raw_source_occurrences')).toEqual(expect.arrayContaining([
+      'connector_instance_id', 'connector_run_id',
+    ]))
+    expect(tableColumns(database, 'normalization_runs')).toEqual(expect.arrayContaining([
+      'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
+    ]))
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
+      .toEqual({ count: 16 })
+    expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
+    database.close()
+  })
+
+  it('rolls back the reset and version update when the migration fails', () => {
+    const failingMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-failing-reset-'))
+    fs.cpSync(path.resolve('drizzle'), failingMigrations, { recursive: true })
+    const migrationName = fs.readdirSync(failingMigrations).find((name) => name.startsWith('0015_'))
+    if (!migrationName) throw new Error('Connector reset migration fixture is missing')
+    fs.appendFileSync(path.join(failingMigrations, migrationName), '\n--> statement-breakpoint\nselect * from intentionally_missing_table;\n')
+    const oldMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-pre-reset-'))
+    fs.cpSync(path.resolve('drizzle'), oldMigrations, { recursive: true })
+    fs.rmSync(path.join(oldMigrations, migrationName))
+    const journalPath = path.join(oldMigrations, 'meta', '_journal.json')
+    const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as { entries: Array<{ idx: number }> }
+    journal.entries = journal.entries.filter(({ idx }) => idx <= 14)
+    fs.writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`)
+    const database = createInMemoryDatabase()
+    migrateDatabase(database, { migrationsFolder: oldMigrations })
+    seedResetMigrationFixture(database)
+    const before = snapshotAllResetTables(database)
+
+    expect(() => migrateDatabase(database, { migrationsFolder: failingMigrations })).toThrow(/intentionally_missing_table/)
+    expect(snapshotAllResetTables(database)).toEqual(before)
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 15 })
+    database.close()
+  })
+
+  it.each(['fresh', 'migrated'] as const)(
+    'keeps referenced occurrence lineage immutable in a %s current schema',
+    (schemaKind) => {
+      const database = createInMemoryDatabase()
+      if (schemaKind === 'migrated') {
+        migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
+      }
+      migrateDatabase(database)
+      seedReferencedOccurrenceFixture(database)
+
+      expect(() => database.prepare(`
+        insert into normalization_runs (
+          id, raw_record_id, raw_revision_id, trigger_occurrence_id,
+          trigger_connector_instance_id, trigger_connector_run_id, input_hash,
+          resolver_set_hash, canonical_schema_version, gate_policy_version, trigger_kind,
+          status, created_at, updated_at
+        ) values (
+          'normalization-mismatch', 'record-one', 'revision-two', 'occurrence-one',
+          'instance-one', 'connector-run-one', 'sha256:mismatch', 'sha256:resolvers',
+          'candidate/v1', 'gate/v1', 'intake', 'completed',
+          '2026-07-10T12:02:00.000Z', '2026-07-10T12:02:00.000Z'
+        )
+      `).run()).toThrow(/normalization trigger lineage mismatch/i)
+
+      expect(() => database.prepare(`
+        update raw_source_occurrences
+        set connector_instance_id = 'instance-two', connector_run_id = 'connector-run-two'
+        where id = 'occurrence-one'
+      `).run()).toThrow(/normalization trigger occurrence is immutable/i)
+      expect(() => database.prepare(`
+        update raw_source_occurrences
+        set raw_revision_id = 'revision-two'
+        where id = 'occurrence-one'
+      `).run()).toThrow(/normalization trigger occurrence is immutable/i)
+      expect(() => database.prepare(`
+        update raw_source_occurrences set id = 'occurrence-renamed'
+        where id = 'occurrence-one'
+      `).run()).toThrow(/normalization trigger occurrence is immutable/i)
+      expect(() => database.prepare(`
+        delete from raw_source_occurrences where id = 'occurrence-one'
+      `).run()).toThrow(/normalization trigger occurrence is immutable/i)
+      expect(() => database.prepare(`
+        update raw_source_occurrences set observed_at = '2026-07-10T12:05:00.000Z'
+        where id = 'occurrence-one'
+      `).run()).not.toThrow()
+      expect(database.prepare(`
+        select connector_instance_id, connector_run_id, raw_revision_id
+        from raw_source_occurrences where id = 'occurrence-one'
+      `).get()).toEqual({
+        connector_instance_id: 'instance-one',
+        connector_run_id: 'connector-run-one',
+        raw_revision_id: 'revision-one',
+      })
+      expect(() => database.prepare(`
+        delete from raw_source_occurrences where id = 'occurrence-two'
+      `).run()).not.toThrow()
+      expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
+      database.close()
+    },
+  )
 
   it('creates structurally equivalent normalization history for fresh and legacy workspaces', () => {
     const legacy = createInMemoryDatabase()
@@ -299,8 +495,8 @@ describe('SQLite database', () => {
          '2026-07-10T12:01:00.000Z', '{}', '[]', '2026-07-10T12:01:00.000Z');
     `)
 
-    migrateDatabase(database)
-    migrateDatabase(database)
+    migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
+    migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
 
     expect(database.prepare(`
       select source_entity_id, identity_kind, identity_namespace, identity_value,
@@ -346,7 +542,7 @@ describe('SQLite database', () => {
 
   it('enforces append-only identity and conflict provenance in SQLite', () => {
     const database = createInMemoryDatabase()
-    migrateDatabase(database)
+    migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
     database.exec(`
       insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
       values ('entity-1', 'provider_job', 'fixture', 'job-1', '2026-07-10T12:00:00.000Z');
@@ -441,7 +637,7 @@ describe('SQLite database', () => {
       );
     `)
 
-    migrateDatabase(database)
+    migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
 
     expect(database.prepare('select id, trigger_kind, trigger_id from normalization_runs').all())
       .toEqual([{ id: 'run-1', trigger_kind: 'intake', trigger_id: null }])
@@ -532,7 +728,7 @@ describe('SQLite database', () => {
     ).toHaveLength(1)
   })
 
-  it('adds connector filters and scoped checkpoints to legacy connector tables', () => {
+  it('recreates current scoped checkpoints without legacy execution state', () => {
     const database = createInMemoryDatabase()
     database.exec(`
       create table connector_instances (
@@ -632,13 +828,7 @@ describe('SQLite database', () => {
       expect.arrayContaining(['config_json', 'filters_json', 'filter_signature']),
     )
     expect(tableColumns(database, 'connector_checkpoints')).toContain('filter_signature')
-    expect(
-      database
-        .prepare('select filter_signature from connector_checkpoints where connector_instance_id = ?')
-        .get('connector-instance-fixture'),
-    ).toEqual({
-      filter_signature: 'filters:{}',
-    })
+    expect(database.prepare('select * from connector_checkpoints').all()).toEqual([])
 
     database
       .prepare(
@@ -668,10 +858,7 @@ describe('SQLite database', () => {
       database
         .prepare('select filter_signature from connector_checkpoints order by filter_signature')
         .all(),
-    ).toEqual([
-      { filter_signature: 'filters:{"roleKeywords":["intern"]}' },
-      { filter_signature: 'filters:{}' },
-    ])
+    ).toEqual([{ filter_signature: 'filters:{"roleKeywords":["intern"]}' }])
   })
 
   it('migrates legacy policy queue config to action queue config', () => {
@@ -1155,6 +1342,145 @@ describe('SQLite database', () => {
   })
 })
 
+const protectedResetTables = [
+  'companies', 'sources', 'applications', 'application_links', 'application_scores',
+  'application_workflow_states', 'application_events', 'application_attempts',
+  'application_attempt_steps', 'workflow_runs', 'workflow_run_steps', 'user_profile',
+  'profile_education', 'profile_answers', 'profile_secrets', 'profile_sensitive_details',
+  'policy_config', 'policy_evidence', 'connector_instances',
+] as const
+
+const disposableResetTables = [
+  'connector_runs', 'connector_checkpoints', 'connector_observations', 'source_entities',
+  'source_entity_identities', 'source_identity_conflicts', 'raw_source_records',
+  'raw_source_revisions', 'raw_source_occurrences', 'normalization_runs',
+  'normalization_replay_requests', 'normalization_replay_items', 'normalization_attempts',
+  'normalization_field_outcomes', 'canonical_source_candidates', 'normalization_gates',
+  'sourcing_findings', 'connector_projection_keys',
+] as const
+
+function seedResetMigrationFixture(database: ReturnType<typeof createInMemoryDatabase>) {
+  database.exec(`
+    insert into connector_instances (
+      id, connector_id, connector_version, display_name, enabled, config_json, auth_json,
+      filters_json, created_at, updated_at
+    ) values (
+      'jobright-instance', 'jobright.resolver', '0.4.3', 'Jobright', 1,
+      '{"region":"us"}', '[{"secretKey":"jobright.password"}]', '{"remote":true}',
+      '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'
+    );
+    insert into user_profile (id, full_name, email, created_at, updated_at)
+    values ('default', 'Protected User', 'protected@example.com', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
+    insert into profile_secrets (key, label, kind, encrypted_value, created_at, updated_at)
+    values ('jobright.password', 'Jobright password', 'credential', 'ciphertext:nonce:key-v7', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
+    insert into profile_sensitive_details (id, date_of_birth_encrypted, ssn_last_4_encrypted, created_at, updated_at)
+    values ('default', 'ciphertext:dob', 'ciphertext:ssn', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
+    insert into policy_config (id, config_json, created_at, updated_at)
+    values ('default', '{"autoApply":false}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
+    insert into policy_evidence (id, subject_type, subject_id, tag, source, note, payload_json, created_at)
+    values ('evidence-1', 'profile', 'default', 'protected', 'user', 'keep me', '{}', '2026-07-10T12:00:00.000Z');
+  `)
+  database.pragma('foreign_keys = OFF')
+  database.pragma('ignore_check_constraints = ON')
+  for (const table of disposableResetTables) insertSyntheticRow(database, table)
+  database.pragma('ignore_check_constraints = OFF')
+  database.pragma('foreign_keys = ON')
+}
+
+function seedReferencedOccurrenceFixture(database: ReturnType<typeof createInMemoryDatabase>) {
+  database.exec(`
+    insert into connector_instances (
+      id, connector_id, connector_version, display_name, enabled, config_json, auth_json,
+      filters_json, created_at, updated_at
+    ) values
+      ('instance-one', 'fixture.one', '1.0.0', 'One', 1, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
+      ('instance-two', 'fixture.two', '1.0.0', 'Two', 1, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
+    insert into connector_runs (
+      id, connector_instance_id, mode, status, started_at, config_json, filters_json,
+      filter_signature, observation_count, warning_count, stats_json, warnings_json,
+      retry_hints_json, created_at, updated_at
+    ) values
+      ('connector-run-one', 'instance-one', 'manual', 'completed', '2026-07-10T12:00:00.000Z', '{}', '{}', 'filters:{}', 0, 0, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
+      ('connector-run-two', 'instance-two', 'manual', 'completed', '2026-07-10T12:00:00.000Z', '{}', '{}', 'filters:{}', 0, 0, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
+    insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+    values ('entity-one', 'provider_job', 'fixture', 'job-one', '2026-07-10T12:00:00.000Z');
+    insert into raw_source_records (id, source_entity_id, created_at)
+    values ('record-one', 'entity-one', '2026-07-10T12:00:00.000Z');
+    insert into raw_source_revisions (
+      id, raw_record_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
+      observed_at, payload_json, evidence_json, created_at
+    ) values
+      ('revision-one', 'record-one', 1, 'sha256:one', 'fixture', 'connector', '1.0.0', '2026-07-10T12:00:00.000Z', '{}', '[]', '2026-07-10T12:00:00.000Z'),
+      ('revision-two', 'record-one', 2, 'sha256:two', 'fixture', 'connector', '1.0.0', '2026-07-10T12:01:00.000Z', '{}', '[]', '2026-07-10T12:01:00.000Z');
+    insert into raw_source_occurrences (
+      id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id,
+      observed_at, received_at
+    ) values
+      ('occurrence-one', 'record-one', 'revision-one', 'instance-one', 'connector-run-one', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z'),
+      ('occurrence-two', 'record-one', 'revision-one', 'instance-two', 'connector-run-two', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z');
+    insert into normalization_runs (
+      id, raw_record_id, raw_revision_id, trigger_occurrence_id,
+      trigger_connector_instance_id, trigger_connector_run_id, input_hash, resolver_set_hash,
+      canonical_schema_version, gate_policy_version, trigger_kind, status, created_at, updated_at
+    ) values
+      ('normalization-one', 'record-one', 'revision-one', 'occurrence-one', 'instance-one',
+       'connector-run-one', 'sha256:one', 'sha256:resolvers', 'candidate/v1', 'gate/v1',
+       'intake', 'completed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
+      ('normalization-manual', 'record-one', 'revision-two', null, null, null,
+       'sha256:manual', 'sha256:resolvers', 'candidate/v1', 'gate/v1', 'intake',
+       'completed', '2026-07-10T12:01:00.000Z', '2026-07-10T12:01:00.000Z');
+  `)
+}
+
+function migrationFolderThrough(maxIndex: number) {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), `valedictorian-through-${maxIndex}-`))
+  fs.cpSync(path.resolve('drizzle'), folder, { recursive: true })
+  for (const name of fs.readdirSync(folder)) {
+    const index = Number.parseInt(name.slice(0, 4), 10)
+    if (Number.isInteger(index) && index > maxIndex) fs.rmSync(path.join(folder, name))
+  }
+  const journalPath = path.join(folder, 'meta', '_journal.json')
+  const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as { entries: Array<{ idx: number }> }
+  journal.entries = journal.entries.filter(({ idx }) => idx <= maxIndex)
+  fs.writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`)
+  return folder
+}
+
+function insertSyntheticRow(
+  database: ReturnType<typeof createInMemoryDatabase>,
+  table: string,
+) {
+  const columns = database.prepare(`pragma table_info('${table}')`).all() as Array<{
+    name: string
+    notnull: number
+    dflt_value: unknown
+    type: string
+    pk: number
+  }>
+  const required = columns.filter((column) => column.pk > 0 || (column.notnull === 1 && column.dflt_value === null))
+  const names = required.map(({ name }) => `"${name}"`).join(', ')
+  const values = required.map((column) => {
+    if (/INT/i.test(column.type)) return 1
+    if (column.name.endsWith('_json')) return '{}'
+    return `${table}:${column.name}`
+  })
+  database.prepare(`insert into "${table}" (${names}) values (${required.map(() => '?').join(', ')})`).run(...values)
+}
+
+function snapshotProtectedTables(database: ReturnType<typeof createInMemoryDatabase>) {
+  return Object.fromEntries(protectedResetTables.map((table) => [
+    table,
+    database.prepare(`select * from "${table}" order by rowid`).all(),
+  ])) as Record<(typeof protectedResetTables)[number], Array<Record<string, unknown>>>
+}
+
+function snapshotAllResetTables(database: ReturnType<typeof createInMemoryDatabase>) {
+  return Object.fromEntries([...protectedResetTables, ...disposableResetTables].map((table) => [
+    table,
+    database.prepare(`select * from "${table}" order by rowid`).all(),
+  ]))
+}
+
 function tableColumns(database: ReturnType<typeof createInMemoryDatabase>, tableName: string) {
   return database
     .prepare(`pragma table_info('${tableName}')`)
@@ -1197,6 +1523,16 @@ function identityTriggerNames(database: ReturnType<typeof createInMemoryDatabase
     select name from sqlite_master
     where type = 'trigger'
       and (name like 'trg_source_entity%' or name like 'trg_source_identity%')
+    order by name
+  `).all().map((row) => (row as { name: string }).name)
+}
+
+function normalizationLineageTriggerNames(database: ReturnType<typeof createInMemoryDatabase>) {
+  return database.prepare(`
+    select name from sqlite_master
+    where type = 'trigger'
+      and (name like 'trg_normalization_runs_trigger_lineage_%'
+        or name like 'trg_raw_source_occurrences_normalization_lineage_%')
     order by name
   `).all().map((row) => (row as { name: string }).name)
 }

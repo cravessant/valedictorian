@@ -16,6 +16,7 @@ import {
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
 import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createSqliteConnectorProjectionService } from '../modules/connectors/connector.projection'
+import { createConnectorNormalizationHost } from '../modules/connectors/connector.normalization'
 import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import {
   createDefaultLocalConnectorRegistry,
@@ -24,6 +25,7 @@ import {
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
   createConnectorRunner,
+  isJobrightRawFirstConnector,
   type AppConnectorAuthGrant,
   type AppConnectorAuthHost,
   type AppConnectorAuthValidationResult,
@@ -300,6 +302,11 @@ export function createLocalValedictorianClient({
     registry: normalizationRegistry,
     now,
   })
+  const connectorNormalization = createConnectorNormalizationHost({
+    repository: normalizationRepository,
+    registry: normalizationRegistry,
+    now,
+  })
   const normalizationReplayService = createNormalizationReplayService({
     database,
     orchestrator: normalizationOrchestrator,
@@ -309,6 +316,13 @@ export function createLocalValedictorianClient({
   const trustedConnectorAuth = composeTrustedConnectorAuth(profileRepository)
   const connectorRunner = createConnectorRunner({
     auth: trustedConnectorAuth,
+    normalization: connectorNormalization,
+    rawSource: {
+      async ingest(record) {
+        const result = await rawSourceRepository.ingestBatch({ records: [record] })
+        return result.receipts[0]
+      },
+    },
     repository: connectorRepository,
     runtime: connectorRuntime,
     workspaceId,
@@ -396,7 +410,7 @@ export function createLocalValedictorianClient({
         }))
       },
       update: async (input) => {
-        let existing = await connectorRepository.getInstance(input.connectorInstanceId)
+        const existing = await connectorRepository.getInstance(input.connectorInstanceId)
 
         if (!existing) {
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
@@ -415,11 +429,9 @@ export function createLocalValedictorianClient({
         }
 
         if (connector && existing.connectorVersion !== connector.definition.version) {
-          existing = await connectorRepository.reconcileInstalledConnector({
-            connectorInstanceId: existing.id,
-            connectorId: connector.definition.id,
-            connectorVersion: connector.definition.version,
-          })
+          throw new Error(
+            `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
+          )
         }
 
         const connectorVersion = input.connectorVersion
@@ -782,11 +794,9 @@ async function executeConnectorRunTrigger({
   }
 
   if (instance.connectorVersion !== connector.definition.version) {
-    await connectorRepository.reconcileInstalledConnector({
-      connectorInstanceId: instance.id,
-      connectorId: connector.definition.id,
-      connectorVersion: connector.definition.version,
-    })
+    throw new Error(
+      `Connector version mismatch for ${instance.connectorId}: expected ${connector.definition.version}`,
+    )
   }
 
   const mode = input.mode ?? 'manual'
@@ -862,10 +872,12 @@ async function executeConnectorRunTrigger({
         lastProgressAt: now().toISOString(),
       },
     })
-    const observations = await connectorRepository.listObservations({
-      connectorInstanceId: input.connectorInstanceId,
-      connectorRunId: run.id,
-    })
+    const observations = isJobrightRawFirstConnector(connector)
+      ? []
+      : await connectorRepository.listObservations({
+          connectorInstanceId: input.connectorInstanceId,
+          connectorRunId: run.id,
+        })
 
     const projectedFindings = new Map<
       string,

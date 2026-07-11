@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { JobObservation } from '@sparxie/valedictorian-connectors-core'
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
 import {
   connectorCheckpoints,
   connectorInstances,
@@ -9,17 +8,6 @@ import {
   connectorRuns,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
-import {
-  connectorReconciliationError,
-  isJsonRecord,
-  isTrustedJobrightUpgrade,
-  JOBRIGHT_MIGRATION_SEED_LIMIT,
-  JOBRIGHT_MIGRATION_SCAN_LIMIT,
-  JOBRIGHT_RAW_FIRST_CHECKPOINT_SCOPE,
-  prepareJobrightV2MigrationCheckpoint,
-  toJobrightMigrationSeed,
-  validateJobrightCheckpoint,
-} from './connector.reconciliation'
 
 type JsonRecord = Record<string, unknown>
 
@@ -123,16 +111,6 @@ export interface UpsertConnectorInstanceInput {
   config?: JsonRecord
   filters?: JsonRecord
   createdAt?: string
-}
-
-export interface ReconcileInstalledConnectorInput {
-  connectorInstanceId: string
-  connectorId: string
-  connectorVersion: string
-}
-
-export interface ReconcileInstalledConnectorResult extends ConnectorInstanceRecord {
-  reconciled: boolean
 }
 
 export interface RecordConnectorRefreshResultInput {
@@ -314,11 +292,6 @@ export interface ListConnectorObservationsInput {
   connectorRunId?: string
 }
 
-export interface ListConnectorReconciliationObservationsInput {
-  connectorInstanceId: string
-  limit?: number
-}
-
 export interface LinkObservationToSourcingFindingInput {
   connectorObservationId: string
   sourcingFindingId: string
@@ -329,13 +302,8 @@ export interface RecordProjectionKeysInput {
   dedupeKeys: string[]
 }
 
-export interface CreateSqliteConnectorRepositoryOptions {
-  now?: () => Date
-}
-
 export function createSqliteConnectorRepository(
   database: DrizzleDatabase,
-  { now: repositoryNow = () => new Date() }: CreateSqliteConnectorRepositoryOptions = {},
 ) {
   return {
     async upsertInstance(input: UpsertConnectorInstanceInput): Promise<ConnectorInstanceRecord> {
@@ -383,148 +351,6 @@ export function createSqliteConnectorRepository(
       }
 
       return selectConnectorInstance(database, input.id)
-    },
-
-    async reconcileInstalledConnector(
-      input: ReconcileInstalledConnectorInput,
-    ): Promise<ReconcileInstalledConnectorResult> {
-      return database.transaction((transaction) => {
-        const instance = transaction
-          .select()
-          .from(connectorInstances)
-          .where(
-            and(
-              eq(connectorInstances.id, input.connectorInstanceId),
-              isNull(connectorInstances.deletedAt),
-            ),
-          )
-          .get()
-
-        if (!instance) {
-          throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
-        }
-
-        if (instance.connectorId !== input.connectorId) {
-          throw connectorReconciliationError()
-        }
-
-        if (instance.connectorVersion === input.connectorVersion) {
-          return {
-            ...mapConnectorInstance(instance),
-            reconciled: false,
-          }
-        }
-
-        if (!isTrustedJobrightUpgrade(instance, input)) {
-          throw connectorReconciliationError()
-        }
-
-        validatePersistedConnectorInstance(instance)
-
-        const checkpoints = transaction
-          .select()
-          .from(connectorCheckpoints)
-          .where(
-            and(
-              eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
-              isNull(connectorCheckpoints.deletedAt),
-            ),
-          )
-          .orderBy(desc(connectorCheckpoints.savedAt), asc(connectorCheckpoints.filterSignature))
-          .all()
-
-        for (const checkpoint of checkpoints) {
-          validateJobrightCheckpoint(checkpoint.schemaVersion, checkpoint.checkpointJson)
-        }
-
-        const sourceCheckpoint = checkpoints[0]
-        const canonicalCheckpoint = checkpoints.find(
-          (checkpoint) => checkpoint.filterSignature === JOBRIGHT_RAW_FIRST_CHECKPOINT_SCOPE,
-        )
-
-        if (sourceCheckpoint && canonicalCheckpoint) {
-          throw connectorReconciliationError()
-        }
-
-        let migrationObservations: JobObservation[]
-
-        try {
-          migrationObservations = selectLatestReconciliationObservations(transaction, {
-            connectorInstanceId: input.connectorInstanceId,
-            limit: JOBRIGHT_MIGRATION_SEED_LIMIT,
-          })
-        } catch {
-          throw connectorReconciliationError()
-        }
-
-        if (sourceCheckpoint || migrationObservations.length > 0) {
-          const reconciledCheckpointJson = prepareJobrightV2MigrationCheckpoint(
-            migrationObservations,
-          )
-          const latestRun = sourceCheckpoint
-            ? null
-            : transaction
-              .select()
-              .from(connectorRuns)
-              .where(
-                and(
-                  eq(connectorRuns.connectorInstanceId, input.connectorInstanceId),
-                  isNull(connectorRuns.deletedAt),
-                ),
-              )
-              .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
-              .limit(1)
-              .get()
-          const reconciledAt = repositoryNow().toISOString()
-
-          transaction
-            .insert(connectorCheckpoints)
-            .values({
-              connectorInstanceId: input.connectorInstanceId,
-              coverageStartedAt: sourceCheckpoint?.coverageStartedAt
-                ?? latestRun?.coverageStartedAt
-                ?? null,
-              coverageEndedAt: sourceCheckpoint?.coverageEndedAt
-                ?? latestRun?.coverageEndedAt
-                ?? null,
-              savedAt: sourceCheckpoint?.savedAt
-                ?? latestRun?.completedAt
-                ?? migrationObservations[0]?.observedAt
-                ?? reconciledAt,
-              createdAt: reconciledAt,
-              updatedAt: reconciledAt,
-              deletedAt: null,
-              filterSignature: JOBRIGHT_RAW_FIRST_CHECKPOINT_SCOPE,
-              checkpointJson: reconciledCheckpointJson,
-              schemaVersion: 'jobright-resolution-checkpoint@2',
-            })
-            .run()
-        }
-
-        transaction
-          .update(connectorInstances)
-          .set({
-            connectorVersion: input.connectorVersion,
-            updatedAt: repositoryNow().toISOString(),
-          })
-          .where(eq(connectorInstances.id, input.connectorInstanceId))
-          .run()
-
-        const reconciledInstance = transaction
-          .select()
-          .from(connectorInstances)
-          .where(eq(connectorInstances.id, input.connectorInstanceId))
-          .get()
-
-        if (!reconciledInstance) {
-          throw connectorReconciliationError()
-        }
-
-        return {
-          ...mapConnectorInstance(reconciledInstance),
-          reconciled: true,
-        }
-      }, { behavior: 'immediate' })
     },
 
     async recordRefreshResult(
@@ -1255,12 +1081,6 @@ export function createSqliteConnectorRepository(
         )
     },
 
-    async listLatestReconciliationObservations(
-      input: ListConnectorReconciliationObservationsInput,
-    ): Promise<JobObservation[]> {
-      return selectLatestReconciliationObservations(database, input)
-    },
-
     async getObservation(connectorObservationId: string): Promise<ConnectorObservationRecord | null> {
       const row = database
         .select()
@@ -1460,135 +1280,6 @@ function upsertConnectorCheckpoint(
       createdAt: now,
     })
     .run()
-}
-
-function validatePersistedConnectorInstance(instance: typeof connectorInstances.$inferSelect): void {
-  try {
-    const auth = JSON.parse(instance.authJson) as unknown
-    const config = JSON.parse(instance.configJson) as unknown
-    const filters = JSON.parse(instance.filtersJson) as unknown
-
-    if (!Array.isArray(auth)) {
-      throw connectorReconciliationError()
-    }
-
-    normalizeConnectorAuthReferences(auth)
-
-    if (!isJsonRecord(config) || !isJsonRecord(filters)) {
-      throw connectorReconciliationError()
-    }
-  } catch {
-    throw connectorReconciliationError()
-  }
-}
-
-function selectLatestReconciliationObservations(
-  database: Pick<DrizzleDatabase, 'all' | 'select'>,
-  input: ListConnectorReconciliationObservationsInput,
-): JobObservation[] {
-  const limit = Math.min(
-    Math.max(input.limit ?? JOBRIGHT_MIGRATION_SEED_LIMIT, 1),
-    JOBRIGHT_MIGRATION_SEED_LIMIT,
-  )
-  const malformedRows = database.all<{ id: string }>(sql`
-    SELECT id
-    FROM connector_observations
-    WHERE connector_instance_id = ${input.connectorInstanceId}
-      AND deleted_at IS NULL
-      AND (
-        json_valid(pay_json) = 0
-        OR json_valid(links_json) = 0
-        OR json_valid(resolution_json) = 0
-        OR json_valid(dedupe_keys_json) = 0
-        OR json_valid(source_metadata_json) = 0
-        OR json_valid(evidence_json) = 0
-        OR json_valid(raw_json) = 0
-      )
-    LIMIT 1
-  `)
-
-  if (malformedRows.length > 0) {
-    throw new Error('Malformed connector observation JSON')
-  }
-
-  const candidateIds = database.all<{ id: string }>(sql`
-    SELECT id
-    FROM connector_observations
-    WHERE connector_instance_id = ${input.connectorInstanceId}
-      AND deleted_at IS NULL
-    ORDER BY observed_at DESC, updated_at DESC, created_at DESC, id DESC
-    LIMIT ${JOBRIGHT_MIGRATION_SCAN_LIMIT}
-  `)
-  const ids = candidateIds.map(({ id }) => id)
-
-  if (ids.length === 0) {
-    return []
-  }
-
-  const rowsById = new Map(database
-    .select()
-    .from(connectorObservations)
-    .where(
-      and(
-        eq(connectorObservations.connectorInstanceId, input.connectorInstanceId),
-        inArray(connectorObservations.id, ids),
-        isNull(connectorObservations.deletedAt),
-      ),
-    )
-    .all()
-    .map((row) => [row.id, row]))
-
-  const latestCompatibleBySource = new Map<string, {
-    id: string
-    seed: JobObservation
-  }>()
-
-  for (const id of ids) {
-    const row = rowsById.get(id)
-    if (!row) {
-      continue
-    }
-
-    const observation = mapConnectorObservation(row)
-    const seed = toJobrightMigrationSeed(observation)
-
-    if (seed && !latestCompatibleBySource.has(seed.sourceRecordKey)) {
-      latestCompatibleBySource.set(seed.sourceRecordKey, { id, seed })
-    }
-  }
-
-  return [...latestCompatibleBySource.values()]
-    .sort((left, right) => migrationSeedPriority(left.seed) - migrationSeedPriority(right.seed)
-      || right.seed.observedAt.localeCompare(left.seed.observedAt)
-      || left.seed.sourceRecordKey.localeCompare(right.seed.sourceRecordKey)
-      || left.id.localeCompare(right.id))
-    .slice(0, limit)
-    .map(({ seed }) => seed)
-}
-
-function migrationSeedPriority(seed: JobObservation): number {
-  if ([
-    'resolved',
-    'closed',
-    'hidden',
-    'direct_apply',
-    'not_supported',
-  ].includes(seed.resolution.status)) {
-    return 0
-  }
-
-  if (
-    seed.resolution.status === 'unresolved'
-    && ![
-      'jobright_resolution_deferred',
-      'jobright_detail_retryable',
-      'jobright_detail_request_failed',
-    ].includes(seed.resolution.reason ?? '')
-  ) {
-    return 1
-  }
-
-  return 2
 }
 
 function mapConnectorInstance(

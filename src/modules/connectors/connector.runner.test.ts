@@ -301,7 +301,7 @@ describe('connector runner', () => {
     ])
   })
 
-  it('passes canonical Jobright checkpoint envelopes with deterministic latest observation seeds', async () => {
+  it('passes the current Jobright checkpoint payload without legacy observation seeds', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -311,7 +311,7 @@ describe('connector runner', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.5.0',
+        version: '0.6.0',
         capabilities: { supportsFiltering: false },
       },
       async refresh(input) {
@@ -332,7 +332,7 @@ describe('connector runner', () => {
     await repository.upsertInstance({
       id: 'jobright-seeded',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.5.0',
+      connectorVersion: '0.6.0',
       displayName: 'Jobright internslist',
       enabled: true,
       filters: { roleTerms: ['intern'] },
@@ -363,10 +363,10 @@ describe('connector runner', () => {
     })
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-seeded',
-      filterSignature: 'provider-state:jobright.resolver@0.5.0',
+      filterSignature: 'provider-state:jobright.resolver@0.6.0',
       checkpoint: {
         checkpoint: { attempted: 2 },
-        schemaVersion: 'jobright-resolution-checkpoint@2',
+        schemaVersion: 'jobright-resolution-checkpoint@3',
       },
       coverage: {
         start: '2026-06-01T11:00:00.000Z',
@@ -386,20 +386,10 @@ describe('connector runner', () => {
 
     expect(receivedInputs).toEqual([
       expect.objectContaining({
-        checkpoint: {
-          checkpoint: { attempted: 2 },
-          schemaVersion: 'jobright-resolution-checkpoint@2',
-        },
-        observations: [
-          expect.objectContaining({
-            observedAt: '2026-06-01T11:00:00.000Z',
-            sourceRecordKey: 'jobright.public:duplicate',
-          }),
-          expect.objectContaining({ sourceRecordKey: 'jobright.public:second' }),
-        ],
+        checkpoint: { attempted: 2 },
       }),
     ])
-    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.5.0')
+    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.6.0')
 
     await runner.refresh(connector, {
       connectorInstanceId: 'jobright-seeded',
@@ -411,10 +401,7 @@ describe('connector runner', () => {
     })
 
     expect(receivedInputs[1]).toMatchObject({
-      checkpoint: {
-        checkpoint: { cycleId: 'continued-cycle' },
-        schemaVersion: 'jobright-resolution-checkpoint@3',
-      },
+      checkpoint: { cycleId: 'continued-cycle' },
     })
     expect(receivedInputs[1]).not.toHaveProperty('observations')
   })

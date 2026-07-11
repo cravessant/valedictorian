@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
+import { createSqliteConnectorRepository } from '../connectors/connector.repository'
 import { createSqliteRawSourceRepository } from './raw-source.repository'
 
 describe('raw source repository', () => {
@@ -77,6 +78,148 @@ describe('raw source repository', () => {
         { observedAt: '2026-07-10T13:00:00.000Z', receivedAt: '2026-07-10T14:00:00.000Z' },
       ],
     })
+  })
+
+  it('persists connector instance and run lineage on every raw occurrence', async () => {
+    const sqlite = createInMemoryDatabase()
+    databases.push(sqlite)
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+    const repository = createSqliteRawSourceRepository(database)
+    const connectorInstanceId = 'jobright-instance-1'
+    await connectorRepository.upsertInstance({
+      id: connectorInstanceId,
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.5.0',
+      displayName: 'Jobright',
+      enabled: true,
+    })
+    const runRequest = await connectorRepository.recordRunRequest({
+      connectorInstanceId,
+      mode: 'manual',
+      startedAt: '2026-07-10T12:00:00.000Z',
+    })
+    const capture = {
+      connectorInstanceId,
+      connectorRunId: runRequest.run.id,
+    }
+    const result = await repository.ingestBatch({
+      records: [{
+        adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.5.0' },
+        capture,
+        observedAt: '2026-07-10T12:00:00.000Z',
+        providerRecordId: 'job-1',
+        providerSchema: 'jobright-visitor-list@1',
+        payload: { companyName: 'Fixture Robotics', roleTitle: 'Intern' },
+      }],
+    })
+
+    expect(result.receipts[0].occurrence).toMatchObject({ capture })
+    await expect(repository.get(result.receipts[0].rawRecordId)).resolves.toMatchObject({
+      occurrences: [expect.objectContaining({ capture })],
+    })
+  })
+
+  it('rejects occurrence lineage assembled from different raw or connector owners', async () => {
+    const sqlite = createInMemoryDatabase()
+    databases.push(sqlite)
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const connectorRepository = createSqliteConnectorRepository(database)
+    const rawRepository = createSqliteRawSourceRepository(database)
+    const runs = []
+
+    for (const suffix of ['one', 'two']) {
+      const connectorInstanceId = `instance-${suffix}`
+      await connectorRepository.upsertInstance({
+        id: connectorInstanceId,
+        connectorId: `fixture.${suffix}`,
+        connectorVersion: '1.0.0',
+        displayName: suffix,
+        enabled: true,
+      })
+      runs.push((await connectorRepository.recordRunRequest({
+        connectorInstanceId,
+        mode: 'manual',
+        startedAt: '2026-07-10T12:00:00.000Z',
+      })).run)
+    }
+    const raw = await rawRepository.ingestBatch({ records: ['one', 'two'].map((suffix) => ({
+      adapter: { id: `fixture.${suffix}`, kind: 'connector' as const, version: '1.0.0' },
+      observedAt: '2026-07-10T12:00:00.000Z',
+      providerRecordId: `job-${suffix}`,
+      providerSchema: 'fixture@1',
+      payload: { suffix },
+    })) })
+    const insert = sqlite.prepare(`
+      insert into raw_source_occurrences (
+        id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id,
+        observed_at, received_at
+      ) values (?, ?, ?, ?, ?, '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z')
+    `)
+
+    expect(() => insert.run(
+      'mismatched-raw',
+      raw.receipts[0].rawRecordId,
+      raw.receipts[1].revision.id,
+      runs[0].connectorInstanceId,
+      runs[0].id,
+    )).toThrow(/foreign key|lineage mismatch/i)
+    expect(() => insert.run(
+      'mismatched-connector',
+      raw.receipts[0].rawRecordId,
+      raw.receipts[0].revision.id,
+      runs[0].connectorInstanceId,
+      runs[1].id,
+    )).toThrow(/foreign key|lineage mismatch/i)
+    const captured = await rawRepository.ingestBatch({ records: [{
+      adapter: { id: 'fixture.one', kind: 'connector', version: '1.0.0' },
+      capture: {
+        connectorInstanceId: runs[0].connectorInstanceId,
+        connectorRunId: runs[0].id,
+      },
+      observedAt: '2026-07-10T12:00:00.000Z',
+      providerRecordId: 'job-one',
+      providerSchema: 'fixture@1',
+      payload: { suffix: 'one' },
+    }] })
+    const insertNormalization = sqlite.prepare(`
+      insert into normalization_runs (
+        id, raw_record_id, raw_revision_id, trigger_occurrence_id,
+        trigger_connector_instance_id, trigger_connector_run_id, input_hash, resolver_set_hash,
+        canonical_schema_version, gate_policy_version, trigger_kind, status, created_at, updated_at
+      ) values (?, ?, ?, ?, ?, ?, ?, 'sha256:resolvers', 'candidate/v1', 'gate/v1',
+        'intake', 'completed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z')
+    `)
+    expect(() => insertNormalization.run(
+      'bad-normalization-raw',
+      raw.receipts[1].rawRecordId,
+      raw.receipts[1].revision.id,
+      captured.receipts[0].occurrence.id,
+      runs[0].connectorInstanceId,
+      runs[0].id,
+      'sha256:bad-normalization-raw',
+    )).toThrow(/foreign key|lineage mismatch/i)
+    expect(() => insertNormalization.run(
+      'bad-normalization-history',
+      raw.receipts[0].rawRecordId,
+      raw.receipts[0].revision.id,
+      raw.receipts[0].occurrence.id,
+      runs[0].connectorInstanceId,
+      runs[0].id,
+      'sha256:bad-normalization-history',
+    )).toThrow(/foreign key|lineage mismatch/i)
+    expect(() => insertNormalization.run(
+      'manual-normalization',
+      raw.receipts[0].rawRecordId,
+      raw.receipts[0].revision.id,
+      null,
+      null,
+      null,
+      'sha256:manual-normalization',
+    )).not.toThrow()
+    expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
   })
 
   it('does not create strong identity for blank connector provider ids', async () => {

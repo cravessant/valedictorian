@@ -27,7 +27,7 @@ export function isDeterministicCanonicalCompensation(value: JsonValue) {
   if (value.currency !== null && (typeof value.currency !== 'string' || !value.currency.trim() || value.currency !== value.currency.trim() || value.currency !== value.currency.toUpperCase())) return false
   if (typeof value.interval !== 'string' || !['hour','day','week','month','year','one_time','unknown'].includes(value.interval)) return false
   if (value.raw !== null && (typeof value.raw !== 'string' || !value.raw.trim() || value.raw !== value.raw.trim())) return false
-  return minimum !== null || maximum !== null || value.raw !== null
+  return true
 }
 
 export function isDeterministicCanonicalPostedAt(value: JsonValue) {

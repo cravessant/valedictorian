@@ -48,6 +48,7 @@ describe('local raw normalization replay', () => {
       companyName: 'Fixture Robotics',
       roleTitle: 'Software Intern',
     })
+    expect(replayed.triggerOccurrence).toBeNull()
   })
 
   it('materializes a user field lock and suppresses lower-precedence resolver work', async () => {

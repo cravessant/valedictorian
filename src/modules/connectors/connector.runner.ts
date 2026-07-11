@@ -16,8 +16,18 @@ import type {
   ConnectorRuntime,
   ConnectorProgressRuntime,
   ConnectorProgressSnapshot,
+  ConnectorNormalizationInput,
+  ConnectorRawSourceCaptureInput,
   JobConnector,
 } from '@sparxie/valedictorian-connectors-core'
+import {
+  createBoundRawSourceRecordInputSchema,
+  type FieldResolutionOutcome,
+  type RawSourceIntakeReceipt,
+  type RawSourceOccurrenceReceipt,
+  type RawSourceRecordInput,
+  type ResolverCapability,
+} from 'sparxie'
 import type {
   ConnectorCheckpointPayload,
   ConnectorInstanceRecord,
@@ -26,10 +36,7 @@ import type {
   ConnectorRunTerminalStatus,
   createSqliteConnectorRepository,
 } from './connector.repository'
-import {
-  JOBRIGHT_MIGRATION_SEED_LIMIT,
-  JOBRIGHT_RAW_FIRST_CHECKPOINT_SCOPE,
-} from './connector.reconciliation'
+import { JOBRIGHT_CONNECTOR_ID, JOBRIGHT_CONNECTOR_VERSION } from './jobright.constants'
 
 export type AppJobConnectorDefinition = ConnectorDefinition
 export type AppConnectorAuthMode = ConnectorAuthMode
@@ -53,6 +60,22 @@ export interface AppConnectorSecretResolver {
 
 export interface AppConnectorAuthHost {
   secrets?: AppConnectorSecretResolver
+}
+
+export interface AppConnectorRawSourceHost {
+  ingest(record: RawSourceRecordInput): Promise<RawSourceIntakeReceipt>
+}
+
+export interface AppConnectorNormalizationHost {
+  run(
+    input: ConnectorNormalizationInput,
+    context: {
+      connectorRunId: string
+      enabledCapabilities: readonly ResolverCapability[]
+      triggerOccurrence: RawSourceOccurrenceReceipt
+    },
+  ): Promise<FieldResolutionOutcome[]>
+  release?(connectorRunId: string): void
 }
 
 export type AppConnectorRuntimePorts = {
@@ -140,6 +163,8 @@ export interface AppConnectorRunPolicy {
 
 export interface CreateConnectorRunnerOptions {
   auth?: AppConnectorAuthHost
+  normalization?: AppConnectorNormalizationHost
+  rawSource?: AppConnectorRawSourceHost
   repository: ReturnType<typeof createSqliteConnectorRepository>
   runtime?: AppConnectorRuntimePorts
   workspaceId: string
@@ -155,6 +180,8 @@ const REDACTED_SECRET_VALUE = '[redacted-secret]'
 
 export function createConnectorRunner({
   auth,
+  normalization,
+  rawSource,
   repository,
   runtime = {},
   workspaceId,
@@ -182,13 +209,6 @@ export function createConnectorRunner({
       connectorInstanceId: input.connectorInstanceId,
       filterSignature,
     })
-    const reconciliationObservations = isJobrightRawFirstConnector(connector)
-      && checkpoint?.schemaVersion === 'jobright-resolution-checkpoint@2'
-      ? (await repository.listLatestReconciliationObservations({
-        connectorInstanceId: input.connectorInstanceId,
-        limit: JOBRIGHT_MIGRATION_SEED_LIMIT,
-      }))
-      : []
     const budget = input.budget ?? budgetFromPoliteness(
       normalizeRunPolicy(undefined, connector.definition.politeness?.maxBackfillDays),
       connector.definition.politeness,
@@ -204,9 +224,21 @@ export function createConnectorRunner({
       input.connectorRunId
         ? createPersistedProgressRuntime(repository, input.connectorRunId, now, runtime.progress)
         : runtime.progress,
+      input.connectorRunId
+        ? createBoundConnectorDataRuntime({
+            connector,
+            connectorInstanceId: connectorInstance.id,
+            connectorRunId: input.connectorRunId,
+            normalization,
+            rawSource,
+            workspaceId,
+          })
+        : undefined,
     )
-    const result = await connector.refresh(
-      {
+    let result: AppConnectorRefreshResult
+
+    try {
+      result = await connector.refresh({
         connectorInstanceId: input.connectorInstanceId,
         workspaceId,
         mode: input.mode,
@@ -214,22 +246,13 @@ export function createConnectorRunner({
         config,
         filters,
         ...(budget ? { budget } : {}),
-        ...(checkpoint
-          ? {
-              checkpoint: isJobrightRawFirstConnector(connector)
-                ? {
-                    checkpoint: checkpoint.checkpoint,
-                    schemaVersion: checkpoint.schemaVersion,
-                  }
-                : checkpoint.checkpoint,
-            }
-          : {}),
-        ...(reconciliationObservations.length > 0
-          ? { observations: reconciliationObservations }
-          : {}),
-      },
-      runRuntime,
-    )
+        ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
+      }, runRuntime)
+    } finally {
+      if (input.connectorRunId) {
+        normalization?.release?.(input.connectorRunId)
+      }
+    }
 
     const safeResult = withRunProgressStats(redactRefreshResult(result, sensitiveValues))
     const completedAt = input.completedAt ?? now().toISOString()
@@ -594,11 +617,13 @@ function createRunRuntime(
   authHost: AppConnectorAuthHost | undefined,
   sensitiveValues: Set<string>,
   progress: ConnectorProgressRuntime | undefined,
+  dataRuntime?: Pick<AppConnectorRuntime, 'normalization' | 'rawSourceIntake'>,
 ): AppConnectorRuntime {
   const grants = new Map<string, Promise<AppConnectorAuthGrant>>()
 
   return {
     ...runtime,
+    ...dataRuntime,
     ...(progress ? { progress } : {}),
     auth: {
       async resolve(input) {
@@ -626,6 +651,81 @@ function createRunRuntime(
         }
       },
     },
+  }
+}
+
+function createBoundConnectorDataRuntime({
+  connector,
+  connectorInstanceId,
+  connectorRunId,
+  normalization,
+  rawSource,
+  workspaceId,
+}: {
+  connector: AppJobConnector
+  connectorInstanceId: string
+  connectorRunId: string
+  normalization: AppConnectorNormalizationHost | undefined
+  rawSource: AppConnectorRawSourceHost | undefined
+  workspaceId: string
+}): Pick<AppConnectorRuntime, 'normalization' | 'rawSourceIntake'> {
+  const adapter = {
+    id: connector.definition.id,
+    kind: 'connector' as const,
+    version: connector.definition.version,
+  }
+  const enabledCapabilities: ResolverCapability[] = ['pure']
+  const occurrencesByRevisionId = new Map<string, RawSourceOccurrenceReceipt>()
+
+  if (connector.definition.capabilities?.resolvesIntermediaryLinks) {
+    enabledCapabilities.push('network')
+  }
+  if (connector.definition.capabilities?.usesBrowserSession) {
+    enabledCapabilities.push('browser')
+  }
+
+  return {
+    ...(rawSource
+      ? {
+          rawSourceIntake: {
+            async capture(input: ConnectorRawSourceCaptureInput) {
+              const record = {
+                ...input,
+                adapter,
+                capture: { connectorInstanceId, connectorRunId },
+              }
+              const validated = createBoundRawSourceRecordInputSchema({
+                adapter,
+                connectorInstanceId,
+                connectorRunId,
+                requestWorkspaceId: workspaceId,
+                workspaceId,
+              }).parse(record)
+
+              const receipt = await rawSource.ingest(validated as RawSourceRecordInput)
+              occurrencesByRevisionId.set(receipt.revision.id, receipt.occurrence)
+              return receipt
+            },
+          },
+        }
+      : {}),
+    ...(normalization
+      ? {
+          normalization: {
+            run: (input: ConnectorNormalizationInput) => {
+              const triggerOccurrence = occurrencesByRevisionId.get(input.rawRevision.id)
+              if (!triggerOccurrence) {
+                throw new Error('Connector normalization requires a captured raw occurrence')
+              }
+              return normalization.run(input, {
+                connectorRunId,
+                enabledCapabilities,
+                triggerOccurrence,
+              })
+            },
+          },
+        }
+      : {}),
   }
 }
 
@@ -934,13 +1034,13 @@ function checkpointSignatureForConnector(
   filters: Record<string, unknown>,
 ): string {
   return isJobrightRawFirstConnector(connector)
-    ? JOBRIGHT_RAW_FIRST_CHECKPOINT_SCOPE
+    ? `provider-state:${connector.definition.id}@${connector.definition.version}`
     : signatureForFilters(filters)
 }
 
-function isJobrightRawFirstConnector(connector: AppJobConnector): boolean {
-  return connector.definition.id === 'jobright.resolver'
-    && connector.definition.version === '0.5.0'
+export function isJobrightRawFirstConnector(connector: AppJobConnector): boolean {
+  return connector.definition.id === JOBRIGHT_CONNECTOR_ID
+    && connector.definition.version === JOBRIGHT_CONNECTOR_VERSION
     && connector.definition.capabilities?.supportsFiltering === false
 }
 

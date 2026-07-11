@@ -11,6 +11,10 @@ import {
   runDataMigrations,
 } from './data-migrations'
 import { schema } from './schema'
+import {
+  JOBRIGHT_CONNECTOR_ID,
+  JOBRIGHT_CONNECTOR_VERSION,
+} from '../modules/connectors/jobright.constants'
 
 export type SqliteDatabase = Database.Database
 export type DrizzleDatabase = ReturnType<typeof createDrizzleDatabase>
@@ -61,8 +65,10 @@ export function migrateDatabase(database: SqliteDatabase, options: DatabaseMigra
   }
 
   if (isLegacyUnmanagedDatabase(database)) {
-    migrateLegacyDatabaseSchema(database)
-    stampDrizzleMigrations(database, drizzleMigrations)
+    database.transaction(() => {
+      migrateLegacyDatabaseSchema(database)
+      stampDrizzleMigrations(database, drizzleMigrations)
+    })()
   } else {
     migrateDrizzle(createDrizzleDatabase(database), { migrationsFolder })
   }
@@ -301,6 +307,27 @@ function tableExists(database: SqliteDatabase, tableName: string) {
 }
 
 function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
+  database.exec(`
+    pragma defer_foreign_keys = on;
+    drop table if exists connector_projection_keys;
+    drop table if exists connector_observations;
+    drop table if exists normalization_field_outcomes;
+    drop table if exists normalization_gates;
+    drop table if exists canonical_source_candidates;
+    drop table if exists normalization_replay_items;
+    drop table if exists normalization_attempts;
+    drop table if exists normalization_runs;
+    drop table if exists normalization_replay_requests;
+    drop table if exists source_identity_conflicts;
+    drop table if exists source_entity_identities;
+    drop table if exists raw_source_occurrences;
+    drop table if exists raw_source_revisions;
+    drop table if exists raw_source_records;
+    drop table if exists source_entities;
+    drop table if exists connector_checkpoints;
+    drop table if exists connector_runs;
+    drop table if exists sourcing_findings;
+  `)
   database.exec(`
     pragma foreign_keys = on;
 
@@ -701,8 +728,18 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       id text primary key not null,
       raw_record_id text not null references raw_source_records(id),
       raw_revision_id text not null references raw_source_revisions(id),
+      connector_instance_id text references connector_instances(id),
+      connector_run_id text references connector_runs(id),
       observed_at text not null,
-      received_at text not null
+      received_at text not null,
+      foreign key (raw_revision_id, raw_record_id)
+        references raw_source_revisions(id, raw_record_id),
+      foreign key (connector_run_id, connector_instance_id)
+        references connector_runs(id, connector_instance_id),
+      constraint chk_raw_source_occurrences_connector_capture check(
+        (connector_instance_id is null and connector_run_id is null)
+        or (connector_instance_id is not null and connector_run_id is not null)
+      )
     );
 
     create table if not exists source_entity_identities (
@@ -893,6 +930,8 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on connector_instances(enabled);
     create index if not exists idx_connector_runs_instance
       on connector_runs(connector_instance_id);
+    create unique index if not exists idx_connector_runs_id_instance
+      on connector_runs(id, connector_instance_id);
     create index if not exists idx_connector_runs_instance_status_started
       on connector_runs(connector_instance_id, status, started_at);
     create index if not exists idx_connector_checkpoints_instance
@@ -936,10 +975,18 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on raw_source_records(source_entity_id);
     create unique index if not exists idx_raw_source_revisions_record_revision
       on raw_source_revisions(raw_record_id, revision);
+    create unique index if not exists idx_raw_source_revisions_id_record
+      on raw_source_revisions(id, raw_record_id);
     create unique index if not exists idx_raw_source_revisions_record_hash
       on raw_source_revisions(raw_record_id, content_hash);
     create index if not exists idx_raw_source_occurrences_record_chronology
       on raw_source_occurrences(raw_record_id, observed_at, received_at, id);
+    create unique index if not exists idx_raw_source_occurrences_lineage
+      on raw_source_occurrences(id, raw_revision_id, raw_record_id);
+    create unique index if not exists idx_raw_source_occurrences_connector_lineage
+      on raw_source_occurrences(
+        id, raw_revision_id, raw_record_id, connector_instance_id, connector_run_id
+      );
     create unique index if not exists idx_normalization_runs_cache
       on normalization_runs(raw_revision_id, input_hash, resolver_set_hash, canonical_schema_version, gate_policy_version)
       where "normalization_runs"."trigger_id" is null;
@@ -971,6 +1018,8 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on normalization_replay_items(replay_id, raw_revision_id);
     create index if not exists idx_raw_source_occurrences_revision
       on raw_source_occurrences(raw_revision_id);
+    create index if not exists idx_raw_source_occurrences_connector_run
+      on raw_source_occurrences(connector_run_id);
 
     create table if not exists connector_projection_keys (
       dedupe_key text primary key,
@@ -981,6 +1030,70 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     );
     create index if not exists idx_connector_projection_keys_sourcing_finding
       on connector_projection_keys(sourcing_finding_id);
+  `)
+
+  ensureColumns(database, 'normalization_runs', [
+    ['trigger_occurrence_id', 'text'],
+    ['trigger_connector_instance_id', 'text'],
+    ['trigger_connector_run_id', 'text'],
+  ])
+  database.exec(`
+    create trigger if not exists trg_normalization_runs_trigger_lineage_insert
+    before insert on normalization_runs
+    when not (
+      (new.trigger_occurrence_id is null and new.trigger_connector_instance_id is null
+        and new.trigger_connector_run_id is null)
+      or (
+        new.trigger_occurrence_id is not null and new.trigger_connector_instance_id is not null
+        and new.trigger_connector_run_id is not null and exists (
+          select 1 from raw_source_occurrences occurrence
+          where occurrence.id = new.trigger_occurrence_id
+            and occurrence.raw_revision_id = new.raw_revision_id
+            and occurrence.raw_record_id = new.raw_record_id
+            and occurrence.connector_instance_id = new.trigger_connector_instance_id
+            and occurrence.connector_run_id = new.trigger_connector_run_id
+        )
+      )
+    )
+    begin select raise(abort, 'normalization trigger lineage mismatch'); end;
+    create trigger if not exists trg_normalization_runs_trigger_lineage_update
+    before update of trigger_occurrence_id, trigger_connector_instance_id,
+      trigger_connector_run_id, raw_revision_id, raw_record_id on normalization_runs
+    when not (
+      (new.trigger_occurrence_id is null and new.trigger_connector_instance_id is null
+        and new.trigger_connector_run_id is null)
+      or (
+        new.trigger_occurrence_id is not null and new.trigger_connector_instance_id is not null
+        and new.trigger_connector_run_id is not null and exists (
+          select 1 from raw_source_occurrences occurrence
+          where occurrence.id = new.trigger_occurrence_id
+            and occurrence.raw_revision_id = new.raw_revision_id
+            and occurrence.raw_record_id = new.raw_record_id
+            and occurrence.connector_instance_id = new.trigger_connector_instance_id
+            and occurrence.connector_run_id = new.trigger_connector_run_id
+        )
+      )
+    )
+    begin select raise(abort, 'normalization trigger lineage mismatch'); end;
+    create trigger if not exists trg_raw_source_occurrences_normalization_lineage_update
+    before update of id, raw_record_id, raw_revision_id, connector_instance_id,
+      connector_run_id on raw_source_occurrences
+    when (
+      new.id is not old.id
+      or new.raw_record_id is not old.raw_record_id
+      or new.raw_revision_id is not old.raw_revision_id
+      or new.connector_instance_id is not old.connector_instance_id
+      or new.connector_run_id is not old.connector_run_id
+    ) and exists (
+      select 1 from normalization_runs run where run.trigger_occurrence_id = old.id
+    )
+    begin select raise(abort, 'normalization trigger occurrence is immutable'); end;
+    create trigger if not exists trg_raw_source_occurrences_normalization_lineage_delete
+    before delete on raw_source_occurrences
+    when exists (
+      select 1 from normalization_runs run where run.trigger_occurrence_id = old.id
+    )
+    begin select raise(abort, 'normalization trigger occurrence is immutable'); end;
   `)
 
   ensureColumns(database, 'user_profile', [
@@ -1052,6 +1165,9 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     create index if not exists idx_connector_observations_sourcing_finding
       on connector_observations(sourcing_finding_id);
   `)
+  database.prepare(`
+    update connector_instances set connector_version = ? where connector_id = ?
+  `).run(JOBRIGHT_CONNECTOR_VERSION, JOBRIGHT_CONNECTOR_ID)
 }
 
 function ensureConnectorCheckpointFilterScope(database: SqliteDatabase) {
