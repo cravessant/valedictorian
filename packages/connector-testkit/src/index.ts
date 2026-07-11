@@ -25,6 +25,7 @@ import type {
   RawSourceRecordInput,
   RawSourceRevisionReceipt,
   ResolverDeclaration,
+  RetryAdvice,
 } from "@sparxie/valedictorian-connectors-core"
 import { jobObservationSchemaVersion } from "@sparxie/valedictorian-connectors-core"
 
@@ -181,7 +182,7 @@ export type ConnectorRunRecord = {
   filterSignature: string
   stats: ConnectorRefreshResult["stats"]
   warnings: ConnectorRefreshResult["warnings"]
-  retryHints: unknown
+  retryHints: RetryAdvice | null
 }
 
 export type ConnectorCheckpointRecord = {

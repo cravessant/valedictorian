@@ -1360,7 +1360,14 @@ describe("in-memory connector host", () => {
           },
           warnings: [],
           retryHints: {
-            reason: "budget_exhausted",
+            state: "scheduled",
+            reason: "server_failure",
+            attempt: 1,
+            maxAttempts: 3,
+            lastAttemptAt: "2026-07-08T15:00:00.000Z",
+            computedDelayMs: 1_000,
+            nextAttemptAt: "2026-07-08T15:00:01.000Z",
+            horizonAt: "2026-07-09T15:00:00.000Z",
           },
         }
       },
@@ -1390,7 +1397,8 @@ describe("in-memory connector host", () => {
     expect(run).toMatchObject({
       status: "partial_success",
       retryHints: {
-        reason: "budget_exhausted",
+        state: "scheduled",
+        reason: "server_failure",
       },
     })
   })

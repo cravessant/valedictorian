@@ -89,10 +89,18 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("## Bounded Jobright Backfill")
     expect(readme).toContain("useful target defaults to 100")
     expect(readme).toContain("`soft_batch_boundary`")
-    expect(readme).toContain("`jobright-resolution-checkpoint@3`")
-    expect(readme).toContain("processed source ids")
-    expect(readme).toContain("bounded retry/defer state")
-    expect(readme).toContain("canonical `jobright.public:<job-id>`")
+    expect(readme).toContain("`jobright-resolution-checkpoint@4`")
+    expect(readme).toContain("only accepted checkpoint schema")
+    expect(readme).toContain("strict typed retry advice")
+    expect(readme).toContain("Earlier checkpoint shapes are invalidated")
+    expect(readme).toContain("capped exponential full jitter")
+    expect(readme).toContain("1 ms operational floor")
+    expect(readme).toContain("serverMinimumDelayMs")
+    expect(readme).toContain("typed `not_due` advice")
+    expect(readme).toContain("without authentication, provider requests, retry sleeps, or ordinary pacing")
+    expect(readme).toContain("never repeats successful detail calls")
+    expect(readme).toContain("removed from schedulable checkpoint membership")
+    expect(readme).toContain("Authentication action, captcha, parser/schema failures")
     expect(readme).toContain("`invalid_discovery_position`")
     expect(readme).toContain("does not reuse observations from the terminal cycle")
     expect(readme).toContain("before every costly upstream transition")
@@ -101,26 +109,14 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("`runtime.cancellation.signal`")
     expect(readme).toContain("resumable `cancelled`")
     expect(readme).toContain("connector-owned timer fallback")
-    expect(readme).toContain("opaque cycle id")
-    expect(readme).toContain("matching active cycle id")
-    expect(readme).toContain("cumulative attempt capacity")
     expect(readme).toContain("before normalization")
     expect(readme).toContain("Response-body cancellation aborts")
     expect(readme).toContain("earliest deadline wins")
-    expect(readme).toContain("persisted stop reason is never authoritative")
-    expect(readme).toContain("Only the released v2 count-only shape")
-    expect(readme).toContain("within canonical attempt capacity")
     expect(readme).toContain("current page length is never substituted")
     expect(readme).toContain("full page with an unknown total")
     expect(readme).toContain("empty or short page")
     expect(readme).toContain("request size that produced that page")
-    expect(readme).toContain("unexplained processed ids are removed")
-    expect(readme).toContain("capacity-blocked discovery-record")
-    expect(readme).toContain("schema hard ceilings")
-    expect(readme).toContain("without visitor-list rediscovery")
-    expect(readme).toContain("final allowed detail attempt")
-    expect(readme).toContain("current per-source retry setting")
-    expect(readme).toContain("never clears unrelated retry entries")
+    expect(readme).toContain("Capacity-blocked discovery-record")
     expect(readme).toContain("### Jobright stop precedence")
     expect(readme).toContain("Cumulative cycle-attempt ceiling reached")
     expect(readme).toContain("schema-hard retry")
@@ -202,7 +198,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.6.0",
+      version: "0.7.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -218,7 +214,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.6.0",
+      version: "0.7.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -234,7 +230,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.6.0",
+      version: "0.7.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -255,7 +251,7 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(corePackage.dependencies).toEqual({
-      sparxie: "^0.9.0",
+      sparxie: "^0.11.0",
     })
     expect(harnessPackage.dependencies).toEqual({
       "@sparxie/valedictorian-connectors-core": "workspace:^",
@@ -278,6 +274,16 @@ describe("connector repository conventions", () => {
     expect(jobrightPackage.devDependencies).toMatchObject({
       "@sparxie/valedictorian-connectors-test-harness": "workspace:^",
     })
+  })
+
+  it("publishes typed retry policy and host declarations", () => {
+    const coreDeclarations = readText("packages/core/dist/index.d.ts")
+    const harnessDeclarations = readText("packages/test-harness/dist/index.d.ts")
+
+    expect(coreDeclarations).toContain("scheduleRetry")
+    expect(coreDeclarations).toContain("RetryPolicyDependencies")
+    expect(coreDeclarations).toContain("retryHints?: RetryAdvice | null")
+    expect(harnessDeclarations).toContain("retryHints: RetryAdvice | null")
   })
 
   it("publishes from GitHub OIDC workflows", () => {
