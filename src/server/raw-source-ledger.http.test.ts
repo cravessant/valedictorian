@@ -627,7 +627,15 @@ describe('raw source ledger HTTP API', () => {
     ]))
     await expect(createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-1').sourcing.findings.list()).resolves.toMatchObject({
-      total: findingCountBefore.total,
+      total: findingCountBefore.total + 1,
+      items: [expect.objectContaining({
+        rawRevisionId: intake.receipts[0].revision.id,
+        canonicalCandidateId: result.canonicalCandidate?.id,
+        employmentType: 'unknown',
+        country: null,
+        mergeStatus: 'blocked',
+        policyBlocker: 'missing_country',
+      })],
     })
 
     await expect(rawRecords.replay({

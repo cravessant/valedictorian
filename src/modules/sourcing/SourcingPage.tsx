@@ -338,7 +338,9 @@ function SourcingFindingRow({
   onOpenApplication: (application: ApplicationDetailSeed) => void
   onPromoteFinding: (findingId: string) => void
 }) {
-  const canPromote = item.mergeStatus === 'new' && item.usability !== 'review_only'
+  const canPromote =
+    (item.mergeStatus === 'new' && item.usability !== 'review_only') ||
+    (item.mergeStatus === 'blocked' && item.policyBlocker === 'third_party_destination')
   const decision = getSourcingDecision(item)
 
   return (
@@ -349,6 +351,11 @@ function SourcingFindingRow({
       <TableCell>
         <span className="block min-w-64 text-muted-foreground">{item.roleTitle}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{formatSourcingTiming(item)}</span>
+        {item.employmentType ? (
+          <span className="mt-1 block text-xs text-muted-foreground">
+            {formatEnumLabel(item.employmentType)}
+          </span>
+        ) : null}
       </TableCell>
       <TableCell>
         <div className="grid gap-1">
@@ -451,7 +458,11 @@ function SourcingFindingRow({
               disabled={isPromoting}
               onClick={() => onPromoteFinding(item.id)}
             >
-              {isPromoting ? 'Promoting' : 'Promote'}
+              {isPromoting
+                ? 'Promoting'
+                : item.policyBlocker === 'third_party_destination'
+                  ? 'Approve & promote'
+                  : 'Promote'}
             </Button>
           ) : item.mergedApplicationId ? (
             <Button
@@ -594,7 +605,7 @@ function SourcingFindingEditorModal({
   const [endDate, setEndDate] = useState(finding?.endDate ?? '')
   const [timingLabel, setTimingLabel] = useState(finding?.term ?? '')
   const [locationRaw, setLocationRaw] = useState(finding?.locationRaw ?? '')
-  const [workMode, setWorkMode] = useState(finding?.workMode ?? 'remote')
+  const [workMode, setWorkMode] = useState(finding?.workMode ?? 'unclear')
   const [officialUrl, setOfficialUrl] = useState(finding?.officialUrl ?? '')
   const [sourceUrl, setSourceUrl] = useState(finding?.sourceUrl ?? '')
   const [postedAge, setPostedAge] = useState(finding?.postedAge ?? '')

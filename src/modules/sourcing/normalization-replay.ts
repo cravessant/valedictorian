@@ -33,6 +33,7 @@ export function createNormalizationReplayService(options: {
   orchestrator: ReturnType<typeof createNormalizationOrchestrator>
   registry: NormalizationResolverRegistry
   now?: () => Date
+  onNormalized?: (result: Awaited<ReturnType<ReturnType<typeof createNormalizationOrchestrator>['normalize']>>) => Promise<unknown>
 }) {
   const now = options.now ?? (() => new Date())
 
@@ -77,6 +78,7 @@ export function createNormalizationReplayService(options: {
             kind: 'replay', replayId, fieldDirectives: effectiveDirectives,
             targetResolverVersions: input.targetVersions?.resolvers ?? [],
           })
+          await options.onNormalized?.(result)
           const run = options.database.select({ id: normalizationRuns.id }).from(normalizationRuns)
             .where(and(
               eq(normalizationRuns.rawRevisionId, match.rawRevisionId),

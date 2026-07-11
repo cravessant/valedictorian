@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { JsonValue } from 'sparxie'
 import { eq } from 'drizzle-orm'
-import { rawSourceRecords, sourceEntities } from '../db/schema'
+import { rawSourceRecords, sourceEntities, sourcingFindings } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, createInMemoryDatabase, migrateDatabase } from '../db/sqlite'
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
@@ -90,6 +90,444 @@ describe('local deterministic raw normalization', () => {
         evidence: [expect.objectContaining({ value: 'mystery' })],
       }),
     ]))
+  })
+
+  it('projects only a passed canonical candidate into sourcing with exact lineage and facts', async () => {
+    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [
+      {
+        adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
+        observedAt: '2026-07-10T12:00:00.000Z',
+        reportedOrigin: { kind: 'job_board', name: 'Fixture Board' },
+        payload: {
+          company: 'Fixture Robotics',
+          title: 'Software Intern',
+          employmentType: 'Full_Time',
+          seniority: 'internship',
+          location: { raw: 'New York, NY', city: 'New York', region: 'NY', country: null },
+          compensation: { minimum: 25, maximum: 35, currency: 'USD', interval: 'hour', raw: '$25-$35/hr' },
+          postedAt: { value: '2026-07-10', precision: 'date', raw: 'Jul 10' },
+          applicationUrl: 'https://jobs.ashbyhq.com/fixture/job-1',
+          sourceUrl: 'https://fixture.example/jobs/1',
+        },
+      },
+      {
+        adapter: { id: 'import.fixture', kind: 'import', version: '1.0.0' },
+        observedAt: '2026-07-10T12:01:00.000Z',
+        payload: { company: 'Incomplete Co', title: 'Software Intern' },
+      },
+    ] })
+
+    const normalization = await client.sourcing.rawRecords.normalization.get(
+      intake.receipts[0].rawRecordId,
+    )
+    const findings = await client.sourcing.findings.list()
+
+    expect(normalization.gate).toMatchObject({ status: 'passed' })
+    expect(findings).toMatchObject({ total: 1 })
+    expect(findings.items[0]).toMatchObject({
+      rawRevisionId: intake.receipts[0].revision.id,
+      canonicalCandidateId: normalization.canonicalCandidate?.id,
+      companyName: 'Fixture Robotics',
+      roleTitle: 'Software Intern',
+      roleKind: 'internship',
+      country: null,
+      workMode: 'unclear',
+      employmentType: 'full_time',
+      seniority: 'internship',
+      location: { raw: 'New York, NY', city: 'New York', region: 'NY', country: null },
+      compensation: { minimum: 25, maximum: 35, currency: 'USD', interval: 'hour', raw: '$25-$35/hr' },
+      postedAt: { value: '2026-07-10', precision: 'date', raw: 'Jul 10' },
+      destination: {
+        class: 'employer_or_ats',
+        url: 'https://jobs.ashbyhq.com/fixture/job-1',
+      },
+      destinationClass: 'employer_or_ats',
+      destinationUrl: 'https://jobs.ashbyhq.com/fixture/job-1',
+      officialUrl: 'https://jobs.ashbyhq.com/fixture/job-1',
+      sourceUrl: 'https://fixture.example/jobs/1',
+      usability: 'usable',
+      mergeStatus: 'blocked',
+      policyBlocker: 'missing_country',
+      mergeNotes: expect.stringContaining('What country'),
+    })
+    expect(JSON.stringify(findings.items[0])).not.toContain('"country":"US"')
+  })
+
+  it('updates one finding for strong identity while keeping weak similarity reviewable', async () => {
+    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      providerRecordId: 'provider-job-1',
+      providerSchema: 'fixture/jobs/v1',
+      observedAt: '2026-07-10T12:00:00.000Z',
+      payload: {
+        company: 'Acme Robotics', title: 'Software Intern', location: 'New York, NY',
+        postedAt: { value: '2026-07-10', precision: 'date', raw: 'Jul 10' },
+        url: 'https://jobs.lever.co/acme/provider-job-1',
+      },
+    }] })
+    const updated = await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      providerRecordId: 'provider-job-1',
+      providerSchema: 'fixture/jobs/v1',
+      observedAt: '2026-07-10T13:00:00.000Z',
+      payload: {
+        company: 'Acme Robotics', title: 'Software Engineering Intern', location: 'New York, NY',
+        postedAt: { value: '2026-07-10', precision: 'date', raw: 'Jul 10' },
+        url: 'https://jobs.lever.co/acme/provider-job-1',
+      },
+    }] })
+
+    let findings = await client.sourcing.findings.list()
+    expect(findings).toMatchObject({
+      total: 1,
+      items: [{
+        rawRevisionId: updated.receipts[0].revision.id,
+        roleTitle: 'Software Engineering Intern',
+      }],
+    })
+    expect(findings.items[0].rawRevisionId).not.toBe(first.receipts[0].revision.id)
+
+    await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'fixture.import', kind: 'import', version: '2.0.0' },
+      observedAt: '2026-07-10T14:00:00.000Z',
+      payload: {
+        company: 'Acme Robotics', title: 'Software Engineering Intern', location: 'New York, NY',
+        postedAt: { value: '2026-07-10', precision: 'date', raw: 'Jul 10' },
+        url: 'https://jobs.ashbyhq.com/acme/a-different-job',
+      },
+    }] })
+
+    findings = await client.sourcing.findings.list()
+    expect(findings.total).toBe(2)
+    expect(findings.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        destinationUrl: 'https://jobs.ashbyhq.com/acme/a-different-job',
+        mergeStatus: 'blocked',
+        policyBlocker: 'possible_match',
+        mergeNotes: expect.stringContaining('same job'),
+      }),
+    ]))
+  })
+
+  it('converges different provider identities on one canonical employer destination', async () => {
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
+    const records = [
+      {
+        adapter: { id: 'board.alpha', kind: 'connector' as const, version: '1.0.0' },
+        providerRecordId: 'alpha-123',
+        providerSchema: 'alpha/jobs/v1',
+        observedAt: '2026-07-10T12:00:00.000Z',
+        payload: {
+          company: 'Shared Robotics', title: 'Software Intern',
+          location: { raw: 'New York, NY', country: 'US' },
+          applicationUrl: 'https://jobs.ashbyhq.com/shared/job-123',
+        },
+      },
+      {
+        adapter: { id: 'board.beta', kind: 'connector' as const, version: '2.0.0' },
+        providerRecordId: 'beta-987',
+        providerSchema: 'beta/jobs/v2',
+        observedAt: '2026-07-10T13:00:00.000Z',
+        payload: {
+          company: 'Shared Robotics', title: 'Software Engineering Intern',
+          location: { raw: 'New York, NY', country: 'US' },
+          applicationUrl: 'https://jobs.ashbyhq.com/shared/job-123',
+        },
+      },
+    ]
+
+    for (const orderedRecords of [records, [...records].reverse()]) {
+      const orderedClient = orderedRecords === records
+        ? client
+        : createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+      for (const record of orderedRecords) {
+        await orderedClient.sourcing.rawRecords.ingestBatch({ records: [record] })
+      }
+
+      const findings = await orderedClient.sourcing.findings.list()
+      expect(findings).toMatchObject({
+        total: 1,
+        items: [{
+          roleTitle: 'Software Engineering Intern',
+          destinationUrl: 'https://jobs.ashbyhq.com/shared/job-123',
+        }],
+      })
+    }
+    const persistedDatabase = createFileDatabase(sqlitePath)
+    const persisted = persistedDatabase.prepare(
+      'select projection_aliases_json as aliases from sourcing_findings',
+    ).get() as { aliases: string }
+    persistedDatabase.close()
+    expect(persisted.aliases).toContain('alpha-123')
+    expect(persisted.aliases).toContain('beta-987')
+
+    const concurrentClient = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    await Promise.all(records.map((record) =>
+      concurrentClient.sourcing.rawRecords.ingestBatch({ records: [record] })))
+    await expect(concurrentClient.sourcing.findings.list()).resolves.toMatchObject({
+      total: 1,
+      items: [{ roleTitle: 'Software Engineering Intern' }],
+    })
+  })
+
+  it('does not commit a passed candidate when its sourcing finding cannot be projected', async () => {
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
+    const sqlite = createFileDatabase(sqlitePath)
+    sqlite.exec(`
+      create trigger reject_sourcing_projection
+      before insert on sourcing_findings
+      begin
+        select raise(abort, 'injected projection policy failure');
+      end
+    `)
+    sqlite.close()
+
+    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
+      observedAt: '2026-07-10T12:00:00.000Z',
+      payload: {
+        company: 'Atomic Robotics', title: 'Software Intern',
+        location: { raw: 'New York, NY', country: 'US' },
+        applicationUrl: 'https://jobs.ashbyhq.com/atomic/job-1',
+      },
+    }] })
+
+    await expect(client.sourcing.rawRecords.normalization.get(
+      intake.receipts[0].rawRecordId,
+    )).rejects.toMatchObject({ statusCode: 404 })
+    await expect(client.sourcing.findings.list()).resolves.toMatchObject({ total: 0 })
+  })
+
+  it('requires explicit approval before promoting a typed third-party destination', async () => {
+    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'linkedin.import', kind: 'import', version: '1.0.0' },
+      observedAt: '2026-07-10T12:00:00.000Z',
+      payload: {
+        company: 'Linked Robotics', title: 'Software Intern',
+        location: { raw: 'New York, NY', country: 'US' },
+        applicationUrl: 'https://www.linkedin.com/jobs/view/123456',
+      },
+    }] })
+
+    const finding = (await client.sourcing.findings.list()).items[0]
+    expect(finding).toMatchObject({
+      destinationClass: 'third_party_job_posting',
+      destinationUrl: 'https://www.linkedin.com/jobs/view/123456',
+      officialUrl: null,
+      sourceUrl: 'https://www.linkedin.com/jobs/view/123456',
+      usability: 'review_only',
+      mergeStatus: 'blocked',
+      policyBlocker: 'third_party_destination',
+      blocker: expect.stringContaining('Approve'),
+    })
+    await expect(client.applications.list()).resolves.toMatchObject({ total: 0 })
+
+    const promoted = await client.sourcing.findings.promote({ findingId: finding.id })
+    expect(promoted).toMatchObject({ mergeStatus: 'merged', mergedApplicationId: expect.any(String) })
+    await expect(client.applications.get(promoted.mergedApplicationId!)).resolves.toMatchObject({
+      primaryLink: {
+        label: 'source',
+        url: 'https://www.linkedin.com/jobs/view/123456',
+      },
+    })
+  })
+
+  it('classifies a production-shaped Internist as sourcing not-fit with provenance', async () => {
+    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.6.0' },
+      providerRecordId: 'jobright-internist-1',
+      providerSchema: 'jobright.jobs/v1',
+      observedAt: '2026-07-10T15:00:00.000Z',
+      reportedOrigin: {
+        kind: 'aggregator',
+        name: 'Jobright',
+        providerId: 'jobright-internist-1',
+        url: 'https://jobright.ai/jobs/info/jobright-internist-1',
+      },
+      payload: {
+        company: 'Regional Medical Center',
+        title: 'Internist',
+        employmentType: 'FT',
+        location: { raw: 'Boston, MA', city: 'Boston', region: 'MA', country: 'US' },
+        sourceUrl: 'https://jobright.ai/jobs/info/jobright-internist-1',
+        applicationUrl: 'https://jobs.lever.co/regionalmedical/internist-1',
+      },
+    }] })
+    const normalization = await client.sourcing.rawRecords.normalization.get(
+      intake.receipts[0].rawRecordId,
+    )
+    const findings = await client.sourcing.findings.list()
+
+    expect(normalization).toMatchObject({
+      gate: { status: 'passed' },
+      canonicalCandidate: { roleTitle: 'Internist', employmentType: 'full_time' },
+    })
+    expect(findings).toMatchObject({
+      total: 1,
+      items: [{
+        rawRevisionId: intake.receipts[0].revision.id,
+        canonicalCandidateId: normalization.canonicalCandidate?.id,
+        sourceName: 'Jobright',
+        roleTitle: 'Internist',
+        employmentType: 'full_time',
+        roleKind: 'full_time',
+        usability: 'usable',
+        mergeStatus: 'not_fit',
+        dispositionReason: expect.stringContaining('internship'),
+        mergedApplicationId: null,
+      }],
+    })
+    expect(findings.items[0].usability).not.toBe('review_only')
+  })
+
+  it('classifies an exact employer destination as a strong application duplicate', async () => {
+    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const application = await client.applications.create({
+      companyName: 'Strong Identity Co',
+      roleTitle: 'Software Intern',
+      sourceName: 'Manual',
+      roleKind: 'internship',
+      country: 'US',
+      workMode: 'remote',
+      status: 'queued',
+      primaryLink: {
+        kind: 'official',
+        label: 'official',
+        url: 'https://jobs.lever.co/strong/job-1',
+      },
+    })
+    await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'cli.fixture', kind: 'cli', version: '1.0.0' },
+      observedAt: '2026-07-10T16:00:00.000Z',
+      payload: {
+        company: 'Strong Identity Co',
+        title: 'Software Intern',
+        applicationUrl: 'https://jobs.lever.co/strong/job-1?utm_source=fixture',
+      },
+    }] })
+
+    await expect(client.sourcing.findings.list()).resolves.toMatchObject({
+      total: 1,
+      items: [expect.objectContaining({
+        destinationUrl: 'https://jobs.lever.co/strong/job-1',
+        mergeStatus: 'duplicate',
+        mergedApplicationId: application.id,
+        duplicateNotes: expect.stringContaining('official'),
+      })],
+    })
+  })
+
+  it('uses the same current projection for CLI, manual, and import provenance', async () => {
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
+    const adapterKinds = ['cli', 'manual', 'import'] as const
+
+    await client.sourcing.rawRecords.ingestBatch({
+      records: adapterKinds.map((kind, index) => ({
+        adapter: { id: `fixture.${kind}`, kind, version: '1.0.0' },
+        observedAt: `2026-07-10T17:0${index}:00.000Z`,
+        payload: {
+          company: `${kind} Co`,
+          title: 'Software Intern',
+          applicationUrl: `https://jobs.lever.co/${kind}/job-${index}`,
+        },
+      })),
+    })
+
+    await expect(client.sourcing.findings.list()).resolves.toMatchObject({ total: 3 })
+    const sqlite = createFileDatabase(sqlitePath)
+    const database = createDrizzleDatabase(sqlite)
+    expect(database.select({
+      adapterId: sourcingFindings.adapterId,
+      adapterKind: sourcingFindings.adapterKind,
+    }).from(sourcingFindings).all()).toEqual(expect.arrayContaining(
+      adapterKinds.map((kind) => ({ adapterId: `fixture.${kind}`, adapterKind: kind })),
+    ))
+    sqlite.close()
+  })
+
+  it('deduplicates a canonical employer destination across source adapters', async () => {
+    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const destination = 'https://jobs.lever.co/cross-adapter/job-1'
+    await client.sourcing.rawRecords.ingestBatch({ records: [
+      {
+        adapter: { id: 'fixture.manual', kind: 'manual', version: '1.0.0' },
+        observedAt: '2026-07-10T17:10:00.000Z',
+        payload: { company: 'Cross Adapter Co', title: 'Software Intern', applicationUrl: destination },
+      },
+      {
+        adapter: { id: 'fixture.import', kind: 'import', version: '2.0.0' },
+        observedAt: '2026-07-10T17:11:00.000Z',
+        payload: { company: 'Cross Adapter Co', title: 'Software Engineering Intern', applicationUrl: destination },
+      },
+    ] })
+
+    await expect(client.sourcing.findings.list()).resolves.toMatchObject({
+      total: 1,
+      items: [expect.objectContaining({
+        destinationUrl: destination,
+        roleTitle: 'Software Engineering Intern',
+      })],
+    })
+  })
+
+  it('preserves sourcing-owned cutoff and human rejection across candidate revisions', async () => {
+    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const record = (title: string, observedAt: string) => ({
+      adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1.0.0' },
+      providerRecordId: 'policy-owned-job-1',
+      providerSchema: 'fixture/jobs/v1',
+      observedAt,
+      payload: {
+        company: 'Policy Co', title,
+        location: { raw: 'New York, NY', city: 'New York', region: 'NY', country: 'US' },
+        applicationUrl: 'https://jobs.lever.co/policy/job-1',
+      },
+    })
+    await client.sourcing.rawRecords.ingestBatch({
+      records: [record('Software Intern', '2026-07-10T18:00:00.000Z')],
+    })
+    const finding = (await client.sourcing.findings.list()).items[0]
+    await client.sourcing.findings.update({
+      findingId: finding.id,
+      priorityScore: 4,
+      priorityBand: 'low',
+    })
+
+    await client.sourcing.rawRecords.ingestBatch({
+      records: [record('Software Engineering Intern', '2026-07-10T18:01:00.000Z')],
+    })
+    await expect(client.sourcing.findings.list()).resolves.toMatchObject({
+      total: 1,
+      items: [expect.objectContaining({
+        roleTitle: 'Software Engineering Intern',
+        priorityScore: 4,
+        mergeStatus: 'below_cutoff',
+      })],
+    })
+
+    await client.sourcing.findings.decide({
+      findingId: finding.id,
+      mergeStatus: 'not_pursued',
+      dispositionReason: 'User rejected this role.',
+    })
+    await client.sourcing.rawRecords.ingestBatch({
+      records: [record('Software Platform Intern', '2026-07-10T18:02:00.000Z')],
+    })
+    await expect(client.sourcing.findings.list()).resolves.toMatchObject({
+      total: 1,
+      items: [expect.objectContaining({
+        roleTitle: 'Software Platform Intern',
+        mergeStatus: 'not_pursued',
+        dispositionReason: 'User rejected this role.',
+      })],
+    })
   })
 
   it('needs enrichment after an invoked required-field block and suppresses lower resolvers', async () => {
@@ -517,6 +955,7 @@ describe('local deterministic raw normalization', () => {
       expect.objectContaining({ resolver: expect.objectContaining({ id: 'fixture.blocked-company' }), applicability: [expect.objectContaining({ status: 'blocked' })] }),
       expect.objectContaining({ resolver: expect.objectContaining({ id: 'fixture.not-applicable-company' }), applicability: [expect.objectContaining({ status: 'not_applicable' })] }),
     ]))
+    await expect(client.sourcing.findings.list()).resolves.toMatchObject({ total: 0, items: [] })
   })
 
   it('fails normalization for an emitted required-field failure and suppresses every lower resolver', async () => {

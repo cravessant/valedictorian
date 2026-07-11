@@ -1,0 +1,1 @@
+ALTER TABLE `sourcing_findings` ADD `projection_aliases_json` text DEFAULT '[]' NOT NULL;

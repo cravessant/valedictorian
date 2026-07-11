@@ -376,6 +376,44 @@ describe('local raw normalization replay', () => {
     expect(history[1].attempts.map(({ id }) => id)).toEqual(first.attempts.map(({ id }) => id))
   })
 
+  it('does not let an older raw revision replay roll back the current finding', async () => {
+    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      providerRecordId: 'chronology-job-1', providerSchema: 'fixture/jobs/v1',
+      observedAt: '2026-07-10T12:00:00.000Z',
+      payload: {
+        companyName: 'Chronology Co', roleTitle: 'Software Intern I',
+        location: { raw: 'New York, NY', country: 'US' },
+        applicationUrl: 'https://jobs.ashbyhq.com/chronology/job-1',
+      },
+    }] })
+    const second = await client.sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      providerRecordId: 'chronology-job-1', providerSchema: 'fixture/jobs/v1',
+      observedAt: '2026-07-10T13:00:00.000Z',
+      payload: {
+        companyName: 'Chronology Co', roleTitle: 'Software Intern II',
+        location: { raw: 'New York, NY', country: 'US' },
+        applicationUrl: 'https://jobs.ashbyhq.com/chronology/job-1',
+      },
+    }] })
+    const currentBeforeReplay = (await client.sourcing.findings.list()).items[0]
+
+    await client.sourcing.rawRecords.replay({
+      selector: { rawRevisionIds: [first.receipts[0].revision.id] },
+      invalidate: { canonicalSchemaVersions: ['canonical-source-candidate/v1'] },
+    })
+
+    const current = (await client.sourcing.findings.list()).items[0]
+    expect(current).toMatchObject({
+      canonicalCandidateId: currentBeforeReplay.canonicalCandidateId,
+      rawRevisionId: second.receipts[0].revision.id,
+      roleTitle: 'Software Intern II',
+      discoveredAt: '2026-07-10T13:00:00.000Z',
+    })
+  })
+
   it('selects only the revision that owns a persisted resolver input hash', async () => {
     const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [

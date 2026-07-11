@@ -47,6 +47,8 @@ const DEFAULT_FINDINGS_LIST_LIMIT = 50
 
 const sourcingFindingSelection = {
   id: sourcingFindings.id,
+  rawRevisionId: sourcingFindings.rawRevisionId,
+  canonicalCandidateId: sourcingFindings.canonicalCandidateId,
   workflowRunId: sourcingFindings.workflowRunId,
   sourceId: sourcingFindings.sourceId,
   sourceName: sources.name,
@@ -63,6 +65,11 @@ const sourcingFindingSelection = {
   country: sourcingFindings.country,
   workMode: sourcingFindings.workMode,
   locationRaw: sourcingFindings.locationRaw,
+  employmentType: sourcingFindings.employmentType,
+  seniority: sourcingFindings.seniority,
+  locationJson: sourcingFindings.locationJson,
+  compensationJson: sourcingFindings.compensationJson,
+  postedAtJson: sourcingFindings.postedAtJson,
   officialUrl: sourcingFindings.officialUrl,
   sourceUrl: sourcingFindings.sourceUrl,
   destinationClass: sourcingFindings.destinationClass,
@@ -89,57 +96,6 @@ const sourcingFindingSelection = {
 
 export function createSqliteSourcingRepository(database: DrizzleDatabase) {
   return {
-    async setProjectionMetadata(input: {
-      findingId: string
-      destinationClass: SourcingDestinationClass | null
-      destinationUrl: string | null
-      intermediaryUrl: string | null
-      usability: SourcingUsability
-    }): Promise<SourcingFinding> {
-      const now = new Date().toISOString()
-      const current = selectSourcingFindingById(database, input.findingId)
-      const destinationUrl = input.destinationUrl
-        ? canonicalizeApplicationUrl(input.destinationUrl)
-        : null
-      const intermediaryUrl = input.intermediaryUrl
-        ? normalizeApplicationUrlPreservingQuery(input.intermediaryUrl)
-        : null
-      const reviewNote = 'No verified usable application destination; retained for review.'
-
-      database
-        .update(sourcingFindings)
-        .set({
-          destinationClass: input.destinationClass,
-          destinationUrl,
-          intermediaryUrl,
-          usability: input.usability,
-          officialUrl: input.destinationClass === 'employer_or_ats' ? destinationUrl : null,
-          sourceUrl: input.destinationClass === 'third_party_job_posting'
-            ? destinationUrl
-            : intermediaryUrl,
-          ...(input.usability === 'review_only'
-            ? {
-                blocker: reviewNote,
-                mergeStatus: 'blocked',
-                mergeNotes: reviewNote,
-              }
-            : current.mergeStatus === 'blocked'
-                && current.blocker === reviewNote
-                && current.mergeNotes === reviewNote
-              ? {
-                  blocker: null,
-                  mergeStatus: 'new',
-                  mergeNotes: null,
-                }
-              : {}),
-          updatedAt: now,
-        })
-        .where(eq(sourcingFindings.id, input.findingId))
-        .run()
-
-      return selectSourcingFindingById(database, input.findingId)
-    },
-
     async createFinding(input: CreateSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
       assertCompatibleSourcingDispositionInput(input)
@@ -313,7 +269,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
       }
 
       if (input.country !== undefined) {
-        patch.country = requiredTrimmedText(input.country, 'country')
+        patch.country = nullableTrimmedText(input.country)
       }
 
       if (input.workMode !== undefined) {
@@ -424,16 +380,18 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
     },
     async promoteFinding(input: PromoteSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
-      const current = selectSourcingFindingById(database, input.findingId)
-
-      if (current.usability === 'review_only') {
-        throw new Error('Review-only sourcing findings cannot be promoted.')
-      }
-
       const finding = reclassifySourcingFinding(database, input.findingId, now)
+      const approvesThirdPartyDestination =
+        finding.mergeStatus === 'blocked' &&
+        finding.policyBlocker === 'third_party_destination' &&
+        finding.destinationClass === 'third_party_job_posting' &&
+        Boolean(finding.destinationUrl)
 
-      if (finding.mergeStatus !== 'new') {
+      if (finding.mergeStatus !== 'new' && !approvesThirdPartyDestination) {
         return finding
+      }
+      if (!finding.country) {
+        throw new Error('Sourcing policy requires a country before promotion.')
       }
 
       const duplicate = findDuplicateApplication(database, finding)
@@ -558,10 +516,6 @@ function reclassifySourcingFinding(
 ) {
   const finding = selectSourcingFindingById(database, findingId)
 
-  if (finding.usability === 'review_only') {
-    return finding
-  }
-
   if (finding.mergeStatus === 'merged' || isManualDispositionFinding(finding)) {
     return finding
   }
@@ -623,6 +577,19 @@ function classifySourcingFinding(
     }
   }
 
+  if (!finding.country) {
+    const note = 'What country is this role located in? Provide a country before adding it to the application queue.'
+
+    return {
+      blocker: note,
+      duplicateNotes: null,
+      policyBlocker: 'missing_country',
+      mergeStatus: 'blocked',
+      mergedApplicationId: null,
+      mergeNotes: note,
+    }
+  }
+
   const policyDecision = evaluateSourcingCandidatePolicy(database, readPolicyConfig(database), {
     findingId: finding.id,
     companyName: finding.companyName,
@@ -656,6 +623,19 @@ function classifySourcingFinding(
     }
   }
 
+  if (finding.destinationClass === 'third_party_job_posting' && finding.destinationUrl) {
+    const note = `Approve or reject this third-party job destination before promotion: ${finding.destinationUrl}`
+
+    return {
+      blocker: note,
+      duplicateNotes: null,
+      policyBlocker: 'third_party_destination',
+      mergeStatus: 'blocked',
+      mergedApplicationId: null,
+      mergeNotes: note,
+    }
+  }
+
   return {
     blocker: null,
     duplicateNotes: null,
@@ -671,7 +651,9 @@ function isManualDispositionFinding(finding: SourcingFinding) {
     return true
   }
 
-  return finding.mergeStatus === 'blocked' && hasText(finding.dispositionReason)
+  return finding.mergeStatus === 'blocked' && (
+    hasText(finding.dispositionReason) || finding.policyBlocker === 'possible_match'
+  )
 }
 
 function assertCompatibleSourcingDispositionInput(input: {
@@ -727,7 +709,7 @@ function normalizeCreateFindingInput(input: CreateSourcingFindingInput, now: str
     ...normalizeJobTimingInput(input),
     sourceId: input.sourceId ? requiredTrimmedText(input.sourceId, 'sourceId') : null,
     sourceName: input.sourceName ? requiredTrimmedText(input.sourceName, 'sourceName') : null,
-    country: input.country ?? 'US',
+    country: input.country === undefined ? null : nullableTrimmedText(input.country),
     officialUrl: input.officialUrl ? canonicalizeApplicationUrl(input.officialUrl) : null,
     sourceUrl: input.sourceUrl ? normalizeApplicationUrlPreservingQuery(input.sourceUrl) : null,
     mergeStatus,
@@ -802,6 +784,25 @@ function selectSourcingFindingById(
 type SourcingFindingRow = Record<keyof typeof sourcingFindingSelection, unknown>
 
 function mapSourcingFinding(row: SourcingFindingRow): SourcingFinding {
+  const canonicalProjection = row.canonicalCandidateId && row.rawRevisionId
+    ? {
+        rawRevisionId: row.rawRevisionId as string,
+        canonicalCandidateId: row.canonicalCandidateId as string,
+        destination: row.destinationClass && row.destinationUrl
+          ? {
+              class: row.destinationClass as SourcingDestinationClass,
+              url: row.destinationUrl as string,
+              ...(row.intermediaryUrl ? { intermediaryUrl: row.intermediaryUrl as string } : {}),
+            }
+          : null,
+        employmentType: row.employmentType as NonNullable<SourcingFinding['employmentType']>,
+        seniority: row.seniority as NonNullable<SourcingFinding['seniority']>,
+        location: row.locationJson ? JSON.parse(row.locationJson as string) : null,
+        compensation: row.compensationJson ? JSON.parse(row.compensationJson as string) : null,
+        postedAt: JSON.parse(row.postedAtJson as string),
+      }
+    : {}
+
   return {
     id: row.id as string,
     workflowRunId: row.workflowRunId as string,
@@ -817,7 +818,7 @@ function mapSourcingFinding(row: SourcingFindingRow): SourcingFinding {
     endDate: row.endDate as string | null,
     city: row.city as string | null,
     region: row.region as string | null,
-    country: row.country as string,
+    country: row.country as string | null,
     workMode: row.workMode as SourcingFinding['workMode'],
     locationRaw: row.locationRaw as string | null,
     officialUrl: row.officialUrl as string | null,
@@ -844,6 +845,7 @@ function mapSourcingFinding(row: SourcingFindingRow): SourcingFinding {
     discoveredAt: row.discoveredAt as string,
     createdAt: row.createdAt as string,
     updatedAt: row.updatedAt as string,
+    ...canonicalProjection,
   }
 }
 

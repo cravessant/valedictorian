@@ -1,5 +1,5 @@
 import type { ConnectorNormalizationInput } from '@sparxie/valedictorian-connectors-core'
-import type { CanonicalCandidateField, ResolverCapability } from 'sparxie'
+import type { CanonicalCandidateField, RawSourceNormalizationResult, ResolverCapability } from 'sparxie'
 import { createNormalizationOrchestrator } from '../sourcing/normalization.orchestrator'
 import {
   createNormalizationResolverRegistry,
@@ -14,6 +14,7 @@ export function createConnectorNormalizationHost(options: {
   repository: ReturnType<typeof createSqliteNormalizationRepository>
   registry: NormalizationResolverRegistry
   now?: () => Date
+  onNormalized?: (result: RawSourceNormalizationResult) => Promise<unknown>
 }): AppConnectorNormalizationHost {
   const orchestrator = createNormalizationOrchestrator({
     repository: options.repository,
@@ -50,6 +51,7 @@ export function createConnectorNormalizationHost(options: {
           triggerOccurrence: context.triggerOccurrence,
         },
       )
+      await options.onNormalized?.(result)
       const attempt = result.attempts.find(({ resolver }) =>
         resolver.id === input.resolver.id && resolver.version === input.resolver.version)
 

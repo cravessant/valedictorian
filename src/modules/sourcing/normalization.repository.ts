@@ -63,7 +63,25 @@ export interface StrongDestinationReconciliation {
 
 type PersistNormalizationWithTriggerInput = PersistNormalizationInput & { triggerId?: string }
 
-export function createSqliteNormalizationRepository(database: DrizzleDatabase) {
+export function createSqliteNormalizationRepository(
+  database: DrizzleDatabase,
+  options: {
+    projectPassedCandidate?: (
+      transaction: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
+      candidateId: string,
+      rawRevisionId: string,
+    ) => unknown
+  } = {},
+) {
+  const persist = (
+    transaction: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
+    input: PersistNormalizationWithTriggerInput,
+  ) => {
+    persistNormalization(transaction, input)
+    if (input.gate.status === 'passed' && input.candidate) {
+      options.projectPassedCandidate?.(transaction, input.candidate.id, input.rawRevisionId)
+    }
+  }
   return {
     getRawContext(rawRevisionId: string): NormalizationRawContext | null {
       const revision = database.select().from(rawSourceRevisions).where(eq(rawSourceRevisions.id, rawRevisionId)).get()
@@ -94,7 +112,7 @@ export function createSqliteNormalizationRepository(database: DrizzleDatabase) {
       const runId = database.transaction((transaction) => {
         const persistReconciliation = (reconciliation: StrongDestinationReconciliation) => {
           const persistence = input.materialize(reconciliation)
-          persistNormalization(transaction, persistence)
+          persist(transaction, persistence)
           return persistence.runId
         }
         const canonical = {
@@ -237,7 +255,7 @@ export function createSqliteNormalizationRepository(database: DrizzleDatabase) {
       return mapPersistedRun(database, runId)
     },
     persist(input: PersistNormalizationWithTriggerInput) {
-      database.transaction((transaction) => persistNormalization(transaction, input))
+      database.transaction((transaction) => persist(transaction, input))
       return mapPersistedRun(database, input.runId)
     },
     getLatest(rawRecordId: string) {

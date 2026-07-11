@@ -1480,7 +1480,20 @@ describe('runtime local Valedictorian client', () => {
       },
     })
     expect(checkpoints.items).toHaveLength(1)
-    expect(findings.items).toEqual([])
+    expect(findings.items).toEqual([
+      expect.objectContaining({
+        rawRevisionId: resolvedRevision.id,
+        canonicalCandidateId: resolvedNormalization.canonicalCandidate?.id,
+        destination: {
+          class: 'employer_or_ats',
+          url: officialApplyUrl,
+          intermediaryUrl: 'https://jobright.ai/jobs/info/job-resolved-1',
+        },
+        sourceName: 'Jobright',
+        mergeStatus: 'blocked',
+        policyBlocker: 'missing_country',
+      }),
+    ])
     expect(firstProviderNormalization).toBe(false)
 
     const fetchUrls = fetchImpl.mock.calls.map((call) => {
@@ -1606,7 +1619,14 @@ describe('runtime local Valedictorian client', () => {
       gate: { status: 'passed' },
       canonicalCandidate: { destination: { url: officialApplyUrl } },
     })
-    await expect(restartedClient.sourcing.findings.list()).resolves.toMatchObject({ items: [] })
+    await expect(restartedClient.sourcing.findings.list()).resolves.toMatchObject({
+      total: 1,
+      items: [expect.objectContaining({
+        rawRevisionId: resolvedRevision.id,
+        destinationUrl: officialApplyUrl,
+        sourceName: 'Jobright',
+      })],
+    })
 
     const serialized = JSON.stringify({ run, runs, observations, checkpoints, findings, occurrences, revisions, attempts })
     expect(serialized).not.toContain(sessionCookie)
@@ -1848,7 +1868,7 @@ describe('runtime local Valedictorian client', () => {
     ])
   })
 
-  it('executes registered connector runs through the local client', async () => {
+  it('does not reinterpret legacy connector observations as sourcing findings', async () => {
     const sqlitePath = createTempSqlitePath()
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: {
@@ -1901,10 +1921,10 @@ describe('runtime local Valedictorian client', () => {
       observationCount: 1,
       stats: {
         observations: 1,
-        projected: 1,
-        projectedEmployerOrAts: 1,
+        projected: 0,
+        projectedEmployerOrAts: 0,
         projectedThirdParty: 0,
-        projectedUsable: 1,
+        projectedUsable: 0,
         retainedForReview: 0,
         stage: 'finalizing',
       },
@@ -1915,22 +1935,11 @@ describe('runtime local Valedictorian client', () => {
         {
           companyName: 'Example Robotics',
           roleTitle: 'Software Engineering Intern',
-          sourcingFindingId: expect.any(String),
         },
       ],
       total: 1,
     })
-    expect(findings).toMatchObject({
-      items: [
-        {
-          companyName: 'Example Robotics',
-          officialUrl: 'https://jobs.example.com/apply/software-engineering-intern',
-          roleTitle: 'Software Engineering Intern',
-          sourceName: 'fixture.jobs',
-        },
-      ],
-      total: 1,
-    })
+    expect(findings).toMatchObject({ items: [], total: 0 })
     expect(checkpoints.items).toMatchObject([
       {
         checkpoint: {
@@ -1945,7 +1954,7 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
-  it('counts distinct persisted findings when same-run observations dedupe', async () => {
+  it('does not use legacy observation dedupe keys as sourcing identity', async () => {
     const sqlitePath = createTempSqlitePath()
     const baseConnector = fixtureConnector({
       additionalCompanyNames: ['Example Robotics'],
@@ -2021,22 +2030,14 @@ describe('runtime local Valedictorian client', () => {
     expect(run).toMatchObject({
       observationCount: 2,
       stats: {
-        projected: 1,
+        projected: 0,
         projectedEmployerOrAts: 0,
-        projectedThirdParty: 1,
-        projectedUsable: 1,
+        projectedThirdParty: 0,
+        projectedUsable: 0,
         retainedForReview: 0,
       },
     })
-    expect(findings).toMatchObject({
-      total: 1,
-      items: [{
-        companyName: 'Example Robotics',
-        destinationClass: 'third_party_job_posting',
-        roleTitle: 'Software Engineering Intern - Updated',
-        usability: 'usable',
-      }],
-    })
+    expect(findings).toMatchObject({ total: 0, items: [] })
     sqlite.close()
   })
 
@@ -2874,7 +2875,7 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
-  it('marks connector runs failed when observation projection fails', async () => {
+  it('does not fail a connector run by interpreting an invalid legacy observation', async () => {
     const sqlitePath = createTempSqlitePath()
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: {
@@ -2936,17 +2937,15 @@ describe('runtime local Valedictorian client', () => {
         coverageEndedAt: '2026-07-08T18:00:00.000Z',
         mode: 'manual',
       }),
-    ).rejects.toThrow('companyName is required')
+    ).resolves.toMatchObject({ status: 'completed' })
     const runs = await client.connectors.runs.list({
       connectorInstanceId: 'connector-instance-fixture',
     })
 
     expect(runs.total).toBe(2)
     expect(runs.items[0]).toMatchObject({
-      retryHints: {
-        reason: 'projection_failed',
-      },
-      status: 'failed',
+      retryHints: null,
+      status: 'completed',
     })
     await expect(
       client.connectors.checkpoints.list({
@@ -2957,11 +2956,11 @@ describe('runtime local Valedictorian client', () => {
       items: [
         {
           checkpoint: {
-            cursor: 'previous-successful-cursor',
+            cursor: 'fixture:2026-07-08T18:00:00.000Z',
           },
           coverage: {
-            end: '2026-07-08T16:00:00.000Z',
-            start: '2026-07-08T15:00:00.000Z',
+            end: '2026-07-08T18:00:00.000Z',
+            start: '2026-07-08T17:00:00.000Z',
           },
         },
       ],
@@ -2969,7 +2968,7 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
-  it('keeps catch-up checkpoints unchanged until every observation projects', async () => {
+  it('commits catch-up checkpoints independently of legacy observation projection', async () => {
     const sqlitePath = createTempSqlitePath()
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: {
@@ -3030,7 +3029,7 @@ describe('runtime local Valedictorian client', () => {
         coverageEndedAt: '2026-07-08T18:00:00.000Z',
         mode: 'catch_up',
       }),
-    ).rejects.toThrow('companyName is required')
+    ).resolves.toMatchObject({ status: 'completed' })
     const runs = await client.connectors.runs.list({
       connectorInstanceId: 'connector-instance-fixture',
     })
@@ -3047,10 +3046,8 @@ describe('runtime local Valedictorian client', () => {
       },
       mode: 'catch_up',
       observationCount: 2,
-      retryHints: {
-        reason: 'projection_failed',
-      },
-      status: 'failed',
+      retryHints: null,
+      status: 'completed',
     })
     expect(observations.total).toBe(2)
     await expect(
@@ -3062,11 +3059,11 @@ describe('runtime local Valedictorian client', () => {
       items: [
         {
           checkpoint: {
-            cursor: 'previous-successful-cursor',
+            cursor: 'fixture:2026-07-08T18:00:00.000Z',
           },
           coverage: {
-            end: '2026-07-08T16:00:00.000Z',
-            start: '2026-07-08T15:00:00.000Z',
+            end: '2026-07-08T18:00:00.000Z',
+            start: '2026-07-08T15:30:00.000Z',
           },
         },
       ],

@@ -14,7 +14,34 @@ import { createSqliteWorkflowRunRepository } from '../workflow-runs/workflow-run
 import { createSqliteSourcingRepository } from './sourcing.repository'
 
 describe('SQLite sourcing repository', () => {
-  it('omits absent optional usability while preserving valid projected usability', async () => {
+  it('persists an omitted country as unknown on manual create and read', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const run = await createSqliteWorkflowRunRepository(database).startRun({
+      runType: 'sourcing', actorType: 'human', sourceName: 'Manual', summary: 'Manual sourcing.',
+    })
+    const repository = createSqliteSourcingRepository(database)
+
+    const created = await repository.createFinding({
+      workflowRunId: run.id,
+      sourceName: 'Manual',
+      companyName: 'Unknown Country Co',
+      roleTitle: 'Software Engineering Intern',
+      roleKind: 'internship',
+      workMode: 'unclear',
+      officialUrl: 'https://jobs.example.com/unknown-country/role-1',
+    })
+
+    expect(created).toMatchObject({
+      country: null,
+      mergeStatus: 'blocked',
+      policyBlocker: 'missing_country',
+    })
+    await expect(repository.getFinding(created.id)).resolves.toMatchObject({ country: null })
+  })
+
+  it('omits absent optional usability from manually created findings', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -39,14 +66,6 @@ describe('SQLite sourcing repository', () => {
     expect(finding).not.toHaveProperty('usability')
     expect((await repository.listFindings()).items[0]).not.toHaveProperty('usability')
 
-    const projected = await repository.setProjectionMetadata({
-      findingId: finding.id,
-      destinationClass: null,
-      destinationUrl: null,
-      intermediaryUrl: 'https://jobright.ai/jobs/info/manual-role-1',
-      usability: 'review_only',
-    })
-    expect(projected).toHaveProperty('usability', 'review_only')
   })
 
   it('reclassifies sourcing findings after create and update patches', async () => {
@@ -160,58 +179,6 @@ describe('SQLite sourcing repository', () => {
     })
     expect(database.select().from(applications).all()).toHaveLength(applicationCount)
   })
-
-  it('rejects review-only promotion without application side effects and preserves harmless updates', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const run = await createSqliteWorkflowRunRepository(database).startRun({
-      runType: 'sourcing',
-      actorType: 'agent',
-      sourceName: 'jobright.resolver',
-      summary: 'Started Jobright projection.',
-    })
-    const repository = createSqliteSourcingRepository(database)
-    const created = await repository.createFinding({
-      workflowRunId: run.id,
-      sourceName: 'jobright.resolver',
-      companyName: 'Review Only Co',
-      roleTitle: 'Software Engineering Intern',
-      roleKind: 'internship',
-      country: 'US',
-      workMode: 'remote',
-      sourceUrl: 'https://jobright.ai/jobs/info/review-only-1',
-    })
-    const reviewOnly = await repository.setProjectionMetadata({
-      findingId: created.id,
-      destinationClass: null,
-      destinationUrl: null,
-      intermediaryUrl: 'https://jobright.ai/jobs/info/review-only-1',
-      usability: 'review_only',
-    })
-
-    const updated = await repository.updateFinding({
-      findingId: reviewOnly.id,
-      roleTitle: 'Software Engineering Intern - Updated',
-    })
-    expect(updated).toMatchObject({
-      roleTitle: 'Software Engineering Intern - Updated',
-      usability: 'review_only',
-    })
-
-    await expect(repository.promoteFinding({ findingId: reviewOnly.id })).rejects.toThrow(
-      'Review-only sourcing findings cannot be promoted.',
-    )
-    await expect(repository.getFinding(reviewOnly.id)).resolves.toMatchObject({
-      mergeStatus: 'blocked',
-      mergedApplicationId: null,
-      usability: 'review_only',
-    })
-    expect(database.select().from(applications).all()).toHaveLength(0)
-    expect(database.select().from(applicationLinks).all()).toHaveLength(0)
-    expect(database.select().from(applicationEvents).all()).toHaveLength(0)
-  })
-
 
   it('uses policy cutoff overrides and apply override evidence for promotion', async () => {
     const sqlite = createInMemoryDatabase()

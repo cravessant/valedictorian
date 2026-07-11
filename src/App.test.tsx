@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { ApplicationListQuery } from './modules/applications/application.types'
 import type { ActionQueueListQuery } from './modules/action-queue/action-queue.repository'
-import type { SourcingFindingsListInput } from 'sparxie'
+import type { SourcingFinding, SourcingFindingsListInput } from 'sparxie'
 import {
   createApplication,
   createApplicationDetail,
@@ -1064,6 +1064,20 @@ describe('App', () => {
 
   it('distinguishes employer, third-party, and review-only sourcing destinations', async () => {
     const queries: SourcingFindingsListInput[] = []
+    const canonicalFullTime = {
+      ...createSourcingFinding({ id: 'finding-canonical', companyName: 'Canonical Co' }),
+      rawRevisionId: 'raw-revision-1',
+      canonicalCandidateId: 'canonical-candidate-1',
+      destination: {
+        class: 'employer_or_ats',
+        url: 'https://jobs.lever.co/canonical/role-1',
+      },
+      employmentType: 'full_time',
+      seniority: 'internship',
+      location: null,
+      compensation: null,
+      postedAt: { value: null, precision: 'unknown', raw: null },
+    } as unknown as SourcingFinding
 
     render(
       <App
@@ -1089,7 +1103,9 @@ describe('App', () => {
               intermediaryUrl: 'https://jobright.ai/jobs/info/third-party-1',
               officialUrl: null,
               sourceUrl: 'https://www.linkedin.com/jobs/view/123456',
-              usability: 'usable',
+              usability: 'review_only',
+              mergeStatus: 'blocked',
+              policyBlocker: 'third_party_destination',
             }),
             createSourcingFinding({
               id: 'finding-review',
@@ -1102,6 +1118,7 @@ describe('App', () => {
               usability: 'review_only',
               mergeStatus: 'blocked',
             }),
+            canonicalFullTime,
           ]))
         }}
         settingsApi={createSettingsApi()}
@@ -1113,9 +1130,12 @@ describe('App', () => {
     const table = await screen.findByRole('table', { name: 'Sourcing findings' })
 
     expect(within(table).getByText('Employer / ATS')).toBeInTheDocument()
-    expect(within(table).getByText('Third-party')).toBeInTheDocument()
-    expect(within(table).getByText('Review only')).toBeInTheDocument()
+    expect(within(table).getByRole('link', { name: 'third-party' })).toBeInTheDocument()
+    expect(within(table).getAllByText('Review only')).toHaveLength(2)
+    expect(within(table).getByText('Full Time')).toBeInTheDocument()
     expect(within(table).queryByRole('button', { name: 'Promote Review Co' })).not.toBeInTheDocument()
+    expect(within(table).getByRole('button', { name: 'Promote Third Party Co' }))
+      .toHaveTextContent('Approve & promote')
 
     fireEvent.change(screen.getByLabelText('Destination class'), {
       target: { value: 'third_party_job_posting' },
@@ -1202,7 +1222,7 @@ describe('App', () => {
         sourceName: 'Manual',
         sourceUrl: 'https://linkedin.com/jobs/view/human-labs',
         workflowRunId: 'run-human',
-        workMode: 'remote',
+        workMode: 'unclear',
       })
     })
 

@@ -417,7 +417,6 @@ export const connectorObservations = sqliteTable(
     sourceMetadataJson: text('source_metadata_json').notNull(),
     evidenceJson: text('evidence_json').notNull(),
     rawJson: text('raw_json').notNull(),
-    sourcingFindingId: text('sourcing_finding_id').references(() => sourcingFindings.id),
     ...timestamps,
   },
   (table) => ({
@@ -426,9 +425,6 @@ export const connectorObservations = sqliteTable(
     sourceRecordIdx: index('idx_connector_observations_source_record').on(
       table.connectorInstanceId,
       table.sourceRecordKey,
-    ),
-    sourcingFindingIdx: index('idx_connector_observations_sourcing_finding').on(
-      table.sourcingFindingId,
     ),
   }),
 )
@@ -793,6 +789,14 @@ export const sourcingFindings = sqliteTable(
   'sourcing_findings',
   {
     id: text('id').primaryKey(),
+    projectionIdentityKey: text('projection_identity_key'),
+    projectionAliasesJson: text('projection_aliases_json').notNull().default('[]'),
+    sourceEntityId: text('source_entity_id').references(() => sourceEntities.id),
+    canonicalCandidateId: text('canonical_candidate_id').references(() => canonicalSourceCandidates.id),
+    rawRevisionId: text('raw_revision_id').references(() => rawSourceRevisions.id),
+    adapterId: text('adapter_id'),
+    adapterKind: text('adapter_kind'),
+    adapterVersion: text('adapter_version'),
     workflowRunId: text('workflow_run_id')
       .notNull()
       .references(() => workflowRuns.id),
@@ -809,9 +813,14 @@ export const sourcingFindings = sqliteTable(
     endDate: text('end_date'),
     city: text('city'),
     region: text('region'),
-    country: text('country').notNull(),
+    country: text('country'),
     workMode: text('work_mode').notNull(),
     locationRaw: text('location_raw'),
+    employmentType: text('employment_type'),
+    seniority: text('seniority'),
+    locationJson: text('location_json'),
+    compensationJson: text('compensation_json'),
+    postedAtJson: text('posted_at_json'),
     officialUrl: text('official_url'),
     sourceUrl: text('source_url'),
     destinationClass: text('destination_class'),
@@ -833,27 +842,14 @@ export const sourcingFindings = sqliteTable(
     ...timestamps,
   },
   (table) => ({
+    projectionIdentityIdx: uniqueIndex('idx_sourcing_findings_projection_identity').on(table.projectionIdentityKey),
+    sourceEntityIdx: index('idx_sourcing_findings_source_entity').on(table.sourceEntityId),
+    candidateIdx: uniqueIndex('idx_sourcing_findings_canonical_candidate').on(table.canonicalCandidateId),
     sourceIdx: index('idx_sourcing_findings_source_id').on(table.sourceId),
     sourceStatusDiscoveredIdx: index('idx_sourcing_findings_source_status_discovered').on(
       table.sourceId,
       table.mergeStatus,
       table.discoveredAt,
-    ),
-  }),
-)
-
-export const connectorProjectionKeys = sqliteTable(
-  'connector_projection_keys',
-  {
-    dedupeKey: text('dedupe_key').primaryKey(),
-    sourcingFindingId: text('sourcing_finding_id')
-      .notNull()
-      .references(() => sourcingFindings.id),
-    ...timestamps,
-  },
-  (table) => ({
-    sourcingFindingIdx: index('idx_connector_projection_keys_sourcing_finding').on(
-      table.sourcingFindingId,
     ),
   }),
 )
@@ -870,7 +866,6 @@ export const schema = {
   connectorCheckpoints,
   connectorInstances,
   connectorObservations,
-  connectorProjectionKeys,
   connectorRuns,
   canonicalSourceCandidates,
   normalizationAttempts,

@@ -5,6 +5,9 @@ import type { SqliteDatabase } from './sqlite'
 
 const DATA_MIGRATIONS_TABLE = '__valedictorian_data_migrations'
 const CURRENT_POLICY_CONFIG_VERSION = 2
+const recognizedHistoricalDataMigrations = new Set([
+  '20260710000000_sourcing_destination_projection',
+])
 
 interface DataMigrationContext {
   database: SqliteDatabase
@@ -29,12 +32,6 @@ const dataMigrations: SyncDataMigration[] = [
     name: '20260702000000_job_timing_terms',
     up({ context }) {
       migrateJobTimingTerms(context.database)
-    },
-  },
-  {
-    name: '20260710000000_sourcing_destination_projection',
-    up({ context }) {
-      migrateLegacyConnectorDestinationProjection(context.database)
     },
   },
   {
@@ -79,7 +76,10 @@ export function hasPendingDataMigrations(database: SqliteDatabase) {
 }
 
 export function assertDataMigrationHistoryIsKnown(database: SqliteDatabase) {
-  const known = new Set(dataMigrations.map((migration) => migration.name))
+  const known = new Set([
+    ...dataMigrations.map((migration) => migration.name),
+    ...recognizedHistoricalDataMigrations,
+  ])
   const unknown = readDataMigrationNames(database).filter((name) => !known.has(name))
 
   if (unknown.length > 0) {
@@ -183,90 +183,6 @@ function migrateJobTimingTerms(database: SqliteDatabase) {
   backfillTimingTerms(database, 'sourcing_findings')
 }
 
-function migrateLegacyConnectorDestinationProjection(database: SqliteDatabase) {
-  if (!tableExists(database, 'connector_observations') || !tableExists(database, 'sourcing_findings')) {
-    return
-  }
-
-  const observationColumns = tableColumnNames(database, 'connector_observations')
-  const findingColumns = tableColumnNames(database, 'sourcing_findings')
-  const requiredObservationColumns = [
-    'connector_id',
-    'connector_version',
-    'deleted_at',
-    'id',
-    'links_json',
-    'observed_at',
-    'sourcing_finding_id',
-  ]
-  const requiredFindingColumns = [
-    'blocker',
-    'destination_class',
-    'destination_url',
-    'intermediary_url',
-    'merge_notes',
-    'merge_status',
-    'official_url',
-    'source_url',
-    'usability',
-  ]
-
-  if (
-    requiredObservationColumns.some((column) => !observationColumns.has(column))
-    || requiredFindingColumns.some((column) => !findingColumns.has(column))
-  ) {
-    return
-  }
-
-  const rows = database.prepare(`
-    select sourcing_finding_id, connector_version, links_json
-    from connector_observations
-    where connector_id = 'jobright.resolver'
-      and sourcing_finding_id is not null
-      and deleted_at is null
-    order by observed_at desc, id desc
-  `).all() as Array<{
-    connector_version: string
-    links_json: string
-    sourcing_finding_id: string
-  }>
-  const migratedFindingIds = new Set<string>()
-  const update = database.prepare(`
-    update sourcing_findings
-    set destination_class = null,
-      destination_url = null,
-      intermediary_url = ?,
-      usability = 'review_only',
-      official_url = null,
-      source_url = ?,
-      blocker = case
-        when merge_status = 'merged' then blocker
-        else 'No verified usable application destination; retained for review.'
-      end,
-      merge_status = case when merge_status = 'merged' then merge_status else 'blocked' end,
-      merge_notes = case
-        when merge_status = 'merged' then merge_notes
-        else 'No verified usable application destination; retained for review.'
-      end
-    where id = ?
-  `)
-
-  for (const row of rows) {
-    if (migratedFindingIds.has(row.sourcing_finding_id)) {
-      continue
-    }
-    migratedFindingIds.add(row.sourcing_finding_id)
-
-    if (!isConnectorVersionBefore(row.connector_version, [0, 4, 3])) {
-      continue
-    }
-
-    const links = readLegacyObservationLinks(row.links_json)
-    const intermediaryUrl = safeObservedJobrightUrl(links?.intermediary ?? links?.source ?? null)
-    update.run(intermediaryUrl, intermediaryUrl, row.sourcing_finding_id)
-  }
-}
-
 function backfillSourceEntityIdentities(database: SqliteDatabase) {
   if (!tableExists(database, 'source_entities') || !tableExists(database, 'source_entity_identities')) {
     return
@@ -313,71 +229,6 @@ function backfillSourceEntityIdentities(database: SqliteDatabase) {
       }
     }
   })()
-}
-
-function readLegacyObservationLinks(value: string): { intermediary?: unknown; source?: unknown } | null {
-  try {
-    const parsed = JSON.parse(value) as unknown
-    return parsed && typeof parsed === 'object'
-      ? parsed as { intermediary?: unknown; source?: unknown }
-      : null
-  } catch {
-    return null
-  }
-}
-
-function safeObservedJobrightUrl(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-
-  try {
-    const url = new URL(value)
-    const hostname = url.hostname.toLowerCase().replace(/\.$/, '')
-    const isJobrightHostname = hostname === 'jobright.ai' || hostname.endsWith('.jobright.ai')
-
-    if (
-      (url.protocol !== 'http:' && url.protocol !== 'https:')
-      || !isJobrightHostname
-      || url.username.length > 0
-      || url.password.length > 0
-      || url.port.length > 0
-    ) {
-      return null
-    }
-
-    return url.toString()
-  } catch {
-    return null
-  }
-}
-
-function isConnectorVersionBefore(value: string, target: [number, number, number]): boolean {
-  const match = value.match(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)
-
-  if (!match) {
-    return true
-  }
-
-  const current = match.slice(1).map(Number)
-
-  for (const [index, part] of current.entries()) {
-    if (part < target[index]) {
-      return true
-    }
-    if (part > target[index]) {
-      return false
-    }
-  }
-
-  return false
-}
-
-function tableColumnNames(database: SqliteDatabase, tableName: string): Set<string> {
-  return new Set(
-    (database.prepare(`pragma table_info(${tableName})`).all() as Array<{ name: string }>)
-      .map((row) => row.name),
-  )
 }
 
 function backfillTimingTerms(database: SqliteDatabase, tableName: 'applications' | 'sourcing_findings') {

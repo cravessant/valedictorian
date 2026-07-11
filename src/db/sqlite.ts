@@ -678,7 +678,6 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       source_metadata_json text not null,
       evidence_json text not null,
       raw_json text not null,
-      sourcing_finding_id text,
       created_at text not null,
       updated_at text not null,
       deleted_at text
@@ -879,6 +878,13 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
 
     create table if not exists sourcing_findings (
       id text primary key,
+      projection_identity_key text,
+      source_entity_id text references source_entities(id),
+      canonical_candidate_id text references canonical_source_candidates(id),
+      raw_revision_id text references raw_source_revisions(id),
+      adapter_id text,
+      adapter_kind text,
+      adapter_version text,
       workflow_run_id text not null references workflow_runs(id),
       source_id text not null references sources(id),
       company_name text not null,
@@ -891,11 +897,20 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       end_date text,
       city text,
       region text,
-      country text not null,
+      country text,
       work_mode text not null,
       location_raw text,
+      employment_type text,
+      seniority text,
+      location_json text,
+      compensation_json text,
+      posted_at_json text,
       official_url text,
       source_url text,
+      destination_class text,
+      destination_url text,
+      intermediary_url text,
+      usability text,
       posted_age text,
       priority_score integer,
       priority_band text,
@@ -918,6 +933,12 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     create index if not exists idx_workflow_runs_source_type_status_started
       on workflow_runs(source_id, run_type, status, started_at);
     create index if not exists idx_sourcing_findings_source_id on sourcing_findings(source_id);
+    create unique index if not exists idx_sourcing_findings_projection_identity
+      on sourcing_findings(projection_identity_key);
+    create index if not exists idx_sourcing_findings_source_entity
+      on sourcing_findings(source_entity_id);
+    create unique index if not exists idx_sourcing_findings_canonical_candidate
+      on sourcing_findings(canonical_candidate_id);
     create index if not exists idx_sourcing_findings_source_status_discovered
       on sourcing_findings(source_id, merge_status, discovered_at);
     create index if not exists idx_policy_evidence_subject
@@ -1021,15 +1042,6 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     create index if not exists idx_raw_source_occurrences_connector_run
       on raw_source_occurrences(connector_run_id);
 
-    create table if not exists connector_projection_keys (
-      dedupe_key text primary key,
-      sourcing_finding_id text not null references sourcing_findings(id),
-      created_at text not null,
-      updated_at text not null,
-      deleted_at text
-    );
-    create index if not exists idx_connector_projection_keys_sourcing_finding
-      on connector_projection_keys(sourcing_finding_id);
   `)
 
   ensureColumns(database, 'normalization_runs', [
@@ -1125,10 +1137,22 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
     ['end_date', 'text'],
   ])
   ensureColumns(database, 'sourcing_findings', [
+    ['projection_identity_key', 'text'],
+    ['source_entity_id', 'text'],
+    ['canonical_candidate_id', 'text'],
+    ['raw_revision_id', 'text'],
+    ['adapter_id', 'text'],
+    ['adapter_kind', 'text'],
+    ['adapter_version', 'text'],
     ['timing_mode', "text not null default 'unknown'"],
     ['terms_json', "text not null default '[]'"],
     ['start_date', 'text'],
     ['end_date', 'text'],
+    ['employment_type', 'text'],
+    ['seniority', 'text'],
+    ['location_json', 'text'],
+    ['compensation_json', 'text'],
+    ['posted_at_json', 'text'],
   ])
   ensureColumns(database, 'profile_sensitive_details', [
     ['birth_day_encrypted', 'text'],
@@ -1157,14 +1181,9 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
   ])
   ensureConnectorCheckpointFilterScope(database)
   ensureColumns(database, 'connector_observations', [
-    ['sourcing_finding_id', 'text'],
     ['parser_version', 'text'],
     ['observation_schema_version', 'text'],
   ])
-  database.exec(`
-    create index if not exists idx_connector_observations_sourcing_finding
-      on connector_observations(sourcing_finding_id);
-  `)
   database.prepare(`
     update connector_instances set connector_version = ? where connector_id = ?
   `).run(JOBRIGHT_CONNECTOR_VERSION, JOBRIGHT_CONNECTOR_ID)

@@ -2,7 +2,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createDataMigrationUmzug } from './data-migrations'
+import {
+  assertDataMigrationHistoryIsKnown,
+  createDataMigrationUmzug,
+  runDataMigrations,
+} from './data-migrations'
 import { createFileDatabase, createInMemoryDatabase, migrateDatabase } from './sqlite'
 
 const expectedIdentityTriggers = [
@@ -38,7 +42,7 @@ describe('SQLite database', () => {
     expect(tables).toContain('connector_runs')
     expect(tables).toContain('connector_checkpoints')
     expect(tables).toContain('connector_observations')
-    expect(tables).toContain('connector_projection_keys')
+    expect(tables).not.toContain('connector_projection_keys')
     expect(tables).toContain('source_entities')
     expect(tables).toContain('raw_source_records')
     expect(tables).toContain('raw_source_revisions')
@@ -48,8 +52,15 @@ describe('SQLite database', () => {
       expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
     )
     expect(tableColumns(database, 'sourcing_findings')).toEqual(
-      expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
+      expect.arrayContaining([
+        'projection_identity_key', 'source_entity_id', 'canonical_candidate_id',
+        'raw_revision_id', 'adapter_id', 'adapter_kind', 'adapter_version',
+        'employment_type', 'seniority', 'location_json', 'compensation_json',
+        'posted_at_json', 'timing_mode', 'terms_json', 'start_date', 'end_date',
+      ]),
     )
+    expect(database.prepare("select \"notnull\" as is_not_null from pragma_table_info('sourcing_findings') where name = 'country'").get())
+      .toEqual({ is_not_null: 0 })
     expect(tableColumns(database, 'connector_instances')).toEqual(
       expect.arrayContaining(['config_json', 'auth_json', 'filters_json']),
     )
@@ -98,6 +109,9 @@ describe('SQLite database', () => {
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_type_status_started')
     expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_id')
     expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_status_discovered')
+    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_projection_identity')
+    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_entity')
+    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_canonical_candidate')
     expect(sourceIndexes).toContain('idx_sources_name')
     expect(connectorRunIndexes).toContain('idx_connector_runs_instance')
     expect(connectorRunIndexes).toContain('idx_connector_runs_instance_status_started')
@@ -132,7 +146,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(16)
+    expect(migrationRows).toHaveLength(18)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -191,7 +205,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 16 })
+    ).toEqual({ count: 18 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -307,7 +321,7 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 16 })
+      .toEqual({ count: 18 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
@@ -678,7 +692,7 @@ describe('SQLite database', () => {
     database.close()
   })
 
-  it('adds projection and version metadata columns to legacy connector observation tables', () => {
+  it('removes legacy observation projection linkage while retaining version metadata', () => {
     const database = createInMemoryDatabase()
     database.exec(`
       create table connector_observations (
@@ -715,17 +729,17 @@ describe('SQLite database', () => {
 
     expect(tableColumns(database, 'connector_observations')).toEqual(
       expect.arrayContaining([
-        'sourcing_finding_id',
         'parser_version',
         'observation_schema_version',
       ]),
     )
-    expect(connectorObservationIndexes).toContain('idx_connector_observations_sourcing_finding')
+    expect(tableColumns(database, 'connector_observations')).not.toContain('sourcing_finding_id')
+    expect(connectorObservationIndexes).not.toContain('idx_connector_observations_sourcing_finding')
     expect(
       database
         .prepare("select name from sqlite_master where type = 'table' and name = 'connector_projection_keys'")
         .all(),
-    ).toHaveLength(1)
+    ).toHaveLength(0)
   })
 
   it('recreates current scoped checkpoints without legacy execution state', () => {
@@ -914,9 +928,6 @@ describe('SQLite database', () => {
         name: '20260702000000_job_timing_terms',
       },
       {
-        name: '20260710000000_sourcing_destination_projection',
-      },
-      {
         name: '20260711000000_source_identity_backfill',
       },
     ])
@@ -974,7 +985,7 @@ describe('SQLite database', () => {
     })
   })
 
-  it('fails closed for connector 0.4.1 findings without inventing destination provenance', async () => {
+  it('accepts the historical projection ledger without mutating legacy findings', () => {
     const database = createInMemoryDatabase()
     database.exec(`
       create table policy_config (
@@ -1128,7 +1139,16 @@ describe('SQLite database', () => {
       );
     `)
 
-    await createDataMigrationUmzug(database).up()
+    database.exec(`
+      create table __valedictorian_data_migrations (
+        name text primary key,
+        created_at text not null
+      );
+      insert into __valedictorian_data_migrations (name, created_at)
+      values ('20260710000000_sourcing_destination_projection', '2026-07-10T00:00:00.000Z');
+    `)
+    expect(() => assertDataMigrationHistoryIsKnown(database)).not.toThrow()
+    runDataMigrations(database)
 
     expect(database.prepare(`
       select destination_class, destination_url, intermediary_url, usability,
@@ -1137,11 +1157,11 @@ describe('SQLite database', () => {
     `).get()).toEqual({
       destination_class: null,
       destination_url: null,
-      intermediary_url: 'https://jobright.ai/jobs/info/job-123456',
-      usability: 'review_only',
-      official_url: null,
+      intermediary_url: null,
+      usability: null,
+      official_url: 'https://www.linkedin.com/jobs/view/123456',
       source_url: 'https://jobright.ai/jobs/info/job-123456',
-      merge_status: 'blocked',
+      merge_status: 'new',
     })
     expect(JSON.parse((database.prepare(`
       select links_json from connector_observations where id = 'observation-legacy'
@@ -1168,10 +1188,10 @@ describe('SQLite database', () => {
       destination_class: null,
       destination_url: null,
       intermediary_url: null,
-      usability: 'review_only',
-      official_url: null,
-      source_url: null,
-      merge_status: 'blocked',
+      usability: null,
+      official_url: 'https://www.linkedin.com/jobs/view/external-role',
+      source_url: 'https://www.linkedin.com/jobs/view/external-role',
+      merge_status: 'new',
     })
     expect(JSON.parse((database.prepare(`
       select links_json from connector_observations where id = 'observation-external-source'
@@ -1188,11 +1208,11 @@ describe('SQLite database', () => {
     `).all()).toEqual([
       {
         id: 'finding-garbage-version',
-        destination_class: null,
-        destination_url: null,
-        usability: 'review_only',
-        official_url: null,
-        merge_status: 'blocked',
+        destination_class: 'employer_or_ats',
+        destination_url: 'https://jobs.lever.co/example/garbage',
+        usability: 'usable',
+        official_url: 'https://jobs.lever.co/example/garbage',
+        merge_status: 'new',
       },
       {
         id: 'finding-later-stable',
@@ -1204,11 +1224,11 @@ describe('SQLite database', () => {
       },
       {
         id: 'finding-prerelease',
-        destination_class: null,
-        destination_url: null,
-        usability: 'review_only',
-        official_url: null,
-        merge_status: 'blocked',
+        destination_class: 'employer_or_ats',
+        destination_url: 'https://jobs.lever.co/example/prerelease',
+        usability: 'usable',
+        official_url: 'https://jobs.lever.co/example/prerelease',
+        merge_status: 'new',
       },
     ])
   })
@@ -1235,9 +1255,6 @@ describe('SQLite database', () => {
       },
       {
         name: '20260702000000_job_timing_terms',
-      },
-      {
-        name: '20260710000000_sourcing_destination_projection',
       },
       {
         name: '20260711000000_source_identity_backfill',
@@ -1356,7 +1373,7 @@ const disposableResetTables = [
   'raw_source_revisions', 'raw_source_occurrences', 'normalization_runs',
   'normalization_replay_requests', 'normalization_replay_items', 'normalization_attempts',
   'normalization_field_outcomes', 'canonical_source_candidates', 'normalization_gates',
-  'sourcing_findings', 'connector_projection_keys',
+  'sourcing_findings',
 ] as const
 
 function seedResetMigrationFixture(database: ReturnType<typeof createInMemoryDatabase>) {

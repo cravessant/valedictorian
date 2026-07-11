@@ -15,7 +15,6 @@ import {
 } from '../modules/applications/application.fixtures'
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
 import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
-import { createSqliteConnectorProjectionService } from '../modules/connectors/connector.projection'
 import { createConnectorNormalizationHost } from '../modules/connectors/connector.normalization'
 import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import {
@@ -25,7 +24,6 @@ import {
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
   createConnectorRunner,
-  isJobrightRawFirstConnector,
   type AppConnectorAuthGrant,
   type AppConnectorAuthHost,
   type AppConnectorAuthValidationResult,
@@ -53,6 +51,7 @@ import { createSqliteProfileRepository, type ProfileSecretCodec } from '../modul
 import { createSqliteScoringRepository } from '../modules/scoring/scoring.repository'
 import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.processor'
 import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
+import { createCanonicalCandidateProjectionService } from '../modules/sourcing/canonical-candidate.projection'
 import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
@@ -296,7 +295,11 @@ export function createLocalValedictorianClient({
   const sourcingProcessor = createSqliteSourcingProcessor(database)
   const sourcingRepository = createSqliteSourcingRepository(database)
   const rawSourceRepository = createSqliteRawSourceRepository(database, now)
-  const normalizationRepository = createSqliteNormalizationRepository(database)
+  const canonicalCandidateProjection = createCanonicalCandidateProjectionService(now)
+  const normalizationRepository = createSqliteNormalizationRepository(database, {
+    projectPassedCandidate: (transaction, candidateId, rawRevisionId) =>
+      canonicalCandidateProjection.projectPersisted(transaction, candidateId, rawRevisionId),
+  })
   const normalizationOrchestrator = createNormalizationOrchestrator({
     repository: normalizationRepository,
     registry: normalizationRegistry,
@@ -328,11 +331,6 @@ export function createLocalValedictorianClient({
     workspaceId,
     now,
   })
-  const connectorProjectionService = createSqliteConnectorProjectionService({
-    connectorRepository,
-    sourcingRepository,
-    workflowRunRepository,
-  })
   let startupCatchUpPromise: Promise<LocalConnectorStartupCatchUpResult> | null = null
 
   const runStartupCatchUpOnce = () => {
@@ -341,7 +339,6 @@ export function createLocalValedictorianClient({
       connectorRepository,
       connectorRunner,
       now,
-      projectionService: connectorProjectionService,
     })
 
     return startupCatchUpPromise
@@ -476,7 +473,6 @@ export function createLocalValedictorianClient({
             connectorRunner,
             input,
             now,
-            projectionService: connectorProjectionService,
           })
 
           return mapConnectorRunSummary(run)
@@ -585,7 +581,10 @@ export function createLocalValedictorianClient({
           const result = await rawSourceRepository.ingestBatch(input)
           for (const receipt of result.receipts) {
             try {
-              await normalizationOrchestrator.normalize(receipt.rawRecordId, receipt.revision.id)
+              await normalizationOrchestrator.normalize(
+                receipt.rawRecordId,
+                receipt.revision.id,
+              )
             } catch {
               // Intake is already durable. Normalization failures must never erase its receipt
               // or prevent later records in the same batch from being admitted independently.
@@ -712,13 +711,11 @@ async function executeConnectorStartupCatchUp({
   connectorRepository,
   connectorRunner,
   now,
-  projectionService,
 }: {
   connectorRegistry: LocalConnectorRegistry
   connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   now: () => Date
-  projectionService: ReturnType<typeof createSqliteConnectorProjectionService>
 }): Promise<LocalConnectorStartupCatchUpResult> {
   const runs: LocalConnectorRunSummary[] = []
   const skipped: LocalConnectorStartupCatchUpResult['skipped'] = []
@@ -752,7 +749,6 @@ async function executeConnectorStartupCatchUp({
           mode: 'catch_up',
         },
         now,
-        projectionService,
       })))
     } catch {
       skipped.push({
@@ -771,14 +767,12 @@ async function executeConnectorRunTrigger({
   connectorRunner,
   input,
   now,
-  projectionService,
 }: {
   connectorRegistry: LocalConnectorRegistry
   connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   input: LocalConnectorRunTriggerInput
   now: () => Date
-  projectionService: ReturnType<typeof createSqliteConnectorProjectionService>
 }): Promise<ConnectorRunRecord> {
   const startedAt = now().toISOString()
   const instance = await connectorRepository.getInstance(input.connectorInstanceId)
@@ -872,55 +866,6 @@ async function executeConnectorRunTrigger({
         lastProgressAt: now().toISOString(),
       },
     })
-    const observations = isJobrightRawFirstConnector(connector)
-      ? []
-      : await connectorRepository.listObservations({
-          connectorInstanceId: input.connectorInstanceId,
-          connectorRunId: run.id,
-        })
-
-    const projectedFindings = new Map<
-      string,
-      'employer_or_ats' | 'review_only' | 'third_party_job_posting'
-    >()
-
-    for (const observation of observations) {
-      const { finding } = await projectionService.projectObservation({
-        connectorObservationId: observation.id,
-      })
-      if (finding.usability === 'review_only') {
-        projectedFindings.set(finding.id, 'review_only')
-      } else if (finding.destinationClass === 'employer_or_ats') {
-        projectedFindings.set(finding.id, 'employer_or_ats')
-      } else if (finding.destinationClass === 'third_party_job_posting') {
-        projectedFindings.set(finding.id, 'third_party_job_posting')
-      } else {
-        projectedFindings.set(finding.id, 'review_only')
-      }
-      const classifications = [...projectedFindings.values()]
-      const projectedEmployerOrAts = classifications.filter(
-        (classification) => classification === 'employer_or_ats',
-      ).length
-      const projectedThirdParty = classifications.filter(
-        (classification) => classification === 'third_party_job_posting',
-      ).length
-      const retainedForReview = classifications.filter(
-        (classification) => classification === 'review_only',
-      ).length
-      projectedRun = await connectorRepository.updateRunProgress({
-        connectorRunId: run.id,
-        stats: {
-          projected: projectedFindings.size,
-          projectedEmployerOrAts,
-          projectedThirdParty,
-          projectedUsable: projectedEmployerOrAts + projectedThirdParty,
-          retainedForReview,
-          stage: 'projecting',
-          lastProgressAt: now().toISOString(),
-        },
-      })
-    }
-
     projectedRun = await connectorRepository.updateRunProgress({
       connectorRunId: run.id,
       stats: {
@@ -939,11 +884,11 @@ async function executeConnectorRunTrigger({
       connectorRunId: run.id,
       completedAt: now().toISOString(),
       retryHints: {
-        reason: 'projection_failed',
+        reason: 'sourcing_projection_failed',
       },
       warning: {
-        code: 'connector.projection_failed',
-        message: 'Connector observation projection failed.',
+        code: 'connector.sourcing_projection_failed',
+        message: 'Canonical sourcing projection failed.',
       },
     })
     throw error
