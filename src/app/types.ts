@@ -33,6 +33,7 @@ export const APP_VIEWS = {
   PROFILE: 'profile',
   ACTION_QUEUE: 'action-queue',
   CONNECTORS: 'connectors',
+  CONNECTOR_RUNS: 'connector-runs',
   SETTINGS: 'settings',
   SOURCING: 'sourcing',
 } as const
@@ -59,7 +60,6 @@ export const SETTINGS_PANELS = {
   CONFIGURATION: 'configuration',
   AGENT_ACCESS: 'agent-access',
   AGENT_WORKFLOWS: 'agent-workflows',
-  SOURCING_RUNS: 'sourcing-runs',
   ADVANCED: 'advanced',
   DATA: 'data',
 } as const

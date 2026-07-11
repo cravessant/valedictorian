@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
@@ -136,7 +136,9 @@ interface AppSidebarProps {
   onMouseLeave: () => void
   onOpenProfilePage: () => void
   onOpenSettingsPage: () => void
-  onViewChange: (view: Exclude<MainAppView, typeof APP_VIEWS.PROFILE>) => void
+  onViewChange: (
+    view: Exclude<MainAppView, typeof APP_VIEWS.PROFILE>,
+  ) => void
   onSettingsOpenChange: (open: boolean) => void
   onSettingsPatch: (patch: AppSettingsPatch) => void
 }
@@ -153,6 +155,17 @@ function AppSidebar({
   onSettingsOpenChange,
   onSettingsPatch,
 }: AppSidebarProps) {
+  const connectorsChildrenId = useId()
+  const connectorsChildActive =
+    currentView === APP_VIEWS.CONNECTORS || currentView === APP_VIEWS.CONNECTOR_RUNS
+  const [connectorsExpanded, setConnectorsExpanded] = useState(connectorsChildActive)
+
+  useEffect(() => {
+    if (connectorsChildActive) {
+      setConnectorsExpanded(true)
+    }
+  }, [connectorsChildActive])
+
   return (
     <aside
       aria-label="Application navigation"
@@ -206,12 +219,34 @@ function AppSidebar({
         </button>
         <button
           type="button"
-          className={applicationNavClass(currentView === APP_VIEWS.CONNECTORS)}
-          onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
+          aria-controls={connectorsChildrenId}
+          aria-expanded={connectorsExpanded}
+          className={applicationNavClass(connectorsChildActive)}
+          onClick={() => setConnectorsExpanded((expanded) => !expanded)}
         >
           <Plug className="h-4 w-4" aria-hidden="true" />
           Connectors
         </button>
+        {connectorsExpanded ? (
+          <div className="ml-4 space-y-1 border-l border-border pl-2" id={connectorsChildrenId}>
+            <button
+              type="button"
+              aria-current={currentView === APP_VIEWS.CONNECTORS ? 'page' : undefined}
+              className={applicationNavClass(currentView === APP_VIEWS.CONNECTORS)}
+              onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              aria-current={currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined}
+              className={applicationNavClass(currentView === APP_VIEWS.CONNECTOR_RUNS)}
+              onClick={() => onViewChange(APP_VIEWS.CONNECTOR_RUNS)}
+            >
+              Runs
+            </button>
+          </div>
+        ) : null}
       </nav>
 
       <div className="mt-auto">

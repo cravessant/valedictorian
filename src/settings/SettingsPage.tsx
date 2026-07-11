@@ -38,7 +38,7 @@ interface SettingsPageProps {
   workspace: WorkspaceSummary | null
   workspaceApi: WorkspacePreloadApi
   onConnectorRunSettled: () => void
-  onOpenSourcingRuns: () => void
+  onOpenSourcingRuns: (runId?: string) => void
   onSettingsPatch: (patch: AppSettingsPatch) => void
 }
 
@@ -114,11 +114,6 @@ const settingsNavGroups: SettingsNavGroup[] = [
         icon: <ShieldCheck className="h-4 w-4" aria-hidden="true" />,
         id: SETTINGS_PANELS.POLICY,
         label: 'Policy',
-      },
-      {
-        icon: <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />,
-        id: SETTINGS_PANELS.SOURCING_RUNS,
-        label: 'Sourcing runs',
       },
     ],
   },
@@ -282,9 +277,6 @@ function SettingsPage({
           {selectedPanel === SETTINGS_PANELS.POLICY ? (
             <PolicySettingsPanel policyApi={policyApi} />
           ) : null}
-          {selectedPanel === SETTINGS_PANELS.SOURCING_RUNS ? (
-            <SourcingRunsSettingsPanel connectorsApi={connectorsApi} />
-          ) : null}
           {!isFunctionalSettingsPanel(selectedPanel) ? (
             <ComingLaterSettingsPanel label={selectedLabel} />
           ) : null}
@@ -329,7 +321,7 @@ function ConnectorSettingsPanel({
   connectorsApi: ConnectorsPreloadApi
   displayMode?: 'main' | 'settings'
   onConnectorChanged?: () => void
-  onOpenSourcingRuns?: () => void
+  onOpenSourcingRuns?: (runId?: string) => void
   onRunSettled: () => void
   profileApi: ProfilePreloadApi
 }) {
@@ -842,8 +834,8 @@ function ConnectorSettingsPanel({
           </p>
         </div>
         {onOpenSourcingRuns ? (
-          <Button type="button" variant="outline" onClick={onOpenSourcingRuns}>
-            View sourcing runs
+          <Button type="button" variant="outline" onClick={() => onOpenSourcingRuns()}>
+            View connector runs
           </Button>
         ) : null}
       </div>
@@ -1059,14 +1051,14 @@ function ConnectorSettingsPanel({
                         ) : null}
                         {latestRun ? (
                           <Button
-                            aria-label={`View ${latestRun.id} in Sourcing runs`}
+                            aria-label={`View ${latestRun.id} in Connector Runs`}
                             className="w-fit"
                             size="sm"
                             type="button"
                             variant="outline"
-                            onClick={onOpenSourcingRuns}
+                            onClick={() => onOpenSourcingRuns?.(latestRun.id)}
                           >
-                            View in Sourcing runs
+                            View in Connector Runs
                           </Button>
                         ) : null}
                       </div>
@@ -1402,37 +1394,137 @@ interface ConnectorRunHistoryItem {
   run: ConnectorSettingsRun
 }
 
-function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: ConnectorsPreloadApi }) {
+const CONNECTOR_RUNS_PAGE_SIZE = 20
+const CONNECTOR_RUNS_MAX_FOCUS_PAGES = 25
+
+async function loadConnectorRunHistoryPage(
+  connectorsApi: ConnectorsPreloadApi,
+  offset: number,
+): Promise<{
+  items: ConnectorRunHistoryItem[]
+  hasMore: boolean
+}> {
+  const { items: instances } = await connectorsApi.list()
+  const runLists = await Promise.all(instances.map(async (instance) => {
+    const page = await connectorsApi.runs.list({
+      connectorInstanceId: instance.id,
+      limit: CONNECTOR_RUNS_PAGE_SIZE,
+      offset,
+    })
+    return {
+      connectorId: instance.connectorId,
+      connectorName: instance.displayName,
+      hasMore: page.hasMore,
+      runs: page.items,
+    }
+  }))
+
+  return {
+    hasMore: runLists.some((entry) => entry.hasMore),
+    items: runLists
+      .flatMap(({ connectorId, connectorName, runs }) =>
+        runs.map((run) => ({ connectorId, connectorName, run })))
+      .sort((left, right) => right.run.startedAt.localeCompare(left.run.startedAt)),
+  }
+}
+
+async function resolveFocusedConnectorRun(
+  connectorsApi: ConnectorsPreloadApi,
+  focusedRunId: string,
+  initialItems: ConnectorRunHistoryItem[],
+  initialHasMore: boolean,
+): Promise<{
+  focusedItem: ConnectorRunHistoryItem | null
+  outcome: 'found' | 'not_found' | 'search_limit_reached'
+}> {
+  const existing = initialItems.find((item) => item.run.id === focusedRunId)
+  if (existing) {
+    return { focusedItem: existing, outcome: 'found' }
+  }
+
+  let offset = CONNECTOR_RUNS_PAGE_SIZE
+  let hasMore = initialHasMore
+  let pagesFetched = 1
+
+  while (hasMore && pagesFetched < CONNECTOR_RUNS_MAX_FOCUS_PAGES) {
+    const page = await loadConnectorRunHistoryPage(connectorsApi, offset)
+    pagesFetched += 1
+    const match = page.items.find((item) => item.run.id === focusedRunId)
+    if (match) {
+      return { focusedItem: match, outcome: 'found' }
+    }
+    hasMore = page.hasMore
+    offset += CONNECTOR_RUNS_PAGE_SIZE
+  }
+
+  if (hasMore) {
+    return { focusedItem: null, outcome: 'search_limit_reached' }
+  }
+
+  return { focusedItem: null, outcome: 'not_found' }
+}
+
+type FocusedConnectorRunLookup =
+  | 'idle'
+  | 'found'
+  | 'not_found'
+  | 'search_limit_reached'
+
+function ConnectorRunsPanel({
+  connectorsApi,
+  focusedRunId = null,
+}: {
+  connectorsApi: ConnectorsPreloadApi
+  focusedRunId?: string | null
+}) {
   const [items, setItems] = useState<ConnectorRunHistoryItem[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [focusedRunLookup, setFocusedRunLookup] = useState<FocusedConnectorRunLookup>('idle')
   const [isLoading, setIsLoading] = useState(true)
+  const focusedRunRef = useRef<HTMLElement | null>(null)
+  const focusedRunAppliedIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    focusedRunAppliedIdRef.current = null
+    setFocusedRunLookup('idle')
+  }, [focusedRunId])
 
   useEffect(() => {
     let cancelled = false
     let pollTimer: ReturnType<typeof setTimeout> | undefined
+    let resolvedFocusedItem: ConnectorRunHistoryItem | null = null
+    let focusedLookupComplete = !focusedRunId
+    let lookupOutcome: FocusedConnectorRunLookup = 'idle'
 
-    const loadRuns = () => connectorsApi.list()
-      .then(async ({ items: instances }) => {
-        const runLists = await Promise.all(instances.map(async (instance) => ({
-          connectorId: instance.connectorId,
-          connectorName: instance.displayName,
-          runs: (await connectorsApi.runs.list({
-            connectorInstanceId: instance.id,
-            limit: 20,
-            offset: 0,
-          })).items,
-        })))
+    const loadRuns = () => loadConnectorRunHistoryPage(connectorsApi, 0)
+      .then(async (page) => {
+        let nextItems = page.items
 
-        return runLists
-          .flatMap(({ connectorId, connectorName, runs }) =>
-            runs.map((run) => ({ connectorId, connectorName, run })))
-          .sort((left, right) => right.run.startedAt.localeCompare(left.run.startedAt))
-      })
-      .then((runs) => {
+        if (focusedRunId && !focusedLookupComplete) {
+          const focused = await resolveFocusedConnectorRun(
+            connectorsApi,
+            focusedRunId,
+            page.items,
+            page.hasMore,
+          )
+          focusedLookupComplete = true
+          lookupOutcome = focused.outcome
+          resolvedFocusedItem = focused.outcome === 'found' ? focused.focusedItem : null
+        }
+
+        if (
+          focusedRunId
+          && resolvedFocusedItem
+          && !nextItems.some((item) => item.run.id === focusedRunId)
+        ) {
+          nextItems = [resolvedFocusedItem, ...nextItems]
+        }
+
         if (!cancelled) {
-          setItems(runs)
+          setItems(nextItems)
+          setFocusedRunLookup(focusedRunId && focusedLookupComplete ? lookupOutcome : 'idle')
           setError(null)
-          if (runs.some(({ run }) => run.status === 'queued' || run.status === 'running')) {
+          if (nextItems.some(({ run }) => run.status === 'queued' || run.status === 'running')) {
             pollTimer = setTimeout(loadRuns, 1_000)
           }
         }
@@ -1440,6 +1532,7 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
       .catch(() => {
         if (!cancelled) {
           setItems([])
+          setFocusedRunLookup('idle')
           setError('Connector run history could not be loaded.')
         }
       })
@@ -1457,13 +1550,32 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
         clearTimeout(pollTimer)
       }
     }
-  }, [connectorsApi])
+  }, [connectorsApi, focusedRunId])
+
+  useEffect(() => {
+    if (!focusedRunId || isLoading || focusedRunLookup !== 'found') {
+      return
+    }
+
+    if (focusedRunAppliedIdRef.current === focusedRunId) {
+      return
+    }
+
+    const node = focusedRunRef.current
+    if (!node) {
+      return
+    }
+
+    focusedRunAppliedIdRef.current = focusedRunId
+    node.scrollIntoView({ block: 'nearest' })
+    node.focus()
+  }, [focusedRunId, focusedRunLookup, isLoading, items])
 
   return (
-    <section aria-labelledby="sourcing-runs-settings-title" className="space-y-7">
+    <section aria-labelledby="connector-runs-title" className="space-y-7">
       <div>
-        <h2 id="sourcing-runs-settings-title" className="text-xl font-semibold text-foreground">
-          Sourcing runs
+        <h2 id="connector-runs-title" className="text-xl font-semibold text-foreground">
+          Connector Runs
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Inspect connector progress, results, warnings, and safe retry guidance.
@@ -1482,6 +1594,27 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
           </div>
         </Alert>
       ) : null}
+      {focusedRunLookup === 'not_found' && focusedRunId ? (
+        <Alert variant="destructive" className="bg-card" role="alert">
+          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
+          <div className="pl-7">
+            <AlertTitle>Connector run not found</AlertTitle>
+            <AlertDescription>
+              The requested connector run could not be found in available history.
+            </AlertDescription>
+          </div>
+        </Alert>
+      ) : null}
+      {focusedRunLookup === 'search_limit_reached' && focusedRunId ? (
+        <p
+          aria-label="Requested connector run was not located within the searched recent-history window"
+          className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground"
+          role="status"
+        >
+          The requested connector run was not located within the searched recent-history window.
+          More history is available beyond this search limit.
+        </p>
+      ) : null}
       {!isLoading && !error && items.length === 0 ? (
         <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
           No connector runs recorded yet.
@@ -1493,12 +1626,20 @@ function SourcingRunsSettingsPanel({ connectorsApi }: { connectorsApi: Connector
             const warningLabels = [...new Set(run.warnings.map((warning) =>
               safeRunWarningLabel(warning.code)))]
             const retryGuidance = safeRunRetryGuidance(run, connectorId)
+            const isFocused = focusedRunId === run.id && focusedRunLookup === 'found'
 
             return (
               <article
                 key={run.id}
+                ref={isFocused ? focusedRunRef : undefined}
+                aria-current={isFocused ? 'true' : undefined}
                 aria-live={run.status === 'queued' || run.status === 'running' ? 'polite' : undefined}
-                className="space-y-3 rounded-md border border-border bg-card p-4"
+                className={`space-y-3 rounded-md border border-border bg-card p-4 ${
+                  isFocused ? 'ring-2 ring-primary' : ''
+                }`}
+                data-connector-run-id={run.id}
+                id={`connector-run-${run.id}`}
+                tabIndex={isFocused ? -1 : undefined}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -2729,9 +2870,8 @@ function isFunctionalSettingsPanel(panel: SettingsPanelId) {
     panel === SETTINGS_PANELS.AGENT_ACCESS ||
     panel === SETTINGS_PANELS.APPEARANCE ||
     panel === SETTINGS_PANELS.POLICY ||
-    panel === SETTINGS_PANELS.SOURCING_RUNS ||
     panel === SETTINGS_PANELS.DATA
   )
 }
 
-export { ConnectorSettingsPanel, SettingsPage, SettingsSidebar }
+export { ConnectorRunsPanel, ConnectorSettingsPanel, SettingsPage, SettingsSidebar }

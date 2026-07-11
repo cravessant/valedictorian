@@ -9,6 +9,7 @@ describe('app navigation type constants', () => {
       PROFILE: 'profile',
       ACTION_QUEUE: 'action-queue',
       CONNECTORS: 'connectors',
+      CONNECTOR_RUNS: 'connector-runs',
       SETTINGS: 'settings',
       SOURCING: 'sourcing',
     })
@@ -26,9 +27,10 @@ describe('app navigation type constants', () => {
       CONFIGURATION: 'configuration',
       AGENT_ACCESS: 'agent-access',
       AGENT_WORKFLOWS: 'agent-workflows',
-      SOURCING_RUNS: 'sourcing-runs',
       ADVANCED: 'advanced',
       DATA: 'data',
     })
+    expect(SETTINGS_PANELS).not.toHaveProperty('SOURCING_RUNS')
+    expect(Object.values(SETTINGS_PANELS)).not.toContain('sourcing-runs')
   })
 })

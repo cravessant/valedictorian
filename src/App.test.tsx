@@ -726,6 +726,7 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
 
     const table = await screen.findByRole('table', { name: 'Connector status' })
 
@@ -800,6 +801,7 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
 
     const table = await screen.findByRole('table', { name: 'Connector status' })
     fireEvent.click(within(table).getByRole('button', { name: 'Reconnect Fixture Jobs' }))
@@ -844,6 +846,7 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
 
     expect(screen.getByRole('status', { name: 'Connector status loading' })).toBeInTheDocument()
     expect(screen.queryByText('Connector status is unavailable for this runtime.')).not.toBeInTheDocument()

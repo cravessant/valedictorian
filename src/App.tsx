@@ -32,7 +32,7 @@ import type {
 import { SourcingPage } from './modules/sourcing/SourcingPage'
 import { AppSidebar, AppTopbar } from './app/AppChrome'
 import { formatEnumLabel } from './app/labels'
-import { ConnectorSettingsPanel, SettingsPage, SettingsSidebar } from './settings/SettingsPage'
+import { ConnectorRunsPanel, ConnectorSettingsPanel, SettingsPage, SettingsSidebar } from './settings/SettingsPage'
 import { requiresRestart } from './settings/requiresRestart'
 import {
   applicationListSorts,
@@ -244,6 +244,7 @@ function App({
   const [selectedSettingsPanel, setSelectedSettingsPanel] = useState<SettingsPanelId>(
     SETTINGS_PANELS.GENERAL,
   )
+  const [focusedConnectorRunId, setFocusedConnectorRunId] = useState<string | null>(null)
   const [settingsRestartRequired, setSettingsRestartRequired] = useState(false)
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false)
@@ -913,9 +914,11 @@ function App({
           ? 'Action Queue'
           : appView === APP_VIEWS.CONNECTORS
             ? 'Connectors'
-            : appView === APP_VIEWS.SOURCING
-              ? 'Sourcing'
-              : 'Applications'
+            : appView === APP_VIEWS.CONNECTOR_RUNS
+              ? 'Connector Runs'
+              : appView === APP_VIEWS.SOURCING
+                ? 'Sourcing'
+                : 'Applications'
   const contentColumnClass = settings.sidebarCollapsed ? 'md:col-start-2' : ''
   const sidebarToggleCollapsed = isNarrowViewport ? !narrowSidebarOpen : settings.sidebarCollapsed
   const temporaryDesktopSidebar = !isNarrowViewport && desktopSidebarState === 'hover'
@@ -1025,6 +1028,7 @@ function App({
               }}
               onViewChange={(view) => {
                 closeTransientSidebar()
+                setFocusedConnectorRunId(null)
                 setAppView(view)
               }}
               onSettingsOpenChange={setSettingsOpen}
@@ -1045,7 +1049,12 @@ function App({
             workspace={workspace}
             workspaceApi={workspaceApi}
             onConnectorRunSettled={reloadConnectorRunOutcomes}
-            onOpenSourcingRuns={() => setSelectedSettingsPanel(SETTINGS_PANELS.SOURCING_RUNS)}
+            onOpenSourcingRuns={(runId) => {
+              setSettingsOpen(false)
+              closeTransientSidebar()
+              setFocusedConnectorRunId(runId ?? null)
+              setAppView(APP_VIEWS.CONNECTOR_RUNS)
+            }}
             onSettingsPatch={updateSettings}
           />
         ) : appView === APP_VIEWS.PROFILE ? (
@@ -1080,11 +1089,11 @@ function App({
                 displayMode="main"
                 onConnectorChanged={reloadConnectorRunOutcomes}
                 profileApi={profileApi}
-                onOpenSourcingRuns={() => {
+                onOpenSourcingRuns={(runId) => {
                   setSettingsOpen(false)
                   closeTransientSidebar()
-                  setSelectedSettingsPanel(SETTINGS_PANELS.SOURCING_RUNS)
-                  setAppView(APP_VIEWS.SETTINGS)
+                  setFocusedConnectorRunId(runId ?? null)
+                  setAppView(APP_VIEWS.CONNECTOR_RUNS)
                 }}
                 onRunSettled={reloadConnectorRunOutcomes}
               />
@@ -1092,6 +1101,17 @@ function App({
             result={connectorStatusResult}
             onAction={handleConnectorStatusAction}
           />
+        ) : appView === APP_VIEWS.CONNECTOR_RUNS ? (
+          <main
+            className={`h-full min-w-0 overflow-auto px-5 py-6 text-foreground md:h-[calc(100vh-3rem)] sm:px-8 lg:px-12 ${contentColumnClass}`}
+          >
+            <div className="mx-auto max-w-4xl">
+              <ConnectorRunsPanel
+                connectorsApi={connectorsApi}
+                focusedRunId={focusedConnectorRunId}
+              />
+            </div>
+          </main>
         ) : appView === APP_VIEWS.SOURCING ? (
           <SourcingPage
             contentColumnClass={contentColumnClass}
