@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.1",
+    "lefthook": "^2.1.10",
     "oxlint": "^1.68.0",
     "typescript": "^5.2.2",
     "vitest": "^2.1.9"
