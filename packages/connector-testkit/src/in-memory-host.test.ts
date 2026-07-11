@@ -228,6 +228,60 @@ describe("in-memory connector host", () => {
     ])
   })
 
+  it("reuses an unchanged raw revision while appending re-observation occurrences", async () => {
+    const observedAt = "2026-07-08T16:00:00.000Z"
+    const receipts: import("@sparxie/valedictorian-connectors-core").RawSourceIntakeReceipt[] = []
+    const connector: JobConnector = {
+      definition: { id: "fixture.reobserved", version: "0.0.0-fixture" },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        if (!runtime.rawSourceIntake) throw new Error("raw intake required")
+        receipts.push(
+          await runtime.rawSourceIntake.capture({
+            observedAt,
+            providerRecordId: "provider-job-1",
+            providerSchema: "fixture-provider@1",
+            payload: { title: "Software Engineer" },
+          }),
+        )
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost()
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_reobserved",
+      workspaceId: "workspace_alpha",
+      displayName: "Reobserved raw fixture",
+      enabled: true,
+      createdAt: observedAt,
+    })
+
+    for (let index = 0; index < 2; index += 1) {
+      await host.refresh(connector, {
+        connectorInstanceId: "instance_reobserved",
+        workspaceId: "workspace_alpha",
+        mode: "manual",
+        coverage: { start: observedAt, end: observedAt },
+      })
+    }
+
+    expect(receipts).toHaveLength(2)
+    expect(receipts[1]).toMatchObject({
+      rawRecordId: receipts[0]?.rawRecordId,
+      revision: {
+        id: receipts[0]?.revision.id,
+        revision: 1,
+        reused: true,
+      },
+    })
+    expect(receipts[1]?.occurrence.id).not.toBe(receipts[0]?.occurrence.id)
+    expect(receipts.map(({ occurrence }) => occurrence.capture?.connectorRunId)).toEqual([
+      "run_1",
+      "run_2",
+    ])
+  })
+
   it("runs trusted resolver outcomes against an acknowledged raw revision", async () => {
     const observedAt = "2026-07-08T16:00:00.000Z"
     const connector: JobConnector = {
@@ -343,6 +397,191 @@ describe("in-memory connector host", () => {
     })
 
     expect(events).toEqual(["persisting", "persisted", "acknowledged"])
+  })
+
+  it("reserves unique run ids before concurrent refreshes complete out of order", async () => {
+    let releaseFirst: (() => void) | undefined
+    let markFirstCaptured: (() => void) | undefined
+    const firstCaptured = new Promise<void>((resolve) => {
+      markFirstCaptured = resolve
+    })
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const connector: JobConnector = {
+      definition: { id: "fixture.concurrent-runs", version: "0.0.0-fixture" },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        if (!runtime.rawSourceIntake) throw new Error("raw intake required")
+        await runtime.rawSourceIntake.capture({
+          observedAt: input.coverage.end,
+          providerRecordId: input.coverage.end,
+          payload: { run: input.coverage.end },
+        })
+        if (input.coverage.end === "first") {
+          markFirstCaptured?.()
+          await firstGate
+          throw new Error("first concurrent refresh failed")
+        }
+        if (input.coverage.end === "failing") {
+          throw new Error("fixture refresh failed")
+        }
+        return emptyRefreshResult(input)
+      },
+    }
+    let hostTime = Date.parse("2026-07-08T16:00:00.000Z")
+    const host = createInMemoryConnectorHost({
+      now: () => {
+        const timestamp = new Date(hostTime).toISOString()
+        hostTime += 1_000
+        return timestamp
+      },
+    })
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_concurrent_runs",
+      workspaceId: "workspace_alpha",
+      displayName: "Concurrent runs",
+      enabled: true,
+      createdAt: "2026-07-08T16:00:00.000Z",
+    })
+
+    const first = host.refresh(connector, {
+      connectorInstanceId: "instance_concurrent_runs",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: { start: "first", end: "first" },
+    })
+    await firstCaptured
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_concurrent_runs",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: { start: "second", end: "second" },
+    })
+    releaseFirst?.()
+    await expect(first).rejects.toThrow("first concurrent refresh failed")
+
+    const snapshot = host.snapshot()
+    expect(
+      snapshot.rawCaptures.map(({ input }) => ({
+        providerRecordId: input.providerRecordId,
+        runId: input.capture?.connectorRunId,
+      })),
+    ).toEqual([
+      { providerRecordId: "first", runId: "run_1" },
+      { providerRecordId: "second", runId: "run_2" },
+    ])
+    expect(
+      snapshot.runs.map(({ coverage, id, status }) => ({
+        end: coverage.end,
+        id,
+        status,
+      })),
+    ).toEqual([
+      { end: "second", id: "run_2", status: "completed" },
+      { end: "first", id: "run_1", status: "failed" },
+    ])
+    expect(snapshot.runs[0]).toMatchObject({
+      id: "run_2",
+      startedAt: "2026-07-08T16:00:01.000Z",
+      completedAt: "2026-07-08T16:00:02.000Z",
+    })
+    expect(snapshot.runs[1]).toMatchObject({
+      id: "run_1",
+      startedAt: "2026-07-08T16:00:00.000Z",
+      completedAt: "2026-07-08T16:00:03.000Z",
+      stats: { observations: 0 },
+      warnings: [
+        {
+          code: "connector_refresh_failed",
+          message: "Connector refresh failed before returning a result.",
+        },
+      ],
+    })
+
+    await expect(
+      host.refresh(connector, {
+        connectorInstanceId: "instance_concurrent_runs",
+        workspaceId: "workspace_alpha",
+        mode: "manual",
+        coverage: { start: "failing", end: "failing" },
+      }),
+    ).rejects.toThrow("fixture refresh failed")
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_concurrent_runs",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: { start: "after-failure", end: "after-failure" },
+    })
+    expect(
+      host
+        .snapshot()
+        .rawCaptures.slice(-2)
+        .map(({ input }) => input.capture?.connectorRunId),
+    ).toEqual(["run_3", "run_4"])
+    expect(host.snapshot().runs.at(-1)?.id).toBe("run_4")
+    expect(host.snapshot().runs.at(-2)).toMatchObject({
+      id: "run_3",
+      status: "failed",
+    })
+  })
+
+  it("records a reserved failed run when the connector throws before capture", async () => {
+    const connector: JobConnector = {
+      definition: { id: "fixture.pre-capture-failure", version: "0.0.0-fixture" },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        if (input.coverage.end === "before-capture") {
+          throw new Error("secret-bearing upstream failure")
+        }
+        if (!runtime.rawSourceIntake) throw new Error("raw intake required")
+        await runtime.rawSourceIntake.capture({
+          observedAt: input.coverage.end,
+          providerRecordId: "after-failure",
+          payload: { ok: true },
+        })
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost()
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_pre_capture_failure",
+      workspaceId: "workspace_alpha",
+      displayName: "Pre-capture failure",
+      enabled: true,
+      createdAt: "2026-07-08T16:00:00.000Z",
+    })
+
+    await expect(
+      host.refresh(connector, {
+        connectorInstanceId: "instance_pre_capture_failure",
+        workspaceId: "workspace_alpha",
+        mode: "manual",
+        coverage: { start: "before-capture", end: "before-capture" },
+      }),
+    ).rejects.toThrow("secret-bearing upstream failure")
+    await host.refresh(connector, {
+      connectorInstanceId: "instance_pre_capture_failure",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: { start: "after-failure", end: "after-failure" },
+    })
+
+    const snapshot = host.snapshot()
+    expect(snapshot.runs).toHaveLength(2)
+    expect(snapshot.runs[0]).toMatchObject({
+      id: "run_1",
+      status: "failed",
+      warnings: [expect.objectContaining({ code: "connector_refresh_failed" })],
+    })
+    expect(JSON.stringify(snapshot.runs[0])).not.toContain(
+      "secret-bearing upstream failure",
+    )
+    expect(snapshot.rawCaptures).toHaveLength(1)
+    expect(snapshot.rawCaptures[0]?.input.capture?.connectorRunId).toBe("run_2")
+    expect(snapshot.runs[1]).toMatchObject({ id: "run_2", status: "completed" })
   })
 
   it("provides a ready no-auth grant through the runtime port", async () => {

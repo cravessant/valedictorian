@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import type {
   ConnectorAuthGrant,
   ConnectorAuthReference,
@@ -21,6 +23,7 @@ import type {
   FieldResolutionOutcome,
   RawSourceIntakeReceipt,
   RawSourceRecordInput,
+  RawSourceRevisionReceipt,
   ResolverDeclaration,
 } from "@sparxie/valedictorian-connectors-core"
 import { jobObservationSchemaVersion } from "@sparxie/valedictorian-connectors-core"
@@ -166,6 +169,8 @@ export type ConnectorInstanceRecord = {
 
 export type ConnectorRunRecord = {
   id: string
+  startedAt: string
+  completedAt: string
   connectorInstanceId: string
   workspaceId: string
   mode: ConnectorRefreshMode
@@ -253,6 +258,7 @@ export type InMemoryConnectorHostOptions = {
     snapshot: ConnectorProgressSnapshot,
   ) => void | Promise<void>
   secrets?: Record<string, string>
+  now?: () => string
   onRawCapture?: (
     input: RawSourceRecordInput,
   ) => void | Promise<void>
@@ -267,8 +273,13 @@ export function createInMemoryConnectorHost(
   const observations: HostObservationRecord[] = []
   const rawCaptures: InMemoryRawCaptureRecord[] = []
   const normalizations: InMemoryNormalizationRecord[] = []
+  const rawRecordIdsByIdentity = new Map<string, string>()
+  const rawRevisionsByContent = new Map<string, RawSourceRevisionReceipt>()
+  const revisionCountsByRawRecord = new Map<string, number>()
   let runCounter = 0
-  let rawCounter = 0
+  let rawRecordCounter = 0
+  let rawRevisionCounter = 0
+  let rawOccurrenceCounter = 0
 
   return {
     registerInstance(instance) {
@@ -299,44 +310,76 @@ export function createInMemoryConnectorHost(
         connector.definition.capabilities?.resolvesIntermediaryLinks === true
           ? observationsForWorkspace(observations, instances, request.workspaceId)
           : null
-      const connectorRunId = `run_${runCounter + 1}`
-      const result = await connector.refresh(
-        {
+      runCounter += 1
+      const connectorRunId = `run_${runCounter}`
+      const startedAt = hostTimestamp(options)
+      let result: ConnectorRefreshResult
+      try {
+        result = await connector.refresh(
+          {
+            connectorInstanceId: request.connectorInstanceId,
+            workspaceId: request.workspaceId,
+            mode: request.mode,
+            coverage: request.coverage,
+            config,
+            filters,
+            ...(existingCheckpoint
+              ? { checkpoint: cloneJsonLike(existingCheckpoint.checkpoint) }
+              : {}),
+            ...(connectorObservations === null
+              ? {}
+              : { observations: connectorObservations }),
+          },
+          createConnectorRuntime(
+            instance.auth ?? [],
+            connector.definition.auth?.requirements ?? [],
+            options,
+            request.signal,
+            {
+              connector,
+              connectorInstanceId: request.connectorInstanceId,
+              connectorRunId,
+              workspaceId: request.workspaceId,
+              normalizations,
+              rawCaptures,
+              rawRecordIdsByIdentity,
+              rawRevisionsByContent,
+              revisionCountsByRawRecord,
+              nextRawRecordSequence: () => ++rawRecordCounter,
+              nextRawRevisionSequence: () => ++rawRevisionCounter,
+              nextRawOccurrenceSequence: () => ++rawOccurrenceCounter,
+            },
+          ),
+        )
+      } catch (error) {
+        runs.push({
+          id: connectorRunId,
+          startedAt,
+          completedAt: hostTimestamp(options, startedAt),
           connectorInstanceId: request.connectorInstanceId,
           workspaceId: request.workspaceId,
           mode: request.mode,
-          coverage: request.coverage,
-          config,
-          filters,
-          ...(existingCheckpoint
-            ? { checkpoint: cloneJsonLike(existingCheckpoint.checkpoint) }
-            : {}),
-          ...(connectorObservations === null
-            ? {}
-            : { observations: connectorObservations }),
-        },
-        createConnectorRuntime(
-          instance.auth ?? [],
-          connector.definition.auth?.requirements ?? [],
-          options,
-          request.signal,
-          {
-            connector,
-            connectorInstanceId: request.connectorInstanceId,
-            connectorRunId,
-            normalizations,
-            rawCaptures,
-            nextRawSequence: () => {
-              rawCounter += 1
-              return rawCounter
+          status: "failed",
+          coverage: cloneJsonLike(request.coverage),
+          config: runConfig,
+          filters: runFilters,
+          filterSignature,
+          stats: { observations: 0 },
+          warnings: [
+            {
+              code: "connector_refresh_failed",
+              message: "Connector refresh failed before returning a result.",
             },
-          },
-        ),
-      )
+          ],
+          retryHints: null,
+        })
+        throw error
+      }
 
-      runCounter += 1
       const run: ConnectorRunRecord = {
-        id: `run_${runCounter}`,
+        id: connectorRunId,
+        startedAt,
+        completedAt: hostTimestamp(options, startedAt),
         connectorInstanceId: request.connectorInstanceId,
         workspaceId: request.workspaceId,
         mode: request.mode,
@@ -442,9 +485,15 @@ function createConnectorRuntime(
     connector: JobConnector
     connectorInstanceId: string
     connectorRunId: string
+    workspaceId: string
     normalizations: InMemoryNormalizationRecord[]
     rawCaptures: InMemoryRawCaptureRecord[]
-    nextRawSequence: () => number
+    rawRecordIdsByIdentity: Map<string, string>
+    rawRevisionsByContent: Map<string, RawSourceRevisionReceipt>
+    revisionCountsByRawRecord: Map<string, number>
+    nextRawRecordSequence: () => number
+    nextRawRevisionSequence: () => number
+    nextRawOccurrenceSequence: () => number
   },
 ): ConnectorRuntime {
   const runtime: ConnectorRuntime = {
@@ -458,9 +507,6 @@ function createConnectorRuntime(
   if (rawContext) {
     runtime.rawSourceIntake = {
       async capture(input: ConnectorRawSourceCaptureInput) {
-        const sequence = rawContext.nextRawSequence()
-        const rawRecordId = `raw_${sequence}`
-        const rawRevisionId = `raw_revision_${sequence}`
         const receivedAt = new Date().toISOString()
         const boundInput: RawSourceRecordInput = {
           ...cloneJsonLike(input),
@@ -474,27 +520,56 @@ function createConnectorRuntime(
             connectorRunId: rawContext.connectorRunId,
           },
         }
+        await options.onRawCapture?.(cloneJsonLike(boundInput))
+        const identity = rawStrongIdentity(
+          rawContext.workspaceId,
+          boundInput,
+        )
+        let rawRecordId = identity
+          ? rawContext.rawRecordIdsByIdentity.get(identity)
+          : undefined
+        if (!rawRecordId) {
+          rawRecordId = `raw_${rawContext.nextRawRecordSequence()}`
+          if (identity) {
+            rawContext.rawRecordIdsByIdentity.set(identity, rawRecordId)
+          }
+        }
+        const contentHash = rawSourceContentHash(boundInput)
+        const revisionKey = `${rawRecordId}:${contentHash}`
+        const existingRevision = rawContext.rawRevisionsByContent.get(revisionKey)
+        const revisionNumber =
+          rawContext.revisionCountsByRawRecord.get(rawRecordId) ?? 0
+        const revision: RawSourceRevisionReceipt = existingRevision
+          ? { ...existingRevision, reused: true }
+          : {
+              id: `raw_revision_${rawContext.nextRawRevisionSequence()}`,
+              rawRecordId,
+              revision: revisionNumber + 1,
+              contentHash,
+              reused: false,
+              createdAt: receivedAt,
+            }
+        if (!existingRevision) {
+          rawContext.rawRevisionsByContent.set(revisionKey, revision)
+          rawContext.revisionCountsByRawRecord.set(
+            rawRecordId,
+            revision.revision,
+          )
+        }
+        const occurrenceSequence = rawContext.nextRawOccurrenceSequence()
         const receipt: RawSourceIntakeReceipt = {
           rawRecordId,
           sourceEntityId: null,
-          revision: {
-            id: rawRevisionId,
-            rawRecordId,
-            revision: 1,
-            contentHash: `fixture-content-${sequence}`,
-            reused: false,
-            createdAt: receivedAt,
-          },
+          revision,
           occurrence: {
-            id: `raw_occurrence_${sequence}`,
+            id: `raw_occurrence_${occurrenceSequence}`,
             rawRecordId,
-            rawRevisionId,
+            rawRevisionId: revision.id,
             capture: boundInput.capture,
             observedAt: input.observedAt,
             receivedAt,
           },
         }
-        await options.onRawCapture?.(cloneJsonLike(boundInput))
         rawContext.rawCaptures.push({
           input: cloneJsonLike(boundInput),
           receipt: cloneJsonLike(receipt),
@@ -710,8 +785,50 @@ function resolveSecretGrant(
   }
 }
 
+function rawStrongIdentity(
+  workspaceId: string,
+  input: RawSourceRecordInput,
+): string | null {
+  const providerRecordId = input.providerRecordId?.trim()
+  if (input.adapter.kind !== "connector" || !providerRecordId) return null
+  return stableJsonStringify([
+    workspaceId,
+    input.adapter.id,
+    input.providerSchema ?? null,
+    providerRecordId,
+  ])
+}
+
+function rawSourceContentHash(input: RawSourceRecordInput): string {
+  const canonicalContent = stableJsonStringify({
+    adapter: input.adapter,
+    evidence: input.evidence ?? [],
+    payload: input.payload ?? null,
+    providerRecordId: input.providerRecordId ?? null,
+    providerSchema: input.providerSchema ?? null,
+    reportedOrigin: input.reportedOrigin ?? null,
+  })
+  return `sha256:${createHash("sha256").update(canonicalContent).digest("hex")}`
+}
+
 function signatureForFilters(filters: unknown): string {
   return `filters:${stableJsonStringify(filters ?? {})}`
+}
+
+function hostTimestamp(
+  options: InMemoryConnectorHostOptions,
+  notBefore?: string,
+): string {
+  const candidate = options.now?.() ?? new Date().toISOString()
+  const candidateEpoch = Date.parse(candidate)
+  const notBeforeEpoch = notBefore === undefined ? null : Date.parse(notBefore)
+  if (!Number.isFinite(candidateEpoch)) {
+    return notBefore ?? new Date().toISOString()
+  }
+  if (notBeforeEpoch !== null && candidateEpoch < notBeforeEpoch) {
+    return notBefore ?? new Date(candidateEpoch).toISOString()
+  }
+  return new Date(candidateEpoch).toISOString()
 }
 
 function cloneJsonLike<T>(value: T): T {

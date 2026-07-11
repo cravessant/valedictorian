@@ -182,7 +182,9 @@ export type ConnectorRawSourceCaptureInput = Pick<
 export type ConnectorRawSourceIntakeRuntime = {
   /**
    * Persists a provider record with host-bound connector instance/run lineage.
-   * Resolution must not begin until this promise acknowledges the capture.
+   * Connectors must acknowledge every safely representable row in a bounded
+   * provider batch before invoking normalization or detail resolution for any
+   * row in that batch.
    */
   capture(input: ConnectorRawSourceCaptureInput): Promise<RawSourceIntakeReceipt>
 }
