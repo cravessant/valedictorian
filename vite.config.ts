@@ -10,6 +10,7 @@ export const nativeMainExternals = ['better-sqlite3', 'undici']
 export default defineConfig({
   test: {
     environment: 'jsdom',
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
     setupFiles: './src/test/setup.ts',
   },
   plugins: [

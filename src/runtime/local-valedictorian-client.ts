@@ -396,20 +396,35 @@ export function createLocalValedictorianClient({
         }))
       },
       update: async (input) => {
-        const existing = await connectorRepository.getInstance(input.connectorInstanceId)
+        let existing = await connectorRepository.getInstance(input.connectorInstanceId)
 
         if (!existing) {
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
         }
 
         const connector = connectorRegistry.get(existing.connectorId)
-        const connectorVersion = input.connectorVersion ?? existing.connectorVersion
 
-        if (connector && connectorVersion !== connector.definition.version) {
+        if (
+          connector
+          && input.connectorVersion !== undefined
+          && input.connectorVersion !== connector.definition.version
+        ) {
           throw new Error(
             `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
           )
         }
+
+        if (connector && existing.connectorVersion !== connector.definition.version) {
+          existing = await connectorRepository.reconcileInstalledConnector({
+            connectorInstanceId: existing.id,
+            connectorId: connector.definition.id,
+            connectorVersion: connector.definition.version,
+          })
+        }
+
+        const connectorVersion = input.connectorVersion
+          ?? connector?.definition.version
+          ?? existing.connectorVersion
 
         return mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
           id: existing.id,
@@ -764,6 +779,14 @@ async function executeConnectorRunTrigger({
 
   if (!connector) {
     throw new Error(`Unsupported connector id: ${instance.connectorId}`)
+  }
+
+  if (instance.connectorVersion !== connector.definition.version) {
+    await connectorRepository.reconcileInstalledConnector({
+      connectorInstanceId: instance.id,
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+    })
   }
 
   const mode = input.mode ?? 'manual'

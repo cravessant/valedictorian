@@ -186,7 +186,13 @@ export function createNormalizationOrchestrator(options: {
         const gateBase = { policyVersion: NORMALIZATION_GATE_POLICY_VERSION, requiredFields, missingFields, conflictingFields, reason: infrastructureFailure ?? (rejectedRequiredFields.length ? `Required canonical fields rejected: ${rejectedRequiredFields.join(', ')}` : terminalRequiredFields.length ? `Required canonical fields need enrichment: ${terminalRequiredFields.map(({ field, status, reason }) => `${field} (${status}: ${reason})`).join(', ')}` : null), evaluatedAt }
         let gate: NormalizationGateOutcome
         if (status === 'passed' && candidate) {
-          gate = { ...gateBase, status: 'passed', candidate: { id: candidate.id, sourceEntityId: candidate.sourceEntityId, rawRecordId, rawRevisionId, schemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION } }
+          gate = {
+            ...gateBase,
+            missingFields: [],
+            conflictingFields: [],
+            status: 'passed',
+            candidate: { id: candidate.id, sourceEntityId: candidate.sourceEntityId, rawRecordId, rawRevisionId, schemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION },
+          }
         } else if (status === 'failed') {
           gate = { ...gateBase, status: 'failed', candidate: null }
         } else if (status === 'rejected') {

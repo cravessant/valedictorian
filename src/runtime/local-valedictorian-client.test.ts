@@ -1046,7 +1046,7 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
-  it('migrates a legacy Jobright 0.3.x browser_session instance to 0.4.3 username_password', async () => {
+  it('rejects a Jobright 0.3.x browser-session transition outside the trusted allowlist', async () => {
     const sqlitePath = createTempSqlitePath()
     const secretCodec = {
       decrypt: (value: string) => value.replace(/^enc:/, ''),
@@ -1092,52 +1092,21 @@ describe('runtime local Valedictorian client', () => {
           secretKey: 'connector_jobright_credentials_jobright_legacy',
         },
       ],
-    })).rejects.toThrow(/Connector version mismatch/)
-
-    const migrated = await client.connectors.update({
-      connectorInstanceId: 'jobright-legacy',
-      connectorVersion: '0.4.3',
-      auth: [
-        {
-          id: 'jobright',
-          label: 'Jobright username and password',
-          mode: 'username_password',
-          secretKey: 'connector_jobright_credentials_jobright_legacy',
-        },
-      ],
-    })
-
-    expect(migrated).toMatchObject({
-      id: 'jobright-legacy',
-      connectorId: 'jobright.resolver',
-      connectorVersion: '0.4.3',
-      auth: [
-        {
-          configured: true,
-          id: 'jobright',
-          label: 'Jobright username and password',
-          mode: 'username_password',
-        },
-      ],
-    })
-    expect(JSON.stringify(migrated)).not.toContain('legacy-jobright-session')
-    expect(JSON.stringify(migrated)).not.toContain('connector_jobright_credentials_jobright_legacy')
-    expect(JSON.stringify(migrated)).not.toContain('sessionKey')
-    expect(JSON.stringify(migrated)).not.toContain('secretKey')
+    })).rejects.toThrow(
+      'Jobright connector state could not be upgraded safely. Restore a compatible app version or reconnect Jobright and start a new connector instance.',
+    )
 
     const persisted = await connectorRepository.getInstance('jobright-legacy')
     expect(persisted).toMatchObject({
-      connectorVersion: '0.4.3',
+      connectorVersion: '0.3.0',
       auth: [
         {
           id: 'jobright',
-          mode: 'username_password',
-          secretKey: 'connector_jobright_credentials_jobright_legacy',
+          mode: 'browser_session',
+          sessionKey: 'legacy-jobright-session',
         },
       ],
     })
-    expect(JSON.stringify(persisted)).not.toContain('legacy-jobright-session')
-    expect(JSON.stringify(persisted)).not.toContain('browser_session')
 
     sqlite.close()
   })
@@ -1250,7 +1219,7 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
-  it('runs Jobright API-only discovery and detail through the local client with fake responses', async () => {
+  it('stops Jobright 0.5 safely before detail work when raw-first runtime ports are absent', async () => {
     const sqlitePath = createTempSqlitePath()
     const secretValue = JSON.stringify({
       username: 'demo@example.com',
@@ -1457,78 +1426,39 @@ describe('runtime local Valedictorian client', () => {
     expect(run).toMatchObject({
       connectorInstanceId: 'jobright-api',
       status: 'partial_success',
-      observationCount: 2,
+      observationCount: 0,
       stats: {
-        attempted: 2,
-        discovered: 2,
-        observations: 2,
-        resolved: 1,
+        attempted: 0,
+        discovered: 0,
+        observations: 0,
+        resolved: 0,
       },
+      warnings: [{
+        code: 'jobright_raw_intake_unavailable',
+        label: 'Jobright raw intake unavailable',
+        message: 'Raw-first Jobright intake is unavailable. Detail resolution was not started.',
+        severity: 'blocked',
+      }],
     })
     expect(runs.total).toBe(1)
     expect(runs.items).toHaveLength(1)
     expect(runs.items[0]).toMatchObject({
       status: 'partial_success',
-      observationCount: 2,
-      stats: {
-        attempted: 2,
-        discovered: 2,
-        observations: 2,
-        resolved: 1,
-      },
+      observationCount: 0,
+      warnings: run.warnings,
     })
-    expect(observations.total).toBe(2)
-    expect(observations.items).toHaveLength(2)
+    expect(observations.total).toBe(0)
+    expect(observations.items).toHaveLength(0)
     expect(checkpoints.items).toHaveLength(1)
     expect(checkpoints.items[0]).toMatchObject({
       checkpoint: {
-        attempts: 2,
-        seenSourceIds: expect.arrayContaining([
-          'jobright.public:job-resolved-1',
-          'jobright.public:job-intermediary-only',
-        ]),
-        usefulEmployerOrAts: 1,
+        attempts: 0,
+        seenSourceIds: [],
+        usefulEmployerOrAts: 0,
         usefulThirdParty: 0,
       },
     })
-
-    const resolvedObservation = observations.items.find((item) =>
-      item.companyName === 'Example Robotics'
-      && item.roleTitle === 'Software Engineering Intern',
-    )
-    const unresolvedObservation = observations.items.find((item) =>
-      item.companyName === 'Intermediary Co'
-      && item.roleTitle === 'Platform Intern',
-    )
-    expect(resolvedObservation).toMatchObject({
-      links: {
-        official: officialApplyUrl,
-      },
-      resolution: {
-        status: 'resolved',
-      },
-    })
-    expect(unresolvedObservation).toMatchObject({
-      links: {
-        official: null,
-      },
-      resolution: {
-        status: 'unresolved',
-        reason: 'jobright_application_url_rejected',
-      },
-    })
-
-    expect(findings.items).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        companyName: 'Example Robotics',
-        roleTitle: 'Software Engineering Intern',
-        officialUrl: officialApplyUrl,
-      }),
-    ]))
-    expect(findings.items.filter((finding) => finding.officialUrl === officialApplyUrl)).toHaveLength(1)
-    expect(findings.items.every((finding) =>
-      finding.officialUrl === null || !finding.officialUrl.includes('jobright.ai'),
-    )).toBe(true)
+    expect(findings.items).toEqual([])
 
     const fetchUrls = fetchImpl.mock.calls.map((call) => {
       const input = call[0]
@@ -1538,15 +1468,14 @@ describe('runtime local Valedictorian client', () => {
           ? input.href
           : input.url
     })
-    expect(fetchUrls).toHaveLength(5)
+    expect(fetchUrls).toHaveLength(3)
     expect(fetchUrls.filter((url) => url.includes('/swan/auth/login/pwd'))).toHaveLength(1)
     expect(fetchUrls.filter((url) => url.includes('/swan/auth/newinfo'))).toHaveLength(1)
     expect(fetchUrls.filter((url) => url.includes('/swan/recommend/visitor-list/jobs'))).toHaveLength(1)
-    expect(fetchUrls.filter((url) => url.includes('/swan/share/job/job-resolved-1'))).toHaveLength(1)
-    expect(fetchUrls.filter((url) => url.includes('/swan/share/job/job-intermediary-only'))).toHaveLength(1)
+    expect(fetchUrls.filter((url) => url.includes('/swan/share/job/'))).toHaveLength(0)
 
     const serialized = JSON.stringify({ run, runs, observations, checkpoints, findings })
-    expect(serialized).toContain(officialApplyUrl)
+    expect(serialized).not.toContain(officialApplyUrl)
     expect(serialized).not.toContain(sessionCookie)
     expect(serialized).not.toContain('demo@example.com')
     expect(serialized).not.toContain('synthetic-password')
@@ -1661,28 +1590,27 @@ describe('runtime local Valedictorian client', () => {
 
     expect(zeroUsefulResults.run).toMatchObject({
       status: 'partial_success',
-      observationCount: 1,
+      observationCount: 0,
       stats: {
-        attempted: 1,
-        discovered: 1,
-        observations: 1,
+        attempted: 0,
+        discovered: 0,
+        observations: 0,
         resolved: 0,
       },
       warnings: [
         {
-          code: 'jobright_zero_useful_results',
-          label: 'No usable Jobright URLs',
-          message: 'Review unresolved Jobright results before retrying this run.',
-          severity: 'warning',
+          code: 'jobright_raw_intake_unavailable',
+          label: 'Jobright raw intake unavailable',
+          message: 'Raw-first Jobright intake is unavailable. Detail resolution was not started.',
+          severity: 'blocked',
         },
       ],
       retryHints: {
-        actions: ['review_jobright_results'],
         authRequired: 0,
         captcha: 0,
         parserChanged: 0,
         rateLimited: 0,
-        recommended: true,
+        recommended: false,
         retryableFailures: 0,
         source: 'jobright',
       },
@@ -1693,10 +1621,10 @@ describe('runtime local Valedictorian client', () => {
       retryHints: zeroUsefulResults.run.retryHints,
     })
     expect(zeroUsefulResults.status).toMatchObject({
-      status: 'partial_success',
+      status: 'blocked',
       warnings: zeroUsefulResults.run.warnings,
     })
-    expect(zeroUsefulResults.fetchUrls).toHaveLength(4)
+    expect(zeroUsefulResults.fetchUrls).toHaveLength(3)
 
     for (const fixture of [authFailed, discoveryFailed, parserChanged, zeroUsefulResults]) {
       for (const sensitiveValue of fixture.sensitiveValues) {

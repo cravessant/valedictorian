@@ -352,6 +352,18 @@ function safeWarningForCode(code: string): ConnectorStatusWarningView {
       message: 'Update the Jobright API parser before retrying this run.',
       severity: 'warning',
     },
+    jobright_raw_intake_unavailable: {
+      code: 'jobright_raw_intake_unavailable',
+      label: 'Jobright raw intake unavailable',
+      message: 'Raw-first Jobright intake is unavailable. Detail resolution was not started.',
+      severity: 'blocked',
+    },
+    jobright_normalization_unavailable: {
+      code: 'jobright_normalization_unavailable',
+      label: 'Jobright normalization unavailable',
+      message: 'Trusted Jobright normalization is unavailable. Detail resolution was not started.',
+      severity: 'blocked',
+    },
     jobright_rate_limited: {
       code: 'jobright_rate_limited',
       label: 'Jobright rate limited',

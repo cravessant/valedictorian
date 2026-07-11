@@ -700,7 +700,6 @@ describe('App settings and chrome', () => {
           },
         ],
         connectorInstanceId: 'jobright-default',
-        connectorVersion: '0.4.3',
       })
       expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
         connectorInstanceId: 'jobright-default',
@@ -991,7 +990,6 @@ describe('App settings and chrome', () => {
           },
         ],
         connectorInstanceId: 'jobright-default',
-        connectorVersion: '0.4.3',
       })
       expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
         connectorInstanceId: 'jobright-default',

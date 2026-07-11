@@ -26,6 +26,10 @@ import type {
   ConnectorRunTerminalStatus,
   createSqliteConnectorRepository,
 } from './connector.repository'
+import {
+  JOBRIGHT_MIGRATION_SEED_LIMIT,
+  JOBRIGHT_RAW_FIRST_CHECKPOINT_SCOPE,
+} from './connector.reconciliation'
 
 export type AppJobConnectorDefinition = ConnectorDefinition
 export type AppConnectorAuthMode = ConnectorAuthMode
@@ -173,11 +177,18 @@ export function createConnectorRunner({
     const filters = cloneJsonRecord(toJsonRecord(connectorInstance.filters))
     const runConfig = cloneJsonRecord(config)
     const runFilters = cloneJsonRecord(filters)
-    const filterSignature = signatureForFilters(filters)
+    const filterSignature = checkpointSignatureForConnector(connector, filters)
     const checkpoint = await repository.getCheckpoint({
       connectorInstanceId: input.connectorInstanceId,
       filterSignature,
     })
+    const reconciliationObservations = isJobrightRawFirstConnector(connector)
+      && checkpoint?.schemaVersion === 'jobright-resolution-checkpoint@2'
+      ? (await repository.listLatestReconciliationObservations({
+        connectorInstanceId: input.connectorInstanceId,
+        limit: JOBRIGHT_MIGRATION_SEED_LIMIT,
+      }))
+      : []
     const budget = input.budget ?? budgetFromPoliteness(
       normalizeRunPolicy(undefined, connector.definition.politeness?.maxBackfillDays),
       connector.definition.politeness,
@@ -203,7 +214,19 @@ export function createConnectorRunner({
         config,
         filters,
         ...(budget ? { budget } : {}),
-        ...(checkpoint ? { checkpoint: checkpoint.checkpoint } : {}),
+        ...(checkpoint
+          ? {
+              checkpoint: isJobrightRawFirstConnector(connector)
+                ? {
+                    checkpoint: checkpoint.checkpoint,
+                    schemaVersion: checkpoint.schemaVersion,
+                  }
+                : checkpoint.checkpoint,
+            }
+          : {}),
+        ...(reconciliationObservations.length > 0
+          ? { observations: reconciliationObservations }
+          : {}),
       },
       runRuntime,
     )
@@ -256,7 +279,7 @@ export function createConnectorRunner({
     const filters = cloneJsonRecord(toJsonRecord(instance.filters))
     const checkpoint = await repository.getCheckpoint({
       connectorInstanceId: input.connectorInstanceId,
-      filterSignature: signatureForFilters(filters),
+      filterSignature: checkpointSignatureForConnector(connector, filters),
     })
     const lowerBound = new Date(createdAt.getTime() - policy.backfillDays * MILLISECONDS_PER_DAY)
     const previousCoverageEndedAt = checkpoint?.coverageEndedAt
@@ -643,7 +666,9 @@ function sanitizeProgressSnapshot(
 
   for (const key of connectorProgressCountKeys) {
     const value = snapshot.counts[key]
-    counts[key] = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+    counts[key] = typeof value === 'number' && Number.isFinite(value)
+      ? Math.max(0, Math.floor(value))
+      : 0
   }
 
   return {
@@ -902,6 +927,21 @@ function cloneJsonRecord(value: Record<string, unknown>): Record<string, unknown
 
 function signatureForFilters(filters: Record<string, unknown>): string {
   return `filters:${stableJsonStringify(filters)}`
+}
+
+function checkpointSignatureForConnector(
+  connector: AppJobConnector,
+  filters: Record<string, unknown>,
+): string {
+  return isJobrightRawFirstConnector(connector)
+    ? JOBRIGHT_RAW_FIRST_CHECKPOINT_SCOPE
+    : signatureForFilters(filters)
+}
+
+function isJobrightRawFirstConnector(connector: AppJobConnector): boolean {
+  return connector.definition.id === 'jobright.resolver'
+    && connector.definition.version === '0.5.0'
+    && connector.definition.capabilities?.supportsFiltering === false
 }
 
 function stableJsonStringify(value: unknown): string {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteProfileRepository, type ProfileSecretCodec } from '../profile/profile.repository'
-import { createSqliteConnectorRepository, type ConnectorCoverageWindow } from './connector.repository'
+import {
+  createSqliteConnectorRepository,
+  type ConnectorCoverageWindow,
+  type ConnectorObservationInput,
+} from './connector.repository'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
 
 const testCodec: ProfileSecretCodec = {
@@ -295,6 +299,124 @@ describe('connector runner', () => {
         status: 'ready',
       },
     ])
+  })
+
+  it('passes canonical Jobright checkpoint envelopes with deterministic latest observation seeds', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
+    const receivedInputs: unknown[] = []
+    const connector: AppJobConnector = {
+      definition: {
+        id: 'jobright.resolver',
+        version: '0.5.0',
+        capabilities: { supportsFiltering: false },
+      },
+      async refresh(input) {
+        receivedInputs.push(input)
+        return {
+          ...emptyConnectorRefreshResult({
+            coverage: input.coverage,
+            checkpoint: { cycleId: 'continued-cycle' },
+          }),
+          nextCheckpoint: {
+            checkpoint: { cycleId: 'continued-cycle' },
+            schemaVersion: 'jobright-resolution-checkpoint@3',
+          },
+        }
+      },
+    }
+
+    await repository.upsertInstance({
+      id: 'jobright-seeded',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.5.0',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      filters: { roleTerms: ['intern'] },
+    })
+    await repository.recordRefreshResult({
+      connectorInstanceId: 'jobright-seeded',
+      mode: 'manual',
+      startedAt: '2026-06-01T12:00:00.000Z',
+      completedAt: '2026-06-01T12:00:01.000Z',
+      config: {},
+      filters: { roleTerms: ['intern'] },
+      filterSignature: 'filters:{"roleTerms":["intern"]}',
+      result: {
+        ...emptyConnectorRefreshResult({
+          coverage: {
+            start: '2026-06-01T11:00:00.000Z',
+            end: '2026-06-01T12:00:00.000Z',
+          },
+          checkpoint: { attempted: 2 },
+        }),
+        observations: [
+          jobrightSeedObservation('jobright.public:duplicate', '2026-06-01T10:00:00.000Z'),
+          jobrightSeedObservation('jobright.public:duplicate', '2026-06-01T11:00:00.000Z'),
+          jobrightSeedObservation('jobright.public:second', '2026-06-01T09:00:00.000Z'),
+        ],
+        stats: { observations: 3 },
+      },
+    })
+    await repository.recordCheckpoint({
+      connectorInstanceId: 'jobright-seeded',
+      filterSignature: 'provider-state:jobright.resolver@0.5.0',
+      checkpoint: {
+        checkpoint: { attempted: 2 },
+        schemaVersion: 'jobright-resolution-checkpoint@2',
+      },
+      coverage: {
+        start: '2026-06-01T11:00:00.000Z',
+        end: '2026-06-01T12:00:00.000Z',
+      },
+      savedAt: '2026-06-01T12:00:01.000Z',
+    })
+
+    const run = await runner.refresh(connector, {
+      connectorInstanceId: 'jobright-seeded',
+      mode: 'manual',
+      coverage: {
+        start: '2026-06-01T12:00:00.000Z',
+        end: '2026-06-01T13:00:00.000Z',
+      },
+    })
+
+    expect(receivedInputs).toEqual([
+      expect.objectContaining({
+        checkpoint: {
+          checkpoint: { attempted: 2 },
+          schemaVersion: 'jobright-resolution-checkpoint@2',
+        },
+        observations: [
+          expect.objectContaining({
+            observedAt: '2026-06-01T11:00:00.000Z',
+            sourceRecordKey: 'jobright.public:duplicate',
+          }),
+          expect.objectContaining({ sourceRecordKey: 'jobright.public:second' }),
+        ],
+      }),
+    ])
+    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.5.0')
+
+    await runner.refresh(connector, {
+      connectorInstanceId: 'jobright-seeded',
+      mode: 'catch_up',
+      coverage: {
+        start: '2026-06-01T13:00:00.000Z',
+        end: '2026-06-01T14:00:00.000Z',
+      },
+    })
+
+    expect(receivedInputs[1]).toMatchObject({
+      checkpoint: {
+        checkpoint: { cycleId: 'continued-cycle' },
+        schemaVersion: 'jobright-resolution-checkpoint@3',
+      },
+    })
+    expect(receivedInputs[1]).not.toHaveProperty('observations')
   })
 
   it('resolves secret-backed auth grants from app-owned encrypted profile secrets', async () => {
@@ -1515,6 +1637,39 @@ function emptyConnectorRefreshResult({
       schemaVersion: 'fixture-checkpoint@1',
     },
     observations: [],
+  }
+}
+
+function jobrightSeedObservation(
+  sourceRecordKey: string,
+  observedAt: string,
+): ConnectorObservationInput {
+  return {
+    connectorId: 'jobright.public',
+    connectorVersion: '0.4.3',
+    parserVersion: 'jobright-api@2',
+    observationSchemaVersion: 'job-observation@2',
+    sourceRecordKey,
+    observedAt,
+    companyName: 'Example Robotics',
+    roleTitle: 'Software Engineering Intern',
+    links: {
+      source: `https://jobright.ai/jobs/info/${sourceRecordKey.split(':').at(-1)}`,
+      intermediary: `https://jobright.ai/jobs/info/${sourceRecordKey.split(':').at(-1)}`,
+      official: 'https://example.test/apply',
+    },
+    resolution: {
+      status: 'resolved',
+      method: 'jobright_detail_api',
+      reason: null,
+    },
+    dedupeKeys: [sourceRecordKey],
+    sourceMetadata: {
+      destinationClass: 'employer_or_ats',
+      jobrightCycleId: 'legacy-cycle',
+      jobrightId: sourceRecordKey.split(':').at(-1),
+    },
+    evidence: [],
   }
 }
 

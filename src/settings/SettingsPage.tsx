@@ -629,7 +629,6 @@ function ConnectorSettingsPanel({
     })
       .then(() => connectorsApi.update({
         connectorInstanceId: instance.id,
-        connectorVersion: jobrightConnectorVersion,
         auth: [
           {
             id: 'jobright',

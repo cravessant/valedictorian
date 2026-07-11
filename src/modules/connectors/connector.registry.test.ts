@@ -12,7 +12,17 @@ describe('connector registry', () => {
     expect(connector?.definition).toMatchObject({
       displayName: 'Jobright internslist',
       id: 'jobright.resolver',
-      version: '0.4.3',
+      version: '0.5.0',
+      capabilities: {
+        fetchesPublicPages: false,
+        resolvesIntermediaryLinks: true,
+        supportsFiltering: false,
+        supportsIncrementalRefresh: true,
+        usesBrowserSession: false,
+      },
+      checkpoint: {
+        schemaVersion: 'jobright-resolution-checkpoint@3',
+      },
     })
     expect(connector?.definition.auth).toMatchObject({
       modes: ['username_password'],
@@ -44,11 +54,11 @@ describe('connector registry', () => {
       ),
     ) as { version: string }
 
-    expect(appPackage.dependencies.sparxie).toBe('0.8.0')
-    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.4.3')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.4.3')
-    expect(sparxiePackage.version).toBe('0.8.0')
-    expect(jobrightPackage.version).toBe('0.4.3')
-    expect(corePackage.version).toBe('0.4.3')
+    expect(appPackage.dependencies.sparxie).toBe('0.9.0')
+    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.5.0')
+    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.5.0')
+    expect(sparxiePackage.version).toBe('0.9.0')
+    expect(jobrightPackage.version).toBe('0.5.0')
+    expect(corePackage.version).toBe('0.5.0')
   })
 })

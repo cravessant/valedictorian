@@ -407,7 +407,20 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
   }
 }
 
-export function createSourcingFinding(overrides: Partial<SourcingFinding> = {}): SourcingFinding {
+type LegacySourcingFinding = SourcingFinding & {
+  rawRevisionId?: never
+  canonicalCandidateId?: never
+  destination?: never
+  employmentType?: never
+  seniority?: never
+  location?: never
+  compensation?: never
+  postedAt?: never
+}
+
+export function createSourcingFinding(
+  overrides: Partial<LegacySourcingFinding> = {},
+): LegacySourcingFinding {
   return {
     id: 'finding-1',
     workflowRunId: 'run-1',
