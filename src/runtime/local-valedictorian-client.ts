@@ -2,24 +2,21 @@ import fs from 'node:fs'
 import type {
   ConnectorAuthReferenceInput,
   ConnectorObservation,
-  CreateConnectorInstanceInput,
-  UpdateConnectorInstanceInput,
-  ValedictorianWorkspaceClient,
+  ValedictorianWorkspaceClient
 } from 'sparxie'
 import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import {
   seedReferenceTrackerApplications,
   seedSampleApplications,
-  seedSampleSourcingFindings,
+  seedSampleSourcingFindings
 } from '../modules/applications/application.fixtures'
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
 import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createConnectorNormalizationHost } from '../modules/connectors/connector.normalization'
-import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import {
   createDefaultLocalConnectorRegistry,
-  type LocalConnectorRegistry,
+  type LocalConnectorRegistry
 } from '../modules/connectors/connector.registry'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
@@ -27,24 +24,20 @@ import {
   type AppConnectorAuthGrant,
   type AppConnectorAuthHost,
   type AppConnectorAuthValidationResult,
-  type AppConnectorRefreshRecord,
-  type AppConnectorRuntimePorts,
+  type AppConnectorRefreshRecord
 } from '../modules/connectors/connector.runner'
 import {
   mapConnectorWarnings,
   mapConnectorStatusSummaries,
   mapConnectorStatusSummary,
-  type ConnectorStatusListResult,
-  type ConnectorStatusWarningView,
-  type ConnectorStatusView,
+  type ConnectorStatusView
 } from '../modules/connectors/connector.status'
 import type {
-  ConnectorAuthMode,
   ConnectorAuthReference,
   ConnectorCheckpointRecord,
   ConnectorInstanceRecord,
   ConnectorObservationRecord,
-  ConnectorRunRecord,
+  ConnectorRunRecord
 } from '../modules/connectors/connector.repository'
 import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
 import { createSqliteProfileRepository, type ProfileSecretCodec } from '../modules/profile/profile.repository'
@@ -57,191 +50,40 @@ import { createNormalizationOrchestrator } from '../modules/sourcing/normalizati
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import {
-  createDefaultNormalizationResolverRegistry,
-  type NormalizationResolverRegistry,
+  createDefaultNormalizationResolverRegistry
 } from '../modules/sourcing/normalization.registry'
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 
-export interface LocalValedictorianClientOptions {
-  connectorRunRecovery?: ConnectorRunRecoveryLifecycle
-  connectorRegistry?: LocalConnectorRegistry
-  connectorRuntime?: AppConnectorRuntimePorts
-  now?: () => Date
-  normalizationRegistry?: NormalizationResolverRegistry
-  referenceTrackerPath?: string
-  seedDataMode?: ValedictorianSeedDataMode
-  secretCodec?: ProfileSecretCodec
-  sqlitePath: string
-  workspaceId?: string
-}
-
-export type ValedictorianSeedDataMode = 'none' | 'sample' | 'reference-tracker'
-
-export interface LocalConnectorAuthSummary {
-  id: string
-  mode: ConnectorAuthMode
-  label: string | null
-  configured: boolean
-}
-
-export interface LocalConnectorInstanceSummary {
-  id: string
-  connectorId: string
-  connectorVersion: string
-  displayName: string
-  enabled: boolean
-  auth: LocalConnectorAuthSummary[]
-  config: unknown
-  filters: unknown
-  createdAt: string
-  updatedAt: string
-}
-
-export interface LocalConnectorStatusSummary extends ConnectorStatusView {
-  connectorVersion: string | null
-  auth: LocalConnectorAuthSummary[]
-  actionRequired: Array<{
-    id: string
-    kind: 'auth' | 'captcha' | 'configuration' | 'manual_review' | 'rate_limit'
-    label: string
-    message: string
-    severity: 'healthy' | 'warning' | 'blocked'
-  }>
-}
-
-export interface LocalConnectorRunSummary {
-  id: string
-  connectorInstanceId: string
-  mode: string
-  status: string
-  coverage: {
-    start: string | null
-    end: string | null
-  }
-  filterSignature: string
-  observationCount: number
-  warningCount: number
-  stats: unknown
-  warnings: ConnectorStatusWarningView[]
-  retryHints: unknown
-  startedAt: string
-  completedAt: string | null
-}
-
-export interface LocalConnectorObservationListInput {
-  connectorInstanceId: string
-  connectorRunId?: string
-  limit?: number
-  offset?: number
-}
-
-export interface LocalConnectorRunTriggerInput {
-  connectorInstanceId: string
-  mode?: 'manual' | 'scheduled' | 'catch_up'
-  coverageStartedAt?: string | null
-  coverageEndedAt?: string | null
-  filterSignature?: string | null
-  filters?: unknown
-  reason?: string | null
-  dryRun?: boolean
-}
-
-export interface LocalConnectorStartupCatchUpResult {
-  runs: LocalConnectorRunSummary[]
-  skipped: Array<{
-    connectorInstanceId: string
-    reason: 'disabled' | 'execution_failed' | 'unsupported_connector'
-  }>
-}
-
-export interface LocalConnectorStatusActionInput {
-  connectorInstanceId: string
-}
-
-export interface LocalConnectorSkipActionInput extends LocalConnectorStatusActionInput {
-  reason?: string | null
-}
-
-export interface LocalConnectorAuthGrantSummary {
-  id: string
-  mode: ConnectorAuthMode
-  status: AppConnectorAuthGrant['status']
-  expiresAt?: string
-  reason?: string
-}
-
-export interface LocalConnectorReconnectActionResult {
-  action: 'reconnect'
-  connectorInstanceId: string
-  grants: LocalConnectorAuthGrantSummary[]
-  message: string
-  reason?: string
-  status: AppConnectorAuthValidationResult['status'] | AppConnectorAuthGrant['status'] | 'unsupported'
-}
-
-export interface LocalConnectorSkipActionResult {
-  action: 'skip'
-  connectorInstanceId: string
-  message: string
-  run: LocalConnectorRunSummary
-  status: 'skipped'
-}
-
-export interface LocalConnectorClient {
-  list(): Promise<{ items: LocalConnectorInstanceSummary[] }>
-  create(input: CreateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
-  update(input: UpdateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
-  inspect(connectorInstanceId: string): Promise<LocalConnectorStatusSummary>
-  runs: {
-    list(input: {
-      connectorInstanceId: string
-      status?: string
-      mode?: string
-      limit?: number
-      offset?: number
-    }): Promise<{
-      items: LocalConnectorRunSummary[]
-      total: number
-      limit: number
-      offset: number
-      hasMore: boolean
-    }>
-    startupCatchUp(): Promise<LocalConnectorStartupCatchUpResult>
-    trigger(input: LocalConnectorRunTriggerInput): Promise<LocalConnectorRunSummary>
-  }
-  checkpoints: {
-    list(input: { connectorInstanceId: string; filterSignature?: string }): Promise<{
-      items: Array<{
-        connectorInstanceId: string
-        filterSignature: string
-        checkpoint: unknown
-        schemaVersion: string
-        coverage: {
-          start: string | null
-          end: string | null
-        }
-      }>
-    }>
-  }
-  observations: {
-    list(input: LocalConnectorObservationListInput): Promise<{
-      items: ConnectorObservation[]
-      total: number
-      limit: number
-      offset: number
-      hasMore: boolean
-    }>
-  }
-  status: {
-    list(): Promise<ConnectorStatusListResult>
-    reconnect(input: LocalConnectorStatusActionInput): Promise<LocalConnectorReconnectActionResult>
-    skip(input: LocalConnectorSkipActionInput): Promise<LocalConnectorSkipActionResult>
-  }
-}
-
-export type LocalValedictorianClient = ValedictorianWorkspaceClient & {
-  connectors: LocalConnectorClient
-}
+export type {
+  LocalValedictorianClientOptions,
+  ValedictorianSeedDataMode,
+  LocalConnectorAuthSummary,
+  LocalConnectorInstanceSummary,
+  LocalConnectorStatusSummary,
+  LocalConnectorRunSummary,
+  LocalConnectorObservationListInput,
+  LocalConnectorRunTriggerInput,
+  LocalConnectorStartupCatchUpResult,
+  LocalConnectorStatusActionInput,
+  LocalConnectorSkipActionInput,
+  LocalConnectorAuthGrantSummary,
+  LocalConnectorReconnectActionResult,
+  LocalConnectorSkipActionResult,
+  LocalConnectorClient,
+  LocalValedictorianClient,
+} from './local-valedictorian-client.types'
+import type {
+  LocalValedictorianClientOptions,
+  LocalConnectorAuthSummary,
+  LocalConnectorInstanceSummary,
+  LocalConnectorStatusSummary,
+  LocalConnectorRunSummary,
+  LocalConnectorRunTriggerInput,
+  LocalConnectorStartupCatchUpResult,
+  LocalConnectorStatusActionInput,
+  LocalConnectorReconnectActionResult,
+  LocalValedictorianClient
+} from './local-valedictorian-client.types'
 
 const unavailableSecretCodec: ProfileSecretCodec = {
   decrypt() {
