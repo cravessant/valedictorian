@@ -857,18 +857,6 @@ async function executeConnectorRunTrigger({
     projectedRun = await connectorRepository.updateRunProgress({
       connectorRunId: run.id,
       stats: {
-        projected: 0,
-        projectedEmployerOrAts: 0,
-        projectedThirdParty: 0,
-        projectedUsable: 0,
-        retainedForReview: 0,
-        stage: 'persisting',
-        lastProgressAt: now().toISOString(),
-      },
-    })
-    projectedRun = await connectorRepository.updateRunProgress({
-      connectorRunId: run.id,
-      stats: {
         stage: 'finalizing',
         lastProgressAt: now().toISOString(),
       },

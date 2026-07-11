@@ -7,6 +7,11 @@ import {
   connectorRuns,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
+import {
+  freezeConnectorRunLifecycleCounts,
+  readConnectorRunLifecycleCounts,
+  reconcileConnectorRunLifecycleCounts,
+} from './connector.lifecycle-counts'
 
 type JsonRecord = Record<string, unknown>
 
@@ -775,6 +780,7 @@ export function createSqliteConnectorRepository(
       }
 
       const stats = toJsonRecord(JSON.parse(row.statsJson))
+      const lifecycleCounts = freezeConnectorRunLifecycleCounts(database, mapConnectorRun(row))
 
       database
         .update(connectorRuns)
@@ -784,6 +790,7 @@ export function createSqliteConnectorRepository(
           statsJson: JSON.stringify({
             ...stats,
             completed: true,
+            lifecycleCounts,
             running: false,
           }),
           updatedAt: input.completedAt,
@@ -1008,6 +1015,7 @@ export function createSqliteConnectorRepository(
         .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
         .all()
         .map(mapConnectorRun)
+        .map((run) => withConnectorRunLifecycleCounts(database, run))
         .filter((run) => input.status === undefined || run.status === input.status)
         .filter((run) => input.mode === undefined || run.mode === input.mode)
       const pagedItems = items.slice(offset, offset + limit)
@@ -1301,6 +1309,19 @@ function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefined): Co
     stats: JSON.parse(row.statsJson) as unknown,
     warnings: JSON.parse(row.warningsJson) as unknown,
     retryHints: JSON.parse(row.retryHintsJson) as unknown,
+  }
+}
+
+function withConnectorRunLifecycleCounts(
+  database: DrizzleDatabase,
+  run: ConnectorRunRecord,
+): ConnectorRunRecord {
+  const stats = toJsonRecord(run.stats)
+  const lifecycleCounts = readConnectorRunLifecycleCounts(stats, run.id)
+    ?? reconcileConnectorRunLifecycleCounts(database, run)
+  return {
+    ...run,
+    stats: { ...stats, lifecycleCounts },
   }
 }
 

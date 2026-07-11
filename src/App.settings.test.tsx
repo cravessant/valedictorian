@@ -1433,6 +1433,47 @@ describe('App settings and chrome', () => {
       resolveRun = resolve
     })
     vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(pendingRun)
+    const lifecycleCounts = (source: 'live_current' | 'frozen_terminal') => ({
+      version: 'connector-run-lifecycle-counts/v1',
+      source,
+      scope: { kind: 'connector_run', connectorRunId: 'connector-run-progress' },
+      provider: {
+        returnedRows: 0,
+        validRecords: 0,
+        invalidRecords: 0,
+        sourceDuplicates: 0,
+        capturedRecords: 0,
+        occurrenceCount: 0,
+        captureShortfall: 0,
+        unclassifiedRows: 0,
+        invariant: 'reported_stats_missing',
+        gaps: [
+          'missing_provider_returned',
+          'missing_provider_valid',
+          'missing_provider_invalid',
+          'missing_source_duplicates',
+        ],
+      },
+      destination: {
+        normalized: 0,
+        resolvedEmployerOrAts: 0,
+        resolvedThirdParty: 0,
+        unresolved: 0,
+        pending: 0,
+        gateRejected: 0,
+        unclassified: 0,
+        invariant: 'reconciled',
+      },
+      sourcing: {
+        added: 0,
+        queueDuplicate: 0,
+        notFit: 0,
+        rejected: 0,
+        actionableReview: 0,
+        unclassified: 0,
+        invariant: 'reconciled',
+      },
+    })
     const progressRun = (stage: string, stats: Record<string, unknown>): ConnectorRun => ({
       id: 'connector-run-progress',
       connectorInstanceId: 'jobright-default',
@@ -1445,7 +1486,7 @@ describe('App settings and chrome', () => {
       filterSignature: 'filters:{}',
       observationCount: 0,
       warningCount: 0,
-      stats: { stage, ...stats },
+      stats: { stage, ...stats, lifecycleCounts: lifecycleCounts('live_current') },
       warnings: [],
       retryHints: null,
       startedAt: '2026-07-09T16:00:00.000Z',
@@ -1504,9 +1545,10 @@ describe('App settings and chrome', () => {
 
     expect(await screen.findByText('Stage: Authenticating')).toBeInTheDocument()
     expect(await screen.findByText('Stage: Normalizing', {}, { timeout: 2_000 })).toBeInTheDocument()
-    expect(screen.getByText('Discovered: 20')).toBeInTheDocument()
-    expect(screen.getByText('Employer / ATS usable: 1')).toBeInTheDocument()
-    expect(screen.getByText('Third-party usable: 1')).toBeInTheDocument()
+    expect(screen.getByText('Live counts derived from current persisted lineage.')).toBeInTheDocument()
+    expect(screen.getByText('Discovered jobs: 20')).toBeInTheDocument()
+    expect(screen.getByText('Resolved employer / ATS: 1')).toBeInTheDocument()
+    expect(screen.getByText('Resolved third-party: 1')).toBeInTheDocument()
     expect(screen.getByText('Remaining target: 6')).toBeInTheDocument()
     expect(screen.getByText('Waiting between bounded Jobright API requests.')).toBeInTheDocument()
     expect(screen.getByRole('status', { name: 'Jobright internslist run progress' })).toHaveAttribute(
@@ -1543,6 +1585,7 @@ describe('App settings and chrome', () => {
           resolvedThirdParty: 1,
           stage: 'finalizing',
           stopReason: 'source_exhausted',
+          lifecycleCounts: lifecycleCounts('frozen_terminal'),
         },
         warnings: [],
         retryHints: {
@@ -1554,13 +1597,13 @@ describe('App settings and chrome', () => {
     })
 
     expect(await screen.findByText('Latest run: partial_success')).toBeInTheDocument()
-    expect(screen.getByText('Discovered: 12')).toBeInTheDocument()
-    expect(screen.getByText('Eligible: 8')).toBeInTheDocument()
-    expect(screen.getByText('Attempted: 3')).toBeInTheDocument()
-    expect(screen.getByText('Resolved: 2')).toBeInTheDocument()
-    expect(screen.getByText('Auth required: 1')).toBeInTheDocument()
-    expect(screen.getByText('Projected usable: 2')).toBeInTheDocument()
-    expect(screen.getByText('Retained for review: 6')).toBeInTheDocument()
+    expect(screen.getByText('Frozen at terminal completion.')).toBeInTheDocument()
+    expect(screen.getByText('Discovered jobs: 12')).toBeInTheDocument()
+    expect(screen.getByText('Detail attempts: 3')).toBeInTheDocument()
+    expect(screen.getByText('Auth-required requests: 1')).toBeInTheDocument()
+    expect(screen.queryByText('Eligible: 8')).not.toBeInTheDocument()
+    expect(screen.queryByText('Projected usable: 2')).not.toBeInTheDocument()
+    expect(screen.queryByText('Retained for review: 6')).not.toBeInTheDocument()
     expect(screen.getByText('Warnings: 1')).toBeInTheDocument()
     expect(screen.getByText('Failures: 2')).toBeInTheDocument()
     expect(screen.queryByText('auth_required')).not.toBeInTheDocument()
@@ -1633,7 +1676,7 @@ describe('App settings and chrome', () => {
 
     expect(await screen.findByRole('heading', { name: 'Sourcing runs' })).toBeInTheDocument()
     expect(await screen.findByText('Stage: Normalizing')).toBeInTheDocument()
-    expect(screen.getByText('Discovered: 20')).toBeInTheDocument()
+    expect(screen.getByText('Discovered jobs: 20')).toBeInTheDocument()
     expect(connectorsApi.runs.list).toHaveBeenCalledWith({
       connectorInstanceId: 'jobright-default',
       limit: 20,
@@ -1793,8 +1836,116 @@ describe('App settings and chrome', () => {
     expect(screen.getByText('partial_success')).toBeInTheDocument()
     expect(screen.getByText('Authentication required')).toBeInTheDocument()
     expect(screen.getByText('Update and validate Jobright credentials, then run again.')).toBeInTheDocument()
-    expect(screen.getByText('Projected usable: 2')).toBeInTheDocument()
+    expect(screen.getByText('Detail attempts: 3')).toBeInTheDocument()
+    expect(screen.queryByText('Projected usable: 2')).not.toBeInTheDocument()
     expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
+  })
+
+  it('labels per-run zero intake separately from carried cycle counts and explains the arithmetic accessibly', async () => {
+    const connectorsApi = createConnectorsApi()
+    await connectorsApi.create({
+      id: 'pancake-jobright',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.6.0',
+      displayName: 'Pancake Jobright',
+      enabled: true,
+      auth: [],
+      config: {},
+      filters: {},
+    })
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      hasMore: false,
+      items: [{
+        id: 'pancake-carried-50',
+        connectorInstanceId: 'pancake-jobright',
+        mode: 'manual',
+        status: 'partial_success',
+        coverage: { start: null, end: null },
+        filterSignature: 'filters:{}',
+        observationCount: 0,
+        warningCount: 1,
+        stats: {
+          discovered: 50,
+          discoveryPages: 3,
+          providerReturned: 0,
+          stopReason: 'failed',
+          lifecycleCounts: {
+            version: 'connector-run-lifecycle-counts/v1',
+            source: 'frozen_terminal',
+            scope: { kind: 'connector_run', connectorRunId: 'pancake-carried-50' },
+            provider: {
+              returnedRows: 0,
+              validRecords: 0,
+              invalidRecords: 0,
+              sourceDuplicates: 0,
+              capturedRecords: 0,
+              occurrenceCount: 0,
+              captureShortfall: 0,
+              unclassifiedRows: 0,
+              invariant: 'reported_stats_missing',
+              gaps: ['missing_provider_valid'],
+            },
+            destination: {
+              normalized: 0,
+              resolvedEmployerOrAts: 0,
+              resolvedThirdParty: 0,
+              unresolved: 0,
+              pending: 0,
+              gateRejected: 0,
+              unclassified: 0,
+              invariant: 'reconciled',
+            },
+            sourcing: {
+              added: 0,
+              queueDuplicate: 0,
+              notFit: 0,
+              rejected: 0,
+              actionableReview: 0,
+              unclassified: 0,
+              invariant: 'reconciled',
+            },
+          },
+        },
+        warnings: [{
+          code: 'jobright_raw_intake_unavailable',
+          label: 'raw label',
+          message: 'raw message',
+          severity: 'blocked',
+        }],
+        retryHints: { stopReason: 'failed' },
+        startedAt: '2026-07-11T14:00:00.000Z',
+        completedAt: '2026-07-11T14:00:01.000Z',
+      }],
+      limit: 20,
+      offset: 0,
+      total: 1,
+    })
+
+    render(<App
+      applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+      connectorsApi={connectorsApi}
+      settingsApi={createSettingsApi()}
+    />)
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Sourcing runs' }))
+
+    expect(await screen.findByText('Unique jobs in this connector run')).toBeInTheDocument()
+    expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
+    expect(screen.getByText('Captured records: 0')).toBeInTheDocument()
+    expect(screen.getByText('Carried connector cycle')).toBeInTheDocument()
+    expect(screen.getByText('Discovered jobs: 50')).toBeInTheDocument()
+    expect(screen.getByText('Discovery page requests: 3')).toBeInTheDocument()
+    expect(screen.getByText('Needs action')).toBeInTheDocument()
+    expect(screen.getByText('Technical status: partial success.')).toBeInTheDocument()
+    expect(screen.getByText('Provider stats gaps: missing provider valid.')).toBeInTheDocument()
+    expect(screen.queryByText('Discovered: 50')).not.toBeInTheDocument()
+
+    const explanation = screen.getByRole('button', { name: 'How these counts work' })
+    expect(explanation).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(explanation)
+    expect(explanation).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText(/Returned rows equal valid unique records plus invalid rows plus source duplicates/)).toBeInTheDocument()
   })
 
   it('renders actionable Jobright failure and retry guidance', async () => {

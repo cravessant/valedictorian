@@ -1429,7 +1429,24 @@ describe('runtime local Valedictorian client', () => {
       resolvedRevision.rawRecordId,
     )
 
-    expect(run).toMatchObject({ connectorInstanceId: 'jobright-api' })
+    expect(run).toMatchObject({
+      connectorInstanceId: 'jobright-api',
+      stats: {
+        lifecycleCounts: {
+          source: 'frozen_terminal',
+          scope: { kind: 'connector_run', connectorRunId: run.id },
+          provider: { returnedRows: 20, capturedRecords: 20 },
+          destination: {
+            normalized: 1,
+            resolvedEmployerOrAts: 1,
+            pending: 18,
+            unresolved: 1,
+            gateRejected: 0,
+          },
+          sourcing: { actionableReview: 1 },
+        },
+      },
+    })
     expect(run.warnings).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'jobright_raw_intake_unavailable' }),
       expect.objectContaining({ code: 'jobright_normalization_unavailable' }),
@@ -1921,11 +1938,11 @@ describe('runtime local Valedictorian client', () => {
       observationCount: 1,
       stats: {
         observations: 1,
-        projected: 0,
-        projectedEmployerOrAts: 0,
-        projectedThirdParty: 0,
-        projectedUsable: 0,
-        retainedForReview: 0,
+        lifecycleCounts: {
+          source: 'frozen_terminal',
+          provider: { capturedRecords: 0 },
+          sourcing: { added: 0 },
+        },
         stage: 'finalizing',
       },
       status: 'completed',
@@ -2030,11 +2047,11 @@ describe('runtime local Valedictorian client', () => {
     expect(run).toMatchObject({
       observationCount: 2,
       stats: {
-        projected: 0,
-        projectedEmployerOrAts: 0,
-        projectedThirdParty: 0,
-        projectedUsable: 0,
-        retainedForReview: 0,
+        lifecycleCounts: {
+          source: 'frozen_terminal',
+          provider: { capturedRecords: 0 },
+          sourcing: { added: 0 },
+        },
       },
     })
     expect(findings).toMatchObject({ total: 0, items: [] })
@@ -2120,7 +2137,14 @@ describe('runtime local Valedictorian client', () => {
       await expect(client.connectors.runs.list({
         connectorInstanceId: 'connector-instance-fixture',
       })).resolves.toMatchObject({
-        items: [{ status: 'running', stats: { stage: 'authenticating', discovered: 0 } }],
+        items: [{
+          status: 'running',
+          stats: {
+            stage: 'authenticating',
+            discovered: 0,
+            lifecycleCounts: { source: 'live_current' },
+          },
+        }],
       })
     })
 
@@ -2139,6 +2163,7 @@ describe('runtime local Valedictorian client', () => {
             resolvedThirdParty: 1,
             stage: 'normalizing',
             unresolved: 1,
+            lifecycleCounts: { source: 'live_current' },
             wait: {
               maxDelayMs: 2_000,
               minDelayMs: 1_000,
@@ -2150,7 +2175,10 @@ describe('runtime local Valedictorian client', () => {
     })
 
     releaseNormalization?.()
-    await expect(pendingRun).resolves.toMatchObject({ status: 'completed' })
+    await expect(pendingRun).resolves.toMatchObject({
+      status: 'completed',
+      stats: { lifecycleCounts: { source: 'frozen_terminal' } },
+    })
     sqlite.close()
   })
 
