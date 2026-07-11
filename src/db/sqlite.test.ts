@@ -5,6 +5,14 @@ import { describe, expect, it } from 'vitest'
 import { createDataMigrationUmzug } from './data-migrations'
 import { createFileDatabase, createInMemoryDatabase, migrateDatabase } from './sqlite'
 
+const expectedIdentityTriggers = [
+  'trg_source_entity_identities_bound',
+  'trg_source_entity_identities_no_delete',
+  'trg_source_entity_identities_no_update',
+  'trg_source_identity_conflicts_no_delete',
+  'trg_source_identity_conflicts_no_update',
+]
+
 describe('SQLite database', () => {
   it('migrates the core tracker tables', () => {
     const database = createInMemoryDatabase()
@@ -124,7 +132,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(13)
+    expect(migrationRows).toHaveLength(15)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -179,7 +187,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 13 })
+    ).toEqual({ count: 15 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -210,11 +218,14 @@ describe('SQLite database', () => {
     const fresh = createInMemoryDatabase()
     migrateDatabase(fresh)
     const tables = [
+      'source_entity_identities', 'source_identity_conflicts',
       'normalization_runs', 'normalization_attempts', 'normalization_field_outcomes',
       'canonical_source_candidates', 'normalization_gates',
       'normalization_replay_requests', 'normalization_replay_items',
     ]
     const indexes = [
+      'idx_source_entity_identities_identity', 'idx_source_entity_identities_entity_chronology',
+      'idx_source_identity_conflicts_occurrence', 'idx_source_identity_conflicts_chronology',
       'idx_normalization_runs_cache', 'idx_normalization_runs_raw_record',
       'idx_normalization_attempts_run_sequence', 'idx_normalization_attempts_resolver',
       'idx_normalization_field_outcomes_run_sequence', 'idx_normalization_field_outcomes_selector',
@@ -226,6 +237,8 @@ describe('SQLite database', () => {
     ]
     for (const table of tables) expect(tableDefinition(legacy, table)).toEqual(tableDefinition(fresh, table))
     for (const index of indexes) expect(indexDefinition(legacy, index)).toEqual(indexDefinition(fresh, index))
+    expect(identityTriggerNames(legacy)).toEqual(expectedIdentityTriggers)
+    expect(identityTriggerNames(fresh)).toEqual(expectedIdentityTriggers)
     expect(indexDefinition(fresh, 'idx_normalization_runs_cache')).toMatchObject({
       unique: true,
       predicate: expect.stringMatching(/trigger_id.*is null/i),
@@ -239,9 +252,148 @@ describe('SQLite database', () => {
     expect(tableDefinition(fresh, 'normalization_replay_items').checks).toEqual([
       'chk_normalization_replay_items_status',
     ])
+    expect(tableDefinition(fresh, 'source_entity_identities').checks).toEqual([
+      'chk_source_entity_identities_kind',
+      'chk_source_entity_identities_namespace_length',
+      'chk_source_entity_identities_value_length',
+      'chk_source_entity_identities_provenance_kind',
+      'chk_source_entity_identities_provenance_version_length',
+      'chk_source_entity_identities_evidence_length',
+    ])
     expect(fresh.prepare('pragma foreign_key_check').all()).toEqual([])
     fresh.close()
     legacy.close()
+  })
+
+  it('backfills bounded source identities without changing ledger ownership or history', () => {
+    const oldMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-identity-migrations-'))
+    fs.cpSync(path.resolve('drizzle'), oldMigrations, { recursive: true })
+    const identityMigration = fs.readdirSync(oldMigrations).find((name) => name.startsWith('0013_'))
+    if (!identityMigration) throw new Error('Source identity migration fixture is missing')
+    fs.rmSync(path.join(oldMigrations, identityMigration))
+    const oldJournalPath = path.join(oldMigrations, 'meta', '_journal.json')
+    const oldJournal = JSON.parse(fs.readFileSync(oldJournalPath, 'utf8')) as {
+      entries: Array<{ idx: number }>
+    }
+    oldJournal.entries = oldJournal.entries.filter(({ idx }) => idx <= 12)
+    fs.writeFileSync(oldJournalPath, `${JSON.stringify(oldJournal, null, 2)}\n`)
+    const database = createInMemoryDatabase()
+    migrateDatabase(database, { migrationsFolder: oldMigrations })
+    database.prepare("delete from __valedictorian_data_migrations where name = '20260711000000_source_identity_backfill'").run()
+    database.exec(`
+      insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+      values
+        ('entity-provider', 'provider_job', 'connector:fixture:schema:v1', 'job-1', '2026-07-10T12:00:00.000Z'),
+        ('entity-destination', 'destination_url', 'deterministic-destination/v1', 'https://jobs.lever.co/acme/job-2', '2026-07-10T12:01:00.000Z');
+      insert into raw_source_records (id, source_entity_id, created_at)
+      values
+        ('record-provider', 'entity-provider', '2026-07-10T12:00:00.000Z'),
+        ('record-destination', 'entity-destination', '2026-07-10T12:01:00.000Z');
+      insert into raw_source_revisions (
+        id, raw_record_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
+        observed_at, payload_json, evidence_json, created_at
+      ) values
+        ('revision-provider', 'record-provider', 1, 'sha256:provider', 'fixture', 'connector', '1.0.0',
+         '2026-07-10T12:00:00.000Z', '{}', '[]', '2026-07-10T12:00:00.000Z'),
+        ('revision-destination', 'record-destination', 1, 'sha256:destination', 'fixture', 'manual', '1.0.0',
+         '2026-07-10T12:01:00.000Z', '{}', '[]', '2026-07-10T12:01:00.000Z');
+    `)
+
+    migrateDatabase(database)
+    migrateDatabase(database)
+
+    expect(database.prepare(`
+      select source_entity_id, identity_kind, identity_namespace, identity_value,
+        provenance_kind, provenance_version, evidence_json, created_at
+      from source_entity_identities order by source_entity_id
+    `).all()).toEqual([
+      {
+        source_entity_id: 'entity-destination', identity_kind: 'canonical_destination',
+        identity_namespace: 'deterministic-destination/v1', identity_value: 'https://jobs.lever.co/acme/job-2',
+        provenance_kind: 'primary_backfill', provenance_version: 'source-identity-backfill/v1',
+        evidence_json: '{"legacyIdentityKind":"destination_url"}', created_at: '2026-07-10T12:01:00.000Z',
+      },
+      {
+        source_entity_id: 'entity-provider', identity_kind: 'provider_job',
+        identity_namespace: 'connector:fixture:schema:v1', identity_value: 'job-1',
+        provenance_kind: 'primary_backfill', provenance_version: 'source-identity-backfill/v1',
+        evidence_json: '{"legacyIdentityKind":"provider_job"}', created_at: '2026-07-10T12:00:00.000Z',
+      },
+    ])
+    expect(database.prepare('select id, source_entity_id from raw_source_records order by id').all()).toEqual([
+      { id: 'record-destination', source_entity_id: 'entity-destination' },
+      { id: 'record-provider', source_entity_id: 'entity-provider' },
+    ])
+    expect(database.prepare('select id, raw_record_id from raw_source_revisions order by id').all()).toEqual([
+      { id: 'revision-destination', raw_record_id: 'record-destination' },
+      { id: 'revision-provider', raw_record_id: 'record-provider' },
+    ])
+    const insertManagedIdentity = database.prepare(`
+      insert into source_entity_identities (
+        id, source_entity_id, identity_kind, identity_namespace, identity_value,
+        provenance_kind, provenance_version, evidence_json, created_at
+      ) values (?, 'entity-provider', 'destination_alias', 'managed-bound/v1', ?,
+        'normalization', 'source-identity-reconciliation/v1', '{}', '2026-07-10T12:02:00.000Z')
+    `)
+    for (let index = 0; index < 31; index += 1) {
+      insertManagedIdentity.run(`managed-bound-${index}`, `https://jobs.lever.co/acme/managed-${index}`)
+    }
+    expect(() => insertManagedIdentity.run('managed-bound-overflow', 'https://jobs.lever.co/acme/managed-overflow')).toThrow(/identity bound/i)
+    expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
+    expect(identityTriggerNames(database)).toEqual(expectedIdentityTriggers)
+    database.close()
+  })
+
+  it('enforces append-only identity and conflict provenance in SQLite', () => {
+    const database = createInMemoryDatabase()
+    migrateDatabase(database)
+    database.exec(`
+      insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+      values ('entity-1', 'provider_job', 'fixture', 'job-1', '2026-07-10T12:00:00.000Z');
+      insert into raw_source_records (id, source_entity_id, created_at)
+      values ('record-1', 'entity-1', '2026-07-10T12:00:00.000Z');
+      insert into raw_source_revisions (
+        id, raw_record_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
+        observed_at, payload_json, evidence_json, created_at
+      ) values (
+        'revision-1', 'record-1', 1, 'sha256:one', 'fixture', 'connector', '1.0.0',
+        '2026-07-10T12:00:00.000Z', '{}', '[]', '2026-07-10T12:00:00.000Z'
+      );
+      insert into source_entity_identities (
+        id, source_entity_id, identity_kind, identity_namespace, identity_value,
+        provenance_kind, provenance_version, evidence_json, raw_revision_id, created_at
+      ) values (
+        'identity-1', 'entity-1', 'provider_job', 'fixture', 'job-1',
+        'capture', 'raw-source-capture/v1', '{}', 'revision-1', '2026-07-10T12:00:00.000Z'
+      );
+      insert into source_identity_conflicts (
+        id, source_entity_id, raw_revision_id, identity_kind, identity_namespace,
+        identity_value, reason, provenance_version, evidence_json, created_at
+      ) values (
+        'conflict-1', 'entity-1', 'revision-1', 'canonical_destination',
+        'deterministic-destination/v1', 'https://jobs.lever.co/acme/job-2', 'fixture conflict',
+        'source-identity-reconciliation/v1', '{}', '2026-07-10T12:00:00.000Z'
+      );
+    `)
+
+    expect(() => database.prepare("update source_entity_identities set evidence_json = '{\"changed\":true}' where id = 'identity-1'").run()).toThrow(/append-only/i)
+    expect(() => database.prepare("delete from source_entity_identities where id = 'identity-1'").run()).toThrow(/append-only/i)
+    expect(() => database.prepare("update source_identity_conflicts set reason = 'changed' where id = 'conflict-1'").run()).toThrow(/append-only/i)
+    expect(() => database.prepare("delete from source_identity_conflicts where id = 'conflict-1'").run()).toThrow(/append-only/i)
+    const insertIdentity = database.prepare(`
+      insert into source_entity_identities (
+        id, source_entity_id, identity_kind, identity_namespace, identity_value,
+        provenance_kind, provenance_version, evidence_json, created_at
+      ) values (?, 'entity-1', 'destination_alias', 'fixture-bound/v1', ?,
+        'normalization', 'source-identity-reconciliation/v1', '{}', '2026-07-10T12:01:00.000Z')
+    `)
+    for (let index = 0; index < 31; index += 1) {
+      insertIdentity.run(`bounded-${index}`, `https://jobs.lever.co/acme/bounded-${index}`)
+    }
+    expect(() => insertIdentity.run('bounded-overflow', 'https://jobs.lever.co/acme/bounded-overflow')).toThrow(/identity bound/i)
+    expect(database.prepare("select count(*) as count from source_entity_identities where source_entity_id = 'entity-1'").get()).toEqual({ count: 32 })
+    expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
+    database.close()
   })
 
   it('upgrades persisted normalization history to replay support without breaking foreign keys', () => {
@@ -577,6 +729,9 @@ describe('SQLite database', () => {
       {
         name: '20260710000000_sourcing_destination_projection',
       },
+      {
+        name: '20260711000000_source_identity_backfill',
+      },
     ])
   })
 
@@ -897,6 +1052,9 @@ describe('SQLite database', () => {
       {
         name: '20260710000000_sourcing_destination_projection',
       },
+      {
+        name: '20260711000000_source_identity_backfill',
+      },
     ])
   })
 
@@ -1032,4 +1190,13 @@ function indexDefinition(
     predicate: row.sql.match(/\swhere\s(.+)$/i)?.[1] ?? null,
     unique: /^create unique index/i.test(row.sql),
   }
+}
+
+function identityTriggerNames(database: ReturnType<typeof createInMemoryDatabase>) {
+  return database.prepare(`
+    select name from sqlite_master
+    where type = 'trigger'
+      and (name like 'trg_source_entity%' or name like 'trg_source_identity%')
+    order by name
+  `).all().map((row) => (row as { name: string }).name)
 }

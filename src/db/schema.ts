@@ -459,6 +459,74 @@ export const sourceEntities = sqliteTable(
   }),
 )
 
+export const sourceEntityIdentities = sqliteTable(
+  'source_entity_identities',
+  {
+    id: text('id').primaryKey(),
+    sourceEntityId: text('source_entity_id').notNull().references(() => sourceEntities.id),
+    identityKind: text('identity_kind').notNull(),
+    identityNamespace: text('identity_namespace').notNull(),
+    identityValue: text('identity_value').notNull(),
+    provenanceKind: text('provenance_kind').notNull(),
+    provenanceVersion: text('provenance_version').notNull(),
+    evidenceJson: text('evidence_json').notNull(),
+    rawRevisionId: text('raw_revision_id').references(() => rawSourceRevisions.id),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    identityIdx: uniqueIndex('idx_source_entity_identities_identity').on(
+      table.identityKind,
+      table.identityNamespace,
+      table.identityValue,
+    ),
+    entityChronologyIdx: index('idx_source_entity_identities_entity_chronology').on(
+      table.sourceEntityId,
+      table.createdAt,
+      table.id,
+    ),
+    kindCheck: check('chk_source_entity_identities_kind', sql`${table.identityKind} in ('provider_job','canonical_destination','intermediary_alias','destination_alias')`),
+    namespaceLength: check('chk_source_entity_identities_namespace_length', sql`length(${table.identityNamespace}) between 1 and 512`),
+    valueLength: check('chk_source_entity_identities_value_length', sql`length(${table.identityValue}) between 1 and 2048`),
+    provenanceKindCheck: check('chk_source_entity_identities_provenance_kind', sql`${table.provenanceKind} in ('primary_backfill','capture','normalization')`),
+    provenanceVersionLength: check('chk_source_entity_identities_provenance_version_length', sql`length(${table.provenanceVersion}) between 1 and 128`),
+    evidenceLength: check('chk_source_entity_identities_evidence_length', sql`length(${table.evidenceJson}) between 2 and 16384`),
+  }),
+)
+
+export const sourceIdentityConflicts = sqliteTable(
+  'source_identity_conflicts',
+  {
+    id: text('id').primaryKey(),
+    sourceEntityId: text('source_entity_id').notNull().references(() => sourceEntities.id),
+    conflictingSourceEntityId: text('conflicting_source_entity_id').references(() => sourceEntities.id),
+    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    identityKind: text('identity_kind').notNull(),
+    identityNamespace: text('identity_namespace').notNull(),
+    identityValue: text('identity_value').notNull(),
+    reason: text('reason').notNull(),
+    provenanceVersion: text('provenance_version').notNull(),
+    evidenceJson: text('evidence_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    occurrenceIdx: uniqueIndex('idx_source_identity_conflicts_occurrence').on(
+      table.sourceEntityId,
+      table.rawRevisionId,
+      table.identityKind,
+      table.identityNamespace,
+      table.identityValue,
+      table.reason,
+    ),
+    chronologyIdx: index('idx_source_identity_conflicts_chronology').on(table.createdAt, table.id),
+    kindCheck: check('chk_source_identity_conflicts_kind', sql`${table.identityKind} in ('provider_job','canonical_destination','intermediary_alias','destination_alias')`),
+    namespaceLength: check('chk_source_identity_conflicts_namespace_length', sql`length(${table.identityNamespace}) between 1 and 512`),
+    valueLength: check('chk_source_identity_conflicts_value_length', sql`length(${table.identityValue}) between 1 and 2048`),
+    reasonLength: check('chk_source_identity_conflicts_reason_length', sql`length(${table.reason}) between 1 and 512`),
+    provenanceVersionLength: check('chk_source_identity_conflicts_provenance_version_length', sql`length(${table.provenanceVersion}) between 1 and 128`),
+    evidenceLength: check('chk_source_identity_conflicts_evidence_length', sql`length(${table.evidenceJson}) between 2 and 16384`),
+  }),
+)
+
 export const rawSourceRecords = sqliteTable(
   'raw_source_records',
   {
@@ -781,6 +849,8 @@ export const schema = {
   rawSourceRecords,
   rawSourceRevisions,
   sourceEntities,
+  sourceEntityIdentities,
+  sourceIdentityConflicts,
   sourcingFindings,
   sources,
   userProfile,

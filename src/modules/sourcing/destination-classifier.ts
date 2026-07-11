@@ -1,6 +1,7 @@
 import { canonicalizeApplicationUrl, type CanonicalCandidateDestination } from 'sparxie'
 
 export const DESTINATION_TAXONOMY_VERSION = 'deterministic-destination/v1'
+const MAX_STRONG_IDENTITY_VALUE_LENGTH = 2_048
 const RESERVED_NAMESPACE_SEGMENTS = new Set([
   'about',
   'application',
@@ -33,6 +34,7 @@ export function classifyDeterministicDestination(value: string): CanonicalCandid
   } catch {
     return null
   }
+  if (canonical.length > MAX_STRONG_IDENTITY_VALUE_LENGTH) return null
   if (url.username || url.password || url.protocol !== 'https:' || url.port) return null
 
   const host = url.hostname.replace(/^www\./, '')
@@ -61,6 +63,26 @@ export function classifyDeterministicDestination(value: string): CanonicalCandid
   }
 
   return destinationClass ? { class: destinationClass, url: canonical, intermediaryUrl: null } : null
+}
+
+export function classifyExplicitIntermediaryAlias(value: string): string | null {
+  let canonical: string
+  let url: URL
+  try {
+    canonical = canonicalizeApplicationUrl(value)
+    url = new URL(canonical)
+  } catch {
+    return null
+  }
+  if (canonical.length > MAX_STRONG_IDENTITY_VALUE_LENGTH) return null
+  const host = url.hostname.replace(/^www\./, '')
+  const parts = url.pathname.split('/').filter(Boolean).map(decodePathSegment)
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || parts.some((part) => part === null)) return null
+  if (host !== 'jobright.ai' || parts.length !== 3 || parts[0] !== 'jobs' || parts[1] !== 'info' || !isJobSegment(parts[2] ?? undefined)) {
+    return null
+  }
+  url.hostname = host
+  return url.toString()
 }
 
 function isWorkdaySiteSegment(value: string | undefined) {

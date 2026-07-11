@@ -23,6 +23,7 @@ import {
   rawSourceRecords,
   rawSourceRevisions,
   sourceEntities,
+  sourceEntityIdentities,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 
@@ -132,6 +133,7 @@ function ingestRecord(
     record.providerRecordId.trim().length > 0
   let sourceEntityId: string | null = null
   let rawRecordId: string | null = null
+  let capturedIdentity: { namespace: string; value: string } | null = null
 
   if (strongIdentity) {
     const identityValue = (record.providerRecordId as string).trim()
@@ -162,6 +164,7 @@ function ingestRecord(
         identityValue,
         createdAt: receivedAt,
       }).run()
+      capturedIdentity = { namespace: identityNamespace, value: identityValue }
     }
 
     rawRecordId = database
@@ -234,6 +237,25 @@ function ingestRecord(
 
   if (!revision) {
     throw new Error('Raw source revision could not be created')
+  }
+
+  if (sourceEntityId && capturedIdentity) {
+    database.insert(sourceEntityIdentities).values({
+      id: crypto.randomUUID(),
+      sourceEntityId,
+      identityKind: PROVIDER_JOB_IDENTITY_KIND,
+      identityNamespace: capturedIdentity.namespace,
+      identityValue: capturedIdentity.value,
+      provenanceKind: 'capture',
+      provenanceVersion: 'raw-source-capture/v1',
+      evidenceJson: JSON.stringify({
+        adapterId: record.adapter.id,
+        adapterVersion: record.adapter.version,
+        providerSchema: record.providerSchema ?? null,
+      }),
+      rawRevisionId: revision.id,
+      createdAt: receivedAt,
+    }).run()
   }
 
   const occurrence = {

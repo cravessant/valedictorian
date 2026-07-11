@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyDeterministicDestination } from './destination-classifier'
+import { classifyDeterministicDestination, classifyExplicitIntermediaryAlias } from './destination-classifier'
 
 const additionalReservedSegments = [
   'about', 'apply', 'browse', 'companies', 'job', 'job-search', 'lists', 'login',
@@ -41,6 +41,28 @@ const unsafeAuthorityCases = recognizedProviderJobUrls.flatMap((url) => [
 ])
 
 describe('deterministic destination taxonomy', () => {
+  it('canonicalizes an explicit job-specific Jobright intermediary alias', () => {
+    expect(classifyExplicitIntermediaryAlias('https://www.jobright.ai/jobs/info/job-123?utm_source=test#apply')).toBe(
+      'https://jobright.ai/jobs/info/job-123',
+    )
+  })
+
+  it.each([
+    'https://jobright.ai/jobs/search',
+    'https://jobright.ai/companies/acme',
+    'https://jobright.ai/jobs/info/profile',
+    'https://linkedin.com/jobs/view/123',
+    'http://jobright.ai/jobs/info/job-123',
+  ])('rejects a generic or non-intermediary alias: %s', (url) => {
+    expect(classifyExplicitIntermediaryAlias(url)).toBeNull()
+  })
+
+  it('rejects identity values above the persisted bound', () => {
+    const oversized = 'x'.repeat(2_048)
+    expect(classifyDeterministicDestination(`https://jobs.lever.co/acme/${oversized}`)).toBeNull()
+    expect(classifyExplicitIntermediaryAlias(`https://jobright.ai/jobs/info/${oversized}`)).toBeNull()
+  })
+
   it.each([
     ['https://www.linkedin.com/jobs/view/123456', 'third_party_job_posting'],
     ['https://boards.greenhouse.io/acme/jobs/123?gh_src=tracking', 'employer_or_ats'],

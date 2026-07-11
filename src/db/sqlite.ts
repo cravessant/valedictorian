@@ -705,6 +705,45 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       received_at text not null
     );
 
+    create table if not exists source_entity_identities (
+      id text primary key not null,
+      source_entity_id text not null references source_entities(id),
+      identity_kind text not null,
+      identity_namespace text not null,
+      identity_value text not null,
+      provenance_kind text not null,
+      provenance_version text not null,
+      evidence_json text not null,
+      raw_revision_id text references raw_source_revisions(id),
+      created_at text not null,
+      constraint chk_source_entity_identities_kind check(identity_kind in ('provider_job','canonical_destination','intermediary_alias','destination_alias')),
+      constraint chk_source_entity_identities_namespace_length check(length(identity_namespace) between 1 and 512),
+      constraint chk_source_entity_identities_value_length check(length(identity_value) between 1 and 2048),
+      constraint chk_source_entity_identities_provenance_kind check(provenance_kind in ('primary_backfill','capture','normalization')),
+      constraint chk_source_entity_identities_provenance_version_length check(length(provenance_version) between 1 and 128),
+      constraint chk_source_entity_identities_evidence_length check(length(evidence_json) between 2 and 16384)
+    );
+
+    create table if not exists source_identity_conflicts (
+      id text primary key not null,
+      source_entity_id text not null references source_entities(id),
+      conflicting_source_entity_id text references source_entities(id),
+      raw_revision_id text not null references raw_source_revisions(id),
+      identity_kind text not null,
+      identity_namespace text not null,
+      identity_value text not null,
+      reason text not null,
+      provenance_version text not null,
+      evidence_json text not null,
+      created_at text not null,
+      constraint chk_source_identity_conflicts_kind check(identity_kind in ('provider_job','canonical_destination','intermediary_alias','destination_alias')),
+      constraint chk_source_identity_conflicts_namespace_length check(length(identity_namespace) between 1 and 512),
+      constraint chk_source_identity_conflicts_value_length check(length(identity_value) between 1 and 2048),
+      constraint chk_source_identity_conflicts_reason_length check(length(reason) between 1 and 512),
+      constraint chk_source_identity_conflicts_provenance_version_length check(length(provenance_version) between 1 and 128),
+      constraint chk_source_identity_conflicts_evidence_length check(length(evidence_json) between 2 and 16384)
+    );
+
     create table if not exists normalization_runs (
       id text primary key not null,
       raw_record_id text not null references raw_source_records(id),
@@ -866,6 +905,33 @@ function migrateLegacyDatabaseSchema(database: SqliteDatabase) {
       on connector_observations(connector_instance_id, source_record_key);
     create unique index if not exists idx_source_entities_identity
       on source_entities(identity_kind, identity_namespace, identity_value);
+    create unique index if not exists idx_source_entity_identities_identity
+      on source_entity_identities(identity_kind, identity_namespace, identity_value);
+    create index if not exists idx_source_entity_identities_entity_chronology
+      on source_entity_identities(source_entity_id, created_at, id);
+    create unique index if not exists idx_source_identity_conflicts_occurrence
+      on source_identity_conflicts(source_entity_id, raw_revision_id, identity_kind, identity_namespace, identity_value, reason);
+    create index if not exists idx_source_identity_conflicts_chronology
+      on source_identity_conflicts(created_at, id);
+    create trigger if not exists trg_source_entity_identities_bound
+      before insert on source_entity_identities
+      when (
+        select count(*) from source_entity_identities
+        where source_entity_id = new.source_entity_id
+      ) >= 32
+      begin select raise(abort, 'source entity identity bound is exhausted'); end;
+    create trigger if not exists trg_source_entity_identities_no_update
+      before update on source_entity_identities
+      begin select raise(abort, 'source entity identities are append-only'); end;
+    create trigger if not exists trg_source_entity_identities_no_delete
+      before delete on source_entity_identities
+      begin select raise(abort, 'source entity identities are append-only'); end;
+    create trigger if not exists trg_source_identity_conflicts_no_update
+      before update on source_identity_conflicts
+      begin select raise(abort, 'source identity conflicts are append-only'); end;
+    create trigger if not exists trg_source_identity_conflicts_no_delete
+      before delete on source_identity_conflicts
+      begin select raise(abort, 'source identity conflicts are append-only'); end;
     create unique index if not exists idx_raw_source_records_source_entity
       on raw_source_records(source_entity_id);
     create unique index if not exists idx_raw_source_revisions_record_revision

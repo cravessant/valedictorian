@@ -37,6 +37,12 @@ const dataMigrations: SyncDataMigration[] = [
       migrateLegacyConnectorDestinationProjection(context.database)
     },
   },
+  {
+    name: '20260711000000_source_identity_backfill',
+    up({ context }) {
+      backfillSourceEntityIdentities(context.database)
+    },
+  },
 ]
 
 export function runDataMigrations(database: SqliteDatabase) {
@@ -259,6 +265,54 @@ function migrateLegacyConnectorDestinationProjection(database: SqliteDatabase) {
     const intermediaryUrl = safeObservedJobrightUrl(links?.intermediary ?? links?.source ?? null)
     update.run(intermediaryUrl, intermediaryUrl, row.sourcing_finding_id)
   }
+}
+
+function backfillSourceEntityIdentities(database: SqliteDatabase) {
+  if (!tableExists(database, 'source_entities') || !tableExists(database, 'source_entity_identities')) {
+    return
+  }
+  const entities = database.prepare(`
+    select id, identity_kind, identity_namespace, identity_value, created_at
+    from source_entities order by created_at, id
+  `).all() as Array<{
+    id: string
+    identity_kind: string
+    identity_namespace: string
+    identity_value: string
+    created_at: string
+  }>
+  const insert = database.prepare(`
+    insert or ignore into source_entity_identities (
+      id, source_entity_id, identity_kind, identity_namespace, identity_value,
+      provenance_kind, provenance_version, evidence_json, raw_revision_id, created_at
+    ) values (?, ?, ?, ?, ?, 'primary_backfill', 'source-identity-backfill/v1', ?, null, ?)
+  `)
+  database.transaction(() => {
+    for (const entity of entities) {
+      const identityKind = entity.identity_kind === 'destination_url'
+        ? 'canonical_destination'
+        : entity.identity_kind
+      if (!['provider_job', 'canonical_destination', 'intermediary_alias', 'destination_alias'].includes(identityKind)) {
+        throw new Error(`Unsupported legacy source identity kind: ${entity.identity_kind}`)
+      }
+      insert.run(
+        `primary:${entity.id}`,
+        entity.id,
+        identityKind,
+        entity.identity_namespace,
+        entity.identity_value,
+        JSON.stringify({ legacyIdentityKind: entity.identity_kind }),
+        entity.created_at,
+      )
+      const persisted = database.prepare(`
+        select source_entity_id from source_entity_identities
+        where identity_kind = ? and identity_namespace = ? and identity_value = ?
+      `).get(identityKind, entity.identity_namespace, entity.identity_value) as { source_entity_id: string } | undefined
+      if (persisted?.source_entity_id !== entity.id) {
+        throw new Error(`Legacy source identity is already owned by another source entity: ${entity.id}`)
+      }
+    }
+  })()
 }
 
 function readLegacyObservationLinks(value: string): { intermediary?: unknown; source?: unknown } | null {

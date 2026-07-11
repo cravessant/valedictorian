@@ -135,7 +135,7 @@ export function createNormalizationOrchestrator(options: {
 
       const evaluatedAt = now().toISOString()
       const destination = valueOf(winners.get('destinationUrl')) as CanonicalSourceCandidate['destination'] | null
-      let entity = raw.sourceEntity
+      const entity = raw.sourceEntity
       let identity = valueOf(winners.get('canonicalIdentity')) as CanonicalSourceCandidate['canonicalIdentity'] | null
       if (!identity && destination) {
         identity = { kind: 'destination_url', value: destination.url }
@@ -161,39 +161,54 @@ export function createNormalizationOrchestrator(options: {
       if (typeof companyName !== 'string' || !companyName.trim()) missingFields.push('companyName')
       if (typeof roleTitle !== 'string' || !roleTitle.trim()) missingFields.push('roleTitle')
       if (!destination) missingFields.push('destinationUrl')
-      const conflictingFields = [...conflicts]
       const requiredFields: CanonicalCandidateField[] = ['canonicalIdentity','companyName','roleTitle','destinationUrl']
       const rejectedRequiredFields = requiredFields.filter((field) => rejectedFields.has(field))
       const terminalRequiredFields = requiredFields.flatMap((field) => { const outcome = terminalFields.get(field); return outcome ? [{ field, ...outcome }] : [] })
-      const status = infrastructureFailure ? 'failed' : rejectedRequiredFields.length ? 'rejected' : missingFields.length || conflictingFields.length ? 'needs_enrichment' : 'passed'
-      if (status === 'passed' && !entity && destination) {
-        entity = options.repository.ensureDestinationSourceEntity(destination.url, evaluatedAt)
+      const initialStatus = infrastructureFailure ? 'failed' : rejectedRequiredFields.length ? 'rejected' : missingFields.length || conflicts.size ? 'needs_enrichment' : 'passed'
+      const materialize = (resolvedEntity: typeof entity, reconciliationConflict = false) => {
+        const status = reconciliationConflict ? 'needs_enrichment' : initialStatus
+        const conflictingFields = reconciliationConflict
+          ? [...new Set([...conflicts, 'canonicalIdentity' as const])]
+          : [...conflicts]
+        const runId = crypto.randomUUID()
+        const candidate: CanonicalSourceCandidate | null = status === 'passed' && resolvedEntity && identity ? {
+          id: crypto.randomUUID(), sourceEntityId: resolvedEntity.id, rawRecordId, rawRevisionId, schemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION,
+          canonicalIdentity: identity, companyName: companyName as string, roleTitle: roleTitle as string,
+          employmentType: (valueOf(winners.get('employmentType')) ?? 'unknown') as CanonicalSourceCandidate['employmentType'],
+          seniority: (valueOf(winners.get('seniority')) ?? 'unknown') as CanonicalSourceCandidate['seniority'],
+          workMode: (valueOf(winners.get('workMode')) ?? 'unclear') as CanonicalSourceCandidate['workMode'],
+          location: (valueOf(winners.get('location')) ?? null) as CanonicalSourceCandidate['location'],
+          compensation: (valueOf(winners.get('compensation')) ?? null) as CanonicalSourceCandidate['compensation'],
+          postedAt: (valueOf(winners.get('postedAt')) ?? { value: null, precision: 'unknown', raw: null }) as unknown as CanonicalSourceCandidate['postedAt'],
+          destination, sourceUrl: (valueOf(winners.get('sourceUrl')) ?? null) as string | null,
+          providerJobId: (valueOf(winners.get('providerJobId')) ?? null) as string | null, observedAt: raw.revision.observedAt,
+        } : null
+        const gateBase = { policyVersion: NORMALIZATION_GATE_POLICY_VERSION, requiredFields, missingFields, conflictingFields, reason: infrastructureFailure ?? (rejectedRequiredFields.length ? `Required canonical fields rejected: ${rejectedRequiredFields.join(', ')}` : terminalRequiredFields.length ? `Required canonical fields need enrichment: ${terminalRequiredFields.map(({ field, status, reason }) => `${field} (${status}: ${reason})`).join(', ')}` : null), evaluatedAt }
+        let gate: NormalizationGateOutcome
+        if (status === 'passed' && candidate) {
+          gate = { ...gateBase, status: 'passed', candidate: { id: candidate.id, sourceEntityId: candidate.sourceEntityId, rawRecordId, rawRevisionId, schemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION } }
+        } else if (status === 'failed') {
+          gate = { ...gateBase, status: 'failed', candidate: null }
+        } else if (status === 'rejected') {
+          gate = { ...gateBase, status: 'rejected', candidate: null }
+        } else {
+          gate = { ...gateBase, status: 'needs_enrichment', candidate: null }
+        }
+        return { runId, rawRecordId, rawRevisionId, inputHash, resolverSetHash: registry.resolverSetHash, canonicalSchemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION, gatePolicyVersion: NORMALIZATION_GATE_POLICY_VERSION, status: status === 'failed' ? 'failed' as const : 'completed' as const, attempts, candidate, gate, now: evaluatedAt, triggerId: trigger.kind === 'replay' ? trigger.replayId : undefined }
       }
-      const runId = crypto.randomUUID()
-      const candidate: CanonicalSourceCandidate | null = status === 'passed' && entity && identity ? {
-        id: crypto.randomUUID(), sourceEntityId: entity.id, rawRecordId, rawRevisionId, schemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION,
-        canonicalIdentity: identity, companyName: companyName as string, roleTitle: roleTitle as string,
-        employmentType: (valueOf(winners.get('employmentType')) ?? 'unknown') as CanonicalSourceCandidate['employmentType'],
-        seniority: (valueOf(winners.get('seniority')) ?? 'unknown') as CanonicalSourceCandidate['seniority'],
-        workMode: (valueOf(winners.get('workMode')) ?? 'unclear') as CanonicalSourceCandidate['workMode'],
-        location: (valueOf(winners.get('location')) ?? null) as CanonicalSourceCandidate['location'],
-        compensation: (valueOf(winners.get('compensation')) ?? null) as CanonicalSourceCandidate['compensation'],
-        postedAt: (valueOf(winners.get('postedAt')) ?? { value: null, precision: 'unknown', raw: null }) as unknown as CanonicalSourceCandidate['postedAt'],
-        destination, sourceUrl: (valueOf(winners.get('sourceUrl')) ?? null) as string | null,
-        providerJobId: (valueOf(winners.get('providerJobId')) ?? null) as string | null, observedAt: raw.revision.observedAt,
-      } : null
-      const gateBase = { policyVersion: NORMALIZATION_GATE_POLICY_VERSION, requiredFields, missingFields, conflictingFields, reason: infrastructureFailure ?? (rejectedRequiredFields.length ? `Required canonical fields rejected: ${rejectedRequiredFields.join(', ')}` : terminalRequiredFields.length ? `Required canonical fields need enrichment: ${terminalRequiredFields.map(({ field, status, reason }) => `${field} (${status}: ${reason})`).join(', ')}` : null), evaluatedAt }
-      let gate: NormalizationGateOutcome
-      if (status === 'passed' && candidate) {
-        gate = { ...gateBase, status: 'passed', candidate: { id: candidate.id, sourceEntityId: candidate.sourceEntityId, rawRecordId, rawRevisionId, schemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION } }
-      } else if (status === 'failed') {
-        gate = { ...gateBase, status: 'failed', candidate: null }
-      } else if (status === 'rejected') {
-        gate = { ...gateBase, status: 'rejected', candidate: null }
-      } else {
-        gate = { ...gateBase, status: 'needs_enrichment', candidate: null }
+      if (initialStatus === 'passed' && destination) {
+        const destinationOutcome = winners.get('destinationUrl')
+        if (!destinationOutcome) throw new Error('Passed normalization is missing destination provenance')
+        return options.repository.persistWithStrongDestination({
+          sourceEntity: raw.sourceEntity,
+          rawRevisionId,
+          destination,
+          destinationOutcome,
+          createdAt: evaluatedAt,
+          materialize: (reconciliation) => materialize(reconciliation.sourceEntity, reconciliation.conflict),
+        })
       }
-      return options.repository.persist({ runId, rawRecordId, rawRevisionId, inputHash, resolverSetHash: registry.resolverSetHash, canonicalSchemaVersion: CANONICAL_CANDIDATE_SCHEMA_VERSION, gatePolicyVersion: NORMALIZATION_GATE_POLICY_VERSION, status: status === 'failed' ? 'failed' : 'completed', attempts, candidate, gate, now: evaluatedAt, triggerId: trigger.kind === 'replay' ? trigger.replayId : undefined })
+      return options.repository.persist(materialize(entity))
     },
   }
 }
