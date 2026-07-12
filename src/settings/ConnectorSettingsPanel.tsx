@@ -39,21 +39,30 @@ import type {
   ConnectorSettingsRun,
 } from './connector-settings.types'
 import { ConnectorSettingsInstanceCard } from './ConnectorSettingsInstanceCard'
+import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import {
+  createInitialInstanceScheduleState,
+  useConnectorInstanceSchedules,
+} from './useConnectorInstanceSchedules'
 
 export function ConnectorSettingsPanel({
   connectorsApi,
+  connectorScheduleApi,
   displayMode = 'settings',
   onConnectorChanged = () => undefined,
   onOpenSourcingRuns,
   onRunSettled,
   profileApi,
+  workspaceId,
 }: {
   connectorsApi: ConnectorsPreloadApi
+  connectorScheduleApi: ConnectorScheduleUiApi
   displayMode?: 'main' | 'settings'
   onConnectorChanged?: () => void
   onOpenSourcingRuns?: (runId?: string) => void
   onRunSettled: () => void
   profileApi: ProfilePreloadApi
+  workspaceId: string | null
 }) {
   const [instances, setInstances] = useState<ConnectorSettingsInstance[]>([])
   const [drafts, setDrafts] = useState<Record<string, ConnectorSettingsDraft>>({})
@@ -70,6 +79,22 @@ export function ConnectorSettingsPanel({
   const [latestRuns, setLatestRuns] = useState<Record<string, ConnectorSettingsRun>>({})
   const [connectorActionError, setConnectorActionError] = useState<string | null>(null)
   const authValidationGenerations = useRef<Record<string, number>>({})
+  const {
+    capabilityLoadError,
+    discardConnectorSchedule,
+    isScheduleDraftDirty,
+    pauseConnectorSchedule,
+    resumeConnectorSchedule,
+    saveConnectorSchedule,
+    scheduleStates,
+    schedulingCapability,
+    updateScheduleDraft,
+  } = useConnectorInstanceSchedules({
+    connectorScheduleApi,
+    instances,
+    workspaceId,
+  })
+
 
   useEffect(() => {
     if (!runningInstanceId) {
@@ -803,7 +828,9 @@ export function ConnectorSettingsPanel({
           <>
             <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
             <div className="divide-y divide-border rounded-md border border-border">
-              {instances.map((instance) => (
+              {instances.map((instance) => {
+                const scheduleState = scheduleStates[instance.id] ?? createInitialInstanceScheduleState()
+                return (
                 <ConnectorSettingsInstanceCard
                   key={instance.id}
                   instance={instance}
@@ -816,6 +843,18 @@ export function ConnectorSettingsPanel({
                   isSavingSettings={savingInstanceIds.has(instance.id)}
                   authenticatingInstanceId={authenticatingInstanceId}
                   runningInstanceId={runningInstanceId}
+                  schedulingCapability={schedulingCapability}
+                  capabilityLoadError={capabilityLoadError}
+                  scheduleCanonical={scheduleState.canonical}
+                  scheduleDraft={scheduleState.draft}
+                  scheduleIsDirty={isScheduleDraftDirty(
+                    scheduleState.draft,
+                    scheduleState.canonical,
+                  )}
+                  scheduleIsLoading={scheduleState.isLoading && Boolean(schedulingCapability?.available)}
+                  scheduleIsSaving={scheduleState.isSaving}
+                  scheduleStatusMessage={scheduleState.statusMessage}
+                  scheduleStatusTone={scheduleState.statusTone}
                   onBeginCredentialEdit={beginCredentialEdit}
                   onCancelCredentialEdit={cancelCredentialEdit}
                   onUpdateCredentialDraft={updateCredentialDraft}
@@ -827,8 +866,14 @@ export function ConnectorSettingsPanel({
                   onRunNow={runConnectorNow}
                   isDraftDirty={isConnectorSettingsDraftDirty}
                   onOpenSourcingRuns={onOpenSourcingRuns}
+                  onScheduleDraftChange={updateScheduleDraft}
+                  onSaveSchedule={saveConnectorSchedule}
+                  onDiscardSchedule={discardConnectorSchedule}
+                  onPauseSchedule={pauseConnectorSchedule}
+                  onResumeSchedule={resumeConnectorSchedule}
                 />
-              ))}
+                )
+              })}
             </div>
           </>
         )}

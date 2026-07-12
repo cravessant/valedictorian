@@ -55,6 +55,7 @@ export function AppShell({
   connectorStatusError,
   connectorStatusResult,
   connectorsApi,
+  connectorScheduleApi,
   contentColumnClass,
   createSourcingFinding,
   decideSourcingFinding,
@@ -235,6 +236,7 @@ export function AppShell({
         {appView === APP_VIEWS.SETTINGS ? (
           <SettingsPage
             connectorsApi={connectorsApi}
+            connectorScheduleApi={connectorScheduleApi}
             contentColumnClass={contentColumnClass}
             policyApi={policyApi}
             profileApi={profileApi}
@@ -281,9 +283,11 @@ export function AppShell({
             operations={(
               <ConnectorSettingsPanel
                 connectorsApi={connectorsApi}
+                connectorScheduleApi={connectorScheduleApi}
                 displayMode="main"
                 onConnectorChanged={reloadConnectorRunOutcomes}
                 profileApi={profileApi}
+                workspaceId={workspace?.id ?? null}
                 onOpenSourcingRuns={(runId) => {
                   setSettingsOpen(false)
                   closeTransientSidebar()

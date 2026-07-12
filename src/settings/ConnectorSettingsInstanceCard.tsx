@@ -42,6 +42,9 @@ import type {
   ConnectorSettingsInstance,
   ConnectorSettingsRun,
 } from './connector-settings.types'
+import type { ConnectorSchedulingCapability, ConnectorScheduleSummary } from 'sparxie'
+import { ConnectorScheduleControls } from './ConnectorScheduleControls'
+import type { ConnectorScheduleDraft } from './connector-schedule.types'
 
 export function ConnectorSettingsInstanceCard({
   instance,
@@ -54,6 +57,15 @@ export function ConnectorSettingsInstanceCard({
   isSavingSettings,
   authenticatingInstanceId,
   runningInstanceId,
+  schedulingCapability,
+  capabilityLoadError,
+  scheduleCanonical,
+  scheduleDraft,
+  scheduleIsDirty,
+  scheduleIsLoading,
+  scheduleIsSaving,
+  scheduleStatusMessage,
+  scheduleStatusTone,
   onBeginCredentialEdit,
   onCancelCredentialEdit,
   onUpdateCredentialDraft,
@@ -65,6 +77,11 @@ export function ConnectorSettingsInstanceCard({
   onRunNow,
   isDraftDirty,
   onOpenSourcingRuns,
+  onScheduleDraftChange,
+  onSaveSchedule,
+  onDiscardSchedule,
+  onPauseSchedule,
+  onResumeSchedule,
 }: {
   instance: ConnectorSettingsInstance
   authState: ConnectorAuthUiState
@@ -76,6 +93,15 @@ export function ConnectorSettingsInstanceCard({
   isSavingSettings: boolean
   authenticatingInstanceId: string | null
   runningInstanceId: string | null
+  schedulingCapability: ConnectorSchedulingCapability | null
+  capabilityLoadError: string | null
+  scheduleCanonical: ConnectorScheduleSummary | null
+  scheduleDraft: ConnectorScheduleDraft
+  scheduleIsDirty: boolean
+  scheduleIsLoading: boolean
+  scheduleIsSaving: boolean
+  scheduleStatusMessage: string | null
+  scheduleStatusTone: 'idle' | 'success' | 'error'
   onBeginCredentialEdit: (instance: ConnectorSettingsInstance) => void
   onCancelCredentialEdit: (instanceId: string) => void
   onUpdateCredentialDraft: (instanceId: string, patch: Partial<ConnectorAuthCredentialDraft>) => void
@@ -87,6 +113,11 @@ export function ConnectorSettingsInstanceCard({
   onRunNow: (instance: ConnectorSettingsInstance) => void
   isDraftDirty: (instance: ConnectorSettingsInstance) => boolean
   onOpenSourcingRuns?: (runId?: string) => void
+  onScheduleDraftChange: (instanceId: string, patch: Partial<ConnectorScheduleDraft>) => void
+  onSaveSchedule: (instance: ConnectorSettingsInstance) => void
+  onDiscardSchedule: (instance: ConnectorSettingsInstance) => void
+  onPauseSchedule: (instance: ConnectorSettingsInstance) => void
+  onResumeSchedule: (instance: ConnectorSettingsInstance) => void
 }) {
   const authConfigured = isJobrightCredentialsConfigured(instance)
   const authReady = isConnectorAuthReady(authState)
@@ -215,6 +246,25 @@ export function ConnectorSettingsInstanceCard({
                         {authMessage}
                       </p>
                     ) : null}
+
+                    <ConnectorScheduleControls
+                      capability={schedulingCapability}
+                      capabilityLoadError={capabilityLoadError}
+                      canonical={scheduleCanonical}
+                      connectorDisplayName={instance.displayName}
+                      connectorEnabled={instance.enabled}
+                      draft={scheduleDraft}
+                      isDirty={scheduleIsDirty}
+                      isLoading={scheduleIsLoading}
+                      isSaving={scheduleIsSaving}
+                      statusMessage={scheduleStatusMessage}
+                      statusTone={scheduleStatusTone}
+                      onDiscard={() => onDiscardSchedule(instance)}
+                      onDraftChange={(patch) => onScheduleDraftChange(instance.id, patch)}
+                      onPause={() => onPauseSchedule(instance)}
+                      onResume={() => onResumeSchedule(instance)}
+                      onSave={() => onSaveSchedule(instance)}
+                    />
 
                     {isJobrightInstance ? (
                     <>

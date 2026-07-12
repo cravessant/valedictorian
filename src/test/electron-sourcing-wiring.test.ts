@@ -106,6 +106,27 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("valedictorianWindowChrome: import('../src/ipc/window-chrome.preload').WindowChromePreloadApi")
   })
 
+  it('keeps connector schedule UI free of client timers and schedule domain dispatch/history calls', () => {
+    const panelSource = fs.readFileSync(path.resolve('src/settings/ConnectorSettingsPanel.tsx'), 'utf8')
+    const controlsSource = fs.readFileSync(path.resolve('src/settings/ConnectorScheduleControls.tsx'), 'utf8')
+    const hookSource = fs.readFileSync(path.resolve('src/settings/useConnectorInstanceSchedules.ts'), 'utf8')
+    const loadersSource = fs.readFileSync(path.resolve('src/app/loaders.ts'), 'utf8')
+    const connectorsIpc = fs.readFileSync(path.resolve('src/ipc/connectors.ipc.ts'), 'utf8')
+    const connectorsPreload = fs.readFileSync(path.resolve('src/ipc/connectors.preload.ts'), 'utf8')
+
+    for (const source of [panelSource, controlsSource, hookSource, loadersSource]) {
+      expect(source).not.toContain('dispatchDue')
+      expect(source).not.toContain('listAudit')
+      expect(source).not.toContain('listOccurrences')
+      expect(source).not.toMatch(/setInterval\s*\(/)
+    }
+
+    expect(connectorsIpc).not.toContain('schedule')
+    expect(connectorsPreload).not.toContain('schedule')
+    expect(loadersSource).toContain('connectors.schedules')
+    expect(loadersSource).toContain('capabilities.get')
+  })
+
   it('passes the selected local backend and active workspace id to the renderer', () => {
     const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
@@ -113,8 +134,29 @@ describe('Electron sourcing wiring', () => {
     expect(mainSource).toContain('createRendererHttpArguments()')
     expect(mainSource).toContain('--valedictorian-api-url=')
     expect(mainSource).toContain('--valedictorian-workspace-id=')
-    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('valedictorianHttp'")
+    expect(mainSource).toContain('--valedictorian-http-transport=privileged')
+    expect(mainSource).toContain('registerValedictorianHttpIpc')
+    expect(mainSource).toContain('createBoundValedictorianHttpTransport')
+    expect(mainSource).toContain('workspaceId: workspace.id')
+    expect(mainSource).not.toContain('--valedictorian-api-token=')
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld(")
+    expect(preloadSource).toContain("'valedictorianHttp'")
     expect(preloadSource).toContain('readRendererHttpConfig(process.argv)')
+    expect(preloadSource).toContain('createValedictorianHttpPreloadApi')
+
+    const transportSource = fs.readFileSync(
+      path.resolve('src/ipc/valedictorian-http.transport.ts'),
+      'utf8',
+    )
+    expect(transportSource).toContain("redirect: 'error'")
+    expect(transportSource).toContain('VALEDICTORIAN_HTTP_REQUEST_HEADER_ALLOWLIST')
+    expect(transportSource).toContain('VALEDICTORIAN_HTTP_RESPONSE_HEADER_ALLOWLIST')
+    expect(transportSource).toContain('/v1/capabilities')
+    expect(transportSource).toContain("only allows GET for capabilities")
+    expect(transportSource).toContain('assertAllowedConnectorScheduleRoute')
+    expect(transportSource).toContain('schedule subroute is not allowed')
+    expect(transportSource).toContain('utf8ByteLength')
+    expect(transportSource).not.toContain('set-cookie')
   })
 
   it('uses launch-state workspace startup instead of opening Finder before the window exists', () => {

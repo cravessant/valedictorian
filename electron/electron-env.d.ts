@@ -35,6 +35,7 @@ interface Window {
   valedictorianHttp?: {
     apiBaseUrl: string
     workspaceId: string
+    request?: typeof fetch
   }
   workspace: import('../src/ipc/workspace.preload').WorkspacePreloadApi
 }

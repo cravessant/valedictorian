@@ -84,6 +84,7 @@ import {
   defaultConnectorStatusReconnector,
   defaultConnectorStatusSkipper,
   defaultConnectorsApi,
+  defaultConnectorScheduleApi,
   defaultScoreRecorder,
   defaultSettingsApi,
   defaultUpdatesApi,
@@ -113,6 +114,7 @@ import {
   type SettingsPanelId
 } from './app/types'
 import type { WorkspaceSummary } from './workspace/workspace.initializer'
+import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
 
 const narrowSidebarMediaQuery = '(max-width: 767px)'
 const DATA_AUTO_REFRESH_INTERVAL_MS = 15_000
@@ -145,6 +147,7 @@ interface AppProps {
     input: LocalConnectorSkipActionInput
   ) => Promise<LocalConnectorSkipActionResult>
   connectorsApi?: ConnectorsPreloadApi
+  connectorScheduleApi?: ConnectorScheduleUiApi
   scoreRecorder?: (input: ScoreInput) => Promise<ScoreRecord>
   sourcingLoader?: (input: SourcingFindingsListInput) => Promise<SourcingFindingsListResult>
   promoteSourcingFinding?: (input: PromoteSourcingFindingInput) => Promise<SourcingFinding>
@@ -176,6 +179,7 @@ function App({
   connectorStatusReconnector = defaultConnectorStatusReconnector,
   connectorStatusSkipper = defaultConnectorStatusSkipper,
   connectorsApi = defaultConnectorsApi,
+  connectorScheduleApi = defaultConnectorScheduleApi,
   scoreRecorder = defaultScoreRecorder,
   sourcingLoader = defaultSourcingLoader,
   promoteSourcingFinding = defaultPromoteSourcingFinding,
@@ -922,6 +926,7 @@ function App({
       connectorStatusError={connectorStatusError}
       connectorStatusResult={connectorStatusResult}
       connectorsApi={connectorsApi}
+      connectorScheduleApi={connectorScheduleApi}
       contentColumnClass={contentColumnClass}
       createSourcingFinding={createSourcingFinding}
       decideSourcingFinding={decideSourcingFinding}

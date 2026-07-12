@@ -5,7 +5,6 @@ import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import type { ActionQueuePreloadApi } from '../ipc/action-queue.preload'
 import type { ScoresPreloadApi } from '../ipc/scores.preload'
 import type { SettingsPreloadApi } from '../ipc/settings.preload'
-import type { SourcingPreloadApi } from '../ipc/sourcing.preload'
 import type { UpdatesPreloadApi } from '../ipc/updates.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { ProfileSensitiveDetails } from '../modules/profile/profile.repository'
@@ -34,22 +33,28 @@ import type {
   UpdateApplicationLinkInput,
   UpdateApplicationWorkflowInput,
 } from '../modules/applications/application.types'
+import type {
+  ActionQueueListResult,
+  ActionQueueListQuery,
+  CreateSourcingFindingInput,
+  PromoteSourcingFindingInput,
+  ScoreInput,
+  SetSourcingFindingDecisionInput,
+  SourcingFinding,
+  SourcingFindingsListInput,
+  SourcingFindingsListResult,
+  UpdateSourcingFindingInput,
+  ValedictorianClient,
+  ValedictorianWorkspaceClient,
+} from 'sparxie'
 import {
   createHttpValedictorianClient,
   defaultUserProfile,
   defaultPolicyConfig,
-  type PromoteSourcingFindingInput,
-  type CreateSourcingFindingInput,
-  type ActionQueueListResult,
-  type ActionQueueListQuery,
-  type ScoreInput,
-  type SetSourcingFindingDecisionInput,
-  type SourcingFinding,
-  type SourcingFindingsListInput,
-  type SourcingFindingsListResult,
-  type UpdateSourcingFindingInput,
+  unavailableConnectorSchedulingCapability,
 } from 'sparxie'
 import { defaultAppSettings, normalizeAppSettings } from '../settings/app-settings'
+import type { ConnectorScheduleUiApi } from '../settings/connector-schedule.types'
 import { PAGE_LIMIT } from './types'
 
 export const emptyApplicationResult: ApplicationListResult = {
@@ -352,32 +357,32 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
 
-    return connectorsWindow.connectors?.list() ?? httpClient?.connectors.list() ?? Promise.resolve({ items: [] })
+    return httpClient?.connectors.list() ?? connectorsWindow.connectors?.list() ?? Promise.resolve({ items: [] })
   },
   create(input) {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
 
-    return connectorsWindow.connectors?.create(input) ?? httpClient?.connectors.create(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+    return httpClient?.connectors.create(input) ?? connectorsWindow.connectors?.create(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
   },
   update(input) {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
 
-    return connectorsWindow.connectors?.update(input) ?? httpClient?.connectors.update(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+    return httpClient?.connectors.update(input) ?? connectorsWindow.connectors?.update(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
   },
   inspect(connectorInstanceId) {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
 
-    return connectorsWindow.connectors?.inspect(connectorInstanceId) ?? httpClient?.connectors.inspect(connectorInstanceId) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+    return httpClient?.connectors.inspect(connectorInstanceId) ?? connectorsWindow.connectors?.inspect(connectorInstanceId) ?? Promise.reject(new Error('Connectors API is unavailable.'))
   },
   runs: {
     list(input) {
       const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
       const httpClient = getRendererHttpWorkspaceClient()
 
-      return connectorsWindow.connectors?.runs.list(input) ?? httpClient?.connectors.runs.list(input) ?? Promise.resolve({
+      return httpClient?.connectors.runs.list(input) ?? connectorsWindow.connectors?.runs.list(input) ?? Promise.resolve({
         hasMore: false,
         items: [],
         limit: input.limit ?? 50,
@@ -389,13 +394,46 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
       const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
       const httpClient = getRendererHttpWorkspaceClient()
 
-      return connectorsWindow.connectors?.runs.trigger(input) ?? httpClient?.connectors.runs.trigger(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+      return httpClient?.connectors.runs.trigger(input) ?? connectorsWindow.connectors?.runs.trigger(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
     },
   },
   status: {
     list: defaultConnectorStatusLoader,
     reconnect: defaultConnectorStatusReconnector,
     skip: defaultConnectorStatusSkipper,
+  },
+}
+
+export const defaultConnectorScheduleApi: ConnectorScheduleUiApi = {
+  async getCapabilities() {
+    const rootClient = getRendererHttpRootClient()
+
+    if (!rootClient) {
+      return { connectorScheduling: unavailableConnectorSchedulingCapability }
+    }
+
+    const capabilities = await rootClient.capabilities.get()
+    return { connectorScheduling: capabilities.connectorScheduling }
+  },
+  async getSchedule(connectorInstanceId) {
+    const workspaceClient = requireRendererHttpWorkspaceClient()
+    return workspaceClient.connectors.schedules.get(connectorInstanceId)
+  },
+  async upsertSchedule(input) {
+    const workspaceClient = requireRendererHttpWorkspaceClient()
+    return workspaceClient.connectors.schedules.upsert(input)
+  },
+  async pauseSchedule(input) {
+    const workspaceClient = requireRendererHttpWorkspaceClient()
+    return workspaceClient.connectors.schedules.pause(input)
+  },
+  async resumeSchedule(input) {
+    const workspaceClient = requireRendererHttpWorkspaceClient()
+    return workspaceClient.connectors.schedules.resume(input)
+  },
+  async deleteSchedule(input) {
+    const workspaceClient = requireRendererHttpWorkspaceClient()
+    return workspaceClient.connectors.schedules.delete(input)
   },
 }
 
@@ -473,74 +511,46 @@ interface RendererHttpConfig {
   apiBaseUrl: string
   token?: string
   workspaceId: string
+  request?: typeof fetch
 }
 
-type RendererHttpWorkspaceClient = {
-  applications: ApplicationsPreloadApi
-  connectors: Pick<ConnectorsPreloadApi, 'create' | 'inspect' | 'list' | 'runs' | 'update'>
-  policy: PolicyPreloadApi
-  profile: ProfilePreloadApi
-  actionQueue: ActionQueuePreloadApi
-  scores: ScoresPreloadApi
-  secrets: {
-    delete(key: string): Promise<void>
-    list(): Promise<{ items: Awaited<ReturnType<ProfilePreloadApi['secrets']['list']>> }>
-    upsert(input: Parameters<ProfilePreloadApi['secrets']['upsert']>[0]): ReturnType<
-      ProfilePreloadApi['secrets']['upsert']
-    >
-  }
-  sourcing: SourcingPreloadApi
+function getRendererHttpConfig(): RendererHttpConfig | null {
+  return (window as Window & { valedictorianHttp?: RendererHttpConfig }).valedictorianHttp ?? null
 }
 
-function getRendererHttpWorkspaceClient(): RendererHttpWorkspaceClient | null {
-  const config = (window as Window & { valedictorianHttp?: RendererHttpConfig }).valedictorianHttp
+function getRendererHttpRootClient(): ValedictorianClient | null {
+  const config = getRendererHttpConfig()
 
   if (!config) {
     return null
   }
 
-  const client = createHttpValedictorianClient({
-    baseUrl: config.apiBaseUrl,
-    token: config.token,
-  }) as unknown as {
-    forWorkspace?: (workspaceId: string) => RendererHttpWorkspaceClient
-  }
-
-  if (client.forWorkspace) {
-    return client.forWorkspace(config.workspaceId)
-  }
-
   return createHttpValedictorianClient({
     baseUrl: config.apiBaseUrl,
-    fetch: createWorkspaceFetch(config.workspaceId),
+    fetch: config.request ?? globalThis.fetch.bind(globalThis),
     token: config.token,
-  }) as unknown as RendererHttpWorkspaceClient
+  })
 }
 
-function createWorkspaceFetch(workspaceId: string): typeof fetch {
-  return (async (input, init) => {
-    const url = new URL(readFetchUrl(input))
+function getRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient | null {
+  const config = getRendererHttpConfig()
+  const rootClient = getRendererHttpRootClient()
 
-    if (url.pathname.startsWith('/v1/') && !url.pathname.startsWith('/v1/workspaces/')) {
-      url.pathname = `/v1/workspaces/${encodeURIComponent(workspaceId)}${url.pathname.slice(
-        '/v1'.length,
-      )}`
-    }
+  if (!config || !rootClient) {
+    return null
+  }
 
-    return fetch(url.toString(), init)
-  }) as typeof fetch
+  return rootClient.forWorkspace(config.workspaceId)
 }
 
-function readFetchUrl(input: Parameters<typeof fetch>[0]) {
-  if (typeof input === 'string') {
-    return input
+function requireRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient {
+  const workspaceClient = getRendererHttpWorkspaceClient()
+
+  if (!workspaceClient) {
+    throw new Error('Workspace HTTP client is unavailable.')
   }
 
-  if (input instanceof URL) {
-    return input.toString()
-  }
-
-  return input.url
+  return workspaceClient
 }
 
 function getWindowSettingsApi() {

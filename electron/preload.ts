@@ -8,13 +8,20 @@ import { createScoresPreloadApi } from '../src/ipc/scores.preload'
 import { createSettingsPreloadApi } from '../src/ipc/settings.preload'
 import { createSourcingPreloadApi } from '../src/ipc/sourcing.preload'
 import { createUpdatesPreloadApi } from '../src/ipc/updates.preload'
+import {
+  createValedictorianHttpPreloadApi,
+  readRendererHttpConfig,
+} from '../src/ipc/valedictorian-http.preload'
 import { createWindowChromePreloadApi } from '../src/ipc/window-chrome.preload'
 import { createWorkspacePreloadApi } from '../src/ipc/workspace.preload'
 
 const rendererHttpConfig = readRendererHttpConfig(process.argv)
 
 if (rendererHttpConfig) {
-  contextBridge.exposeInMainWorld('valedictorianHttp', rendererHttpConfig)
+  contextBridge.exposeInMainWorld(
+    'valedictorianHttp',
+    createValedictorianHttpPreloadApi(ipcRenderer, rendererHttpConfig),
+  )
 }
 
 // --------- Expose some API to the Renderer process ---------
@@ -33,21 +40,3 @@ contextBridge.exposeInMainWorld('workspace', createWorkspacePreloadApi(ipcRender
 ipcRenderer.on('valedictorian:open-settings', () => {
   window.dispatchEvent(new Event('valedictorian:open-settings'))
 })
-
-function readRendererHttpConfig(argv: string[]) {
-  const apiBaseUrl = readArgumentValue(argv, '--valedictorian-api-url=')
-  const workspaceId = readArgumentValue(argv, '--valedictorian-workspace-id=')
-
-  if (!apiBaseUrl || !workspaceId) {
-    return null
-  }
-
-  return {
-    apiBaseUrl,
-    workspaceId,
-  }
-}
-
-function readArgumentValue(argv: string[], prefix: string) {
-  return argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length)
-}

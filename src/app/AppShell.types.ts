@@ -27,6 +27,7 @@ import type {
   ConnectorStatusView,
 } from '../modules/connectors/connector.status'
 import type { AppSettings, AppSettingsPatch } from '../settings/app-settings'
+import type { ConnectorScheduleUiApi } from '../settings/connector-schedule.types'
 import type { WorkspaceSummary } from '../workspace/workspace.initializer'
 import type {
   ActionQueueBucket,
@@ -70,6 +71,7 @@ export interface AppShellProps {
   connectorStatusError: string | null
   connectorStatusResult: ConnectorStatusListResult
   connectorsApi: ConnectorsPreloadApi
+  connectorScheduleApi: ConnectorScheduleUiApi
   contentColumnClass: string
   createSourcingFinding: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
   decideSourcingFinding: (input: SetSourcingFindingDecisionInput) => Promise<SourcingFinding>

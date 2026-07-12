@@ -14,10 +14,12 @@ import { SettingsTextInput } from './SettingsTextInput'
 import type { WorkspaceSummary } from '../workspace/workspace.initializer'
 import { ConnectorRunsPanel } from './ConnectorRunsPanel'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+import type { ConnectorScheduleUiApi } from './connector-schedule.types'
 import { PolicySettingsPanel } from './PolicySettingsPanel'
 
 interface SettingsPageProps {
   connectorsApi: ConnectorsPreloadApi
+  connectorScheduleApi: ConnectorScheduleUiApi
   contentColumnClass: string
   policyApi: PolicyPreloadApi
   profileApi: ProfilePreloadApi
@@ -198,6 +200,7 @@ export function SettingsSidebar({
 
 export function SettingsPage({
   connectorsApi,
+  connectorScheduleApi,
   contentColumnClass,
   policyApi,
   profileApi,
@@ -242,9 +245,11 @@ export function SettingsPage({
           {selectedPanel === SETTINGS_PANELS.CONNECTORS ? (
             <ConnectorSettingsPanel
               connectorsApi={connectorsApi}
+              connectorScheduleApi={connectorScheduleApi}
               onOpenSourcingRuns={onOpenSourcingRuns}
               onRunSettled={onConnectorRunSettled}
               profileApi={profileApi}
+              workspaceId={workspace?.id ?? null}
             />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.AGENT_ACCESS ? (

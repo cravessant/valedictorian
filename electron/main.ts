@@ -15,6 +15,10 @@ import { registerScoresIpc } from '../src/ipc/scores.ipc'
 import { registerSettingsIpc } from '../src/ipc/settings.ipc'
 import { registerSourcingIpc } from '../src/ipc/sourcing.ipc'
 import { registerUpdatesIpc } from '../src/ipc/updates.ipc'
+import {
+  createBoundValedictorianHttpTransport,
+  registerValedictorianHttpIpc,
+} from '../src/ipc/valedictorian-http.ipc'
 import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
 import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '../src/server/local-workspaces'
 import { createSqliteProfileRepository } from '../src/modules/profile/profile.repository'
@@ -78,6 +82,11 @@ if (process.platform === 'win32') {
 let mainWindow: BrowserWindow | null = null
 let workspaceLauncherWindow: BrowserWindow | null = null
 let runtime: ValedictorianRuntime | null = null
+let rendererHttpBinding: {
+  apiUrl: string
+  apiToken?: string
+  usePrivilegedTransport: boolean
+} | null = null
 let currentWorkspace: WorkspaceSummary | null = null
 let workspaceManager: LocalWorkspaceManager | null = null
 let activeWorkspaceService: WorkspaceService<BrowserWindow> | null = null
@@ -134,6 +143,7 @@ const runtimeIpcChannels = [
   'sourcing:findings:update',
   'sourcing:findings:decide',
   'sourcing:findings:promote',
+  'valedictorian-http:request',
 ]
 const updateService = createElectronUpdateService(app, {
   get autoDownload() {
@@ -218,6 +228,11 @@ async function registerRuntimeServices(
     secretCodec,
     workspaceManager: workspaceManager ?? undefined,
   })
+  rendererHttpBinding = {
+    apiUrl: runtime.server?.url ?? config.apiUrl,
+    ...(config.apiToken === undefined ? {} : { apiToken: config.apiToken }),
+    usePrivilegedTransport: config.mode === 'remote' || Boolean(config.apiToken),
+  }
   const profileSqlite = createFileDatabase(config.sqlitePath)
   migrateDatabase(profileSqlite)
   const profileRepository = createSqliteProfileRepository(
@@ -233,6 +248,16 @@ async function registerRuntimeServices(
   registerScoresIpc(runtime.client, ipcMain)
   registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain)
+  registerValedictorianHttpIpc(
+    rendererHttpBinding.usePrivilegedTransport
+      ? createBoundValedictorianHttpTransport({
+        apiBaseUrl: rendererHttpBinding.apiUrl,
+        apiToken: rendererHttpBinding.apiToken,
+        workspaceId: workspace.id,
+      })
+      : null,
+    ipcMain,
+  )
 }
 
 function createMainWindow() {
@@ -481,14 +506,20 @@ function loadRenderer(window: BrowserWindow) {
 }
 
 function createRendererHttpArguments() {
-  if (!runtime?.server || !currentWorkspace) {
+  if (!rendererHttpBinding || !currentWorkspace) {
     return []
   }
 
-  return [
-    `--valedictorian-api-url=${runtime.server.url}`,
+  const argumentsForRenderer = [
+    `--valedictorian-api-url=${rendererHttpBinding.apiUrl}`,
     `--valedictorian-workspace-id=${currentWorkspace.id}`,
   ]
+
+  if (rendererHttpBinding.usePrivilegedTransport) {
+    argumentsForRenderer.push('--valedictorian-http-transport=privileged')
+  }
+
+  return argumentsForRenderer
 }
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -613,6 +644,7 @@ async function pollForUpdates() {
 async function closeRuntime() {
   await runtime?.close()
   runtime = null
+  rendererHttpBinding = null
   runtimeServicesRegistered = false
 }
 
