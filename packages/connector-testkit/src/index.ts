@@ -28,6 +28,11 @@ import type {
   RetryAdvice,
 } from "@sparxie/valedictorian-connectors-core"
 import { jobObservationSchemaVersion } from "@sparxie/valedictorian-connectors-core"
+import { connectorRunSummarySchema } from "sparxie"
+
+export function assertValidConnectorRunSummary(input: unknown): void {
+  connectorRunSummarySchema.parse(input)
+}
 
 export type FixtureConnectorOptions = {
   observedAt: string
@@ -88,7 +93,6 @@ export function createFixtureConnector(
       concurrency: 1,
       minDelayMs: 0,
       maxDelayMs: 0,
-      maxRequestsPerRun: 1,
       maxBackfillDays: 7,
     },
   }
@@ -150,6 +154,17 @@ export function createFixtureConnector(
           observations: 1,
         },
         warnings: [],
+        status: "completed",
+        operationOutcome: null,
+        synchronization: {
+          newestFrontier: { state: "caught_up" },
+          historicalBackfill: {
+            state: "caught_up",
+            boundary: { earliestDate: input.coverage.start.slice(0, 10) },
+          },
+          pendingResolutionCount: 0,
+          outcome: { kind: "caught_up" },
+        },
       }
     },
   }
@@ -321,6 +336,7 @@ export function createInMemoryConnectorHost(
             connectorInstanceId: request.connectorInstanceId,
             workspaceId: request.workspaceId,
             mode: request.mode,
+            executionScopeId: `connector.${request.connectorInstanceId}`,
             coverage: request.coverage,
             config,
             filters,
@@ -500,7 +516,40 @@ function createConnectorRuntime(
   const runtime: ConnectorRuntime = {
     auth: {
       async resolve(input) {
-        return resolveAuthGrant(input, authReferences, authRequirements, options)
+        const grant = resolveAuthGrant(
+          input,
+          authReferences,
+          authRequirements,
+          options,
+        )
+        return grant.status === "ready" &&
+          grant.mode === "username_password" &&
+          rawContext
+          ? {
+              ...grant,
+              sessionId: `connector.${rawContext.connectorInstanceId}`,
+            }
+          : grant
+      },
+      async refresh(input) {
+        const grant = resolveAuthGrant(
+          input,
+          authReferences,
+          authRequirements,
+          options,
+        )
+        return grant.status === "ready" &&
+          grant.mode === "username_password" &&
+          rawContext
+          ? {
+              ...grant,
+              sessionId: `connector.${rawContext.connectorInstanceId}`,
+            }
+          : {
+              ...grant,
+              status: "action_required",
+              reason: grant.reason ?? "auth_refresh_unavailable",
+            }
       },
     },
   }
@@ -509,8 +558,10 @@ function createConnectorRuntime(
     runtime.rawSourceIntake = {
       async capture(input: ConnectorRawSourceCaptureInput) {
         const receivedAt = new Date().toISOString()
+        const intakeItemId = `${rawContext.connectorRunId}:item:${rawContext.rawCaptures.length + 1}`
         const boundInput: RawSourceRecordInput = {
           ...cloneJsonLike(input),
+          intakeItemId,
           adapter: {
             id: rawContext.connector.definition.id,
             kind: "connector",
@@ -519,6 +570,7 @@ function createConnectorRuntime(
           capture: {
             connectorInstanceId: rawContext.connectorInstanceId,
             connectorRunId: rawContext.connectorRunId,
+            executionScopeId: `connector.${rawContext.connectorInstanceId}`,
           },
         }
         await options.onRawCapture?.(cloneJsonLike(boundInput))
@@ -559,6 +611,7 @@ function createConnectorRuntime(
         }
         const occurrenceSequence = rawContext.nextRawOccurrenceSequence()
         const receipt: RawSourceIntakeReceipt = {
+          intakeItemId,
           rawRecordId,
           sourceEntityId: null,
           revision,
@@ -566,7 +619,7 @@ function createConnectorRuntime(
             id: `raw_occurrence_${occurrenceSequence}`,
             rawRecordId,
             rawRevisionId: revision.id,
-            capture: boundInput.capture,
+            capture: boundInput.capture ?? null,
             observedAt: input.observedAt,
             receivedAt,
           },

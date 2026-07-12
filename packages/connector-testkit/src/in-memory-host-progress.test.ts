@@ -19,7 +19,7 @@ describe("in-memory connector host — progress", () => {
       },
       async refresh(input): Promise<ConnectorRefreshResult> {
         return {
-          status: "partial_success",
+          status: "completed",
           observations: [],
           nextCheckpoint: {
             checkpoint: {
@@ -32,6 +32,13 @@ describe("in-memory connector host — progress", () => {
             observations: 0,
           },
           warnings: [],
+          operationOutcome: null,
+          synchronization: {
+            newestFrontier: { state: "advancing" },
+            historicalBackfill: { state: "advancing", boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
+            pendingResolutionCount: 1,
+            outcome: { kind: "yielded", reason: "invocation_budget" },
+          },
           retryHints: {
             state: "scheduled",
             reason: "server_failure",
@@ -68,7 +75,7 @@ describe("in-memory connector host — progress", () => {
     })
 
     expect(run).toMatchObject({
-      status: "partial_success",
+      status: "completed",
       retryHints: {
         state: "scheduled",
         reason: "server_failure",
@@ -89,7 +96,6 @@ describe("in-memory connector host — progress", () => {
           discovered: 0,
           eligible: 0,
           filtered: 0,
-          remainingTarget: 1,
           resolvedEmployerOrAts: 0,
           resolvedThirdParty: 0,
           skipped: 0,

@@ -181,7 +181,9 @@ describe("in-memory connector host — core", () => {
           capture: {
             connectorInstanceId: "instance_raw_fixture",
             connectorRunId: "run_1",
+            executionScopeId: "connector.instance_raw_fixture",
           },
+          intakeItemId: "run_1:item:1",
           observedAt,
           providerRecordId: "provider-job-1",
           providerSchema: "fixture-provider@1",
@@ -269,6 +271,7 @@ describe("in-memory connector host — core", () => {
             capabilities: ["pure"],
             costClass: "none",
             precedence: 100,
+            scopeRequirement: "none",
           },
           async resolve() {
             return [

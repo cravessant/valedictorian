@@ -1,11 +1,16 @@
 import {
   retryAdviceSchema,
   type FieldResolutionOutcome,
+  type ConnectorHistoricalBackfillState,
+  type ConnectorNewestFrontierState,
+  type ConnectorSynchronizationOutcome,
   type RawSourceIntakeReceipt,
   type RawSourceRecordInput,
   type RawSourceRevisionReceipt,
   type ResolverDeclaration,
   type RetryAdvice,
+  type SourceExecutionScopeId,
+  type SourceOperationOutcome,
   type TransientRetryReason,
 } from "sparxie"
 
@@ -24,10 +29,15 @@ export type {
   ResolutionEvidence,
   ResolverDeclaration,
   RetryAdvice,
+  SourceExecutionScopeId,
+  SourceOperationOutcome,
   SourcingDestinationClass,
   TransientRetryReason,
+  ConnectorHistoricalBackfillState,
+  ConnectorNewestFrontierState,
+  ConnectorSynchronizationOutcome,
 } from "sparxie"
-export { retryAdviceSchema } from "sparxie"
+export { retryAdviceSchema, sourceExecutionScopeIdSchema } from "sparxie"
 
 export type RetryPolicyInput = {
   attempt: number
@@ -241,6 +251,9 @@ export type ConnectorAuthResolveInput = {
 
 export type ConnectorAuthRuntime = {
   resolve(input: ConnectorAuthResolveInput): Promise<ConnectorAuthGrant>
+  refresh(input: ConnectorAuthResolveInput & {
+    executionScopeId: SourceExecutionScopeId
+  }): Promise<ConnectorAuthGrant>
 }
 
 export type ConnectorDelayInput = {
@@ -280,7 +293,6 @@ export type ConnectorProgressCounts = {
   eligible?: number
   /** @deprecated Connector-owned fit filtering is not a sourcing decision. */
   filtered?: number
-  remainingTarget: number
   resolvedEmployerOrAts: number
   resolvedThirdParty: number
   skipped: number
@@ -386,7 +398,6 @@ export type ConnectorPolitenessDefaults = {
   concurrency?: number
   minDelayMs?: number
   maxDelayMs?: number
-  maxRequestsPerRun?: number
   maxBackfillDays?: number
 }
 
@@ -407,6 +418,7 @@ export type ConnectorRefreshInput = {
   filters?: unknown
   budget?: unknown
   observations?: JobObservation[]
+  executionScopeId: SourceExecutionScopeId
 }
 
 export type ConnectorRuntime = {
@@ -485,7 +497,6 @@ export type ConnectorRefreshStats = {
   providerInvalid?: number
   sourceDuplicates?: number
   pendingResolution?: number
-  remainingTarget?: number
   resolved?: number
   resolvedEmployerOrAts?: number
   resolvedThirdParty?: number
@@ -500,7 +511,11 @@ export type ConnectorRefreshWarning = {
   message: string
 }
 
-export type ConnectorRefreshStatus = "completed" | "partial_success"
+export type ConnectorRefreshStatus =
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "skipped"
 
 export type ConnectorRefreshResult = {
   observations: JobObservation[]
@@ -508,8 +523,15 @@ export type ConnectorRefreshResult = {
   coverage: ConnectorCoverageWindow
   stats: ConnectorRefreshStats
   warnings: ConnectorRefreshWarning[]
-  status?: ConnectorRefreshStatus
+  status: ConnectorRefreshStatus
   retryHints?: RetryAdvice | null
+  operationOutcome: SourceOperationOutcome | null
+  synchronization: {
+    newestFrontier: ConnectorNewestFrontierState
+    historicalBackfill: ConnectorHistoricalBackfillState
+    pendingResolutionCount: number
+    outcome: ConnectorSynchronizationOutcome
+  }
 }
 
 export type ConnectorAuthValidationInput = {

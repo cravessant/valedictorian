@@ -174,6 +174,7 @@ describe("in-memory connector host — auth", () => {
         id: "jobright",
         mode: "username_password",
         secretKey: "jobright_credentials",
+        sessionId: "connector.instance_username_password",
         status: "ready",
         value: JSON.stringify({
           username: "user@example.test",

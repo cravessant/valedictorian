@@ -33,6 +33,14 @@ describe("in-memory connector host — config", () => {
             observations: 0,
           },
           warnings: [],
+          status: "completed",
+          operationOutcome: null,
+          synchronization: {
+            newestFrontier: { state: "caught_up" },
+            historicalBackfill: { state: "caught_up", boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
+            pendingResolutionCount: 0,
+            outcome: { kind: "caught_up" },
+          },
         }
       },
     }
@@ -177,6 +185,14 @@ describe("in-memory connector host — config", () => {
             observations: 0,
           },
           warnings: [],
+          status: "completed",
+          operationOutcome: null,
+          synchronization: {
+            newestFrontier: { state: "caught_up" },
+            historicalBackfill: { state: "caught_up", boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
+            pendingResolutionCount: 0,
+            outcome: { kind: "caught_up" },
+          },
         }
       },
     }
