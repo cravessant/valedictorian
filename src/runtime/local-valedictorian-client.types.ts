@@ -1,7 +1,8 @@
 import type {
   ConnectorObservation,
+  ConnectorRunSummary,
+  ConnectorSchedulingCapability,
   CreateConnectorInstanceInput,
-  RetryAdvice,
   UpdateConnectorInstanceInput,
   ValedictorianWorkspaceClient,
 } from 'sparxie'
@@ -13,7 +14,7 @@ import type {
   AppConnectorRuntimePorts,
 } from '../modules/connectors/connector.runner'
 import type { ConnectorAuthMode } from '../modules/connectors/connector.repository'
-import type { ConnectorStatusListResult, ConnectorStatusView, ConnectorStatusWarningView } from '../modules/connectors/connector.status'
+import type { ConnectorStatusListResult, ConnectorStatusView } from '../modules/connectors/connector.status'
 import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
 import type { NormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
 
@@ -21,6 +22,8 @@ export interface LocalValedictorianClientOptions {
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   connectorRegistry?: LocalConnectorRegistry
   connectorRuntime?: AppConnectorRuntimePorts
+  /** Explicit scheduling capability; shared with server capability reporting when injected. */
+  connectorScheduling?: ConnectorSchedulingCapability
   now?: () => Date
   normalizationRegistry?: NormalizationResolverRegistry
   referenceTrackerPath?: string
@@ -65,24 +68,7 @@ export interface LocalConnectorStatusSummary extends ConnectorStatusView {
   }>
 }
 
-export interface LocalConnectorRunSummary {
-  id: string
-  connectorInstanceId: string
-  mode: string
-  status: string
-  coverage: {
-    start: string | null
-    end: string | null
-  }
-  filterSignature: string
-  observationCount: number
-  warningCount: number
-  stats: unknown
-  warnings: ConnectorStatusWarningView[]
-  retryHints: RetryAdvice | null
-  startedAt: string
-  completedAt: string | null
-}
+export type LocalConnectorRunSummary = ConnectorRunSummary
 
 export interface LocalConnectorObservationListInput {
   connectorInstanceId: string
@@ -91,9 +77,15 @@ export interface LocalConnectorObservationListInput {
   offset?: number
 }
 
+/** Public ordinary trigger input — Sparxie manual-only mode, with private local execution intent. */
 export interface LocalConnectorRunTriggerInput {
   connectorInstanceId: string
-  mode?: 'manual' | 'scheduled' | 'catch_up'
+  mode?: 'manual'
+  /**
+   * Private app-owned execution intent. Not part of Sparxie DTOs.
+   * `deferred_refresh` preserves Jobright/retry maintenance behavior without persisting catch_up mode.
+   */
+  executionIntent?: LocalConnectorExecutionIntent
   coverageStartedAt?: string | null
   coverageEndedAt?: string | null
   filterSignature?: string | null
@@ -102,13 +94,14 @@ export interface LocalConnectorRunTriggerInput {
   dryRun?: boolean
 }
 
-export interface LocalConnectorStartupCatchUpResult {
-  runs: LocalConnectorRunSummary[]
-  skipped: Array<{
-    connectorInstanceId: string
-    reason: 'disabled' | 'execution_failed' | 'unsupported_connector'
-  }>
-}
+/**
+ * Private app-owned execution intent for non-schedule maintenance work
+ * (Jobright deferred refresh, retry-ledger, normalization catch-up).
+ * Never persisted as public connector-run mode and never leaked through Sparxie DTOs.
+ */
+export type LocalConnectorExecutionIntent = 'ordinary' | 'deferred_refresh'
+
+export type LocalConnectorInternalRunTriggerInput = LocalConnectorRunTriggerInput
 
 export interface LocalConnectorStatusActionInput {
   connectorInstanceId: string
@@ -162,9 +155,9 @@ export interface LocalConnectorClient {
       offset: number
       hasMore: boolean
     }>
-    startupCatchUp(): Promise<LocalConnectorStartupCatchUpResult>
     trigger(input: LocalConnectorRunTriggerInput): Promise<LocalConnectorRunSummary>
   }
+  schedules: ValedictorianWorkspaceClient['connectors']['schedules']
   checkpoints: {
     list(input: { connectorInstanceId: string; filterSignature?: string }): Promise<{
       items: Array<{
@@ -197,4 +190,6 @@ export interface LocalConnectorClient {
 
 export type LocalValedictorianClient = ValedictorianWorkspaceClient & {
   connectors: LocalConnectorClient
+  /** Authoritative scheduling capability for reporting and schedule enforcement. */
+  connectorScheduling: ConnectorSchedulingCapability
 }

@@ -38,7 +38,8 @@ describe('local Valedictorian HTTP server', () => {
       process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
     }
   })
-  it('returns the same persisted not-due run through HTTP and startup catch-up without invoking the connector', async () => {
+
+  it('returns the same persisted not-due run through HTTP manual trigger without invoking the connector', async () => {
     const sqlitePath = createTempSqlitePath()
     const clock = '2026-07-11T12:00:30.000Z'
     const refresh = vi.fn<AppJobConnector['refresh']>()
@@ -80,17 +81,24 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const response = await fetch(`${server.url}/v1/workspaces/workspace-retry/connectors/retry-http/runs`, {
-      body: JSON.stringify({ mode: 'catch_up', coverageEndedAt: clock }),
+      body: JSON.stringify({ mode: 'manual', coverageEndedAt: clock }),
       headers: { 'content-type': 'application/json' }, method: 'POST',
     })
     const httpRun = connectorRunSummarySchema.parse(await readJson(response))
-    const startup = await client.connectors.runs.startupCatchUp()
+    const repeated = await client.connectors.runs.trigger({
+      connectorInstanceId: 'retry-http',
+      mode: 'manual',
+      coverageEndedAt: clock,
+    })
 
     expect(response.status).toBe(200)
-    expect(httpRun).toMatchObject({ status: 'skipped', retryHints: { state: 'not_due' } })
-    expect(startup.runs).toHaveLength(1)
-    expect(startup.runs[0]).toMatchObject({ id: httpRun.id, status: 'skipped', retryHints: { state: 'not_due' } })
+    expect(httpRun).toMatchObject({
+      mode: 'manual',
+      scheduleOccurrence: null,
+      status: 'skipped',
+      retryHints: { state: 'not_due' },
+    })
+    expect(repeated).toMatchObject({ id: httpRun.id, status: 'skipped', retryHints: { state: 'not_due' } })
     expect(refresh).not.toHaveBeenCalled()
   })
-
 })

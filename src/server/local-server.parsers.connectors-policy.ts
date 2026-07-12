@@ -32,7 +32,7 @@ import {
   validateConnectorTimestamp
 } from './local-server.parsers.shared'
 
-const connectorRunModes = new Set(['manual', 'scheduled', 'catch_up'])
+const connectorRunModes = new Set(['manual'])
 export interface ConnectorRunsListQuery {
   connectorInstanceId: string
   status?: string
@@ -43,7 +43,7 @@ export interface ConnectorRunsListQuery {
 
 export interface ConnectorRunTriggerInput {
   connectorInstanceId: string
-  mode?: 'manual' | 'scheduled' | 'catch_up'
+  mode?: 'manual'
   coverageStartedAt?: string | null
   coverageEndedAt?: string | null
   filterSignature?: string | null

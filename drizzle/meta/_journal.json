@@ -141,6 +141,20 @@
       "when": 1783820410974,
       "tag": "0019_wealthy_lorna_dane",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1783826483154,
+      "tag": "0020_jazzy_wallow",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1783829373912,
+      "tag": "0021_closed_blue_marvel",
+      "breakpoints": true
     }
   ]
 }

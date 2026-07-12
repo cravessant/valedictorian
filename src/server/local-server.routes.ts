@@ -1,5 +1,14 @@
 import http from 'node:http'
-import { defaultLocalCapabilities, isApplicationStatus, type BatchRawSourceRecordsInput, type ValedictorianWorkspaceClient, type ProfileUpdateInput } from 'sparxie'
+import {
+  connectorScheduleErrorCodes,
+  defaultLocalCapabilities,
+  isApplicationStatus,
+  type BatchRawSourceRecordsInput,
+  type ConnectorSchedulingCapability,
+  type ValedictorianWorkspaceClient,
+  type ProfileUpdateInput,
+} from 'sparxie'
+import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
 import {
   readJsonBody,
   readOptionalBooleanField,
@@ -45,13 +54,17 @@ import {
 } from './local-server.parsers'
 import type { WorkspaceClientResolver } from './local-server'
 import type { LocalWorkspaceManager } from './local-workspaces'
+import { handleConnectorScheduleRoutes } from './local-server.routes.connector-schedules'
 
-const localCapabilities = {
-  ...defaultLocalCapabilities,
-  workflowRuns: true,
-  applicationAttempts: true,
-  sourcing: true,
-  connectors: true,
+function buildLocalCapabilities(connectorScheduling: ConnectorSchedulingCapability) {
+  return {
+    ...defaultLocalCapabilities,
+    workflowRuns: true,
+    applicationAttempts: true,
+    sourcing: true,
+    connectors: true,
+    connectorScheduling: resolveConnectorSchedulingCapability(connectorScheduling),
+  }
 }
 
 const MAX_RAW_SOURCE_BATCH_BODY_BYTES = 128 * 1024 * 1024
@@ -59,6 +72,7 @@ const MAX_RAW_SOURCE_REPLAY_BODY_BYTES = 1024 * 1024
 
 export async function handleRequest({
   client,
+  connectorScheduling = defaultLocalCapabilities.connectorScheduling,
   request,
   resolveWorkspaceClient,
   response,
@@ -67,6 +81,7 @@ export async function handleRequest({
   workspaceScoped = false,
 }: {
   client: ValedictorianWorkspaceClient
+  connectorScheduling?: ConnectorSchedulingCapability
   request: http.IncomingMessage
   resolveWorkspaceClient?: WorkspaceClientResolver
   response: http.ServerResponse
@@ -83,7 +98,7 @@ export async function handleRequest({
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/capabilities') {
-      writeJson(response, 200, localCapabilities)
+      writeJson(response, 200, buildLocalCapabilities(connectorScheduling))
       return
     }
 
@@ -149,7 +164,13 @@ export async function handleRequest({
       request.url = `/v1${workspaceMatch[2]}${requestUrl.search}`
 
       try {
-        await handleRequest({ client: workspaceClient, request, response, workspaceScoped: true })
+        await handleRequest({
+          client: workspaceClient,
+          connectorScheduling,
+          request,
+          response,
+          workspaceScoped: true,
+        })
       } finally {
         request.url = originalUrl
       }
@@ -395,6 +416,10 @@ export async function handleRequest({
           ),
         ),
       )
+      return
+    }
+
+    if (await handleConnectorScheduleRoutes({ client, request, requestUrl, response })) {
       return
     }
 
@@ -810,9 +835,11 @@ export async function handleRequest({
       error &&
       typeof error === 'object' &&
       'code' in error &&
-      error.code === 'capability_unavailable'
+      typeof error.code === 'string' &&
+      (error.code === 'capability_unavailable'
+        || (connectorScheduleErrorCodes as readonly string[]).includes(error.code))
     ) {
-      body.code = 'capability_unavailable'
+      body.code = error.code
     }
 
     writeJson(response, readErrorStatusCode(error), body)
@@ -848,6 +875,7 @@ type ConnectorExtensionsClient = ValedictorianWorkspaceClient & {
       list(input: unknown): Promise<unknown>
       trigger(input: unknown): Promise<unknown>
     }
+    schedules: ValedictorianWorkspaceClient['connectors']['schedules']
     checkpoints: {
       list(input: unknown): Promise<unknown>
     }

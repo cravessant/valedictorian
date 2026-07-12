@@ -9,6 +9,7 @@ describe('connectors preload API', () => {
           id: 'malformed-run', connectorInstanceId: 'instance', mode: 'manual', status: 'skipped',
           coverage: { start: null, end: null }, filterSignature: 'filters:{}',
           observationCount: 0, warningCount: 0, stats: {}, warnings: [],
+          scheduleOccurrence: null,
           retryHints: { reason: 'legacy_unknown_reason' },
           startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:00.000Z',
         })
@@ -38,6 +39,7 @@ describe('connectors preload API', () => {
             id: 'connector-run', connectorInstanceId: 'connector-instance', mode: 'manual', status: 'skipped',
             coverage: { start: null, end: null }, filterSignature: 'filters:{}',
             observationCount: 0, warningCount: 0, stats: {}, warnings: [], retryHints: null,
+            scheduleOccurrence: null,
             startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:00.000Z',
           })
         }

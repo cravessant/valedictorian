@@ -82,14 +82,14 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     ])
     const callsBeforeEarlyTrigger = fetchImpl.mock.calls.length
     const early = await client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-retry', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-retry', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
     expect(early).toMatchObject({ status: 'skipped', retryHints: { state: 'not_due' } })
     expect(fetchImpl).toHaveBeenCalledTimes(callsBeforeEarlyTrigger)
 
     clock = first.retryHints!.nextAttemptAt!
     await client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-retry', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-retry', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
     const urls = fetchImpl.mock.calls.map(([request]) => typeof request === 'string' ? request : request instanceof URL ? request.href : request.url)
     expect(urls.filter((url) => url.includes('/swan/recommend/visitor-list/jobs'))).toHaveLength(1)
@@ -310,7 +310,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
 
     clock = first.retryHints!.nextAttemptAt!
     await client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-multi', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-multi', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
 
     // Only the earlier due identity (job-a) may be acquired and detailed again.
@@ -423,7 +423,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
 
     clock = first.retryHints!.nextAttemptAt!
     const second = await client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-fail', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-fail', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
     // Jobright treats transport failures as retryable connector outcomes; the run
     // may finish without throwing. Exact successful persistence must not occur,

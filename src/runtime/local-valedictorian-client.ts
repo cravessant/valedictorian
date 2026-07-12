@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import type {
   ConnectorAuthReferenceInput,
   ConnectorObservation,
+  ConnectorRunSummary,
   RetryAdvice,
   ValedictorianWorkspaceClient
 } from 'sparxie'
@@ -22,6 +23,11 @@ import {
 } from '../modules/connectors/connector.registry'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
+  resolveConnectorSchedulingCapability,
+} from '../modules/connectors/connector-schedule.capability'
+import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
+import { createConnectorScheduleService } from '../modules/connectors/connector-schedule.service'
+import {
   inclusiveCoverageStartFromEarliestBackfillDate,
   maximumSelectableEarliestBackfillDate,
   validateSelectableEarliestBackfillDate,
@@ -32,7 +38,6 @@ import {
   type AppConnectorAuthGrant,
   type AppConnectorAuthHost,
   type AppConnectorAuthValidationResult,
-  type AppConnectorRefreshRecord,
 } from '../modules/connectors/connector.runner'
 import {
   mapConnectorWarnings,
@@ -57,8 +62,8 @@ import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import {
   dispatchAcquiredNormalizationWork,
-  finalizeDeferredConnectorRefreshRecord,
 } from './local-connector-retry-dispatch'
+import { executeClaimedConnectorRun } from './local-connector-claimed-execution'
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import {
@@ -75,7 +80,6 @@ export type {
   LocalConnectorRunSummary,
   LocalConnectorObservationListInput,
   LocalConnectorRunTriggerInput,
-  LocalConnectorStartupCatchUpResult,
   LocalConnectorStatusActionInput,
   LocalConnectorSkipActionInput,
   LocalConnectorAuthGrantSummary,
@@ -90,8 +94,7 @@ import type {
   LocalConnectorInstanceSummary,
   LocalConnectorStatusSummary,
   LocalConnectorRunSummary,
-  LocalConnectorRunTriggerInput,
-  LocalConnectorStartupCatchUpResult,
+  LocalConnectorInternalRunTriggerInput,
   LocalConnectorStatusActionInput,
   LocalConnectorReconnectActionResult,
   LocalValedictorianClient
@@ -110,6 +113,7 @@ export function createLocalValedictorianClient({
   connectorRunRecovery,
   connectorRegistry = createDefaultLocalConnectorRegistry(),
   connectorRuntime,
+  connectorScheduling: connectorSchedulingOption,
   now = () => new Date(),
   normalizationRegistry = createDefaultNormalizationResolverRegistry(),
   referenceTrackerPath,
@@ -120,6 +124,7 @@ export function createLocalValedictorianClient({
 }: LocalValedictorianClientOptions): LocalValedictorianClient {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
 
+  const connectorScheduling = resolveConnectorSchedulingCapability(connectorSchedulingOption)
   const sqlite = createFileDatabase(sqlitePath)
   const applicationService = createApplicationServiceFromSqlite(sqlite)
   const database = createDrizzleDatabase(sqlite)
@@ -185,23 +190,45 @@ export function createLocalValedictorianClient({
     workspaceId,
     now,
   })
-  let startupCatchUpPromise: Promise<LocalConnectorStartupCatchUpResult> | null = null
 
-  const runStartupCatchUpOnce = () => {
-    startupCatchUpPromise ??= executeConnectorStartupCatchUp({
+  const scheduleRepository = createConnectorScheduleRepository(database, now)
+  const schedules = createConnectorScheduleService({
+    claimQueuedRunToRunning: (input) => connectorRepository.claimQueuedRunToRunning(input),
+    connectorScheduling,
+    database,
+    executeClaimedRun: (input) => executeClaimedConnectorRun({
       connectorRegistry,
       connectorRepository,
       connectorRunner,
-      normalizationOrchestrator,
-      normalizationRegistry,
-      normalizationRepository,
+      connectorRunId: input.connectorRunId,
+      coverageEndedAt: input.coverageEndedAt,
+      mode: input.mode,
       now,
-    })
+      startedAt: input.startedAt,
+    }),
+    getRun: (connectorRunId) => connectorRepository.getRun(connectorRunId),
+    now,
+    repository: scheduleRepository,
+  })
 
-    return startupCatchUpPromise
+  const mapRun = (record: ConnectorRunRecord): LocalConnectorRunSummary => {
+    const occurrence = scheduleRepository.getOccurrenceLinkForRun(record.id)
+    if (!occurrence || !occurrence.connectorRunId) {
+      return mapConnectorRunSummary(record)
+    }
+
+    return mapConnectorRunSummary(record, {
+      scheduleId: occurrence.scheduleId,
+      scheduleRevision: occurrence.scheduleRevision,
+      occurrenceId: occurrence.id,
+      nominalAt: occurrence.nominalAt,
+      admittedMode: occurrence.admittedMode,
+      idempotencyKey: occurrence.idempotencyKey,
+    })
   }
 
   const client: LocalValedictorianClient = {
+    connectorScheduling,
     applications: {
       list: (query) => applicationService.listApplications(query),
       get: (id) => applicationService.getApplication(id),
@@ -340,10 +367,9 @@ export function createLocalValedictorianClient({
 
           return {
             ...result,
-            items: result.items.map(mapConnectorRunSummary),
+            items: result.items.map(mapRun),
           }
         },
-        startupCatchUp: runStartupCatchUpOnce,
         trigger: async (input) => {
           const run = await executeConnectorRunTrigger({
             connectorRegistry,
@@ -356,7 +382,7 @@ export function createLocalValedictorianClient({
             now,
           })
 
-          return mapConnectorRunSummary(run)
+          return mapRun(run)
         },
       },
       checkpoints: {
@@ -383,6 +409,7 @@ export function createLocalValedictorianClient({
           }
         },
       },
+      schedules,
       status: {
         list: async () => mapConnectorStatusSummaries(
           await connectorRepository.listStatusSummaries(),
@@ -405,7 +432,7 @@ export function createLocalValedictorianClient({
             action: 'skip',
             connectorInstanceId: input.connectorInstanceId,
             message: 'Connector run skipped.',
-            run: mapConnectorRunSummary(run),
+            run: mapRun(run),
             status: 'skipped',
           }
         },
@@ -587,70 +614,6 @@ function mapValidationStatusToGrantStatus(
   return 'action_required'
 }
 
-async function executeConnectorStartupCatchUp({
-  connectorRegistry,
-  connectorRepository,
-  connectorRunner,
-  normalizationOrchestrator,
-  normalizationRegistry,
-  normalizationRepository,
-  now,
-}: {
-  connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
-  connectorRunner: ReturnType<typeof createConnectorRunner>
-  normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
-  normalizationRegistry: ReturnType<typeof createDefaultNormalizationResolverRegistry>
-  normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
-  now: () => Date
-}): Promise<LocalConnectorStartupCatchUpResult> {
-  const runs: LocalConnectorRunSummary[] = []
-  const skipped: LocalConnectorStartupCatchUpResult['skipped'] = []
-  const coverageEndedAt = now().toISOString()
-
-  for (const instance of await connectorRepository.listInstances()) {
-    if (!instance.enabled) {
-      skipped.push({
-        connectorInstanceId: instance.id,
-        reason: 'disabled',
-      })
-      continue
-    }
-
-    if (!connectorRegistry.get(instance.connectorId)) {
-      skipped.push({
-        connectorInstanceId: instance.id,
-        reason: 'unsupported_connector',
-      })
-      continue
-    }
-
-    try {
-      runs.push(mapConnectorRunSummary(await executeConnectorRunTrigger({
-        connectorRegistry,
-        connectorRepository,
-        connectorRunner,
-        input: {
-          connectorInstanceId: instance.id,
-          coverageEndedAt,
-          mode: 'catch_up',
-        },
-        normalizationOrchestrator,
-        normalizationRegistry,
-        normalizationRepository,
-        now,
-      })))
-    } catch {
-      skipped.push({
-        connectorInstanceId: instance.id,
-        reason: 'execution_failed',
-      })
-    }
-  }
-
-  return { runs, skipped }
-}
-
 async function executeConnectorRunTrigger({
   connectorRegistry,
   connectorRepository,
@@ -664,7 +627,7 @@ async function executeConnectorRunTrigger({
   connectorRegistry: LocalConnectorRegistry
   connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
-  input: LocalConnectorRunTriggerInput
+  input: LocalConnectorInternalRunTriggerInput
   normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
   normalizationRegistry: ReturnType<typeof createDefaultNormalizationResolverRegistry>
   normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
@@ -689,8 +652,9 @@ async function executeConnectorRunTrigger({
     )
   }
 
-  const mode = input.mode ?? 'manual'
-  assertExecutableConnectorTrigger(input, mode)
+  const executionIntent = input.executionIntent ?? 'ordinary'
+  const mode = 'manual'
+  assertExecutableConnectorTrigger(input, executionIntent)
   const filters = toJsonRecord(instance.filters)
   const filterSignature = connectorCheckpointSignature({
     connectorId: connector.definition.id,
@@ -698,11 +662,11 @@ async function executeConnectorRunTrigger({
     supportsFiltering: connector.definition.capabilities?.supportsFiltering,
     filters,
   })
-  const coverageEndedAt = mode === 'catch_up'
+  const coverageEndedAt = executionIntent === 'deferred_refresh'
     ? (input.coverageEndedAt ?? startedAt)
     : input.coverageEndedAt
   if (!coverageEndedAt) {
-    throw new Error(`coverageEndedAt is required for ${mode} connector runs`)
+    throw new Error('coverageEndedAt is required for connector runs')
   }
   const coverageStartedAt = inclusiveCoverageStartFromEarliestBackfillDate(
     instance.earliestBackfillDate,
@@ -725,13 +689,16 @@ async function executeConnectorRunTrigger({
   const runRequest = runRequestResult.run
   const acquiredWork = runRequestResult.acquiredWork
 
-  await connectorRepository.markRunRunning({
+  const claim = await connectorRepository.claimQueuedRunToRunning({
     connectorRunId: runRequest.id,
     startedAt,
   })
+  if (!claim.claimed) {
+    return claim.run
+  }
 
   if (acquiredWork?.kind === 'normalization') {
-    return executeAcquiredNormalizationWork({
+    return dispatchAcquiredNormalizationWork({
       acquiredWork,
       connector,
       connectorRepository,
@@ -741,67 +708,23 @@ async function executeConnectorRunTrigger({
       normalizationRegistry,
       normalizationRepository,
       now,
-      runRequest,
+      runRequest: claim.run,
       startedAt,
       coverageEndedAt,
     })
   }
 
-  let refreshRecord: AppConnectorRefreshRecord
-
-  try {
-    refreshRecord = mode === 'catch_up'
-      ? await connectorRunner.catchUpWithDeferredCheckpoint(connector, {
-        connectorRunId: runRequest.id,
-        connectorInstanceId: input.connectorInstanceId,
-        now: coverageEndedAt,
-        startedAt,
-      })
-      : await connectorRunner.refreshWithDeferredCheckpoint(
-        connector,
-        {
-          connectorRunId: runRequest.id,
-          connectorInstanceId: input.connectorInstanceId,
-          mode,
-          coverage: {
-            start: coverageStartedAt,
-            end: coverageEndedAt,
-          },
-          startedAt,
-        },
-      )
-  } catch (error) {
-    await connectorRepository.markRunFailed({
-      connectorRunId: runRequest.id,
-      completedAt: now().toISOString(),
-      retryHints: null,
-      warning: {
-        code: 'connector.execution_failed',
-        message: 'Connector execution failed.',
-      },
-    })
-    throw error
-  }
-
-  return finalizeDeferredConnectorRefresh({
-    checkpoint: refreshRecord.checkpoint,
+  return executeClaimedConnectorRun({
+    connectorRegistry,
     connectorRepository,
+    connectorRunner,
+    connectorRunId: claim.run.id,
+    coverageEndedAt,
+    executionIntent,
+    mode,
     now,
-    run: refreshRecord.run,
-    terminalStatus: refreshRecord.terminalStatus,
+    startedAt,
   })
-}
-
-async function executeAcquiredNormalizationWork(
-  input: Parameters<typeof dispatchAcquiredNormalizationWork>[0],
-): Promise<ConnectorRunRecord> {
-  return dispatchAcquiredNormalizationWork(input)
-}
-
-async function finalizeDeferredConnectorRefresh(
-  input: Parameters<typeof finalizeDeferredConnectorRefreshRecord>[0],
-): Promise<ConnectorRunRecord> {
-  return finalizeDeferredConnectorRefreshRecord(input)
 }
 
 function toJsonRecord(value: unknown): Record<string, unknown> {
@@ -811,8 +734,8 @@ function toJsonRecord(value: unknown): Record<string, unknown> {
 }
 
 function assertExecutableConnectorTrigger(
-  input: LocalConnectorRunTriggerInput,
-  mode: NonNullable<LocalConnectorRunTriggerInput['mode']>,
+  input: LocalConnectorInternalRunTriggerInput,
+  executionIntent: NonNullable<LocalConnectorInternalRunTriggerInput['executionIntent']> | 'ordinary',
 ) {
   if (input.dryRun) {
     throw new Error('dryRun connector triggers are not supported for executed connector runs')
@@ -822,12 +745,12 @@ function assertExecutableConnectorTrigger(
     throw new Error('Per-run connector filter overrides are not supported for executed connector runs')
   }
 
-  if (mode === 'catch_up') {
+  if (executionIntent === 'deferred_refresh') {
     return
   }
 
   if (!input.coverageEndedAt) {
-    throw new Error(`coverageEndedAt is required for ${mode} connector runs`)
+    throw new Error('coverageEndedAt is required for manual connector runs')
   }
 }
 
@@ -944,11 +867,67 @@ function actionRequiredForStatus(
   return actions
 }
 
-function mapConnectorRunSummary(record: ConnectorRunRecord): LocalConnectorRunSummary {
+function mapConnectorRunSummary(
+  record: ConnectorRunRecord,
+  scheduleOccurrence: ConnectorRunSummary['scheduleOccurrence'] = null,
+): ConnectorRunSummary {
+  if (
+    scheduleOccurrence
+    && record.mode === 'scheduled'
+    && scheduleOccurrence.admittedMode === 'scheduled'
+  ) {
+    return {
+      id: record.id,
+      connectorInstanceId: record.connectorInstanceId,
+      mode: 'scheduled',
+      scheduleOccurrence,
+      status: record.status,
+      coverage: {
+        start: record.coverageStartedAt,
+        end: record.coverageEndedAt,
+      },
+      filterSignature: record.filterSignature,
+      observationCount: record.observationCount,
+      warningCount: record.warningCount,
+      stats: record.stats,
+      warnings: mapConnectorWarnings(record.warnings),
+      retryHints: parseConnectorRetryAdvice(record.retryHints),
+      startedAt: record.startedAt,
+      completedAt: record.completedAt,
+    }
+  }
+
+  if (
+    scheduleOccurrence
+    && record.mode === 'catch_up'
+    && scheduleOccurrence.admittedMode === 'catch_up'
+  ) {
+    return {
+      id: record.id,
+      connectorInstanceId: record.connectorInstanceId,
+      mode: 'catch_up',
+      scheduleOccurrence,
+      status: record.status,
+      coverage: {
+        start: record.coverageStartedAt,
+        end: record.coverageEndedAt,
+      },
+      filterSignature: record.filterSignature,
+      observationCount: record.observationCount,
+      warningCount: record.warningCount,
+      stats: record.stats,
+      warnings: mapConnectorWarnings(record.warnings),
+      retryHints: parseConnectorRetryAdvice(record.retryHints),
+      startedAt: record.startedAt,
+      completedAt: record.completedAt,
+    }
+  }
+
   return {
     id: record.id,
     connectorInstanceId: record.connectorInstanceId,
-    mode: record.mode,
+    mode: 'manual',
+    scheduleOccurrence: null,
     status: record.status,
     coverage: {
       start: record.coverageStartedAt,

@@ -119,7 +119,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
 
     clock = first.retryHints!.nextAttemptAt!
     const second = await client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-prep', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-prep', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
     expect(second.coverage.start).toBe('2026-07-04T00:00:00.000Z')
     expect(database.select().from(retryWork).all().filter(({ kind }) => kind === 'normalization')).toEqual([
@@ -206,7 +206,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
 
     clock = first.retryHints!.nextAttemptAt!
     await expect(client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-final', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-final', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })).rejects.toThrow(/injected checkpoint finalization failure|Canonical sourcing projection failed|Connector execution failed/i)
 
     expect(detailCalls).toBe(2)
@@ -306,7 +306,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     `)
     clock = first.retryHints!.nextAttemptAt!
     await expect(client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-recover', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-recover', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })).rejects.toThrow(/injected checkpoint recovery failure|Canonical sourcing projection failed|Connector execution failed/i)
     expect(detailCalls).toBe(2)
     sqlite.close()
@@ -337,7 +337,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     midSqlite.close()
 
     await client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-recover', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-recover', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
 
     expect(detailCalls).toBe(detailCallsBeforeRecovery)
@@ -507,7 +507,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const detailCallsBeforeDueAcquisition = detailCalls
     clock = first.retryHints!.nextAttemptAt!
     await client.connectors.runs.trigger({
-      connectorInstanceId: 'jobright-reopen', mode: 'catch_up', coverageEndedAt: clock,
+      connectorInstanceId: 'jobright-reopen', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
 
     expect(detailCalls).toBeGreaterThan(detailCallsBeforeDueAcquisition)

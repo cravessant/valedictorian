@@ -142,7 +142,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(20)
+    expect(migrationRows).toHaveLength(22)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -166,7 +166,7 @@ describe('SQLite database', () => {
     expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
       .toEqual({ name: 'retry_work' })
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 20 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 22 })
     const stampedTags = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -262,7 +262,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 20 })
+    ).toEqual({ count: 22 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -382,7 +382,7 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 20 })
+      .toEqual({ count: 22 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })

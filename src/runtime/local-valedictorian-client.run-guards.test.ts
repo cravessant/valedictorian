@@ -600,7 +600,7 @@ describe('runtime local Valedictorian client', () => {
     })
     await connectorRepository.recordRefreshResult({
       connectorInstanceId: 'connector-instance-fixture',
-      mode: 'catch_up',
+      mode: 'manual',
       startedAt: '2026-07-08T16:00:00.000Z',
       completedAt: '2026-07-08T16:00:01.000Z',
       config: {},
@@ -629,7 +629,8 @@ describe('runtime local Valedictorian client', () => {
       client.connectors.runs.trigger({
         connectorInstanceId: 'connector-instance-fixture',
         coverageEndedAt: '2026-07-08T18:00:00.000Z',
-        mode: 'catch_up',
+        mode: 'manual',
+        executionIntent: 'deferred_refresh',
       }),
     ).resolves.toMatchObject({ status: 'completed' })
     const runs = await client.connectors.runs.list({
@@ -646,7 +647,8 @@ describe('runtime local Valedictorian client', () => {
         end: '2026-07-08T18:00:00.000Z',
         start: '2026-07-01T00:00:00.000Z',
       },
-      mode: 'catch_up',
+      mode: 'manual',
+      scheduleOccurrence: null,
       observationCount: 2,
       retryHints: null,
       status: 'completed',
@@ -788,15 +790,14 @@ describe('runtime local Valedictorian client', () => {
       coverageStartedAt: '2026-07-11T11:00:00.000Z',
       coverageEndedAt: '2026-07-11T12:00:00.000Z',
     })
-    const startup = await client.connectors.runs.startupCatchUp()
-
     expect(direct).toMatchObject({
+      mode: 'manual',
+      scheduleOccurrence: null,
       status: 'skipped',
       filterSignature: 'provider-state:jobright.resolver@0.8.0',
       retryHints: { state: 'not_due', reason: 'rate_limit' },
     })
     expect(repeated.id).toBe(direct.id)
-    expect(startup.runs).toEqual([expect.objectContaining({ id: direct.id, status: 'skipped' })])
     expect(refresh).not.toHaveBeenCalled()
     sqlite.close()
   })

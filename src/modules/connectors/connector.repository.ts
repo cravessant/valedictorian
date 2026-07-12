@@ -40,6 +40,7 @@ import {
   finalizeExactAcquiredNormalizationRetry,
   releaseAcquiredNormalizationWorkForRun,
 } from './connector.repository.exact-retry-finalize'
+import { recoverInterruptedConnectorRuns } from './connector.repository.recovery'
 export type {
   AcquiredRetryWork,
   ConnectorCoverageWindow,
@@ -572,27 +573,26 @@ export function createSqliteConnectorRepository(
       )
     },
 
-    async markRunRunning(input: MarkConnectorRunRunningInput): Promise<ConnectorRunRecord> {
-      const row = database
+    async claimQueuedRunToRunning(input: MarkConnectorRunRunningInput): Promise<{
+      claimed: boolean
+      run: ConnectorRunRecord
+    }> {
+      const existing = database
         .select()
         .from(connectorRuns)
-        .where(
-          and(
-            eq(connectorRuns.id, input.connectorRunId),
-            eq(connectorRuns.status, 'queued'),
-            isNull(connectorRuns.deletedAt),
-          ),
-        )
+        .where(and(
+          eq(connectorRuns.id, input.connectorRunId),
+          isNull(connectorRuns.deletedAt),
+        ))
         .get()
 
-      if (!row) {
-        throw new Error(`Queued connector run not found: ${input.connectorRunId}`)
+      if (!existing) {
+        throw new Error(`Connector run not found: ${input.connectorRunId}`)
       }
 
-      const now = new Date().toISOString()
-      const stats = toJsonRecord(JSON.parse(row.statsJson))
-
-      database
+      const stats = toJsonRecord(JSON.parse(existing.statsJson))
+      const updatedAt = new Date().toISOString()
+      const updated = database
         .update(connectorRuns)
         .set({
           status: 'running',
@@ -602,72 +602,39 @@ export function createSqliteConnectorRepository(
             queued: false,
             running: true,
           }),
-          updatedAt: now,
+          updatedAt,
         })
-        .where(eq(connectorRuns.id, input.connectorRunId))
+        .where(and(
+          eq(connectorRuns.id, input.connectorRunId),
+          eq(connectorRuns.status, 'queued'),
+          isNull(connectorRuns.deletedAt),
+        ))
         .run()
 
-      return mapConnectorRun(
+      const run = mapConnectorRun(
         database
           .select()
           .from(connectorRuns)
           .where(eq(connectorRuns.id, input.connectorRunId))
           .get(),
       )
+
+      return {
+        claimed: updated.changes === 1,
+        run,
+      }
+    },
+
+    async markRunRunning(input: MarkConnectorRunRunningInput): Promise<ConnectorRunRecord> {
+      const claim = await this.claimQueuedRunToRunning(input)
+      if (!claim.claimed) {
+        throw new Error(`Queued connector run not found: ${input.connectorRunId}`)
+      }
+      return claim.run
     },
 
     recoverInterruptedRuns(input: RecoverInterruptedConnectorRunsInput): number {
-      return database.transaction((transaction) => {
-        const interruptedRuns = transaction
-          .select()
-          .from(connectorRuns)
-          .where(
-            and(
-              inArray(connectorRuns.status, ['queued', 'running']),
-              isNull(connectorRuns.deletedAt),
-            ),
-          )
-          .all()
-        const warning = {
-          code: 'connector.interrupted',
-          message: 'Connector run was interrupted before completion.',
-        }
-
-        for (const run of interruptedRuns) {
-          const stats = toJsonRecord(JSON.parse(run.statsJson))
-          const warnings = readConnectorWarnings(run.warningsJson)
-          warnings.push(warning)
-
-          transaction
-            .update(connectorRuns)
-            .set({
-              status: 'cancelled',
-              completedAt: input.completedAt,
-              warningCount: warnings.length,
-              statsJson: JSON.stringify({
-                ...stats,
-                interrupted: true,
-                queued: false,
-                running: false,
-              }),
-              warningsJson: JSON.stringify(warnings),
-              retryHintsJson: JSON.stringify(null),
-              updatedAt: input.completedAt,
-            })
-            .where(eq(connectorRuns.id, run.id))
-            .run()
-          transaction.update(retryWork).set({
-            state: 'cancelled', nextAttemptAt: null, acquiredAt: null,
-            acquisitionToken: null, acquisitionRunId: null, updatedAt: input.completedAt,
-          }).where(and(
-            eq(retryWork.state, 'acquired'),
-            eq(retryWork.acquisitionRunId, run.id),
-            isNull(retryWork.deletedAt),
-          )).run()
-        }
-
-        return interruptedRuns.length
-      }, { behavior: 'immediate' })
+      return recoverInterruptedConnectorRuns(database, input)
     },
 
     async updateRunProgress(
@@ -858,6 +825,16 @@ export function createSqliteConnectorRepository(
           .get(),
         )
       }, { behavior: 'immediate' })
+    },
+
+    async getRun(connectorRunId: string): Promise<ConnectorRunRecord | null> {
+      const row = database
+        .select()
+        .from(connectorRuns)
+        .where(and(eq(connectorRuns.id, connectorRunId), isNull(connectorRuns.deletedAt)))
+        .get()
+
+      return row ? mapConnectorRun(row) : null
     },
 
     async getInstance(connectorInstanceId: string): Promise<ConnectorInstanceRecord | null> {

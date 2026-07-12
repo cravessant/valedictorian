@@ -176,7 +176,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     clock = String(first.retryHints!.nextAttemptAt)
     const afterNarrow = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-boundary',
-      mode: 'catch_up',
+      mode: 'manual', executionIntent: 'deferred_refresh',
       coverageEndedAt: clock,
     })
     expect(afterNarrow.status).not.toBe('skipped')
@@ -223,7 +223,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     const detailBeforeRepeat = detailCalls
     const repeated = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-boundary',
-      mode: 'catch_up',
+      mode: 'manual', executionIntent: 'deferred_refresh',
       coverageEndedAt: clock,
     })
     expect(detailCalls).toBe(detailBeforeRepeat)
@@ -254,7 +254,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     })
     const afterWiden = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-boundary',
-      mode: 'catch_up',
+      mode: 'manual', executionIntent: 'deferred_refresh',
       coverageEndedAt: clock,
     })
     expect(afterWiden.status).not.toMatch(/skipped/)
@@ -302,7 +302,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     clock = new Date(Date.parse(clock) + 60_000).toISOString()
     const afterResidual = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-boundary',
-      mode: 'catch_up',
+      mode: 'manual', executionIntent: 'deferred_refresh',
       coverageEndedAt: clock,
     })
     expect(detailCalls).toBe(detailBeforeFinal)

@@ -87,7 +87,7 @@ describe('runtime connector coverage from earliest backfill date', () => {
 
     const catchUp = await client.connectors.runs.trigger({
       connectorInstanceId: 'coverage-instance',
-      mode: 'catch_up',
+      mode: 'manual', executionIntent: 'deferred_refresh',
       coverageEndedAt: '2026-07-11T19:00:00.000Z',
     })
     expect(catchUp.coverage.start).toBe('2026-07-04T00:00:00.000Z')
@@ -110,7 +110,7 @@ describe('runtime connector coverage from earliest backfill date', () => {
     })
     const afterLater = await client.connectors.runs.trigger({
       connectorInstanceId: 'coverage-instance',
-      mode: 'catch_up',
+      mode: 'manual', executionIntent: 'deferred_refresh',
       coverageEndedAt: '2026-07-11T21:00:00.000Z',
     })
     expect(afterLater.coverage.start).toBe('2026-07-01T00:00:00.000Z')

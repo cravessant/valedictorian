@@ -377,7 +377,8 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
       trigger: vi.fn(async (input) => ({
         id: 'connector-run-1',
         connectorInstanceId: input.connectorInstanceId,
-        mode: input.mode ?? 'manual',
+        mode: 'manual' as const,
+        scheduleOccurrence: null,
         status: 'completed',
         coverage: {
           start: input.coverageStartedAt ?? null,

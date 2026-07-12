@@ -548,7 +548,7 @@ describe('runtime local Valedictorian client', () => {
     })
     await connectorRepository.recordRefreshResult({
       connectorInstanceId: 'connector-instance-fixture',
-      mode: 'catch_up',
+      mode: 'manual',
       startedAt: '2026-07-08T17:00:00.000Z',
       completedAt: '2026-07-08T17:00:01.000Z',
       config: {},
