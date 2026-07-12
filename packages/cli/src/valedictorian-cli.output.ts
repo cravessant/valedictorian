@@ -33,7 +33,50 @@ function formatValue(value: unknown): string {
     return formatSourcingBatch(record)
   }
 
+  if (Array.isArray(record.receipts) && record.receipts.every(isRawSourcingReceipt)) {
+    return formatRawSourcingReceipts(record.receipts)
+  }
+
   return formatRecord(record)
+}
+
+function formatRawSourcingReceipts(receipts: unknown[]) {
+  const lines = [`${receipts.length} raw sourcing receipt${receipts.length === 1 ? '' : 's'}`]
+  for (const [index, value] of receipts.entries()) {
+    const receipt = value as Record<string, unknown>
+    const intake = receipt.intake as Record<string, unknown>
+    const submitted = receipt.submitted as Record<string, unknown>
+    const adapter = submitted.adapter as Record<string, unknown>
+    const origin = isPlainRecord(submitted.reportedOrigin) ? submitted.reportedOrigin : undefined
+    const revision = intake.revision as Record<string, unknown>
+    const occurrence = intake.occurrence as Record<string, unknown>
+    const normalization = receipt.normalization as Record<string, unknown>
+    const normalizationResult = isPlainRecord(normalization.result) ? normalization.result : undefined
+    const normalizationError = isPlainRecord(normalization.error) ? normalization.error : undefined
+    const gate = isPlainRecord(normalizationResult?.gate) ? normalizationResult.gate : undefined
+    const candidate = isPlainRecord(normalizationResult?.canonicalCandidate)
+      ? normalizationResult.canonicalCandidate
+      : undefined
+    const projection = receipt.projection as Record<string, unknown>
+    const projectionResult = isPlainRecord(projection.result) ? projection.result : undefined
+    const projectionError = isPlainRecord(projection.error) ? projection.error : undefined
+    const finding = isPlainRecord(projectionResult?.finding) ? projectionResult.finding : undefined
+    const failure = isPlainRecord(projectionResult?.failure) ? projectionResult.failure : undefined
+    lines.push(`Receipt ${index + 1}`)
+    lines.push(`  Provenance (submitted): adapter=${String(adapter.id)} kind=${String(adapter.kind)} version=${String(adapter.version)} reportedOrigin=${origin ? `${String(origin.kind)}:${String(origin.name)}` : 'none'}`)
+    lines.push(`  Intake: record=${String(intake.rawRecordId)} revision=${String(revision.id)} number=${String(revision.revision)} reused=${String(revision.reused)} occurrence=${String(occurrence.id)}`)
+    lines.push(normalizationResult
+      ? `  Normalization: status=${String(normalizationResult.status)} revision=${String(normalizationResult.rawRevisionId)} matchesReceipt=${String(normalization.matchesRevision)} gate=${String(gate?.status ?? 'none')} candidate=${String(candidate?.id ?? 'none')}`
+      : `  Normalization inspection: failed code=${String(normalizationError?.code)}${normalizationError?.httpStatus ? ` httpStatus=${String(normalizationError.httpStatus)}` : ''}`)
+    lines.push(projectionResult
+      ? `  Projection: status=${String(projectionResult.status)} revision=${String(projectionResult.rawRevisionId)}${finding ? ` finding=${String(finding.id)} merge=${String(finding.mergeStatus)}` : ''}${failure ? ` failure=${String(failure.code)} retryable=${String(failure.retryable)}` : ''}`
+      : `  Projection inspection: failed code=${String(projectionError?.code)}${projectionError?.httpStatus ? ` httpStatus=${String(projectionError.httpStatus)}` : ''}`)
+  }
+  return lines.join('\n')
+}
+
+function isRawSourcingReceipt(value: unknown) {
+  return isPlainRecord(value) && isPlainRecord(value.intake) && isPlainRecord(value.normalization) && isPlainRecord(value.projection)
 }
 
 function formatList(record: Record<string, unknown>) {

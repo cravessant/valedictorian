@@ -8,11 +8,11 @@ import {
   validateLimit,
 } from './valedictorian-cli.parser-options.js'
 
-const connectorRunModes = new Set(['manual', 'scheduled', 'catch_up'])
+const connectorRunModes = new Set(['manual'])
 
 export interface ConnectorRunTriggerInput {
   connectorInstanceId: string
-  mode?: 'manual' | 'scheduled' | 'catch_up'
+  mode?: 'manual'
   coverageStartedAt?: string | null
   coverageEndedAt?: string | null
   filterSignature?: string | null
