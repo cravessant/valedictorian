@@ -2,187 +2,16 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { type ValedictorianWorkspaceClient } from 'sparxie'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
 import { createLocalWorkspaceManager } from './local-workspaces'
-import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
-
-function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-')), 'valedictorian.sqlite')
-}
-
-function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
-  return createRuntimeLocalValedictorianClient({
-    seedDataMode: 'sample',
-    ...options,
-  })
-}
-
-async function readJson(response: Response) {
-  return (await response.json()) as unknown
-}
-
-function createBoundaryTestClient(onCreate: () => void): ValedictorianWorkspaceClient {
-  return {
-    applications: {
-      async archive() {},
-      async create() {
-        onCreate()
-        throw new Error('client create should not be called')
-      },
-      events: {
-        async list() {
-          throw new Error('not implemented')
-        },
-      },
-      attempts: {
-        async complete() {
-          throw new Error('not implemented')
-        },
-        async list() {
-          throw new Error('not implemented')
-        },
-        async start() {
-          throw new Error('not implemented')
-        },
-        async step() {
-          throw new Error('not implemented')
-        },
-      },
-      async get() {
-        return null
-      },
-      links: {
-        async create() {
-          throw new Error('not implemented')
-        },
-        async update() {
-          throw new Error('not implemented')
-        },
-      },
-      async list() {
-        throw new Error('not implemented')
-      },
-      notes: {
-        async append() {
-          throw new Error('not implemented')
-        },
-      },
-      async update() {
-        throw new Error('not implemented')
-      },
-      async updateStatus() {
-        throw new Error('not implemented')
-      },
-      workflow: {
-        async update() {
-          throw new Error('not implemented')
-        },
-      },
-    },
-    actionQueue: {
-      async list() {
-        throw new Error('not implemented')
-      },
-    },
-    policy: {
-      config: {
-        async get() {
-          throw new Error('not implemented')
-        },
-        async reset() {
-          throw new Error('not implemented')
-        },
-        async update() {
-          throw new Error('not implemented')
-        },
-      },
-      evidence: {
-        async list() {
-          throw new Error('not implemented')
-        },
-        async record() {
-          throw new Error('not implemented')
-        },
-      },
-      evaluate: {
-        async application() {
-          throw new Error('not implemented')
-        },
-        async runWindow() {
-          throw new Error('not implemented')
-        },
-        async sourcingCandidate() {
-          throw new Error('not implemented')
-        },
-      },
-    },
-    runs: {
-      async complete() {
-        throw new Error('not implemented')
-      },
-      async list() {
-        throw new Error('not implemented')
-      },
-      async start() {
-        throw new Error('not implemented')
-      },
-      async step() {
-        throw new Error('not implemented')
-      },
-    },
-    scores: {
-      async record() {},
-    },
-    sourcing: {
-      candidates: {
-        async process() {
-          throw new Error('not implemented')
-        },
-      },
-      findings: {
-        async create() {
-          throw new Error('not implemented')
-        },
-        async decide() {
-          throw new Error('not implemented')
-        },
-        async list() {
-          throw new Error('not implemented')
-        },
-        async promote() {
-          throw new Error('not implemented')
-        },
-        async update() {
-          throw new Error('not implemented')
-        },
-      },
-    },
-  } as unknown as ValedictorianWorkspaceClient
-}
+import { createBoundaryWorkspaceClient as createBoundaryTestClient, createSeededLocalClient as createLocalValedictorianClient, createTempSqlitePath, readJson, createLocalServerHttpTestFixture } from './local-server.http-test-harness'
 
 describe('local Valedictorian HTTP server', () => {
-  let server: StartedValedictorianHttpServer | null = null
-  const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
+  const fixture = createLocalServerHttpTestFixture()
 
-  beforeEach(() => {
-    process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = path.join(
-      os.tmpdir(),
-      'valedictorian-missing-reference-tracker.md',
-    )
-  })
-
-  afterEach(async () => {
-    await server?.close()
-    server = null
-    if (originalReferenceTrackerPath === undefined) {
-      delete process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-    } else {
-      process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
-    }
-  })
+  beforeEach(() => fixture.setup())
+  afterEach(() => fixture.teardown())
 
   it('blocks opening a workspace when its manifest id is registered to a different path', async () => {
     const firstRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-collision-a-'))
@@ -200,7 +29,7 @@ describe('local Valedictorian HTTP server', () => {
       path: firstWorkspace.rootPath,
     })
 
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createBoundaryTestClient(() => {}),
       host: '127.0.0.1',
       port: 0,
@@ -251,7 +80,7 @@ describe('local Valedictorian HTTP server', () => {
       path: firstWorkspace.rootPath,
     })
 
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createBoundaryTestClient(() => {}),
       host: '127.0.0.1',
       port: 0,
@@ -301,7 +130,7 @@ describe('local Valedictorian HTTP server', () => {
     await workspaceManager.open({ path: workspaceRoot })
     fs.rmSync(workspaceRoot, { force: true, recursive: true })
 
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createBoundaryTestClient(() => {}),
       host: '127.0.0.1',
       port: 0,
@@ -359,7 +188,7 @@ describe('local Valedictorian HTTP server', () => {
     })
     await workspaceManager.open({ path: workspaceRoot })
 
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createBoundaryTestClient(() => {}),
       host: '127.0.0.1',
       port: 0,
@@ -432,7 +261,7 @@ describe('local Valedictorian HTTP server', () => {
   })
 
   it('lists and gets applications with auth, filters, and pagination', async () => {
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
@@ -466,7 +295,7 @@ describe('local Valedictorian HTTP server', () => {
   })
 
   it('lists action queue rows with auth, action bucket filtering, and pagination', async () => {
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
@@ -492,7 +321,7 @@ describe('local Valedictorian HTTP server', () => {
   })
 
   it('serves profile update, read, and non-secret agent context routes', async () => {
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
@@ -569,7 +398,7 @@ describe('local Valedictorian HTTP server', () => {
   })
 
   it('serves workflow runs and sourcing findings routes', async () => {
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
@@ -865,7 +694,7 @@ describe('local Valedictorian HTTP server', () => {
   })
 
   it('returns a bad request for invalid action queue buckets', async () => {
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,
@@ -886,7 +715,7 @@ describe('local Valedictorian HTTP server', () => {
   })
 
   it('serves policy config, evidence, and scheduler-ready evaluation endpoints', async () => {
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
       host: '127.0.0.1',
       port: 0,

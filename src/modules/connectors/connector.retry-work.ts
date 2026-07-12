@@ -7,7 +7,8 @@ import {
   retryWork,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
-import type { AcquiredRetryWork, ConnectorCheckpointPayload } from './connector.repository.types'
+import type { AcquiredRetryWork } from './connector-retry-work.identity-types'
+import type { ConnectorCheckpointPayload } from './connector-checkpoint.persistence-types'
 import {
   JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID,
   JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION,

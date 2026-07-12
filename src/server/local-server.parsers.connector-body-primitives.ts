@@ -1,35 +1,7 @@
-import {
-  connectorAuthModes
-} from 'sparxie'
-import {
-  readOptionalNullableStringField,
-  readOptionalStringField,
-  readRecord,
-  readStringField
-} from './local-server.http'
-
+import { connectorAuthModes } from 'sparxie'
+import { readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 
 const connectorAuthModeSet = new Set(connectorAuthModes)
-
-export function setStringQuery(requestUrl: URL, key: string, setter: (value: string) => void) {
-  const value = requestUrl.searchParams.get(key)
-
-  if (value !== null) {
-    setter(value)
-  }
-}
-
-export function setNumberQuery(requestUrl: URL, key: string, setter: (value: number) => void) {
-  const value = requestUrl.searchParams.get(key)
-
-  if (value !== null) {
-    setter(Number(value))
-  }
-}
-
-export function hasText(value: string | null | undefined) {
-  return typeof value === 'string' && value.trim().length > 0
-}
 
 export function readBooleanField(record: Record<string, unknown>, field: string) {
   const value = record[field]
@@ -40,7 +12,6 @@ export function readBooleanField(record: Record<string, unknown>, field: string)
 
   throw new Error(`Missing ${field}`)
 }
-
 export function readOptionalRecordField(record: Record<string, unknown>, field: string) {
   if (!(field in record)) {
     return undefined

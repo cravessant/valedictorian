@@ -7,9 +7,9 @@ import {
 import type { DrizzleDatabase } from '../../db/sqlite'
 import {
   readConnectorWarnings,
-  toJsonRecord,
-} from './connector.repository.helpers'
-import type { RecoverInterruptedConnectorRunsInput } from './connector.repository.types'
+} from './connector-run.persistence'
+import { toJsonRecord } from './connector.persistence-json'
+import type { RecoverInterruptedConnectorRunsInput } from './connector-run.persistence-types'
 import { occurrenceOutcomeForRunStatus } from './connector-schedule.occurrence-outcome'
 
 export function recoverInterruptedConnectorRuns(

@@ -1,39 +1,8 @@
-import type {
-  ConnectorObservation,
-  ConnectorRunSummary,
-  ConnectorSchedulingCapability,
-  CreateConnectorInstanceInput,
-  UpdateConnectorInstanceInput,
-  ValedictorianWorkspaceClient,
-} from 'sparxie'
-import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
-import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
-import type {
-  AppConnectorAuthGrant,
-  AppConnectorAuthValidationResult,
-  AppConnectorRuntimePorts,
-} from '../modules/connectors/connector.runner'
+import type { ConnectorObservation, ConnectorRunSummary, ConnectorSchedulingCapability, CreateConnectorInstanceInput, UpdateConnectorInstanceInput, ValedictorianWorkspaceClient } from 'sparxie'
+import type { AppConnectorAuthGrant, AppConnectorAuthValidationResult } from '../modules/connectors/connector.runner'
 import type { ConnectorAuthMode } from '../modules/connectors/connector.repository'
 import type { ConnectorStatusListResult, ConnectorStatusView } from '../modules/connectors/connector.status'
-import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
-import type { NormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
-
-export interface LocalValedictorianClientOptions {
-  connectorRunRecovery?: ConnectorRunRecoveryLifecycle
-  connectorRegistry?: LocalConnectorRegistry
-  connectorRuntime?: AppConnectorRuntimePorts
-  /** Explicit scheduling capability; shared with server capability reporting when injected. */
-  connectorScheduling?: ConnectorSchedulingCapability
-  now?: () => Date
-  normalizationRegistry?: NormalizationResolverRegistry
-  referenceTrackerPath?: string
-  seedDataMode?: ValedictorianSeedDataMode
-  secretCodec?: ProfileSecretCodec
-  sqlitePath: string
-  workspaceId?: string
-}
-
-export type ValedictorianSeedDataMode = 'none' | 'sample' | 'reference-tracker'
+import type { LocalConnectorExecutionIntent } from './local-connector-execution-intent'
 
 export interface LocalConnectorAuthSummary {
   id: string
@@ -41,7 +10,6 @@ export interface LocalConnectorAuthSummary {
   label: string | null
   configured: boolean
 }
-
 export interface LocalConnectorInstanceSummary {
   id: string
   connectorId: string
@@ -99,7 +67,6 @@ export interface LocalConnectorRunTriggerInput {
  * (Jobright deferred refresh, retry-ledger, normalization catch-up).
  * Never persisted as public connector-run mode and never leaked through Sparxie DTOs.
  */
-export type LocalConnectorExecutionIntent = 'ordinary' | 'deferred_refresh'
 
 export type LocalConnectorInternalRunTriggerInput = LocalConnectorRunTriggerInput
 

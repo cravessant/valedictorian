@@ -1,6 +1,3 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connectorRunSummarySchema } from 'sparxie'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
@@ -8,36 +5,13 @@ import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../d
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
-
-function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-')), 'valedictorian.sqlite')
-}
-
-async function readJson(response: Response) {
-  return (await response.json()) as unknown
-}
+import { createTempSqlitePath, readJson, createLocalServerHttpTestFixture } from './local-server.http-test-harness'
 
 describe('local Valedictorian HTTP server', () => {
-  let server: StartedValedictorianHttpServer | null = null
-  const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
+  const fixture = createLocalServerHttpTestFixture()
 
-  beforeEach(() => {
-    process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = path.join(
-      os.tmpdir(),
-      'valedictorian-missing-reference-tracker.md',
-    )
-  })
-
-  afterEach(async () => {
-    await server?.close()
-    server = null
-    if (originalReferenceTrackerPath === undefined) {
-      delete process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
-    } else {
-      process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH = originalReferenceTrackerPath
-    }
-  })
+  beforeEach(() => fixture.setup())
+  afterEach(() => fixture.teardown())
 
   it('returns the same persisted not-due run through HTTP manual trigger without invoking the connector', async () => {
     const sqlitePath = createTempSqlitePath()
@@ -72,7 +46,7 @@ describe('local Valedictorian HTTP server', () => {
       connectorRegistry: createStaticConnectorRegistry([connector]), now: () => new Date(clock),
       seedDataMode: 'none', sqlitePath,
     })
-    server = await createValedictorianHttpServer({
+    const server = await fixture.start({
       client, host: '127.0.0.1', port: 0,
       resolveWorkspaceClient(workspaceId) {
         expect(workspaceId).toBe('workspace-retry')

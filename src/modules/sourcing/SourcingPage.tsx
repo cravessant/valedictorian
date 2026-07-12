@@ -23,16 +23,16 @@ import { formatSourcingLocation } from '../../app/format'
 import { formatEnumLabel } from '../../app/labels'
 import type { ApplicationDetailSeed } from '../../app/types'
 
+import { SourcingFindingDispositionModal } from './SourcingFindingDispositionModal'
+import { SourcingFindingEditorModal } from './SourcingFindingEditorModal'
 import {
   destinationClassLabel,
   usabilityLabel,
-  SourcingFindingDispositionModal,
-  SourcingFindingEditorModal,
   formatSourcingTiming,
-  sourcingFindingToApplication,
   getSourcingDecision,
-  formatMergedApplicationLabel
-} from './SourcingFindingExtras'
+  formatMergedApplicationLabel,
+} from './SourcingFindingPresentation'
+import { sourcingFindingToApplication } from './SourcingFindingPromotion'
 
 interface SourcingPageProps {
   contentColumnClass: string

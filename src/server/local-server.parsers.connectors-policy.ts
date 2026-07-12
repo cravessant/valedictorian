@@ -27,10 +27,12 @@ import {
   readBooleanField,
   readOptionalConnectorAuthReferences,
   readOptionalRecordField,
+  validateConnectorTimestamp
+} from './local-server.parsers.connector-body-primitives'
+import {
   setNumberQuery,
   setStringQuery,
-  validateConnectorTimestamp
-} from './local-server.parsers.shared'
+} from './local-server.parsers.query-primitives'
 
 const connectorRunModes = new Set(['manual'])
 export interface ConnectorRunsListQuery {

@@ -16,19 +16,11 @@ import {
 import {
   freezeConnectorRunLifecycleCounts
 } from './connector.lifecycle-counts'
-import {
-  selectConnectorInstance,
-  upsertConnectorCheckpoint,
-  mapConnectorInstance,
-  normalizeConnectorAuthReferences,
-  toJsonRecord,
-  stableJsonStringify,
-  readConnectorWarnings,
-  mapConnectorRun,
-  withConnectorRunLifecycleCounts,
-  mapConnectorCheckpoint,
-  mapConnectorObservation
-} from './connector.repository.helpers'
+import { selectConnectorInstance, mapConnectorInstance, normalizeConnectorAuthReferences } from './connector-instance.persistence'
+import { upsertConnectorCheckpoint, mapConnectorCheckpoint } from './connector-checkpoint.persistence'
+import { readConnectorWarnings, mapConnectorRun, withConnectorRunLifecycleCounts } from './connector-run.persistence'
+import { mapConnectorObservation } from './connector-observation.persistence'
+import { stableJsonStringify, toJsonRecord } from './connector.persistence-json'
 import {
   mapAcquiredRetryWork,
   parseRetryAdviceJson,
@@ -41,68 +33,18 @@ import {
   releaseAcquiredNormalizationWorkForRun,
 } from './connector.repository.exact-retry-finalize'
 import { recoverInterruptedConnectorRuns } from './connector.repository.recovery'
-export type {
-  AcquiredRetryWork,
-  ConnectorCoverageWindow,
-  ConnectorWarning,
-  ConnectorCheckpointPayload,
-  ConnectorRunStatus,
-  ConnectorRunTerminalStatus,
-  ConnectorAuthMode,
-  ConnectorAuthReference,
-  ConnectorObservationLinks,
-  ConnectorObservationResolution,
-  ConnectorObservationEvidence,
-  ConnectorObservationInput,
-  ConnectorRefreshResultInput,
-  UpsertConnectorInstanceInput,
-  RecordConnectorRefreshResultInput,
-  RecordConnectorRunRequestInput,
-  RecordConnectorRunRequestResult,
-  RecordConnectorRunFailureInput,
-  RecordConnectorRunSkippedInput,
-  MarkConnectorRunFailedInput,
-  MarkConnectorRunRunningInput,
-  RecoverInterruptedConnectorRunsInput,
-  UpdateConnectorRunProgressInput,
-  CompleteConnectorRunInput,
-  RecordConnectorCheckpointInput,
-  GetConnectorCheckpointInput,
-  ConnectorInstanceRecord,
-  ConnectorRunRecord,
-  ConnectorCheckpointRecord,
-  ConnectorObservationRecord,
-  ConnectorStatusSummaryRecord,
-  ListConnectorRunsInput,
-  ListConnectorRunsResult,
-  ListConnectorCheckpointsInput,
-  ListConnectorObservationsInput,
-} from './connector.repository.types'
-import type {
-  AcquiredRetryWork,
-  UpsertConnectorInstanceInput,
-  RecordConnectorRefreshResultInput,
-  RecordConnectorRunRequestInput,
-  RecordConnectorRunRequestResult,
-  RecordConnectorRunFailureInput,
-  RecordConnectorRunSkippedInput,
-  MarkConnectorRunFailedInput,
-  MarkConnectorRunRunningInput,
-  RecoverInterruptedConnectorRunsInput,
-  UpdateConnectorRunProgressInput,
-  CompleteConnectorRunInput,
-  RecordConnectorCheckpointInput,
-  GetConnectorCheckpointInput,
-  ConnectorInstanceRecord,
-  ConnectorRunRecord,
-  ConnectorCheckpointRecord,
-  ConnectorObservationRecord,
-  ConnectorStatusSummaryRecord,
-  ListConnectorRunsInput,
-  ListConnectorRunsResult,
-  ListConnectorCheckpointsInput,
-  ListConnectorObservationsInput
-} from './connector.repository.types'
+export type * from './connector-instance.persistence-types'
+export type * from './connector-checkpoint.persistence-types'
+export type * from './connector-observation.persistence-types'
+export type * from './connector-run.persistence-types'
+export type * from './connector-retry-work.identity-types'
+export type * from './connector-status.persistence-types'
+import type { UpsertConnectorInstanceInput, ConnectorInstanceRecord } from './connector-instance.persistence-types'
+import type { RecordConnectorCheckpointInput, GetConnectorCheckpointInput, ConnectorCheckpointRecord, ListConnectorCheckpointsInput } from './connector-checkpoint.persistence-types'
+import type { ConnectorObservationRecord, ListConnectorObservationsInput } from './connector-observation.persistence-types'
+import type { RecordConnectorRefreshResultInput, RecordConnectorRunRequestInput, RecordConnectorRunRequestResult, RecordConnectorRunFailureInput, RecordConnectorRunSkippedInput, MarkConnectorRunFailedInput, MarkConnectorRunRunningInput, RecoverInterruptedConnectorRunsInput, UpdateConnectorRunProgressInput, CompleteConnectorRunInput, ConnectorRunRecord, ListConnectorRunsInput, ListConnectorRunsResult } from './connector-run.persistence-types'
+import type { AcquiredRetryWork } from './connector-retry-work.identity-types'
+import type { ConnectorStatusSummaryRecord } from './connector-status.persistence-types'
 
 export function createSqliteConnectorRepository(
   database: DrizzleDatabase,

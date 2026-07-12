@@ -1,0 +1,116 @@
+import { isApplicationAttemptActorType, isRunStatus, isRunType, type ValedictorianWorkspaceClient, type WorkflowRunsListInput } from 'sparxie'
+import { readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
+import { setNumberQuery, setStringQuery } from './local-server.parsers.query-primitives'
+
+export function parseWorkflowRunsListQuery(requestUrl: URL): WorkflowRunsListInput {
+  const query: WorkflowRunsListInput = {}
+  const runType = requestUrl.searchParams.get('runType')
+  const status = requestUrl.searchParams.get('status')
+
+  if (runType) {
+    if (!isRunType(runType)) {
+      throw new Error(`Invalid runType: ${runType}`)
+    }
+
+    query.runType = runType
+  }
+
+  if (status) {
+    if (!isRunStatus(status)) {
+      throw new Error(`Invalid run status: ${status}`)
+    }
+
+    query.status = status
+  }
+
+  setStringQuery(requestUrl, 'source', (value) => {
+    query.source = value
+  })
+  setStringQuery(requestUrl, 'sourceId', (value) => {
+    query.sourceId = value
+  })
+  setStringQuery(requestUrl, 'subjectApplicationId', (value) => {
+    query.subjectApplicationId = value
+  })
+  setNumberQuery(requestUrl, 'limit', (value) => {
+    query.limit = value
+  })
+  setNumberQuery(requestUrl, 'offset', (value) => {
+    query.offset = value
+  })
+
+  return query
+}
+
+
+export function parseRunStartInput(
+  body: unknown,
+): Parameters<ValedictorianWorkspaceClient['runs']['start']>[0] {
+  const record = readRecord(body)
+  const runType = readStringField(record, 'runType')
+  const actorType = readStringField(record, 'actorType')
+
+  if (!isRunType(runType)) {
+    throw new Error(`Invalid runType: ${runType}`)
+  }
+
+  if (!isApplicationAttemptActorType(actorType)) {
+    throw new Error(`Invalid actorType: ${actorType}`)
+  }
+
+  return {
+    runType,
+    actorType,
+    actorName: readOptionalNullableStringField(record, 'actorName'),
+    sourceId: readOptionalNullableStringField(record, 'sourceId'),
+    sourceName: readOptionalNullableStringField(record, 'sourceName'),
+    subjectApplicationId: readOptionalNullableStringField(record, 'subjectApplicationId'),
+    coverageStartedAt: readOptionalNullableStringField(record, 'coverageStartedAt'),
+    coverageEndedAt: readOptionalNullableStringField(record, 'coverageEndedAt'),
+    timezone: readOptionalNullableStringField(record, 'timezone'),
+    input: 'input' in record ? record.input : undefined,
+    summary: readOptionalNullableStringField(record, 'summary'),
+    metadata: 'metadata' in record ? record.metadata : undefined,
+  }
+}
+
+export function parseRunStepInput(
+  workflowRunId: string,
+  body: unknown,
+): Parameters<ValedictorianWorkspaceClient['runs']['step']>[0] {
+  const record = readRecord(body)
+
+  return {
+    workflowRunId,
+    type: readStringField(record, 'type'),
+    message: readStringField(record, 'message'),
+    payload: 'payload' in record ? record.payload : undefined,
+    actor: readOptionalStringField(record, 'actor'),
+  }
+}
+
+export function parseRunCompleteInput(
+  workflowRunId: string,
+  body: unknown,
+): Parameters<ValedictorianWorkspaceClient['runs']['complete']>[0] {
+  const record = readRecord(body)
+  const statusValue = readOptionalStringField(record, 'status')
+  let status: Parameters<ValedictorianWorkspaceClient['runs']['complete']>[0]['status']
+
+  if (statusValue !== undefined) {
+    if (!isRunStatus(statusValue)) {
+      throw new Error(`Invalid run status: ${statusValue}`)
+    }
+
+    status = statusValue
+  }
+
+  return {
+    workflowRunId,
+    status,
+    outcome: readOptionalNullableStringField(record, 'outcome'),
+    summary: readOptionalNullableStringField(record, 'summary'),
+    blocker: readOptionalNullableStringField(record, 'blocker'),
+    metadata: 'metadata' in record ? record.metadata : undefined,
+  }
+}

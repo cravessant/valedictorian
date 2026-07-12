@@ -8,15 +8,17 @@ import { hasPersistedExactSuccessfulNormalizationAttempt } from '../sourcing/nor
 import { freezeConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
 import {
   mapConnectorRun,
-  toJsonRecord,
-  upsertConnectorCheckpoint,
-} from './connector.repository.helpers'
+} from './connector-run.persistence'
+import { toJsonRecord } from './connector.persistence-json'
+import { upsertConnectorCheckpoint } from './connector-checkpoint.persistence'
 import type {
   ConnectorCheckpointPayload,
   ConnectorCoverageWindow,
+} from './connector-checkpoint.persistence-types'
+import type {
   ConnectorRunRecord,
   ConnectorRunTerminalStatus,
-} from './connector.repository.types'
+} from './connector-run.persistence-types'
 import { assertValidJobrightV5CheckpointRetryState } from './connector.retry-work'
 
 export type ExactAcquiredNormalizationFinalizationMode =

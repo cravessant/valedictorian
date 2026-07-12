@@ -1,4 +1,4 @@
-import type { ConnectorCheckpointPayload } from './connector.repository.types'
+import type { ConnectorCheckpointPayload } from './connector-checkpoint.persistence-types'
 import { JOBRIGHT_CHECKPOINT_SCHEMA_V5 } from './jobright.constants'
 
 export function restoreUnacquiredJobrightV5RetryEntries(input: {

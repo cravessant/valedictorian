@@ -9,7 +9,7 @@ import {
   sourcingFindings,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
-import type { ConnectorRunRecord } from './connector.repository'
+import type { ConnectorRunRecord } from './connector-run.persistence-types'
 
 export const CONNECTOR_RUN_LIFECYCLE_COUNTS_VERSION = 'connector-run-lifecycle-counts/v1'
 

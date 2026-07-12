@@ -74,6 +74,8 @@ import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/work
 export type {
   LocalValedictorianClientOptions,
   ValedictorianSeedDataMode,
+} from './local-valedictorian-runtime-options'
+export type {
   LocalConnectorAuthSummary,
   LocalConnectorInstanceSummary,
   LocalConnectorStatusSummary,
@@ -87,9 +89,11 @@ export type {
   LocalConnectorSkipActionResult,
   LocalConnectorClient,
   LocalValedictorianClient,
-} from './local-valedictorian-client.types'
+} from './local-connector-client.contract'
 import type {
   LocalValedictorianClientOptions,
+} from './local-valedictorian-runtime-options'
+import type {
   LocalConnectorAuthSummary,
   LocalConnectorInstanceSummary,
   LocalConnectorStatusSummary,
@@ -98,7 +102,7 @@ import type {
   LocalConnectorStatusActionInput,
   LocalConnectorReconnectActionResult,
   LocalValedictorianClient
-} from './local-valedictorian-client.types'
+} from './local-connector-client.contract'
 
 const unavailableSecretCodec: ProfileSecretCodec = {
   decrypt() {
