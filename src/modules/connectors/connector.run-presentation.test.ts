@@ -6,6 +6,7 @@ describe('connector run terminal copy', () => {
     ['target_met', 'Target reached'],
     ['source_exhausted', 'Provider exhausted'],
     ['backfill_horizon', 'Backfill horizon reached'],
+    ['coverage_start_reached', 'Reached the selected earliest backfill date'],
     ['cycle_attempt_limit', 'Cycle attempt limit reached'],
     ['discovery_page_limit', 'Finite discovery page limit reached'],
     ['discovery_record_limit', 'Finite discovery record limit reached'],

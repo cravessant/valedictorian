@@ -2,6 +2,7 @@ import {
   isPolicyEvidenceTag,
   isPolicySubjectType,
   isActionQueueBucket,
+  canonicalDateOnlySchema,
   type CreateConnectorInstanceInput,
   type EvaluateApplicationPolicyInput,
   type EvaluateRunWindowPolicyInput,
@@ -76,6 +77,11 @@ export function parseCreateConnectorInstanceInput(body: unknown): CreateConnecto
     input.filters = filters
   }
 
+  const earliestBackfillDate = readOptionalCanonicalDateOnlyField(record, 'earliestBackfillDate')
+  if (earliestBackfillDate !== undefined) {
+    input.earliestBackfillDate = earliestBackfillDate
+  }
+
   return input
 }
 
@@ -114,6 +120,11 @@ export function parseUpdateConnectorInstanceInput(
 
   if (filters !== undefined) {
     input.filters = filters
+  }
+
+  const earliestBackfillDate = readOptionalCanonicalDateOnlyField(record, 'earliestBackfillDate')
+  if (earliestBackfillDate !== undefined) {
+    input.earliestBackfillDate = earliestBackfillDate
   }
 
   return input
@@ -362,4 +373,18 @@ export function parseEvaluateRunWindowPolicyInput(
     previousRunCompletedAt: readOptionalNullableStringField(record, 'previousRunCompletedAt'),
     timezone: readOptionalNullableStringField(record, 'timezone'),
   }
+}
+
+function readOptionalCanonicalDateOnlyField(
+  record: Record<string, unknown>,
+  field: string,
+): string | undefined {
+  if (!Object.prototype.hasOwnProperty.call(record, field) || record[field] === undefined) {
+    return undefined
+  }
+  const parsed = canonicalDateOnlySchema.safeParse(record[field])
+  if (!parsed.success) {
+    throw new Error(`Invalid ${field}`)
+  }
+  return parsed.data
 }

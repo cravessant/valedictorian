@@ -170,7 +170,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
   await connectorRepository.upsertInstance({
     id: connectorInstanceId,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.7.0',
+    connectorVersion: '0.8.0',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [
@@ -467,7 +467,7 @@ describe('runtime local Valedictorian client', () => {
     await connectorRepository.upsertInstance({
       id: 'jobright-api',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.7.0',
+      connectorVersion: '0.8.0',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [

@@ -1,12 +1,24 @@
 import { randomUUID } from 'node:crypto'
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { retryAdviceSchema, type RetryAdvice } from 'sparxie'
-import { retryWork } from '../../db/schema'
+import {
+  connectorCheckpoints,
+  rawSourceRevisions,
+  retryWork,
+} from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import type { AcquiredRetryWork, ConnectorCheckpointPayload } from './connector.repository.types'
+import {
+  JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID,
+  JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION,
+  JOBRIGHT_CHECKPOINT_SCHEMA_V5,
+  JOBRIGHT_CONNECTOR_ID,
+} from './jobright.constants'
 
 type RetryWorkRow = typeof retryWork.$inferSelect
 type RetryWorkDatabase = Pick<DrizzleDatabase, 'insert' | 'select' | 'update'>
+
+const JOBRIGHT_PUBLIC_SOURCE_PREFIX = 'jobright.public:'
 
 export function parseRetryAdviceJson(value: string): RetryAdvice | null {
   const parsed = JSON.parse(value) as unknown
@@ -50,7 +62,7 @@ export function synchronizeConnectorRetryWork(
     eq(retryWork.state, 'acquired'),
     eq(retryWork.acquisitionRunId, input.runId),
   )).all()
-  // Validate Jobright v4 checkpoint shape when present, but never infer
+  // Validate Jobright v5 pending-retry ledger when present, but never infer
   // normalization completion from provider-id disappearance. Exact acquired
   // rows complete only through normalization persistence.
   currentJobrightRetryProviderRecordIds(input.checkpoint)
@@ -142,40 +154,46 @@ export function synchronizeConnectorRetryWork(
   }).run()
 }
 
-export function assertValidJobrightV4CheckpointRetryState(checkpoint: ConnectorCheckpointPayload) {
+export function assertValidJobrightV5CheckpointRetryState(checkpoint: ConnectorCheckpointPayload) {
   currentJobrightRetryProviderRecordIds(checkpoint)
 }
 
 function currentJobrightRetryProviderRecordIds(checkpoint: ConnectorCheckpointPayload): Set<string> | null {
-  if (checkpoint.schemaVersion !== 'jobright-resolution-checkpoint@4') return null
+  if (checkpoint.schemaVersion !== 'jobright-resolution-checkpoint@5') return null
   const value = checkpoint.checkpoint
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Jobright v4 checkpoint is malformed')
+    throw new Error('Jobright v5 checkpoint is malformed')
   }
-  const retryState = (value as Record<string, unknown>).retryState
-  if (!Array.isArray(retryState)) throw new Error('Jobright v4 checkpoint retry state is malformed')
-  const providerRecordIds = retryState.map((entry) => {
+  const pendingDetailRetries = (value as Record<string, unknown>).pendingDetailRetries
+  if (!Array.isArray(pendingDetailRetries)) {
+    throw new Error('Jobright v5 checkpoint pending retry ledger is malformed')
+  }
+  const providerRecordIds = pendingDetailRetries.map((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)
       || typeof (entry as Record<string, unknown>).sourceId !== 'string'
-      || !Object.prototype.hasOwnProperty.call(entry, 'advice')) {
-      throw new Error('Jobright v4 checkpoint retry entry is malformed')
+      || !Object.prototype.hasOwnProperty.call(entry, 'advice')
+      || !Object.prototype.hasOwnProperty.call(entry, 'ownership')) {
+      throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
     }
     const retryEntry = entry as Record<string, unknown>
     const sourceId = retryEntry.sourceId as string
     const prefix = 'jobright.public:'
     const providerRecordId = sourceId.startsWith(prefix) ? sourceId.slice(prefix.length) : ''
     if (!providerRecordId || providerRecordId.trim() !== providerRecordId) {
-      throw new Error('Jobright v4 checkpoint retry source identity is malformed')
+      throw new Error('Jobright v5 checkpoint pending retry source identity is malformed')
     }
     const advice = retryAdviceSchema.parse(retryEntry.advice)
     if (advice.state !== 'scheduled' && advice.state !== 'not_due') {
-      throw new Error('Jobright v4 checkpoint retry advice is malformed')
+      throw new Error('Jobright v5 checkpoint pending retry advice is malformed')
+    }
+    if (retryEntry.ownership !== 'active' && retryEntry.ownership !== 'suspended') {
+      throw new Error('Jobright v5 checkpoint pending retry ownership is malformed')
     }
     return providerRecordId
   })
   const uniqueProviderRecordIds = new Set(providerRecordIds)
   if (uniqueProviderRecordIds.size !== providerRecordIds.length) {
-    throw new Error('Jobright v4 checkpoint retry source identities are duplicated')
+    throw new Error('Jobright v5 checkpoint pending retry source identities are duplicated')
   }
   return uniqueProviderRecordIds
 }
@@ -210,6 +228,8 @@ export function selectPendingRetryWork(
   database: RetryWorkDatabase & Pick<DrizzleDatabase, 'select'>,
   input: {
     connectorInstanceId: string
+    connectorId: string
+    coverageStartedAt: string
     filterSignature: string
     now: string
   },
@@ -238,6 +258,7 @@ export function selectPendingRetryWork(
     .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt))
     .all()
   const retryCandidates = [...captureRetries, ...normalizationRetries]
+    .filter((work) => isSelectableRetryWorkCandidate(database, work, input))
   return retryCandidates.find((work) => work.state === 'acquired')
     ?? retryCandidates
       .filter((work) => work.state === 'scheduled' && work.nextAttemptAt !== null && Date.parse(input.now) >= Date.parse(work.nextAttemptAt))
@@ -246,4 +267,129 @@ export function selectPendingRetryWork(
       .filter((work) => work.state === 'scheduled')
       .sort((left, right) => Date.parse(left.nextAttemptAt!) - Date.parse(right.nextAttemptAt!))[0]
     ?? retryCandidates.find((work) => work.state === 'exhausted' || work.state === 'cancelled')
+}
+
+function isSelectableRetryWorkCandidate(
+  database: RetryWorkDatabase & Pick<DrizzleDatabase, 'select'>,
+  work: RetryWorkRow,
+  input: {
+    connectorInstanceId: string
+    connectorId: string
+    coverageStartedAt: string
+    filterSignature: string
+  },
+) {
+  if (
+    work.kind !== 'normalization'
+    || input.connectorId !== JOBRIGHT_CONNECTOR_ID
+    || work.resolverId !== JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID
+    || work.resolverVersion !== JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION
+  ) {
+    return true
+  }
+  return isActiveJobrightV5NormalizationRetry(database, work, input)
+}
+
+function isActiveJobrightV5NormalizationRetry(
+  database: RetryWorkDatabase & Pick<DrizzleDatabase, 'select'>,
+  work: RetryWorkRow,
+  input: {
+    connectorInstanceId: string
+    coverageStartedAt: string
+    filterSignature: string
+  },
+) {
+  if (work.rawRevisionId === null) {
+    throw new Error('Jobright normalization retry work is missing raw revision identity')
+  }
+
+  const checkpointRow = database
+    .select()
+    .from(connectorCheckpoints)
+    .where(and(
+      eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
+      eq(connectorCheckpoints.filterSignature, input.filterSignature),
+      isNull(connectorCheckpoints.deletedAt),
+    ))
+    .get()
+
+  if (!checkpointRow) {
+    return false
+  }
+  if (checkpointRow.schemaVersion !== JOBRIGHT_CHECKPOINT_SCHEMA_V5) {
+    throw new Error('Jobright connector checkpoint must use checkpoint-v5 for exact retry acquisition')
+  }
+
+  let checkpoint: Record<string, unknown>
+  try {
+    const parsed = JSON.parse(checkpointRow.checkpointJson) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('malformed')
+    }
+    checkpoint = parsed as Record<string, unknown>
+  } catch {
+    throw new Error('Jobright v5 checkpoint payload is malformed')
+  }
+
+  const generationId = checkpoint.generationId
+  if (typeof generationId !== 'string' || generationId.trim().length === 0) {
+    throw new Error('Jobright v5 checkpoint generation identity is malformed')
+  }
+
+  const effectiveCoverageStart = checkpoint.effectiveCoverageStart
+  if (typeof effectiveCoverageStart !== 'string' || effectiveCoverageStart.trim().length === 0) {
+    throw new Error('Jobright v5 checkpoint effective coverage start is malformed')
+  }
+  if (effectiveCoverageStart !== input.coverageStartedAt) {
+    // Boundary changed; force a full connector cycle to reconcile ownership first.
+    return false
+  }
+
+  const revision = database
+    .select()
+    .from(rawSourceRevisions)
+    .where(eq(rawSourceRevisions.id, work.rawRevisionId))
+    .get()
+  const providerRecordId = revision?.providerRecordId
+  if (typeof providerRecordId !== 'string' || providerRecordId.trim().length === 0) {
+    throw new Error('Jobright normalization retry work is missing provider record identity')
+  }
+
+  const sourceId = `${JOBRIGHT_PUBLIC_SOURCE_PREFIX}${providerRecordId}`
+  if (!Array.isArray(checkpoint.pendingDetailRetries)) {
+    throw new Error('Jobright v5 checkpoint pending retry ledger is malformed')
+  }
+
+  const matches = checkpoint.pendingDetailRetries.filter((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
+    }
+    const pending = entry as Record<string, unknown>
+    if (typeof pending.sourceId !== 'string') {
+      throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
+    }
+    if (pending.ownership !== 'active' && pending.ownership !== 'suspended') {
+      throw new Error('Jobright v5 checkpoint pending retry ownership is malformed')
+    }
+    return pending.sourceId === sourceId
+  }) as Array<Record<string, unknown>>
+
+  if (matches.length === 0) {
+    return false
+  }
+  if (matches.length !== 1) {
+    throw new Error('Jobright v5 checkpoint pending retry source identities are duplicated')
+  }
+
+  const entry = matches[0]!
+  if (entry.ownership === 'suspended') {
+    return false
+  }
+  if (entry.ownership !== 'active') {
+    throw new Error('Jobright v5 checkpoint pending retry ownership is malformed')
+  }
+  if (entry.generationId !== generationId) {
+    return false
+  }
+  return true
 }

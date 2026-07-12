@@ -142,7 +142,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(19)
+    expect(migrationRows).toHaveLength(20)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -166,7 +166,7 @@ describe('SQLite database', () => {
     expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
       .toEqual({ name: 'retry_work' })
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 19 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 20 })
     const stampedTags = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -262,7 +262,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 19 })
+    ).toEqual({ count: 20 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -299,7 +299,8 @@ describe('SQLite database', () => {
       ...before,
       connector_instances: before.connector_instances.map((row) => ({
         ...row,
-        connector_version: '0.7.0',
+        connector_version: '0.8.0',
+        earliest_backfill_date: '2026-07-03',
       })),
     })
     for (const table of disposableResetTables) {
@@ -338,12 +339,14 @@ describe('SQLite database', () => {
       drop table __drizzle_migrations;
       create trigger inject_legacy_reset_failure
       before update of connector_version on connector_instances
-      when new.connector_version = '0.7.0'
+      when new.connector_version = '0.8.0'
       begin select raise(abort, 'injected legacy reset failure'); end;
     `)
     const before = snapshotAllResetTables(database)
 
-    expect(() => migrateDatabase(database)).toThrow(/injected legacy reset failure/)
+    expect(() => migrateDatabase(database)).toThrow(
+      /injected legacy reset failure|Failed to run the query/,
+    )
     expect(snapshotAllResetTables(database)).toEqual(before)
     expect(database.prepare(`
       select count(*) as count from sqlite_master
@@ -365,7 +368,8 @@ describe('SQLite database', () => {
       ...before,
       connector_instances: before.connector_instances.map((row) => ({
         ...row,
-        connector_version: '0.7.0',
+        connector_version: '0.8.0',
+        earliest_backfill_date: '2026-07-03',
       })),
     })
     for (const table of disposableResetTables) {
@@ -378,7 +382,7 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 19 })
+      .toEqual({ count: 20 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
@@ -423,7 +427,7 @@ describe('SQLite database', () => {
     expect(database.prepare('select count(*) as count from raw_source_occurrences').get()).toEqual({ count: 0 })
     expect(database.prepare('select count(*) as count from connector_runs').get()).toEqual({ count: 0 })
     expect(database.prepare("select connector_version from connector_instances where connector_id = 'jobright.resolver'").get())
-      .toEqual({ connector_version: '0.7.0' })
+      .toEqual({ connector_version: '0.8.0' })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })

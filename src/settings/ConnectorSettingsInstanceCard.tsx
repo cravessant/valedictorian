@@ -23,6 +23,7 @@ import {
   ConnectorRunProgressDetails,
   connectorRunMetrics,
 } from './ConnectorRunDetails'
+import { ConnectorEarliestBackfillDateControl } from './ConnectorEarliestBackfillDateControl'
 import {
   connectorAuthStatusLabel,
   connectorAuthStatusMessage,
@@ -30,6 +31,10 @@ import {
   isConnectorAuthReady,
   isJobrightCredentialsConfigured,
 } from './connector-settings.helpers'
+import {
+  maximumSelectableEarliestBackfillDate,
+  validateSelectableEarliestBackfillDate,
+} from '../modules/connectors/connector.earliest-backfill'
 import type {
   ConnectorAuthCredentialDraft,
   ConnectorAuthUiState,
@@ -96,6 +101,16 @@ export function ConnectorSettingsInstanceCard({
   const settingsInterpretation = isJobrightInstance
     ? interpretJobrightSettings(instance, draft)
     : null
+  const earliestValid = validateSelectableEarliestBackfillDate({
+    candidate: draft.earliestBackfillDate,
+    createdAt: instance.createdAt,
+    todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
+  }).ok
+  const runBlocked = !authReady
+    || runningInstanceId === instance.id
+    || isSavingSettings
+    || isDraftDirty(instance)
+    || !earliestValid
 
   return (
                   <div
@@ -203,6 +218,14 @@ export function ConnectorSettingsInstanceCard({
 
                     {isJobrightInstance ? (
                     <>
+                    <ConnectorEarliestBackfillDateControl
+                      createdAt={instance.createdAt}
+                      disabled={isSavingSettings}
+                      instanceId={instance.id}
+                      value={draft.earliestBackfillDate}
+                      onChange={(earliestBackfillDate) =>
+                        onUpdateDraft(instance.id, { earliestBackfillDate })}
+                    />
                     <div
                       className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] xl:items-end"
                       data-testid={`connector-run-actions-${instance.id}`}
@@ -351,7 +374,7 @@ export function ConnectorSettingsInstanceCard({
                       ) : null}
                       <Button
                         type="button"
-                        disabled={!authReady || runningInstanceId === instance.id || isSavingSettings}
+                        disabled={runBlocked}
                         onClick={() => onRunNow(instance)}
                       >
                         {runningInstanceId === instance.id ? 'Running...' : 'Run Jobright now'}

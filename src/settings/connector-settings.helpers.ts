@@ -132,6 +132,7 @@ export function defaultConnectorSettingsDraft(
     )),
     roleTerms: arrayTextFromUnknown(filters.roleTerms, 'intern'),
     usefulTarget: String(numberFromUnknown(config.usefulTarget, JOBRIGHT_DEFAULT_USEFUL_TARGET)),
+    earliestBackfillDate: instance?.earliestBackfillDate ?? '',
   }
 }
 

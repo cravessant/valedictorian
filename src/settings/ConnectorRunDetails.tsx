@@ -43,6 +43,8 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
     && stats.maxRequestsPerRun > 0
     ? stats.maxRequestsPerRun
     : null
+  const earliestBackfillDate = utcDateOnlyFromCoverageStart(run.coverage.start)
+  const capReached = stopReason === 'coverage_start_reached'
 
   return (
     <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 text-xs">
@@ -50,6 +52,16 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
         <p className="font-semibold text-foreground">{terminal.summary}</p>
         {terminal.detail ? <p className="mt-1 text-muted-foreground">{terminal.detail}</p> : null}
         {terminal.technical ? <p className="mt-1 text-muted-foreground">{terminal.technical}</p> : null}
+        {earliestBackfillDate ? (
+          <p className="mt-1 text-muted-foreground">
+            Selected earliest backfill date: {earliestBackfillDate}
+          </p>
+        ) : null}
+        {capReached ? (
+          <p className="mt-1 text-muted-foreground">
+            Discovery stopped because the selected earliest backfill date was reached.
+          </p>
+        ) : null}
         {stopReason ? (
           <p className="mt-1 text-muted-foreground">Stop reason: {stopReason}</p>
         ) : null}
@@ -236,4 +248,12 @@ function numericRunMetric(
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? { label, value }
     : null
+}
+
+function utcDateOnlyFromCoverageStart(value: string | null | undefined): string | null {
+  if (typeof value !== 'string' || !value.endsWith('T00:00:00.000Z')) {
+    return null
+  }
+  const dateOnly = value.slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? dateOnly : null
 }

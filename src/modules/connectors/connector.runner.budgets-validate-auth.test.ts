@@ -17,7 +17,7 @@ const testCodec: ProfileSecretCodec = {
 }
 
 describe('connector runner', () => {
-  it('uses a connector-declared stricter backfill cap when computing catch-up coverage', async () => {
+  it('anchors catch-up coverage at persisted earliest backfill midnight regardless of connector maxBackfillDays', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -72,7 +72,7 @@ describe('connector runner', () => {
     })
 
     expect(receivedInputs[0]?.coverage).toEqual({
-      start: '2026-07-05T16:00:00.000Z',
+      start: '2026-07-01T00:00:00.000Z',
       end: '2026-07-09T16:00:00.000Z',
     })
   })

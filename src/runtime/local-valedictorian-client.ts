@@ -21,6 +21,11 @@ import {
   type LocalConnectorRegistry
 } from '../modules/connectors/connector.registry'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  inclusiveCoverageStartFromEarliestBackfillDate,
+  maximumSelectableEarliestBackfillDate,
+  validateSelectableEarliestBackfillDate,
+} from '../modules/connectors/connector.earliest-backfill'
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
 import {
   createConnectorRunner,
@@ -248,6 +253,15 @@ export function createLocalValedictorianClient({
           )
         }
 
+        const createdAt = now().toISOString()
+        const earliestBackfillDate = input.earliestBackfillDate === undefined
+          ? undefined
+          : validateSelectableEarliestBackfillDateOrThrow(
+            input.earliestBackfillDate,
+            createdAt,
+            createdAt,
+          )
+
         return mapConnectorInstanceSummary(await connectorRunner.registerInstance({
           id: input.id,
           connector,
@@ -256,6 +270,8 @@ export function createLocalValedictorianClient({
           auth: mapConnectorAuthReferenceInputs(input.auth),
           config: input.config,
           filters: input.filters,
+          earliestBackfillDate,
+          createdAt,
         }))
       },
       update: async (input) => {
@@ -287,6 +303,15 @@ export function createLocalValedictorianClient({
           ?? connector?.definition.version
           ?? existing.connectorVersion
 
+        const updateNow = now().toISOString()
+        const earliestBackfillDate = input.earliestBackfillDate === undefined
+          ? existing.earliestBackfillDate
+          : validateSelectableEarliestBackfillDateOrThrow(
+            input.earliestBackfillDate,
+            existing.createdAt,
+            updateNow,
+          )
+
         return mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
           id: existing.id,
           connectorId: existing.connectorId,
@@ -296,6 +321,7 @@ export function createLocalValedictorianClient({
           auth: mapConnectorAuthReferenceInputs(input.auth) ?? existing.auth,
           config: input.config ?? toConnectorJsonRecord(existing.config, 'config'),
           filters: input.filters ?? toConnectorJsonRecord(existing.filters, 'filters'),
+          earliestBackfillDate,
           createdAt: existing.createdAt,
         }))
       },
@@ -672,12 +698,21 @@ async function executeConnectorRunTrigger({
     supportsFiltering: connector.definition.capabilities?.supportsFiltering,
     filters,
   })
+  const coverageEndedAt = mode === 'catch_up'
+    ? (input.coverageEndedAt ?? startedAt)
+    : input.coverageEndedAt
+  if (!coverageEndedAt) {
+    throw new Error(`coverageEndedAt is required for ${mode} connector runs`)
+  }
+  const coverageStartedAt = inclusiveCoverageStartFromEarliestBackfillDate(
+    instance.earliestBackfillDate,
+  )
   const runRequestResult = await connectorRepository.recordRunRequest({
     connectorInstanceId: input.connectorInstanceId,
     mode,
     startedAt,
-    coverageStartedAt: input.coverageStartedAt,
-    coverageEndedAt: input.coverageEndedAt,
+    coverageStartedAt,
+    coverageEndedAt,
     filterSignature,
     filters,
     reason: input.reason,
@@ -708,7 +743,7 @@ async function executeConnectorRunTrigger({
       now,
       runRequest,
       startedAt,
-      coverageEndedAt: input.coverageEndedAt,
+      coverageEndedAt,
     })
   }
 
@@ -719,7 +754,7 @@ async function executeConnectorRunTrigger({
       ? await connectorRunner.catchUpWithDeferredCheckpoint(connector, {
         connectorRunId: runRequest.id,
         connectorInstanceId: input.connectorInstanceId,
-        now: input.coverageEndedAt ?? startedAt,
+        now: coverageEndedAt,
         startedAt,
       })
       : await connectorRunner.refreshWithDeferredCheckpoint(
@@ -728,7 +763,10 @@ async function executeConnectorRunTrigger({
           connectorRunId: runRequest.id,
           connectorInstanceId: input.connectorInstanceId,
           mode,
-          coverage: requiredCoverageWindow(input, mode),
+          coverage: {
+            start: coverageStartedAt,
+            end: coverageEndedAt,
+          },
           startedAt,
         },
       )
@@ -788,23 +826,25 @@ function assertExecutableConnectorTrigger(
     return
   }
 
-  if (!input.coverageStartedAt || !input.coverageEndedAt) {
-    throw new Error(`coverageStartedAt and coverageEndedAt are required for ${mode} connector runs`)
+  if (!input.coverageEndedAt) {
+    throw new Error(`coverageEndedAt is required for ${mode} connector runs`)
   }
 }
 
-function requiredCoverageWindow(
-  input: LocalConnectorRunTriggerInput,
-  mode: Exclude<NonNullable<LocalConnectorRunTriggerInput['mode']>, 'catch_up'>,
-) {
-  if (!input.coverageStartedAt || !input.coverageEndedAt) {
-    throw new Error(`coverageStartedAt and coverageEndedAt are required for ${mode} connector runs`)
+function validateSelectableEarliestBackfillDateOrThrow(
+  candidate: string,
+  createdAt: string,
+  nowInstant: string,
+): string {
+  const validated = validateSelectableEarliestBackfillDate({
+    candidate,
+    createdAt,
+    todayUtc: maximumSelectableEarliestBackfillDate(nowInstant),
+  })
+  if (!validated.ok) {
+    throw new Error(validated.message)
   }
-
-  return {
-    start: input.coverageStartedAt,
-    end: input.coverageEndedAt,
-  }
+  return validated.value
 }
 
 function mapConnectorInstanceSummary(
@@ -819,6 +859,7 @@ function mapConnectorInstanceSummary(
     auth: record.auth.map(mapConnectorAuthSummary),
     config: record.config,
     filters: record.filters,
+    earliestBackfillDate: record.earliestBackfillDate,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   }

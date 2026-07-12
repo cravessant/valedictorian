@@ -323,6 +323,7 @@ export const connectorInstances = sqliteTable(
     configJson: text('config_json').notNull(),
     authJson: text('auth_json').notNull().default('[]'),
     filtersJson: text('filters_json').notNull().default('{}'),
+    earliestBackfillDate: text('earliest_backfill_date'),
     ...timestamps,
   },
   (table) => ({

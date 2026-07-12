@@ -386,7 +386,7 @@ describe('App settings and chrome', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.7.0',
+        version: '0.8.0',
         capabilities: { supportsFiltering: false },
         auth: {
           modes: ['username_password'],
@@ -447,7 +447,7 @@ describe('App settings and chrome', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
     expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
     await expect(client.connectors.list()).resolves.toMatchObject({
-      items: [expect.objectContaining({ connectorVersion: '0.7.0' })],
+      items: [expect.objectContaining({ connectorVersion: '0.8.0' })],
     })
   })
 
@@ -479,7 +479,7 @@ describe('App settings and chrome', () => {
         ],
         config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.7.0',
+        connectorVersion: '0.8.0',
         displayName: 'Jobright internslist',
         enabled: true,
         filters: {
@@ -676,7 +676,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.7.0',
+        connectorVersion: '0.8.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -690,6 +690,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 10,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],
@@ -750,6 +751,7 @@ describe('App settings and chrome', () => {
         }],
         config: {},
         filters: {},
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],
@@ -789,6 +791,7 @@ describe('App settings and chrome', () => {
         }],
         config: {},
         filters: {},
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],
@@ -906,7 +909,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.7.0',
+        connectorVersion: '0.8.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -920,6 +923,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 10,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],
@@ -997,7 +1001,7 @@ describe('App settings and chrome', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.7.0',
+        connectorVersion: '0.8.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -1011,6 +1015,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 10,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],

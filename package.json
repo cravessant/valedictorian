@@ -24,9 +24,10 @@
     "rebuild:node": "NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3"
   },
   "dependencies": {
+    "@radix-ui/react-popover": "^1.1.19",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-toast": "^1.2.15",
-    "@sparxie/valedictorian-connectors-jobright": "0.7.0",
+    "@sparxie/valedictorian-connectors-jobright": "0.8.0",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.2",
@@ -35,6 +36,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cosmiconfig": "9.0.2",
+    "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.2",
     "electron-updater": "^6.8.9",
     "env-paths": "^4.0.0",
@@ -42,8 +44,9 @@
     "lucide-react": "^1.17.0",
     "pathe": "^2.0.3",
     "react": "^18.2.0",
+    "react-day-picker": "8.10.1",
     "react-dom": "^18.2.0",
-    "sparxie": "0.11.0",
+    "sparxie": "0.12.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
     "umzug": "^3.8.3",
@@ -51,7 +54,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@sparxie/valedictorian-connectors-core": "0.7.0",
+    "@sparxie/valedictorian-connectors-core": "0.8.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.13",

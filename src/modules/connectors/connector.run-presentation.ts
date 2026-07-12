@@ -54,6 +54,7 @@ function terminalSummary(
   if (stopReason === 'target_met') return 'Target reached'
   if (stopReason === 'source_exhausted') return 'Provider exhausted'
   if (stopReason === 'backfill_horizon') return 'Backfill horizon reached'
+  if (stopReason === 'coverage_start_reached') return 'Reached the selected earliest backfill date'
   if (stopReason === 'cycle_attempt_limit') return 'Cycle attempt limit reached'
   if (stopReason === 'discovery_page_limit') return 'Finite discovery page limit reached'
   if (stopReason === 'discovery_record_limit') return 'Finite discovery record limit reached'

@@ -88,7 +88,7 @@ describe('runtime local Valedictorian client', () => {
       connectorInstanceId: 'connector-instance-enabled',
       coverage: {
         end: '2026-07-09T16:00:00.000Z',
-        start: '2026-07-01T15:00:00.000Z',
+        start: '2026-07-01T00:00:00.000Z',
       },
       mode: 'catch_up',
       status: 'completed',

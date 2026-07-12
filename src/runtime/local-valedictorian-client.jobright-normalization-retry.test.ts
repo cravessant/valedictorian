@@ -22,7 +22,7 @@ function createTempSqlitePath() {
 
 describe('runtime local Valedictorian client Jobright normalization retry', () => {
 
-  it('replays only due Jobright v4 detail work without rediscovery or successful-detail duplication', async () => {
+  it('replays only due Jobright v5 detail work without rediscovery or successful-detail duplication', async () => {
     const sqlitePath = createTempSqlitePath()
     let clock = '2026-07-11T12:00:00.000Z'
     let retryDetailCalls = 0
@@ -65,7 +65,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'retry-credentials', kind: 'password', label: 'Retry credentials', value: JSON.stringify({ username: 'retry@example.test', password: 'retry-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-retry', connectorId: 'jobright.resolver', connectorVersion: '0.7.0',
+      id: 'jobright-retry', connectorId: 'jobright.resolver', connectorVersion: '0.8.0',
       displayName: 'Jobright retry', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'retry-credentials' }],
       config: { discoveryCount: 2, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 2 },
@@ -125,7 +125,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     sqlite.close()
   })
 
-  it('executes only the acquired Jobright v4 retry identity when multiple detail retries are due', async () => {
+  it('executes only the acquired Jobright v5 retry identity when multiple detail retries are due', async () => {
     const sqlitePath = createTempSqlitePath()
     let clock = '2026-07-11T12:00:00.000Z'
     const detailCalls = new Map<string, number>()
@@ -170,7 +170,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'multi-credentials', kind: 'password', label: 'Multi credentials', value: JSON.stringify({ username: 'multi@example.test', password: 'multi-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-multi', connectorId: 'jobright.resolver', connectorVersion: '0.7.0',
+      id: 'jobright-multi', connectorId: 'jobright.resolver', connectorVersion: '0.8.0',
       displayName: 'Jobright multi', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'multi-credentials' }],
       config: { discoveryCount: 2, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 2 },
@@ -198,13 +198,13 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       resolverId: 'jobright.authenticated-destination',
       state: 'scheduled',
     })
-    const filterSignature = 'provider-state:jobright.resolver@0.7.0'
+    const filterSignature = 'provider-state:jobright.resolver@0.8.0'
     const checkpointAfterFirst = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-multi',
       filterSignature,
     })
     expect(checkpointAfterFirst).toMatchObject({
-      schemaVersion: 'jobright-resolution-checkpoint@4',
+      schemaVersion: 'jobright-resolution-checkpoint@5',
       checkpoint: {
         retryState: [expect.objectContaining({ sourceId: 'jobright.public:job-a' })],
         seenSourceIds: expect.arrayContaining(['jobright.public:job-a', 'jobright.public:job-b']),
@@ -264,6 +264,22 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
         schemaVersion: checkpointAfterFirst!.schemaVersion,
         checkpoint: {
           ...(checkpointAfterFirst!.checkpoint as Record<string, unknown>),
+          pendingDetailRetries: [
+            {
+              sourceId: 'jobright.public:job-a',
+              ownership: 'active',
+              generationId: (checkpointAfterFirst!.checkpoint as { generationId?: string }).generationId ?? 'gen-multi',
+              posting: { inclusion: 'included', kind: 'unknown', raw: null },
+              advice: jobAAdvice,
+            },
+            {
+              sourceId: 'jobright.public:job-b',
+              ownership: 'active',
+              generationId: (checkpointAfterFirst!.checkpoint as { generationId?: string }).generationId ?? 'gen-multi',
+              posting: { inclusion: 'included', kind: 'unknown', raw: null },
+              advice: jobBAdvice,
+            },
+          ],
           retryState: [
             {
               sourceId: 'jobright.public:job-a',
@@ -341,7 +357,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     sqlite.close()
   })
 
-  it('releases acquired Jobright v4 retry work without false completion when exact persistence fails', async () => {
+  it('releases acquired Jobright v5 retry work without false completion when exact persistence fails', async () => {
     const sqlitePath = createTempSqlitePath()
     let clock = '2026-07-11T12:00:00.000Z'
     let detailCalls = 0
@@ -386,7 +402,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'fail-credentials', kind: 'password', label: 'Fail credentials', value: JSON.stringify({ username: 'fail@example.test', password: 'fail-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-fail', connectorId: 'jobright.resolver', connectorVersion: '0.7.0',
+      id: 'jobright-fail', connectorId: 'jobright.resolver', connectorVersion: '0.8.0',
       displayName: 'Jobright fail', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'fail-credentials' }],
       config: { discoveryCount: 1, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 1 },

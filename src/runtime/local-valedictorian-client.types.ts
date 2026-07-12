@@ -48,6 +48,7 @@ export interface LocalConnectorInstanceSummary {
   auth: LocalConnectorAuthSummary[]
   config: unknown
   filters: unknown
+  earliestBackfillDate: string
   createdAt: string
   updatedAt: string
 }

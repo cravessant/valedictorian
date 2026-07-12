@@ -85,6 +85,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 10,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],
@@ -344,6 +345,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 10,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],
@@ -366,11 +368,8 @@ describe('App settings and chrome', () => {
     fireEvent.change(screen.getByLabelText('Useful results target'), {
       target: { value: '250' },
     })
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-
-    expect(await screen.findByText(
-      'Save or discard your unsaved connector settings before running.',
-    )).toBeInTheDocument()
     expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
     expect(connectorsApi.update).not.toHaveBeenCalled()
   })
@@ -402,6 +401,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 10,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],
@@ -455,6 +455,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 10,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:01:00.000Z',
       })
@@ -498,6 +499,7 @@ describe('App settings and chrome', () => {
         maxResolutionCount: 10,
         roleTerms: ['intern'],
       },
+      earliestBackfillDate: '2026-07-02',
       createdAt: '2026-07-09T15:00:00.000Z',
       updatedAt: '2026-07-09T15:00:00.000Z',
     }
@@ -609,6 +611,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 50,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],
@@ -662,6 +665,7 @@ describe('App settings and chrome', () => {
           maxResolutionCount: 50,
           roleTerms: ['intern'],
         },
+        earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
       }],

@@ -6,6 +6,7 @@ import { connectorCheckpointSignature } from '../modules/connectors/connector.ch
 import {
   JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID,
   JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION,
+  JOBRIGHT_CHECKPOINT_SCHEMA_V5,
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_CONNECTOR_VERSION,
 } from '../modules/connectors/jobright.constants'
@@ -19,7 +20,6 @@ import type { ConnectorRunRecord } from '../modules/connectors/connector.reposit
 
 const JOBRIGHT_PUBLIC_SOURCE_PREFIX = 'jobright.public:'
 const JOBRIGHT_API_PARSER_VERSION = 'jobright-api@2'
-const JOBRIGHT_CHECKPOINT_SCHEMA_V4 = 'jobright-resolution-checkpoint@4'
 
 export async function dispatchAcquiredNormalizationWork({
   acquiredWork,
@@ -204,17 +204,17 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
     connectorInstanceId: instanceId,
     filterSignature,
   })
-  if (!storedCheckpoint || storedCheckpoint.schemaVersion !== JOBRIGHT_CHECKPOINT_SCHEMA_V4) {
+  if (!storedCheckpoint || storedCheckpoint.schemaVersion !== JOBRIGHT_CHECKPOINT_SCHEMA_V5) {
     await connectorRepository.markRunFailed({
       connectorRunId: runRequest.id,
       completedAt: now().toISOString(),
       retryHints: null,
       warning: {
         code: 'connector.jobright_checkpoint_missing',
-        message: 'Jobright v4 checkpoint is required for authenticated-destination retry dispatch.',
+        message: 'Jobright v5 checkpoint is required for authenticated-destination retry dispatch.',
       },
     })
-    throw new Error('Jobright v4 checkpoint is required for authenticated-destination retry dispatch.')
+    throw new Error('Jobright v5 checkpoint is required for authenticated-destination retry dispatch.')
   }
 
   const providerRecordId = raw.revision.providerRecordId
@@ -258,7 +258,7 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
       const completedAt = now().toISOString()
       const restoredCheckpoint = {
         schemaVersion: storedCheckpoint.schemaVersion,
-        checkpoint: removeJobrightProviderFromRetryState(
+        checkpoint: removeJobrightProviderFromPendingRetries(
           storedCheckpoint.checkpoint,
           providerRecordId,
         ),
@@ -280,7 +280,7 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
       })
     }
 
-    const narrowedCheckpoint = narrowJobrightV4CheckpointToProvider(
+    const narrowedCheckpoint = narrowJobrightV5CheckpointToProvider(
       storedCheckpoint.checkpoint,
       providerRecordId,
     )
@@ -352,53 +352,43 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
   }
 }
 
-function removeJobrightProviderFromRetryState(
+function removeJobrightProviderFromPendingRetries(
   checkpoint: unknown,
   providerRecordId: string,
 ): unknown {
-  if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) {
-    throw new Error('Jobright v4 checkpoint is malformed')
-  }
-  const record = checkpoint as Record<string, unknown>
-  if (!Array.isArray(record.retryState)) {
-    throw new Error('Jobright v4 checkpoint retry state is malformed')
-  }
+  const record = readJobrightV5Checkpoint(checkpoint)
+  const pendingDetailRetries = readPendingDetailRetries(record)
   const sourceId = `${JOBRIGHT_PUBLIC_SOURCE_PREFIX}${providerRecordId}`
+  const nextPending = pendingDetailRetries.filter((entry) => entry.sourceId !== sourceId)
   return {
     ...record,
-    retryState: record.retryState.filter((entry) => {
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-        throw new Error('Jobright v4 checkpoint retry entry is malformed')
-      }
-      return (entry as { sourceId?: unknown }).sourceId !== sourceId
-    }),
+    pendingDetailRetries: nextPending,
+    retryState: activeRetryStateFromPending(nextPending),
   }
 }
 
-function narrowJobrightV4CheckpointToProvider(
+function narrowJobrightV5CheckpointToProvider(
   checkpoint: unknown,
   providerRecordId: string,
 ): unknown {
-  if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) {
-    throw new Error('Jobright v4 checkpoint is malformed')
-  }
-  const record = checkpoint as Record<string, unknown>
-  if (!Array.isArray(record.retryState)) {
-    throw new Error('Jobright v4 checkpoint retry state is malformed')
-  }
+  const record = readJobrightV5Checkpoint(checkpoint)
+  const pendingDetailRetries = readPendingDetailRetries(record)
   const sourceId = `${JOBRIGHT_PUBLIC_SOURCE_PREFIX}${providerRecordId}`
-  const retryState = record.retryState.filter((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      throw new Error('Jobright v4 checkpoint retry entry is malformed')
-    }
-    return (entry as { sourceId?: unknown }).sourceId === sourceId
-  })
-  if (retryState.length !== 1) {
-    throw new Error(`Jobright v4 checkpoint is missing acquired retry entry for ${sourceId}`)
+  const narrowedPending = pendingDetailRetries.filter((entry) => entry.sourceId === sourceId)
+  if (narrowedPending.length !== 1) {
+    throw new Error(`Jobright v5 checkpoint is missing acquired pending retry for ${sourceId}`)
+  }
+  const entry = narrowedPending[0]!
+  if (entry.ownership !== 'active') {
+    throw new Error(`Jobright v5 pending retry for ${sourceId} is not active`)
+  }
+  if (entry.generationId !== record.generationId) {
+    throw new Error(`Jobright v5 pending retry generation mismatch for ${sourceId}`)
   }
   return {
     ...record,
-    retryState,
+    pendingDetailRetries: narrowedPending,
+    retryState: activeRetryStateFromPending(narrowedPending),
   }
 }
 
@@ -416,12 +406,10 @@ function jobrightRetrySeedObservation(input: {
   }
   payload: unknown
 }) {
-  if (!input.checkpoint || typeof input.checkpoint !== 'object' || Array.isArray(input.checkpoint)) {
-    throw new Error('Jobright v4 checkpoint is malformed')
-  }
-  const cycleId = (input.checkpoint as { cycleId?: unknown }).cycleId
+  const record = readJobrightV5Checkpoint(input.checkpoint)
+  const cycleId = record.cycleId
   if (typeof cycleId !== 'string' || cycleId.length === 0) {
-    throw new Error('Jobright v4 checkpoint cycle identity is malformed')
+    throw new Error('Jobright v5 checkpoint cycle identity is malformed')
   }
   const sourceRecordKey = `${JOBRIGHT_PUBLIC_SOURCE_PREFIX}${input.providerRecordId}`
   const jobrightUrl = `https://jobright.ai/jobs/info/${input.providerRecordId}`
@@ -485,6 +473,43 @@ function jobrightRetrySeedObservation(input: {
       },
     ],
   }
+}
+
+function readJobrightV5Checkpoint(checkpoint: unknown): Record<string, unknown> {
+  if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) {
+    throw new Error('Jobright v5 checkpoint is malformed')
+  }
+  return checkpoint as Record<string, unknown>
+}
+
+function readPendingDetailRetries(checkpoint: Record<string, unknown>): Array<Record<string, unknown>> {
+  if (!Array.isArray(checkpoint.pendingDetailRetries)) {
+    throw new Error('Jobright v5 checkpoint pending retry ledger is malformed')
+  }
+  return checkpoint.pendingDetailRetries.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
+    }
+    const pending = entry as Record<string, unknown>
+    if (typeof pending.sourceId !== 'string') {
+      throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
+    }
+    if (pending.ownership !== 'active' && pending.ownership !== 'suspended') {
+      throw new Error('Jobright v5 checkpoint pending retry ownership is malformed')
+    }
+    return pending
+  })
+}
+
+function activeRetryStateFromPending(
+  pendingDetailRetries: Array<Record<string, unknown>>,
+): Array<{ sourceId: unknown; advice: unknown }> {
+  return pendingDetailRetries
+    .filter((entry) => entry.ownership === 'active')
+    .map((entry) => ({
+      sourceId: entry.sourceId,
+      advice: entry.advice,
+    }))
 }
 
 export async function finalizeDeferredConnectorRefreshRecord({

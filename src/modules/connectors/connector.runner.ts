@@ -34,8 +34,9 @@ import type {
   ConnectorRunTerminalStatus,
   createSqliteConnectorRepository,
 } from './connector.repository'
+import { inclusiveCoverageStartFromEarliestBackfillDate } from './connector.earliest-backfill'
 import * as connectorCheckpointSignatureModule from './connector.checkpoint-signature'
-import { restoreUnacquiredJobrightV4RetryEntries } from './connector.jobright-checkpoint-merge'
+import { restoreUnacquiredJobrightV5RetryEntries } from './connector.jobright-checkpoint-merge'
 import {
   createBoundConnectorDataRuntime,
   type AcquiredNormalizationReplayIdentity,
@@ -123,6 +124,7 @@ export interface RegisterConnectorInstanceInput {
   auth?: ConnectorAuthReference[]
   config?: Record<string, unknown>
   filters?: Record<string, unknown>
+  earliestBackfillDate?: string
   createdAt?: string
 }
 
@@ -196,8 +198,6 @@ export interface CreateConnectorRunnerOptions {
 const DEFAULT_BACKFILL_DAYS = 7
 const DEFAULT_MAX_BACKFILL_DAYS = 30
 const DEFAULT_OVERLAP_MINUTES = 30
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000
-const MILLISECONDS_PER_MINUTE = 60 * 1000
 const REDACTED_SECRET_VALUE = '[redacted-secret]'
 
 export function createConnectorRunner({
@@ -287,7 +287,7 @@ export function createConnectorRunner({
       budget,
     )
     const nextCheckpoint = input.restoreUnacquiredJobrightRetryEntries
-      ? restoreUnacquiredJobrightV4RetryEntries({
+      ? restoreUnacquiredJobrightV5RetryEntries({
           acquiredProviderRecordId: input.restoreUnacquiredJobrightRetryEntries.acquiredProviderRecordId,
           originalCheckpoint: input.restoreUnacquiredJobrightRetryEntries.originalCheckpoint,
           returned: safeResult.nextCheckpoint,
@@ -339,21 +339,10 @@ export function createConnectorRunner({
     }
 
     const end = parseIsoDate(input.now ?? now().toISOString(), 'catch-up now')
-    const createdAt = parseIsoDate(instance.createdAt, 'connector instance createdAt')
     const policy = normalizeRunPolicy(input.policy, connector.definition.politeness?.maxBackfillDays)
-    const filters = cloneJsonRecord(toJsonRecord(instance.filters))
-    const checkpoint = await repository.getCheckpoint({
-      connectorInstanceId: input.connectorInstanceId,
-      filterSignature: checkpointSignatureForConnector(connector, filters),
-    })
-    const lowerBound = new Date(createdAt.getTime() - policy.backfillDays * MILLISECONDS_PER_DAY)
-    const previousCoverageEndedAt = checkpoint?.coverageEndedAt
-      ? parseIsoDate(checkpoint.coverageEndedAt, 'checkpoint coverage end')
-      : null
-    const candidateStart = previousCoverageEndedAt
-      ? new Date(previousCoverageEndedAt.getTime() - policy.overlapMinutes * MILLISECONDS_PER_MINUTE)
-      : lowerBound
-    const coverageStart = candidateStart.getTime() < lowerBound.getTime() ? lowerBound : candidateStart
+    const coverageStart = inclusiveCoverageStartFromEarliestBackfillDate(
+      instance.earliestBackfillDate,
+    )
 
     return {
       instance,
@@ -362,7 +351,7 @@ export function createConnectorRunner({
         connectorInstanceId: input.connectorInstanceId,
         mode: 'catch_up',
         coverage: {
-          start: coverageStart.toISOString(),
+          start: coverageStart,
           end: end.toISOString(),
         },
         startedAt: input.startedAt,
@@ -454,6 +443,7 @@ export function createConnectorRunner({
         auth: input.auth,
         config: input.config,
         filters: input.filters,
+        earliestBackfillDate: input.earliestBackfillDate,
         createdAt: input.createdAt,
       })
     },

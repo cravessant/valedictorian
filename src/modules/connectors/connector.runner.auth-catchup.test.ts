@@ -311,7 +311,7 @@ describe('connector runner', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.7.0',
+        version: '0.8.0',
         capabilities: { supportsFiltering: false },
       },
       async refresh(input) {
@@ -319,11 +319,11 @@ describe('connector runner', () => {
         return {
           ...emptyConnectorRefreshResult({
             coverage: input.coverage,
-            checkpoint: { cycleId: 'continued-cycle', retryState: [] },
+            checkpoint: { cycleId: 'continued-cycle', pendingDetailRetries: [], retryState: [] },
           }),
           nextCheckpoint: {
-            checkpoint: { cycleId: 'continued-cycle', retryState: [] },
-            schemaVersion: 'jobright-resolution-checkpoint@4',
+            checkpoint: { cycleId: 'continued-cycle', pendingDetailRetries: [], retryState: [] },
+            schemaVersion: 'jobright-resolution-checkpoint@5',
           },
         }
       },
@@ -332,7 +332,7 @@ describe('connector runner', () => {
     await repository.upsertInstance({
       id: 'jobright-seeded',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.7.0',
+      connectorVersion: '0.8.0',
       displayName: 'Jobright internslist',
       enabled: true,
       filters: { roleTerms: ['intern'] },
@@ -351,7 +351,7 @@ describe('connector runner', () => {
             start: '2026-06-01T11:00:00.000Z',
             end: '2026-06-01T12:00:00.000Z',
           },
-          checkpoint: { attempted: 2, retryState: [] },
+          checkpoint: { attempted: 2, pendingDetailRetries: [], retryState: [] },
         }),
         observations: [
           jobrightSeedObservation('jobright.public:duplicate', '2026-06-01T10:00:00.000Z'),
@@ -363,10 +363,10 @@ describe('connector runner', () => {
     })
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-seeded',
-      filterSignature: 'provider-state:jobright.resolver@0.7.0',
+      filterSignature: 'provider-state:jobright.resolver@0.8.0',
       checkpoint: {
-        checkpoint: { attempted: 2, retryState: [] },
-        schemaVersion: 'jobright-resolution-checkpoint@4',
+        checkpoint: { attempted: 2, pendingDetailRetries: [], retryState: [] },
+        schemaVersion: 'jobright-resolution-checkpoint@5',
       },
       coverage: {
         start: '2026-06-01T11:00:00.000Z',
@@ -386,10 +386,10 @@ describe('connector runner', () => {
 
     expect(receivedInputs).toEqual([
       expect.objectContaining({
-        checkpoint: { attempted: 2, retryState: [] },
+        checkpoint: { attempted: 2, pendingDetailRetries: [], retryState: [] },
       }),
     ])
-    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.7.0')
+    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.8.0')
 
     await runner.refresh(connector, {
       connectorInstanceId: 'jobright-seeded',
@@ -401,7 +401,7 @@ describe('connector runner', () => {
     })
 
     expect(receivedInputs[1]).toMatchObject({
-      checkpoint: { cycleId: 'continued-cycle', retryState: [] },
+      checkpoint: { cycleId: 'continued-cycle', pendingDetailRetries: [], retryState: [] },
     })
     expect(receivedInputs[1]).not.toHaveProperty('observations')
   })
@@ -738,7 +738,7 @@ describe('connector runner', () => {
     ])
   })
 
-  it('computes first catch-up coverage from connector-added time and the default backfill cap', async () => {
+  it('computes first catch-up coverage from persisted earliest backfill midnight', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -786,17 +786,17 @@ describe('connector runner', () => {
     })
 
     expect(receivedInputs[0]?.coverage).toEqual({
-      start: '2026-07-01T16:00:00.000Z',
+      start: '2026-07-01T00:00:00.000Z',
       end: '2026-07-09T16:00:00.000Z',
     })
     expect(run).toMatchObject({
       mode: 'catch_up',
-      coverageStartedAt: '2026-07-01T16:00:00.000Z',
+      coverageStartedAt: '2026-07-01T00:00:00.000Z',
       coverageEndedAt: '2026-07-09T16:00:00.000Z',
     })
   })
 
-  it('computes missed-run catch-up coverage from the previous checkpoint with overlap', async () => {
+  it('keeps missed-run catch-up coverage anchored at the persisted earliest backfill midnight', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -853,17 +853,17 @@ describe('connector runner', () => {
     })
 
     expect(receivedInputs[1]?.coverage).toEqual({
-      start: '2026-07-09T15:30:00.000Z',
+      start: '2026-07-01T00:00:00.000Z',
       end: '2026-07-10T16:00:00.000Z',
     })
     expect(run).toMatchObject({
       mode: 'catch_up',
-      coverageStartedAt: '2026-07-09T15:30:00.000Z',
+      coverageStartedAt: '2026-07-01T00:00:00.000Z',
       coverageEndedAt: '2026-07-10T16:00:00.000Z',
     })
   })
 
-  it('clamps configured catch-up backfill to the host maximum', async () => {
+  it('ignores legacy catch-up backfillDay policy for coverage start', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -915,7 +915,7 @@ describe('connector runner', () => {
     })
 
     expect(receivedInputs[0]?.coverage).toEqual({
-      start: '2026-06-08T16:00:00.000Z',
+      start: '2026-07-01T00:00:00.000Z',
       end: '2026-07-09T16:00:00.000Z',
     })
   })

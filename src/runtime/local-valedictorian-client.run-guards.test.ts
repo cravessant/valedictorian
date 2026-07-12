@@ -349,7 +349,7 @@ describe('runtime local Valedictorian client', () => {
         connectorInstanceId: 'connector-instance-fixture',
         mode: 'manual',
       }),
-    ).rejects.toThrow('coverageStartedAt and coverageEndedAt are required for manual connector runs')
+    ).rejects.toThrow('coverageEndedAt is required for manual connector runs')
     await expect(
       client.connectors.runs.list({
         connectorInstanceId: 'connector-instance-fixture',
@@ -562,7 +562,7 @@ describe('runtime local Valedictorian client', () => {
           },
           coverage: {
             end: '2026-07-08T18:00:00.000Z',
-            start: '2026-07-08T17:00:00.000Z',
+            start: '2026-07-01T00:00:00.000Z',
           },
         },
       ],
@@ -644,7 +644,7 @@ describe('runtime local Valedictorian client', () => {
     expect(runs.items[0]).toMatchObject({
       coverage: {
         end: '2026-07-08T18:00:00.000Z',
-        start: '2026-07-08T15:30:00.000Z',
+        start: '2026-07-01T00:00:00.000Z',
       },
       mode: 'catch_up',
       observationCount: 2,
@@ -665,7 +665,7 @@ describe('runtime local Valedictorian client', () => {
           },
           coverage: {
             end: '2026-07-08T18:00:00.000Z',
-            start: '2026-07-08T15:30:00.000Z',
+            start: '2026-07-01T00:00:00.000Z',
           },
         },
       ],
@@ -729,7 +729,7 @@ describe('runtime local Valedictorian client', () => {
     const connector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.7.0',
+        version: '0.8.0',
         capabilities: { supportsFiltering: false },
       },
       refresh,
@@ -745,7 +745,7 @@ describe('runtime local Valedictorian client', () => {
     await repository.upsertInstance({
       id: 'jobright-capture-retry',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.7.0',
+      connectorVersion: '0.8.0',
       displayName: 'Jobright capture retry',
       enabled: true,
       filters: { roleTerms: ['intern'] },
@@ -758,15 +758,15 @@ describe('runtime local Valedictorian client', () => {
       completedAt: '2026-07-11T12:00:01.000Z',
       config: {},
       filters: { roleTerms: ['intern'] },
-      filterSignature: 'provider-state:jobright.resolver@0.7.0',
+      filterSignature: 'provider-state:jobright.resolver@0.8.0',
       result: {
         observations: [],
         warnings: [],
         stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
         nextCheckpoint: {
-          checkpoint: { retryState: [], cycleId: 'capture-cycle' },
-          schemaVersion: 'jobright-resolution-checkpoint@4',
+          checkpoint: { pendingDetailRetries: [], retryState: [], cycleId: 'capture-cycle' },
+          schemaVersion: 'jobright-resolution-checkpoint@5',
         },
         retryHints: {
           state: 'scheduled', reason: 'rate_limit', attempt: 1, maxAttempts: 3,
@@ -792,7 +792,7 @@ describe('runtime local Valedictorian client', () => {
 
     expect(direct).toMatchObject({
       status: 'skipped',
-      filterSignature: 'provider-state:jobright.resolver@0.7.0',
+      filterSignature: 'provider-state:jobright.resolver@0.8.0',
       retryHints: { state: 'not_due', reason: 'rate_limit' },
     })
     expect(repeated.id).toBe(direct.id)

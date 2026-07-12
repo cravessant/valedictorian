@@ -17,7 +17,7 @@ import type {
   ConnectorRunRecord,
   ConnectorRunTerminalStatus,
 } from './connector.repository.types'
-import { assertValidJobrightV4CheckpointRetryState } from './connector.retry-work'
+import { assertValidJobrightV5CheckpointRetryState } from './connector.retry-work'
 
 export type ExactAcquiredNormalizationFinalizationMode =
   | 'require-persisted-exact-success'
@@ -119,7 +119,7 @@ export function finalizeExactAcquiredNormalizationRetry(
       throw new Error('Exact normalization retry acquisition does not match the finalizing run')
     }
 
-    assertValidJobrightV4CheckpointRetryState(input.checkpoint)
+    assertValidJobrightV5CheckpointRetryState(input.checkpoint)
     upsertConnectorCheckpoint(
       transaction,
       {

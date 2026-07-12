@@ -191,7 +191,7 @@ describe('runtime local Valedictorian client', () => {
         },
         coverage: {
           end: '2026-07-08T18:00:00.000Z',
-          start: '2026-07-08T17:00:00.000Z',
+          start: '2026-07-01T00:00:00.000Z',
         },
       },
     ])

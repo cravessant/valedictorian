@@ -11,6 +11,7 @@ export interface ConnectorSettingsDraft {
   maxResolutionCount: string
   roleTerms: string
   usefulTarget: string
+  earliestBackfillDate: string
 }
 
 export interface ConnectorAuthCredentialDraft {

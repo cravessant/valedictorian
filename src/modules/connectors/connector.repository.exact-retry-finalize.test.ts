@@ -14,7 +14,7 @@ import { createSqliteConnectorRepository } from './connector.repository'
 const RESOLVER_ID = 'jobright.authenticated-destination'
 const RESOLVER_VERSION = 'jobright-authenticated-destination@1'
 const INPUT_HASH = 'sha256:finalize-failed-destination'
-const FILTER_SIGNATURE = 'provider-state:jobright.resolver@0.7.0'
+const FILTER_SIGNATURE = 'provider-state:jobright.resolver@0.8.0'
 
 describe('exact acquired normalization retry finalization success gate', () => {
   it.each(['failed', 'rejected', 'abstained'] as const)(
@@ -33,7 +33,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
       await repository.upsertInstance({
         id: 'jobright-finalize-gate',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.7.0',
+        connectorVersion: '0.8.0',
         displayName: 'Finalize gate',
         enabled: true,
       })
@@ -125,8 +125,24 @@ describe('exact acquired normalization retry finalization success gate', () => {
       }).run()
 
       const checkpointPayload = {
-        schemaVersion: 'jobright-resolution-checkpoint@4',
+        schemaVersion: 'jobright-resolution-checkpoint@5',
         checkpoint: {
+          pendingDetailRetries: [{
+            sourceId: 'jobright.public:job-finalize-gate',
+            ownership: 'active',
+            generationId: 'gen-finalize',
+            posting: { inclusion: 'included', kind: 'unknown', raw: null },
+            advice: {
+              state: 'scheduled',
+              reason: 'server_failure',
+              attempt: 1,
+              maxAttempts: 3,
+              lastAttemptAt: now,
+              computedDelayMs: 30_000,
+              nextAttemptAt,
+              horizonAt: '2026-07-11T13:00:00.000Z',
+            },
+          }],
           retryState: [{
             sourceId: 'jobright.public:job-finalize-gate',
             advice: {

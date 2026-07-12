@@ -24,6 +24,7 @@ import type {
   JsonRecord,
   RecordConnectorCheckpointInput
 } from './connector.repository.types'
+import { assertPersistedEarliestBackfillDate } from './connector.earliest-backfill'
 import { parseRetryAdviceJson } from './connector.retry-work'
 
 export function selectConnectorInstance(
@@ -109,6 +110,7 @@ export function mapConnectorInstance(
     auth: normalizeConnectorAuthReferences(JSON.parse(row.authJson) as unknown),
     config: JSON.parse(row.configJson) as unknown,
     filters: JSON.parse(row.filtersJson) as unknown,
+    earliestBackfillDate: assertPersistedEarliestBackfillDate(row.earliestBackfillDate),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

@@ -7,6 +7,7 @@ import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ConnectorStatusListResult, ConnectorStatusView } from './modules/connectors/connector.status'
+import { defaultEarliestBackfillDate } from './modules/connectors/connector.earliest-backfill'
 import type {
   LocalConnectorReconnectActionResult,
   LocalConnectorStatusActionInput,
@@ -328,6 +329,8 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
         })),
         config: input.config ?? {},
         filters: input.filters ?? {},
+        earliestBackfillDate: input.earliestBackfillDate
+          ?? defaultEarliestBackfillDate(now),
         createdAt: now,
         updatedAt: now,
       }
@@ -356,6 +359,7 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
         displayName: input.displayName ?? existing.displayName,
         enabled: input.enabled ?? existing.enabled,
         filters: input.filters ?? existing.filters,
+        earliestBackfillDate: input.earliestBackfillDate ?? existing.earliestBackfillDate,
         updatedAt: '2026-07-09T15:01:00.000Z',
       }
       instances = instances.map((instance) => instance.id === updated.id ? updated : instance)

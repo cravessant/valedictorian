@@ -19,6 +19,10 @@ import {
   JOBRIGHT_MIN_USEFUL_TARGET,
 } from '../modules/connectors/jobright.constants'
 import {
+  maximumSelectableEarliestBackfillDate,
+  validateSelectableEarliestBackfillDate,
+} from '../modules/connectors/connector.earliest-backfill'
+import {
   defaultConnectorSettingsDraft,
   jobrightSecretKeyForInstance,
   parseBoundedInteger,
@@ -492,6 +496,15 @@ export function ConnectorSettingsPanel({
 
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
     const savedDraft = defaultConnectorSettingsDraft(instance)
+    const earliestValidation = validateSelectableEarliestBackfillDate({
+      candidate: draft.earliestBackfillDate,
+      createdAt: instance.createdAt,
+      todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
+    })
+    if (!earliestValidation.ok) {
+      setConnectorActionError(earliestValidation.message)
+      return
+    }
     const usefulTarget = parseBoundedInteger(
       draft.usefulTarget,
       JOBRIGHT_MIN_USEFUL_TARGET,
@@ -606,6 +619,9 @@ export function ConnectorSettingsPanel({
     void connectorsApi.update({
       connectorInstanceId: instance.id,
       config: nextConfig,
+      ...(draft.earliestBackfillDate !== savedDraft.earliestBackfillDate
+        ? { earliestBackfillDate: earliestValidation.value }
+        : {}),
       filters: {
         ...existingFilters,
         maxResolutionCount,
@@ -651,6 +667,16 @@ export function ConnectorSettingsPanel({
       || draft.maxDiscoveryPages !== saved.maxDiscoveryPages
       || draft.maxDiscoveryRecords !== saved.maxDiscoveryRecords
       || draft.maxResolutionCount !== saved.maxResolutionCount
+      || draft.earliestBackfillDate !== saved.earliestBackfillDate
+  }
+
+  function hasInvalidEarliestBackfillDraft(instance: ConnectorSettingsInstance): boolean {
+    const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
+    return !validateSelectableEarliestBackfillDate({
+      candidate: draft.earliestBackfillDate,
+      createdAt: instance.createdAt,
+      todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
+    }).ok
   }
 
   function runConnectorNow(instance: ConnectorSettingsInstance) {
@@ -672,8 +698,15 @@ export function ConnectorSettingsPanel({
       return
     }
 
+    if (hasInvalidEarliestBackfillDraft(instance)) {
+      setConnectorActionError(
+        'Choose a valid earliest backfill date before running.',
+      )
+      return
+    }
+
     const coverageEndedAt = new Date().toISOString()
-    const coverageStartedAt = new Date(Date.parse(coverageEndedAt) - 60 * 60 * 1000).toISOString()
+    const coverageStartedAt = `${instance.earliestBackfillDate}T00:00:00.000Z`
 
     setConnectorActionError(null)
     setRunningInstanceId(instance.id)

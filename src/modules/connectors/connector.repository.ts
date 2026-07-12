@@ -9,6 +9,11 @@ import {
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import {
+  assertPersistedEarliestBackfillDate,
+  defaultEarliestBackfillDate,
+  inclusiveCoverageStartFromEarliestBackfillDate,
+} from './connector.earliest-backfill'
+import {
   freezeConnectorRunLifecycleCounts
 } from './connector.lifecycle-counts'
 import {
@@ -107,12 +112,18 @@ export function createSqliteConnectorRepository(
       const createdAt = input.createdAt ?? now
       const auth = normalizeConnectorAuthReferences(input.auth ?? [])
       const existing = database
-        .select({ id: connectorInstances.id })
+        .select({
+          id: connectorInstances.id,
+          earliestBackfillDate: connectorInstances.earliestBackfillDate,
+        })
         .from(connectorInstances)
         .where(and(eq(connectorInstances.id, input.id), isNull(connectorInstances.deletedAt)))
         .get()
 
       if (existing) {
+        const earliestBackfillDate = input.earliestBackfillDate === undefined
+          ? assertPersistedEarliestBackfillDate(existing.earliestBackfillDate)
+          : assertPersistedEarliestBackfillDate(input.earliestBackfillDate)
         database
           .update(connectorInstances)
           .set({
@@ -123,11 +134,15 @@ export function createSqliteConnectorRepository(
             authJson: JSON.stringify(auth),
             configJson: JSON.stringify(input.config ?? {}),
             filtersJson: JSON.stringify(input.filters ?? {}),
+            earliestBackfillDate,
             updatedAt: now,
           })
           .where(eq(connectorInstances.id, input.id))
           .run()
       } else {
+        const earliestBackfillDate = input.earliestBackfillDate === undefined
+          ? defaultEarliestBackfillDate(createdAt)
+          : assertPersistedEarliestBackfillDate(input.earliestBackfillDate)
         database
           .insert(connectorInstances)
           .values({
@@ -139,6 +154,7 @@ export function createSqliteConnectorRepository(
             authJson: JSON.stringify(auth),
             configJson: JSON.stringify(input.config ?? {}),
             filtersJson: JSON.stringify(input.filters ?? {}),
+            earliestBackfillDate,
             createdAt,
             updatedAt: now,
             deletedAt: null,
@@ -358,6 +374,8 @@ export function createSqliteConnectorRepository(
         const now = input.startedAt
         const filters = input.filters ?? instance.filters
         const filterSignature = input.filterSignature ?? `filters:${stableJsonStringify(filters)}`
+        const coverageStartedAt = input.coverageStartedAt
+          ?? inclusiveCoverageStartFromEarliestBackfillDate(instance.earliestBackfillDate)
         const activeRun = transaction
           .select()
           .from(connectorRuns)
@@ -381,6 +399,8 @@ export function createSqliteConnectorRepository(
 
         const pendingRetry = selectPendingRetryWork(transaction, {
           connectorInstanceId: input.connectorInstanceId,
+          connectorId: instance.connectorId,
+          coverageStartedAt,
           filterSignature,
           now,
         })
@@ -743,6 +763,9 @@ export function createSqliteConnectorRepository(
       const reason = input.reason ?? 'user_skipped_connector_run'
       const filters = instance.filters
       const runId = randomUUID()
+      const coverageStartedAt = inclusiveCoverageStartFromEarliestBackfillDate(
+        instance.earliestBackfillDate,
+      )
 
       database
         .insert(connectorRuns)
@@ -753,8 +776,8 @@ export function createSqliteConnectorRepository(
           status: 'skipped',
           startedAt: input.skippedAt,
           completedAt: input.skippedAt,
-          coverageStartedAt: null,
-          coverageEndedAt: null,
+          coverageStartedAt,
+          coverageEndedAt: input.skippedAt,
           configJson: JSON.stringify(instance.config),
           filtersJson: JSON.stringify(filters),
           filterSignature: `filters:${stableJsonStringify(filters)}`,

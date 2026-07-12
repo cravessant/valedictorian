@@ -101,6 +101,7 @@ export interface UpsertConnectorInstanceInput {
   auth?: ConnectorAuthReference[]
   config?: JsonRecord
   filters?: JsonRecord
+  earliestBackfillDate?: string
   createdAt?: string
 }
 
@@ -221,6 +222,7 @@ export interface ConnectorInstanceRecord {
   auth: ConnectorAuthReference[]
   config: unknown
   filters: unknown
+  earliestBackfillDate: string
   createdAt: string
   updatedAt: string
 }
