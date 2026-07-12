@@ -13,6 +13,147 @@ import type {
 import { emptyRefreshResult } from "./test-support/in-memory-host-fixtures.js"
 
 describe("in-memory connector host — auth", () => {
+  it("single-flights concurrent establishment for one execution scope", async () => {
+    let establishmentCalls = 0
+    const release = Promise.withResolvers<void>()
+    const connector: JobConnector = {
+      definition: { id: "fixture.auth-flight", version: "0.10.0" },
+      async refresh(input) { return emptyRefreshResult(input) },
+      async validateAuth(input, runtime) {
+        const result = await runtime.auth.refresh(
+          { id: "fixture", executionScopeId: input.executionScopeId },
+          async () => {
+            establishmentCalls += 1
+            await release.promise
+            return { status: "ready", sessionId: "canonical-session" }
+          },
+        )
+        return { status: result.status, reason: "fixture_auth_result" }
+      },
+    }
+    const host = createInMemoryConnectorHost()
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      createdAt: "2026-07-12T00:00:00.000Z",
+      displayName: "Auth flight",
+      enabled: true,
+      id: "instance_auth_flight",
+      workspaceId: "workspace_alpha",
+    })
+    const request = {
+      connectorInstanceId: "instance_auth_flight",
+      workspaceId: "workspace_alpha",
+    }
+    const first = host.validateAuth(connector, request)
+    const second = host.validateAuth(connector, request)
+    await Promise.resolve()
+    expect(establishmentCalls).toBe(1)
+    release.resolve()
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { status: "ready", reason: "fixture_auth_result" },
+      { status: "ready", reason: "fixture_auth_result" },
+    ])
+  })
+
+  it("returns a newer canonical generation without letting stale establishment overwrite it", async () => {
+    const scope = "connector.instance_auth_fence"
+    const sessions = {
+      [scope]: { generation: 1, sessionId: "old-session" },
+    }
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const connector: JobConnector = {
+      definition: { id: "fixture.auth-fence", version: "0.10.0" },
+      async refresh(input) { return emptyRefreshResult(input) },
+      async validateAuth(input, runtime) {
+        const result = await runtime.auth.refresh(
+          { id: "fixture", executionScopeId: input.executionScopeId },
+          async () => {
+            started.resolve()
+            await release.promise
+            return { status: "ready", sessionId: "stale-session" }
+          },
+        )
+        return { status: result.status, reason: result.status === "ready" ? result.sessionId : result.reason }
+      },
+    }
+    const host = createInMemoryConnectorHost({ authSessions: sessions })
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      createdAt: "2026-07-12T00:00:00.000Z",
+      displayName: "Auth fence",
+      enabled: true,
+      id: "instance_auth_fence",
+      workspaceId: "workspace_alpha",
+    })
+    const validation = host.validateAuth(connector, {
+      connectorInstanceId: "instance_auth_fence",
+      workspaceId: "workspace_alpha",
+    })
+    await started.promise
+    sessions[scope] = { generation: 2, sessionId: "newer-session" }
+    release.resolve()
+    await expect(validation).resolves.toEqual({
+      status: "ready",
+      reason: "newer-session",
+    })
+    expect(sessions[scope]).toEqual({ generation: 2, sessionId: "newer-session" })
+  })
+
+  it("reuses a generation newer than the session resolved by the connector", async () => {
+    const scope = "connector.instance_auth_reuse"
+    const sessions = {
+      [scope]: { generation: 1, sessionId: "resolved-session" },
+    }
+    const resolved = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let establishmentCalls = 0
+    let refreshResult: unknown
+    const connector: JobConnector = {
+      definition: { id: "fixture.auth-reuse", version: "0.10.0" },
+      async refresh(input, runtime) {
+        await runtime.auth.resolve({ id: "fixture", mode: "username_password" })
+        resolved.resolve()
+        await release.promise
+        refreshResult = await runtime.auth.refresh(
+          { id: "fixture", executionScopeId: input.executionScopeId },
+          async () => {
+            establishmentCalls += 1
+            return { status: "ready", sessionId: "stale-establishment" }
+          },
+        )
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost({ authSessions: sessions })
+    host.registerInstance({
+      auth: [{ id: "fixture", mode: "username_password" }],
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      createdAt: "2026-07-12T00:00:00.000Z",
+      displayName: "Auth reuse",
+      enabled: true,
+      id: "instance_auth_reuse",
+      workspaceId: "workspace_alpha",
+    })
+    const run = host.refresh(connector, {
+      connectorInstanceId: "instance_auth_reuse",
+      workspaceId: "workspace_alpha",
+      mode: "manual",
+      coverage: {
+        start: "2026-07-01T00:00:00.000Z",
+        end: "2026-07-12T00:00:00.000Z",
+      },
+    })
+    await resolved.promise
+    sessions[scope] = { generation: 2, sessionId: "newer-session" }
+    release.resolve()
+    await run
+    expect(establishmentCalls).toBe(0)
+    expect(refreshResult).toEqual({ status: "ready", sessionId: "newer-session" })
+  })
   it("keeps JobConnector.validateAuth optional for source compatibility", () => {
     const connectorWithoutValidateAuth: JobConnector = {
       definition: {
@@ -266,6 +407,7 @@ describe("in-memory connector host — auth", () => {
       {
         input: {
           connectorInstanceId: "instance_validate_auth",
+          executionScopeId: "connector.instance_validate_auth",
           workspaceId: "workspace_alpha",
         },
         grant: {

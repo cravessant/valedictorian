@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 
 import type {
   ConnectorAuthGrant,
+  ConnectorAuthEstablishmentResult,
   ConnectorAuthReference,
   ConnectorAuthRequirement,
   ConnectorAuthResolveInput,
@@ -263,6 +264,11 @@ export type InMemoryConnectorBrowserSession = Pick<
 >
 
 export type InMemoryConnectorHostOptions = {
+  authSessions?: Record<string, {
+    expiresAt?: string
+    generation: number
+    sessionId: string
+  }>
   browserSessionResolver?: (
     input: ConnectorBrowserSessionResolveInput,
   ) =>
@@ -296,6 +302,10 @@ export function createInMemoryConnectorHost(
   let rawRecordCounter = 0
   let rawRevisionCounter = 0
   let rawOccurrenceCounter = 0
+  const authRefreshFlights = new Map<
+    string,
+    Promise<ConnectorAuthEstablishmentResult>
+  >()
 
   return {
     registerInstance(instance) {
@@ -351,6 +361,7 @@ export function createInMemoryConnectorHost(
             instance.auth ?? [],
             connector.definition.auth?.requirements ?? [],
             options,
+            authRefreshFlights,
             request.signal,
             {
               connector,
@@ -453,12 +464,14 @@ export function createInMemoryConnectorHost(
       return await connector.validateAuth(
         {
           connectorInstanceId: request.connectorInstanceId,
+          executionScopeId: `connector.${request.connectorInstanceId}`,
           workspaceId: request.workspaceId,
         },
         createConnectorRuntime(
           instance.auth ?? [],
           connector.definition.auth?.requirements ?? [],
           options,
+          authRefreshFlights,
         ),
       )
     },
@@ -497,6 +510,10 @@ function createConnectorRuntime(
   authReferences: ConnectorAuthReference[],
   authRequirements: ConnectorAuthRequirement[],
   options: InMemoryConnectorHostOptions,
+  authRefreshFlights: Map<
+    string,
+    Promise<ConnectorAuthEstablishmentResult>
+  >,
   signal?: AbortSignal,
   rawContext?: {
     connector: JobConnector
@@ -513,6 +530,7 @@ function createConnectorRuntime(
     nextRawOccurrenceSequence: () => number
   },
 ): ConnectorRuntime {
+  let resolvedSessionGeneration: number | undefined
   const runtime: ConnectorRuntime = {
     auth: {
       async resolve(input) {
@@ -522,34 +540,75 @@ function createConnectorRuntime(
           authRequirements,
           options,
         )
+        const persistedSession = rawContext
+          ? options.authSessions?.[`connector.${rawContext.connectorInstanceId}`]
+          : undefined
+        if (persistedSession) {
+          resolvedSessionGeneration = persistedSession.generation
+        }
         return grant.status === "ready" &&
           grant.mode === "username_password" &&
           rawContext
           ? {
               ...grant,
-              sessionId: `connector.${rawContext.connectorInstanceId}`,
+              sessionId:
+                persistedSession?.sessionId ??
+                `connector.${rawContext.connectorInstanceId}`,
             }
           : grant
       },
-      async refresh(input) {
-        const grant = resolveAuthGrant(
-          input,
-          authReferences,
-          authRequirements,
-          options,
-        )
-        return grant.status === "ready" &&
-          grant.mode === "username_password" &&
-          rawContext
-          ? {
-              ...grant,
-              sessionId: `connector.${rawContext.connectorInstanceId}`,
+      async refresh(input, establish) {
+        const existingFlight = authRefreshFlights.get(input.executionScopeId)
+        if (existingFlight) return await existingFlight
+
+        const currentSession = options.authSessions?.[input.executionScopeId]
+        if (
+          currentSession &&
+          resolvedSessionGeneration !== undefined &&
+          currentSession.generation > resolvedSessionGeneration
+        ) {
+          return {
+            status: "ready",
+            sessionId: currentSession.sessionId,
+            ...(currentSession.expiresAt === undefined
+              ? {}
+              : { expiresAt: currentSession.expiresAt }),
+          }
+        }
+        const observedGeneration =
+          options.authSessions?.[input.executionScopeId]?.generation ?? 0
+        const flight = (async (): Promise<ConnectorAuthEstablishmentResult> => {
+          const established = await establish()
+          const canonical = options.authSessions?.[input.executionScopeId]
+          if (canonical && canonical.generation > observedGeneration) {
+            return {
+              status: "ready",
+              sessionId: canonical.sessionId,
+              ...(canonical.expiresAt === undefined
+                ? {}
+                : { expiresAt: canonical.expiresAt }),
             }
-          : {
-              ...grant,
-              status: "action_required",
-              reason: grant.reason ?? "auth_refresh_unavailable",
-            }
+          }
+          if (established.status !== "ready") return established
+          const persisted = {
+            generation: observedGeneration + 1,
+            sessionId: established.sessionId,
+            ...(established.expiresAt === undefined
+              ? {}
+              : { expiresAt: established.expiresAt }),
+          }
+          options.authSessions ??= {}
+          options.authSessions[input.executionScopeId] = persisted
+          return established
+        })()
+        authRefreshFlights.set(input.executionScopeId, flight)
+        try {
+          return await flight
+        } finally {
+          if (authRefreshFlights.get(input.executionScopeId) === flight) {
+            authRefreshFlights.delete(input.executionScopeId)
+          }
+        }
       },
     },
   }

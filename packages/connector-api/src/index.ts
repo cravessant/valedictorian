@@ -249,11 +249,52 @@ export type ConnectorAuthResolveInput = {
   mode?: ConnectorAuthMode
 }
 
+export type ConnectorAuthEstablishmentResult =
+  | {
+      status: "ready"
+      sessionId: string
+      expiresAt?: string
+    }
+  | {
+      status: "action_required"
+      reason: string
+    }
+  | {
+      status: "rate_limited"
+      reason: string
+      serverMinimumDelayMs?: number
+    }
+  | {
+      status: "retryable"
+      reason: string
+      retryReason: Exclude<TransientRetryReason, "rate_limit">
+      serverMinimumDelayMs?: number
+    }
+  | {
+      status: "failed"
+      reason: string
+      parserChanged?: boolean
+    }
+  | {
+      status: "cancelled"
+      reason: "cancelled"
+    }
+  | {
+      status: "invocation_timeout"
+      reason: "runtime_limit"
+    }
+
+export type ConnectorAuthEstablish =
+  () => Promise<ConnectorAuthEstablishmentResult>
+
 export type ConnectorAuthRuntime = {
   resolve(input: ConnectorAuthResolveInput): Promise<ConnectorAuthGrant>
-  refresh(input: ConnectorAuthResolveInput & {
-    executionScopeId: SourceExecutionScopeId
-  }): Promise<ConnectorAuthGrant>
+  refresh(
+    input: ConnectorAuthResolveInput & {
+      executionScopeId: SourceExecutionScopeId
+    },
+    establish: ConnectorAuthEstablish,
+  ): Promise<ConnectorAuthEstablishmentResult>
 }
 
 export type ConnectorDelayInput = {
@@ -536,6 +577,7 @@ export type ConnectorRefreshResult = {
 
 export type ConnectorAuthValidationInput = {
   connectorInstanceId: string
+  executionScopeId: SourceExecutionScopeId
   workspaceId: string
 }
 
@@ -547,6 +589,8 @@ export type ConnectorAuthValidationStatus =
   | "rate_limited"
   | "retryable"
   | "failed"
+  | "cancelled"
+  | "invocation_timeout"
 
 export type ConnectorAuthValidationResult = {
   status: ConnectorAuthValidationStatus

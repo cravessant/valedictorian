@@ -78,8 +78,8 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("Optional Jobright auth-only validation (`validateAuth`)")
     expect(readme).toContain("calls only `POST /swan/auth/login/pwd` and `GET /swan/auth/newinfo`")
     expect(readme).toContain("returns sanitized status/reason metadata")
-    expect(readme).toContain("does not persist the session cookie")
-    expect(readme).toContain("does not run refresh, visitor-list discovery, job-detail normalization, application calls")
+    expect(readme).toContain("the host single-flights, fences, and persists a ready session")
+    expect(readme).toContain("does not run sourcing refresh, visitor-list discovery, job-detail normalization, application calls")
     expect(readme).toContain("must not launch or control Electron `BrowserWindow`")
     expect(readme).toContain("must not scrape HTML, inspect the DOM, depend on Cheerio, require `browser_session`")
     expect(readme).toContain("browser-session resolution behavior present in the `v0.3.1` implementation")
@@ -180,7 +180,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.9.0",
+      version: "0.10.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -196,7 +196,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.9.0",
+      version: "0.10.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -212,7 +212,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.9.0",
+      version: "0.10.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -236,11 +236,11 @@ describe("connector repository conventions", () => {
       sparxie: "^0.15.0",
     })
     expect(harnessPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.9.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.10.0",
       sparxie: "^0.15.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.9.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.10.0",
     })
     expect(Object.keys(jobrightPackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
@@ -254,7 +254,7 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(jobrightPackage.devDependencies).toMatchObject({
-      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.9.0",
+      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.10.0",
     })
   })
 
