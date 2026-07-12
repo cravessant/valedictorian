@@ -89,7 +89,7 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("## Bounded Jobright Backfill")
     expect(readme).toContain("useful target defaults to 100")
     expect(readme).toContain("`soft_batch_boundary`")
-    expect(readme).toContain("`jobright-resolution-checkpoint@4`")
+    expect(readme).toContain("`jobright-resolution-checkpoint@5`")
     expect(readme).toContain("only accepted checkpoint schema")
     expect(readme).toContain("strict typed retry advice")
     expect(readme).toContain("Earlier checkpoint shapes are invalidated")
@@ -198,7 +198,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.7.0",
+      version: "0.8.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -214,7 +214,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.7.0",
+      version: "0.8.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -230,7 +230,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.7.0",
+      version: "0.8.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
