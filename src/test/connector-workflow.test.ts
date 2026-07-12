@@ -19,7 +19,7 @@ describe('connector workflow dependencies', () => {
 
     expect(packageJson.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.8.0')
     expect(packageJson.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.8.0')
-    expect(packageJson.dependencies.sparxie).toBe('0.13.1')
+    expect(packageJson.dependencies.sparxie).toBe('0.14.0')
   })
 
   it.each(['ci.yml', 'release-mac.yml'])(

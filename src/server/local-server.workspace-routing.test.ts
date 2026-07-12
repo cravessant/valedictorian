@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import { createHttpValedictorianClient, type ValedictorianWorkspaceClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
@@ -412,6 +412,28 @@ describe('local Valedictorian HTTP server', () => {
         },
       ],
     })
+  })
+
+  it('returns 404 for another workspace projection revision through the workspace manager', async () => {
+    const rootA = fs.mkdtempSync(path.join(os.tmpdir(), 'projection-workspace-a-'))
+    const rootB = fs.mkdtempSync(path.join(os.tmpdir(), 'projection-workspace-b-'))
+    const workspaceA = initializeWorkspace(rootA, { createId: () => 'projection-a' })
+    const workspaceB = initializeWorkspace(rootB, { createId: () => 'projection-b' })
+    const manager = createLocalWorkspaceManager({
+      createClient: (options) => createRuntimeLocalValedictorianClient({ ...options, seedDataMode: 'none' }),
+      registryStore: createFileWorkspaceRegistryStore(createTempSqlitePath()),
+    })
+    await manager.open({ path: workspaceA.rootPath }); await manager.open({ path: workspaceB.rootPath })
+    const server = await fixture.start({
+      client: createBoundaryTestClient(() => {}), host: '127.0.0.1', port: 0, workspaceManager: manager,
+    })
+    const root = createHttpValedictorianClient({ baseUrl: server.url })
+    const intake = await root.forWorkspace(workspaceA.id).sourcing.rawRecords.ingestBatch({ records: [{
+      adapter: { id: 'manual', kind: 'manual', version: '1.0.0' }, observedAt: '2026-07-10T12:00:00.000Z',
+      payload: { company: 'A', title: 'Intern', url: 'https://jobs.lever.co/a/role' },
+    }] })
+    await expect(root.forWorkspace(workspaceA.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).resolves.toMatchObject({ rawRevisionId: intake.receipts[0].revision.id })
+    await expect(root.forWorkspace(workspaceB.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).rejects.toMatchObject({ status: 404 })
   })
 
   it('opens an existing folder as a registered local workspace', async () => {

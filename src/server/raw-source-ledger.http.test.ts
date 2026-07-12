@@ -583,9 +583,10 @@ describe('raw source ledger HTTP API', () => {
       host: '127.0.0.1',
       port: 0,
     })
-    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(
+    const sourcing = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(
       'workspace-1',
-    ).sourcing.rawRecords
+    ).sourcing
+    const rawRecords = sourcing.rawRecords
 
     const findingCountBefore = await createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-1').sourcing.findings.list()
@@ -625,6 +626,14 @@ describe('raw source ledger HTTP API', () => {
       expect.objectContaining({ field: 'roleTitle', status: 'resolved' }),
       expect.objectContaining({ field: 'destinationUrl', status: 'resolved' }),
     ]))
+    await expect(sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id))
+      .resolves.toMatchObject({
+        status: 'projected',
+        rawRecordId: intake.receipts[0].rawRecordId,
+        rawRevisionId: intake.receipts[0].revision.id,
+        canonicalCandidateId: result.canonicalCandidate?.id,
+        finding: { id: expect.any(String), mergeStatus: 'blocked', mergedApplicationId: null },
+      })
     await expect(createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-1').sourcing.findings.list()).resolves.toMatchObject({
       total: findingCountBefore.total + 1,

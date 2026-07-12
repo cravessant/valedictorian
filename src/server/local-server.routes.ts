@@ -499,6 +499,17 @@ export async function handleRequest({
       return
     }
 
+    const rawRevisionProjectionMatch = requestUrl.pathname.match(
+      /^\/v1\/sourcing\/raw-revisions\/([^/]+)\/projection$/,
+    )
+
+    if (request.method === 'GET' && rawRevisionProjectionMatch) {
+      writeJson(response, 200, await client.sourcing.rawRevisions.projection.get(
+        decodeURIComponent(rawRevisionProjectionMatch[1]),
+      ))
+      return
+    }
+
     const rawRecordNormalizationMatch = requestUrl.pathname.match(
       /^\/v1\/sourcing\/raw-records\/([^/]+)\/normalization$/,
     )

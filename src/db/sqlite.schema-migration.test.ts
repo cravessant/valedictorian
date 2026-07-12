@@ -2,7 +2,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { rawSourceProjectionResultSchema } from 'sparxie'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from './sqlite'
 
 const expectedIdentityTriggers = [
@@ -142,7 +144,7 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
 
-    expect(migrationRows).toHaveLength(22)
+    expect(migrationRows).toHaveLength(23)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -166,7 +168,7 @@ describe('SQLite database', () => {
     expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
       .toEqual({ name: 'retry_work' })
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 22 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 23 })
     const stampedTags = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -262,7 +264,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 22 })
+    ).toEqual({ count: 23 })
 
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
@@ -331,6 +333,24 @@ describe('SQLite database', () => {
     database.close()
   })
 
+  it('removes pre-ledger projection state without touching protected or connector capture rows', () => {
+    const database = createInMemoryDatabase(); migrateDatabase(database, { migrationsFolder: migrationFolderThrough(21) })
+    seedResetMigrationFixture(database)
+    database.prepare("update raw_source_revisions set created_at = '2026-07-10T12:00:00.000Z'").run()
+    const protectedBefore = snapshotProtectedTables(database), connectorRunsBefore = database.prepare('select * from connector_runs order by rowid').all(), occurrencesBefore = database.prepare('select * from raw_source_occurrences order by rowid').all()
+    const revision = database.prepare('select id from raw_source_revisions limit 1').get() as { id: string }
+    migrateDatabase(database)
+    expect(snapshotProtectedTables(database)).toEqual(protectedBefore)
+    expect(database.prepare('select * from connector_runs order by rowid').all()).toEqual(connectorRunsBefore)
+    expect(database.prepare('select * from raw_source_occurrences order by rowid').all()).toEqual(occurrencesBefore)
+    const cleared = ['sourcing_findings', 'normalization_field_outcomes', 'normalization_gates', 'canonical_source_candidates', 'normalization_replay_items', 'normalization_attempts', 'normalization_runs', 'normalization_replay_requests']
+    for (const table of cleared) {
+      expect(database.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 })
+    }
+    expect(rawSourceProjectionResultSchema.parse(createSqliteProjectionOutcomeRepository(createDrizzleDatabase(database)).get(revision.id))).toMatchObject({ status: 'not_eligible', normalizationStatus: null, canonicalCandidateId: null, gateStatus: null })
+    expect(database.prepare("select name from sqlite_master where type = 'trigger' and name like 'trg_sourcing_projection_outcomes_%' order by name").all()).toEqual(['lineage_immutable', 'no_delete', 'pending_insert', 'terminal_transition'].map((name) => ({ name: `trg_sourcing_projection_outcomes_${name}` }))); database.close()
+  })
+
   it('rolls back an unstamped legacy reset when current schema creation fails', () => {
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
@@ -382,7 +402,7 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 22 })
+      .toEqual({ count: 23 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })

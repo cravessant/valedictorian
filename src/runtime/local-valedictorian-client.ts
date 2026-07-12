@@ -66,6 +66,7 @@ import {
 import { executeClaimedConnectorRun } from './local-connector-claimed-execution'
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
+import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
 import {
   createDefaultNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
@@ -120,6 +121,7 @@ export function createLocalValedictorianClient({
   connectorScheduling: connectorSchedulingOption,
   now = () => new Date(),
   normalizationRegistry = createDefaultNormalizationResolverRegistry(),
+  projectCanonicalCandidate,
   referenceTrackerPath,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
@@ -159,9 +161,22 @@ export function createLocalValedictorianClient({
   const sourcingRepository = createSqliteSourcingRepository(database)
   const rawSourceRepository = createSqliteRawSourceRepository(database, now)
   const canonicalCandidateProjection = createCanonicalCandidateProjectionService(now)
+  const projectionOutcomes = createSqliteProjectionOutcomeRepository(database)
   const normalizationRepository = createSqliteNormalizationRepository(database, {
-    projectPassedCandidate: (transaction, candidateId, rawRevisionId) =>
-      canonicalCandidateProjection.projectPersisted(transaction, candidateId, rawRevisionId),
+    stagePassedCandidate: (transaction, input) => projectionOutcomes.stagePending(transaction, input),
+    projectPassedCandidate: (candidateId, rawRevisionId) => {
+      try {
+        database.transaction((transaction) => {
+          const findingId = (projectCanonicalCandidate ?? canonicalCandidateProjection.projectPersisted)(
+            transaction, candidateId, rawRevisionId,
+          )
+          if (!findingId) throw new Error('Passed canonical candidate could not be projected')
+          projectionOutcomes.markProjected(transaction, candidateId, findingId, now().toISOString())
+        })
+      } catch {
+        projectionOutcomes.markFailed(candidateId, now().toISOString())
+      }
+    },
   })
   const normalizationOrchestrator = createNormalizationOrchestrator({
     repository: normalizationRepository,
@@ -488,6 +503,15 @@ export function createLocalValedictorianClient({
       complete: (input) => workflowRunRepository.completeRun(input),
     },
     sourcing: {
+      rawRevisions: {
+        projection: {
+          get: async (rawRevisionId) => {
+            const result = projectionOutcomes.get(rawRevisionId)
+            if (!result) throw Object.assign(new Error('Raw source revision not found'), { statusCode: 404 })
+            return result
+          },
+        },
+      },
       rawRecords: {
         ingestBatch: async (input) => {
           const result = await rawSourceRepository.ingestBatch(input)

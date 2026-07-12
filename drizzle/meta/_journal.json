@@ -155,6 +155,13 @@
       "when": 1783829373912,
       "tag": "0021_closed_blue_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1783848696408,
+      "tag": "0022_public_starhawk",
+      "breakpoints": true
     }
   ]
 }

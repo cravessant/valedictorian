@@ -4,6 +4,7 @@ import type { LocalConnectorRegistry } from '../modules/connectors/connector.reg
 import type { AppConnectorRuntimePorts } from '../modules/connectors/connector.runner'
 import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
 import type { NormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
+import type { DrizzleDatabase } from '../db/sqlite'
 
 export interface LocalValedictorianClientOptions {
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
@@ -13,6 +14,11 @@ export interface LocalValedictorianClientOptions {
   connectorScheduling?: ConnectorSchedulingCapability
   now?: () => Date
   normalizationRegistry?: NormalizationResolverRegistry
+  projectCanonicalCandidate?: (
+    transaction: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
+    candidateId: string,
+    rawRevisionId: string,
+  ) => string
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: ProfileSecretCodec

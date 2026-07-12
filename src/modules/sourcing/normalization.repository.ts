@@ -73,11 +73,14 @@ type PersistNormalizationWithTriggerInput = PersistNormalizationInput & { trigge
 export function createSqliteNormalizationRepository(
   database: DrizzleDatabase,
   options: {
-    projectPassedCandidate?: (
+    stagePassedCandidate?: (
       transaction: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
+      input: { rawRecordId: string; rawRevisionId: string; canonicalCandidateId: string; now: string },
+    ) => void
+    projectPassedCandidate?: (
       candidateId: string,
       rawRevisionId: string,
-    ) => unknown
+    ) => void
   } = {},
 ) {
   const persist = (
@@ -86,7 +89,17 @@ export function createSqliteNormalizationRepository(
   ) => {
     persistNormalization(transaction, input)
     if (input.gate.status === 'passed' && input.candidate) {
-      options.projectPassedCandidate?.(transaction, input.candidate.id, input.rawRevisionId)
+      options.stagePassedCandidate?.(transaction, {
+        rawRecordId: input.rawRecordId,
+        rawRevisionId: input.rawRevisionId,
+        canonicalCandidateId: input.candidate.id,
+        now: input.now,
+      })
+    }
+  }
+  const project = (input: PersistNormalizationWithTriggerInput) => {
+    if (input.gate.status === 'passed' && input.candidate) {
+      options.projectPassedCandidate?.(input.candidate.id, input.rawRevisionId)
     }
   }
   return {
@@ -116,11 +129,11 @@ export function createSqliteNormalizationRepository(
       createdAt: string
       materialize: (reconciliation: StrongDestinationReconciliation) => PersistNormalizationWithTriggerInput
     }) {
-      const runId = database.transaction((transaction) => {
+      const persistedInput = database.transaction((transaction) => {
         const persistReconciliation = (reconciliation: StrongDestinationReconciliation) => {
           const persistence = input.materialize(reconciliation)
           persist(transaction, persistence)
-          return persistence.runId
+          return persistence
         }
         const canonical = {
           kind: 'canonical_destination' as const,
@@ -259,10 +272,12 @@ export function createSqliteNormalizationRepository(
         }
         return persistReconciliation({ sourceEntity: owner, conflict: false })
       })
-      return mapPersistedRun(database, runId)
+      project(persistedInput)
+      return mapPersistedRun(database, persistedInput.runId)
     },
     persist(input: PersistNormalizationWithTriggerInput) {
       database.transaction((transaction) => persist(transaction, input))
+      project(input)
       return mapPersistedRun(database, input.runId)
     },
     getLatest(rawRecordId: string) {

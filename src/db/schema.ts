@@ -748,7 +748,50 @@ export const canonicalSourceCandidates = sqliteTable(
   },
   (table) => ({
     runIdx: uniqueIndex('idx_canonical_source_candidates_run').on(table.runId),
+    lineageIdx: uniqueIndex('idx_canonical_source_candidates_lineage').on(
+      table.id,
+      table.rawRecordId,
+      table.rawRevisionId,
+    ),
     revisionSchemaIdx: index('idx_canonical_source_candidates_revision_schema').on(table.rawRevisionId, table.schemaVersion),
+  }),
+)
+
+export const sourcingProjectionOutcomes = sqliteTable(
+  'sourcing_projection_outcomes',
+  {
+    id: text('id').primaryKey(),
+    rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
+    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    canonicalCandidateId: text('canonical_candidate_id').notNull().references(() => canonicalSourceCandidates.id),
+    status: text('status').notNull(),
+    findingId: text('finding_id').references(() => sourcingFindings.id),
+    failureCode: text('failure_code'),
+    failureRetryable: integer('failure_retryable', { mode: 'boolean' }),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    projectedAt: text('projected_at'),
+    failedAt: text('failed_at'),
+  },
+  (table) => ({
+    revisionIdx: index('idx_sourcing_projection_outcomes_revision').on(table.rawRevisionId, table.createdAt),
+    candidateIdx: uniqueIndex('idx_sourcing_projection_outcomes_candidate').on(table.canonicalCandidateId),
+    revisionLineageFk: foreignKey({
+      columns: [table.rawRevisionId, table.rawRecordId],
+      foreignColumns: [rawSourceRevisions.id, rawSourceRevisions.rawRecordId],
+      name: 'fk_sourcing_projection_outcomes_revision_lineage',
+    }),
+    candidateLineageFk: foreignKey({
+      columns: [table.canonicalCandidateId, table.rawRecordId, table.rawRevisionId],
+      foreignColumns: [canonicalSourceCandidates.id, canonicalSourceCandidates.rawRecordId, canonicalSourceCandidates.rawRevisionId],
+      name: 'fk_sourcing_projection_outcomes_candidate_lineage',
+    }),
+    statusCheck: check('chk_sourcing_projection_outcomes_status', sql`${table.status} in ('pending','projected','failed')`),
+    fieldsCheck: check('chk_sourcing_projection_outcomes_fields', sql`
+      (${table.status} = 'pending' and ${table.findingId} is null and ${table.failureCode} is null and ${table.failureRetryable} is null and ${table.projectedAt} is null and ${table.failedAt} is null)
+      or (${table.status} = 'projected' and ${table.findingId} is not null and ${table.failureCode} is null and ${table.failureRetryable} is null and ${table.projectedAt} is not null and ${table.failedAt} is null)
+      or (${table.status} = 'failed' and ${table.findingId} is null and ${table.failureCode} in ('projection_failed','persistence_failed','internal_error') and ${table.failureRetryable} in (0, 1) and ${table.projectedAt} is null and ${table.failedAt} is not null)
+    `),
   }),
 )
 
@@ -878,6 +921,7 @@ export const schema = {
   sourceEntityIdentities,
   sourceIdentityConflicts,
   sourcingFindings,
+  sourcingProjectionOutcomes,
   sources,
   userProfile,
   workflowRunSteps,

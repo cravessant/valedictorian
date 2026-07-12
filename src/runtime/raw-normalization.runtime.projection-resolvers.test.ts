@@ -269,7 +269,7 @@ describe('local deterministic raw normalization', () => {
     })
   })
 
-  it('does not commit a passed candidate when its sourcing finding cannot be projected', async () => {
+  it('preserves a passed candidate and records failure when its finding cannot be projected', async () => {
     const sqlitePath = tempDatabasePath()
     const client = createLocalValedictorianClient({ sqlitePath })
     const sqlite = createFileDatabase(sqlitePath)
@@ -294,7 +294,13 @@ describe('local deterministic raw normalization', () => {
 
     await expect(client.sourcing.rawRecords.normalization.get(
       intake.receipts[0].rawRecordId,
-    )).rejects.toMatchObject({ statusCode: 404 })
+    )).resolves.toMatchObject({ status: 'completed', gate: { status: 'passed' } })
+    await expect(client.sourcing.rawRevisions.projection.get(
+      intake.receipts[0].revision.id,
+    )).resolves.toMatchObject({
+      status: 'failed',
+      failure: { code: 'projection_failed', retryable: false },
+    })
     await expect(client.sourcing.findings.list()).resolves.toMatchObject({ total: 0 })
   })
 
