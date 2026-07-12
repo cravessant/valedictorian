@@ -47,17 +47,13 @@ import {
   parseRunComplete,
   parseRunStart,
   parseRunStep,
-  parseSourcingFindingCreate,
   parseSourcingFindingDecision,
-  parseSourcingFindingImportJson,
   parseSourcingFindingsListQuery,
   parseSourcingFindingUpdate,
-  parseSourcingRun,
   parseWorkflowRunsListQuery,
   readRequiredText,
-  runSourcingBatch,
-  runSourcingFindingImport,
 } from './valedictorian-cli.parsers.js'
+import { ingestRawSourcing, parseRawSourcingIntake } from './valedictorian-cli.raw-sourcing.js'
 
 export interface RunValedictorianCliOptions {
   argv: string[]
@@ -553,51 +549,11 @@ function buildConnectorsRoute() {
 
 function buildSourcingRoute() {
   return buildRouteMap({
-    docs: { brief: 'Manage sourcing runs and findings' },
+    docs: { brief: 'Capture sourcing observations and manage findings' },
     routes: {
       findings: buildRouteMap({
         docs: { brief: 'Manage sourcing findings' },
         routes: {
-          create: makeCommand({
-            docs: { brief: 'Create a sourcing finding' },
-            flags: optionFlags(
-              [
-                'blocker',
-                'city',
-                'country',
-                'discovered-at',
-                'disposition-reason',
-                'duplicate-notes',
-                'fit-notes',
-                'location-raw',
-                'merge-status',
-                'official-url',
-                'posted-age',
-                'policy-blocker',
-                'priority-band',
-                'priority-score',
-                'region',
-                'source-name',
-                'source-url',
-                'start-date',
-                'term',
-                'terms-json',
-                'workspace',
-                'end-date',
-              ],
-              ['company-name', 'role-kind', 'role-title', 'work-mode', 'workflow-run-id'],
-            ),
-            run: async (context, flags) => {
-              const client = await workspaceClient(context, flags)
-
-              writeJson(
-                context,
-                await client.sourcing.findings.create(
-                  parseSourcingFindingCreate(toArgvWithoutWorkspace(flags)),
-                ),
-              )
-            },
-          }),
           decide: makeCommand({
             docs: { brief: 'Set a manual sourcing finding disposition' },
             flags: optionFlags(
@@ -614,24 +570,6 @@ function buildSourcingRoute() {
                   parseSourcingFindingDecision(findingId, toArgvWithoutWorkspace(flags)),
                 ),
               )
-            },
-          }),
-          import: makeCommand({
-            docs: { brief: 'Bulk import sourcing findings from a JSON file' },
-            flags: optionFlags(['workspace'], ['input-json']),
-            run: async (context, flags) => {
-              const client = await workspaceClient(context, flags)
-              const inputPath = readRequiredText(optionValue(flags, 'input-json'), '--input-json')
-              const result = await runSourcingFindingImport(
-                client,
-                parseSourcingFindingImportJson(fs.readFileSync(inputPath, 'utf8')),
-              )
-
-              writeJson(context, result)
-
-              if (result.failureCount > 0) {
-                context.process.exitCode = 1
-              }
             },
           }),
           list: makeCommand({
@@ -695,19 +633,21 @@ function buildSourcingRoute() {
           }),
         },
       }),
-      run: makeCommand({
-        docs: { brief: 'Run a sourcing batch' },
-        flags: {
-          ...optionFlags(['actor-name', 'candidates-json', 'source-id', 'source-name', 'workspace']),
-          ...booleanFlags(['auto-promote']),
-        },
+      ingest: makeCommand({
+        docs: { brief: 'Capture raw sourcing observations and inspect their outcomes' },
+        flags: optionFlags([
+          'batch-json', 'observed-at', 'origin-kind', 'origin-name', 'origin-provider-id',
+          'origin-url', 'payload-json', 'provider-record-id', 'provider-schema', 'url', 'workspace',
+        ]),
         run: async (context, flags) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await runSourcingBatch(client, parseSourcingRun(toArgvWithoutWorkspace(flags))),
+          const records = parseRawSourcingIntake(
+            toArgvWithoutWorkspace(flags),
+            await readPackageVersion(),
           )
+          const client = await workspaceClient(context, flags)
+          const result = await ingestRawSourcing(client, records)
+          writeJson(context, result)
+          if (result.inspectionFailureCount > 0) context.process.exitCode = 1
         },
       }),
     },

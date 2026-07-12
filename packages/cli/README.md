@@ -25,11 +25,13 @@ valedictorian-cli --json workspaces list
 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now
 valedictorian-cli --json policy config get --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json sourcing findings import --workspace "$VALEDICTORIAN_WORKSPACE" --input-json findings.json
+valedictorian-cli --json sourcing ingest --workspace "$VALEDICTORIAN_WORKSPACE" --url "https://jobs.example.com/role"
 valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json profile sensitive summary --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 ```
+
+`sourcing ingest` captures sparse source observations. Its output separates submitted provenance, durable intake, normalization, and exact-revision projection. Inspection failures retain the intake receipt, use bounded safe errors, and produce a nonzero exit after output. The server owns normalization, fit gating, duplicate detection, and projection into the sourcing findings queue. `applications create` remains the direct way to create a canonical application; sourcing intake does not create applications directly.
 
 ## Project config discovery
 

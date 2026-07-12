@@ -128,6 +128,16 @@ describe('valedictorian-cli npm package', () => {
       connectorInstanceId: 'connector-instance-jobright',
       mode: 'manual',
       status: 'queued',
+      coverage: { start: '2026-07-01T00:00:00.000Z', end: '2026-07-08T00:00:00.000Z' },
+      filterSignature: 'internships',
+      observationCount: 0,
+      warningCount: 0,
+      stats: {},
+      warnings: [],
+      retryHints: null,
+      startedAt: '2026-07-12T12:00:00.000Z',
+      completedAt: null,
+      scheduleOccurrence: null,
     }
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValue(jsonResponse(payload))

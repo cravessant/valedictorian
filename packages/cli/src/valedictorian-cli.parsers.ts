@@ -47,14 +47,9 @@ export {
   readRequiredText,
 } from './valedictorian-cli.parser-options.js'
 export {
-  parseSourcingFindingCreate,
   parseSourcingFindingDecision,
-  parseSourcingFindingImportJson,
   parseSourcingFindingsListQuery,
   parseSourcingFindingUpdate,
-  parseSourcingRun,
-  runSourcingFindingImport,
-  runSourcingBatch,
 } from './valedictorian-cli.sourcing-parsers.js'
 
 const attemptBlockerOutcomes = new Set([
