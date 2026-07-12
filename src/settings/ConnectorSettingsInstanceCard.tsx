@@ -185,6 +185,14 @@ export function ConnectorSettingsInstanceCard({
                       </div>
                     </div>
 
+                    {isJobrightInstance ? (
+                      <p className="text-xs text-muted-foreground">
+                        A Jobright password is required. A Gmail address is only the username and does
+                        not initiate Google OAuth. Google-only Jobright accounts are currently
+                        unsupported until Jobright provides a supported desktop handoff.
+                      </p>
+                    ) : null}
+
                     {isEditingAuth ? (
                       <div
                         className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
