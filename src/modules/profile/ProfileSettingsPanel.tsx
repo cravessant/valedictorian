@@ -3,8 +3,10 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/use-toast'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { fieldControlId } from '@/lib/field-control-id'
 import {
   defaultUserProfile,
   normalizeProfileEducationInput,
@@ -801,11 +803,16 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
               onClose={cancelEducation}
             >
               <div className="grid gap-3 sm:grid-cols-2">
-                <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  <span>Education type</span>
+                <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                  <FieldLabel
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={fieldControlId('profile', 'Education type')}
+                  >
+                    Education type
+                  </FieldLabel>
                   <NativeSelect
-                    aria-label="Education type"
                     className="px-2"
+                    id={fieldControlId('profile', 'Education type')}
                     value={educationDraft.educationType}
                     onChange={(event) =>
                       setEducationDraft((current) => ({
@@ -820,7 +827,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                       </NativeSelectOption>
                     ))}
                   </NativeSelect>
-                </Label>
+                </Field>
                 {educationDraft.educationType === 'Other' ? (
                   <CompactInput
                     label="Other education type"
@@ -974,11 +981,17 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     setSecretDraft((current) => ({ ...current, key: value }))
                   }
                 />
-                <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  <span>Type</span>
+                <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                  <FieldLabel
+                    className="text-xs font-medium text-muted-foreground"
+                    htmlFor={fieldControlId('profile', 'Secure value type')}
+                  >
+                    Type
+                  </FieldLabel>
                   <NativeSelect
                     aria-label="Secure value type"
                     className="px-2"
+                    id={fieldControlId('profile', 'Secure value type')}
                     value={secretDraft.kind}
                     onChange={(event) =>
                       setSecretDraft((current) => ({
@@ -992,7 +1005,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     <NativeSelectOption value="identity">identity</NativeSelectOption>
                     <NativeSelectOption value="other">other</NativeSelectOption>
                   </NativeSelect>
-                </Label>
+                </Field>
                 <CompactInput
                   label="Secure value"
                   type="password"

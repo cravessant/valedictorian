@@ -2,9 +2,11 @@ import { type ReactNode } from 'react'
 import type { ProfileSensitiveDetails } from './profile.repository'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { fieldControlId } from '@/lib/field-control-id'
 import {
   type ProfileAnswer,
   type ProfileEducation,
@@ -164,13 +166,15 @@ export function SettingsSelectInput({
   value: string
   onChange: (value: string) => void
 }) {
+  const controlId = fieldControlId('settings-select', label)
+
   return (
-    <Label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
-      <span>
-        <span className="block font-medium">{label}</span>
-      </span>
+    <Field className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
+      <FieldLabel className="block font-medium text-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
       <NativeSelect
-        aria-label={label}
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -181,7 +185,7 @@ export function SettingsSelectInput({
           </NativeSelectOption>
         ))}
       </NativeSelect>
-    </Label>
+    </Field>
   )
 }
 
@@ -198,19 +202,26 @@ export function CompactSelect({
   value: string
   onChange: (value: string) => void
 }) {
+  const controlId = fieldControlId('compact-select', label)
+
   return (
-    <NativeSelect
-      aria-label={label}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    >
-      <NativeSelectOption value="">{placeholder}</NativeSelectOption>
-      {options.map((option) => (
-        <NativeSelectOption key={option.value} value={option.value}>
-          {option.label}
-        </NativeSelectOption>
-      ))}
-    </NativeSelect>
+    <Field className="gap-1">
+      <FieldLabel className="sr-only" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <NativeSelect
+        id={controlId}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <NativeSelectOption value="">{placeholder}</NativeSelectOption>
+        {options.map((option) => (
+          <NativeSelectOption key={option.value} value={option.value}>
+            {option.label}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
+    </Field>
   )
 }
 
@@ -369,17 +380,21 @@ export function CompactInput({
   value: string
   onChange: (value: string) => void
 }) {
+  const controlId = fieldControlId('compact-input', label)
+
   return (
-    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      <span>{label}</span>
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
       <Input
-        aria-label={label}
         className="px-2"
+        id={controlId}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </Label>
+    </Field>
   )
 }
 

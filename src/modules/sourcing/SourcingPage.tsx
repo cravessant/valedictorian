@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Label } from '@/components/ui/label'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, Ban, Pencil } from 'lucide-react'
 import {
   sourcingMergeStatuses,
@@ -136,10 +137,15 @@ function SourcingPage({
                 </Button>
               </div>
             </div>
-            <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Source
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId('sourcing-filter', 'Source')}
+              >
+                Source
+              </FieldLabel>
               <NativeSelect
-                aria-label="Source"
+                id={fieldControlId('sourcing-filter', 'Source')}
                 value={sourceId}
                 onChange={(event) => onSourceChange(event.target.value)}
               >
@@ -150,11 +156,16 @@ function SourcingPage({
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
-            </Label>
-            <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Destination class
+            </Field>
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId('sourcing-filter', 'Destination class')}
+              >
+                Destination class
+              </FieldLabel>
               <NativeSelect
-                aria-label="Destination class"
+                id={fieldControlId('sourcing-filter', 'Destination class')}
                 value={destinationClass ?? ''}
                 onChange={(event) => onDestinationClassChange(
                   event.target.value
@@ -167,11 +178,16 @@ function SourcingPage({
                   <NativeSelectOption key={value} value={value}>{destinationClassLabel(value)}</NativeSelectOption>
                 ))}
               </NativeSelect>
-            </Label>
-            <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Usability
+            </Field>
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId('sourcing-filter', 'Usability')}
+              >
+                Usability
+              </FieldLabel>
               <NativeSelect
-                aria-label="Usability"
+                id={fieldControlId('sourcing-filter', 'Usability')}
                 value={usability ?? ''}
                 onChange={(event) => onUsabilityChange(
                   event.target.value ? event.target.value as SourcingUsability : undefined,
@@ -182,11 +198,16 @@ function SourcingPage({
                   <NativeSelectOption key={value} value={value}>{usabilityLabel(value)}</NativeSelectOption>
                 ))}
               </NativeSelect>
-            </Label>
-            <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Merge status
+            </Field>
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId('sourcing-filter', 'Merge status')}
+              >
+                Merge status
+              </FieldLabel>
               <NativeSelect
-                aria-label="Merge status"
+                id={fieldControlId('sourcing-filter', 'Merge status')}
                 value={mergeStatus ?? ''}
                 onChange={(event) =>
                   onMergeStatusChange(
@@ -201,7 +222,7 @@ function SourcingPage({
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
-            </Label>
+            </Field>
           </div>
         </section>
 

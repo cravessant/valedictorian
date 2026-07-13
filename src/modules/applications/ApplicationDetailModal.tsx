@@ -6,8 +6,10 @@ import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ModalShell } from '@/components/ui/modal-shell'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, X } from 'lucide-react'
 import type { ScoreInput, ScoreRecord, VerificationReceiptPayload } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
@@ -458,16 +460,20 @@ function CompactModalInput({
   type?: string
   value: string
 }) {
+  const controlId = fieldControlId('application-detail', label)
+
   return (
-    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
       <Input
-        aria-label={label}
+        id={controlId}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </Label>
+    </Field>
   )
 }
 

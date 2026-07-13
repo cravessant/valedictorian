@@ -3,9 +3,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { fieldControlId } from '@/lib/field-control-id'
 import { formatEnumLabel } from '../../app/labels'
 import {
   applicationStatuses,
@@ -403,11 +405,15 @@ function EditorOptionalSelect({
   options: readonly string[]
   value: string
 }) {
+  const controlId = fieldControlId('application-editor', label)
+
   return (
-    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
       <NativeSelect
-        aria-label={label}
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -418,7 +424,7 @@ function EditorOptionalSelect({
           </NativeSelectOption>
         ))}
       </NativeSelect>
-    </Label>
+    </Field>
   )
 }
 
@@ -455,16 +461,23 @@ function EditorInput({
   onChange: (value: string) => void
   value: string
 }) {
+  const controlId = fieldControlId('application-editor', label)
+
   return (
-    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
+    <Field
+      className="grid gap-1 text-xs font-medium text-muted-foreground"
+      data-disabled={disabled ? true : undefined}
+    >
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
       <Input
-        aria-label={label}
         disabled={disabled}
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </Label>
+    </Field>
   )
 }
 
@@ -481,12 +494,19 @@ function EditorSelect({
   options: readonly string[]
   value: string
 }) {
+  const controlId = fieldControlId('application-editor', label)
+
   return (
-    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
+    <Field
+      className="grid gap-1 text-xs font-medium text-muted-foreground"
+      data-disabled={disabled ? true : undefined}
+    >
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
       <NativeSelect
-        aria-label={label}
         disabled={disabled}
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -496,7 +516,7 @@ function EditorSelect({
           </NativeSelectOption>
         ))}
       </NativeSelect>
-    </Label>
+    </Field>
   )
 }
 

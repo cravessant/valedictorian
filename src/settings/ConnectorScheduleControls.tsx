@@ -1,6 +1,6 @@
 import { useId } from 'react'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import type {
@@ -170,8 +170,13 @@ export function ConnectorScheduleControls({
         <p className="text-xs font-medium text-muted-foreground">{scheduleStateLabel}</p>
       </div>
 
-      <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={modeId}>
-        Schedule mode
+      <Field
+        className="grid gap-1 text-xs font-medium text-muted-foreground"
+        data-disabled={isSaving ? true : undefined}
+      >
+        <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={modeId}>
+          Schedule mode
+        </FieldLabel>
         <NativeSelect
           disabled={isSaving}
           id={modeId}
@@ -196,11 +201,16 @@ export function ConnectorScheduleControls({
             <NativeSelectOption value="custom-weekly">Custom weekly</NativeSelectOption>
           ) : null}
         </NativeSelect>
-      </Label>
+      </Field>
 
       {draft.mode === 'preset' ? (
-        <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={presetId}>
-          Preset
+        <Field
+          className="grid gap-1 text-xs font-medium text-muted-foreground"
+          data-disabled={isSaving ? true : undefined}
+        >
+          <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={presetId}>
+            Preset
+          </FieldLabel>
           <NativeSelect
             disabled={isSaving}
             id={presetId}
@@ -211,14 +221,18 @@ export function ConnectorScheduleControls({
               <NativeSelectOption key={preset.id} value={preset.id}>{preset.label}</NativeSelectOption>
             ))}
           </NativeSelect>
-        </Label>
+        </Field>
       ) : null}
 
       {draft.mode === 'custom-interval' ? (
-        <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={intervalId}>
-          Every minutes
+        <Field
+          className="grid gap-1 text-xs font-medium text-muted-foreground"
+          data-disabled={isSaving ? true : undefined}
+        >
+          <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={intervalId}>
+            Every minutes
+          </FieldLabel>
           <Input
-            aria-label="Every minutes"
             disabled={isSaving}
             id={intervalId}
             inputMode="numeric"
@@ -228,14 +242,18 @@ export function ConnectorScheduleControls({
             value={draft.everyMinutes}
             onChange={(event) => onDraftChange({ everyMinutes: event.target.value })}
           />
-        </Label>
+        </Field>
       ) : null}
 
       {draft.mode === 'custom-daily' ? (
-        <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={dailyTimeId}>
-          Daily local time
+        <Field
+          className="grid gap-1 text-xs font-medium text-muted-foreground"
+          data-disabled={isSaving ? true : undefined}
+        >
+          <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={dailyTimeId}>
+            Daily local time
+          </FieldLabel>
           <Input
-            aria-label="Daily local time"
             disabled={isSaving}
             id={dailyTimeId}
             pattern="[0-2][0-9]:[0-5][0-9]"
@@ -243,15 +261,19 @@ export function ConnectorScheduleControls({
             value={draft.localTime}
             onChange={(event) => onDraftChange({ localTime: event.target.value })}
           />
-        </Label>
+        </Field>
       ) : null}
 
       {draft.mode === 'custom-weekly' ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyDayId}>
-            Weekday
+          <Field
+            className="grid gap-1 text-xs font-medium text-muted-foreground"
+            data-disabled={isSaving ? true : undefined}
+          >
+            <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={weeklyDayId}>
+              Weekday
+            </FieldLabel>
             <NativeSelect
-              aria-label="Weekday"
               disabled={isSaving}
               id={weeklyDayId}
               value={draft.dayOfWeek}
@@ -261,11 +283,15 @@ export function ConnectorScheduleControls({
                 <NativeSelectOption key={option.value} value={option.value}>{option.label}</NativeSelectOption>
               ))}
             </NativeSelect>
-          </Label>
-          <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
-            Weekly local time
+          </Field>
+          <Field
+            className="grid gap-1 text-xs font-medium text-muted-foreground"
+            data-disabled={isSaving ? true : undefined}
+          >
+            <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
+              Weekly local time
+            </FieldLabel>
             <Input
-              aria-label="Weekly local time"
               disabled={isSaving}
               id={weeklyTimeId}
               pattern="[0-2][0-9]:[0-5][0-9]"
@@ -273,15 +299,19 @@ export function ConnectorScheduleControls({
               value={draft.localTime}
               onChange={(event) => onDraftChange({ localTime: event.target.value })}
             />
-          </Label>
+          </Field>
         </div>
       ) : null}
 
       {draft.mode !== 'manual' ? (
-        <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
-          Timezone
+        <Field
+          className="grid gap-1 text-xs font-medium text-muted-foreground"
+          data-disabled={isSaving ? true : undefined}
+        >
+          <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
+            Timezone
+          </FieldLabel>
           <NativeSelect
-            aria-label="Timezone"
             disabled={isSaving}
             id={timezoneId}
             value={draft.timezone}
@@ -291,7 +321,7 @@ export function ConnectorScheduleControls({
               <NativeSelectOption key={timezone} value={timezone}>{timezone}</NativeSelectOption>
             ))}
           </NativeSelect>
-        </Label>
+        </Field>
       ) : null}
 
       {canonical ? (

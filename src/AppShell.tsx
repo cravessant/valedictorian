@@ -1,11 +1,12 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/toaster'
-import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
@@ -405,10 +406,15 @@ export function AppShell({
                 {filtersExpanded ? (
                   <>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Status
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Status')}
+                        >
+                          Status
+                        </FieldLabel>
                         <NativeSelect
-                          aria-label="Status"
+                          id={fieldControlId('filter', 'Status')}
                           value={filters.status}
                           onChange={(event) => updateFilter('status', event.target.value)}
                         >
@@ -419,11 +425,16 @@ export function AppShell({
                             </NativeSelectOption>
                           ))}
                         </NativeSelect>
-                      </Label>
-                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Sort
+                      </Field>
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Sort')}
+                        >
+                          Sort
+                        </FieldLabel>
                         <NativeSelect
-                          aria-label="Sort"
+                          id={fieldControlId('filter', 'Sort')}
                           value={filters.sort}
                           onChange={(event) => updateFilter('sort', event.target.value)}
                         >
@@ -433,11 +444,16 @@ export function AppShell({
                             </NativeSelectOption>
                           ))}
                         </NativeSelect>
-                      </Label>
-                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Score band
+                      </Field>
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Score band')}
+                        >
+                          Score band
+                        </FieldLabel>
                         <NativeSelect
-                          aria-label="Score band"
+                          id={fieldControlId('filter', 'Score band')}
                           value={filters.priorityBand}
                           onChange={(event) => updateFilter('priorityBand', event.target.value)}
                         >
@@ -446,22 +462,32 @@ export function AppShell({
                           <NativeSelectOption value="medium">Medium</NativeSelectOption>
                           <NativeSelectOption value="skip">Skip</NativeSelectOption>
                         </NativeSelect>
-                      </Label>
-                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Min score
+                      </Field>
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Min score')}
+                        >
+                          Min score
+                        </FieldLabel>
                         <Input
-                          aria-label="Min score"
+                          id={fieldControlId('filter', 'Min score')}
                           min="0"
                           max="10"
                           type="number"
                           value={filters.minScore}
                           onChange={(event) => updateFilter('minScore', event.target.value)}
                         />
-                      </Label>
-                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Work mode
+                      </Field>
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Work mode')}
+                        >
+                          Work mode
+                        </FieldLabel>
                         <NativeSelect
-                          aria-label="Work mode"
+                          id={fieldControlId('filter', 'Work mode')}
                           value={filters.workMode}
                           onChange={(event) => updateFilter('workMode', event.target.value)}
                         >
@@ -471,7 +497,7 @@ export function AppShell({
                           <NativeSelectOption value="hybrid">Hybrid</NativeSelectOption>
                           <NativeSelectOption value="unclear">Unclear</NativeSelectOption>
                         </NativeSelect>
-                      </Label>
+                      </Field>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <FilterDateInput

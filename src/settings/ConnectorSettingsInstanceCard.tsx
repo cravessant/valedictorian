@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { fieldControlId } from '@/lib/field-control-id'
 import {
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_MAX_DISCOVERY_COUNT,
@@ -184,28 +185,38 @@ export function ConnectorSettingsInstanceCard({
                         className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
                         data-testid={`connector-credential-form-${instance.id}`}
                       >
-                        <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                          Jobright email
+                        <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                          <FieldLabel
+                            className="text-xs font-medium text-muted-foreground"
+                            htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
+                          >
+                            Jobright email
+                          </FieldLabel>
                           <Input
-                            aria-label="Jobright email"
                             autoComplete="off"
+                            id={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
                             type="email"
                             value={credentialDraft.email}
                             onChange={(event) =>
                               onUpdateCredentialDraft(instance.id, { email: event.target.value })}
                           />
-                        </Label>
-                        <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                          Jobright password
+                        </Field>
+                        <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                          <FieldLabel
+                            className="text-xs font-medium text-muted-foreground"
+                            htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
+                          >
+                            Jobright password
+                          </FieldLabel>
                           <Input
-                            aria-label="Jobright password"
                             autoComplete="new-password"
+                            id={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
                             type="password"
                             value={credentialDraft.password}
                             onChange={(event) =>
                               onUpdateCredentialDraft(instance.id, { password: event.target.value })}
                           />
-                        </Label>
+                        </Field>
                         <Button
                           type="button"
                           disabled={authenticatingInstanceId === instance.id}
@@ -275,11 +286,19 @@ export function ConnectorSettingsInstanceCard({
                       <details className="xl:col-span-full">
                         <summary className="cursor-pointer text-xs font-medium text-foreground">Connector settings</summary>
                         <div className="mt-3 grid gap-3">
-                          <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                            Discovery page size
+                          <Field
+                            className="grid gap-1 text-xs font-medium text-muted-foreground"
+                            data-disabled={isSavingSettings ? true : undefined}
+                          >
+                            <FieldLabel
+                              className="text-xs font-medium text-muted-foreground"
+                              htmlFor={fieldControlId(`connector-${instance.id}`, 'Discovery page size')}
+                            >
+                              Discovery page size
+                            </FieldLabel>
                             <Input
-                              aria-label="Discovery page size"
                               disabled={isSavingSettings}
+                              id={fieldControlId(`connector-${instance.id}`, 'Discovery page size')}
                               max={JOBRIGHT_MAX_DISCOVERY_COUNT}
                               min={JOBRIGHT_MIN_DISCOVERY_COUNT}
                               type="number"
@@ -287,7 +306,7 @@ export function ConnectorSettingsInstanceCard({
                               onChange={(event) =>
                                 onUpdateDraft(instance.id, { discoveryCount: event.target.value })}
                             />
-                          </Label>
+                          </Field>
                         </div>
                       </details>
                       <Button

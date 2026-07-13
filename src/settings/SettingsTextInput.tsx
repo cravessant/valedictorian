@@ -1,5 +1,6 @@
-import { Label } from '@/components/ui/label'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { fieldControlId } from '@/lib/field-control-id'
 
 function SettingsTextInput({
   label,
@@ -14,20 +15,22 @@ function SettingsTextInput({
   value: string
   onChange?: (value: string) => void
 }) {
+  const controlId = fieldControlId('settings-text', label)
+
   return (
-    <Label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
-      <span>
-        <span className="block font-medium">{label}</span>
-      </span>
+    <Field className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
+      <FieldLabel className="block font-medium text-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
       <Input
-        aria-label={label}
         className="read-only:text-muted-foreground"
+        id={controlId}
         readOnly={readOnly}
         type={type}
         value={value}
         onChange={(event) => onChange?.(event.target.value)}
       />
-    </Label>
+    </Field>
   )
 }
 
