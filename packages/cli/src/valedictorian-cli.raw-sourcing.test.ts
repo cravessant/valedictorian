@@ -52,7 +52,7 @@ describe('raw sourcing intake', () => {
     )
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ records: [{
       intakeItemId: 'cli-intake-1',
-      adapter: { id: 'valedictorian-cli', kind: 'cli', version: '0.1.0-alpha.14' },
+      adapter: { id: 'valedictorian-cli', kind: 'cli', version: '0.1.0-alpha.15' },
       observedAt: '2026-07-12T12:00:00.000Z', payload: { url: 'https://jobs.example.com/1' },
     }] })
   })
@@ -193,7 +193,7 @@ describe('raw sourcing intake', () => {
     vi.stubGlobal('fetch', fetchMock)
     const result = await runCli(['sourcing', 'ingest', '--workspace', 'workspace-1', '--url', 'https://jobright.ai/jobs/2', '--observed-at', '2026-07-12T12:00:00.000Z', '--json'])
     expect(result.exitCode).toBe(0)
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ records: [{ intakeItemId: 'cli-intake-1', adapter: { id: 'valedictorian-cli', kind: 'cli', version: '0.1.0-alpha.14' }, observedAt: '2026-07-12T12:00:00.000Z', payload: { url: 'https://jobright.ai/jobs/2' } }] })
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ records: [{ intakeItemId: 'cli-intake-1', adapter: { id: 'valedictorian-cli', kind: 'cli', version: '0.1.0-alpha.15' }, observedAt: '2026-07-12T12:00:00.000Z', payload: { url: 'https://jobright.ai/jobs/2' } }] })
     expect(JSON.parse(result.stdout).receipts[0].normalization.result.status).toBe('pending')
   })
 
@@ -372,7 +372,7 @@ describe('raw sourcing intake', () => {
     vi.stubGlobal('fetch', fetchMock)
     const result = await runCli(['sourcing', 'ingest', '--workspace', 'workspace-1', '--url', 'https://jobright.ai/1', '--observed-at', '2026-07-12T12:00:00.000Z', '--origin-kind', 'job_board', '--origin-name', 'Jobright'])
     expect(result.exitCode).toBe(1)
-    expect(result.stdout).toContain('Provenance (submitted): adapter=valedictorian-cli kind=cli version=0.1.0-alpha.14 reportedOrigin=job_board:Jobright')
+    expect(result.stdout).toContain('Provenance (submitted): adapter=valedictorian-cli kind=cli version=0.1.0-alpha.15 reportedOrigin=job_board:Jobright')
     expect(result.stdout).toContain('Intake: record=raw-1 revision=revision-1')
     expect(result.stdout).toContain('Normalization: status=blocked')
     expect(result.stdout).toContain('Projection inspection: failed code=http_error httpStatus=502')
