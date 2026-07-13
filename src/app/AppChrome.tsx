@@ -7,6 +7,17 @@ import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  Sidebar,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from '@/components/ui/sidebar'
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -187,9 +198,9 @@ function AppSidebar({
   }, [connectorsChildActive])
 
   return (
-    <aside
+    <Sidebar
       aria-label="Application navigation"
-      className={`absolute left-0 top-0 z-40 flex h-full w-[280px] max-w-[85vw] flex-col overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible ${
+      className={`absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible ${
         temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
       }`}
       role="complementary"
@@ -197,90 +208,118 @@ function AppSidebar({
     >
       <ScrollArea className="min-h-0 flex-1">
         <div>
-          <div className="mb-5">
+          <SidebarHeader className="mb-5 gap-1 p-0">
             <p className="text-sm font-semibold text-foreground">Valedictorian</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               <code className="rounded-md bg-secondary px-1.5 py-0.5 text-secondary-foreground">
                 {settings.runtimeMode}
               </code>
             </p>
-          </div>
+          </SidebarHeader>
 
-          <nav aria-label="Application views" className="space-y-1">
-        <Button
-          type="button"
-          variant="ghost"
-          className={applicationNavClass(currentView === APP_VIEWS.PROFILE)}
-          onClick={onOpenProfilePage}
-        >
-          <CircleUserRound className="h-4 w-4" aria-hidden="true" />
-          Profile
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className={applicationNavClass(currentView === APP_VIEWS.APPLICATIONS)}
-          onClick={() => onViewChange(APP_VIEWS.APPLICATIONS)}
-        >
-          <Database className="h-4 w-4" aria-hidden="true" />
-          Applications
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className={applicationNavClass(currentView === APP_VIEWS.ACTION_QUEUE)}
-          onClick={() => onViewChange(APP_VIEWS.ACTION_QUEUE)}
-        >
-          <ListChecks className="h-4 w-4" aria-hidden="true" />
-          Action Queue
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          className={applicationNavClass(currentView === APP_VIEWS.SOURCING)}
-          onClick={() => onViewChange(APP_VIEWS.SOURCING)}
-        >
-          <Search className="h-4 w-4" aria-hidden="true" />
-          Sourcing
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          aria-controls={connectorsChildrenId}
-          aria-expanded={connectorsExpanded}
-          className={applicationNavClass(connectorsChildActive)}
-          onClick={() => setConnectorsExpanded((expanded) => !expanded)}
-        >
-          <Plug className="h-4 w-4" aria-hidden="true" />
-          Connectors
-        </Button>
-        {connectorsExpanded ? (
-          <div className="ml-4 space-y-1 border-l border-border pl-2" id={connectorsChildrenId}>
-            <Button
-              type="button"
-              variant="ghost"
-              aria-current={currentView === APP_VIEWS.CONNECTORS ? 'page' : undefined}
-              className={applicationNavClass(currentView === APP_VIEWS.CONNECTORS)}
-              onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
-            >
-              Overview
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              aria-current={currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined}
-              className={applicationNavClass(currentView === APP_VIEWS.CONNECTOR_RUNS)}
-              onClick={() => onViewChange(APP_VIEWS.CONNECTOR_RUNS)}
-            >
-              Runs
-            </Button>
-          </div>
-        ) : null}
+          <nav aria-label="Application views">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={currentView === APP_VIEWS.PROFILE}
+                  aria-current={currentView === APP_VIEWS.PROFILE ? 'page' : undefined}
+                  onClick={onOpenProfilePage}
+                >
+                  <CircleUserRound className="h-4 w-4" aria-hidden="true" />
+                  Profile
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={currentView === APP_VIEWS.APPLICATIONS}
+                  aria-current={currentView === APP_VIEWS.APPLICATIONS ? 'page' : undefined}
+                  onClick={() => onViewChange(APP_VIEWS.APPLICATIONS)}
+                >
+                  <Database className="h-4 w-4" aria-hidden="true" />
+                  Applications
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={currentView === APP_VIEWS.ACTION_QUEUE}
+                  aria-current={currentView === APP_VIEWS.ACTION_QUEUE ? 'page' : undefined}
+                  onClick={() => onViewChange(APP_VIEWS.ACTION_QUEUE)}
+                >
+                  <ListChecks className="h-4 w-4" aria-hidden="true" />
+                  Action Queue
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={currentView === APP_VIEWS.SOURCING}
+                  aria-current={currentView === APP_VIEWS.SOURCING ? 'page' : undefined}
+                  onClick={() => onViewChange(APP_VIEWS.SOURCING)}
+                >
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                  Sourcing
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  aria-controls={connectorsChildrenId}
+                  aria-expanded={connectorsExpanded}
+                  isActive={connectorsChildActive}
+                  onClick={() => setConnectorsExpanded((expanded) => !expanded)}
+                >
+                  <Plug className="h-4 w-4" aria-hidden="true" />
+                  Connectors
+                </SidebarMenuButton>
+                {connectorsExpanded ? (
+                  <SidebarMenuSub
+                    className="mx-0 ml-4 translate-x-0 px-0 py-0 pl-2"
+                    id={connectorsChildrenId}
+                  >
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        asChild
+                        isActive={currentView === APP_VIEWS.CONNECTORS}
+                      >
+                        <button
+                          type="button"
+                          aria-current={
+                            currentView === APP_VIEWS.CONNECTORS ? 'page' : undefined
+                          }
+                          onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
+                        >
+                          Overview
+                        </button>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                    <SidebarMenuSubItem>
+                      <SidebarMenuSubButton
+                        asChild
+                        isActive={currentView === APP_VIEWS.CONNECTOR_RUNS}
+                      >
+                        <button
+                          type="button"
+                          aria-current={
+                            currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined
+                          }
+                          onClick={() => onViewChange(APP_VIEWS.CONNECTOR_RUNS)}
+                        >
+                          Runs
+                        </button>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  </SidebarMenuSub>
+                ) : null}
+              </SidebarMenuItem>
+            </SidebarMenu>
           </nav>
         </div>
       </ScrollArea>
 
-      <div className="mt-auto">
+      <SidebarFooter className="mt-auto gap-0 p-0">
         <SettingsPopover
           open={settingsOpen}
           settings={settings}
@@ -289,17 +328,9 @@ function AppSidebar({
           onOpenSettingsPage={onOpenSettingsPage}
           onSettingsPatch={onSettingsPatch}
         />
-      </div>
-    </aside>
+      </SidebarFooter>
+    </Sidebar>
   )
-}
-
-function applicationNavClass(active: boolean) {
-  return `flex h-9 w-full items-center justify-start gap-2 rounded-md px-2 text-left text-sm font-medium ${
-    active
-      ? 'bg-accent text-accent-foreground'
-      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-  }`
 }
 
 interface SettingsPopoverProps {

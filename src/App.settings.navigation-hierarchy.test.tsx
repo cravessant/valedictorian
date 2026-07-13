@@ -89,6 +89,11 @@ describe('navigation hierarchy', () => {
     const applicationsNav = within(sidebar).getByRole('button', { name: 'Applications' })
     expect(applicationsNav).toHaveClass('justify-start')
     expect(applicationsNav).not.toHaveClass('justify-center')
+    expect(applicationsNav).toHaveAttribute('aria-current', 'page')
+    expect(within(sidebar).getByRole('button', { name: 'Profile' })).not.toHaveAttribute(
+      'aria-current',
+      'page',
+    )
 
     fireEvent.click(within(sidebar).getByRole('button', { name: 'Settings' }))
 

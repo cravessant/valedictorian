@@ -9,6 +9,16 @@ import {
 } from '@/components/ui/input-group'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Sidebar,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@/components/ui/sidebar'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
@@ -153,9 +163,9 @@ export function SettingsSidebar({
     .filter((group) => group.items.length > 0)
 
   return (
-    <aside
+    <Sidebar
       aria-label="Settings navigation"
-      className={`absolute left-0 top-0 z-40 flex h-full w-[280px] max-w-[85vw] flex-col overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none ${
+      className={`absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none ${
         temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
       }`}
       role="complementary"
@@ -163,54 +173,62 @@ export function SettingsSidebar({
     >
       <ScrollArea className="min-h-0 flex-1">
         <div>
-          <Button type="button" variant="ghost" className="mb-4 justify-start gap-2 px-2" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Back to app
-          </Button>
+          <SidebarHeader className="mb-4 gap-0 p-0">
+            <Button type="button" variant="ghost" className="justify-start gap-2 px-2" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back to app
+            </Button>
+          </SidebarHeader>
 
-      <Label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-search">
-        Search settings
-        <InputGroup className="mt-1">
-          <InputGroupInput
-            id="settings-search"
-            placeholder="Search settings..."
-            value={settingsSearch}
-            onChange={(event) => setSettingsSearch(event.target.value)}
-          />
-          <InputGroupAddon align="inline-start">
-            <Search className="h-4 w-4" aria-hidden="true" />
-          </InputGroupAddon>
-        </InputGroup>
-      </Label>
+          <Label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-search">
+            Search settings
+            <InputGroup className="mt-1">
+              <InputGroupInput
+                id="settings-search"
+                placeholder="Search settings..."
+                value={settingsSearch}
+                onChange={(event) => setSettingsSearch(event.target.value)}
+              />
+              <InputGroupAddon align="inline-start">
+                <Search className="h-4 w-4" aria-hidden="true" />
+              </InputGroupAddon>
+            </InputGroup>
+          </Label>
 
           <nav className="mt-5 space-y-5" aria-label="Settings sections">
-        {visibleGroups.map((group) => (
-          <div key={group.group}>
-            <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">{group.group}</p>
-            <div className="space-y-1">
-              {group.items.map((item) => (
-                <Button
-                  key={item.id}
-                  type="button"
-                  variant="ghost"
-                  className={`flex h-9 w-full items-center justify-start gap-2 rounded-md px-2 text-left text-sm ${
-                    item.id === selectedPanel
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground'
-                  }`}
-                  onClick={() => onPanelChange(item.id)}
-                >
-                  {item.icon}
-                  {item.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        ))}
+            {visibleGroups.map((group) => (
+              <SidebarGroup key={group.group} className="p-0">
+                <SidebarGroupLabel className="mb-1 h-auto px-2 py-0">
+                  {group.group}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {group.items.map((item) => (
+                      <SidebarMenuItem key={item.id}>
+                        <SidebarMenuButton
+                          type="button"
+                          isActive={item.id === selectedPanel}
+                          aria-current={item.id === selectedPanel ? 'page' : undefined}
+                          className={
+                            item.id === selectedPanel
+                              ? undefined
+                              : 'hover:bg-accent/70 hover:text-foreground'
+                          }
+                          onClick={() => onPanelChange(item.id)}
+                        >
+                          {item.icon}
+                          {item.label}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))}
           </nav>
         </div>
       </ScrollArea>
-    </aside>
+    </Sidebar>
   )
 }
 

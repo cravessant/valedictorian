@@ -332,7 +332,7 @@ describe('compact navigation', () => {
     await openSettingsPage()
 
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    expect(navigation).toHaveClass('w-[280px]')
+    expect(navigation).toHaveClass('left-0', 'w-[280px]')
     expect(navigation).not.toHaveClass('mx-auto')
 
     const heading = screen.getByRole('heading', { name: 'Settings', level: 1 })
