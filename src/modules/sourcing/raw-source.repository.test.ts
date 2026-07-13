@@ -103,6 +103,7 @@ describe('raw source repository', () => {
     const capture = {
       connectorInstanceId,
       connectorRunId: runRequest.run.id,
+      executionScopeId: runRequest.run.executionScopeId,
     }
     const result = await repository.ingestBatch({
       records: [{
@@ -165,19 +166,20 @@ describe('raw source repository', () => {
       raw.receipts[1].revision.id,
       runs[0].connectorInstanceId,
       runs[0].id,
-    )).toThrow(/foreign key|lineage mismatch/i)
+    )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
     expect(() => insert.run(
       'mismatched-connector',
       raw.receipts[0].rawRecordId,
       raw.receipts[0].revision.id,
       runs[0].connectorInstanceId,
       runs[1].id,
-    )).toThrow(/foreign key|lineage mismatch/i)
+    )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
     const captured = await rawRepository.ingestBatch({ records: [{
       adapter: { id: 'fixture.one', kind: 'connector', version: '1.0.0' },
       capture: {
         connectorInstanceId: runs[0].connectorInstanceId,
         connectorRunId: runs[0].id,
+        executionScopeId: runs[0].executionScopeId,
       },
       observedAt: '2026-07-10T12:00:00.000Z',
       providerRecordId: 'job-one',
@@ -200,7 +202,7 @@ describe('raw source repository', () => {
       runs[0].connectorInstanceId,
       runs[0].id,
       'sha256:bad-normalization-raw',
-    )).toThrow(/foreign key|lineage mismatch/i)
+    )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
     expect(() => insertNormalization.run(
       'bad-normalization-history',
       raw.receipts[0].rawRecordId,
@@ -209,7 +211,7 @@ describe('raw source repository', () => {
       runs[0].connectorInstanceId,
       runs[0].id,
       'sha256:bad-normalization-history',
-    )).toThrow(/foreign key|lineage mismatch/i)
+    )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
     expect(() => insertNormalization.run(
       'manual-normalization',
       raw.receipts[0].rawRecordId,

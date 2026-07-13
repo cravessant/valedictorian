@@ -170,7 +170,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
   await connectorRepository.upsertInstance({
     id: connectorInstanceId,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.8.0',
+    connectorVersion: '0.10.0',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [
@@ -192,6 +192,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
     createdAt: '2026-07-09T15:00:00.000Z',
   })
 
+  await client.connectors.status.reconnect({ connectorInstanceId })
   const run = await client.connectors.runs.trigger({
     connectorInstanceId,
     mode: 'manual',
@@ -467,7 +468,7 @@ describe('runtime local Valedictorian client', () => {
     await connectorRepository.upsertInstance({
       id: 'jobright-api',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.8.0',
+      connectorVersion: '0.10.0',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [
@@ -489,6 +490,7 @@ describe('runtime local Valedictorian client', () => {
       createdAt: '2026-07-09T15:00:00.000Z',
     })
 
+    await client.connectors.status.reconnect({ connectorInstanceId: 'jobright-api' })
     const run = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-api',
       mode: 'manual',
@@ -521,12 +523,12 @@ describe('runtime local Valedictorian client', () => {
         lifecycleCounts: {
           source: 'frozen_terminal',
           scope: { kind: 'connector_run', connectorRunId: run.id },
-          provider: { returnedRows: 20, capturedRecords: 20 },
+          provider: { returnedRows: 40, capturedRecords: 20 },
           destination: {
             normalized: 1,
             resolvedEmployerOrAts: 1,
-            pending: 18,
-            unresolved: 1,
+            pending: 0,
+            unresolved: 19,
             gateRejected: 0,
           },
           sourcing: { actionableReview: 1 },
@@ -538,7 +540,7 @@ describe('runtime local Valedictorian client', () => {
       expect.objectContaining({ code: 'jobright_normalization_unavailable' }),
     ]))
     expect(runs.total).toBe(1)
-    expect(occurrences).toHaveLength(20)
+    expect(occurrences).toHaveLength(40)
     expect(revisions).toHaveLength(20)
     expect(occurrences).toEqual(expect.arrayContaining([
       expect.objectContaining({ connectorInstanceId: 'jobright-api', connectorRunId: run.id }),
@@ -609,8 +611,8 @@ describe('runtime local Valedictorian client', () => {
     })
     expect(fetchUrls.filter((url) => url.includes('/swan/auth/login/pwd'))).toHaveLength(1)
     expect(fetchUrls.filter((url) => url.includes('/swan/auth/newinfo'))).toHaveLength(1)
-    expect(fetchUrls.filter((url) => url.includes('/swan/recommend/visitor-list/jobs'))).toHaveLength(1)
-    expect(fetchUrls.filter((url) => url.includes('/swan/share/job/'))).toHaveLength(2)
+    expect(fetchUrls.filter((url) => url.includes('/swan/recommend/visitor-list/jobs'))).toHaveLength(2)
+    expect(fetchUrls.filter((url) => url.includes('/swan/share/job/'))).toHaveLength(20)
 
     const restartConnector = createJobrightConnector({
       fetch: fetchImpl,
@@ -672,7 +674,7 @@ describe('runtime local Valedictorian client', () => {
           : request.url).filter((url) => url.includes('/swan/share/job/'))
 
     expect(afterRestartRevisions).toHaveLength(20)
-    expect(afterRestartOccurrences).toHaveLength(40)
+    expect(afterRestartOccurrences).toHaveLength(60)
     expect(afterRestartOccurrences.filter(({ connectorRunId }) =>
       connectorRunId === resumedRun.id)).toHaveLength(20)
     expect(resumedRun.warnings).toEqual(expect.arrayContaining([
@@ -681,7 +683,7 @@ describe('runtime local Valedictorian client', () => {
     expect(injectedNormalizationFailure).toBe(true)
     expect(detailUrlsAfterFailure.filter((url) => url.endsWith('/job-resolved-1'))).toHaveLength(1)
     expect(detailUrlsAfterFailure.filter((url) => url.endsWith('/job-intermediary-only'))).toHaveLength(1)
-    expect(detailUrlsAfterFailure.filter((url) => url.includes('/job-pending-'))).toHaveLength(0)
+    expect(detailUrlsAfterFailure.filter((url) => url.includes('/job-pending-'))).toHaveLength(18)
 
     const recoveredClient = createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
@@ -710,12 +712,12 @@ describe('runtime local Valedictorian client', () => {
         : request instanceof URL
           ? request.href
           : request.url).filter((url) => url.includes('/swan/share/job/'))
-    expect(recoveredOccurrences).toHaveLength(60)
+    expect(recoveredOccurrences).toHaveLength(100)
     expect(recoveredOccurrences.filter(({ connectorRunId }) =>
-      connectorRunId === recoveredRun.id)).toHaveLength(20)
+      connectorRunId === recoveredRun.id)).toHaveLength(40)
     expect(detailUrls.filter((url) => url.endsWith('/job-resolved-1'))).toHaveLength(1)
     expect(detailUrls.filter((url) => url.endsWith('/job-intermediary-only'))).toHaveLength(1)
-    expect(detailUrls.filter((url) => url.includes('/job-pending-'))).toHaveLength(2)
+    expect(detailUrls.filter((url) => url.includes('/job-pending-'))).toHaveLength(18)
     await expect(restartedClient.sourcing.rawRecords.normalization.get(
       resolvedRevision.rawRecordId,
     )).resolves.toMatchObject({
@@ -742,20 +744,11 @@ describe('runtime local Valedictorian client', () => {
     const authFailed = await runJobrightFailureFixture('auth_failed')
 
     expect(authFailed.run).toMatchObject({
-      status: 'partial_success',
+      status: 'skipped',
+      outcome: { kind: 'action_required' },
       observationCount: 0,
-      warnings: [
-        {
-          code: 'jobright_auth_retryable',
-          label: 'Jobright auth unavailable',
-          message: 'Jobright authentication is temporarily unavailable. Retry later.',
-          severity: 'warning',
-        },
-      ],
-      retryHints: {
-        state: 'scheduled', reason: 'network_interruption', attempt: 1, maxAttempts: 3,
-        lastAttemptAt: '2026-07-09T18:00:00.000Z',
-      },
+      warnings: [],
+      retryHints: null,
     })
     expect(authFailed.runs.items).toHaveLength(1)
     expect(authFailed.runs.items[0]).toMatchObject({
@@ -763,18 +756,16 @@ describe('runtime local Valedictorian client', () => {
       retryHints: authFailed.run.retryHints,
     })
     expect(authFailed.status).toMatchObject({
-      status: 'partial_success',
-      warnings: authFailed.run.warnings,
+      status: 'skipped',
     })
     expect(authFailed.fetchUrls).toHaveLength(1)
-    expect(authFailed.retryItems).toEqual([
-      expect.objectContaining({ kind: 'connector_capture', reason: 'network_interruption', state: 'scheduled' }),
-    ])
+    expect(authFailed.retryItems).toEqual([])
 
     const discoveryFailed = await runJobrightFailureFixture('discovery_failed')
 
     expect(discoveryFailed.run).toMatchObject({
-      status: 'partial_success',
+      status: 'failed',
+      outcome: { kind: 'failed' },
       observationCount: 0,
       warnings: [
         {
@@ -792,7 +783,7 @@ describe('runtime local Valedictorian client', () => {
       retryHints: discoveryFailed.run.retryHints,
     })
     expect(discoveryFailed.status).toMatchObject({
-      status: 'partial_success',
+      status: 'failed',
       warnings: discoveryFailed.run.warnings,
     })
     expect(discoveryFailed.fetchUrls).toHaveLength(3)
@@ -800,7 +791,8 @@ describe('runtime local Valedictorian client', () => {
     const parserChanged = await runJobrightFailureFixture('parser_changed')
 
     expect(parserChanged.run).toMatchObject({
-      status: 'partial_success',
+      status: 'failed',
+      outcome: { kind: 'failed' },
       observationCount: 0,
       warnings: [
         {
@@ -818,7 +810,7 @@ describe('runtime local Valedictorian client', () => {
       retryHints: parserChanged.run.retryHints,
     })
     expect(parserChanged.status).toMatchObject({
-      status: 'partial_success',
+      status: 'failed',
       warnings: parserChanged.run.warnings,
     })
     expect(parserChanged.fetchUrls).toHaveLength(3)
@@ -826,7 +818,8 @@ describe('runtime local Valedictorian client', () => {
     const zeroUsefulResults = await runJobrightFailureFixture('zero_useful_results')
 
     expect(zeroUsefulResults.run).toMatchObject({
-      status: 'partial_success',
+      status: 'completed',
+      outcome: { kind: 'source_exhausted' },
       observationCount: 1,
       stats: {
         attempted: 1,
@@ -850,10 +843,10 @@ describe('runtime local Valedictorian client', () => {
       retryHints: zeroUsefulResults.run.retryHints,
     })
     expect(zeroUsefulResults.status).toMatchObject({
-      status: 'partial_success',
+      status: 'healthy',
       warnings: zeroUsefulResults.run.warnings,
     })
-    expect(zeroUsefulResults.fetchUrls).toHaveLength(4)
+    expect(zeroUsefulResults.fetchUrls).toHaveLength(5)
 
     for (const fixture of [authFailed, discoveryFailed, parserChanged, zeroUsefulResults]) {
       expect(fixture.findings.items).toEqual([])

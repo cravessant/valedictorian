@@ -85,7 +85,7 @@ export function createConnectorNormalizationHost(options: {
 
 function connectorResolver(input: ConnectorNormalizationInput): NormalizationResolver {
   return {
-    declaration: input.resolver,
+    declaration: { ...input.resolver, scopeRequirement: 'source' },
     resolve: () => input.resolve(),
   }
 }

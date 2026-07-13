@@ -11,6 +11,7 @@ export const connectorInstances = sqliteTable(
   'connector_instances',
   {
     id: text('id').primaryKey(),
+    executionScopeId: text('execution_scope_id').notNull(),
     connectorId: text('connector_id').notNull(),
     connectorVersion: text('connector_version').notNull(),
     displayName: text('display_name').notNull(),
@@ -31,6 +32,7 @@ export const connectorRuns = sqliteTable(
   'connector_runs',
   {
     id: text('id').primaryKey(),
+    executionScopeId: text('execution_scope_id').notNull(),
     connectorInstanceId: text('connector_instance_id')
       .notNull()
       .references(() => connectorInstances.id),

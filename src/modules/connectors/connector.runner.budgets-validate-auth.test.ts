@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteProfileRepository, type ProfileSecretCodec } from '../profile/profile.repository'
+import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 import {
   createSqliteConnectorRepository,
   type ConnectorCoverageWindow
@@ -106,7 +107,6 @@ describe('connector runner', () => {
         concurrency: 1,
         minDelayMs: 1_000,
         maxDelayMs: 10_000,
-        maxRequestsPerRun: 5,
       },
     })
   })
@@ -144,7 +144,6 @@ describe('connector runner', () => {
         concurrency: 1,
         minDelayMs: 1_000,
         maxDelayMs: 10_000,
-        maxRequestsPerRun: 5,
       },
     })
   })
@@ -182,7 +181,6 @@ describe('connector runner', () => {
         concurrency: 1,
         minDelayMs: 1_000,
         maxDelayMs: 10_000,
-        maxRequestsPerRun: 5,
       },
     })
   })
@@ -323,7 +321,7 @@ describe('connector runner', () => {
     })
   })
 
-  it('records exhausted-budget partial success without advancing past the connector checkpoint', async () => {
+  it('records exhausted-budget completion without advancing past the connector checkpoint', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -339,7 +337,6 @@ describe('connector runner', () => {
       },
       async refresh(input) {
         return {
-          status: 'partial_success',
           coverage: {
             start: input.coverage.start,
             end: '2026-07-09T16:05:00.000Z',
@@ -382,7 +379,7 @@ describe('connector runner', () => {
     })
 
     expect(run).toMatchObject({
-      status: 'partial_success',
+      status: 'completed',
       coverageEndedAt: '2026-07-09T16:05:00.000Z',
       retryHints: null,
     })
@@ -400,6 +397,41 @@ describe('connector runner', () => {
   })
 })
 
+describe('connector direct auth validation trust', () => {
+  it.each([
+    ['ready', 'failed', 'action_required', false],
+    ['rate_limited', 'rate_limited', 'cooldown', true],
+  ] as const)('finalizes direct %s truthfully and gates ordinary admission', async (
+    connectorStatus, publicStatus, scopeStatus, eventuallyAvailable,
+  ) => {
+    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const governor = createSourceExecutionGovernor(database)
+    let clock = new Date('2026-07-12T12:00:00.000Z')
+    const runner = createConnectorRunner({ repository, sourceExecutionGovernor: governor,
+      workspaceId: 'workspace-direct-validation', now: () => clock })
+    const connector: AppJobConnector = {
+      definition: { id: `fixture.direct-${connectorStatus}`, version: '1' },
+      async refresh(input) { return { coverage: input.coverage, stats: { observations: 0 }, warnings: [], observations: [],
+        nextCheckpoint: { schemaVersion: 'fixture@1', checkpoint: {} } } },
+      async validateAuth() { return { status: connectorStatus, reason: `direct_${connectorStatus}` } as never },
+    }
+    const connectorInstanceId = `direct-${connectorStatus}`
+    await runner.registerInstance({ id: connectorInstanceId, connector, displayName: connectorInstanceId, enabled: true })
+    await expect(runner.validateAuth(connector, { connectorInstanceId })).resolves.toMatchObject({ status: publicStatus })
+    const scopeId = (await repository.getInstance(connectorInstanceId))!.executionScopeId
+    expect(governor.getScope(scopeId).status).toBe(scopeStatus)
+    expect(governor.loadActiveSession(scopeId)).toBeNull()
+    const immediate = await repository.recordRunRequest({ connectorInstanceId, mode: 'manual', startedAt: clock.toISOString() })
+    expect(immediate.acquired).toBe(false)
+    clock = new Date('2026-07-12T12:00:31.000Z')
+    const later = await repository.recordRunRequest({ connectorInstanceId, mode: 'manual', startedAt: clock.toISOString() })
+    expect(later.acquired).toBe(eventuallyAvailable)
+    sqlite.close()
+  })
+})
+
 describe('connector validateAuth', () => {
   it('validates username/password credentials without recording run artifacts', async () => {
     const sqlite = createInMemoryDatabase()
@@ -409,6 +441,7 @@ describe('connector validateAuth', () => {
     const profileRepository = createSqliteProfileRepository(database, testCodec)
     const runner = createConnectorRunner({
       repository,
+      sourceExecutionGovernor: createSourceExecutionGovernor(database),
       workspaceId: 'workspace-fixture',
       auth: {
         secrets: profileRepository,
@@ -434,7 +467,7 @@ describe('connector validateAuth', () => {
       async refresh() {
         throw new Error('refresh should not run during validateAuth')
       },
-      async validateAuth(_input, runtime) {
+      async validateAuth(input, runtime) {
         const grant = await runtime.auth.resolve({
           id: 'jobright',
           mode: 'username_password',
@@ -448,10 +481,11 @@ describe('connector validateAuth', () => {
         }
 
         receivedValues.push(grant.value)
-
+        const established = await runtime.auth.refresh({ id: 'jobright', mode: 'username_password',
+          executionScopeId: input.executionScopeId }, async () => ({ status: 'ready', sessionId: 'fixture-session' }))
         return {
-          status: 'ready',
-          reason: 'jobright_auth_ready',
+          status: established.status === 'ready' ? 'ready' : 'failed',
+          reason: established.status === 'ready' ? 'jobright_auth_ready' : 'auth_validation_failed',
         }
       },
     }
@@ -554,6 +588,14 @@ describe('connector validateAuth', () => {
       {
         result: { status: 'failed', reason: 'jobright_login_schema_invalid' },
         expected: { status: 'failed', reason: 'jobright_login_schema_invalid' },
+      },
+      {
+        result: { status: 'cancelled', reason: 'jobright_auth_request_failed' },
+        expected: { status: 'cancelled', reason: 'jobright_auth_request_failed' },
+      },
+      {
+        result: { status: 'invocation_timeout', reason: 'jobright_auth_request_failed' },
+        expected: { status: 'invocation_timeout', reason: 'jobright_auth_request_failed' },
       },
       {
         result: { status: 'weird', reason: 'totally_unknown_reason' },
@@ -762,7 +804,6 @@ function createBudgetCapturingConnector(receivedInputs: unknown[]): AppJobConnec
         concurrency: 1,
         minDelayMs: 1_000,
         maxDelayMs: 10_000,
-        maxRequestsPerRun: 5,
       },
     },
     async refresh(input) {

@@ -11,6 +11,7 @@ import type { ProfileSensitiveDetails } from '../modules/profile/profile.reposit
 import type { ConnectorStatusListResult } from '../modules/connectors/connector.status'
 import type {
   LocalConnectorReconnectActionResult,
+  LocalConnectorRunSummary,
   LocalConnectorSkipActionInput,
   LocalConnectorSkipActionResult,
   LocalConnectorStatusActionInput,
@@ -382,7 +383,9 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
       const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
       const httpClient = getRendererHttpWorkspaceClient()
 
-      return httpClient?.connectors.runs.list(input) ?? connectorsWindow.connectors?.runs.list(input) ?? Promise.resolve({
+      const httpResult = httpClient?.connectors.runs.list(input)
+        .then((result) => ({ ...result, items: result.items.map(localizeConnectorRun) }))
+      return httpResult ?? connectorsWindow.connectors?.runs.list(input) ?? Promise.resolve({
         hasMore: false,
         items: [],
         limit: input.limit ?? 50,
@@ -394,7 +397,9 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
       const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
       const httpClient = getRendererHttpWorkspaceClient()
 
-      return httpClient?.connectors.runs.trigger(input) ?? connectorsWindow.connectors?.runs.trigger(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+      return httpClient?.connectors.runs.trigger(input).then(localizeConnectorRun)
+        ?? connectorsWindow.connectors?.runs.trigger(input)
+        ?? Promise.reject(new Error('Connectors API is unavailable.'))
     },
   },
   status: {
@@ -402,6 +407,10 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
     reconnect: defaultConnectorStatusReconnector,
     skip: defaultConnectorStatusSkipper,
   },
+}
+
+function localizeConnectorRun(run: import('sparxie').ConnectorRunSummary): LocalConnectorRunSummary {
+  return { ...run, coverage: { start: null, end: null }, retryHints: null, stats: {} }
 }
 
 export const defaultConnectorScheduleApi: ConnectorScheduleUiApi = {

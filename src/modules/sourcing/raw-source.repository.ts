@@ -265,12 +265,14 @@ function ingestRecord(
     rawRevisionId: revision.id,
     connectorInstanceId: record.capture?.connectorInstanceId ?? null,
     connectorRunId: record.capture?.connectorRunId ?? null,
+    executionScopeId: record.capture?.executionScopeId ?? null,
     observedAt: record.observedAt,
     receivedAt,
   }
   database.insert(rawSourceOccurrences).values(occurrence).run()
 
   return {
+    intakeItemId: record.intakeItemId ?? crypto.randomUUID(),
     rawRecordId,
     sourceEntityId,
     revision: {
@@ -357,6 +359,7 @@ function validateRecord(record: RawSourceRecordInput, index: number) {
   assertKnownKeys(
     record,
     [
+      'intakeItemId',
       'adapter',
       'capture',
       'observedAt',
@@ -368,6 +371,9 @@ function validateRecord(record: RawSourceRecordInput, index: number) {
     ],
     `records[${index}]`,
   )
+  if (record.intakeItemId !== undefined) {
+    validateRequiredText(record.intakeItemId, `records[${index}].intakeItemId`, 256)
+  }
   validateAdapter(record.adapter, index)
   validateCapture(record.capture, record.adapter.kind, index)
   validateTimestamp(record.observedAt, index)
@@ -417,7 +423,7 @@ function validateCapture(
   }
   assertKnownKeys(
     capture,
-    ['connectorInstanceId', 'connectorRunId'],
+    ['connectorInstanceId', 'connectorRunId', 'executionScopeId'],
     `records[${index}].capture`,
   )
   validateRequiredText(
@@ -428,6 +434,11 @@ function validateCapture(
   validateRequiredText(
     capture.connectorRunId,
     `records[${index}].capture.connectorRunId`,
+    256,
+  )
+  validateRequiredText(
+    capture.executionScopeId,
+    `records[${index}].capture.executionScopeId`,
     256,
   )
 }
@@ -441,6 +452,7 @@ function mapOccurrence(row: typeof rawSourceOccurrences.$inferSelect) {
       ? {
           connectorInstanceId: row.connectorInstanceId,
           connectorRunId: row.connectorRunId,
+          executionScopeId: row.executionScopeId ?? (() => { throw new Error('Connector capture is missing execution scope identity') })(),
         }
       : null,
     observedAt: row.observedAt,

@@ -31,7 +31,7 @@ describe('connector earliest backfill date UI', () => {
     await connectorsApi.create({
       id: 'jobright-a',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.8.0',
+      connectorVersion: '0.10.0',
       displayName: 'Jobright A',
       enabled: true,
       auth: [{
@@ -45,7 +45,7 @@ describe('connector earliest backfill date UI', () => {
     await connectorsApi.create({
       id: 'jobright-b',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.8.0',
+      connectorVersion: '0.10.0',
       displayName: 'Jobright B',
       enabled: true,
       auth: [{

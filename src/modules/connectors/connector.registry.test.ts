@@ -4,30 +4,12 @@ import { describe, expect, it } from 'vitest'
 import { createDefaultLocalConnectorRegistry } from './connector.registry'
 
 describe('connector registry', () => {
-  it('registers the published Jobright connector by persisted connector id', () => {
+  it('does not register Jobright until the native synchronization contract is released', () => {
     const registry = createDefaultLocalConnectorRegistry()
 
     const connector = registry.get('jobright.resolver')
 
-    expect(connector?.definition).toMatchObject({
-      displayName: 'Jobright internslist',
-      id: 'jobright.resolver',
-      version: '0.8.0',
-      capabilities: {
-        fetchesPublicPages: false,
-        resolvesIntermediaryLinks: true,
-        supportsFiltering: false,
-        supportsIncrementalRefresh: true,
-        usesBrowserSession: false,
-      },
-      checkpoint: {
-        schemaVersion: 'jobright-resolution-checkpoint@5',
-      },
-    })
-    expect(connector?.definition.auth).toMatchObject({
-      modes: ['username_password'],
-    })
-    expect(typeof connector?.validateAuth).toBe('function')
+    expect(connector).toBeNull()
     expect(registry.get('jobright.public')).toBeNull()
   })
 
@@ -54,11 +36,11 @@ describe('connector registry', () => {
       ),
     ) as { version: string }
 
-    expect(appPackage.dependencies.sparxie).toBe('0.14.0')
-    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.8.0')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.8.0')
-    expect(sparxiePackage.version).toBe('0.14.0')
-    expect(jobrightPackage.version).toBe('0.8.0')
-    expect(corePackage.version).toBe('0.8.0')
+    expect(appPackage.dependencies.sparxie).toBe('0.15.0')
+    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.10.0')
+    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.10.0')
+    expect(sparxiePackage.version).toBe('0.15.0')
+    expect(jobrightPackage.version).toBe('0.10.0')
+    expect(corePackage.version).toBe('0.10.0')
   })
 })

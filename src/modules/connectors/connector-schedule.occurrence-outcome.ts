@@ -2,7 +2,6 @@ import type { ConnectorScheduleOccurrenceOutcome } from 'sparxie'
 
 export const TERMINAL_CONNECTOR_RUN_STATUSES = [
   'completed',
-  'partial_success',
   'failed',
   'cancelled',
   'skipped',
@@ -21,7 +20,6 @@ export function occurrenceOutcomeForRunStatus(
 ): ConnectorScheduleOccurrenceOutcome {
   switch (status) {
     case 'completed':
-    case 'partial_success':
       return 'completed'
     case 'failed':
       return 'failed'

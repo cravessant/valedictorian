@@ -78,7 +78,8 @@ describe('runtime local Valedictorian client', () => {
         stats: {
           observations: 0,
         },
-        status: 'partial_success',
+        status: 'completed',
+        outcome: { kind: 'yielded' },
         warnings: [
           {
             code: 'auth.expired_session',
@@ -129,7 +130,7 @@ describe('runtime local Valedictorian client', () => {
         }),
       }),
       expect.objectContaining({
-        status: 'partial_success',
+        status: 'completed',
       }),
     ])
     expect(status.items).toMatchObject([

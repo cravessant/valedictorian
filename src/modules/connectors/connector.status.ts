@@ -14,7 +14,6 @@ export type ConnectorStatusState =
   | 'healthy'
   | 'never_run'
   | 'no_jobs'
-  | 'partial_success'
   | 'queued'
   | 'running'
   | 'skipped'
@@ -101,7 +100,7 @@ export function mapConnectorStatusSummary(
     rawWarnings.some((warning) => isAuthWarningCode(warning.code))
   const hasBlockedWarning = warnings.some((warning) => warning.severity === 'blocked')
   const latestRunStatus = latestRun.status
-  const isPartialSuccess = latestRun.status === 'partial_success'
+  const completedWithWarnings = latestRun.status === 'completed' && warnings.length > 0
   const noJobs = latestRun.observationCount === 0
   const state: ConnectorStatusStateView = hasAuthBlocker
     ? {
@@ -173,13 +172,13 @@ export function mapConnectorStatusSummary(
                       ? 'Latest run was skipped because retry work is not due yet.'
                       : 'Latest run was skipped.',
                   }
-                : isPartialSuccess
+                : completedWithWarnings
         ? {
             actionLabel: null,
             actions: [],
             severity: 'warning',
-            status: 'partial_success',
-            statusLabel: 'Partial success',
+            status: 'healthy',
+            statusLabel: 'Completed with warnings',
             summary: 'Latest run completed with warnings.',
           }
         : noJobs

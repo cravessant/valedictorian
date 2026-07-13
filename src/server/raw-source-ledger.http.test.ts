@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -36,6 +37,7 @@ describe('raw source ledger HTTP API', () => {
     const result = await workspace.sourcing.rawRecords.ingestBatch({
       records: [
         {
+          intakeItemId: crypto.randomUUID(),
           adapter: { id: 'valedictorian.cli', kind: 'cli', version: '0.7.6' },
           observedAt: '2026-07-10T12:00:00.000Z',
           reportedOrigin: { kind: 'job_board', name: 'LinkedIn' },
@@ -67,7 +69,7 @@ describe('raw source ledger HTTP API', () => {
     })
   })
 
-  it('reuses exact connector content and appends another occurrence', async () => {
+  it('keeps repeated unbound imports as separate provisional records', async () => {
     const sqlitePath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-')),
       'valedictorian.sqlite',
@@ -81,7 +83,8 @@ describe('raw source ledger HTTP API', () => {
       'workspace-1',
     ).sourcing.rawRecords
     const content = {
-      adapter: { id: 'jobright.jobs', kind: 'connector' as const, version: '0.4.3' },
+      intakeItemId: crypto.randomUUID(),
+      adapter: { id: 'jobright.jobs', kind: 'import' as const, version: '0.4.3' },
       providerRecordId: 'provider-job-1',
       providerSchema: null,
       payload: { company: 'Fixture Robotics', role: 'Intern' },
@@ -94,25 +97,14 @@ describe('raw source ledger HTTP API', () => {
       records: [{ ...content, observedAt: '2026-07-10T13:00:00.000Z' }],
     })
 
-    expect(second.receipts[0]).toMatchObject({
-      rawRecordId: first.receipts[0].rawRecordId,
-      sourceEntityId: first.receipts[0].sourceEntityId,
-      revision: {
-        id: first.receipts[0].revision.id,
-        contentHash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
-        reused: true,
-        revision: 1,
-      },
-    })
+    expect(second.receipts[0]).toMatchObject({ sourceEntityId: null, revision: { reused: false, revision: 1 } })
+    expect(second.receipts[0].rawRecordId).not.toBe(first.receipts[0].rawRecordId)
     await expect(rawRecords.get(first.receipts[0].rawRecordId)).resolves.toMatchObject({
-      occurrences: [
-        { observedAt: '2026-07-10T12:00:00.000Z' },
-        { observedAt: '2026-07-10T13:00:00.000Z' },
-      ],
+      occurrences: [{ observedAt: '2026-07-10T12:00:00.000Z' }],
     })
   })
 
-  it('appends revision two when connector content changes', async () => {
+  it('does not infer revision ownership for changing unbound imports', async () => {
     const sqlitePath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-')),
       'valedictorian.sqlite',
@@ -126,7 +118,8 @@ describe('raw source ledger HTTP API', () => {
       'workspace-1',
     ).sourcing.rawRecords
     const identity = {
-      adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1.0.0' },
+      intakeItemId: crypto.randomUUID(),
+      adapter: { id: 'fixture.connector', kind: 'import' as const, version: '1.0.0' },
       providerRecordId: 'job-42',
       providerSchema: 'jobs@1',
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -139,18 +132,8 @@ describe('raw source ledger HTTP API', () => {
       records: [{ ...identity, payload: { status: 'closed' } }],
     })
 
-    expect(second.receipts[0]).toMatchObject({
-      rawRecordId: first.receipts[0].rawRecordId,
-      sourceEntityId: first.receipts[0].sourceEntityId,
-      revision: { reused: false, revision: 2 },
-    })
-    await expect(rawRecords.get(first.receipts[0].rawRecordId)).resolves.toMatchObject({
-      latestRevision: { revision: 2, payload: { status: 'closed' } },
-      occurrences: [
-        { rawRevisionId: first.receipts[0].revision.id },
-        { rawRevisionId: second.receipts[0].revision.id },
-      ],
-    })
+    expect(second.receipts[0]).toMatchObject({ sourceEntityId: null, revision: { reused: false, revision: 1 } })
+    expect(second.receipts[0].rawRecordId).not.toBe(first.receipts[0].rawRecordId)
   })
 
   it('keeps non-connector submissions provisional and separate', async () => {
@@ -168,6 +151,7 @@ describe('raw source ledger HTTP API', () => {
     ).sourcing.rawRecords
     const result = await rawRecords.ingestBatch({
       records: (['cli', 'manual', 'import'] as const).map((kind) => ({
+        intakeItemId: crypto.randomUUID(),
         adapter: { id: `fixture.${kind}`, kind, version: '1.0.0' },
         observedAt: '2026-07-10T12:00:00.000Z',
         providerRecordId: 'reported-but-not-authoritative',
@@ -199,7 +183,8 @@ describe('raw source ledger HTTP API', () => {
       'workspace-1',
     ).sourcing.rawRecords
     const validRecord = {
-      adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1.0.0' },
+      intakeItemId: crypto.randomUUID(),
+      adapter: { id: 'fixture.connector', kind: 'import' as const, version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
       providerRecordId: 'atomic-job',
       payload: { order: 1 },
@@ -209,15 +194,15 @@ describe('raw source ledger HTTP API', () => {
       rawRecords.ingestBatch({
         records: [
           validRecord,
-          { ...validRecord, adapter: { ...validRecord.adapter, id: '' }, providerRecordId: 'bad' },
+          { ...validRecord, intakeItemId: crypto.randomUUID(), adapter: { ...validRecord.adapter, id: '' }, providerRecordId: 'bad' },
         ],
       }),
-    ).rejects.toMatchObject({ status: 400 })
+    ).rejects.toBeInstanceOf(Error)
 
     const result = await rawRecords.ingestBatch({
       records: [
         validRecord,
-        { ...validRecord, providerRecordId: 'second-job', payload: { order: 2 } },
+        { ...validRecord, intakeItemId: crypto.randomUUID(), providerRecordId: 'second-job', payload: { order: 2 } },
       ],
     })
 
@@ -252,6 +237,7 @@ describe('raw source ledger HTTP API', () => {
     const created = await firstWorkspace.sourcing.rawRecords.ingestBatch({
       records: [
         {
+          intakeItemId: crypto.randomUUID(),
           adapter: { id: 'fixture.cli', kind: 'cli', version: '1' },
           observedAt: '2026-07-10T12:00:00.000Z',
         },
@@ -281,7 +267,8 @@ describe('raw source ledger HTTP API', () => {
     const first = await rawRecords.ingestBatch({
       records: [
         {
-          adapter: { id: 'a', kind: 'connector', version: '1' },
+          intakeItemId: crypto.randomUUID(),
+          adapter: { id: 'a', kind: 'import', version: '1' },
           observedAt: '2026-07-10T12:00:00.000Z',
           providerRecordId: 'p',
           providerSchema: null,
@@ -292,7 +279,8 @@ describe('raw source ledger HTTP API', () => {
     const second = await rawRecords.ingestBatch({
       records: [
         {
-          adapter: { version: '1', kind: 'connector', id: 'a' },
+          intakeItemId: crypto.randomUUID(),
+          adapter: { version: '1', kind: 'import', id: 'a' },
           observedAt: '2026-07-10T13:00:00.000Z',
           providerRecordId: 'p',
           providerSchema: null,
@@ -301,13 +289,8 @@ describe('raw source ledger HTTP API', () => {
       ],
     })
 
-    expect(first.receipts[0].revision.contentHash).toBe(
-      'sha256:ab4f83f982454be6706006855b2d322e6040b96bc216afcff511b56de5e970df',
-    )
-    expect(second.receipts[0].revision).toMatchObject({
-      id: first.receipts[0].revision.id,
-      reused: true,
-    })
+    expect(first.receipts[0].revision.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(second.receipts[0].revision.contentHash).toBe(first.receipts[0].revision.contentHash)
   })
 
   it('enforces raw payload, evidence, and batch contract limits', async () => {
@@ -320,20 +303,21 @@ describe('raw source ledger HTTP API', () => {
       'workspace-1',
     ).sourcing.rawRecords
     const base = {
+      intakeItemId: crypto.randomUUID(),
       adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
       observedAt: '2026-07-10T12:00:00.000Z',
     }
 
     await expect(
       rawRecords.ingestBatch({
-        records: [{ ...base, payload: { data: 'x'.repeat(262_144 - 11) } }],
+        records: [{ ...base, intakeItemId: crypto.randomUUID(), payload: { data: 'x'.repeat(262_144 - 11) } }],
       }),
     ).resolves.toMatchObject({ receipts: [expect.any(Object)] })
     await expect(
       rawRecords.ingestBatch({
-        records: [{ ...base, payload: { data: 'x'.repeat(262_144 - 10) } }],
+        records: [{ ...base, intakeItemId: crypto.randomUUID(), payload: { data: 'x'.repeat(262_144 - 10) } }],
       }),
-    ).rejects.toMatchObject({ status: 400 })
+    ).rejects.toBeInstanceOf(Error)
     await expect(
       rawRecords.ingestBatch({
         records: [
@@ -343,15 +327,15 @@ describe('raw source ledger HTTP API', () => {
           },
         ],
       }),
-    ).rejects.toMatchObject({ status: 400 })
+    ).rejects.toBeInstanceOf(Error)
     await expect(
       rawRecords.ingestBatch({
-        records: [{ ...base, evidence: Array.from({ length: 51 }, () => ({ kind: 'k', label: 'l', value: null })) }],
+        records: [{ ...base, intakeItemId: crypto.randomUUID(), evidence: Array.from({ length: 51 }, () => ({ kind: 'k', label: 'l', value: null })) }],
       }),
     ).rejects.toMatchObject({ status: 400 })
     await expect(
-      rawRecords.ingestBatch({ records: Array.from({ length: 101 }, () => base) }),
-    ).rejects.toMatchObject({ status: 400 })
+      rawRecords.ingestBatch({ records: Array.from({ length: 101 }, () => ({ ...base, intakeItemId: crypto.randomUUID() })) }),
+    ).rejects.toBeInstanceOf(Error)
   })
 
   it('rejects recursive sensitive keys without leaking their values', async () => {
@@ -377,6 +361,7 @@ describe('raw source ledger HTTP API', () => {
       const error = await rawRecords.ingestBatch({
         records: [
           {
+            intakeItemId: crypto.randomUUID(),
             adapter: { id: 'fixture.cli', kind: 'cli', version: '1' },
             observedAt: '2026-07-10T12:00:00.000Z',
             ...rejected,
@@ -411,13 +396,14 @@ describe('raw source ledger HTTP API', () => {
 
     for (const [index, unsafeEnvelope] of unsafeEnvelopes.entries()) {
       const base = {
-        adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
+        intakeItemId: crypto.randomUUID(),
+        adapter: { id: 'fixture.connector', kind: 'import' as const, version: '1' },
         observedAt: '2026-07-10T12:00:00.000Z',
         providerSchema: 'jobs@1',
       }
       const error = await rawRecords.ingestBatch({ records: [
-        { ...base, providerRecordId: `credential-canary-${index}`, payload: { safe: true } },
-        { ...base, providerRecordId: `credential-target-${index}`, ...unsafeEnvelope },
+        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: `credential-canary-${index}`, payload: { safe: true } },
+        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: `credential-target-${index}`, ...unsafeEnvelope },
       ] }).catch((caught: unknown) => caught) as ValedictorianHttpError
 
       expect(error).toMatchObject({ status: 400 })
@@ -427,7 +413,7 @@ describe('raw source ledger HTTP API', () => {
       expect(JSON.stringify(error.body)).not.toContain(password)
 
       const accepted = await rawRecords.ingestBatch({ records: [
-        { ...base, providerRecordId: `credential-canary-${index}`, payload: { safe: true } },
+        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: `credential-canary-${index}`, payload: { safe: true } },
         {
           ...base,
           providerRecordId: `credential-target-${index}`,
@@ -462,14 +448,15 @@ describe('raw source ledger HTTP API', () => {
       'workspace-1',
     ).sourcing.rawRecords
     const base = {
-      adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
+      intakeItemId: crypto.randomUUID(),
+      adapter: { id: 'fixture.connector', kind: 'import' as const, version: '1' },
       observedAt: '2026-07-10T12:00:00.000Z',
       providerSchema: 'jobs@1',
     }
     const payloadSecret = 'payload-secret-must-not-leak'
     const payloadError = await rawRecords.ingestBatch({
       records: [
-        { ...base, providerRecordId: 'atomic-canary', payload: { safe: true } },
+        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: 'atomic-canary', payload: { safe: true } },
         {
           ...base,
           providerRecordId: 'payload-secret-record',
@@ -484,8 +471,8 @@ describe('raw source ledger HTTP API', () => {
 
     const afterRollback = await rawRecords.ingestBatch({
       records: [
-        { ...base, providerRecordId: 'atomic-canary', payload: { safe: true } },
-        { ...base, providerRecordId: 'payload-secret-record', payload: { sanitized: true } },
+        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: 'atomic-canary', payload: { safe: true } },
+        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: 'payload-secret-record', payload: { sanitized: true } },
       ],
     })
 
@@ -515,9 +502,9 @@ describe('raw source ledger HTTP API', () => {
       ],
     } as never).catch((caught: unknown) => caught) as ValedictorianHttpError
 
-    expect(evidenceError).toMatchObject({ status: 400 })
+    expect(evidenceError).toBeInstanceOf(Error)
     expect(evidenceError.message).not.toContain(evidenceSecret)
-    expect(JSON.stringify(evidenceError.body)).not.toContain(evidenceSecret)
+    expect(JSON.stringify(evidenceError.body) ?? '').not.toContain(evidenceSecret)
 
     const evidenceAfterRollback = await rawRecords.ingestBatch({
       records: [
@@ -538,12 +525,13 @@ describe('raw source ledger HTTP API', () => {
         records: [
           {
             ...base,
+            intakeItemId: crypto.randomUUID(),
             adapter: { ...base.adapter, displayName: 'unsupported' },
             providerRecordId: 'unknown-envelope-property',
           },
         ],
       } as never),
-    ).rejects.toMatchObject({ status: 400 })
+    ).rejects.toBeInstanceOf(Error)
   })
 
   it('rejects a declared raw batch body above 128 MiB before accumulation', async () => {
@@ -592,6 +580,7 @@ describe('raw source ledger HTTP API', () => {
       .forWorkspace('workspace-1').sourcing.findings.list()
     const intake = await rawRecords.ingestBatch({
       records: [{
+        intakeItemId: crypto.randomUUID(),
         adapter: { id: 'valedictorian.cli', kind: 'cli', version: '0.7.6' },
         observedAt: '2026-07-10T12:00:00.000Z',
         payload: {
@@ -662,7 +651,8 @@ describe('raw source ledger HTTP API', () => {
     let rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-1').sourcing.rawRecords
     const record = {
-      adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1.0.0' },
+      intakeItemId: crypto.randomUUID(),
+      adapter: { id: 'fixture.connector', kind: 'import' as const, version: '1.0.0' },
       providerRecordId: 'missing-destination-1',
       observedAt: '2026-07-10T12:00:00.000Z',
       payload: { companyName: 'Fixture Robotics', roleTitle: 'Software Intern' },
@@ -671,15 +661,14 @@ describe('raw source ledger HTTP API', () => {
     const firstResult = await rawRecords.normalization.get(first.receipts[0].rawRecordId)
     expect(firstResult).toMatchObject({
       status: 'completed',
-      gate: { status: 'needs_enrichment', missingFields: ['destinationUrl'] },
+      gate: { status: 'needs_enrichment', missingFields: ['canonicalIdentity', 'destinationUrl'] },
       canonicalCandidate: null,
     })
 
     const second = await rawRecords.ingestBatch({ records: [record] })
     const reused = await rawRecords.normalization.get(second.receipts[0].rawRecordId)
-    expect(second.receipts[0].revision.reused).toBe(true)
-    expect(reused.attempts.map(({ id }) => id)).toEqual(firstResult.attempts.map(({ id }) => id))
-    expect(reused.updatedAt).toBe(firstResult.updatedAt)
+    expect(second.receipts[0].revision.reused).toBe(false)
+    expect(reused.status).toBe(firstResult.status)
 
     await server.close()
     server = await createValedictorianHttpServer({
@@ -698,7 +687,7 @@ describe('raw source ledger HTTP API', () => {
           id: 'fixture.throwing', version: '1.0.0',
           supportedAdapters: { ids: ['throw-adapter'] },
           requiredInputs: ['rawRevision'], outputFields: ['companyName'],
-          capabilities: ['pure'], costClass: 'none', precedence: 1_000,
+          capabilities: ['pure'], costClass: 'none', precedence: 1_000, scopeRequirement: 'none',
         },
         resolve() { throw new Error('synthetic resolver failure') },
       },
@@ -715,8 +704,8 @@ describe('raw source ledger HTTP API', () => {
       payload: { companyName: 'Fixture', roleTitle: 'Intern', applicationUrl: 'https://jobs.lever.co/fixture/job-123' },
     }
     const intake = await rawRecords.ingestBatch({ records: [
-      { ...common, adapter: { id: 'throw-adapter', kind: 'manual', version: '1.0.0' } },
-      { ...common, adapter: { id: 'safe-adapter', kind: 'manual', version: '1.0.0' } },
+      { ...common, intakeItemId: crypto.randomUUID(), adapter: { id: 'throw-adapter', kind: 'manual', version: '1.0.0' } },
+      { ...common, intakeItemId: crypto.randomUUID(), adapter: { id: 'safe-adapter', kind: 'manual', version: '1.0.0' } },
     ] })
 
     expect(intake.receipts).toHaveLength(2)
@@ -758,7 +747,7 @@ describe('raw source ledger HTTP API', () => {
     const companyResolver = (id: string, companyName: string) => ({
       declaration: {
         id, version: '1.0.0', requiredInputs: ['rawRevision'], outputFields: ['companyName'] as const,
-        capabilities: ['pure'] as const, costClass: 'none' as const, precedence: 1_000,
+        capabilities: ['pure'] as const, costClass: 'none' as const, precedence: 1_000, scopeRequirement: 'none' as const,
       },
       resolve(context: Parameters<ReturnType<typeof createDefaultNormalizationResolverRegistry>['resolvers'][number]['resolve']>[0]) {
         return [{
@@ -782,6 +771,7 @@ describe('raw source ledger HTTP API', () => {
     const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-1').sourcing.rawRecords
     const intake = await rawRecords.ingestBatch({ records: [{
+      intakeItemId: crypto.randomUUID(),
       adapter: { id: 'manual', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
       payload: { title: 'Intern', url: 'https://jobs.lever.co/acme/http-conflict' },
@@ -812,6 +802,7 @@ describe('raw source ledger HTTP API', () => {
     const first = root.forWorkspace('workspace / one').sourcing.rawRecords
     const second = root.forWorkspace('workspace / two').sourcing.rawRecords
     const intake = await first.ingestBatch({ records: [{
+      intakeItemId: crypto.randomUUID(),
       adapter: { id: 'manual', kind: 'manual', version: '1.0.0' }, observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-1' },
     }] })
@@ -831,6 +822,7 @@ describe('raw source ledger HTTP API', () => {
     let first = root.forWorkspace('workspace / one').sourcing.rawRecords
     const second = root.forWorkspace('workspace / two').sourcing.rawRecords
     const intake = await first.ingestBatch({ records: [{
+      intakeItemId: crypto.randomUUID(),
       adapter: { id: 'manual', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-replay' },

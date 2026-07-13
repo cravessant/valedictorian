@@ -3,6 +3,7 @@ import type {
   ConnectorRawSourceCaptureInput,
   ConnectorRuntime,
 } from '@sparxie/valedictorian-connectors-core'
+import { randomUUID } from 'node:crypto'
 import {
   createBoundRawSourceRecordInputSchema,
   type RawSourceOccurrenceReceipt,
@@ -17,6 +18,7 @@ import type {
 
 export interface AcquiredNormalizationReplayIdentity {
   acquisitionRunId: string
+  executionScopeId: string
   inputHash: string
   rawRevisionId: string
   resolverId: string
@@ -29,6 +31,7 @@ export function createBoundConnectorDataRuntime({
   connector,
   connectorInstanceId,
   connectorRunId,
+  executionScopeId,
   normalization,
   rawSource,
   workspaceId,
@@ -37,6 +40,7 @@ export function createBoundConnectorDataRuntime({
   connector: AppJobConnector
   connectorInstanceId: string
   connectorRunId: string
+  executionScopeId: string
   normalization: AppConnectorNormalizationHost | undefined
   rawSource: AppConnectorRawSourceHost | undefined
   workspaceId: string
@@ -63,13 +67,15 @@ export function createBoundConnectorDataRuntime({
             async capture(input: ConnectorRawSourceCaptureInput) {
               const record = {
                 ...input,
+                intakeItemId: randomUUID(),
                 adapter,
-                capture: { connectorInstanceId, connectorRunId },
+                capture: { connectorInstanceId, connectorRunId, executionScopeId },
               }
               const validated = createBoundRawSourceRecordInputSchema({
                 adapter,
                 connectorInstanceId,
                 connectorRunId,
+                executionScopeId,
                 requestWorkspaceId: workspaceId,
                 workspaceId,
               }).parse(record)
@@ -106,6 +112,7 @@ export function createBoundConnectorDataRuntime({
                       acquiredRetryWork: {
                         retryWorkId: exactReplay.retryWorkId,
                         acquisitionRunId: exactReplay.acquisitionRunId,
+                        executionScopeId: exactReplay.executionScopeId,
                       },
                       deferAcquiredRetryCompletion: true,
                     }

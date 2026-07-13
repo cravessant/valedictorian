@@ -58,7 +58,7 @@ describe('connector run lifecycle counts', () => {
     })
     const record = {
       adapter: { id: 'jobright.resolver', kind: 'connector' as const, version: '0.6.0' },
-      capture: { connectorInstanceId: 'jobright-fixture', connectorRunId: run.id },
+      capture: { connectorInstanceId: 'jobright-fixture', connectorRunId: run.id, executionScopeId: run.executionScopeId },
       observedAt: '2026-07-11T16:59:30.000Z',
       providerRecordId: 'job-1',
       providerSchema: 'jobright-visitor-list@1',
@@ -80,7 +80,7 @@ describe('connector run lifecycle counts', () => {
     ] })
 
     expect(reconcileConnectorRunLifecycleCounts(database, run)).toMatchObject({
-      scope: { kind: 'connector_run', connectorRunId: run.id },
+      scope: { kind: 'connector_run', connectorRunId: run.id, executionScopeId: run.executionScopeId },
       provider: {
         returnedRows: 4,
         validRecords: 2,
@@ -114,6 +114,7 @@ describe('connector run lifecycle counts', () => {
           capture: {
             connectorInstanceId: fixture.connectorInstanceId,
             connectorRunId: fixture.run.id,
+            executionScopeId: fixture.run.executionScopeId,
           },
           observedAt: '2026-07-11T17:00:00.000Z',
           providerRecordId: 'job-provider-quality',
@@ -145,6 +146,7 @@ describe('connector run lifecycle counts', () => {
         capture: {
           connectorInstanceId: fixture.connectorInstanceId,
           connectorRunId: fixture.run.id,
+            executionScopeId: fixture.run.executionScopeId,
         },
         observedAt: `2026-07-11T17:00:0${index}.000Z`,
         providerRecordId: `job-${index}`,
@@ -187,6 +189,7 @@ describe('connector run lifecycle counts', () => {
         capture: {
           connectorInstanceId: fixture.connectorInstanceId,
           connectorRunId: fixture.run.id,
+            executionScopeId: fixture.run.executionScopeId,
         },
         observedAt: `2026-07-11T17:02:${index}.000Z`,
         providerRecordId: `job-${index}`,
@@ -217,6 +220,7 @@ describe('connector run lifecycle counts', () => {
       capture: {
         connectorInstanceId: fixture.connectorInstanceId,
         connectorRunId: fixture.run.id,
+            executionScopeId: fixture.run.executionScopeId,
       },
       observedAt: '2026-07-11T17:04:00.000Z',
       providerRecordId: 'job-frozen',
@@ -233,6 +237,7 @@ describe('connector run lifecycle counts', () => {
     }).where(eq(connectorRuns.id, fixture.run.id)).run()
     await repository.completeRun({
       connectorRunId: fixture.run.id,
+            executionScopeId: fixture.run.executionScopeId,
       completedAt: '2026-07-11T17:04:01.000Z',
       status: 'completed',
     })
@@ -259,6 +264,7 @@ describe('connector run lifecycle counts', () => {
       capture: {
         connectorInstanceId: first.connectorInstanceId,
         connectorRunId: first.run.id,
+        executionScopeId: first.run.executionScopeId,
       },
       observedAt: '2026-07-11T17:05:00.000Z',
       providerRecordId: 'job-restart',
@@ -291,6 +297,7 @@ describe('connector run lifecycle counts', () => {
       capture: {
         connectorInstanceId: first.connectorInstanceId,
         connectorRunId: restartedRun.id,
+        executionScopeId: restartedRun.executionScopeId,
       },
     }] })
 
@@ -310,6 +317,7 @@ describe('connector run lifecycle counts', () => {
       capture: {
         connectorInstanceId: fixture.connectorInstanceId,
         connectorRunId: fixture.run.id,
+            executionScopeId: fixture.run.executionScopeId,
       },
       observedAt: '2026-07-11T17:07:00.000Z',
       providerRecordId: 'job-retry',

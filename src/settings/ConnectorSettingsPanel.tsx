@@ -730,9 +730,6 @@ export function ConnectorSettingsPanel({
       return
     }
 
-    const coverageEndedAt = new Date().toISOString()
-    const coverageStartedAt = `${instance.earliestBackfillDate}T00:00:00.000Z`
-
     setConnectorActionError(null)
     setRunningInstanceId(instance.id)
     setLatestRunStatuses((currentStatuses) => ({
@@ -741,10 +738,8 @@ export function ConnectorSettingsPanel({
     }))
     void connectorsApi.runs.trigger({
       connectorInstanceId: instance.id,
-      coverageEndedAt,
-      coverageStartedAt,
       mode: 'manual',
-      reason: 'settings_manual_refresh',
+      coverageEndedAt: new Date().toISOString(),
     })
       .then((run) => {
         setLatestRuns((currentRuns) => ({

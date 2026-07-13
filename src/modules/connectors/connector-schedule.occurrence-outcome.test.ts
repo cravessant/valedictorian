@@ -6,7 +6,6 @@ import {
 describe('occurrenceOutcomeForRunStatus', () => {
   it.each([
     ['completed', 'completed'],
-    ['partial_success', 'completed'],
     ['failed', 'failed'],
     ['cancelled', 'cancelled'],
     ['skipped', 'skipped'],

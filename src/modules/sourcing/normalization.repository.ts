@@ -21,12 +21,14 @@ import {
   rawSourceRecords,
   rawSourceRevisions,
   retryWork,
+  sourceExecutionScopes,
   sourceEntities,
   sourceEntityIdentities,
   sourceIdentityConflicts,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import { classifyExplicitIntermediaryAlias, DESTINATION_TAXONOMY_VERSION } from './destination-classifier'
+import { deriveSourceExecutionScopeId } from '../source-execution/source-execution-governor'
 
 export const SOURCE_IDENTITY_RECONCILIATION_VERSION = 'source-identity-reconciliation/v1'
 const DESTINATION_ALIAS_NAMESPACE = 'canonicalized-job-destination/v1'
@@ -53,6 +55,7 @@ export interface PersistNormalizationInput {
   now: string
   acquiredRetryWork?: {
     acquisitionRunId: string
+    executionScopeId: string
     retryWorkId: string
   }
   deferAcquiredRetryCompletion?: boolean
@@ -465,7 +468,22 @@ function synchronizeNormalizationRetryWork(
     throw new Error(`Resolver ${attempt.resolver.id}@${attempt.resolver.version} emitted inconsistent retry advice for one invocation`)
   }
   if (existing?.state === 'exhausted' || existing?.state === 'cancelled') return
+  const priorLineage = existing ? JSON.parse(existing.lineageJson) as Record<string, unknown> : {}
+  let executionScopeId = attempt.executionScopeId
+  if (executionScopeId === null) {
+    const revision = transaction.select().from(rawSourceRevisions)
+      .where(eq(rawSourceRevisions.id, input.rawRevisionId)).get()
+    if (!revision) throw new Error('Raw source revision not found for normalization retry scope')
+    executionScopeId = deriveSourceExecutionScopeId(revision.rawRecordId)
+    transaction.insert(sourceExecutionScopes).values({
+      id: executionScopeId, status: 'available', blockedUntil: null,
+      backoffAttempt: 0, authGeneration: 0, refreshLeaseToken: null,
+      refreshLeaseExpiresAt: null, actionReason: null,
+      createdAt: input.now, updatedAt: input.now, deletedAt: null,
+    }).onConflictDoNothing().run()
+  }
   const values = {
+    executionScopeId,
     reason: advice.reason,
     attempt: advice.attempt,
     maxAttempts: advice.maxAttempts,
@@ -477,10 +495,11 @@ function synchronizeNormalizationRetryWork(
     state: advice.state === 'not_due' ? 'scheduled' as const : advice.state,
     ownerVersion: attempt.resolver.version,
     lineageJson: JSON.stringify({
+      ...priorLineage,
       normalizationRunId: input.runId,
-      triggerOccurrenceId: input.triggerOccurrence?.id ?? null,
-      connectorInstanceId: input.triggerOccurrence?.capture?.connectorInstanceId ?? null,
-      connectorRunId: input.triggerOccurrence?.capture?.connectorRunId ?? null,
+      triggerOccurrenceId: input.triggerOccurrence?.id ?? priorLineage.triggerOccurrenceId ?? null,
+      connectorInstanceId: input.triggerOccurrence?.capture?.connectorInstanceId ?? priorLineage.connectorInstanceId ?? null,
+      connectorRunId: input.triggerOccurrence?.capture?.connectorRunId ?? priorLineage.connectorRunId ?? null,
       acquiredRetryWorkId: input.acquiredRetryWork?.retryWorkId ?? null,
       acquisitionRunId: input.acquiredRetryWork?.acquisitionRunId ?? null,
     }),
@@ -542,7 +561,10 @@ function mapResult(
 ): PersistedRawSourceNormalizationResult {
   const attemptRows = database.select().from(normalizationAttempts).where(eq(normalizationAttempts.runId, run.id)).orderBy(asc(normalizationAttempts.sequence)).all()
   const outcomes = database.select().from(normalizationFieldOutcomes).where(eq(normalizationFieldOutcomes.runId, run.id)).orderBy(asc(normalizationFieldOutcomes.sequence)).all().map((row) => JSON.parse(row.outcomeJson) as FieldResolutionOutcome)
-  const attempts = attemptRows.map((row) => ({ id: row.id, rawRevisionId: row.rawRevisionId, resolver: JSON.parse(row.declarationJson), inputHash: row.inputHash, status: row.status, applicability: JSON.parse(row.applicabilityJson), startedAt: row.startedAt, completedAt: row.completedAt, outcomes: outcomes.filter((outcome) => outcome.resolverId === row.resolverId && outcome.resolverVersion === row.resolverVersion) })) as NormalizationAttempt[]
+  const attempts = attemptRows.map((row) => {
+    const resolver = JSON.parse(row.declarationJson) as NormalizationAttempt['resolver']
+    return { id: row.id, rawRevisionId: row.rawRevisionId, resolver, executionScopeId: resolver.scopeRequirement === 'source' ? runScopeId(database, run) : null, operationOutcome: null, inputHash: row.inputHash, status: row.status, applicability: JSON.parse(row.applicabilityJson), startedAt: row.startedAt, completedAt: row.completedAt, outcomes: outcomes.filter((outcome) => outcome.resolverId === row.resolverId && outcome.resolverVersion === row.resolverVersion) }
+  }) as NormalizationAttempt[]
   const gateRow = database.select().from(normalizationGates).where(eq(normalizationGates.runId, run.id)).get()
   const candidateRow = database.select().from(canonicalSourceCandidates).where(eq(canonicalSourceCandidates.runId, run.id)).get()
   const triggerOccurrence = run.triggerOccurrenceId
@@ -568,6 +590,7 @@ function mapResult(
             ? {
                 connectorInstanceId: triggerOccurrence.connectorInstanceId,
                 connectorRunId: triggerOccurrence.connectorRunId,
+                executionScopeId: triggerOccurrence.executionScopeId ?? (() => { throw new Error('Trigger occurrence is missing execution scope identity') })(),
               }
             : null,
           observedAt: triggerOccurrence.observedAt,
@@ -575,6 +598,12 @@ function mapResult(
         }
       : null,
   } as PersistedRawSourceNormalizationResult
+}
+
+function runScopeId(database: DrizzleDatabase, run: typeof normalizationRuns.$inferSelect) {
+  if (!run.triggerOccurrenceId) return null
+  return database.select({ id: rawSourceOccurrences.executionScopeId }).from(rawSourceOccurrences)
+    .where(eq(rawSourceOccurrences.id, run.triggerOccurrenceId)).get()?.id ?? null
 }
 
 function mapRevision(row: typeof rawSourceRevisions.$inferSelect): RawSourceRevision {

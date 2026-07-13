@@ -1,4 +1,4 @@
-import type { RetryAdvice } from 'sparxie'
+import type { ConnectorRunSummary, RetryAdvice } from 'sparxie'
 import type { ConnectorCoverageWindow, ConnectorCheckpointPayload } from './connector-checkpoint.persistence-types'
 import type { ConnectorObservationInput } from './connector-observation.persistence-types'
 import type { JsonRecord } from './connector.persistence-json'
@@ -13,7 +13,6 @@ export type ConnectorRunStatus =
   | 'cancelled'
   | 'completed'
   | 'failed'
-  | 'partial_success'
   | 'queued'
   | 'running'
   | 'skipped'
@@ -28,6 +27,7 @@ export interface ConnectorRefreshResultInput {
   warnings: ConnectorWarning[]
   status?: ConnectorRunStatus
   retryHints?: RetryAdvice | null
+  synchronization?: Pick<ConnectorRunSummary, 'newestFrontier' | 'historicalBackfill' | 'outcome' | 'pendingResolutionCount'>
 }
 
 export interface RecordConnectorRefreshResultInput {
@@ -112,6 +112,7 @@ export interface CompleteConnectorRunInput {
 
 export interface ConnectorRunRecord {
   id: string
+  executionScopeId: string
   connectorInstanceId: string
   mode: string
   status: string
@@ -127,6 +128,7 @@ export interface ConnectorRunRecord {
   stats: unknown
   warnings: unknown
   retryHints: RetryAdvice | null
+  synchronization?: unknown
 }
 
 export interface ListConnectorRunsInput {

@@ -321,7 +321,6 @@ describe('runtime local Valedictorian client', () => {
             discovered: 20,
             eligible: 20,
             filtered: 0,
-            remainingTarget: 6,
             resolvedEmployerOrAts: 1,
             resolvedThirdParty: 1,
             skipped: 0,
@@ -385,7 +384,6 @@ describe('runtime local Valedictorian client', () => {
           stats: {
             attempted: 3,
             discovered: 20,
-            remainingTarget: 6,
             resolvedEmployerOrAts: 1,
             resolvedThirdParty: 1,
             stage: 'normalizing',

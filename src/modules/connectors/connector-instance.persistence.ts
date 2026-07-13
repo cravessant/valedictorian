@@ -28,6 +28,8 @@ export function mapConnectorInstance(
 ): ConnectorInstanceRecord {
   return {
     id: row.id,
+    earliestBackfillDate: assertPersistedEarliestBackfillDate(row.earliestBackfillDate),
+    executionScopeId: requiredNonEmptyString(row.executionScopeId, 'connector execution scope id'),
     connectorId: row.connectorId,
     connectorVersion: row.connectorVersion,
     displayName: row.displayName,
@@ -35,7 +37,6 @@ export function mapConnectorInstance(
     auth: normalizeConnectorAuthReferences(JSON.parse(row.authJson) as unknown),
     config: JSON.parse(row.configJson) as unknown,
     filters: JSON.parse(row.filtersJson) as unknown,
-    earliestBackfillDate: assertPersistedEarliestBackfillDate(row.earliestBackfillDate),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

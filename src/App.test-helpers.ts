@@ -377,9 +377,10 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
       trigger: vi.fn(async (input) => ({
         id: 'connector-run-1',
         connectorInstanceId: input.connectorInstanceId,
+        executionScopeId: 'scope_fixture_connector_run',
         mode: 'manual' as const,
         scheduleOccurrence: null,
-        status: 'completed',
+        status: 'completed' as const,
         coverage: {
           start: input.coverageStartedAt ?? null,
           end: input.coverageEndedAt ?? null,
@@ -387,6 +388,10 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
         filterSignature: 'filters:{}',
         observationCount: 1,
         warningCount: 0,
+        newestFrontier: { state: 'caught_up' as const },
+        historicalBackfill: { state: 'caught_up' as const, boundary: { earliestDate: '2026-07-01' } },
+        pendingResolutionCount: 0,
+        outcome: { kind: 'caught_up' as const },
         stats: {
           observations: 1,
         },

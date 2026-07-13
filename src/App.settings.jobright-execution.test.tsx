@@ -95,7 +95,6 @@ describe('Jobright execution', () => {
       expect(connectorsApi.runs.trigger).toHaveBeenCalledWith(expect.objectContaining({
         connectorInstanceId: 'jobright-default',
         mode: 'manual',
-        reason: 'settings_manual_refresh',
       }))
     })
     expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()

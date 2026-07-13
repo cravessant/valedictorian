@@ -4,15 +4,15 @@ import type {
   ConnectorInstancesListResult,
   ConnectorRunsListInput,
   ConnectorRunsListResult,
-  ConnectorRunSummary,
   ConnectorStatusSummary,
   CreateConnectorInstanceInput,
-  TriggerConnectorRunInput,
   UpdateConnectorInstanceInput,
 } from 'sparxie'
 import { connectorRunSummarySchema, connectorRunsListResultSchema } from 'sparxie'
 import type {
   LocalConnectorReconnectActionResult,
+  LocalConnectorRunSummary,
+  LocalConnectorRunTriggerInput,
   LocalConnectorSkipActionInput,
   LocalConnectorSkipActionResult,
   LocalConnectorStatusActionInput,
@@ -28,8 +28,8 @@ export interface ConnectorsPreloadApi {
   update: (input: UpdateConnectorInstanceInput) => Promise<ConnectorInstanceSummary>
   inspect: (connectorInstanceId: string) => Promise<ConnectorStatusSummary>
   runs: {
-    list: (input: ConnectorRunsListInput) => Promise<ConnectorRunsListResult>
-    trigger: (input: TriggerConnectorRunInput) => Promise<ConnectorRunSummary>
+    list: (input: ConnectorRunsListInput) => Promise<Omit<ConnectorRunsListResult, 'items'> & { items: LocalConnectorRunSummary[] }>
+    trigger: (input: LocalConnectorRunTriggerInput) => Promise<LocalConnectorRunSummary>
   }
   status: {
     list: () => Promise<ConnectorStatusListResult>
@@ -57,11 +57,15 @@ export function createConnectorsPreloadApi(ipcRenderer: IpcRendererLike): Connec
     runs: {
       list(input) {
         return ipcRenderer.invoke('connectors:runs:list', input)
-          .then((value) => connectorRunsListResultSchema.parse(value))
+          .then((value) => {
+            const parsed = connectorRunsListResultSchema.parse(value)
+            const raw = value as { items?: LocalConnectorRunSummary[] }
+            return { ...parsed, items: parsed.items.map((item, index) => ({ ...raw.items?.[index], ...item }) as LocalConnectorRunSummary) }
+          })
       },
       trigger(input) {
         return ipcRenderer.invoke('connectors:runs:trigger', input)
-          .then((value) => connectorRunSummarySchema.parse(value))
+          .then((value) => ({ ...(value as LocalConnectorRunSummary), ...connectorRunSummarySchema.parse(publicConnectorRun(value)) }))
       },
     },
     status: {
@@ -82,4 +86,9 @@ export function createConnectorsPreloadApi(ipcRenderer: IpcRendererLike): Connec
       },
     },
   }
+}
+
+function publicConnectorRun(value: unknown) {
+  const { coverage: _coverage, retryHints: _retryHints, stats: _stats, ...run } = value as Record<string, unknown>
+  return run
 }

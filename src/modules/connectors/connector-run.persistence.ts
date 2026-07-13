@@ -35,6 +35,7 @@ export function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefin
 
   return {
     id: row.id,
+    executionScopeId: row.executionScopeId ?? (() => { throw new Error('Connector run is missing execution scope identity') })(),
     connectorInstanceId: row.connectorInstanceId,
     mode: row.mode,
     status: row.status,

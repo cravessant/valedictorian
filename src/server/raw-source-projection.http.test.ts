@@ -51,7 +51,7 @@ describe('raw source projection receipt HTTP API', () => {
 
   it('retains both revision receipts when strong identity advances one finding', async () => {
     const sourcing = await start()
-    const base = passedRecord('stable-role', 'fixture.connector', 'connector', 'stable-provider-job')
+    const base = passedRecord('stable-role', 'fixture.connector', 'cli', 'stable-provider-job')
     const first = await sourcing.rawRecords.ingestBatch({ records: [base] })
     const second = await sourcing.rawRecords.ingestBatch({ records: [{
       ...base, observedAt: '2026-07-10T13:00:00.000Z',
@@ -154,6 +154,6 @@ describe('raw source projection receipt HTTP API', () => {
 })
 
 function tempPath() { return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'projection-http-')), 'db.sqlite') }
-function sparseRecord() { return { adapter: { id: 'valedictorian.cli', kind: 'cli' as const, version: '0.7.6' }, observedAt: '2026-07-10T12:00:00.000Z', payload: { arbitrary: true } } }
-function passedRecord(id: string, adapterId = 'valedictorian.cli', kind: 'cli' | 'connector' = 'cli', providerRecordId?: string) { return { adapter: { id: adapterId, kind, version: '1.0.0' }, providerRecordId, observedAt: '2026-07-10T12:00:00.000Z', payload: { companyName: 'Fixture Robotics', roleTitle: 'Software Intern', applicationUrl: `https://jobs.lever.co/fixture/${id}` } } }
+function sparseRecord() { return { intakeItemId: 'sparse-record', adapter: { id: 'valedictorian.cli', kind: 'cli' as const, version: '0.7.6' }, observedAt: '2026-07-10T12:00:00.000Z', payload: { arbitrary: true } } }
+function passedRecord(id: string, adapterId = 'valedictorian.cli', kind: 'cli' | 'connector' = 'cli', providerRecordId?: string) { return { intakeItemId: `passed-${id}`, adapter: { id: adapterId, kind, version: '1.0.0' }, providerRecordId, observedAt: '2026-07-10T12:00:00.000Z', payload: { companyName: 'Fixture Robotics', roleTitle: 'Software Intern', applicationUrl: `https://jobs.lever.co/fixture/${id}` } } }
 function installTransitionFailure(sqlitePath: string, status: 'projected' | 'failed') { const sqlite = new Database(sqlitePath); sqlite.exec(`create trigger reject_${status}_receipt before update on sourcing_projection_outcomes when new.status = '${status}' begin select raise(abort, '${status} receipt failure'); end`); sqlite.close() }

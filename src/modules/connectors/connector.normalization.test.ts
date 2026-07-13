@@ -33,7 +33,7 @@ describe('connector normalization host', () => {
     })).run
     const receipt = (await rawRepository.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
-      capture: { connectorInstanceId: 'instance-1', connectorRunId: connectorRun.id },
+      capture: { connectorInstanceId: 'instance-1', connectorRunId: connectorRun.id, executionScopeId: connectorRun.executionScopeId },
       observedAt: '2026-07-10T12:00:00.000Z',
       providerRecordId: 'job-1',
       providerSchema: 'fixture@1',
@@ -65,7 +65,7 @@ describe('connector normalization host', () => {
       },
       resolve,
     }, {
-      connectorRunId: connectorRun.id,
+      connectorRunId: connectorRun.id, executionScopeId: connectorRun.executionScopeId,
       enabledCapabilities: ['pure', 'network'],
       triggerOccurrence: receipt.occurrence,
     })
@@ -109,7 +109,7 @@ describe('connector normalization host', () => {
     })).run
     const receipt = (await rawRepository.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
-      capture: { connectorInstanceId: 'retry-instance', connectorRunId: connectorRun.id },
+      capture: { connectorInstanceId: 'retry-instance', connectorRunId: connectorRun.id, executionScopeId: connectorRun.executionScopeId },
       observedAt: '2026-07-11T12:00:00.000Z', providerRecordId: 'retry-job',
       payload: { companyName: 'Retry Co', roleTitle: 'Intern' },
     }] })).receipts[0]
@@ -137,7 +137,7 @@ describe('connector normalization host', () => {
         { resolverId: 'fixture.network-details', resolverVersion: '2.0.0', field: 'roleTitle' as const, inputHash: receipt.revision.contentHash, status: 'retry' as const, retry },
       ],
     }, {
-      connectorRunId: connectorRun.id, enabledCapabilities: ['network'],
+      connectorRunId: connectorRun.id, executionScopeId: connectorRun.executionScopeId, enabledCapabilities: ['network'],
       triggerOccurrence: receipt.occurrence,
     })
 
@@ -158,7 +158,7 @@ describe('connector normalization host', () => {
     `)
     const secondReceipt = (await rawRepository.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
-      capture: { connectorInstanceId: 'retry-instance', connectorRunId: connectorRun.id },
+      capture: { connectorInstanceId: 'retry-instance', connectorRunId: connectorRun.id, executionScopeId: connectorRun.executionScopeId },
       observedAt: '2026-07-11T12:01:00.000Z', providerRecordId: 'retry-job-2',
       payload: { companyName: 'Retry Co Two', roleTitle: 'Intern' },
     }] })).receipts[0]
@@ -173,7 +173,7 @@ describe('connector normalization host', () => {
         inputHash: secondReceipt.revision.contentHash, status: 'retry' as const, retry,
       }],
     }, {
-      connectorRunId: connectorRun.id, enabledCapabilities: ['network'],
+      connectorRunId: connectorRun.id, executionScopeId: connectorRun.executionScopeId, enabledCapabilities: ['network'],
       triggerOccurrence: secondReceipt.occurrence,
     })).rejects.toThrow(/injected retry work failure/)
     expect(database.select().from(normalizationRuns).all()).toHaveLength(beforeRunCount)

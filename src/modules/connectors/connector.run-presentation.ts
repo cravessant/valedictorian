@@ -37,9 +37,7 @@ export function connectorRunTerminalCopy(run: {
   return {
     summary,
     detail,
-    technical: run.status === 'partial_success'
-      ? 'Technical status: partial success.'
-      : null,
+    technical: null,
   }
 }
 

@@ -164,8 +164,20 @@ describe('local Valedictorian HTTP server', () => {
           return {
             id: 'run-queued',
             connectorInstanceId: 'connector one',
+            executionScopeId: 'scope_connector_one',
             mode: 'manual',
+            scheduleOccurrence: null,
             status: 'queued',
+            filterSignature: 'internships',
+            observationCount: 0,
+            warningCount: 0,
+            warnings: [],
+            newestFrontier: { state: 'not_started' },
+            historicalBackfill: { state: 'not_started', boundary: { earliestDate: '2026-07-01' } },
+            pendingResolutionCount: 0,
+            outcome: { kind: 'in_progress' },
+            startedAt: '2026-07-08T00:00:00.000Z',
+            completedAt: null,
           }
         },
       },
@@ -429,6 +441,7 @@ describe('local Valedictorian HTTP server', () => {
     })
     const root = createHttpValedictorianClient({ baseUrl: server.url })
     const intake = await root.forWorkspace(workspaceA.id).sourcing.rawRecords.ingestBatch({ records: [{
+      intakeItemId: 'workspace-a-projection',
       adapter: { id: 'manual', kind: 'manual', version: '1.0.0' }, observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'A', title: 'Intern', url: 'https://jobs.lever.co/a/role' },
     }] })

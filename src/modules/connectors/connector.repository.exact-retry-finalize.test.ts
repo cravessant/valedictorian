@@ -14,7 +14,7 @@ import { createSqliteConnectorRepository } from './connector.repository'
 const RESOLVER_ID = 'jobright.authenticated-destination'
 const RESOLVER_VERSION = 'jobright-authenticated-destination@1'
 const INPUT_HASH = 'sha256:finalize-failed-destination'
-const FILTER_SIGNATURE = 'provider-state:jobright.resolver@0.8.0'
+const FILTER_SIGNATURE = 'provider-state:jobright.resolver@0.10.0'
 
 describe('exact acquired normalization retry finalization success gate', () => {
   it.each(['failed', 'rejected', 'abstained'] as const)(
@@ -30,10 +30,10 @@ describe('exact acquired normalization retry finalization success gate', () => {
       const rawRevisionId = 'raw-revision-finalize-gate'
       const retryWorkId = 'retry-work-finalize-gate'
 
-      await repository.upsertInstance({
+      const instance = await repository.upsertInstance({
         id: 'jobright-finalize-gate',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.8.0',
+        connectorVersion: '0.10.0',
         displayName: 'Finalize gate',
         enabled: true,
       })
@@ -168,6 +168,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
 
       database.insert(retryWork).values({
         id: retryWorkId,
+        executionScopeId: instance.executionScopeId,
         kind: 'normalization',
         connectorInstanceId: null,
         filterSignature: null,

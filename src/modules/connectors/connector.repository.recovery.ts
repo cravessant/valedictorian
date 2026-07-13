@@ -61,7 +61,7 @@ export function recoverInterruptedConnectorRuns(
         .where(eq(connectorRuns.id, run.id))
         .run()
       transaction.update(retryWork).set({
-        state: 'cancelled', nextAttemptAt: null, acquiredAt: null,
+        state: 'scheduled', acquiredAt: null,
         acquisitionToken: null, acquisitionRunId: null, updatedAt: input.completedAt,
       }).where(and(
         eq(retryWork.state, 'acquired'),

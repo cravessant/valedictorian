@@ -110,7 +110,7 @@ describe('connector status mapping', () => {
           latestRun: createRunRecord({
             observationCount: 0,
             retryHints: null,
-            status: 'partial_success',
+            status: 'completed',
             warnings: [{ code: 'auth.required', message: 'secret missing' }],
           }),
         }),
@@ -230,14 +230,16 @@ describe('connector status mapping', () => {
         createStatusRecord({
           latestRun: createRunRecord({
             observationCount: 4,
-            status: 'partial_success',
+            status: 'completed',
+            warningCount: 1,
+            warnings: [{ code: 'source.timeout', message: 'Source operation timed out.' }],
           }),
         }),
       ),
     ).toMatchObject({
       severity: 'warning',
-      status: 'partial_success',
-      statusLabel: 'Partial success',
+      status: 'healthy',
+      statusLabel: 'Completed with warnings',
       summary: 'Latest run completed with warnings.',
     })
   })

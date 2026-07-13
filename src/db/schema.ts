@@ -443,6 +443,55 @@ export const rawSourceRecords = sqliteTable(
   }),
 )
 
+export const sourceExecutionScopes = sqliteTable(
+  'source_execution_scopes',
+  {
+    id: text('id').primaryKey(),
+    status: text('status').notNull().default('available'),
+    blockedUntil: text('blocked_until'),
+    backoffAttempt: integer('backoff_attempt').notNull().default(0),
+    authGeneration: integer('auth_generation').notNull().default(0),
+    refreshLeaseToken: text('refresh_lease_token'),
+    refreshLeaseExpiresAt: text('refresh_lease_expires_at'),
+    actionReason: text('action_reason'),
+    ...timestamps,
+  },
+  (table) => ({
+    availabilityIdx: index('idx_source_execution_scopes_availability').on(table.status, table.blockedUntil),
+    statusCheck: check('chk_source_execution_scopes_status', sql`${table.status} in ('available','cooldown','refreshing','action_required')`),
+    idCheck: check('chk_source_execution_scopes_id', sql`length(${table.id}) between 8 and 256 and ${table.id} not glob '*[^A-Za-z0-9._~-]*'`),
+    backoffCheck: check('chk_source_execution_scopes_backoff', sql`${table.backoffAttempt} >= 0`),
+    generationCheck: check('chk_source_execution_scopes_generation', sql`${table.authGeneration} >= 0`),
+  }),
+)
+
+export const connectorRunSynchronizations = sqliteTable(
+  'connector_run_synchronizations',
+  {
+    connectorRunId: text('connector_run_id').primaryKey().references(() => connectorRuns.id),
+    snapshotJson: text('snapshot_json').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    snapshotLength: check('chk_connector_run_synchronizations_length', sql`length(${table.snapshotJson}) between 2 and 8192`),
+  }),
+)
+
+export const sourceExecutionSessions = sqliteTable(
+  'source_execution_sessions',
+  {
+    executionScopeId: text('execution_scope_id').primaryKey().references(() => sourceExecutionScopes.id),
+    encryptedSession: text('encrypted_session').notNull(),
+    authGeneration: integer('auth_generation').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    sessionLength: check('chk_source_execution_sessions_length', sql`length(${table.encryptedSession}) between 1 and 1048576`),
+    generationCheck: check('chk_source_execution_sessions_generation', sql`${table.authGeneration} >= 1`),
+  }),
+)
+
 export const rawSourceRevisions = sqliteTable(
   'raw_source_revisions',
   {
@@ -479,6 +528,9 @@ export const rawSourceRevisions = sqliteTable(
       table.rawRecordId,
       table.contentHash,
     ),
+    providerCurrentIdx: index('idx_raw_source_revisions_provider_current').on(
+      table.providerRecordId, table.id, table.rawRecordId, table.revision,
+    ),
   }),
 )
 
@@ -486,6 +538,7 @@ export const retryWork = sqliteTable(
   'retry_work',
   {
     id: text('id').primaryKey(),
+    executionScopeId: text('execution_scope_id').notNull().references(() => sourceExecutionScopes.id),
     kind: text('kind').notNull(),
     connectorInstanceId: text('connector_instance_id').references(() => connectorInstances.id),
     filterSignature: text('filter_signature'),
@@ -526,6 +579,14 @@ export const retryWork = sqliteTable(
       table.inputHash,
     ).where(sql`${table.kind} = 'normalization' and ${table.deletedAt} is null`),
     dueIdx: index('idx_retry_work_due').on(table.state, table.nextAttemptAt),
+    capturePendingIdx: index('idx_retry_work_capture_pending').on(
+      table.kind, table.connectorInstanceId, table.filterSignature,
+      table.state, table.nextAttemptAt, table.updatedAt,
+    ).where(sql`${table.deletedAt} is null`),
+    normalizationPendingIdx: index('idx_retry_work_normalization_pending').on(
+      table.kind, table.executionScopeId, table.state,
+      table.nextAttemptAt, table.createdAt, table.rawRevisionId,
+    ).where(sql`${table.deletedAt} is null`),
     kindCheck: check('chk_retry_work_kind', sql`${table.kind} in ('connector_capture','normalization')`),
     reasonCheck: check('chk_retry_work_reason', sql`${table.reason} in ('rate_limit','server_failure','network_interruption','operation_timeout')`),
     stateCheck: check('chk_retry_work_state', sql`${table.state} in ('scheduled','acquired','completed','exhausted','cancelled')`),
@@ -576,6 +637,7 @@ export const rawSourceOccurrences = sqliteTable(
       .references(() => rawSourceRevisions.id),
     connectorInstanceId: text('connector_instance_id').references(() => connectorInstances.id),
     connectorRunId: text('connector_run_id').references(() => connectorRuns.id),
+    executionScopeId: text('execution_scope_id').references(() => sourceExecutionScopes.id),
     observedAt: text('observed_at').notNull(),
     receivedAt: text('received_at').notNull(),
   },
@@ -602,7 +664,7 @@ export const rawSourceOccurrences = sqliteTable(
     connectorRunIdx: index('idx_raw_source_occurrences_connector_run').on(table.connectorRunId),
     connectorCaptureCheck: check(
       'chk_raw_source_occurrences_connector_capture',
-      sql`(${table.connectorInstanceId} is null and ${table.connectorRunId} is null) or (${table.connectorInstanceId} is not null and ${table.connectorRunId} is not null)`,
+      sql`(${table.connectorInstanceId} is null and ${table.connectorRunId} is null and ${table.executionScopeId} is null) or (${table.connectorInstanceId} is not null and ${table.connectorRunId} is not null and ${table.executionScopeId} is not null)`,
     ),
     rawOwnerFk: foreignKey({
       columns: [table.rawRevisionId, table.rawRecordId],
@@ -917,6 +979,9 @@ export const schema = {
   rawSourceRecords,
   rawSourceRevisions,
   retryWork,
+  connectorRunSynchronizations,
+  sourceExecutionScopes,
+  sourceExecutionSessions,
   sourceEntities,
   sourceEntityIdentities,
   sourceIdentityConflicts,

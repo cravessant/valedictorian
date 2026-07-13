@@ -70,7 +70,7 @@ describe('local Valedictorian HTTP server', () => {
       mode: 'manual',
       scheduleOccurrence: null,
       status: 'skipped',
-      retryHints: { state: 'not_due' },
+      outcome: { kind: 'cooling_down' },
     })
     expect(repeated).toMatchObject({ id: httpRun.id, status: 'skipped', retryHints: { state: 'not_due' } })
     expect(refresh).not.toHaveBeenCalled()

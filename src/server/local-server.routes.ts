@@ -1,6 +1,8 @@
 import http from 'node:http'
 import {
   connectorScheduleErrorCodes,
+  connectorRunSummarySchema,
+  connectorRunsListResultSchema,
   defaultLocalCapabilities,
   isApplicationStatus,
   type BatchRawSourceRecordsInput,
@@ -362,9 +364,9 @@ export async function handleRequest({
       writeJson(
         response,
         200,
-        await connectorExtensions(client).runs.list(
+        connectorRunsListResultSchema.parse(publicConnectorRunsList(await connectorExtensions(client).runs.list(
           parseConnectorRunsListQuery(decodeURIComponent(connectorRunsMatch[1]), requestUrl),
-        ),
+        ))),
       )
       return
     }
@@ -373,12 +375,12 @@ export async function handleRequest({
       writeJson(
         response,
         200,
-        await connectorExtensions(client).runs.trigger(
+        connectorRunSummarySchema.parse(publicConnectorRun(await connectorExtensions(client).runs.trigger(
           parseConnectorRunTriggerInput(
             decodeURIComponent(connectorRunsMatch[1]),
             await readJsonBody(request),
           ),
-        ),
+        ))),
       )
       return
     }
@@ -855,6 +857,17 @@ export async function handleRequest({
 
     writeJson(response, readErrorStatusCode(error), body)
   }
+}
+
+function publicConnectorRunsList(value: unknown) {
+  const result = value as Record<string, unknown> & { items: unknown[] }
+  return { ...result, items: result.items.map(publicConnectorRun) }
+}
+
+function publicConnectorRun(value: unknown) {
+  const run = value as Record<string, unknown>
+  const { coverage: _coverage, retryHints: _retryHints, stats: _stats, ...publicRun } = run
+  return publicRun
 }
 
 function readErrorStatusCode(error: unknown) {

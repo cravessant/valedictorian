@@ -34,14 +34,14 @@ describe('connector run terminal copy', () => {
     })).summary).toBe('Completed with sourcing rejections')
   })
 
-  it('keeps partial success as technical secondary text', () => {
+  it('uses the persisted stop reason without a legacy technical status', () => {
     expect(connectorRunTerminalCopy(runFixture({
-      status: 'partial_success',
+      status: 'completed',
       stopReason: 'soft_batch_boundary',
     }))).toEqual({
       summary: 'Paused at a finite batch boundary',
       detail: '18 unique jobs remain pending. The next run resumes from the persisted checkpoint.',
-      technical: 'Technical status: partial success.',
+      technical: null,
     })
   })
 

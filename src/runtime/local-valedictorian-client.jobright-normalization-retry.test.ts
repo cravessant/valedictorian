@@ -65,13 +65,14 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'retry-credentials', kind: 'password', label: 'Retry credentials', value: JSON.stringify({ username: 'retry@example.test', password: 'retry-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-retry', connectorId: 'jobright.resolver', connectorVersion: '0.8.0',
+      id: 'jobright-retry', connectorId: 'jobright.resolver', connectorVersion: '0.10.0',
       displayName: 'Jobright retry', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'retry-credentials' }],
       config: { discoveryCount: 2, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 2 },
       createdAt: clock,
     })
 
+    await client.connectors.status.reconnect({ connectorInstanceId: 'jobright-retry' })
     const first = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-retry', mode: 'manual',
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
@@ -169,8 +170,8 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const repository = createSqliteConnectorRepository(database)
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'multi-credentials', kind: 'password', label: 'Multi credentials', value: JSON.stringify({ username: 'multi@example.test', password: 'multi-password' }) })
-    await repository.upsertInstance({
-      id: 'jobright-multi', connectorId: 'jobright.resolver', connectorVersion: '0.8.0',
+    const instance = await repository.upsertInstance({
+      id: 'jobright-multi', connectorId: 'jobright.resolver', connectorVersion: '0.10.0',
       displayName: 'Jobright multi', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'multi-credentials' }],
       config: { discoveryCount: 2, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 2 },
@@ -180,6 +181,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     // Jobright stops after the first retryable detail, so only job-a becomes due
     // naturally. Seed a second due normalization identity for job-b against its
     // already-captured raw revision and checkpoint eligibility.
+    await client.connectors.status.reconnect({ connectorInstanceId: 'jobright-multi' })
     const first = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-multi', mode: 'manual',
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
@@ -198,7 +200,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       resolverId: 'jobright.authenticated-destination',
       state: 'scheduled',
     })
-    const filterSignature = 'provider-state:jobright.resolver@0.8.0'
+    const filterSignature = 'provider-state:jobright.resolver@0.10.0'
     const checkpointAfterFirst = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-multi',
       filterSignature,
@@ -217,6 +219,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const jobBNextAttemptAt = String(jobAAdvice.nextAttemptAt)
     database.insert(retryWork).values({
       id: crypto.randomUUID(),
+      executionScopeId: instance.executionScopeId,
       kind: 'normalization',
       connectorInstanceId: null,
       filterSignature: null,
@@ -353,7 +356,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const untouchedBefore = retryStateBefore.find(({ sourceId }) => sourceId === 'jobright.public:job-b')
     const untouchedAfter = retryStateAfter.find(({ sourceId }) => sourceId === 'jobright.public:job-b')
     expect(untouchedAfter).toEqual(untouchedBefore)
-    expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(2)
+    expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(4)
     sqlite.close()
   })
 
@@ -402,13 +405,14 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'fail-credentials', kind: 'password', label: 'Fail credentials', value: JSON.stringify({ username: 'fail@example.test', password: 'fail-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-fail', connectorId: 'jobright.resolver', connectorVersion: '0.8.0',
+      id: 'jobright-fail', connectorId: 'jobright.resolver', connectorVersion: '0.10.0',
       displayName: 'Jobright fail', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'fail-credentials' }],
       config: { discoveryCount: 1, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 1 },
       createdAt: clock,
     })
 
+    await client.connectors.status.reconnect({ connectorInstanceId: 'jobright-fail' })
     const first = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-fail', mode: 'manual',
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
@@ -429,7 +433,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     // may finish without throwing. Exact successful persistence must not occur,
     // and acquisition must be released to a truthful retryable state.
     expect(detailCalls).toBe(2)
-    expect(second.status).not.toBe('completed')
+    expect(second).toMatchObject({ status: 'completed', outcome: { kind: 'yielded' } })
     expect(database.select().from(normalizationFieldOutcomes).all().filter(({ field, status, attemptId }) => {
       const attempt = database.select().from(normalizationAttempts).all()
         .find(({ id, rawRevisionId, resolverId }) =>

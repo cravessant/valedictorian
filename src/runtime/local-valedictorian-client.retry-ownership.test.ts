@@ -63,7 +63,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
     const { createNormalizationResolverRegistry, hashJson } = await import('../modules/sourcing/normalization.registry')
     const {
       retryWork, rawSourceRecords, rawSourceRevisions, rawSourceOccurrences,
-      normalizationRuns, normalizationAttempts, normalizationFieldOutcomes, connectorRuns,
+      normalizationRuns, normalizationAttempts, normalizationFieldOutcomes, connectorRuns, connectorInstances,
     } = await import('../db/schema')
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
@@ -80,8 +80,11 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
       id: 'norm-owner', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Norm owner', enabled: true, filters: {}, createdAt: '2026-07-11T11:00:00.000Z',
     })
+    const executionScopeId = database.select({ id: connectorInstances.executionScopeId })
+      .from(connectorInstances).get()?.id ?? null
     database.insert(connectorRuns).values({
       id: 'intake-run',
+      executionScopeId,
       connectorInstanceId: 'norm-owner',
       mode: 'manual',
       status: 'completed',
@@ -115,6 +118,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
       rawRevisionId: 'owned-revision',
       connectorInstanceId: 'norm-owner',
       connectorRunId: 'intake-run',
+      executionScopeId,
       observedAt: '2026-07-11T11:00:00.000Z',
       receivedAt: '2026-07-11T11:00:00.000Z',
     }).run()
@@ -146,7 +150,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
     }).run()
     const inputHash = hashJson({ raw: 'sha256:owned', resolver: resolver.declaration })
     database.insert(retryWork).values({
-      id: 'owned-retry', kind: 'normalization', connectorInstanceId: null, filterSignature: null,
+      id: 'owned-retry', executionScopeId, kind: 'normalization', connectorInstanceId: null, filterSignature: null,
       checkpointSchemaVersion: null, checkpointGeneration: null, rawRevisionId: 'owned-revision',
       resolverId: 'fixture.owned-company', resolverVersion: '1.0.0', inputHash,
       reason: 'rate_limit', attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z',
@@ -208,7 +212,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
     ])
 
     database.insert(retryWork).values({
-      id: 'missing-owner-retry', kind: 'normalization', connectorInstanceId: null, filterSignature: null,
+      id: 'missing-owner-retry', executionScopeId, kind: 'normalization', connectorInstanceId: null, filterSignature: null,
       checkpointSchemaVersion: null, checkpointGeneration: null, rawRevisionId: 'owned-revision',
       resolverId: 'fixture.missing-owner', resolverVersion: '9.9.9', inputHash: 'sha256:' + 'b'.repeat(64),
       reason: 'rate_limit', attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z',

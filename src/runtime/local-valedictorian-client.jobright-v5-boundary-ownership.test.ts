@@ -119,7 +119,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     await repository.upsertInstance({
       id: 'jobright-boundary',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.8.0',
+      connectorVersion: '0.10.0',
       displayName: 'Jobright boundary',
       enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'boundary-credentials' }],
@@ -129,6 +129,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
       createdAt: clock,
     })
 
+    await client.connectors.status.reconnect({ connectorInstanceId: 'jobright-boundary' })
     const first = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-boundary',
       mode: 'manual',
@@ -138,7 +139,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     expect(detailCalls).toBe(1)
     expect(discoveryCalls).toBe(1)
 
-    const filterSignature = 'provider-state:jobright.resolver@0.8.0'
+    const filterSignature = 'provider-state:jobright.resolver@0.10.0'
     const checkpointAfterFirst = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-boundary',
       filterSignature,
@@ -181,7 +182,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     })
     expect(afterNarrow.status).not.toBe('skipped')
     expect(detailCalls).toBe(1)
-    expect(discoveryCalls).toBe(2)
+    expect(discoveryCalls).toBe(3)
 
     const checkpointAfterNarrow = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-boundary',
@@ -259,7 +260,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     })
     expect(afterWiden.status).not.toMatch(/skipped/)
     expect(detailCalls).toBe(2)
-    expect(discoveryCalls).toBe(2)
+    expect(discoveryCalls).toBe(4)
 
     const checkpointAfterWiden = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-boundary',
@@ -274,7 +275,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     )
     expect(pendingAfterWiden.effectiveCoverageStart).toBe('2026-07-01T00:00:00.000Z')
     expect(pendingAfterWiden.pendingDetailRetries).toEqual([])
-    expect(pendingAfterWiden.successfulDetailLedger).toEqual([
+    expect(pendingAfterWiden.terminalDetailLedger).toEqual([
       expect.objectContaining({
         sourceId: 'jobright.public:job-boundary',
         status: 'resolved',

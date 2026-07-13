@@ -121,6 +121,7 @@ export async function dispatchAcquiredNormalizationWork({
         acquiredRetryWork: {
           retryWorkId: acquiredWork.retryWorkId,
           acquisitionRunId: runRequest.id,
+          executionScopeId: acquiredWork.executionScopeId,
         },
         baselineOutcomes,
         cache: false,
@@ -244,6 +245,7 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
     resolverId: acquiredWork.resolverId,
     resolverVersion: acquiredWork.resolverVersion,
     inputHash: acquiredWork.inputHash,
+    executionScopeId: acquiredWork.executionScopeId,
   }
 
   try {

@@ -6,7 +6,7 @@ import { rawSourceProjectionResultSchema } from 'sparxie'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from './sqlite'
-
+import { doomedConnectorRunMigrationState, indexDefinition, seedDoomedConnectorRunFixture, tableDefinition } from './sqlite.schema-test-helpers'
 const expectedIdentityTriggers = [
   'trg_source_entity_identities_bound',
   'trg_source_entity_identities_no_delete',
@@ -14,18 +14,14 @@ const expectedIdentityTriggers = [
   'trg_source_identity_conflicts_no_delete',
   'trg_source_identity_conflicts_no_update',
 ]
-
 describe('SQLite database', () => {
   it('migrates the core tracker tables', () => {
     const database = createInMemoryDatabase()
-
     migrateDatabase(database)
-
     const tables = database
       .prepare("select name from sqlite_master where type = 'table' order by name")
       .all()
       .map((row) => (row as { name: string }).name)
-
     expect(tables).toContain('companies')
     expect(tables).toContain('sources')
     expect(tables).toContain('applications')
@@ -45,7 +41,6 @@ describe('SQLite database', () => {
     expect(tables).toContain('raw_source_records')
     expect(tables).toContain('raw_source_revisions')
     expect(tables).toContain('raw_source_occurrences')
-
     expect(tableColumns(database, 'applications')).toEqual(
       expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
     )
@@ -72,12 +67,9 @@ describe('SQLite database', () => {
       expect.arrayContaining(['parser_version', 'observation_schema_version']),
     )
   })
-
   it('creates source indexes for workflow run and sourcing filters', () => {
     const database = createInMemoryDatabase()
-
     migrateDatabase(database)
-
     const workflowRunIndexes = database
       .prepare("pragma index_list('workflow_runs')")
       .all()
@@ -102,7 +94,6 @@ describe('SQLite database', () => {
       .prepare("pragma index_list('connector_checkpoints')")
       .all()
       .map((row) => (row as { name: string }).name)
-
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_id')
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_type_status_started')
     expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_id')
@@ -117,7 +108,6 @@ describe('SQLite database', () => {
     expect(connectorObservationIndexes).toContain('idx_connector_observations_run')
     expect(connectorCheckpointIndexes).toContain('idx_connector_checkpoints_instance')
   })
-
   it('baselines legacy app databases into Drizzle migration history', () => {
     const database = createInMemoryDatabase()
     database.exec(`
@@ -131,9 +121,7 @@ describe('SQLite database', () => {
         deleted_at text
       );
     `)
-
     migrateDatabase(database)
-
     const migrationRows = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -143,12 +131,10 @@ describe('SQLite database', () => {
     const connectorTables = database
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
-
-    expect(migrationRows).toHaveLength(23)
+    expect(migrationRows).toHaveLength(24)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
-
   it('executes migration 0018 for unmanaged legacy baselines and supports retry-ledger run requests', async () => {
     const database = createInMemoryDatabase()
     database.exec(`
@@ -162,13 +148,11 @@ describe('SQLite database', () => {
         deleted_at text
       );
     `)
-
     migrateDatabase(database)
-
     expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
       .toEqual({ name: 'retry_work' })
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 23 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 24 })
     const stampedTags = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -176,7 +160,6 @@ describe('SQLite database', () => {
     expect(stampedTags).toContain(1783785250659)
     expect(stampedTags).toContain(1783797592818)
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
-
     const repository = createSqliteConnectorRepository(createDrizzleDatabase(database))
     await repository.upsertInstance({
       id: 'legacy-retry', connectorId: 'fixture.retry', connectorVersion: '1.0.0',
@@ -209,7 +192,6 @@ describe('SQLite database', () => {
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 1 })
     database.close()
   })
-
   it('creates raw source ledger tables and indexes before stamping a legacy workspace', () => {
     const database = createInMemoryDatabase()
     database.exec(`
@@ -223,9 +205,7 @@ describe('SQLite database', () => {
         deleted_at text
       );
     `)
-
     migrateDatabase(database)
-
     const tables = database
       .prepare(
         "select name from sqlite_master where type = 'table' and (name like '%raw_source%' or name = 'source_entities') order by name",
@@ -236,7 +216,6 @@ describe('SQLite database', () => {
       .prepare("select name from sqlite_master where type = 'index' and (name like 'idx_raw_source_%' or name = 'idx_source_entities_identity') order by name")
       .all()
       .map((row) => (row as { name: string }).name)
-
     expect(tables).toEqual([
       'raw_source_occurrences',
       'raw_source_records',
@@ -251,6 +230,7 @@ describe('SQLite database', () => {
       'idx_raw_source_occurrences_revision',
       'idx_raw_source_records_source_entity',
       'idx_raw_source_revisions_id_record',
+      'idx_raw_source_revisions_provider_current',
       'idx_raw_source_revisions_record_hash',
       'idx_raw_source_revisions_record_revision',
       'idx_source_entities_identity',
@@ -264,11 +244,9 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 23 })
-
+    ).toEqual({ count: 24 })
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
-
     for (const table of tables) {
       expect(tableDefinition(database, table)).toEqual(tableDefinition(freshlyMigrated, table))
     }
@@ -277,7 +255,6 @@ describe('SQLite database', () => {
     }
     freshlyMigrated.close()
   })
-
   it('transactionally resets derived connector state while preserving protected workspace state', () => {
     const oldMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-capture-migrations-'))
     fs.cpSync(path.resolve('drizzle'), oldMigrations, { recursive: true })
@@ -294,15 +271,14 @@ describe('SQLite database', () => {
     migrateDatabase(database, { migrationsFolder: oldMigrations })
     seedResetMigrationFixture(database)
     const before = snapshotProtectedTables(database)
-
     migrateDatabase(database)
-
     expect(snapshotProtectedTables(database)).toEqual({
       ...before,
       connector_instances: before.connector_instances.map((row) => ({
         ...row,
         connector_version: '0.8.0',
         earliest_backfill_date: '2026-07-03',
+        execution_scope_id: `scope_${Buffer.from(String(row.id)).toString('hex')}`,
       })),
     })
     for (const table of disposableResetTables) {
@@ -332,17 +308,27 @@ describe('SQLite database', () => {
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
-
   it('removes pre-ledger projection state without touching protected or connector capture rows', () => {
     const database = createInMemoryDatabase(); migrateDatabase(database, { migrationsFolder: migrationFolderThrough(21) })
     seedResetMigrationFixture(database)
     database.prepare("update raw_source_revisions set created_at = '2026-07-10T12:00:00.000Z'").run()
-    const protectedBefore = snapshotProtectedTables(database), connectorRunsBefore = database.prepare('select * from connector_runs order by rowid').all(), occurrencesBefore = database.prepare('select * from raw_source_occurrences order by rowid').all()
+    const protectedBefore = snapshotProtectedTables(database), occurrencesBefore = database.prepare('select * from raw_source_occurrences order by rowid').all()
     const revision = database.prepare('select id from raw_source_revisions limit 1').get() as { id: string }
     migrateDatabase(database)
-    expect(snapshotProtectedTables(database)).toEqual(protectedBefore)
-    expect(database.prepare('select * from connector_runs order by rowid').all()).toEqual(connectorRunsBefore)
-    expect(database.prepare('select * from raw_source_occurrences order by rowid').all()).toEqual(occurrencesBefore)
+    expect(snapshotProtectedTables(database)).toEqual({
+      ...protectedBefore,
+      connector_instances: protectedBefore.connector_instances.map((row) => ({
+        ...row,
+        execution_scope_id: `scope_${Buffer.from(String(row.id)).toString('hex')}`,
+      })),
+    })
+    expect(database.prepare('select * from connector_runs order by rowid').all()).toEqual([])
+    expect(database.prepare('select * from raw_source_occurrences order by rowid').all()).toEqual(occurrencesBefore.map((row) => ({
+      ...row as object,
+      execution_scope_id: (row as { connector_instance_id: string | null }).connector_instance_id === null
+        ? null
+        : `scope_${Buffer.from((row as { connector_instance_id: string }).connector_instance_id).toString('hex')}`,
+    })))
     const cleared = ['sourcing_findings', 'normalization_field_outcomes', 'normalization_gates', 'canonical_source_candidates', 'normalization_replay_items', 'normalization_attempts', 'normalization_runs', 'normalization_replay_requests']
     for (const table of cleared) {
       expect(database.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 })
@@ -350,7 +336,6 @@ describe('SQLite database', () => {
     expect(rawSourceProjectionResultSchema.parse(createSqliteProjectionOutcomeRepository(createDrizzleDatabase(database)).get(revision.id))).toMatchObject({ status: 'not_eligible', normalizationStatus: null, canonicalCandidateId: null, gateStatus: null })
     expect(database.prepare("select name from sqlite_master where type = 'trigger' and name like 'trg_sourcing_projection_outcomes_%' order by name").all()).toEqual(['lineage_immutable', 'no_delete', 'pending_insert', 'terminal_transition'].map((name) => ({ name: `trg_sourcing_projection_outcomes_${name}` }))); database.close()
   })
-
   it('rolls back an unstamped legacy reset when current schema creation fails', () => {
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
@@ -358,12 +343,10 @@ describe('SQLite database', () => {
     database.exec(`
       drop table __drizzle_migrations;
       create trigger inject_legacy_reset_failure
-      before update of connector_version on connector_instances
-      when new.connector_version = '0.8.0'
+      before update on connector_instances
       begin select raise(abort, 'injected legacy reset failure'); end;
     `)
     const before = snapshotAllResetTables(database)
-
     expect(() => migrateDatabase(database)).toThrow(
       /injected legacy reset failure|Failed to run the query/,
     )
@@ -374,22 +357,20 @@ describe('SQLite database', () => {
     `).get()).toEqual({ count: 0 })
     database.close()
   })
-
   it('resets and stamps an unstamped application database shaped through 0014', () => {
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
     seedResetMigrationFixture(database)
     const before = snapshotProtectedTables(database)
     database.exec('drop table __drizzle_migrations')
-
     migrateDatabase(database)
-
     expect(snapshotProtectedTables(database)).toEqual({
       ...before,
       connector_instances: before.connector_instances.map((row) => ({
         ...row,
         connector_version: '0.8.0',
         earliest_backfill_date: '2026-07-03',
+        execution_scope_id: `scope_${Buffer.from(String(row.id)).toString('hex')}`,
       })),
     })
     for (const table of disposableResetTables) {
@@ -402,11 +383,10 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 23 })
+      .toEqual({ count: 24 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
-
   it('rolls back the reset and version update when the migration fails', () => {
     const failingMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-failing-reset-'))
     fs.cpSync(path.resolve('drizzle'), failingMigrations, { recursive: true })
@@ -424,13 +404,11 @@ describe('SQLite database', () => {
     migrateDatabase(database, { migrationsFolder: oldMigrations })
     seedResetMigrationFixture(database)
     const before = snapshotAllResetTables(database)
-
     expect(() => migrateDatabase(database, { migrationsFolder: failingMigrations })).toThrow(/intentionally_missing_table/)
     expect(snapshotAllResetTables(database)).toEqual(before)
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 15 })
     database.close()
   })
-
   it('migrates to an empty retry ledger while preserving raw records and revisions', () => {
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(17) })
@@ -438,9 +416,7 @@ describe('SQLite database', () => {
     database.prepare("update connector_instances set connector_id = 'jobright.resolver', connector_version = '0.6.0' where id = 'instance-one'").run()
     const records = database.prepare('select * from raw_source_records order by id').all()
     const revisions = database.prepare('select * from raw_source_revisions order by id').all()
-
     migrateDatabase(database)
-
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
     expect(database.prepare('select * from raw_source_records order by id').all()).toEqual(records)
     expect(database.prepare('select * from raw_source_revisions order by id').all()).toEqual(revisions)
@@ -451,7 +427,13 @@ describe('SQLite database', () => {
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
-
+  it('deletes every derived dependent before removing an obsolete partial connector run', () => {
+    const database = createInMemoryDatabase(); migrateDatabase(database, { migrationsFolder: migrationFolderThrough(22) }); seedDoomedConnectorRunFixture(database)
+    expect(() => migrateDatabase(database)).not.toThrow(); expect(doomedConnectorRunMigrationState(database)).toEqual({ dependentCounts: [{ count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }], foreignKeyErrors: [],
+      occurrence: { connector_instance_id: null, connector_run_id: null }, revision: { count: 1 }, runReferences: ['connector_observations.connector_run_id', 'connector_run_synchronizations.connector_run_id', 'connector_schedule_occurrences.connector_run_id', 'raw_source_occurrences.connector_instance_id', 'raw_source_occurrences.connector_run_id', 'retry_work.acquisition_run_id', 'retry_work.skipped_run_id'],
+    })
+    database.close()
+  })
   it('rolls back the retry-ledger reset when migration 0018 fails', () => {
     const failingMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-ledger-failure-'))
     fs.cpSync(path.resolve('drizzle'), failingMigrations, { recursive: true })
@@ -468,7 +450,6 @@ describe('SQLite database', () => {
       revisions: database.prepare('select * from raw_source_revisions order by id').all(),
       runs: database.prepare('select * from connector_runs order by id').all(),
     }
-
     expect(() => migrateDatabase(database, { migrationsFolder: failingMigrations }))
       .toThrow(/intentionally_missing_retry_table/)
     expect(database.prepare("select count(*) as count from sqlite_master where type = 'table' and name = 'retry_work'").get())
@@ -482,7 +463,6 @@ describe('SQLite database', () => {
     }).toEqual(before)
     database.close()
   })
-
   it.each(['fresh', 'migrated'] as const)(
     'keeps referenced occurrence lineage immutable in a %s current schema',
     (schemaKind) => {
@@ -492,7 +472,6 @@ describe('SQLite database', () => {
       }
       migrateDatabase(database)
       seedReferencedOccurrenceFixture(database)
-
       expect(() => database.prepare(`
         insert into normalization_runs (
           id, raw_record_id, raw_revision_id, trigger_occurrence_id,
@@ -506,12 +485,11 @@ describe('SQLite database', () => {
           '2026-07-10T12:02:00.000Z', '2026-07-10T12:02:00.000Z'
         )
       `).run()).toThrow(/normalization trigger lineage mismatch/i)
-
       expect(() => database.prepare(`
         update raw_source_occurrences
         set connector_instance_id = 'instance-two', connector_run_id = 'connector-run-two'
         where id = 'occurrence-one'
-      `).run()).toThrow(/normalization trigger occurrence is immutable/i)
+      `).run()).toThrow(/normalization trigger occurrence is immutable|raw source occurrence scope owner mismatch/i)
       expect(() => database.prepare(`
         update raw_source_occurrences
         set raw_revision_id = 'revision-two'
@@ -543,7 +521,6 @@ describe('SQLite database', () => {
       database.close()
     },
   )
-
   it('creates structurally equivalent normalization history for fresh and legacy workspaces', () => {
     const legacy = createInMemoryDatabase()
     legacy.exec(`
@@ -607,7 +584,6 @@ describe('SQLite database', () => {
     fresh.close()
     legacy.close()
   })
-
   it('backfills bounded source identities without changing ledger ownership or history', () => {
     const oldMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-identity-migrations-'))
     fs.cpSync(path.resolve('drizzle'), oldMigrations, { recursive: true })
@@ -641,10 +617,8 @@ describe('SQLite database', () => {
         ('revision-destination', 'record-destination', 1, 'sha256:destination', 'fixture', 'manual', '1.0.0',
          '2026-07-10T12:01:00.000Z', '{}', '[]', '2026-07-10T12:01:00.000Z');
     `)
-
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
-
     expect(database.prepare(`
       select source_entity_id, identity_kind, identity_namespace, identity_value,
         provenance_kind, provenance_version, evidence_json, created_at
@@ -686,7 +660,6 @@ describe('SQLite database', () => {
     expect(identityTriggerNames(database)).toEqual(expectedIdentityTriggers)
     database.close()
   })
-
   it('enforces append-only identity and conflict provenance in SQLite', () => {
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
@@ -718,7 +691,6 @@ describe('SQLite database', () => {
         'source-identity-reconciliation/v1', '{}', '2026-07-10T12:00:00.000Z'
       );
     `)
-
     expect(() => database.prepare("update source_entity_identities set evidence_json = '{\"changed\":true}' where id = 'identity-1'").run()).toThrow(/append-only/i)
     expect(() => database.prepare("delete from source_entity_identities where id = 'identity-1'").run()).toThrow(/append-only/i)
     expect(() => database.prepare("update source_identity_conflicts set reason = 'changed' where id = 'conflict-1'").run()).toThrow(/append-only/i)
@@ -738,7 +710,6 @@ describe('SQLite database', () => {
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
-
   it('upgrades persisted normalization history to replay support without breaking foreign keys', () => {
     const oldMigrations = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-old-migrations-'))
     fs.cpSync(path.resolve('drizzle'), oldMigrations, { recursive: true })
@@ -751,7 +722,6 @@ describe('SQLite database', () => {
     }
     oldJournal.entries = oldJournal.entries.filter(({ idx }) => idx <= 11)
     fs.writeFileSync(oldJournalPath, `${JSON.stringify(oldJournal, null, 2)}\n`)
-
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: oldMigrations })
     database.exec(`
@@ -783,9 +753,7 @@ describe('SQLite database', () => {
         '{}', '[]', 'completed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'
       );
     `)
-
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(14) })
-
     expect(database.prepare('select id, trigger_kind, trigger_id from normalization_runs').all())
       .toEqual([{ id: 'run-1', trigger_kind: 'intake', trigger_id: null }])
     expect(database.prepare('select id, run_id from normalization_attempts').all())
@@ -824,7 +792,6 @@ describe('SQLite database', () => {
     expect(tableColumns(database, 'normalization_replay_requests')).toContain('completed_at')
     database.close()
   })
-
   it('removes legacy observation projection linkage while retaining version metadata', () => {
     const database = createInMemoryDatabase()
     database.exec(`
@@ -852,14 +819,11 @@ describe('SQLite database', () => {
         deleted_at text
       );
     `)
-
     migrateDatabase(database)
-
     const connectorObservationIndexes = database
       .prepare("pragma index_list('connector_observations')")
       .all()
       .map((row) => (row as { name: string }).name)
-
     expect(tableColumns(database, 'connector_observations')).toEqual(
       expect.arrayContaining([
         'parser_version',
@@ -874,9 +838,7 @@ describe('SQLite database', () => {
         .all(),
     ).toHaveLength(0)
   })
-
 })
-
 const protectedResetTables = [
   'companies', 'sources', 'applications', 'application_links', 'application_scores',
   'application_workflow_states', 'application_events', 'application_attempts',
@@ -884,7 +846,6 @@ const protectedResetTables = [
   'profile_education', 'profile_answers', 'profile_secrets', 'profile_sensitive_details',
   'policy_config', 'policy_evidence', 'connector_instances',
 ] as const
-
 const disposableResetTables = [
   'connector_runs', 'connector_checkpoints', 'connector_observations', 'source_entities',
   'source_entity_identities', 'source_identity_conflicts', 'raw_source_records',
@@ -893,7 +854,6 @@ const disposableResetTables = [
   'normalization_field_outcomes', 'canonical_source_candidates', 'normalization_gates',
   'sourcing_findings',
 ] as const
-
 function seedResetMigrationFixture(database: ReturnType<typeof createInMemoryDatabase>) {
   database.exec(`
     insert into connector_instances (
@@ -921,22 +881,26 @@ function seedResetMigrationFixture(database: ReturnType<typeof createInMemoryDat
   database.pragma('ignore_check_constraints = OFF')
   database.pragma('foreign_keys = ON')
 }
-
 function seedReferencedOccurrenceFixture(database: ReturnType<typeof createInMemoryDatabase>) {
+  const scoped = (database.prepare("pragma table_info('connector_instances')").all() as Array<{ name: string }>)
+    .some(({ name }) => name === 'execution_scope_id')
   database.exec(`
+    ${scoped ? `insert into source_execution_scopes (id, created_at, updated_at) values
+      ('scope-instance-one', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
+      ('scope-instance-two', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');` : ''}
     insert into connector_instances (
-      id, connector_id, connector_version, display_name, enabled, config_json, auth_json,
+      id, ${scoped ? 'execution_scope_id,' : ''} connector_id, connector_version, display_name, enabled, config_json, auth_json,
       filters_json, created_at, updated_at
     ) values
-      ('instance-one', 'fixture.one', '1.0.0', 'One', 1, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
-      ('instance-two', 'fixture.two', '1.0.0', 'Two', 1, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
+      ('instance-one', ${scoped ? "'scope-instance-one'," : ''} 'fixture.one', '1.0.0', 'One', 1, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
+      ('instance-two', ${scoped ? "'scope-instance-two'," : ''} 'fixture.two', '1.0.0', 'Two', 1, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
     insert into connector_runs (
-      id, connector_instance_id, mode, status, started_at, config_json, filters_json,
+      id, ${scoped ? 'execution_scope_id,' : ''} connector_instance_id, mode, status, started_at, config_json, filters_json,
       filter_signature, observation_count, warning_count, stats_json, warnings_json,
       retry_hints_json, created_at, updated_at
     ) values
-      ('connector-run-one', 'instance-one', 'manual', 'completed', '2026-07-10T12:00:00.000Z', '{}', '{}', 'filters:{}', 0, 0, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
-      ('connector-run-two', 'instance-two', 'manual', 'completed', '2026-07-10T12:00:00.000Z', '{}', '{}', 'filters:{}', 0, 0, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
+      ('connector-run-one', ${scoped ? "'scope-instance-one'," : ''} 'instance-one', 'manual', 'completed', '2026-07-10T12:00:00.000Z', '{}', '{}', 'filters:{}', 0, 0, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
+      ('connector-run-two', ${scoped ? "'scope-instance-two'," : ''} 'instance-two', 'manual', 'completed', '2026-07-10T12:00:00.000Z', '{}', '{}', 'filters:{}', 0, 0, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
     insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
     values ('entity-one', 'provider_job', 'fixture', 'job-one', '2026-07-10T12:00:00.000Z');
     insert into raw_source_records (id, source_entity_id, created_at)
@@ -948,11 +912,11 @@ function seedReferencedOccurrenceFixture(database: ReturnType<typeof createInMem
       ('revision-one', 'record-one', 1, 'sha256:one', 'fixture', 'connector', '1.0.0', '2026-07-10T12:00:00.000Z', '{}', '[]', '2026-07-10T12:00:00.000Z'),
       ('revision-two', 'record-one', 2, 'sha256:two', 'fixture', 'connector', '1.0.0', '2026-07-10T12:01:00.000Z', '{}', '[]', '2026-07-10T12:01:00.000Z');
     insert into raw_source_occurrences (
-      id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id,
+      id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id, ${scoped ? 'execution_scope_id,' : ''}
       observed_at, received_at
     ) values
-      ('occurrence-one', 'record-one', 'revision-one', 'instance-one', 'connector-run-one', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z'),
-      ('occurrence-two', 'record-one', 'revision-one', 'instance-two', 'connector-run-two', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z');
+      ('occurrence-one', 'record-one', 'revision-one', 'instance-one', 'connector-run-one', ${scoped ? "'scope-instance-one'," : ''} '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z'),
+      ('occurrence-two', 'record-one', 'revision-one', 'instance-two', 'connector-run-two', ${scoped ? "'scope-instance-two'," : ''} '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z');
     insert into normalization_runs (
       id, raw_record_id, raw_revision_id, trigger_occurrence_id,
       trigger_connector_instance_id, trigger_connector_run_id, input_hash, resolver_set_hash,
@@ -966,7 +930,6 @@ function seedReferencedOccurrenceFixture(database: ReturnType<typeof createInMem
        'completed', '2026-07-10T12:01:00.000Z', '2026-07-10T12:01:00.000Z');
   `)
 }
-
 function migrationFolderThrough(maxIndex: number) {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), `valedictorian-through-${maxIndex}-`))
   fs.cpSync(path.resolve('drizzle'), folder, { recursive: true })
@@ -980,7 +943,6 @@ function migrationFolderThrough(maxIndex: number) {
   fs.writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`)
   return folder
 }
-
 function insertSyntheticRow(
   database: ReturnType<typeof createInMemoryDatabase>,
   table: string,
@@ -1001,58 +963,24 @@ function insertSyntheticRow(
   })
   database.prepare(`insert into "${table}" (${names}) values (${required.map(() => '?').join(', ')})`).run(...values)
 }
-
 function snapshotProtectedTables(database: ReturnType<typeof createInMemoryDatabase>) {
   return Object.fromEntries(protectedResetTables.map((table) => [
     table,
     database.prepare(`select * from "${table}" order by rowid`).all(),
   ])) as Record<(typeof protectedResetTables)[number], Array<Record<string, unknown>>>
 }
-
 function snapshotAllResetTables(database: ReturnType<typeof createInMemoryDatabase>) {
   return Object.fromEntries([...protectedResetTables, ...disposableResetTables].map((table) => [
     table,
     database.prepare(`select * from "${table}" order by rowid`).all(),
   ]))
 }
-
 function tableColumns(database: ReturnType<typeof createInMemoryDatabase>, tableName: string) {
   return database
     .prepare(`pragma table_info('${tableName}')`)
     .all()
     .map((row) => (row as { name: string }).name)
 }
-
-function tableDefinition(
-  database: ReturnType<typeof createInMemoryDatabase>,
-  tableName: string,
-) {
-  const row = database
-    .prepare("select sql from sqlite_master where type = 'table' and name = ?")
-    .get(tableName) as { sql: string }
-
-  return {
-    checks: [...row.sql.matchAll(/constraint\s+["`]?([a-z0-9_]+)/gi)].map((match) => match[1]),
-    columns: database.prepare(`pragma table_info('${tableName}')`).all(),
-    foreignKeys: database.prepare(`pragma foreign_key_list('${tableName}')`).all(),
-  }
-}
-
-function indexDefinition(
-  database: ReturnType<typeof createInMemoryDatabase>,
-  indexName: string,
-) {
-  const row = database
-    .prepare("select sql from sqlite_master where type = 'index' and name = ?")
-    .get(indexName) as { sql: string }
-
-  return {
-    columns: database.prepare(`pragma index_info('${indexName}')`).all(),
-    predicate: row.sql.match(/\swhere\s(.+)$/i)?.[1] ?? null,
-    unique: /^create unique index/i.test(row.sql),
-  }
-}
-
 function identityTriggerNames(database: ReturnType<typeof createInMemoryDatabase>) {
   return database.prepare(`
     select name from sqlite_master
@@ -1061,7 +989,6 @@ function identityTriggerNames(database: ReturnType<typeof createInMemoryDatabase
     order by name
   `).all().map((row) => (row as { name: string }).name)
 }
-
 function normalizationLineageTriggerNames(database: ReturnType<typeof createInMemoryDatabase>) {
   return database.prepare(`
     select name from sqlite_master

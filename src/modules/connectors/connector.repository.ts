@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm'
 import {
   connectorCheckpoints,
   connectorInstances,
   connectorObservations,
   connectorRuns,
+  connectorRunSynchronizations,
   retryWork,
+  sourceExecutionScopes,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import {
@@ -16,7 +18,7 @@ import {
 import {
   freezeConnectorRunLifecycleCounts
 } from './connector.lifecycle-counts'
-import { selectConnectorInstance, mapConnectorInstance, normalizeConnectorAuthReferences } from './connector-instance.persistence'
+import { mapConnectorInstance, normalizeConnectorAuthReferences } from './connector-instance.persistence'
 import { upsertConnectorCheckpoint, mapConnectorCheckpoint } from './connector-checkpoint.persistence'
 import { readConnectorWarnings, mapConnectorRun, withConnectorRunLifecycleCounts } from './connector-run.persistence'
 import { mapConnectorObservation } from './connector-observation.persistence'
@@ -45,16 +47,27 @@ import type { ConnectorObservationRecord, ListConnectorObservationsInput } from 
 import type { RecordConnectorRefreshResultInput, RecordConnectorRunRequestInput, RecordConnectorRunRequestResult, RecordConnectorRunFailureInput, RecordConnectorRunSkippedInput, MarkConnectorRunFailedInput, MarkConnectorRunRunningInput, RecoverInterruptedConnectorRunsInput, UpdateConnectorRunProgressInput, CompleteConnectorRunInput, ConnectorRunRecord, ListConnectorRunsInput, ListConnectorRunsResult } from './connector-run.persistence-types'
 import type { AcquiredRetryWork } from './connector-retry-work.identity-types'
 import type { ConnectorStatusSummaryRecord } from './connector-status.persistence-types'
-
+import { deriveSourceExecutionScopeId } from '../source-execution/source-execution-governor'
 export function createSqliteConnectorRepository(
   database: DrizzleDatabase,
 ) {
   return {
+    getRunSynchronization(connectorRunId: string) {
+      const row = database.select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
+        .from(connectorRunSynchronizations)
+        .where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId)).get()
+      return row ? JSON.parse(row.snapshotJson) as unknown : null
+    },
     async upsertInstance(input: UpsertConnectorInstanceInput): Promise<ConnectorInstanceRecord> {
       const now = new Date().toISOString()
       const createdAt = input.createdAt ?? now
       const auth = normalizeConnectorAuthReferences(input.auth ?? [])
-      const existing = database
+      const executionScopeId = deriveSourceExecutionScopeId(input.id)
+      return database.transaction((transaction) => {
+      transaction.insert(sourceExecutionScopes).values({
+        id: executionScopeId, createdAt, updatedAt: createdAt, deletedAt: null,
+      }).onConflictDoNothing().run()
+      const existing = transaction
         .select({
           id: connectorInstances.id,
           earliestBackfillDate: connectorInstances.earliestBackfillDate,
@@ -62,15 +75,15 @@ export function createSqliteConnectorRepository(
         .from(connectorInstances)
         .where(and(eq(connectorInstances.id, input.id), isNull(connectorInstances.deletedAt)))
         .get()
-
       if (existing) {
         const earliestBackfillDate = input.earliestBackfillDate === undefined
           ? assertPersistedEarliestBackfillDate(existing.earliestBackfillDate)
           : assertPersistedEarliestBackfillDate(input.earliestBackfillDate)
-        database
+        transaction
           .update(connectorInstances)
           .set({
             connectorId: input.connectorId,
+            executionScopeId,
             connectorVersion: input.connectorVersion,
             displayName: input.displayName,
             enabled: input.enabled,
@@ -86,10 +99,11 @@ export function createSqliteConnectorRepository(
         const earliestBackfillDate = input.earliestBackfillDate === undefined
           ? defaultEarliestBackfillDate(createdAt)
           : assertPersistedEarliestBackfillDate(input.earliestBackfillDate)
-        database
+        transaction
           .insert(connectorInstances)
           .values({
             id: input.id,
+            executionScopeId,
             connectorId: input.connectorId,
             connectorVersion: input.connectorVersion,
             displayName: input.displayName,
@@ -104,16 +118,18 @@ export function createSqliteConnectorRepository(
           })
           .run()
       }
-
-      return selectConnectorInstance(database, input.id)
+      const persisted = transaction.select().from(connectorInstances)
+        .where(and(eq(connectorInstances.id, input.id), isNull(connectorInstances.deletedAt))).get()
+      if (!persisted) throw new Error(`Connector instance not found: ${input.id}`)
+      return mapConnectorInstance(persisted)
+      })
     },
-
     async recordRefreshResult(
       input: RecordConnectorRefreshResultInput,
     ): Promise<ConnectorRunRecord> {
       return database.transaction((transaction) => {
         const instance = transaction
-          .select({ id: connectorInstances.id, connectorVersion: connectorInstances.connectorVersion })
+          .select({ id: connectorInstances.id, connectorVersion: connectorInstances.connectorVersion, executionScopeId: connectorInstances.executionScopeId })
           .from(connectorInstances)
           .where(
             and(
@@ -122,11 +138,9 @@ export function createSqliteConnectorRepository(
             ),
           )
           .get()
-
         if (!instance) {
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
         }
-
         const now = new Date().toISOString()
         const runId = input.connectorRunId ?? randomUUID()
         const observationCount = input.result.observations.length
@@ -145,11 +159,9 @@ export function createSqliteConnectorRepository(
             )
             .get()
           : null
-
         if (input.connectorRunId && !activeRun) {
           throw new Error(`Active connector run not found: ${input.connectorRunId}`)
         }
-
         const deferTerminal = Boolean(
           activeRun && (input.checkpointPersistence ?? 'immediate') === 'deferred',
         )
@@ -174,7 +186,6 @@ export function createSqliteConnectorRepository(
           updatedAt: now,
           deletedAt: null,
         }
-
         if (activeRun) {
           transaction
             .update(connectorRuns)
@@ -186,13 +197,24 @@ export function createSqliteConnectorRepository(
             .insert(connectorRuns)
             .values({
               id: runId,
+              executionScopeId: instance.executionScopeId,
               connectorInstanceId: input.connectorInstanceId,
               ...terminalValues,
               createdAt: now,
             })
             .run()
         }
-
+        if (input.result.synchronization) {
+          transaction.insert(connectorRunSynchronizations).values({
+            connectorRunId: runId,
+            snapshotJson: JSON.stringify(input.result.synchronization),
+            createdAt: now,
+            updatedAt: now,
+          }).onConflictDoUpdate({
+            target: connectorRunSynchronizations.connectorRunId,
+            set: { snapshotJson: JSON.stringify(input.result.synchronization), updatedAt: now },
+          }).run()
+        }
         if ((input.checkpointPersistence ?? 'immediate') === 'immediate') {
           upsertConnectorCheckpoint(
             transaction,
@@ -206,19 +228,18 @@ export function createSqliteConnectorRepository(
             now,
           )
         }
-
         synchronizeConnectorRetryWork(transaction, {
           advice: input.result.retryHints ?? null,
           checkpoint: input.result.nextCheckpoint,
           checkpointSchemaVersion: input.result.nextCheckpoint.schemaVersion,
           connectorInstanceId: input.connectorInstanceId,
           connectorVersion: instance.connectorVersion,
+          executionScopeId: instance.executionScopeId ?? (() => { throw new Error('Connector instance is missing execution scope identity') })(),
           filterSignature: input.filterSignature,
           now,
           preserveAcquiredNormalizationWork: input.preserveAcquiredNormalizationWork === true,
           runId,
         })
-
         for (const observation of input.result.observations) {
           transaction
             .insert(connectorObservations)
@@ -249,7 +270,6 @@ export function createSqliteConnectorRepository(
             })
             .run()
         }
-
         return mapConnectorRun(
           transaction
             .select()
@@ -259,41 +279,32 @@ export function createSqliteConnectorRepository(
         )
       })
     },
-
     async recordCheckpoint(
       input: RecordConnectorCheckpointInput,
     ): Promise<ConnectorCheckpointRecord> {
       const instance = await this.getInstance(input.connectorInstanceId)
-
       if (!instance) {
         throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
       }
-
       upsertConnectorCheckpoint(database, input, new Date().toISOString())
-
       const checkpoint = await this.getCheckpoint({
         connectorInstanceId: input.connectorInstanceId,
         filterSignature: input.filterSignature,
       })
-
       if (!checkpoint) {
         throw new Error(`Connector checkpoint not found after insert: ${input.connectorInstanceId}`)
       }
-
       return checkpoint
     },
-
     async releaseAcquiredNormalizationWorkForRun(input: {
       connectorRunId: string
       completedAt: string
     }): Promise<void> {
       releaseAcquiredNormalizationWorkForRun(database, input)
     },
-
     async finalizeExactAcquiredNormalizationRetry(input: Parameters<typeof finalizeExactAcquiredNormalizationRetry>[1]): Promise<ConnectorRunRecord> {
       return finalizeExactAcquiredNormalizationRetry(database, input)
     },
-
     async recordRunRequest(
       input: RecordConnectorRunRequestInput,
     ): Promise<RecordConnectorRunRequestResult> {
@@ -308,11 +319,9 @@ export function createSqliteConnectorRepository(
             ),
           )
           .get()
-
         if (!instanceRow) {
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
         }
-
         const instance = mapConnectorInstance(instanceRow)
         const now = input.startedAt
         const filters = input.filters ?? instance.filters
@@ -331,7 +340,6 @@ export function createSqliteConnectorRepository(
           )
           .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
           .get()
-
         if (activeRun) {
           return {
             acquired: false,
@@ -339,15 +347,55 @@ export function createSqliteConnectorRepository(
             run: mapConnectorRun(activeRun),
           }
         }
-
-        const pendingRetry = selectPendingRetryWork(transaction, {
+        transaction.update(sourceExecutionScopes).set({
+          status: 'available', blockedUntil: null, backoffAttempt: 0, updatedAt: now,
+        }).where(and(
+          eq(sourceExecutionScopes.id, instance.executionScopeId),
+          eq(sourceExecutionScopes.status, 'cooldown'),
+          lte(sourceExecutionScopes.blockedUntil, now),
+        )).run()
+        const executionScope = transaction.select().from(sourceExecutionScopes)
+          .where(eq(sourceExecutionScopes.id, instance.executionScopeId)).get()
+        const scopeAvailable = executionScope !== undefined
+          && executionScope.status !== 'action_required'
+          && executionScope.status !== 'refreshing'
+          && (executionScope.blockedUntil === null || executionScope.blockedUntil <= now)
+        if (!scopeAvailable) {
+          const runId = randomUUID()
+          transaction.insert(connectorRuns).values({
+            id: runId, executionScopeId: instance.executionScopeId,
+            connectorInstanceId: input.connectorInstanceId, mode: input.mode, status: 'skipped',
+            startedAt: now, completedAt: now, coverageStartedAt: input.coverageStartedAt ?? null,
+            coverageEndedAt: input.coverageEndedAt ?? null, configJson: JSON.stringify(instance.config),
+            filtersJson: JSON.stringify(filters), filterSignature, observationCount: 0, warningCount: 0,
+            statsJson: JSON.stringify({ skipped: true, scopeUnavailable: true }), warningsJson: '[]',
+            retryHintsJson: 'null', createdAt: now, updatedAt: now, deletedAt: null,
+          }).run()
+          const boundary = (coverageStartedAt ?? now).slice(0, 10)
+          const actionRequired = executionScope?.status === 'action_required' || executionScope?.status === 'refreshing'
+          const outcome = actionRequired
+            ? { kind: 'action_required' as const, operation: { kind: 'authentication_expired' as const, executionScopeId: instance.executionScopeId, requestRefresh: true as const } }
+            : { kind: 'cooling_down' as const, operation: { kind: 'scope_rate_limited' as const, executionScopeId: instance.executionScopeId, retryAt: executionScope?.blockedUntil ?? now, serverMinimumDelayMs: null } }
+          transaction.insert(connectorRunSynchronizations).values({
+            connectorRunId: runId,
+            snapshotJson: JSON.stringify({
+              newestFrontier: { state: 'not_started' },
+              historicalBackfill: { state: 'not_started', boundary: { earliestDate: boundary } },
+              pendingResolutionCount: 0, outcome,
+            }),
+            createdAt: now, updatedAt: now,
+          }).run()
+          return { acquired: false, acquiredWork: null, run: mapConnectorRun(transaction.select().from(connectorRuns).where(eq(connectorRuns.id, runId)).get()) }
+        }
+        const retrySelection = {
           connectorInstanceId: input.connectorInstanceId,
           connectorId: instance.connectorId,
+          executionScopeId: instance.executionScopeId,
           coverageStartedAt,
           filterSignature,
           now,
-        })
-
+        }
+        const pendingRetry = selectPendingRetryWork(transaction, retrySelection)
         if (pendingRetry?.acquisitionRunId) {
           const acquiredRun = transaction.select().from(connectorRuns)
             .where(eq(connectorRuns.id, pendingRetry.acquisitionRunId)).get()
@@ -359,7 +407,6 @@ export function createSqliteConnectorRepository(
             }
           }
         }
-
         const beforeDue = pendingRetry?.state === 'scheduled'
           && pendingRetry.nextAttemptAt !== null
           && Date.parse(now) < Date.parse(pendingRetry.nextAttemptAt)
@@ -383,6 +430,7 @@ export function createSqliteConnectorRepository(
           const advice = retryAdviceFromWork(pendingRetry, adviceState)
           transaction.insert(connectorRuns).values({
             id: skippedRunId,
+            executionScopeId: instance.executionScopeId,
             connectorInstanceId: input.connectorInstanceId,
             mode: input.mode,
             status: 'skipped',
@@ -411,13 +459,12 @@ export function createSqliteConnectorRepository(
               .where(eq(connectorRuns.id, skippedRunId)).get()),
           }
         }
-
         const runId = randomUUID()
-
         transaction
           .insert(connectorRuns)
           .values({
             id: runId,
+            executionScopeId: instance.executionScopeId,
             connectorInstanceId: input.connectorInstanceId,
             mode: input.mode,
             status: 'queued',
@@ -441,20 +488,36 @@ export function createSqliteConnectorRepository(
             deletedAt: null,
           })
           .run()
-
         let acquiredWork: AcquiredRetryWork | null = null
         if (pendingRetry?.state === 'scheduled') {
-          transaction.update(retryWork).set({
+          const acquisition = transaction.update(retryWork).set({
             state: 'acquired',
             acquiredAt: now,
             acquisitionToken: randomUUID(),
             acquisitionRunId: runId,
             skippedRunId: null,
             updatedAt: now,
-          }).where(and(eq(retryWork.id, pendingRetry.id), eq(retryWork.state, 'scheduled'))).run()
-          acquiredWork = mapAcquiredRetryWork(pendingRetry)
+          }).where(and(
+            eq(retryWork.id, pendingRetry.id),
+            eq(retryWork.state, 'scheduled'),
+            sql`exists (
+              select 1 from source_execution_scopes scope
+              where scope.id = ${retryWork.executionScopeId}
+                and scope.status in ('available', 'cooldown')
+                and (scope.blocked_until is null or scope.blocked_until <= ${now})
+            )`,
+          )).run()
+          if (acquisition.changes === 1) {
+            transaction.update(sourceExecutionScopes).set({
+              status: 'available', blockedUntil: null, backoffAttempt: 0, updatedAt: now,
+            }).where(and(
+              eq(sourceExecutionScopes.id, pendingRetry.executionScopeId),
+              eq(sourceExecutionScopes.status, 'cooldown'),
+              lte(sourceExecutionScopes.blockedUntil, now),
+            )).run()
+            acquiredWork = mapAcquiredRetryWork(pendingRetry)
+          }
         }
-
         return {
           acquired: true,
           acquiredWork,
@@ -468,23 +531,20 @@ export function createSqliteConnectorRepository(
         }
       }, { behavior: 'immediate' })
     },
-
     async recordRunFailure(input: RecordConnectorRunFailureInput): Promise<ConnectorRunRecord> {
       const instance = await this.getInstance(input.connectorInstanceId)
-
       if (!instance) {
         throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
       }
-
       const now = new Date().toISOString()
       const filters = input.filters ?? instance.filters
       const filterSignature = input.filterSignature ?? `filters:${stableJsonStringify(filters)}`
       const runId = randomUUID()
-
       database
         .insert(connectorRuns)
         .values({
           id: runId,
+          executionScopeId: instance.executionScopeId,
           connectorInstanceId: input.connectorInstanceId,
           mode: input.mode,
           status: 'failed',
@@ -505,7 +565,6 @@ export function createSqliteConnectorRepository(
           deletedAt: null,
         })
         .run()
-
       return mapConnectorRun(
         database
           .select()
@@ -514,7 +573,6 @@ export function createSqliteConnectorRepository(
           .get(),
       )
     },
-
     async claimQueuedRunToRunning(input: MarkConnectorRunRunningInput): Promise<{
       claimed: boolean
       run: ConnectorRunRecord
@@ -527,11 +585,9 @@ export function createSqliteConnectorRepository(
           isNull(connectorRuns.deletedAt),
         ))
         .get()
-
       if (!existing) {
         throw new Error(`Connector run not found: ${input.connectorRunId}`)
       }
-
       const stats = toJsonRecord(JSON.parse(existing.statsJson))
       const updatedAt = new Date().toISOString()
       const updated = database
@@ -552,7 +608,6 @@ export function createSqliteConnectorRepository(
           isNull(connectorRuns.deletedAt),
         ))
         .run()
-
       const run = mapConnectorRun(
         database
           .select()
@@ -560,13 +615,11 @@ export function createSqliteConnectorRepository(
           .where(eq(connectorRuns.id, input.connectorRunId))
           .get(),
       )
-
       return {
         claimed: updated.changes === 1,
         run,
       }
     },
-
     async markRunRunning(input: MarkConnectorRunRunningInput): Promise<ConnectorRunRecord> {
       const claim = await this.claimQueuedRunToRunning(input)
       if (!claim.claimed) {
@@ -574,11 +627,9 @@ export function createSqliteConnectorRepository(
       }
       return claim.run
     },
-
     recoverInterruptedRuns(input: RecoverInterruptedConnectorRunsInput): number {
       return recoverInterruptedConnectorRuns(database, input)
     },
-
     async updateRunProgress(
       input: UpdateConnectorRunProgressInput,
     ): Promise<ConnectorRunRecord> {
@@ -587,14 +638,11 @@ export function createSqliteConnectorRepository(
         .from(connectorRuns)
         .where(and(eq(connectorRuns.id, input.connectorRunId), isNull(connectorRuns.deletedAt)))
         .get()
-
       if (!row) {
         throw new Error(`Connector run not found: ${input.connectorRunId}`)
       }
-
       const now = new Date().toISOString()
       const currentStats = toJsonRecord(JSON.parse(row.statsJson))
-
       database
         .update(connectorRuns)
         .set({
@@ -606,7 +654,6 @@ export function createSqliteConnectorRepository(
         })
         .where(eq(connectorRuns.id, input.connectorRunId))
         .run()
-
       return mapConnectorRun(
         database
           .select()
@@ -615,7 +662,6 @@ export function createSqliteConnectorRepository(
           .get(),
       )
     },
-
     async completeRun(input: CompleteConnectorRunInput): Promise<ConnectorRunRecord> {
       const row = database
         .select()
@@ -628,14 +674,11 @@ export function createSqliteConnectorRepository(
           ),
         )
         .get()
-
       if (!row) {
         throw new Error(`Running connector run not found: ${input.connectorRunId}`)
       }
-
       const stats = toJsonRecord(JSON.parse(row.statsJson))
       const lifecycleCounts = freezeConnectorRunLifecycleCounts(database, mapConnectorRun(row))
-
       database
         .update(connectorRuns)
         .set({
@@ -651,7 +694,6 @@ export function createSqliteConnectorRepository(
         })
         .where(eq(connectorRuns.id, input.connectorRunId))
         .run()
-
       return mapConnectorRun(
         database
           .select()
@@ -660,14 +702,11 @@ export function createSqliteConnectorRepository(
           .get(),
       )
     },
-
     async recordRunSkipped(input: RecordConnectorRunSkippedInput): Promise<ConnectorRunRecord> {
       const instance = await this.getInstance(input.connectorInstanceId)
-
       if (!instance) {
         throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
       }
-
       const now = new Date().toISOString()
       const reason = input.reason ?? 'user_skipped_connector_run'
       const filters = instance.filters
@@ -675,11 +714,11 @@ export function createSqliteConnectorRepository(
       const coverageStartedAt = inclusiveCoverageStartFromEarliestBackfillDate(
         instance.earliestBackfillDate,
       )
-
       database
         .insert(connectorRuns)
         .values({
           id: runId,
+          executionScopeId: instance.executionScopeId,
           connectorInstanceId: input.connectorInstanceId,
           mode: input.mode,
           status: 'skipped',
@@ -700,7 +739,6 @@ export function createSqliteConnectorRepository(
           deletedAt: null,
         })
         .run()
-
       return mapConnectorRun(
         database
           .select()
@@ -709,7 +747,6 @@ export function createSqliteConnectorRepository(
           .get(),
       )
     },
-
     async markRunFailed(input: MarkConnectorRunFailedInput): Promise<ConnectorRunRecord> {
       return database.transaction((transaction) => {
         const row = transaction
@@ -717,11 +754,9 @@ export function createSqliteConnectorRepository(
           .from(connectorRuns)
           .where(and(eq(connectorRuns.id, input.connectorRunId), isNull(connectorRuns.deletedAt)))
           .get()
-
         if (!row) {
           throw new Error(`Connector run not found: ${input.connectorRunId}`)
         }
-
         const warnings = readConnectorWarnings(row.warningsJson)
         warnings.push(input.warning)
         const retryHints = input.retryHints === undefined
@@ -729,7 +764,6 @@ export function createSqliteConnectorRepository(
           : input.retryHints
         const stats = toJsonRecord(JSON.parse(row.statsJson))
         const recordedFailures = stats.failures
-
         transaction
           .update(connectorRuns)
           .set({
@@ -758,7 +792,6 @@ export function createSqliteConnectorRepository(
           eq(retryWork.acquisitionRunId, input.connectorRunId),
           isNull(retryWork.deletedAt),
         )).run()
-
         return mapConnectorRun(
           transaction
           .select()
@@ -768,17 +801,14 @@ export function createSqliteConnectorRepository(
         )
       }, { behavior: 'immediate' })
     },
-
     async getRun(connectorRunId: string): Promise<ConnectorRunRecord | null> {
       const row = database
         .select()
         .from(connectorRuns)
         .where(and(eq(connectorRuns.id, connectorRunId), isNull(connectorRuns.deletedAt)))
         .get()
-
       return row ? mapConnectorRun(row) : null
     },
-
     async getInstance(connectorInstanceId: string): Promise<ConnectorInstanceRecord | null> {
       const row = database
         .select()
@@ -787,10 +817,8 @@ export function createSqliteConnectorRepository(
           and(eq(connectorInstances.id, connectorInstanceId), isNull(connectorInstances.deletedAt)),
         )
         .get()
-
       return row ? mapConnectorInstance(row) : null
     },
-
     async listInstances(): Promise<ConnectorInstanceRecord[]> {
       return database
         .select()
@@ -800,7 +828,6 @@ export function createSqliteConnectorRepository(
         .all()
         .map(mapConnectorInstance)
     },
-
     async getStatusSummary(
       connectorInstanceId: string,
     ): Promise<ConnectorStatusSummaryRecord | null> {
@@ -811,11 +838,9 @@ export function createSqliteConnectorRepository(
           and(eq(connectorInstances.id, connectorInstanceId), isNull(connectorInstances.deletedAt)),
         )
         .get()
-
       if (!row) {
         return null
       }
-
       const latestRun = database
         .select()
         .from(connectorRuns)
@@ -823,13 +848,11 @@ export function createSqliteConnectorRepository(
         .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
         .limit(1)
         .get()
-
       return {
         ...mapConnectorInstance(row),
         latestRun: latestRun ? mapConnectorRun(latestRun) : null,
       }
     },
-
     async listStatusSummaries(): Promise<ConnectorStatusSummaryRecord[]> {
       return database
         .select()
@@ -850,14 +873,12 @@ export function createSqliteConnectorRepository(
             .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
             .limit(1)
             .get()
-
           return {
             ...mapConnectorInstance(row),
             latestRun: latestRun ? mapConnectorRun(latestRun) : null,
           }
         })
     },
-
     async getCheckpoint(
       input: GetConnectorCheckpointInput,
     ): Promise<ConnectorCheckpointRecord | null> {
@@ -872,10 +893,8 @@ export function createSqliteConnectorRepository(
           ),
         )
         .get()
-
       return row ? mapConnectorCheckpoint(row) : null
     },
-
     async listRuns(input: ListConnectorRunsInput): Promise<ListConnectorRunsResult> {
       const limit = input.limit ?? 50
       const offset = input.offset ?? 0
@@ -895,7 +914,6 @@ export function createSqliteConnectorRepository(
         .filter((run) => input.status === undefined || run.status === input.status)
         .filter((run) => input.mode === undefined || run.mode === input.mode)
       const pagedItems = items.slice(offset, offset + limit)
-
       return {
         items: pagedItems,
         total: items.length,
@@ -904,7 +922,6 @@ export function createSqliteConnectorRepository(
         hasMore: offset + pagedItems.length < items.length,
       }
     },
-
     async listCheckpoints(
       input: ListConnectorCheckpointsInput,
     ): Promise<ConnectorCheckpointRecord[]> {
@@ -925,7 +942,6 @@ export function createSqliteConnectorRepository(
             checkpoint.filterSignature === input.filterSignature,
         )
     },
-
     async listObservations(
       input: ListConnectorObservationsInput,
     ): Promise<ConnectorObservationRecord[]> {
@@ -946,7 +962,6 @@ export function createSqliteConnectorRepository(
             observation.connectorRunId === input.connectorRunId,
         )
     },
-
     async getObservation(connectorObservationId: string): Promise<ConnectorObservationRecord | null> {
       const row = database
         .select()
@@ -958,9 +973,7 @@ export function createSqliteConnectorRepository(
           ),
         )
         .get()
-
       return row ? mapConnectorObservation(row) : null
     },
-
   }
 }

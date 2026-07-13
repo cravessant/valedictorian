@@ -391,7 +391,7 @@ describe('connector-run progress and history', () => {
     expect(screen.getByText('Discovered jobs: 50')).toBeInTheDocument()
     expect(screen.getByText('Discovery page requests: 3')).toBeInTheDocument()
     expect(screen.getByText('Needs action')).toBeInTheDocument()
-    expect(screen.getByText('Technical status: partial success.')).toBeInTheDocument()
+    expect(screen.queryByText(/Technical status:/)).not.toBeInTheDocument()
     expect(screen.getByText('Provider stats gaps: missing provider valid.')).toBeInTheDocument()
     expect(screen.queryByText('Discovered: 50')).not.toBeInTheDocument()
 

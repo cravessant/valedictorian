@@ -29,6 +29,7 @@ export const NORMALIZATION_GATE_POLICY_VERSION = 'sourcing-admission/v1'
 export interface NormalizationExecutionOptions {
   acquiredRetryWork?: {
     acquisitionRunId: string
+    executionScopeId: string
     retryWorkId: string
   }
   deferAcquiredRetryCompletion?: boolean
@@ -92,8 +93,9 @@ export function createNormalizationOrchestrator(options: {
             : { resolverId, resolverVersion: directive.policyVersion, field: directive.field, inputHash: directive.inputHash, status: 'suppressed', reason: directive.reason, policyVersion: directive.policyVersion }
           attempts.push({
             id: crypto.randomUUID(), rawRevisionId,
-            resolver: { id: resolverId, version: directive.policyVersion, requiredInputs: ['replayDirective'], outputFields: [directive.field], capabilities: ['pure'], costClass: 'none', precedence: Number.MAX_SAFE_INTEGER },
+            resolver: { id: resolverId, version: directive.policyVersion, requiredInputs: ['replayDirective'], outputFields: [directive.field], capabilities: ['pure'], costClass: 'none', precedence: Number.MAX_SAFE_INTEGER, scopeRequirement: 'none' },
             inputHash: directive.inputHash, status: 'completed',
+            executionScopeId: null, operationOutcome: null,
             applicability: [{ resolverId, resolverVersion: directive.policyVersion, field: directive.field, inputHash: directive.inputHash, status: 'applicable' }],
             startedAt: timestamp, completedAt: timestamp, outcomes: [outcome],
           })
@@ -155,7 +157,15 @@ export function createNormalizationOrchestrator(options: {
           reconcile(outcome, winners, conflicts, rejectedFields, failedFields)
         }
         outcomes.push(...persistedConflicts)
-        attempts.push({ id: crypto.randomUUID(), rawRevisionId, resolver: resolver.declaration, inputHash: attemptInputHash, status: outcomes.some(({ status }) => status === 'failed') ? 'failed' : 'completed', applicability, startedAt, completedAt: now().toISOString(), outcomes })
+        attempts.push({
+          id: crypto.randomUUID(), rawRevisionId, resolver: resolver.declaration,
+          executionScopeId: resolver.declaration.scopeRequirement === 'source'
+            ? execution.triggerOccurrence?.capture?.executionScopeId
+              ?? execution.acquiredRetryWork?.executionScopeId ?? null
+            : null,
+          operationOutcome: null,
+          inputHash: attemptInputHash, status: outcomes.some(({ status }) => status === 'failed') ? 'failed' : 'completed', applicability, startedAt, completedAt: now().toISOString(), outcomes,
+        })
       }
 
       const evaluatedAt = now().toISOString()

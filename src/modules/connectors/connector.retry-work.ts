@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import { retryAdviceSchema, type RetryAdvice } from 'sparxie'
 import {
   connectorCheckpoints,
-  rawSourceRevisions,
   retryWork,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
@@ -52,6 +51,7 @@ export function synchronizeConnectorRetryWork(
     checkpointSchemaVersion: string
     connectorInstanceId: string
     connectorVersion: string
+    executionScopeId: string
     filterSignature: string
     now: string
     preserveAcquiredNormalizationWork?: boolean
@@ -115,6 +115,7 @@ export function synchronizeConnectorRetryWork(
   const unchangedRetryWindow = existing?.attempt === advice.attempt
     && existing.nextAttemptAt === advice.nextAttemptAt
   const values = {
+    executionScopeId: input.executionScopeId,
     reason: advice.reason,
     attempt: advice.attempt,
     maxAttempts: advice.maxAttempts,
@@ -216,6 +217,7 @@ export function mapAcquiredRetryWork(work: RetryWorkRow): AcquiredRetryWork {
   }
   return {
     kind: 'normalization',
+    executionScopeId: work.executionScopeId,
     retryWorkId: work.id,
     rawRevisionId: work.rawRevisionId,
     resolverId: work.resolverId,
@@ -230,36 +232,59 @@ export function selectPendingRetryWork(
   input: {
     connectorInstanceId: string
     connectorId: string
+    executionScopeId: string
     coverageStartedAt: string
     filterSignature: string
     now: string
   },
 ) {
-  const captureRetries = database
+  const activeJobrightProviderIds = input.connectorId === JOBRIGHT_CONNECTOR_ID
+    ? selectActiveJobrightProviderIds(database, input)
+    : null
+  const capturePredicate = (state: 'scheduled' | 'acquired') => and(
+    eq(retryWork.kind, 'connector_capture'),
+    eq(retryWork.connectorInstanceId, input.connectorInstanceId),
+    eq(retryWork.filterSignature, input.filterSignature),
+    eq(retryWork.state, state),
+    scopeAvailableAt(input.now),
+    isNull(retryWork.deletedAt),
+  )
+  const captureAcquired = database.select().from(retryWork)
+    .where(capturePredicate('acquired')).limit(1).all()
+  const captureScheduled = database
     .select()
     .from(retryWork)
-    .where(and(
-      eq(retryWork.kind, 'connector_capture'),
-      eq(retryWork.connectorInstanceId, input.connectorInstanceId),
-      eq(retryWork.filterSignature, input.filterSignature),
-      inArray(retryWork.state, ['scheduled', 'acquired', 'exhausted', 'cancelled']),
-      isNull(retryWork.deletedAt),
-    ))
-    .orderBy(desc(retryWork.updatedAt))
+    .where(capturePredicate('scheduled'))
+    .orderBy(asc(retryWork.nextAttemptAt))
+    .limit(1)
     .all()
-  const normalizationRetries = database
+  const normalizationPredicate = (state: 'scheduled' | 'acquired') => and(
+    eq(retryWork.kind, 'normalization'),
+    eq(retryWork.executionScopeId, input.executionScopeId),
+    eq(retryWork.state, state),
+    activeJobrightProviderIds === null ? sql`1 = 1` : or(
+      ne(retryWork.resolverId, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID),
+      ne(retryWork.resolverVersion, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION),
+      activeJobrightProviderIds.length === 0
+        ? sql`0 = 1`
+        : currentJobrightRevision(activeJobrightProviderIds),
+    ),
+    scopeAvailableAt(input.now),
+    isNull(retryWork.deletedAt),
+  )
+  const normalizationAcquired = database.select().from(retryWork)
+    .where(normalizationPredicate('acquired')).limit(1).all()
+  const normalizationScheduled = database
     .select()
     .from(retryWork)
-    .where(and(
-      eq(retryWork.kind, 'normalization'),
-      sql`json_extract(${retryWork.lineageJson}, '$.connectorInstanceId') = ${input.connectorInstanceId}`,
-      inArray(retryWork.state, ['scheduled', 'acquired', 'exhausted', 'cancelled']),
-      isNull(retryWork.deletedAt),
-    ))
+    .where(normalizationPredicate('scheduled'))
     .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt))
+    .limit(1)
     .all()
-  const retryCandidates = [...captureRetries, ...normalizationRetries]
-    .filter((work) => isSelectableRetryWorkCandidate(database, work, input))
+  const retryCandidates = [
+    ...captureAcquired, ...normalizationAcquired,
+    ...captureScheduled, ...normalizationScheduled,
+  ]
   return retryCandidates.find((work) => work.state === 'acquired')
     ?? retryCandidates
       .filter((work) => work.state === 'scheduled' && work.nextAttemptAt !== null && Date.parse(input.now) >= Date.parse(work.nextAttemptAt))
@@ -267,43 +292,36 @@ export function selectPendingRetryWork(
     ?? retryCandidates
       .filter((work) => work.state === 'scheduled')
       .sort((left, right) => Date.parse(left.nextAttemptAt!) - Date.parse(right.nextAttemptAt!))[0]
-    ?? retryCandidates.find((work) => work.state === 'exhausted' || work.state === 'cancelled')
 }
 
-function isSelectableRetryWorkCandidate(
+function scopeAvailableAt(now: string) {
+  return sql`exists (
+    select 1 from source_execution_scopes scope
+    where scope.id = ${retryWork.executionScopeId}
+      and scope.status in ('available', 'cooldown')
+      and (scope.blocked_until is null or scope.blocked_until <= ${now})
+  )`
+}
+
+function selectActiveJobrightProviderIds(
   database: RetryWorkDatabase & Pick<DrizzleDatabase, 'select'>,
-  work: RetryWorkRow,
   input: {
     connectorInstanceId: string
     connectorId: string
     coverageStartedAt: string
+    executionScopeId: string
     filterSignature: string
   },
 ) {
-  if (
-    work.kind !== 'normalization'
-    || input.connectorId !== JOBRIGHT_CONNECTOR_ID
-    || work.resolverId !== JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID
-    || work.resolverVersion !== JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION
-  ) {
-    return true
-  }
-  return isActiveJobrightV5NormalizationRetry(database, work, input)
-}
-
-function isActiveJobrightV5NormalizationRetry(
-  database: RetryWorkDatabase & Pick<DrizzleDatabase, 'select'>,
-  work: RetryWorkRow,
-  input: {
-    connectorInstanceId: string
-    coverageStartedAt: string
-    filterSignature: string
-  },
-) {
-  if (work.rawRevisionId === null) {
-    throw new Error('Jobright normalization retry work is missing raw revision identity')
-  }
-
+  const authenticatedRetry = database.select({ id: retryWork.id }).from(retryWork).where(and(
+    eq(retryWork.kind, 'normalization'),
+    eq(retryWork.executionScopeId, input.executionScopeId),
+    eq(retryWork.resolverId, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID),
+    eq(retryWork.resolverVersion, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION),
+    inArray(retryWork.state, ['scheduled', 'acquired']),
+    isNull(retryWork.deletedAt),
+  )).limit(1).get()
+  if (!authenticatedRetry) return null
   const checkpointRow = database
     .select()
     .from(connectorCheckpoints)
@@ -315,7 +333,7 @@ function isActiveJobrightV5NormalizationRetry(
     .get()
 
   if (!checkpointRow) {
-    return false
+    return []
   }
   if (checkpointRow.schemaVersion !== JOBRIGHT_CHECKPOINT_SCHEMA_V5) {
     throw new Error('Jobright connector checkpoint must use checkpoint-v5 for exact retry acquisition')
@@ -343,25 +361,14 @@ function isActiveJobrightV5NormalizationRetry(
   }
   if (effectiveCoverageStart !== input.coverageStartedAt) {
     // Boundary changed; force a full connector cycle to reconcile ownership first.
-    return false
+    return []
   }
 
-  const revision = database
-    .select()
-    .from(rawSourceRevisions)
-    .where(eq(rawSourceRevisions.id, work.rawRevisionId))
-    .get()
-  const providerRecordId = revision?.providerRecordId
-  if (typeof providerRecordId !== 'string' || providerRecordId.trim().length === 0) {
-    throw new Error('Jobright normalization retry work is missing provider record identity')
-  }
-
-  const sourceId = `${JOBRIGHT_PUBLIC_SOURCE_PREFIX}${providerRecordId}`
   if (!Array.isArray(checkpoint.pendingDetailRetries)) {
     throw new Error('Jobright v5 checkpoint pending retry ledger is malformed')
   }
 
-  const matches = checkpoint.pendingDetailRetries.filter((entry) => {
+  const activeProviderRecordIds = checkpoint.pendingDetailRetries.flatMap((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
     }
@@ -372,25 +379,29 @@ function isActiveJobrightV5NormalizationRetry(
     if (pending.ownership !== 'active' && pending.ownership !== 'suspended') {
       throw new Error('Jobright v5 checkpoint pending retry ownership is malformed')
     }
-    return pending.sourceId === sourceId
-  }) as Array<Record<string, unknown>>
-
-  if (matches.length === 0) {
-    return false
-  }
-  if (matches.length !== 1) {
+    if (!pending.sourceId.startsWith(JOBRIGHT_PUBLIC_SOURCE_PREFIX)) {
+      throw new Error('Jobright v5 checkpoint pending retry source identity is malformed')
+    }
+    return pending.ownership === 'active' && pending.generationId === generationId
+      ? [pending.sourceId.slice(JOBRIGHT_PUBLIC_SOURCE_PREFIX.length)]
+      : []
+  })
+  if (new Set(activeProviderRecordIds).size !== activeProviderRecordIds.length) {
     throw new Error('Jobright v5 checkpoint pending retry source identities are duplicated')
   }
+  return activeProviderRecordIds
+}
 
-  const entry = matches[0]!
-  if (entry.ownership === 'suspended') {
-    return false
-  }
-  if (entry.ownership !== 'active') {
-    throw new Error('Jobright v5 checkpoint pending retry ownership is malformed')
-  }
-  if (entry.generationId !== generationId) {
-    return false
-  }
-  return true
+function currentJobrightRevision(providerRecordIds: string[]) {
+  const values = sql.join(providerRecordIds.map((id) => sql`${id}`), sql`, `)
+  return sql`exists (
+    select 1 from raw_source_revisions current indexed by idx_raw_source_revisions_provider_current
+    where current.id = ${retryWork.rawRevisionId}
+      and current.provider_record_id in (${values})
+      and current.id = (
+        select latest.id from raw_source_revisions latest
+        where latest.raw_record_id = current.raw_record_id
+        order by latest.revision desc limit 1
+      )
+  )`
 }

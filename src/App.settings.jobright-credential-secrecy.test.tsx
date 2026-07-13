@@ -210,7 +210,7 @@ describe('Jobright credential secrecy', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.8.0',
+        connectorVersion: '0.10.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -282,7 +282,7 @@ describe('Jobright credential secrecy', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.8.0',
+        connectorVersion: '0.10.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -374,7 +374,7 @@ describe('Jobright credential secrecy', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.8.0',
+        connectorVersion: '0.10.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{

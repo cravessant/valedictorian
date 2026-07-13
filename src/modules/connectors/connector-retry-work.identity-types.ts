@@ -5,6 +5,7 @@ export type AcquiredRetryWork =
   }
   | {
     kind: 'normalization'
+    executionScopeId: string
     retryWorkId: string
     rawRevisionId: string
     resolverId: string

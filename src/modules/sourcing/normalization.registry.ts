@@ -104,7 +104,7 @@ function resolver(
   precedence: number,
   resolve: NormalizationResolver['resolve'],
 ): NormalizationResolver {
-  return { declaration: { id, version: RESOLVER_VERSION, requiredInputs: ['rawRevision'], outputFields, capabilities: ['pure'], costClass: 'none', precedence }, resolve }
+  return { declaration: { id, version: RESOLVER_VERSION, requiredInputs: ['rawRevision'], outputFields, capabilities: ['pure'], costClass: 'none', precedence, scopeRequirement: 'none' }, resolve }
 }
 
 function validateDeclaration(declaration: ResolverDeclaration) {

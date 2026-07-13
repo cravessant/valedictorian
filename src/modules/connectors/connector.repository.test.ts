@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { sourcingFindings } from '../../db/schema'
+import { eq } from 'drizzle-orm'
+import { sourceExecutionScopes, sourcingFindings } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteConnectorRepository } from './connector.repository'
 
 describe('SQLite connector repository', () => {
+  it('preserves scope cooldown and generation when auth references are edited', async () => {
+    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const first = await repository.upsertInstance({ id: 'stable-scope', connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Stable', enabled: true, auth: [{ id: 'first', mode: 'api_key', secretKey: 'one' }] })
+    database.update(sourceExecutionScopes).set({ status: 'cooldown', blockedUntil: '2026-07-12T13:00:00.000Z', authGeneration: 4 }).where(eq(sourceExecutionScopes.id, first.executionScopeId)).run()
+    const edited = await repository.upsertInstance({ id: 'stable-scope', connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Stable', enabled: true, auth: [{ id: 'second', mode: 'bearer_token', secretKey: 'two' }] })
+    expect(edited.executionScopeId).toBe(first.executionScopeId)
+    expect(database.select().from(sourceExecutionScopes).where(eq(sourceExecutionScopes.id, first.executionScopeId)).get()).toMatchObject({ status: 'cooldown', blockedUntil: '2026-07-12T13:00:00.000Z', authGeneration: 4 })
+    sqlite.close()
+  })
   it('records a fixture connector refresh into app-owned connector state', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)

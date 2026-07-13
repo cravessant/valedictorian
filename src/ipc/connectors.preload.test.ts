@@ -37,9 +37,14 @@ describe('connectors preload API', () => {
         if (args[0] === 'connectors:runs:trigger') {
           return Promise.resolve({
             id: 'connector-run', connectorInstanceId: 'connector-instance', mode: 'manual', status: 'skipped',
+            executionScopeId: 'scope_connector_instance',
             coverage: { start: null, end: null }, filterSignature: 'filters:{}',
             observationCount: 0, warningCount: 0, stats: {}, warnings: [], retryHints: null,
             scheduleOccurrence: null,
+            newestFrontier: { state: 'not_started' },
+            historicalBackfill: { state: 'not_started', boundary: { earliestDate: '2026-07-01' } },
+            pendingResolutionCount: 0,
+            outcome: { kind: 'yielded', reason: 'invocation_budget' },
             startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:00.000Z',
           })
         }

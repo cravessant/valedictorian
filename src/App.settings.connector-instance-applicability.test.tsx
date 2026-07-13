@@ -99,7 +99,6 @@ describe('connector instance applicability', () => {
       expect(connectorsApi.runs.trigger).toHaveBeenCalledWith(expect.objectContaining({
         connectorInstanceId: 'jobright-default',
         mode: 'manual',
-        reason: 'settings_manual_refresh',
       }))
     })
     expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
@@ -117,7 +116,7 @@ describe('connector instance applicability', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.8.0',
+        version: '0.10.0',
         capabilities: { supportsFiltering: false },
         auth: {
           modes: ['username_password'],
@@ -129,8 +128,12 @@ describe('connector instance applicability', () => {
           }],
         },
       },
-      async validateAuth() {
-        return { status: 'ready', reason: 'jobright_auth_ready' }
+      async validateAuth(input, runtime) {
+        const result = await runtime.auth.refresh({ id: 'jobright', mode: 'username_password',
+          executionScopeId: input.executionScopeId }, async () => ({ status: 'ready', sessionId: 'settings-session' }))
+        return result.status === 'ready'
+          ? { status: 'ready', reason: 'jobright_auth_ready' }
+          : { status: 'failed', reason: 'auth_validation_failed' }
       },
       async refresh(input) {
         return {
@@ -175,10 +178,12 @@ describe('connector instance applicability', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
 
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+    const runButton = screen.getByRole('button', { name: 'Run Jobright now' })
+    await waitFor(() => expect(runButton).toBeEnabled())
+    fireEvent.click(runButton)
     expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
     await expect(client.connectors.list()).resolves.toMatchObject({
-      items: [expect.objectContaining({ connectorVersion: '0.8.0' })],
+      items: [expect.objectContaining({ connectorVersion: '0.10.0' })],
     })
   })
 
@@ -210,7 +215,7 @@ describe('connector instance applicability', () => {
         ],
         config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.8.0',
+        connectorVersion: '0.10.0',
         displayName: 'Jobright internslist',
         enabled: true,
         filters: {

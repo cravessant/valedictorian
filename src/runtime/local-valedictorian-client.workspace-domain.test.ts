@@ -595,7 +595,7 @@ describe('runtime local Valedictorian client', () => {
         stats: {
           observations: 0,
         },
-        status: 'partial_success',
+        status: 'completed',
         warnings: [
           {
             code: 'auth.expired_session',
@@ -648,12 +648,12 @@ describe('runtime local Valedictorian client', () => {
     expect(inspected).toMatchObject({
       actionRequired: [{ kind: 'auth' }],
       auth: [{ configured: true, id: 'fixture-session', mode: 'browser_session' }],
-      status: 'auth_required',
+      status: 'authentication_required',
     })
     expect(runs).toMatchObject({
       items: [
         {
-          status: 'partial_success',
+          status: 'completed',
           warnings: [
             {
               code: 'auth.expired_session',

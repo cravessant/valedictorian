@@ -31,6 +31,7 @@ export interface ConnectorRunLifecycleCounts {
   scope: {
     kind: 'connector_run'
     connectorRunId: string
+    executionScopeId: string
   }
   provider: {
     returnedRows: number
@@ -301,7 +302,7 @@ export function reconcileConnectorRunLifecycleCounts(
     source: run.status === 'queued' || run.status === 'running'
       ? 'live_current'
       : 'derived_pre_feature',
-    scope: { kind: 'connector_run', connectorRunId: run.id },
+    scope: { kind: 'connector_run', connectorRunId: run.id, executionScopeId: run.executionScopeId },
     provider: {
       returnedRows,
       validRecords,

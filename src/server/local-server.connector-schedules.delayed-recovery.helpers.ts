@@ -105,7 +105,14 @@ export function createReopenedScheduleClient(input: {
               schemaVersion: 'fixture-checkpoint@1',
             },
             observations: [],
+            operationOutcome: null,
             stats: { observations: 0 },
+            synchronization: {
+              newestFrontier: { state: 'not_started' },
+              historicalBackfill: { state: 'not_started', boundary: { earliestDate: refreshInput.coverage.start.slice(0, 10) } },
+              pendingResolutionCount: 0,
+              outcome: { kind: 'source_exhausted' },
+            },
             warnings: [],
           }
         },

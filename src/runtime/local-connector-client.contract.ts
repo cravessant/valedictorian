@@ -1,4 +1,4 @@
-import type { ConnectorObservation, ConnectorRunSummary, ConnectorSchedulingCapability, CreateConnectorInstanceInput, UpdateConnectorInstanceInput, ValedictorianWorkspaceClient } from 'sparxie'
+import type { ConnectorObservation, ConnectorRunSummary, ConnectorSchedulingCapability, ConnectorStatusSummary, CreateConnectorInstanceInput, RetryAdvice, UpdateConnectorInstanceInput, ValedictorianWorkspaceClient } from 'sparxie'
 import type { AppConnectorAuthGrant, AppConnectorAuthValidationResult } from '../modules/connectors/connector.runner'
 import type { ConnectorAuthMode } from '../modules/connectors/connector.repository'
 import type { ConnectorStatusListResult, ConnectorStatusView } from '../modules/connectors/connector.status'
@@ -24,7 +24,7 @@ export interface LocalConnectorInstanceSummary {
   updatedAt: string
 }
 
-export interface LocalConnectorStatusSummary extends ConnectorStatusView {
+export interface LocalConnectorStatusSummary extends Omit<ConnectorStatusView, 'actions' | 'status' | 'warnings'> {
   connectorVersion: string | null
   auth: LocalConnectorAuthSummary[]
   actionRequired: Array<{
@@ -34,9 +34,16 @@ export interface LocalConnectorStatusSummary extends ConnectorStatusView {
     message: string
     severity: 'healthy' | 'warning' | 'blocked'
   }>
+  actions: ConnectorStatusSummary['actions']
+  status: ConnectorStatusSummary['status']
+  warnings: ConnectorStatusSummary['warnings']
 }
 
-export type LocalConnectorRunSummary = ConnectorRunSummary
+export type LocalConnectorRunSummary = ConnectorRunSummary & {
+  coverage: { start: string | null; end: string | null }
+  retryHints: RetryAdvice | null
+  stats: unknown
+}
 
 export interface LocalConnectorObservationListInput {
   connectorInstanceId: string

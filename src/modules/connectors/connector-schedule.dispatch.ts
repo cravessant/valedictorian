@@ -225,6 +225,7 @@ export function admitConnectorScheduleDue({
 
     tx.insert(connectorRuns).values({
       id: runId,
+      executionScopeId: instance.executionScopeId,
       connectorInstanceId: input.connectorInstanceId,
       mode: admittedMode,
       status: 'queued',

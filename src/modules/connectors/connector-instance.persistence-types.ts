@@ -32,6 +32,7 @@ export interface UpsertConnectorInstanceInput {
 
 export interface ConnectorInstanceRecord {
   id: string
+  executionScopeId: string
   connectorId: string
   connectorVersion: string
   displayName: string

@@ -1,12 +1,9 @@
 import fs from 'node:fs'
 import type {
   ConnectorAuthReferenceInput,
-  ConnectorObservation,
   ConnectorRunSummary,
-  RetryAdvice,
   ValedictorianWorkspaceClient
 } from 'sparxie'
-import { retryAdviceSchema } from 'sparxie'
 import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import {
@@ -16,6 +13,7 @@ import {
 } from '../modules/applications/application.fixtures'
 import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
 import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
+import { createSourceExecutionGovernor } from '../modules/source-execution/source-execution-governor'
 import { createConnectorNormalizationHost } from '../modules/connectors/connector.normalization'
 import {
   createDefaultLocalConnectorRegistry,
@@ -47,9 +45,7 @@ import {
 } from '../modules/connectors/connector.status'
 import type {
   ConnectorAuthReference,
-  ConnectorCheckpointRecord,
   ConnectorInstanceRecord,
-  ConnectorObservationRecord,
   ConnectorRunRecord
 } from '../modules/connectors/connector.repository'
 import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
@@ -70,8 +66,8 @@ import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/pro
 import {
   createDefaultNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
+import { mapConnectorCheckpoint, mapConnectorObservation, parseConnectorRetryAdvice, pendingResolutionCount, publicRunStatus, runFrontiers, runOutcome } from './local-connector-run-summary'
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
-
 export type {
   LocalValedictorianClientOptions,
   ValedictorianSeedDataMode,
@@ -104,7 +100,6 @@ import type {
   LocalConnectorReconnectActionResult,
   LocalValedictorianClient
 } from './local-connector-client.contract'
-
 const unavailableSecretCodec: ProfileSecretCodec = {
   decrypt() {
     throw new Error('Profile secrets are only available through local profile IPC')
@@ -113,7 +108,6 @@ const unavailableSecretCodec: ProfileSecretCodec = {
     throw new Error('Profile secrets are only available through local profile IPC')
   },
 }
-
 export function createLocalValedictorianClient({
   connectorRunRecovery,
   connectorRegistry = createDefaultLocalConnectorRegistry(),
@@ -129,17 +123,14 @@ export function createLocalValedictorianClient({
   workspaceId = 'local-workspace',
 }: LocalValedictorianClientOptions): LocalValedictorianClient {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
-
   const connectorScheduling = resolveConnectorSchedulingCapability(connectorSchedulingOption)
   const sqlite = createFileDatabase(sqlitePath)
   const applicationService = createApplicationServiceFromSqlite(sqlite)
   const database = createDrizzleDatabase(sqlite)
-
   seedLocalData(database, {
     referenceTrackerPath,
     seedDataMode,
   })
-
   const scoringRepository = createSqliteScoringRepository(database)
   const profileRepository = createSqliteProfileRepository(database, secretCodec)
   const actionQueueRepository = createSqliteActionQueueRepository(database)
@@ -149,7 +140,6 @@ export function createLocalValedictorianClient({
       completedAt: now().toISOString(),
     })
   }
-
   if (connectorRunRecovery) {
     connectorRunRecovery.activate({ sqlitePath, workspaceId }, recoverInterruptedRuns)
   } else {
@@ -205,11 +195,11 @@ export function createLocalValedictorianClient({
       },
     },
     repository: connectorRepository,
+    sourceExecutionGovernor: createSourceExecutionGovernor(database, secretCodec),
     runtime: connectorRuntime,
     workspaceId,
     now,
   })
-
   const scheduleRepository = createConnectorScheduleRepository(database, now)
   const schedules = createConnectorScheduleService({
     claimQueuedRunToRunning: (input) => connectorRepository.claimQueuedRunToRunning(input),
@@ -229,14 +219,16 @@ export function createLocalValedictorianClient({
     now,
     repository: scheduleRepository,
   })
-
   const mapRun = (record: ConnectorRunRecord): LocalConnectorRunSummary => {
+    const synchronizedRecord = {
+      ...record,
+      synchronization: connectorRepository.getRunSynchronization(record.id),
+    }
     const occurrence = scheduleRepository.getOccurrenceLinkForRun(record.id)
     if (!occurrence || !occurrence.connectorRunId) {
-      return mapConnectorRunSummary(record)
+      return mapConnectorRunSummary(synchronizedRecord)
     }
-
-    return mapConnectorRunSummary(record, {
+    return mapConnectorRunSummary(synchronizedRecord, {
       scheduleId: occurrence.scheduleId,
       scheduleRevision: occurrence.scheduleRevision,
       occurrenceId: occurrence.id,
@@ -245,7 +237,6 @@ export function createLocalValedictorianClient({
       idempotencyKey: occurrence.idempotencyKey,
     })
   }
-
   const client: LocalValedictorianClient = {
     connectorScheduling,
     applications: {
@@ -288,17 +279,14 @@ export function createLocalValedictorianClient({
       }),
       create: async (input) => {
         const connector = connectorRegistry.get(input.connectorId)
-
         if (!connector) {
           throw new Error(`Unsupported connector id: ${input.connectorId}`)
         }
-
         if (input.connectorVersion !== connector.definition.version) {
           throw new Error(
             `Connector version mismatch for ${input.connectorId}: expected ${connector.definition.version}`,
           )
         }
-
         const createdAt = now().toISOString()
         const earliestBackfillDate = input.earliestBackfillDate === undefined
           ? undefined
@@ -307,7 +295,6 @@ export function createLocalValedictorianClient({
             createdAt,
             createdAt,
           )
-
         return mapConnectorInstanceSummary(await connectorRunner.registerInstance({
           id: input.id,
           connector,
@@ -322,13 +309,10 @@ export function createLocalValedictorianClient({
       },
       update: async (input) => {
         const existing = await connectorRepository.getInstance(input.connectorInstanceId)
-
         if (!existing) {
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
         }
-
         const connector = connectorRegistry.get(existing.connectorId)
-
         if (
           connector
           && input.connectorVersion !== undefined
@@ -338,17 +322,14 @@ export function createLocalValedictorianClient({
             `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
           )
         }
-
         if (connector && existing.connectorVersion !== connector.definition.version) {
           throw new Error(
             `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
           )
         }
-
         const connectorVersion = input.connectorVersion
           ?? connector?.definition.version
           ?? existing.connectorVersion
-
         const updateNow = now().toISOString()
         const earliestBackfillDate = input.earliestBackfillDate === undefined
           ? existing.earliestBackfillDate
@@ -357,7 +338,6 @@ export function createLocalValedictorianClient({
             existing.createdAt,
             updateNow,
           )
-
         return mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
           id: existing.id,
           connectorId: existing.connectorId,
@@ -373,17 +353,14 @@ export function createLocalValedictorianClient({
       },
       inspect: async (connectorInstanceId) => {
         const record = await connectorRepository.getStatusSummary(connectorInstanceId)
-
         if (!record) {
           throw new Error(`Connector instance not found: ${connectorInstanceId}`)
         }
-
         return mapLocalConnectorStatusSummary(record)
       },
       runs: {
         list: async (input) => {
           const result = await connectorRepository.listRuns(input)
-
           return {
             ...result,
             items: result.items.map(mapRun),
@@ -400,7 +377,6 @@ export function createLocalValedictorianClient({
             normalizationRepository,
             now,
           })
-
           return mapRun(run)
         },
       },
@@ -418,7 +394,6 @@ export function createLocalValedictorianClient({
             connectorRunId: input.connectorRunId,
           })
           const pagedItems = items.slice(offset, offset + limit)
-
           return {
             items: pagedItems.map(mapConnectorObservation),
             total: items.length,
@@ -446,7 +421,6 @@ export function createLocalValedictorianClient({
             reason: input.reason,
             skippedAt: now().toISOString(),
           })
-
           return {
             action: 'skip',
             connectorInstanceId: input.connectorInstanceId,
@@ -530,11 +504,9 @@ export function createLocalValedictorianClient({
         },
         get: async (rawRecordId) => {
           const record = await rawSourceRepository.get(rawRecordId)
-
           if (!record) {
             throw Object.assign(new Error('Raw source record not found'), { statusCode: 404 })
           }
-
           return record
         },
         replay: (input) => normalizationReplayService.replay(input),
@@ -562,10 +534,8 @@ export function createLocalValedictorianClient({
       },
     },
   }
-
   return client
 }
-
 function composeTrustedConnectorAuth(
   profileRepository: ReturnType<typeof createSqliteProfileRepository>,
 ): AppConnectorAuthHost {
@@ -575,7 +545,6 @@ function composeTrustedConnectorAuth(
     },
   }
 }
-
 async function reconnectConnectorStatus({
   connectorRegistry,
   connectorRepository,
@@ -588,19 +557,15 @@ async function reconnectConnectorStatus({
   input: LocalConnectorStatusActionInput
 }): Promise<LocalConnectorReconnectActionResult> {
   const instance = await connectorRepository.getInstance(input.connectorInstanceId)
-
   if (!instance) {
     throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
   }
-
   const connector = connectorRegistry.get(instance.connectorId)
-
   if (connector && typeof connector.validateAuth === 'function') {
     const validation = await connectorRunner.validateAuth(connector, {
       connectorInstanceId: input.connectorInstanceId,
     })
     const grantMode = instance.auth[0]?.mode ?? connector.definition.auth?.requirements?.[0]?.mode ?? 'username_password'
-
     return {
       action: 'reconnect',
       connectorInstanceId: input.connectorInstanceId,
@@ -617,7 +582,6 @@ async function reconnectConnectorStatus({
       status: validation.status,
     }
   }
-
   return {
     action: 'reconnect',
     connectorInstanceId: input.connectorInstanceId,
@@ -627,21 +591,17 @@ async function reconnectConnectorStatus({
     status: 'unsupported',
   }
 }
-
 function mapValidationStatusToGrantStatus(
   status: AppConnectorAuthValidationResult['status'],
 ): AppConnectorAuthGrant['status'] {
   if (status === 'ready' || status === 'missing' || status === 'expired' || status === 'action_required') {
     return status
   }
-
   if (status === 'rate_limited' || status === 'retryable') {
     return 'action_required'
   }
-
   return 'action_required'
 }
-
 async function executeConnectorRunTrigger({
   connectorRegistry,
   connectorRepository,
@@ -663,23 +623,18 @@ async function executeConnectorRunTrigger({
 }): Promise<ConnectorRunRecord> {
   const startedAt = now().toISOString()
   const instance = await connectorRepository.getInstance(input.connectorInstanceId)
-
   if (!instance) {
     throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
   }
-
   const connector = connectorRegistry?.get(instance.connectorId) ?? null
-
   if (!connector) {
     throw new Error(`Unsupported connector id: ${instance.connectorId}`)
   }
-
   if (instance.connectorVersion !== connector.definition.version) {
     throw new Error(
       `Connector version mismatch for ${instance.connectorId}: expected ${connector.definition.version}`,
     )
   }
-
   const executionIntent = input.executionIntent ?? 'ordinary'
   const mode = 'manual'
   assertExecutableConnectorTrigger(input, executionIntent)
@@ -709,14 +664,11 @@ async function executeConnectorRunTrigger({
     filters,
     reason: input.reason,
   })
-
   if (!runRequestResult.acquired) {
     return runRequestResult.run
   }
-
   const runRequest = runRequestResult.run
   const acquiredWork = runRequestResult.acquiredWork
-
   const claim = await connectorRepository.claimQueuedRunToRunning({
     connectorRunId: runRequest.id,
     startedAt,
@@ -724,7 +676,6 @@ async function executeConnectorRunTrigger({
   if (!claim.claimed) {
     return claim.run
   }
-
   if (acquiredWork?.kind === 'normalization') {
     return dispatchAcquiredNormalizationWork({
       acquiredWork,
@@ -741,7 +692,6 @@ async function executeConnectorRunTrigger({
       coverageEndedAt,
     })
   }
-
   return executeClaimedConnectorRun({
     connectorRegistry,
     connectorRepository,
@@ -754,13 +704,11 @@ async function executeConnectorRunTrigger({
     startedAt,
   })
 }
-
 function toJsonRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
 }
-
 function assertExecutableConnectorTrigger(
   input: LocalConnectorInternalRunTriggerInput,
   executionIntent: NonNullable<LocalConnectorInternalRunTriggerInput['executionIntent']> | 'ordinary',
@@ -768,20 +716,16 @@ function assertExecutableConnectorTrigger(
   if (input.dryRun) {
     throw new Error('dryRun connector triggers are not supported for executed connector runs')
   }
-
   if (input.filters !== undefined || input.filterSignature !== undefined) {
     throw new Error('Per-run connector filter overrides are not supported for executed connector runs')
   }
-
   if (executionIntent === 'deferred_refresh') {
     return
   }
-
   if (!input.coverageEndedAt) {
     throw new Error('coverageEndedAt is required for manual connector runs')
   }
 }
-
 function validateSelectableEarliestBackfillDateOrThrow(
   candidate: string,
   createdAt: string,
@@ -797,7 +741,6 @@ function validateSelectableEarliestBackfillDateOrThrow(
   }
   return validated.value
 }
-
 function mapConnectorInstanceSummary(
   record: ConnectorInstanceRecord,
 ): LocalConnectorInstanceSummary {
@@ -815,21 +758,30 @@ function mapConnectorInstanceSummary(
     updatedAt: record.updatedAt,
   }
 }
-
 function mapLocalConnectorStatusSummary(
   record: ConnectorInstanceRecord & { latestRun: ConnectorRunRecord | null },
 ): LocalConnectorStatusSummary {
   const status = mapConnectorStatusSummary(record)
   const auth = record.auth.map(mapConnectorAuthSummary)
-
   return {
     ...status,
+    status: publicConnectorStatus(status.status),
+    actions: status.actions.map((action) => ({ id: action.id, label: action.label })),
+    warnings: status.warnings.map((warning) => ({ ...warning, label: warning.label ?? null })),
     connectorVersion: record.connectorVersion,
     auth,
     actionRequired: actionRequiredForStatus(status, auth),
   }
 }
-
+function publicConnectorStatus(status: ConnectorStatusView['status']): LocalConnectorStatusSummary['status'] {
+  const mappings: Record<ConnectorStatusView['status'], LocalConnectorStatusSummary['status']> = {
+    auth_required: 'authentication_required',
+    blocked: 'blocked', cancelled: 'cancelled', failed: 'failed', healthy: 'caught_up',
+    never_run: 'never_run', no_jobs: 'source_exhausted',
+    queued: 'queued', running: 'checking_newest', skipped: 'skipped',
+  }
+  return mappings[status]
+}
 function mapConnectorAuthSummary(reference: ConnectorAuthReference): LocalConnectorAuthSummary {
   return {
     id: reference.id,
@@ -838,19 +790,15 @@ function mapConnectorAuthSummary(reference: ConnectorAuthReference): LocalConnec
     configured: isConnectorAuthConfigured(reference),
   }
 }
-
 function isConnectorAuthConfigured(reference: ConnectorAuthReference): boolean {
   if (reference.mode === 'none') {
     return true
   }
-
   if (reference.mode === 'browser_session') {
     return typeof reference.sessionKey === 'string' && reference.sessionKey.trim().length > 0
   }
-
   return typeof reference.secretKey === 'string' && reference.secretKey.trim().length > 0
 }
-
 function actionRequiredForStatus(
   status: ConnectorStatusView,
   auth: LocalConnectorAuthSummary[],
@@ -866,9 +814,7 @@ function actionRequiredForStatus(
       },
     ]
   }
-
   const actions: LocalConnectorStatusSummary['actionRequired'] = []
-
   for (const warning of status.warnings) {
     if (warning.code === 'source.captcha') {
       actions.push({
@@ -880,7 +826,6 @@ function actionRequiredForStatus(
       })
       continue
     }
-
     if (warning.code === 'source.rate_limited') {
       actions.push({
         id: warning.code,
@@ -891,14 +836,12 @@ function actionRequiredForStatus(
       })
     }
   }
-
   return actions
 }
-
 function mapConnectorRunSummary(
   record: ConnectorRunRecord,
   scheduleOccurrence: ConnectorRunSummary['scheduleOccurrence'] = null,
-): ConnectorRunSummary {
+): LocalConnectorRunSummary {
   if (
     scheduleOccurrence
     && record.mode === 'scheduled'
@@ -907,9 +850,10 @@ function mapConnectorRunSummary(
     return {
       id: record.id,
       connectorInstanceId: record.connectorInstanceId,
+      executionScopeId: record.executionScopeId,
       mode: 'scheduled',
       scheduleOccurrence,
-      status: record.status,
+      status: publicRunStatus(record.status),
       coverage: {
         start: record.coverageStartedAt,
         end: record.coverageEndedAt,
@@ -917,6 +861,9 @@ function mapConnectorRunSummary(
       filterSignature: record.filterSignature,
       observationCount: record.observationCount,
       warningCount: record.warningCount,
+      ...runFrontiers(record),
+      pendingResolutionCount: pendingResolutionCount(record),
+      outcome: runOutcome(record),
       stats: record.stats,
       warnings: mapConnectorWarnings(record.warnings),
       retryHints: parseConnectorRetryAdvice(record.retryHints),
@@ -924,7 +871,6 @@ function mapConnectorRunSummary(
       completedAt: record.completedAt,
     }
   }
-
   if (
     scheduleOccurrence
     && record.mode === 'catch_up'
@@ -933,9 +879,10 @@ function mapConnectorRunSummary(
     return {
       id: record.id,
       connectorInstanceId: record.connectorInstanceId,
+      executionScopeId: record.executionScopeId,
       mode: 'catch_up',
       scheduleOccurrence,
-      status: record.status,
+      status: publicRunStatus(record.status),
       coverage: {
         start: record.coverageStartedAt,
         end: record.coverageEndedAt,
@@ -943,6 +890,9 @@ function mapConnectorRunSummary(
       filterSignature: record.filterSignature,
       observationCount: record.observationCount,
       warningCount: record.warningCount,
+      ...runFrontiers(record),
+      pendingResolutionCount: pendingResolutionCount(record),
+      outcome: runOutcome(record),
       stats: record.stats,
       warnings: mapConnectorWarnings(record.warnings),
       retryHints: parseConnectorRetryAdvice(record.retryHints),
@@ -950,13 +900,13 @@ function mapConnectorRunSummary(
       completedAt: record.completedAt,
     }
   }
-
   return {
     id: record.id,
     connectorInstanceId: record.connectorInstanceId,
+    executionScopeId: record.executionScopeId,
     mode: 'manual',
     scheduleOccurrence: null,
-    status: record.status,
+    status: publicRunStatus(record.status),
     coverage: {
       start: record.coverageStartedAt,
       end: record.coverageEndedAt,
@@ -964,6 +914,9 @@ function mapConnectorRunSummary(
     filterSignature: record.filterSignature,
     observationCount: record.observationCount,
     warningCount: record.warningCount,
+    ...runFrontiers(record),
+    pendingResolutionCount: pendingResolutionCount(record),
+    outcome: runOutcome(record),
     stats: record.stats,
     warnings: mapConnectorWarnings(record.warnings),
     retryHints: parseConnectorRetryAdvice(record.retryHints),
@@ -971,34 +924,6 @@ function mapConnectorRunSummary(
     completedAt: record.completedAt,
   }
 }
-
-function parseConnectorRetryAdvice(value: unknown): RetryAdvice | null {
-  if (value === null || value === undefined) return null
-  return retryAdviceSchema.parse(value)
-}
-
-function mapConnectorCheckpoint(record: ConnectorCheckpointRecord) {
-  return {
-    connectorInstanceId: record.connectorInstanceId,
-    filterSignature: record.filterSignature,
-    checkpoint: record.checkpoint,
-    schemaVersion: record.schemaVersion,
-    coverage: {
-      start: record.coverageStartedAt,
-      end: record.coverageEndedAt,
-    },
-  }
-}
-
-function mapConnectorObservation(record: ConnectorObservationRecord): ConnectorObservation {
-  return {
-    ...record,
-    locationRaw: record.locationRaw ?? null,
-    descriptionText: record.descriptionText ?? null,
-    pay: record.pay ?? null,
-  }
-}
-
 function mapConnectorAuthReferenceInputs(
   references: ConnectorAuthReferenceInput[] | undefined,
 ): ConnectorAuthReference[] | undefined {
@@ -1010,15 +935,12 @@ function mapConnectorAuthReferenceInputs(
     ...(reference.sessionKey === undefined ? {} : { sessionKey: reference.sessionKey }),
   }))
 }
-
 function toConnectorJsonRecord(value: unknown, fieldName: string): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>
   }
-
   throw new Error(`Invalid connector ${fieldName}`)
 }
-
 function seedLocalData(
   database: ReturnType<typeof createDrizzleDatabase>,
   {
@@ -1029,23 +951,19 @@ function seedLocalData(
   if (seedDataMode === 'none') {
     return
   }
-
   if (database.select().from(applications).limit(1).get()) {
     return
   }
-
   if (seedDataMode === 'sample') {
     seedSampleApplications(database)
     seedSampleSourcingFindings(database)
     return
   }
-
   seedReferenceTrackerApplications(
     database,
     fs.readFileSync(requireReferenceTrackerPath(referenceTrackerPath), 'utf8'),
   )
 }
-
 function assertSeedOptions({
   referenceTrackerPath,
   seedDataMode,
@@ -1056,13 +974,11 @@ function assertSeedOptions({
     )
   }
 }
-
 function requireReferenceTrackerPath(referenceTrackerPath: string | undefined) {
   if (!referenceTrackerPath) {
     throw new Error(
       'VALEDICTORIAN_REFERENCE_TRACKER_PATH is required when VALEDICTORIAN_SEED_DATA=reference-tracker',
     )
   }
-
   return referenceTrackerPath
 }

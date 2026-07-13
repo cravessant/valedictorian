@@ -70,13 +70,14 @@ describe('connector repository earliest backfill date persistence', () => {
   it('fails closed when a persisted earliest backfill date is missing or invalid', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
+    sqlite.prepare("insert into source_execution_scopes (id, created_at, updated_at) values ('scope-broken-earliest', '2026-07-11T15:30:00.000Z', '2026-07-11T15:30:00.000Z')").run()
     sqlite.prepare(`
       insert into connector_instances (
-        id, connector_id, connector_version, display_name, enabled,
+        id, execution_scope_id, connector_id, connector_version, display_name, enabled,
         config_json, auth_json, filters_json, earliest_backfill_date,
         created_at, updated_at, deleted_at
       ) values (
-        'broken-earliest', 'fixture.jobs', '1.0.0', 'Broken', 1,
+        'broken-earliest', 'scope-broken-earliest', 'fixture.jobs', '1.0.0', 'Broken', 1,
         '{}', '[]', '{}', null,
         '2026-07-11T15:30:00.000Z', '2026-07-11T15:30:00.000Z', null
       )
