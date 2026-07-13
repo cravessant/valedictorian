@@ -17,6 +17,12 @@ import {
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 })
 
 afterEach(() => {
@@ -165,6 +171,37 @@ describe('responsive app chrome', () => {
     })
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'expanded')
     expect(screen.getByRole('complementary', { name: 'Application navigation' })).toBeInTheDocument()
+  })
+
+  it('shows a delayed tooltip for the sidebar toggle on focus and dismisses it with Escape', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+        workspaceApi={createWorkspaceApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    const toggle = screen.getByRole('button', { name: 'Collapse sidebar' })
+    expect(toggle).toHaveClass('app-no-drag', 'h-7', 'w-7')
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    toggle.focus()
+    expect(toggle).toHaveFocus()
+    expect(await screen.findByRole('tooltip', {}, { timeout: 1500 })).toHaveTextContent(
+      'Collapse sidebar',
+    )
+
+    fireEvent.keyDown(toggle, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toHaveFocus()
+
+    fireEvent.click(toggle)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
+    })
   })
 
 })

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useToast } from '@/components/ui/use-toast'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
@@ -900,8 +901,9 @@ function App({
   }
 
   return (
-    <AppShell
-            actionQueueBucket={actionQueueBucket}
+    <TooltipProvider delayDuration={500}>
+      <AppShell
+      actionQueueBucket={actionQueueBucket}
       actionQueueError={actionQueueError}
       actionQueueOffset={actionQueueOffset}
       actionQueueResult={actionQueueResult}
@@ -1009,7 +1011,8 @@ function App({
       windowChromeState={windowChromeState}
       workspace={workspace}
       workspaceApi={workspaceApi}
-    />
+      />
+    </TooltipProvider>
   )
 }
 

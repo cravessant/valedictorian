@@ -5,6 +5,11 @@ import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -36,16 +41,23 @@ function AppTopbar({
         isFullScreen ? 'pl-3' : 'pl-[4.75rem]'
       }`}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="app-no-drag h-7 w-7 shrink-0 border border-border/70 bg-card/70 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        onClick={onToggleSidebar}
-      >
-        <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="app-no-drag h-7 w-7 shrink-0 border border-border/70 bg-card/70 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            onClick={onToggleSidebar}
+          >
+            <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        </TooltipContent>
+      </Tooltip>
       <div className="min-w-0 truncate text-sm font-semibold leading-none text-foreground">{title}</div>
       <UpdateStatusControl
         onCheck={onCheckForUpdates}
@@ -326,15 +338,20 @@ function SettingsPopover({
                 </code>
               </p>
             </div>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label="Close settings"
-              onClick={onClose}
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Close settings"
+                  onClick={onClose}
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Close settings</TooltipContent>
+            </Tooltip>
           </div>
 
           <div className="divide-y divide-border rounded-md border border-border bg-card/80">

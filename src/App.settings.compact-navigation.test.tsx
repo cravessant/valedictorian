@@ -18,6 +18,12 @@ import {
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 })
 
 afterEach(() => {
@@ -222,6 +228,35 @@ describe('compact navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close settings' }))
 
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
+  })
+
+  it('shows a delayed tooltip for close-settings on focus and dismisses it with Escape', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    const close = screen.getByRole('button', { name: 'Close settings' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    close.focus()
+    expect(close).toHaveFocus()
+    expect(await screen.findByRole('tooltip', {}, { timeout: 1500 })).toHaveTextContent(
+      'Close settings',
+    )
+
+    fireEvent.keyDown(close, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close settings' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
+
+    fireEvent.click(close)
     expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
   })
 
