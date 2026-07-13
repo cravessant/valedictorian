@@ -1,9 +1,16 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Cable } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type {
   ConnectorStatusAction,
@@ -109,9 +116,22 @@ function ConnectorStatusPage({
             </div>
           </section>
         ) : !isLoading && !error ? (
-          <section className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
-            No enabled connectors.
-          </section>
+          <Empty
+            aria-label="Empty connector status"
+            className="min-h-[11.25rem] flex-none gap-4 rounded-md border border-solid border-border bg-card p-6 md:min-h-[13.5rem] md:max-h-60 md:p-8"
+          >
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Cable aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>
+                <h2>No enabled connectors</h2>
+              </EmptyTitle>
+              <EmptyDescription>
+                Enable a connector to monitor refresh health here.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : null}
       </section>
     </main>

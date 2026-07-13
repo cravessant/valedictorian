@@ -4,12 +4,19 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { fieldControlId } from '@/lib/field-control-id'
-import { AlertCircle, Ban, Pencil } from 'lucide-react'
+import { AlertCircle, Ban, Pencil, Search } from 'lucide-react'
 import {
   sourcingMergeStatuses,
   sourcingDestinationClasses,
@@ -311,9 +318,20 @@ function SourcingPage({
             </div>
           </section>
         ) : !isLoading && !error ? (
-          <section className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
-            No sourcing findings match the current filters.
-          </section>
+          <Empty
+            aria-label="Empty sourcing findings"
+            className="min-h-[11.25rem] flex-none gap-4 rounded-md border border-solid border-border bg-card p-6 md:min-h-[13.5rem] md:max-h-60 md:p-8"
+          >
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Search aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>
+                <h2>No sourcing findings</h2>
+              </EmptyTitle>
+              <EmptyDescription>No findings match the current filters.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : null}
         {addingFinding ? (
           <SourcingFindingEditorModal

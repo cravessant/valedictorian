@@ -9,7 +9,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { AlertCircle } from 'lucide-react'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { AlertCircle, History } from 'lucide-react'
 import { retryAdviceSchema } from 'sparxie'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
@@ -245,9 +252,22 @@ export function ConnectorRunsPanel({
         </p>
       ) : null}
       {!isLoading && !error && items.length === 0 ? (
-        <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-          No connector runs recorded yet.
-        </p>
+        <Empty
+          aria-label="Empty connector runs"
+          className="flex-none gap-3 rounded-md border border-solid border-border bg-card p-6"
+        >
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <History aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>
+              <h3>No connector runs yet</h3>
+            </EmptyTitle>
+            <EmptyDescription>
+              Start a connector run to see progress and results here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : null}
       {items.length > 0 ? (
         <div className="space-y-3" aria-label="Connector run history">

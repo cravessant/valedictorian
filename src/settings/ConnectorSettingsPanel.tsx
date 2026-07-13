@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { AlertCircle } from 'lucide-react'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { AlertCircle, Cable } from 'lucide-react'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
@@ -712,63 +719,76 @@ export function ConnectorSettingsPanel({
         </div>
       </div>
 
-      <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-        {instances.length === 0 ? (
-          'No connector instances configured.'
-        ) : (
-          <>
-            <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
-            <div className="divide-y divide-border rounded-md border border-border">
-              {instances.map((instance) => {
-                const scheduleState = scheduleStates[instance.id] ?? createInitialInstanceScheduleState()
-                return (
-                <ConnectorSettingsInstanceCard
-                  key={instance.id}
-                  instance={instance}
-                  authState={authStates[instance.id] ?? { kind: 'idle' as const }}
-                  draft={drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)}
-                  credentialDraft={credentialDrafts[instance.id] ?? { email: '', password: '' }}
-                  isEditingAuth={editingAuthInstanceId === instance.id}
-                  latestRun={latestRuns[instance.id]}
-                  latestRunStatus={latestRunStatuses[instance.id]}
-                  isSavingSettings={savingInstanceIds.has(instance.id)}
-                  authenticatingInstanceId={authenticatingInstanceId}
-                  runningInstanceId={runningInstanceId}
-                  schedulingCapability={schedulingCapability}
-                  capabilityLoadError={capabilityLoadError}
-                  scheduleCanonical={scheduleState.canonical}
-                  scheduleDraft={scheduleState.draft}
-                  scheduleIsDirty={isScheduleDraftDirty(
-                    scheduleState.draft,
-                    scheduleState.canonical,
-                  )}
-                  scheduleIsLoading={scheduleState.isLoading && Boolean(schedulingCapability?.available)}
-                  scheduleIsSaving={scheduleState.isSaving}
-                  scheduleStatusMessage={scheduleState.statusMessage}
-                  scheduleStatusTone={scheduleState.statusTone}
-                  onBeginCredentialEdit={beginCredentialEdit}
-                  onCancelCredentialEdit={cancelCredentialEdit}
-                  onUpdateCredentialDraft={updateCredentialDraft}
-                  onSaveAndValidateCredentials={saveAndValidateJobrightCredentials}
-                  onRevalidateCredentials={revalidateJobrightCredentials}
-                  onUpdateDraft={updateDraft}
-                  onSaveSettings={saveConnectorSettings}
-                  onDiscardSettings={discardConnectorSettings}
-                  onRunNow={runConnectorNow}
-                  isDraftDirty={isConnectorSettingsDraftDirty}
-                  onOpenSourcingRuns={onOpenSourcingRuns}
-                  onScheduleDraftChange={updateScheduleDraft}
-                  onSaveSchedule={saveConnectorSchedule}
-                  onDiscardSchedule={discardConnectorSchedule}
-                  onPauseSchedule={pauseConnectorSchedule}
-                  onResumeSchedule={resumeConnectorSchedule}
-                />
-                )
-              })}
-            </div>
-          </>
-        )}
-      </div>
+      {instances.length === 0 ? (
+        <Empty
+          aria-label="Empty connector instances"
+          className="flex-none gap-3 rounded-md border border-solid border-border bg-card p-6"
+        >
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Cable aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>
+              <h3>No connector instances</h3>
+            </EmptyTitle>
+            <EmptyDescription>
+              Add the Jobright connector above to configure authentication and schedules.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+          <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
+          <div className="divide-y divide-border rounded-md border border-border">
+            {instances.map((instance) => {
+              const scheduleState = scheduleStates[instance.id] ?? createInitialInstanceScheduleState()
+              return (
+              <ConnectorSettingsInstanceCard
+                key={instance.id}
+                instance={instance}
+                authState={authStates[instance.id] ?? { kind: 'idle' as const }}
+                draft={drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)}
+                credentialDraft={credentialDrafts[instance.id] ?? { email: '', password: '' }}
+                isEditingAuth={editingAuthInstanceId === instance.id}
+                latestRun={latestRuns[instance.id]}
+                latestRunStatus={latestRunStatuses[instance.id]}
+                isSavingSettings={savingInstanceIds.has(instance.id)}
+                authenticatingInstanceId={authenticatingInstanceId}
+                runningInstanceId={runningInstanceId}
+                schedulingCapability={schedulingCapability}
+                capabilityLoadError={capabilityLoadError}
+                scheduleCanonical={scheduleState.canonical}
+                scheduleDraft={scheduleState.draft}
+                scheduleIsDirty={isScheduleDraftDirty(
+                  scheduleState.draft,
+                  scheduleState.canonical,
+                )}
+                scheduleIsLoading={scheduleState.isLoading && Boolean(schedulingCapability?.available)}
+                scheduleIsSaving={scheduleState.isSaving}
+                scheduleStatusMessage={scheduleState.statusMessage}
+                scheduleStatusTone={scheduleState.statusTone}
+                onBeginCredentialEdit={beginCredentialEdit}
+                onCancelCredentialEdit={cancelCredentialEdit}
+                onUpdateCredentialDraft={updateCredentialDraft}
+                onSaveAndValidateCredentials={saveAndValidateJobrightCredentials}
+                onRevalidateCredentials={revalidateJobrightCredentials}
+                onUpdateDraft={updateDraft}
+                onSaveSettings={saveConnectorSettings}
+                onDiscardSettings={discardConnectorSettings}
+                onRunNow={runConnectorNow}
+                isDraftDirty={isConnectorSettingsDraftDirty}
+                onOpenSourcingRuns={onOpenSourcingRuns}
+                onScheduleDraftChange={updateScheduleDraft}
+                onSaveSchedule={saveConnectorSchedule}
+                onDiscardSchedule={discardConnectorSchedule}
+                onPauseSchedule={pauseConnectorSchedule}
+                onResumeSchedule={resumeConnectorSchedule}
+              />
+              )
+            })}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

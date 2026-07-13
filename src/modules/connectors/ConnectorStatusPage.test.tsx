@@ -1,7 +1,9 @@
-import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConnectorStatusPage } from './ConnectorStatusPage'
 import type { ConnectorStatusView } from './connector.status'
+
+afterEach(cleanup)
 
 describe('ConnectorStatusPage', () => {
   it('renders connector run status, auth blockers, and action affordances without sensitive text', () => {
@@ -82,6 +84,28 @@ describe('ConnectorStatusPage', () => {
     expect(screen.getByText('Unavailable')).toBeInTheDocument()
     expect(screen.queryByText('0 enabled')).not.toBeInTheDocument()
     expect(screen.queryByText('No enabled connectors.')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Empty connector status')).not.toBeInTheDocument()
+  })
+
+  it('renders Empty when connectors are available but none are enabled', () => {
+    render(
+      <ConnectorStatusPage
+        contentColumnClass=""
+        error={null}
+        isLoading={false}
+        result={{ available: true, items: [] }}
+        onAction={vi.fn()}
+      />,
+    )
+
+    const empty = screen.getByLabelText('Empty connector status')
+    expect(empty).toHaveAttribute('data-slot', 'empty')
+    expect(within(empty).getByRole('heading', { name: 'No enabled connectors' })).toBeInTheDocument()
+    expect(
+      within(empty).getByText('Enable a connector to monitor refresh health here.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('0 enabled')).toBeInTheDocument()
+    expect(screen.queryByText('Connector status is unavailable for this runtime.')).not.toBeInTheDocument()
   })
 
   it('shows full typed retry guidance for a skipped not-due run', () => {

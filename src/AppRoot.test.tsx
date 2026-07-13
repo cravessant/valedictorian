@@ -113,7 +113,11 @@ describe('AppRoot workspace gate', () => {
       'pt-32',
     )
     expect(screen.getByRole('heading', { name: 'Valedictorian' })).toHaveClass('text-2xl')
-    expect(screen.getByText('No recent workspaces')).not.toHaveClass('border')
+    const recentEmpty = screen.getByText('No recent workspaces')
+    expect(recentEmpty).not.toHaveClass('border')
+    expect(recentEmpty).toHaveClass('px-2', 'py-2', 'text-sm', 'text-muted-foreground')
+    expect(recentEmpty.closest('[data-slot="empty"]')).toBeNull()
+    expect(screen.queryByLabelText(/Empty/i)).not.toBeInTheDocument()
     expect(container.querySelector('.lucide-gem')).toBeNull()
   })
 

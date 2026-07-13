@@ -916,7 +916,8 @@ describe('App', () => {
       resolveConnectorStatus(createConnectorStatusResult([]))
     })
 
-    expect(await screen.findByText('No enabled connectors.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No enabled connectors' })).toBeInTheDocument()
+    expect(screen.getByText('Enable a connector to monitor refresh health here.')).toBeInTheDocument()
   })
 
   it('lets users edit the underlying application from an action queue row and reloads action queue', async () => {

@@ -2,9 +2,16 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AlertCircle, ExternalLink, Pencil } from 'lucide-react'
+import { AlertCircle, ExternalLink, Inbox, Pencil } from 'lucide-react'
 import { actionQueueBuckets, type ActionQueueBucket, type ActionQueueListItem, type ActionQueueListResult } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
 import { formatEnumLabel } from '../../app/labels'
@@ -155,9 +162,20 @@ function ActionQueuePage({
             </Table>
           </section>
         ) : !isLoading && !error ? (
-          <section className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
-            No action queue items match the current bucket.
-          </section>
+          <Empty
+            aria-label="Empty action queue"
+            className="min-h-[11.25rem] flex-none gap-4 rounded-md border border-solid border-border bg-card p-6 md:min-h-[13.5rem] md:max-h-60 md:p-8"
+          >
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Inbox aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>
+                <h2>No action queue items</h2>
+              </EmptyTitle>
+              <EmptyDescription>No items match the current bucket.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : null}
       </section>
     </main>
