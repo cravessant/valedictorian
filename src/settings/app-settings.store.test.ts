@@ -28,6 +28,7 @@ describe('file app settings store', () => {
         runtimeMode: 'remote',
         sidebarCollapsed: true,
         showAdvancedFilters: true,
+        showDebugData: true,
       }),
     ).resolves.toMatchObject({
       localApiHost: '127.0.0.1',
@@ -36,28 +37,32 @@ describe('file app settings store', () => {
       runtimeMode: 'remote',
       sidebarCollapsed: true,
       showAdvancedFilters: true,
+      showDebugData: true,
     })
 
     expect(JSON.parse(fs.readFileSync(settingsPath, 'utf8'))).toMatchObject({
       remoteApiUrl: 'https://valedictorian.test',
       runtimeMode: 'remote',
       showAdvancedFilters: true,
+      showDebugData: true,
     })
     await expect(createFileAppSettingsStore(settingsPath).get()).resolves.toMatchObject({
       remoteApiUrl: 'https://valedictorian.test',
       runtimeMode: 'remote',
       sidebarCollapsed: true,
       showAdvancedFilters: true,
+      showDebugData: true,
     })
   })
 
-  it('resets persisted settings to defaults', async () => {
+  it('resets persisted settings including showDebugData to defaults', async () => {
     const store = createFileAppSettingsStore(createTempSettingsPath())
 
-    await store.update({ localApiHost: '0.0.0.0', runtimeMode: 'local-shared' })
+    await store.update({ localApiHost: '0.0.0.0', runtimeMode: 'local-shared', showDebugData: true })
 
     await expect(store.reset()).resolves.toEqual(defaultAppSettings)
     await expect(store.get()).resolves.toEqual(defaultAppSettings)
+    await expect(store.get()).resolves.toMatchObject({ showDebugData: false })
   })
 
   it('falls back to defaults for invalid JSON', async () => {

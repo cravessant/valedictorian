@@ -304,6 +304,9 @@ export function SettingsPage({
           {selectedPanel === SETTINGS_PANELS.POLICY ? (
             <PolicySettingsPanel policyApi={policyApi} />
           ) : null}
+          {selectedPanel === SETTINGS_PANELS.ADVANCED ? (
+            <DeveloperSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
+          ) : null}
           {!isFunctionalSettingsPanel(selectedPanel) ? (
             <ComingLaterSettingsPanel label={selectedLabel} />
           ) : null}
@@ -563,6 +566,35 @@ function AppearanceSettingsPanel({
   )
 }
 
+function DeveloperSettingsPanel({
+  settings,
+  onSettingsPatch,
+}: {
+  settings: AppSettings
+  onSettingsPatch: (patch: AppSettingsPatch) => void
+}) {
+  return (
+    <section aria-labelledby="developer-settings-title" className="space-y-7">
+      <div>
+        <h2 id="developer-settings-title" className={typography.sectionTitle}>
+          Developer settings
+        </h2>
+        <p className={typography.sectionDescription}>
+          Reveal advanced diagnostic identifiers and connector run internals when troubleshooting.
+        </p>
+      </div>
+
+      <SettingsToggleRow
+        checked={settings.showDebugData}
+        description="Show raw workflow and application ids plus connector lifecycle diagnostics."
+        icon={<KeyRound className="h-4 w-4" aria-hidden="true" />}
+        label="Show debug data"
+        onChange={(checked) => onSettingsPatch({ showDebugData: checked })}
+      />
+    </section>
+  )
+}
+
 function ComingLaterSettingsPanel({ label }: { label: string }) {
   return (
     <section className="rounded-md border border-border bg-card p-5">
@@ -618,6 +650,7 @@ function isFunctionalSettingsPanel(panel: SettingsPanelId) {
     panel === SETTINGS_PANELS.AGENT_ACCESS ||
     panel === SETTINGS_PANELS.APPEARANCE ||
     panel === SETTINGS_PANELS.POLICY ||
+    panel === SETTINGS_PANELS.ADVANCED ||
     panel === SETTINGS_PANELS.DATA
   )
 }

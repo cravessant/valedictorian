@@ -313,6 +313,7 @@ export function AppShell({
               <ConnectorRunsPanel
                 connectorsApi={connectorsApi}
                 focusedRunId={focusedConnectorRunId}
+                showDebugData={settings.showDebugData}
               />
             </div>
           </main>
@@ -325,6 +326,7 @@ export function AppShell({
             destinationClass={sourcingDestinationClass}
             promotingFindingId={promotingFindingId}
             result={sourcingResult}
+            showDebugData={settings.showDebugData}
             sourceId={sourcingSourceId}
             usability={sourcingUsability}
             onCreateFinding={async (input) => {

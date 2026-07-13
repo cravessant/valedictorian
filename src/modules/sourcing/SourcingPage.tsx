@@ -60,6 +60,7 @@ interface SourcingPageProps {
   destinationClass: SourcingDestinationClass | undefined
   promotingFindingId: string | null
   result: SourcingFindingsListResult
+  showDebugData: boolean
   sourceId: string
   usability: SourcingUsability | undefined
   onCreateFinding: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
@@ -83,6 +84,7 @@ function SourcingPage({
   destinationClass,
   promotingFindingId,
   result,
+  showDebugData,
   sourceId,
   usability,
   onCreateFinding,
@@ -313,6 +315,7 @@ function SourcingPage({
                       key={item.id}
                       item={item}
                       isPromoting={promotingFindingId === item.id}
+                      showDebugData={showDebugData}
                       onDecideFinding={setDecidingFinding}
                       onEditFinding={setEditingFinding}
                       onOpenApplication={onOpenApplication}
@@ -369,6 +372,7 @@ function SourcingPage({
 function SourcingFindingRow({
   item,
   isPromoting,
+  showDebugData,
   onDecideFinding,
   onEditFinding,
   onOpenApplication,
@@ -376,6 +380,7 @@ function SourcingFindingRow({
 }: {
   item: SourcingFinding
   isPromoting: boolean
+  showDebugData: boolean
   onDecideFinding: (finding: SourcingFinding) => void
   onEditFinding: (finding: SourcingFinding) => void
   onOpenApplication: (application: ApplicationDetailSeed) => void
@@ -385,6 +390,11 @@ function SourcingFindingRow({
     (item.mergeStatus === 'new' && item.usability !== 'review_only') ||
     (item.mergeStatus === 'blocked' && item.policyBlocker === 'third_party_destination')
   const decision = getSourcingDecision(item)
+  const mergedApplicationLabel = formatMergedApplicationLabel(item)
+  const showMergedApplicationLink = Boolean(item.mergedApplicationId) && !canPromote
+  const showRawMergedApplicationId = Boolean(item.mergedApplicationId) && (
+    showDebugData || (!mergedApplicationLabel && !showMergedApplicationLink)
+  )
 
   return (
     <TableRow>
@@ -413,7 +423,9 @@ function SourcingFindingRow({
         </div>
       </TableCell>
       <TableCell>
-        <span className="font-mono text-xs text-muted-foreground">{item.workflowRunId}</span>
+        {showDebugData ? (
+          <span className="font-mono text-xs text-muted-foreground">{item.workflowRunId}</span>
+        ) : null}
       </TableCell>
       <TableCell>
         <span className="block min-w-44 text-muted-foreground">
@@ -445,11 +457,11 @@ function SourcingFindingRow({
               item.blocker ??
               'None'}
           </span>
-          {item.mergedApplicationId ? (
+          {showRawMergedApplicationId ? (
             <span className="font-mono text-xs">{item.mergedApplicationId}</span>
           ) : null}
-          {formatMergedApplicationLabel(item) ? (
-            <span className="text-xs">{formatMergedApplicationLabel(item)}</span>
+          {mergedApplicationLabel ? (
+            <span className="text-xs">{mergedApplicationLabel}</span>
           ) : null}
         </div>
       </TableCell>

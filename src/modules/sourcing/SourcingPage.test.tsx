@@ -17,6 +17,7 @@ describe('SourcingPage', () => {
         destinationClass={undefined}
         promotingFindingId={null}
         result={createSourcingResult([])}
+        showDebugData={false}
         sourceId=""
         usability={undefined}
         onCreateFinding={vi.fn()}

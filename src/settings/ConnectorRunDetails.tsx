@@ -18,7 +18,13 @@ export function connectorRunMetrics(run: ConnectorSettingsRun): Array<{ label: s
   return metrics.filter((metric): metric is { label: string; value: number } => metric !== null)
 }
 
-export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRun }) {
+export function ConnectorRunLifecycleDetails({
+  run,
+  showDebugData = false,
+}: {
+  run: ConnectorSettingsRun
+  showDebugData?: boolean
+}) {
   const [showExplanation, setShowExplanation] = useState(false)
   const stats = recordFromUnknown(run.stats)
   const lifecycle = connectorRunLifecycleCounts(stats.lifecycleCounts, run.id)
@@ -39,6 +45,8 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
     || stringFromUnknown(recordFromUnknown(run.retryHints).stopReason)
   const earliestBackfillDate = utcDateOnlyFromCoverageStart(run.coverage.start)
   const capReached = stopReason === 'coverage_start_reached'
+  const showLifecycleDiagnostics = showDebugData && lifecycle !== null
+  const showReconciliationWarning = showLifecycleDiagnostics && hasLifecycleReconciliationWarning(lifecycle)
 
   return (
     <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 text-xs">
@@ -64,13 +72,15 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
         <>
           <div>
             <p className="font-semibold text-foreground">Unique jobs in this connector run</p>
-            <p className="mt-1 text-muted-foreground">
-              {lifecycle.source === 'frozen_terminal'
-                ? 'Frozen at terminal completion.'
-                : lifecycle.source === 'live_current'
-                  ? 'Live counts derived from current persisted lineage.'
-                  : 'Derived from current persisted lineage for a pre-feature terminal run.'}
-            </p>
+            {showLifecycleDiagnostics ? (
+              <p className="mt-1 text-muted-foreground">
+                {lifecycle.source === 'frozen_terminal'
+                  ? 'Frozen at terminal completion.'
+                  : lifecycle.source === 'live_current'
+                    ? 'Live counts derived from current persisted lineage.'
+                    : 'Derived from current persisted lineage for a pre-feature terminal run.'}
+              </p>
+            ) : null}
           </div>
           <div className="grid gap-3 md:grid-cols-3" aria-label="Run lifecycle counts">
             <RunCountStage title="Provider intake" values={[
@@ -97,25 +107,19 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
               ['Actionable review', lifecycle.sourcing.actionableReview],
             ]} />
           </div>
-          {lifecycle.provider.invariant !== 'reconciled'
-            || lifecycle.destination.invariant !== 'reconciled'
-            || lifecycle.sourcing.invariant !== 'reconciled'
-            || lifecycle.provider.captureShortfall > 0
-            || lifecycle.provider.unclassifiedRows > 0
-            || lifecycle.destination.unclassified > 0
-            || lifecycle.sourcing.unclassified > 0 ? (
+          {showReconciliationWarning ? (
               <p className="font-medium text-warning">
                 Some persisted rows do not reconcile; shortfalls and unclassified records remain visible in the count explanation.
               </p>
             ) : null}
-          {providerGaps.length > 0 ? (
+          {showDebugData && providerGaps.length > 0 ? (
             <p className="font-medium text-warning">
               Provider stats gaps: {providerGaps.map(formatProviderStatsGap).join(', ')}.
             </p>
           ) : null}
         </>
       ) : null}
-      {carried.length > 0 ? (
+      {showDebugData && carried.length > 0 ? (
         <div>
           <p className="font-semibold text-foreground">Carried connector cycle</p>
           <p className="mt-1 text-muted-foreground">
@@ -128,17 +132,19 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
           </div>
         </div>
       ) : null}
-      <Button
-        aria-expanded={showExplanation}
-        className="w-fit"
-        size="sm"
-        type="button"
-        variant="outline"
-        onClick={() => setShowExplanation((shown) => !shown)}
-      >
-        How these counts work
-      </Button>
-      {showExplanation ? (
+      {showDebugData ? (
+        <Button
+          aria-expanded={showExplanation}
+          className="w-fit"
+          size="sm"
+          type="button"
+          variant="outline"
+          onClick={() => setShowExplanation((shown) => !shown)}
+        >
+          How these counts work
+        </Button>
+      ) : null}
+      {showDebugData && showExplanation ? (
         <div className="grid gap-1 text-muted-foreground">
           <p>Every primary count is scoped to unique jobs captured by this connector run id.</p>
           <p>Returned rows equal valid unique records plus invalid rows plus source duplicates when provider totals reconcile.</p>
@@ -194,6 +200,16 @@ function connectorRunLifecycleCounts(
     return null
   }
   return lifecycle as unknown as ConnectorRunLifecycleCounts
+}
+
+function hasLifecycleReconciliationWarning(lifecycle: ConnectorRunLifecycleCounts) {
+  return lifecycle.provider.invariant !== 'reconciled'
+    || lifecycle.destination.invariant !== 'reconciled'
+    || lifecycle.sourcing.invariant !== 'reconciled'
+    || lifecycle.provider.captureShortfall > 0
+    || lifecycle.provider.unclassifiedRows > 0
+    || lifecycle.destination.unclassified > 0
+    || lifecycle.sourcing.unclassified > 0
 }
 
 export function ConnectorRunProgressDetails({ run }: { run: ConnectorSettingsRun }) {

@@ -114,9 +114,11 @@ type FocusedConnectorRunLookup =
 export function ConnectorRunsPanel({
   connectorsApi,
   focusedRunId = null,
+  showDebugData = false,
 }: {
   connectorsApi: ConnectorsPreloadApi
   focusedRunId?: string | null
+  showDebugData?: boolean
 }) {
   const [items, setItems] = useState<ConnectorRunHistoryItem[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -305,7 +307,7 @@ export function ConnectorRunsPanel({
                   </CardHeader>
                   <CardContent className="space-y-3 px-0">
                     <ConnectorRunProgressDetails run={run} />
-                    <ConnectorRunLifecycleDetails run={run} />
+                    <ConnectorRunLifecycleDetails run={run} showDebugData={showDebugData} />
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       {connectorRunMetrics(run).map((metric) => (
                         <span key={metric.label}>{metric.label}: {metric.value}</span>

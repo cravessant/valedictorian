@@ -117,7 +117,7 @@ describe('connector-run progress and history', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
         profileApi={profileApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -174,7 +174,7 @@ describe('connector-run progress and history', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
         profileApi={profileApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -206,7 +206,7 @@ describe('connector-run progress and history', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
         profileApi={profileApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -279,7 +279,7 @@ describe('connector-run progress and history', () => {
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -365,7 +365,7 @@ describe('connector-run progress and history', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
         profileApi={profileApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -492,7 +492,7 @@ describe('connector-run progress and history', () => {
     render(<App
       applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
       connectorsApi={connectorsApi}
-      settingsApi={createSettingsApi()}
+      settingsApi={createSettingsApi({ showDebugData: true })}
     />)
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
@@ -595,7 +595,7 @@ describe('connector-run progress and history', () => {
     render(<App
       applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
       connectorsApi={connectorsApi}
-      settingsApi={createSettingsApi()}
+      settingsApi={createSettingsApi({ showDebugData: true })}
     />)
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
@@ -689,7 +689,7 @@ describe('connector-run progress and history', () => {
     render(<App
       applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
       connectorsApi={connectorsApi}
-      settingsApi={createSettingsApi()}
+      settingsApi={createSettingsApi({ showDebugData: true })}
     />)
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
