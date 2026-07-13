@@ -63,6 +63,31 @@ describe('connectors IPC registration', () => {
     const list = vi.fn(async () => ({ items: [] }))
     const create = vi.fn(async (input: unknown) => ({ id: 'connector-instance', input }))
     const update = vi.fn(async (input: unknown) => ({ id: 'connector-instance', input }))
+    const remove = vi.fn(async () => ({
+      connectorInstanceId: 'connector-instance',
+      lifecycle: 'retired' as const,
+      retiredAt: '2026-07-13T16:00:00.000Z',
+      requirements: {
+        connectorImplementation: 'not_required' as const,
+        authenticationValidation: 'not_required' as const,
+      },
+      disposition: {
+        configuration: 'removed' as const,
+        schedule: 'removed' as const,
+        checkpoints: 'preserved' as const,
+        executionScopes: 'preserved' as const,
+        futureExecution: 'blocked' as const,
+        authReferences: 'removed' as const,
+        secretValues: 'preserved_for_workspace_secret_administration' as const,
+      },
+      preservedLineage: {
+        connectorRuns: true as const,
+        rawSourceRecords: true as const,
+        normalizationAttempts: true as const,
+        canonicalCandidates: true as const,
+        sourcingFindings: true as const,
+      },
+    }))
     const inspect = vi.fn(async (connectorInstanceId: string) => ({
       id: connectorInstanceId,
       connectorId: 'fixture.jobs',
@@ -91,6 +116,7 @@ describe('connectors IPC registration', () => {
       list,
       create,
       update,
+      remove,
       inspect,
       runs: {
         list: listRuns,
@@ -119,6 +145,10 @@ describe('connectors IPC registration', () => {
         { connectorInstanceId: 'connector-instance', enabled: false },
       ),
     ).resolves.toMatchObject({ id: 'connector-instance' })
+    await expect(handlers.get('connectors:remove')?.(
+      {},
+      { connectorInstanceId: 'connector-instance' },
+    )).resolves.toMatchObject({ kind: 'success', result: { lifecycle: 'retired' } })
     await expect(handlers.get('connectors:inspect')?.({}, 'connector-instance'))
       .resolves.toEqual({
         id: 'connector-instance',
@@ -152,6 +182,7 @@ describe('connectors IPC registration', () => {
     expect(list).toHaveBeenCalled()
     expect(create).toHaveBeenCalledWith({ id: 'connector-instance' })
     expect(update).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance', enabled: false })
+    expect(remove).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance' })
     expect(inspect).toHaveBeenCalledWith('connector-instance')
     expect(listRuns).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance' })
     expect(trigger).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance', mode: 'manual' })

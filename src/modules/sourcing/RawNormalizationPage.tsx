@@ -35,7 +35,6 @@ export function RawNormalizationPage({
   const [loading, setLoading] = useState(true)
   const [retryKey, setRetryKey] = useState(0)
   const [selectedSummary, setSelectedSummary] = useState<RawSourceRecordSummary | null>(null)
-  const [scanLimitReached, setScanLimitReached] = useState(false)
   const query = useMemo(
     () => buildRawRecordQuery(filters, cursorHistory[pageIndex]),
     [cursorHistory, filters, pageIndex],
@@ -47,13 +46,11 @@ export function RawNormalizationPage({
     setError(false)
     setItems([])
     setNextCursor(null)
-    setScanLimitReached(false)
     setSelectedSummary(null)
     void loadRawRecords(api, query, runFilter).then((result) => {
       if (!cancelled) {
         setItems(result.items)
         setNextCursor(result.nextCursor)
-        setScanLimitReached(result.scanLimitReached)
         setError(false)
       }
     }).catch(() => {
@@ -92,15 +89,6 @@ export function RawNormalizationPage({
             role="status"
           >
             Showing records with captured occurrence lineage from connector run {runFilter.connectorRunId}.
-          </p>
-        ) : null}
-        {scanLimitReached ? (
-          <p
-            aria-label="Connector run search limit reached"
-            className="rounded-md border border-warning/50 bg-warning/10 p-3 text-sm text-warning"
-            role="status"
-          >
-            Search limit reached. Matching rows shown may be incomplete; refine the connector filters.
           </p>
         ) : null}
         {loading ? (
@@ -180,38 +168,16 @@ export function RawNormalizationPage({
   )
 }
 
-const MAX_RUN_FILTER_SCAN_PAGES = 25
-
 async function loadRawRecords(
   api: RawRecordsReadApi,
   query: ReturnType<typeof buildRawRecordQuery>,
   runFilter?: RawNormalizationRunFilter | null,
 ) {
-  if (!runFilter) {
-    const result = await api.list(query)
-    return { ...result, scanLimitReached: false }
-  }
-  const items: RawSourceRecordSummary[] = []
-  let cursor: string | undefined
-  let pages = 0
-  do {
-    const page = await api.list({
-      ...query,
-      connectorInstanceId: runFilter.connectorInstanceId,
-      cursor,
-      limit: 100,
-    })
-    const matches = await Promise.all(page.items.map(async (item) => {
-      if (item.latestConnectorRunId === runFilter.connectorRunId) return item
-      const detail = await api.get(item.id)
-      return detail.occurrences.some((occurrence) =>
-        occurrence.capture?.connectorRunId === runFilter.connectorRunId) ? item : null
-    }))
-    items.push(...matches.filter((item): item is RawSourceRecordSummary => item !== null))
-    cursor = page.nextCursor ?? undefined
-    pages += 1
-  } while (cursor && pages < MAX_RUN_FILTER_SCAN_PAGES)
-  return { items, nextCursor: null, scanLimitReached: Boolean(cursor) }
+  return api.list(runFilter ? {
+    ...query,
+    connectorInstanceId: runFilter.connectorInstanceId,
+    connectorRunId: runFilter.connectorRunId,
+  } : query)
 }
 
 function RawRecordsTable({

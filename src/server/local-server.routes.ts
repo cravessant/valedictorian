@@ -1,6 +1,8 @@
 import http from 'node:http'
 import {
   connectorScheduleErrorCodes,
+  connectorRetirementActiveWorkConflictSchema,
+  connectorRetirementResultSchema,
   connectorOverviewListResultSchema,
   connectorOverviewErrorCodes,
   defaultLocalCapabilities,
@@ -365,6 +367,19 @@ export async function handleRequest({
             decodeURIComponent(connectorInstanceMatch[1]),
             await readJsonBody(request),
           ),
+        ),
+      )
+      return
+    }
+
+    if (request.method === 'DELETE' && connectorInstanceMatch) {
+      writeJson(
+        response,
+        200,
+        connectorRetirementResultSchema.parse(
+          await connectorExtensions(client).remove({
+            connectorInstanceId: decodeURIComponent(connectorInstanceMatch[1]),
+          }),
         ),
       )
       return
@@ -874,6 +889,23 @@ export async function handleRequest({
 
     writeJson(response, 404, { message: 'Not found' })
   } catch (error) {
+    const retirementConflict = connectorRetirementActiveWorkConflictSchema.safeParse(
+      error && typeof error === 'object' ? {
+        code: 'code' in error ? error.code : undefined,
+        connectorInstanceId: 'connectorInstanceId' in error
+          ? error.connectorInstanceId
+          : undefined,
+        message: 'message' in error ? error.message : undefined,
+        cancellationRequired: 'cancellationRequired' in error
+          ? error.cancellationRequired
+          : undefined,
+        activeRuns: 'activeRuns' in error ? error.activeRuns : undefined,
+      } : error,
+    )
+    if (retirementConflict.success) {
+      writeJson(response, 409, retirementConflict.data)
+      return
+    }
     const body: { code?: string; message: string } = {
       message: error instanceof Error ? error.message : String(error),
     }
@@ -919,6 +951,7 @@ type ConnectorExtensionsClient = ValedictorianWorkspaceClient & {
     list(): Promise<unknown>
     create(input: unknown): Promise<unknown>
     update(input: unknown): Promise<unknown>
+    remove(input: { connectorInstanceId: string }): Promise<unknown>
     inspect(connectorInstanceId: string): Promise<unknown>
     overview: ValedictorianWorkspaceClient['connectors']['overview']
     runs: {

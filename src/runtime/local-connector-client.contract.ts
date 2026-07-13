@@ -16,6 +16,7 @@ export interface LocalConnectorInstanceSummary {
   connectorVersion: string
   displayName: string
   enabled: boolean
+  lifecycle: 'enabled' | 'disabled'
   auth: LocalConnectorAuthSummary[]
   config: unknown
   filters: unknown
@@ -114,6 +115,7 @@ export interface LocalConnectorClient {
   list(): Promise<{ items: LocalConnectorInstanceSummary[] }>
   create(input: CreateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
   update(input: UpdateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
+  remove: ValedictorianWorkspaceClient['connectors']['remove']
   inspect(connectorInstanceId: string): Promise<LocalConnectorStatusSummary>
   overview: ValedictorianWorkspaceClient['connectors']['overview']
   runs: {

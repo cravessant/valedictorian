@@ -15,9 +15,7 @@ import {
   defaultEarliestBackfillDate,
   inclusiveCoverageStartFromEarliestBackfillDate,
 } from './connector.earliest-backfill'
-import {
-  freezeConnectorRunLifecycleCounts
-} from './connector.lifecycle-counts'
+import { freezeConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
 import { createConnectorInstance, mapConnectorInstance, normalizeConnectorAuthReferences } from './connector-instance.persistence'
 import { upsertConnectorCheckpoint, mapConnectorCheckpoint } from './connector-checkpoint.persistence'
 import {
@@ -40,6 +38,7 @@ import {
   releaseAcquiredNormalizationWorkForRun,
 } from './connector.repository.exact-retry-finalize'
 import { recoverInterruptedConnectorRuns } from './connector.repository.recovery'
+import { connectorDisabledExecutionError } from './connector-execution.errors'
 export type * from './connector-instance.persistence-types'
 export type * from './connector-checkpoint.persistence-types'
 export type * from './connector-observation.persistence-types'
@@ -331,6 +330,9 @@ export function createSqliteConnectorRepository(
           .get()
         if (!instanceRow) {
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
+        }
+        if (!instanceRow.enabled) {
+          throw connectorDisabledExecutionError(input.connectorInstanceId)
         }
         const instance = mapConnectorInstance(instanceRow)
         const now = input.startedAt

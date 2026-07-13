@@ -76,6 +76,9 @@ export function ConnectorSettingsPanel({
   const [savingInstanceIds, setSavingInstanceIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   )
+  const [removingInstanceIds, setRemovingInstanceIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
   const [runningInstanceId, setRunningInstanceId] = useState<string | null>(null)
   const [latestRunStatuses, setLatestRunStatuses] = useState<Record<string, string>>({})
   const [latestRuns, setLatestRuns] = useState<Record<string, ConnectorSettingsRun>>({})
@@ -534,22 +537,21 @@ export function ConnectorSettingsPanel({
   }
 
   function saveConnectorSettings(instance: ConnectorSettingsInstance) {
-    if (instance.connectorId !== JOBRIGHT_CONNECTOR_ID) {
-      return
-    }
-
     if (savingInstanceIds.has(instance.id)) {
       return
     }
 
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
     const savedDraft = defaultConnectorSettingsDraft(instance)
-    const earliestValidation = validateSelectableEarliestBackfillDate({
-      candidate: draft.earliestBackfillDate,
-      createdAt: instance.createdAt,
-      todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
-    })
-    if (!earliestValidation.ok) {
+    const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
+    const earliestValidation = isJobrightInstance
+      ? validateSelectableEarliestBackfillDate({
+          candidate: draft.earliestBackfillDate,
+          createdAt: instance.createdAt,
+          todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
+        })
+      : null
+    if (earliestValidation && !earliestValidation.ok) {
       setConnectorActionError(earliestValidation.message)
       return
     }
@@ -562,7 +564,8 @@ export function ConnectorSettingsPanel({
     void connectorsApi.update({
       connectorInstanceId: instance.id,
       enabled: draft.enabled,
-      ...(draft.earliestBackfillDate !== savedDraft.earliestBackfillDate
+      ...(earliestValidation?.ok
+        && draft.earliestBackfillDate !== savedDraft.earliestBackfillDate
         ? { earliestBackfillDate: earliestValidation.value }
         : {}),
     })
@@ -577,7 +580,7 @@ export function ConnectorSettingsPanel({
         onConnectorChanged()
       })
       .catch(() => {
-        setConnectorActionError('Jobright settings could not be saved.')
+        setConnectorActionError('Connector settings could not be saved.')
       })
       .finally(() => {
         setSavingInstanceIds((currentIds) => {
@@ -596,14 +599,65 @@ export function ConnectorSettingsPanel({
     }))
   }
 
+  function removeConnector(instance: ConnectorSettingsInstance) {
+    if (removingInstanceIds.has(instance.id)) {
+      return
+    }
+
+    setConnectorActionError(null)
+    setRemovingInstanceIds((currentIds) => new Set(currentIds).add(instance.id))
+    void connectorsApi.remove({ connectorInstanceId: instance.id })
+      .then(() => {
+        invalidateAuthValidation(instance.id)
+        setInstances((currentInstances) => currentInstances.filter(
+          (currentInstance) => currentInstance.id !== instance.id,
+        ))
+        setDrafts((currentDrafts) => {
+          const nextDrafts = { ...currentDrafts }
+          delete nextDrafts[instance.id]
+          return nextDrafts
+        })
+        setAuthStates((currentStates) => {
+          const nextStates = { ...currentStates }
+          delete nextStates[instance.id]
+          return nextStates
+        })
+        onConnectorChanged()
+      })
+      .catch((error: unknown) => {
+        const conflictCode = error && typeof error === 'object'
+          ? ('code' in error
+              ? error.code
+              : 'conflict' in error && error.conflict && typeof error.conflict === 'object'
+                && 'code' in error.conflict
+                ? error.conflict.code
+                : undefined)
+          : undefined
+        setConnectorActionError(conflictCode === 'connector_retirement_active_work_conflict'
+          ? 'Cancel queued or running connector work before removing this connector.'
+          : 'Connector could not be removed.')
+      })
+      .finally(() => {
+        setRemovingInstanceIds((currentIds) => {
+          const nextIds = new Set(currentIds)
+          nextIds.delete(instance.id)
+          return nextIds
+        })
+      })
+  }
+
   function isConnectorSettingsDraftDirty(instance: ConnectorSettingsInstance): boolean {
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
     const saved = defaultConnectorSettingsDraft(instance)
     return draft.enabled !== saved.enabled
-      || draft.earliestBackfillDate !== saved.earliestBackfillDate
+      || (instance.connectorId === JOBRIGHT_CONNECTOR_ID
+        && draft.earliestBackfillDate !== saved.earliestBackfillDate)
   }
 
   function hasInvalidEarliestBackfillDraft(instance: ConnectorSettingsInstance): boolean {
+    if (instance.connectorId !== JOBRIGHT_CONNECTOR_ID) {
+      return false
+    }
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
     return !validateSelectableEarliestBackfillDate({
       candidate: draft.earliestBackfillDate,
@@ -790,6 +844,7 @@ export function ConnectorSettingsPanel({
                 latestRun={latestRuns[instance.id]}
                 latestRunStatus={latestRunStatuses[instance.id]}
                 isSavingSettings={savingInstanceIds.has(instance.id)}
+                isRemoving={removingInstanceIds.has(instance.id)}
                 authenticatingInstanceId={authenticatingInstanceId}
                 runningInstanceId={runningInstanceId}
                 schedulingCapability={schedulingCapability}
@@ -813,6 +868,7 @@ export function ConnectorSettingsPanel({
                 onSaveSettings={saveConnectorSettings}
                 onDiscardSettings={discardConnectorSettings}
                 onRunNow={runConnectorNow}
+                onRemove={removeConnector}
                 isDraftDirty={isConnectorSettingsDraftDirty}
                 onOpenSourcingRuns={onOpenSourcingRuns}
                 onScheduleDraftChange={updateScheduleDraft}

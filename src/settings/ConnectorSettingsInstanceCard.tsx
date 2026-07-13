@@ -1,6 +1,18 @@
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { fieldControlId } from '@/lib/field-control-id'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
@@ -39,6 +51,7 @@ export function ConnectorSettingsInstanceCard({
   latestRun,
   latestRunStatus,
   isSavingSettings,
+  isRemoving,
   authenticatingInstanceId,
   runningInstanceId,
   schedulingCapability,
@@ -59,6 +72,7 @@ export function ConnectorSettingsInstanceCard({
   onSaveSettings,
   onDiscardSettings,
   onRunNow,
+  onRemove,
   isDraftDirty,
   onOpenSourcingRuns,
   onScheduleDraftChange,
@@ -75,6 +89,7 @@ export function ConnectorSettingsInstanceCard({
   latestRun: ConnectorSettingsRun | undefined
   latestRunStatus: string | undefined
   isSavingSettings: boolean
+  isRemoving: boolean
   authenticatingInstanceId: string | null
   runningInstanceId: string | null
   schedulingCapability: ConnectorSchedulingCapability | null
@@ -95,6 +110,7 @@ export function ConnectorSettingsInstanceCard({
   onSaveSettings: (instance: ConnectorSettingsInstance) => void
   onDiscardSettings: (instance: ConnectorSettingsInstance) => void
   onRunNow: (instance: ConnectorSettingsInstance) => void
+  onRemove: (instance: ConnectorSettingsInstance) => void
   isDraftDirty: (instance: ConnectorSettingsInstance) => boolean
   onOpenSourcingRuns?: (runId?: string) => void
   onScheduleDraftChange: (instanceId: string, patch: Partial<ConnectorScheduleDraft>) => void
@@ -109,7 +125,7 @@ export function ConnectorSettingsInstanceCard({
   const authMessage = connectorAuthStatusMessage(authState)
   const latestSynchronization = latestRun ? connectorRunSynchronizationCopy(latestRun) : null
   const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
-  const earliestValid = validateSelectableEarliestBackfillDate({
+  const earliestValid = !isJobrightInstance || validateSelectableEarliestBackfillDate({
     candidate: draft.earliestBackfillDate,
     createdAt: instance.createdAt,
     todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
@@ -261,6 +277,23 @@ export function ConnectorSettingsInstanceCard({
                       onSave={() => onSaveSchedule(instance)}
                     />
 
+                    <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-background/40 p-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Connector enabled</p>
+                        <p className="text-xs text-muted-foreground">
+                          Disabled connectors cannot start manual or scheduled work.
+                        </p>
+                      </div>
+                      <Switch
+                        aria-label={isJobrightInstance
+                          ? 'Jobright connector enabled'
+                          : `${instance.displayName} connector enabled`}
+                        checked={draft.enabled}
+                        disabled={isSavingSettings}
+                        onCheckedChange={(enabled) => onUpdateDraft(instance.id, { enabled })}
+                      />
+                    </div>
+
                     {isJobrightInstance ? (
                     <>
                     <ConnectorEarliestBackfillDateControl
@@ -271,17 +304,6 @@ export function ConnectorSettingsInstanceCard({
                       onChange={(earliestBackfillDate) =>
                         onUpdateDraft(instance.id, { earliestBackfillDate })}
                     />
-                    <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                      <input
-                        aria-label="Jobright connector enabled"
-                        checked={draft.enabled}
-                        disabled={isSavingSettings}
-                        type="checkbox"
-                        onChange={(event) =>
-                          onUpdateDraft(instance.id, { enabled: event.target.checked })}
-                      />
-                      Connector enabled
-                    </label>
                     <div
                       className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] xl:items-end"
                       data-testid={`connector-run-actions-${instance.id}`}
@@ -349,7 +371,60 @@ export function ConnectorSettingsInstanceCard({
                       </div>
                     ) : null}
                     </>
-                    ) : null}
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={isSavingSettings}
+                          onClick={() => onSaveSettings(instance)}
+                        >
+                          {isSavingSettings ? 'Saving...' : `Save ${instance.displayName} settings`}
+                        </Button>
+                        {isDraftDirty(instance) && !isSavingSettings ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => onDiscardSettings(instance)}
+                          >
+                            Discard unsaved settings
+                          </Button>
+                        ) : null}
+                      </div>
+                    )}
+
+                    <div className="flex justify-end border-t border-border pt-3">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={isRemoving}
+                          >
+                            {isRemoving ? 'Removing...' : `Remove ${instance.displayName}`}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remove {instance.displayName}?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Configuration, schedules, and authentication references will be removed.
+                              Historical runs and sourcing lineage are preserved. Workspace secrets remain
+                              available for separate secret administration.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              variant="destructive"
+                              onClick={() => onRemove(instance)}
+                            >
+                              Remove connector
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
                 )
 }

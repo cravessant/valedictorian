@@ -38,6 +38,21 @@ describe('renderer connector transport', () => {
       items: [{ connectorId: 'jobright.resolver', id: 'jobright-default' }],
     })
   })
+
+  it('retires a connector through the real workspace-scoped HTTP transport', async () => {
+    const client = createConnectorClient()
+    const server = await start(client)
+    installRendererBinding(server.url, () => ({ origin: server.url, status: 'available' }))
+    await defaultConnectorsApi.create(jobrightCreateInput())
+
+    await expect(defaultConnectorsApi.remove({
+      connectorInstanceId: 'jobright-default',
+    })).resolves.toMatchObject({
+      connectorInstanceId: 'jobright-default',
+      lifecycle: 'retired',
+    })
+    await expect(defaultConnectorsApi.list()).resolves.toEqual({ items: [] })
+  })
   it('rejects duplicate Jobright creation without resetting the configured instance', async () => {
     const client = createConnectorClient()
     const server = await start(client)

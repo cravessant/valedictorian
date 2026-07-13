@@ -83,6 +83,13 @@ function buildWhere(query: RawSourceRecordsListQuery, cursor: CursorValue | null
         and filtered_occurrence.connector_instance_id = ?
     )`, query.connectorInstanceId)
   }
+  if (query.connectorRunId !== undefined) {
+    add(`exists (
+      select 1 from raw_source_occurrences filtered_occurrence
+      where filtered_occurrence.raw_record_id = eligible.raw_record_id
+        and filtered_occurrence.connector_run_id = ?
+    )`, query.connectorRunId)
+  }
   if (query.receivedFrom !== undefined) add('last_received_at >= ?', receivedFromKey(query.receivedFrom))
   if (query.receivedTo !== undefined) add('last_received_at <= ?', receivedToKey(query.receivedTo))
   if (query.normalizationStatus !== undefined) {

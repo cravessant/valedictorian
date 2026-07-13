@@ -321,6 +321,7 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
         connectorVersion: input.connectorVersion,
         displayName: input.displayName,
         enabled: input.enabled,
+        lifecycle: input.enabled ? 'enabled' : 'disabled',
         auth: (input.auth ?? []).map((auth) => ({
           id: auth.id,
           mode: auth.mode,
@@ -358,12 +359,34 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
         connectorVersion: input.connectorVersion ?? existing.connectorVersion,
         displayName: input.displayName ?? existing.displayName,
         enabled: input.enabled ?? existing.enabled,
+        lifecycle: (input.enabled ?? existing.enabled) ? 'enabled' : 'disabled',
         filters: input.filters ?? existing.filters,
         earliestBackfillDate: input.earliestBackfillDate ?? existing.earliestBackfillDate,
         updatedAt: '2026-07-09T15:01:00.000Z',
       }
       instances = instances.map((instance) => instance.id === updated.id ? updated : instance)
       return updated
+    }),
+    remove: vi.fn(async ({ connectorInstanceId }) => {
+      instances = instances.filter((instance) => instance.id !== connectorInstanceId)
+      return {
+        connectorInstanceId,
+        lifecycle: 'retired',
+        retiredAt: '2026-07-09T15:03:00.000Z',
+        requirements: {
+          connectorImplementation: 'not_required',
+          authenticationValidation: 'not_required',
+        },
+        disposition: {
+          configuration: 'removed', schedule: 'removed', checkpoints: 'preserved',
+          executionScopes: 'preserved', futureExecution: 'blocked', authReferences: 'removed',
+          secretValues: 'preserved_for_workspace_secret_administration',
+        },
+        preservedLineage: {
+          connectorRuns: true, rawSourceRecords: true, normalizationAttempts: true,
+          canonicalCandidates: true, sourcingFindings: true,
+        },
+      } as const
     }),
     inspect: vi.fn(),
     runs: {

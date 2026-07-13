@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RawSourceRecordSummary } from 'sparxie'
 import { RawNormalizationPage } from './RawNormalizationPage'
@@ -6,48 +6,43 @@ import { RawNormalizationPage } from './RawNormalizationPage'
 afterEach(cleanup)
 
 describe('RawNormalizationPage connector-run inspection', () => {
-  it('announces when the exact connector-run search reaches its deterministic scan bound', async () => {
-    const list = vi.fn(async () => ({ items: [], nextCursor: 'another-page' }))
-
-    render(
-      <RawNormalizationPage
-        api={{ list, get: vi.fn(), getNormalization: vi.fn() }}
-        contentColumnClass=""
-        runFilter={{ connectorInstanceId: 'jobright-default', connectorRunId: 'run-1' }}
-      />,
-    )
-
-    const notice = await screen.findByRole('status', {
-      name: 'Connector run search limit reached',
-    })
-    expect(notice).toHaveTextContent('Matching rows shown may be incomplete')
-    await waitFor(() => expect(list).toHaveBeenCalledTimes(25))
-  })
-
-  it('fails the connector-run result safely when occurrence lineage cannot be verified', async () => {
+  it('delegates exact any-occurrence connector-run lineage to one list request', async () => {
     const item = {
-      id: 'raw-unverified', latestConnectorRunId: 'another-run',
+      id: 'raw-from-older-run',
+      latestConnectorRunId: 'newer-run',
+      adapter: { id: 'jobright', kind: 'connector', version: '1.0.0' },
+      reportedOrigin: null,
+      providerRecordId: null,
+      roleTitle: 'Older run record',
+      companyName: null,
+      firstObservedAt: '2026-07-10T12:00:00.000Z',
+      lastObservedAt: '2026-07-10T12:00:00.000Z',
+      occurrenceCount: 2,
+      revisionCount: 1,
+      normalizationStatus: 'raw_only',
+      gateStatus: null,
+      canonicalCandidateId: null,
+      projectionStatus: 'not_eligible',
+      findingId: null,
     } as RawSourceRecordSummary
+    const list = vi.fn(async () => ({ items: [item], nextCursor: null }))
+    const get = vi.fn()
 
     render(
       <RawNormalizationPage
-        api={{
-          list: vi.fn(async () => ({ items: [item], nextCursor: null })),
-          get: vi.fn(async () => { throw new Error('private upstream detail') }),
-          getNormalization: vi.fn(),
-        }}
+        api={{ list, get, getNormalization: vi.fn(), getProjection: vi.fn() }}
         contentColumnClass=""
-        runFilter={{ connectorInstanceId: 'jobright-default', connectorRunId: 'run-1' }}
+        runFilter={{ connectorInstanceId: 'jobright-default', connectorRunId: 'older-run' }}
       />,
     )
 
-    const error = await screen.findByRole('alert', {
-      name: 'Connector run records could not be verified',
-    })
-    expect(error).toHaveTextContent('Occurrence lineage could not be verified')
-    expect(error).not.toHaveTextContent('private upstream detail')
-    expect(screen.queryByRole('table', { name: 'Raw sourcing normalization' }))
-      .not.toBeInTheDocument()
+    expect(await screen.findByText('Older run record')).toBeInTheDocument()
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({
+      connectorInstanceId: 'jobright-default',
+      connectorRunId: 'older-run',
+    }))
+    expect(get).not.toHaveBeenCalled()
   })
 
   it('announces its deterministic loading state accessibly', () => {

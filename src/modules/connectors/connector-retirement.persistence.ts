@@ -1,0 +1,139 @@
+import { and, eq, inArray, isNull, or } from 'drizzle-orm'
+import {
+  connectorInstances,
+  connectorRuns,
+  connectorSchedules,
+  retryWork,
+  sourceExecutionScopes,
+  sourceExecutionSessions,
+} from '../../db/schema'
+import type { DrizzleDatabase } from '../../db/sqlite'
+import type {
+  ConnectorRetirementActiveWorkConflict,
+  ConnectorRetirementResult,
+} from 'sparxie'
+
+export function retireConnectorInstance(
+  database: DrizzleDatabase,
+  connectorInstanceId: string,
+  retiredAt: string,
+): ConnectorRetirementResult {
+  return database.transaction((transaction) => {
+    const instance = transaction
+      .select({
+        id: connectorInstances.id,
+        executionScopeId: connectorInstances.executionScopeId,
+      })
+      .from(connectorInstances)
+      .where(and(
+        eq(connectorInstances.id, connectorInstanceId),
+        isNull(connectorInstances.deletedAt),
+      ))
+      .get()
+
+    if (!instance) {
+      throw Object.assign(new Error(`Connector instance not found: ${connectorInstanceId}`), {
+        statusCode: 404,
+      })
+    }
+
+    const activeRuns = transaction
+      .select({ connectorRunId: connectorRuns.id, status: connectorRuns.status })
+      .from(connectorRuns)
+      .where(and(
+        eq(connectorRuns.connectorInstanceId, connectorInstanceId),
+        inArray(connectorRuns.status, ['queued', 'running']),
+        isNull(connectorRuns.deletedAt),
+      ))
+      .all()
+      .map(({ connectorRunId, status }) => ({
+        connectorRunId,
+        status: status as 'queued' | 'running',
+      }))
+
+    if (activeRuns.length > 0) {
+      throw activeWorkConflict(connectorInstanceId, activeRuns)
+    }
+
+    transaction.update(connectorInstances).set({
+      authJson: '[]',
+      configJson: '{}',
+      filtersJson: '{}',
+      earliestBackfillDate: null,
+      enabled: false,
+      updatedAt: retiredAt,
+      deletedAt: retiredAt,
+    }).where(and(
+      eq(connectorInstances.id, connectorInstanceId),
+      isNull(connectorInstances.deletedAt),
+    )).run()
+    transaction.update(connectorSchedules).set({
+      updatedAt: retiredAt,
+      deletedAt: retiredAt,
+    }).where(and(
+      eq(connectorSchedules.connectorInstanceId, connectorInstanceId),
+      isNull(connectorSchedules.deletedAt),
+    )).run()
+    transaction.update(retryWork).set({
+      updatedAt: retiredAt,
+      deletedAt: retiredAt,
+    }).where(and(
+      or(
+        eq(retryWork.connectorInstanceId, connectorInstanceId),
+        eq(retryWork.executionScopeId, instance.executionScopeId),
+      ),
+      isNull(retryWork.deletedAt),
+    )).run()
+    transaction.update(sourceExecutionScopes).set({
+      status: 'action_required',
+      blockedUntil: null,
+      refreshLeaseToken: null,
+      refreshLeaseExpiresAt: null,
+      actionReason: 'connector_retired',
+      updatedAt: retiredAt,
+    }).where(eq(sourceExecutionScopes.id, instance.executionScopeId)).run()
+    transaction.delete(sourceExecutionSessions).where(
+      eq(sourceExecutionSessions.executionScopeId, instance.executionScopeId),
+    ).run()
+
+    return {
+      connectorInstanceId,
+      lifecycle: 'retired',
+      retiredAt,
+      requirements: {
+        connectorImplementation: 'not_required',
+        authenticationValidation: 'not_required',
+      },
+      disposition: {
+        configuration: 'removed',
+        schedule: 'removed',
+        checkpoints: 'preserved',
+        executionScopes: 'preserved',
+        futureExecution: 'blocked',
+        authReferences: 'removed',
+        secretValues: 'preserved_for_workspace_secret_administration',
+      },
+      preservedLineage: {
+        connectorRuns: true,
+        rawSourceRecords: true,
+        normalizationAttempts: true,
+        canonicalCandidates: true,
+        sourcingFindings: true,
+      },
+    }
+  }, { behavior: 'immediate' })
+}
+
+function activeWorkConflict(
+  connectorInstanceId: string,
+  activeRuns: ConnectorRetirementActiveWorkConflict['activeRuns'],
+) {
+  const conflict: ConnectorRetirementActiveWorkConflict = {
+    code: 'connector_retirement_active_work_conflict',
+    connectorInstanceId,
+    message: 'Cancel queued or running connector work before removing this connector.',
+    cancellationRequired: true,
+    activeRuns,
+  }
+  return Object.assign(new Error(conflict.message), conflict, { statusCode: 409 })
+}

@@ -8,6 +8,36 @@ const obsoleteBrowserMode = ['browser', '_session'].join('')
 const obsoleteSessionField = ['session', 'Key'].join('')
 
 describe('SQLite connector repository', () => {
+  it('rejects run admission when disable commits after an enabled preflight read', async () => {
+    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const input = {
+      id: 'disable-admission-race',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '1.0.0',
+      displayName: 'Disable admission race',
+      enabled: true,
+      createdAt: '2026-07-13T12:00:00.000Z',
+    }
+    await repository.upsertInstance(input)
+    const enabledPreflight = await repository.getInstance(input.id)
+    await repository.upsertInstance({ ...input, enabled: false })
+
+    expect(enabledPreflight?.enabled).toBe(true)
+    await expect(repository.recordRunRequest({
+      connectorInstanceId: input.id,
+      mode: 'manual',
+      startedAt: '2026-07-13T13:00:00.000Z',
+    })).rejects.toMatchObject({
+      message: 'Connector instance is disabled: disable-admission-race',
+      statusCode: 409,
+    })
+    await expect(repository.listRuns({ connectorInstanceId: input.id }))
+      .resolves.toMatchObject({ items: [], total: 0 })
+    sqlite.close()
+  })
+
   it('omits ordinary legacy completed and running rows without synchronization snapshots', async () => {
     const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)

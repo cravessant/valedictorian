@@ -257,6 +257,71 @@ describe('raw source repository list', () => {
       .resolves.toEqual({ items: [], nextCursor: null })
   })
 
+  it('filters exact connector-run lineage across any persisted occurrence', async () => {
+    const sqlite = createInMemoryDatabase()
+    databases.push(sqlite)
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const connectors = createSqliteConnectorRepository(database)
+    const receivedAt = [
+      new Date('2026-07-10T14:00:00.000Z'),
+      new Date('2026-07-10T15:00:00.000Z'),
+      new Date('2026-07-10T16:00:00.000Z'),
+    ]
+    const repository = createSqliteRawSourceRepository(database, () => receivedAt.shift()!)
+    const connector = await connectors.upsertInstance({
+      id: 'connector-instance-lineage',
+      connectorId: 'fixture.connector',
+      connectorVersion: '1.0.0',
+      displayName: 'Fixture',
+      enabled: true,
+    })
+    const firstRun = (await connectors.recordRunRequest({
+      connectorInstanceId: connector.id,
+      mode: 'manual',
+      startedAt: '2026-07-10T13:00:00.000Z',
+    })).run
+    const record = (connectorRunId: string) => ({
+      adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1.0.0' },
+      capture: {
+        connectorInstanceId: connector.id,
+        connectorRunId,
+        executionScopeId: connector.executionScopeId,
+      },
+      observedAt: '2026-07-10T13:30:00.000Z',
+      providerRecordId: 'shared-provider-record',
+      reportedOrigin: { kind: 'job_board' as const, name: 'Fixture Board' },
+    })
+    const first = await repository.ingestBatch({ records: [record(firstRun.id)] })
+    await connectors.markRunRunning({
+      connectorRunId: firstRun.id,
+      startedAt: '2026-07-10T13:00:00.000Z',
+    })
+    await connectors.completeRun({
+      connectorRunId: firstRun.id,
+      completedAt: '2026-07-10T14:15:00.000Z',
+      status: 'completed',
+    })
+    const secondRun = (await connectors.recordRunRequest({
+      connectorInstanceId: connector.id,
+      mode: 'manual',
+      startedAt: '2026-07-10T14:30:00.000Z',
+    })).run
+    await repository.ingestBatch({ records: [record(secondRun.id)] })
+    await repository.ingestBatch({
+      records: [{ ...record(secondRun.id), providerRecordId: 'second-provider-record' }],
+    })
+
+    const result = await repository.list({ connectorRunId: firstRun.id })
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: first.receipts[0].rawRecordId,
+        latestConnectorRunId: secondRun.id,
+      }),
+    ])
+  })
+
   it('preserves deterministic pages after the workspace database reopens', async () => {
     const sqlitePath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-list-reopen-')),

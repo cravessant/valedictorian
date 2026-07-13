@@ -24,6 +24,7 @@ import {
   type LocalConnectorRegistry
 } from '../modules/connectors/connector.registry'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { retireConnectorInstance } from '../modules/connectors/connector-retirement.persistence'
 import {
   resolveConnectorSchedulingCapability,
 } from '../modules/connectors/connector-schedule.capability'
@@ -371,6 +372,11 @@ export function createLocalValedictorianClient({
           createdAt: existing.createdAt,
         }))
       },
+      remove: async ({ connectorInstanceId }) => retireConnectorInstance(
+        database,
+        connectorInstanceId,
+        now().toISOString(),
+      ),
       inspect: async (connectorInstanceId) => {
         const record = await connectorRepository.getStatusSummary(connectorInstanceId)
         if (!record) {
@@ -794,6 +800,7 @@ function mapConnectorInstanceSummary(
     connectorVersion: record.connectorVersion,
     displayName: record.displayName,
     enabled: record.enabled,
+    lifecycle: record.enabled ? 'enabled' : 'disabled',
     auth: record.auth.map(mapConnectorAuthSummary),
     config: record.config,
     filters: record.filters,

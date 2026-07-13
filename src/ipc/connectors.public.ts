@@ -1,5 +1,9 @@
 import {
+  connectorRetirementActiveWorkConflictSchema,
+  connectorRetirementResultSchema,
   connectorRunSummarySchema,
+  type ConnectorRetirementActiveWorkConflict,
+  type ConnectorRetirementResult,
   type ConnectorRunSummary,
 } from 'sparxie'
 import { z } from 'zod'
@@ -12,6 +16,22 @@ export interface ConnectorSkipActionResult {
   run: ConnectorRunSummary
   status: 'skipped'
 }
+
+export type ConnectorRetirementIpcEnvelope =
+  | { kind: 'success'; result: ConnectorRetirementResult }
+  | { kind: 'conflict'; conflict: ConnectorRetirementActiveWorkConflict }
+
+const connectorRetirementIpcEnvelopeSchema: z.ZodType<ConnectorRetirementIpcEnvelope> =
+  z.discriminatedUnion('kind', [
+    z.object({
+      kind: z.literal('success'),
+      result: connectorRetirementResultSchema,
+    }).strict(),
+    z.object({
+      kind: z.literal('conflict'),
+      conflict: connectorRetirementActiveWorkConflictSchema,
+    }).strict(),
+  ])
 
 const connectorSkipActionResultSchema: z.ZodType<ConnectorSkipActionResult> = z.object({
   action: z.literal('skip'),
@@ -32,4 +52,40 @@ export function publicConnectorSkipActionResult(value: unknown): ConnectorSkipAc
     run: publicConnectorRunSummary(result.run),
     status: result.status,
   })
+}
+
+export function connectorRetirementIpcSuccess(
+  value: unknown,
+): ConnectorRetirementIpcEnvelope {
+  return connectorRetirementIpcEnvelopeSchema.parse({
+    kind: 'success',
+    result: connectorRetirementResultSchema.parse(value),
+  })
+}
+
+export function connectorRetirementIpcConflict(
+  error: unknown,
+): ConnectorRetirementIpcEnvelope | null {
+  const conflict = connectorRetirementActiveWorkConflictSchema.safeParse(
+    error && typeof error === 'object' ? {
+      code: 'code' in error ? error.code : undefined,
+      connectorInstanceId: 'connectorInstanceId' in error
+        ? error.connectorInstanceId
+        : undefined,
+      message: 'message' in error ? error.message : undefined,
+      cancellationRequired: 'cancellationRequired' in error
+        ? error.cancellationRequired
+        : undefined,
+      activeRuns: 'activeRuns' in error ? error.activeRuns : undefined,
+    } : error,
+  )
+  return conflict.success
+    ? connectorRetirementIpcEnvelopeSchema.parse({ kind: 'conflict', conflict: conflict.data })
+    : null
+}
+
+export function parseConnectorRetirementIpcEnvelope(
+  value: unknown,
+): ConnectorRetirementIpcEnvelope {
+  return connectorRetirementIpcEnvelopeSchema.parse(value)
 }

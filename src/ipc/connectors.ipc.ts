@@ -1,10 +1,17 @@
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import {
+  removeConnectorInstanceInputSchema,
+} from 'sparxie'
+import {
   publicConnectorRunsListResult,
   publicConnectorRunSummary,
 } from '../runtime/local-connector-public-run'
 import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
-import { publicConnectorSkipActionResult } from './connectors.public'
+import {
+  connectorRetirementIpcConflict,
+  connectorRetirementIpcSuccess,
+  publicConnectorSkipActionResult,
+} from './connectors.public'
 interface IpcMainLike {
   handle: (channel: string, handler: (_event: unknown, input?: unknown) => Promise<unknown>) => void
 }
@@ -23,6 +30,16 @@ export function registerConnectorsIpc(
   ipcMain.handle('connectors:update', (_event, input) => {
     assertConnectorsAvailable(connectors)
     return connectors.update(input as Parameters<typeof connectors.update>[0])
+  })
+  ipcMain.handle('connectors:remove', (_event, input) => {
+    assertConnectorsAvailable(connectors)
+    return connectors.remove(removeConnectorInstanceInputSchema.parse(input))
+      .then(connectorRetirementIpcSuccess)
+      .catch((error: unknown) => {
+        const conflict = connectorRetirementIpcConflict(error)
+        if (conflict) return conflict
+        throw error
+      })
   })
   ipcMain.handle('connectors:inspect', (_event, connectorInstanceId) => {
     assertConnectorsAvailable(connectors)

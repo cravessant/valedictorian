@@ -20,6 +20,7 @@ export const runtimeIpcChannels = [
   'connectors:list',
   'connectors:create',
   'connectors:update',
+  'connectors:remove',
   'connectors:inspect',
   'connectors:runs:list',
   'connectors:runs:trigger',

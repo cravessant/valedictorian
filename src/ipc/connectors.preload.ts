@@ -1,14 +1,17 @@
 import type {
   ConnectorInstanceSummary,
   ConnectorInstancesListResult,
+  ConnectorRetirementResult,
   ConnectorRunsListInput,
   ConnectorRunsListResult,
   ConnectorRunSummary,
   ConnectorStatusSummary,
   CreateConnectorInstanceInput,
+  RemoveConnectorInstanceInput,
   UpdateConnectorInstanceInput,
 } from 'sparxie'
 import {
+  ConnectorRetirementConflictError,
   connectorRunSummarySchema,
   connectorRunsListResultSchema,
 } from 'sparxie'
@@ -20,6 +23,7 @@ import type {
 } from '../runtime/local-valedictorian-client'
 import {
   publicConnectorSkipActionResult,
+  parseConnectorRetirementIpcEnvelope,
   type ConnectorSkipActionResult,
 } from './connectors.public'
 
@@ -31,6 +35,7 @@ export interface ConnectorsPreloadApi {
   list: () => Promise<ConnectorInstancesListResult>
   create: (input: CreateConnectorInstanceInput) => Promise<ConnectorInstanceSummary>
   update: (input: UpdateConnectorInstanceInput) => Promise<ConnectorInstanceSummary>
+  remove: (input: RemoveConnectorInstanceInput) => Promise<ConnectorRetirementResult>
   inspect: (connectorInstanceId: string) => Promise<ConnectorStatusSummary>
   runs: {
     list: (input: ConnectorRunsListInput) => Promise<ConnectorRunsListResult>
@@ -54,6 +59,16 @@ export function createConnectorsPreloadApi(ipcRenderer: IpcRendererLike): Connec
     },
     update(input) {
       return ipcRenderer.invoke('connectors:update', input) as Promise<ConnectorInstanceSummary>
+    },
+    remove(input) {
+      return ipcRenderer.invoke('connectors:remove', input)
+        .then(parseConnectorRetirementIpcEnvelope)
+        .then((envelope) => {
+          if (envelope.kind === 'conflict') {
+            throw new ConnectorRetirementConflictError(envelope.conflict)
+          }
+          return envelope.result
+        })
     },
     inspect(connectorInstanceId) {
       return ipcRenderer.invoke('connectors:inspect', connectorInstanceId) as Promise<ConnectorStatusSummary>

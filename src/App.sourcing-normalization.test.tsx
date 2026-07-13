@@ -380,7 +380,7 @@ describe('sourcing normalization inspection', () => {
     expect(rejectedRow).toHaveTextContent('Not projected')
   })
 
-  it('scans connector pages to show exact raw rows for an aggregate connector run', async () => {
+  it('requests exact raw rows for an aggregate connector run', async () => {
     const connectorsApi = createConnectorsApi()
     await connectorsApi.create({
       id: 'jobright-default', connectorId: 'jobright', connectorVersion: '0.11.0',
@@ -390,15 +390,10 @@ describe('sourcing normalization inspection', () => {
     vi.mocked(connectorsApi.runs.list).mockResolvedValue({
       items: [run], total: 1, limit: 20, offset: 0, hasMore: false,
     })
-    const rawList = vi.fn(async (query?: { cursor?: string }) => query?.cursor === 'second-page'
-      ? {
-          items: [createRawSummary({ id: 'raw-from-run', latestConnectorRunId: run.id })],
-          nextCursor: null,
-        }
-      : {
-          items: [createRawSummary({ id: 'raw-from-other-run', latestConnectorRunId: 'other-run' })],
-          nextCursor: 'second-page',
-        })
+    const rawList = vi.fn(async () => ({
+      items: [createRawSummary({ id: 'raw-from-run', latestConnectorRunId: 'newer-run' })],
+      nextCursor: null,
+    }))
     render(
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
@@ -433,11 +428,9 @@ describe('sourcing normalization inspection', () => {
 
     expect(await screen.findByRole('button', { name: /raw-from-run/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /raw-from-other-run/i })).not.toBeInTheDocument()
-    expect(rawList).toHaveBeenNthCalledWith(1, {
-      connectorInstanceId: 'jobright-default', limit: 100,
-    })
-    expect(rawList).toHaveBeenNthCalledWith(2, {
-      connectorInstanceId: 'jobright-default', cursor: 'second-page', limit: 100,
+    expect(rawList).toHaveBeenCalledOnce()
+    expect(rawList).toHaveBeenCalledWith({
+      connectorInstanceId: 'jobright-default', connectorRunId: run.id, limit: 50,
     })
     expect(screen.getByRole('status', { name: `Filtered to connector run ${run.id}` }))
       .toBeInTheDocument()

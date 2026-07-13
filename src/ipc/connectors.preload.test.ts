@@ -1,7 +1,49 @@
-import { describe, expect, it } from 'vitest'
+import { ConnectorRetirementConflictError } from 'sparxie'
+import { describe, expect, it, vi } from 'vitest'
+import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { registerConnectorsIpc } from './connectors.ipc'
 import { createConnectorsPreloadApi } from './connectors.preload'
 
 describe('connectors preload API', () => {
+  it('reconstructs a typed retirement conflict across the registered IPC boundary', async () => {
+    const remove = vi.fn(async () => {
+      throw Object.assign(new Error('Cancel active work first.'), {
+        code: 'connector_retirement_active_work_conflict',
+        connectorInstanceId: 'connector-with-active-work',
+        cancellationRequired: true,
+        activeRuns: [{ connectorRunId: 'queued-run', status: 'queued' }],
+        privateDiagnostic: 'must-not-cross-ipc',
+      })
+    })
+    const handlers = new Map<
+      string,
+      (_event: unknown, input?: unknown) => Promise<unknown>
+    >()
+    registerConnectorsIpc({ remove } as unknown as LocalValedictorianClient['connectors'], {
+      handle(channel, handler) {
+        handlers.set(channel, handler)
+      },
+    })
+    const api = createConnectorsPreloadApi({
+      invoke(channel, input) {
+        return handlers.get(channel)!({}, input)
+      },
+    })
+
+    const removal = api.remove({ connectorInstanceId: 'connector-with-active-work' })
+
+    await expect(removal).rejects.toBeInstanceOf(ConnectorRetirementConflictError)
+    await expect(removal).rejects.toMatchObject({
+      conflict: {
+        code: 'connector_retirement_active_work_conflict',
+        connectorInstanceId: 'connector-with-active-work',
+        cancellationRequired: true,
+        activeRuns: [{ connectorRunId: 'queued-run', status: 'queued' }],
+      },
+    })
+    await expect(removal).rejects.not.toHaveProperty('privateDiagnostic')
+  })
+
   it('rejects malformed retry advice returned by connector run IPC', async () => {
     const api = createConnectorsPreloadApi({
       invoke() {
@@ -28,6 +70,10 @@ describe('connectors preload API', () => {
 
         if (args[0] === 'connectors:create' || args[0] === 'connectors:update') {
           return Promise.resolve({ id: 'connector-instance' })
+        }
+
+        if (args[0] === 'connectors:remove') {
+          return Promise.resolve({ kind: 'success', result: retirementResult() })
         }
 
         if (args[0] === 'connectors:inspect') {
@@ -76,6 +122,8 @@ describe('connectors preload API', () => {
     await expect(api.list()).resolves.toEqual({ items: [] })
     await expect(api.create(createInput)).resolves.toEqual({ id: 'connector-instance' })
     await expect(api.update(updateInput)).resolves.toEqual({ id: 'connector-instance' })
+    await expect(api.remove({ connectorInstanceId: 'connector-instance' }))
+      .resolves.toEqual(retirementResult())
     await expect(api.inspect('connector-instance')).resolves.toEqual({
       id: 'connector-instance',
       status: 'healthy',
@@ -90,6 +138,7 @@ describe('connectors preload API', () => {
       ['connectors:list'],
       ['connectors:create', createInput],
       ['connectors:update', updateInput],
+      ['connectors:remove', { connectorInstanceId: 'connector-instance' }],
       ['connectors:inspect', 'connector-instance'],
       ['connectors:runs:list', runsListInput],
       ['connectors:runs:trigger', runTriggerInput],
@@ -134,6 +183,34 @@ describe('connectors preload API', () => {
     ])
   })
 })
+
+function retirementResult() {
+  return {
+    connectorInstanceId: 'connector-instance',
+    lifecycle: 'retired' as const,
+    retiredAt: '2026-07-13T16:00:00.000Z',
+    requirements: {
+      connectorImplementation: 'not_required' as const,
+      authenticationValidation: 'not_required' as const,
+    },
+    disposition: {
+      configuration: 'removed' as const,
+      schedule: 'removed' as const,
+      checkpoints: 'preserved' as const,
+      executionScopes: 'preserved' as const,
+      futureExecution: 'blocked' as const,
+      authReferences: 'removed' as const,
+      secretValues: 'preserved_for_workspace_secret_administration' as const,
+    },
+    preservedLineage: {
+      connectorRuns: true as const,
+      rawSourceRecords: true as const,
+      normalizationAttempts: true as const,
+      canonicalCandidates: true as const,
+      sourcingFindings: true as const,
+    },
+  }
+}
 
 function publicSkippedActionFixture() {
   return {

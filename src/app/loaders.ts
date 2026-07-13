@@ -398,6 +398,13 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
     if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
     return httpClient?.connectors.update(input) ?? connectorsWindow.connectors?.update(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
   },
+  remove(input) {
+    const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+    const httpClient = getRendererHttpWorkspaceClient()
+
+    if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
+    return httpClient?.connectors.remove(input) ?? connectorsWindow.connectors?.remove(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
+  },
   inspect(connectorInstanceId) {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()

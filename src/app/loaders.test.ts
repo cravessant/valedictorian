@@ -156,6 +156,7 @@ describe('renderer HTTP loaders', () => {
       connectorVersion: '1.0.0',
       displayName: 'HTTP Connector',
       enabled: true,
+      lifecycle: 'enabled' as const,
       auth: [],
       config: {},
       filters: {},
