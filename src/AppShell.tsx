@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { typography, typographyClass } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
@@ -361,10 +362,10 @@ export function AppShell({
             <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
               <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                  <p className={typography.pageEyebrow}>
                     Job automation
                   </p>
-                  <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">
+                  <h1 className={typographyClass('pageTitle', 'mt-1')}>
                     Applications
                   </h1>
                 </div>

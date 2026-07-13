@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { typography, typographyClass } from '@/components/ui/typography'
 import { AlertCircle, Cable } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type {
@@ -44,10 +45,10 @@ function ConnectorStatusPage({
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-6">
         <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+            <p className={typography.pageEyebrow}>
               Job automation
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">
+            <h1 className={typographyClass('pageTitle', 'mt-1')}>
               Connectors
             </h1>
           </div>

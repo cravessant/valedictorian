@@ -9,6 +9,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { AlertCircle, Cable } from 'lucide-react'
+import { typography, typographyClass } from '@/components/ui/typography'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
@@ -674,12 +675,12 @@ export function ConnectorSettingsPanel({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           {displayMode === 'main' ? (
-            <p className="text-xs font-medium uppercase text-muted-foreground">Run desk</p>
+            <p className={typography.pageEyebrow}>Run desk</p>
           ) : null}
-          <h2 id="connector-settings-title" className="text-xl font-semibold text-foreground">
+          <h2 id="connector-settings-title" className={typography.sectionTitle}>
             {displayMode === 'main' ? 'Operate connectors' : 'Connectors'}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className={typography.sectionDescription}>
             {displayMode === 'main'
               ? 'Authenticate, tune, and start API-only sourcing from one place.'
               : 'Add sources and manage connector auth for this workspace.'}
@@ -703,8 +704,8 @@ export function ConnectorSettingsPanel({
       <div className="rounded-md border border-border bg-card p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">Jobright internslist</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h3 className={typography.panelTitle}>Jobright internslist</h3>
+            <p className={typography.sectionDescription}>
               Authenticate with Jobright API credentials and run connector refresh.
             </p>
           </div>
@@ -737,7 +738,7 @@ export function ConnectorSettingsPanel({
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+        <div className={typographyClass('muted', 'min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4')}>
           <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
           <div className="divide-y divide-border rounded-md border border-border">
             {instances.map((instance) => {

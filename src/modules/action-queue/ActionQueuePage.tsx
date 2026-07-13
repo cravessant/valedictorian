@@ -17,6 +17,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { typography, typographyClass } from '@/components/ui/typography'
 import { AlertCircle, ExternalLink, Inbox, Pencil } from 'lucide-react'
 import { actionQueueBuckets, type ActionQueueBucket, type ActionQueueListItem, type ActionQueueListResult } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
@@ -58,10 +59,10 @@ function ActionQueuePage({
       <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
         <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+            <p className={typography.pageEyebrow}>
               Job automation
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">
+            <h1 className={typographyClass('pageTitle', 'mt-1')}>
               Action Queue
             </h1>
           </div>

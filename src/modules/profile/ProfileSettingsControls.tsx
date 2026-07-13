@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { typography } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
 import {
   type ProfileAnswer,
@@ -102,7 +103,7 @@ export function ProfileSection({
 
 export function SectionHeader({ id, title }: { id: string; title: string }) {
   return (
-    <h3 id={id} className="text-sm font-semibold text-foreground">
+    <h3 id={id} className={typography.panelTitle}>
       {title}
     </h3>
   )

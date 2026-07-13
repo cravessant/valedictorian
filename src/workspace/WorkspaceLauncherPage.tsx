@@ -14,6 +14,7 @@ import {
   ItemSeparator,
   ItemTitle,
 } from '@/components/ui/item'
+import { typography } from '@/components/ui/typography'
 import type { CreateWorkspaceInput, WorkspaceLaunchState } from './workspace.service'
 
 interface WorkspaceLauncherPageProps {
@@ -131,7 +132,7 @@ function WorkspaceLauncherPage({
         <section className="flex h-screen items-center justify-center bg-background px-10 py-8">
           <div className="w-full max-w-[430px]">
             <div className="text-center">
-              <h1 className="text-2xl font-bold tracking-normal text-foreground">
+              <h1 className={typography.pageTitle}>
                 Valedictorian
               </h1>
               <p className="mt-1.5 text-xs font-medium text-muted-foreground">
@@ -149,7 +150,7 @@ function WorkspaceLauncherPage({
                   >
                     <ItemContent className="min-w-0 gap-0">
                       <ItemTitle>
-                        <h2 className="text-sm font-semibold text-foreground">Create workspace</h2>
+                        <h2 className={typography.panelTitle}>Create workspace</h2>
                       </ItemTitle>
                       <ItemDescription className="mt-1 text-xs font-medium text-muted-foreground">
                         Create a new workspace under a folder.
@@ -176,7 +177,7 @@ function WorkspaceLauncherPage({
                   >
                     <ItemContent className="min-w-0 gap-0">
                       <ItemTitle>
-                        <h2 className="text-sm font-semibold text-foreground">
+                        <h2 className={typography.panelTitle}>
                           Open folder as workspace
                         </h2>
                       </ItemTitle>
@@ -240,7 +241,7 @@ function WorkspaceLauncherPage({
 
                   <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-5">
                     <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-foreground">Location</h3>
+                      <h3 className={typography.panelTitle}>Location</h3>
                       <p className="mt-1 text-xs font-medium text-muted-foreground">
                         Choose a parent folder.
                       </p>

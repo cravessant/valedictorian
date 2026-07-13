@@ -19,6 +19,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { typography, typographyClass } from '@/components/ui/typography'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
@@ -256,7 +257,7 @@ export function SettingsPage({
   return (
     <main className={`h-full min-w-0 overflow-auto px-5 py-6 text-foreground md:h-[calc(100vh-3rem)] sm:px-8 lg:px-12 ${contentColumnClass}`}>
       <div className="max-w-4xl">
-        <h1 className="text-2xl font-semibold tracking-normal text-foreground">Settings</h1>
+        <h1 className={typography.pageTitle}>Settings</h1>
         {restartRequired ? (
           <Alert className="mt-4">
             <AlertCircle aria-hidden="true" />
@@ -322,16 +323,16 @@ function GeneralSettingsPanel({
   return (
     <section aria-labelledby="general-settings-title" className="space-y-7">
       <div>
-        <h2 id="general-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="general-settings-title" className={typography.sectionTitle}>
           General
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Choose how this app talks to job data and which controls stay visible.
         </p>
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-foreground" id="backend-mode-heading">
+        <h3 className={typography.panelTitle} id="backend-mode-heading">
           Backend mode
         </h3>
         <RadioGroup
@@ -385,10 +386,10 @@ function ConfigurationSettingsPanel({
   return (
     <section aria-labelledby="configuration-settings-title" className="space-y-7">
       <div>
-        <h2 id="configuration-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="configuration-settings-title" className={typography.sectionTitle}>
           Configuration
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Configure remote and local API settings. These backend values apply after restart.
         </p>
       </div>
@@ -436,10 +437,10 @@ function AgentAccessSettingsPanel({
   return (
     <section aria-labelledby="agent-access-settings-title" className="space-y-7">
       <div>
-        <h2 id="agent-access-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="agent-access-settings-title" className={typography.sectionTitle}>
           Agent access
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Local CLI and future MCP access go through the same HTTP surface.
         </p>
       </div>
@@ -448,27 +449,27 @@ function AgentAccessSettingsPanel({
         <p className="text-sm font-medium text-foreground">
           Local API is available in local-shared mode.
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Current selection: <code>{settings.runtimeMode}</code>
+        <p className={typography.sectionDescription}>
+          Current selection: <code className={typography.inlineCode}>{settings.runtimeMode}</code>
         </p>
       </div>
 
       <div className="rounded-md border border-border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground">CLI examples</h3>
-        <pre className="mt-3 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
+        <h3 className={typography.panelTitle}>CLI examples</h3>
+        <pre className={typographyClass('codeBlock', 'mt-3')}>
           <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json workspaces list`}</code>
         </pre>
-        <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
+        <pre className={typographyClass('codeBlock', 'mt-2')}>
           <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json applications list --workspace ${workspaceSelector}`}</code>
         </pre>
-        <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
+        <pre className={typographyClass('codeBlock', 'mt-2')}>
           <code>{`VALEDICTORIAN_API_TOKEN=<token> valedictorian-cli --json applications get <id> --workspace ${workspaceSelector}`}</code>
         </pre>
       </div>
 
       <div className="rounded-md border border-border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground">Tailscale</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h3 className={typography.panelTitle}>Tailscale</h3>
+        <p className={typography.sectionDescription}>
           Use local shared mode, bind to the reachable host when needed, and keep the API token
           private.
         </p>
@@ -487,10 +488,10 @@ function DataSettingsPanel({
   return (
     <section aria-labelledby="data-settings-title" className="space-y-7">
       <div>
-        <h2 id="data-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="data-settings-title" className={typography.sectionTitle}>
           Data
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Workspace files and local database paths.
         </p>
       </div>
@@ -543,10 +544,10 @@ function AppearanceSettingsPanel({
   return (
     <section aria-labelledby="appearance-settings-title" className="space-y-7">
       <div>
-        <h2 id="appearance-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="appearance-settings-title" className={typography.sectionTitle}>
           Appearance
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Visual theming stays minimal for now; this section holds UI preferences.
         </p>
       </div>
@@ -565,9 +566,9 @@ function AppearanceSettingsPanel({
 function ComingLaterSettingsPanel({ label }: { label: string }) {
   return (
     <section className="rounded-md border border-border bg-card p-5">
-      <h2 className="text-xl font-semibold text-foreground">{label}</h2>
+      <h2 className={typography.sectionTitle}>{label}</h2>
       <p className="mt-3 text-sm font-medium text-foreground">Coming later</p>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <p className={typography.sectionDescription}>
         This page is wired into navigation now so the settings layout can grow without changing the
         shell.
       </p>

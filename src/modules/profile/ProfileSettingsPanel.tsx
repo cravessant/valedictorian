@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { typography } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
 import {
   defaultUserProfile,
@@ -449,10 +450,10 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   return (
     <section aria-labelledby="profile-settings-title" className="space-y-7">
       <div>
-        <h2 id="profile-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="profile-settings-title" className={typography.sectionTitle}>
           Profile
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Store application-ready facts, reusable answers, and local-only secure details.
         </p>
       </div>

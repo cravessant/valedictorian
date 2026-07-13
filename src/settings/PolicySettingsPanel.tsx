@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
+import { typography, typographyClass } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, ShieldCheck } from 'lucide-react'
 import {
@@ -133,10 +134,10 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
     <section aria-labelledby="policy-settings-title" className="space-y-7">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 id="policy-settings-title" className="text-xl font-semibold text-foreground">
+          <h2 id="policy-settings-title" className={typography.sectionTitle}>
             Policy
           </h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          <p className={typographyClass('sectionDescription', 'max-w-2xl')}>
             Action buckets, evidence gates, submit checks, retry thresholds, and sourcing windows.
           </p>
         </div>
@@ -615,7 +616,7 @@ function PolicySection({
 }) {
   return (
     <section aria-labelledby={`policy-section-${slugify(title)}`} className="space-y-3">
-      <h3 id={`policy-section-${slugify(title)}`} className="text-sm font-semibold text-foreground">
+      <h3 id={`policy-section-${slugify(title)}`} className={typography.panelTitle}>
         {title}
       </h3>
       <div className="divide-y divide-border rounded-md border border-border bg-card">

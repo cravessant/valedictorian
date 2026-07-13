@@ -17,6 +17,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { AlertCircle, History } from 'lucide-react'
+import { typography } from '@/components/ui/typography'
 import { retryAdviceSchema } from 'sparxie'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
@@ -214,16 +215,16 @@ export function ConnectorRunsPanel({
   return (
     <section aria-labelledby="connector-runs-title" className="space-y-7">
       <div>
-        <h2 id="connector-runs-title" className="text-xl font-semibold text-foreground">
+        <h2 id="connector-runs-title" className={typography.sectionTitle}>
           Connector Runs
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Inspect connector progress, results, warnings, and safe retry guidance.
         </p>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground" role="status">Loading connector runs...</p>
+        <p className={typography.muted} role="status">Loading connector runs...</p>
       ) : null}
       {error ? (
         <Alert variant="destructive">
@@ -244,7 +245,7 @@ export function ConnectorRunsPanel({
       {focusedRunLookup === 'search_limit_reached' && focusedRunId ? (
         <p
           aria-label="Requested connector run was not located within the searched recent-history window"
-          className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground"
+          className={`rounded-md border border-border bg-card p-4 ${typography.muted}`}
           role="status"
         >
           The requested connector run was not located within the searched recent-history window.
@@ -291,7 +292,7 @@ export function ConnectorRunsPanel({
                 <Card className="gap-3 rounded-md border-border p-4 shadow-none">
                   <CardHeader className="gap-1 px-0">
                     <CardTitle>
-                      <h3 className="text-sm font-semibold text-foreground">{connectorName}</h3>
+                      <h3 className={typography.panelTitle}>{connectorName}</h3>
                     </CardTitle>
                     <CardDescription className="text-xs">
                       {run.mode} · {run.startedAt}
