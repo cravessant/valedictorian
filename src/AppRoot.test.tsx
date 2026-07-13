@@ -147,6 +147,25 @@ describe('AppRoot workspace gate', () => {
     expect(screen.getByText('Open folder as workspace')).toBeInTheDocument()
   })
 
+  it('uses shared decorative separators at the create/open home boundary', async () => {
+    const { container } = render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi({
+          recentWorkspaces: [],
+          status: 'needs-workspace',
+        })}
+      />,
+    )
+
+    await screen.findByRole('button', { name: 'Open folder' })
+
+    const separators = container.querySelectorAll('[data-slot="separator"]')
+    expect(separators).toHaveLength(1)
+    expect(separators[0]).toHaveClass('my-4', 'bg-border')
+    expect(separators[0]).toHaveAttribute('data-orientation', 'horizontal')
+    expect(screen.queryByRole('separator')).toBeNull()
+  })
+
   it('keeps create details on a compact secondary create screen', async () => {
     render(
       <AppRoot
@@ -191,6 +210,29 @@ describe('AppRoot workspace gate', () => {
     const seedCheckbox = await screen.findByRole('checkbox', { name: 'Seed demo data' })
 
     expect(seedCheckbox).not.toBeChecked()
+  })
+
+  it('uses shared decorative separators on the create screen name, location, and seed boundaries', async () => {
+    const { container } = render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi({
+          devOptions: {
+            canSeedSampleData: true,
+          },
+          recentWorkspaces: [],
+          status: 'needs-workspace',
+        })}
+      />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create workspace' }))
+    await screen.findByRole('checkbox', { name: 'Seed demo data' })
+
+    const separators = container.querySelectorAll('[data-slot="separator"]')
+    expect(separators).toHaveLength(2)
+    expect(separators[0]).toHaveClass('my-5', 'bg-border')
+    expect(separators[1]).toHaveClass('my-5', 'bg-border')
+    expect(screen.queryByRole('separator')).toBeNull()
   })
 
   it('does not show the seed checkbox when sample seeding is unavailable', async () => {

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
 import type { CreateWorkspaceInput, WorkspaceLaunchState } from './workspace.service'
 
 interface WorkspaceLauncherPageProps {
@@ -139,7 +140,7 @@ function WorkspaceLauncherPage({
                   </Button>
                 </div>
 
-                <div className="my-4 h-px bg-border" />
+                <Separator className="my-4" />
 
                 <div className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-5 py-1">
                   <div className="min-w-0">
@@ -199,7 +200,7 @@ function WorkspaceLauncherPage({
                     />
                   </div>
 
-                  <div className="my-5 h-px bg-border" />
+                  <Separator className="my-5" />
 
                   <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-5">
                     <div className="min-w-0">
@@ -226,7 +227,7 @@ function WorkspaceLauncherPage({
 
                   {canSeedSampleData ? (
                     <>
-                      <div className="my-5 h-px bg-border" />
+                      <Separator className="my-5" />
                       <Label className="flex items-center gap-2 text-xs font-medium text-muted-foreground" htmlFor="workspace-seed-demo-data">
                         <Checkbox
                           checked={seedSampleData}
