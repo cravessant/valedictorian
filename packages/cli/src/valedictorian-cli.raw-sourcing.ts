@@ -2,6 +2,7 @@ import {
   batchRawSourceRecordsInputSchema,
   isReportedOriginKind,
   ValedictorianHttpError,
+  type BatchRawSourceRecordsResult,
   type JsonObject,
   type RawSourceRecordInput,
   type ReportedSourceOrigin,
@@ -15,7 +16,7 @@ const allowedOptions = [
   '--provider-schema', '--url',
 ]
 
-type IntakeRecord = Omit<RawSourceRecordInput, 'adapter' | 'capture'>
+type IntakeRecord = Omit<RawSourceRecordInput, 'adapter' | 'capture' | 'intakeItemId'>
 
 export function parseRawSourcingIntake(argv: string[], adapterVersion: string): RawSourceRecordInput[] {
   assertKnownOptions(argv, allowedOptions)
@@ -35,12 +36,16 @@ export function parseRawSourcingIntake(argv: string[], adapterVersion: string): 
 
     for (const [index, item] of parsed.entries()) {
       if (!isRecord(item)) throw new Error(`Batch record ${index} must be a JSON object`)
-      if ('adapter' in item || 'capture' in item) {
-        throw new Error(`Batch record ${index} cannot supply adapter or capture provenance`)
+      if ('adapter' in item || 'capture' in item || 'intakeItemId' in item) {
+        throw new Error(`Batch record ${index} cannot supply adapter, capture, or intake identity`)
       }
     }
 
-    return validateBatch(parsed.map((record) => ({ ...(record as IntakeRecord), adapter })))
+    return validateBatch(parsed.map((record, index) => ({
+      ...(record as IntakeRecord),
+      intakeItemId: `cli-intake-${index + 1}`,
+      adapter,
+    })))
   }
 
   const url = validateSourceUrl(readRequiredOption(argv, '--url'))
@@ -48,6 +53,7 @@ export function parseRawSourcingIntake(argv: string[], adapterVersion: string): 
   const payload = payloadJson === undefined ? {} : parseJsonObject(payloadJson, '--payload-json')
   payload.url = url
   const record: RawSourceRecordInput = {
+    intakeItemId: 'cli-intake-1',
     adapter,
     observedAt: readOption(argv, '--observed-at') ?? new Date().toISOString(),
     payload,
@@ -65,11 +71,12 @@ export async function ingestRawSourcing(
   client: ValedictorianWorkspaceClient,
   records: RawSourceRecordInput[],
 ) {
-  const intake = await client.sourcing.rawRecords.ingestBatch({ records })
+  const intake = await ingestCorrelatedBatch(client, records)
   const receipts = []
   let inspectionFailureCount = 0
+  const correlated = correlateReceipts(records, intake.receipts)
 
-  for (const [index, receipt] of intake.receipts.entries()) {
+  for (const { receipt, submitted } of correlated) {
     const normalization = await inspect('normalization', () =>
       client.sourcing.rawRecords.normalization.get(receipt.rawRecordId),
     )
@@ -80,8 +87,8 @@ export async function ingestRawSourcing(
     if (projection.result === null) inspectionFailureCount += 1
     receipts.push({
       submitted: {
-        adapter: records[index]?.adapter,
-        reportedOrigin: records[index]?.reportedOrigin ?? null,
+        adapter: submitted.adapter,
+        reportedOrigin: submitted.reportedOrigin ?? null,
       },
       intake: receipt,
       normalization: normalization.result === null ? normalization : {
@@ -94,6 +101,43 @@ export async function ingestRawSourcing(
   }
 
   return { inspectionFailureCount, receipts }
+}
+
+async function ingestCorrelatedBatch(
+  client: ValedictorianWorkspaceClient,
+  records: RawSourceRecordInput[],
+) {
+  try {
+    return await client.sourcing.rawRecords.ingestBatch({ records })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'ZodError') throw correlationError()
+    throw error
+  }
+}
+
+function correlateReceipts(
+  records: RawSourceRecordInput[],
+  receipts: BatchRawSourceRecordsResult['receipts'],
+) {
+  const submittedById = new Map<string, RawSourceRecordInput>()
+  for (const record of records) {
+    if (submittedById.has(record.intakeItemId)) throw correlationError()
+    submittedById.set(record.intakeItemId, record)
+  }
+
+  const correlated = receipts.map((receipt) => {
+    const submitted = submittedById.get(receipt.intakeItemId)
+    if (!submitted) throw correlationError()
+    submittedById.delete(receipt.intakeItemId)
+    return { receipt, submitted }
+  })
+
+  if (submittedById.size > 0) throw correlationError()
+  return correlated
+}
+
+function correlationError() {
+  return new Error('Raw sourcing receipt correlation failed')
 }
 
 async function inspect<T>(stage: 'normalization' | 'projection', lookup: () => Promise<T>) {

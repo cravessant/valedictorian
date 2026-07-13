@@ -16,6 +16,7 @@ import {
 } from 'sparxie'
 
 import { buildApplicationsRoute } from './valedictorian-cli.application-commands.js'
+import { parseConnectorScheduleUpsert } from './valedictorian-cli.connector-schedule-parsers.js'
 import { formatDoctorText, runContext, runDoctor } from './valedictorian-cli.doctor.js'
 import {
   booleanFlags,
@@ -40,6 +41,7 @@ import {
   type ValedictorianCliContext,
 } from './valedictorian-cli.command-runtime.js'
 import {
+  parseConnectorConfiguration,
   parseConnectorObservationsList,
   parseConnectorRunsList,
   parseConnectorRunTrigger,
@@ -454,10 +456,32 @@ function buildRunsRoute() {
 
 function buildConnectorsRoute() {
   return buildRouteMap({
-    docs: { brief: 'Inspect and trigger connector runs' },
+    docs: { brief: 'Configure and advance continuous connector synchronization' },
     routes: {
-      inspect: makeCommand({
-        docs: { brief: 'Inspect connector status' },
+      configure: makeCommand({
+        docs: { brief: 'Configure continuous connector synchronization' },
+        flags: optionFlags([
+          'connector-version',
+          'display-name',
+          'earliest-backfill-date',
+          'enabled',
+          'filters-json',
+          'workspace',
+        ]),
+        positionalCount: 1,
+        run: async (context, flags, connectorInstanceId) => {
+          const connectorClient = await workspaceConnectorClient(context, flags)
+
+          writeJson(
+            context,
+            await connectorClient.update(
+              parseConnectorConfiguration(connectorInstanceId, toArgvWithoutWorkspace(flags)),
+            ),
+          )
+        },
+      }),
+      status: makeCommand({
+        docs: { brief: 'Show connector synchronization status' },
         flags: optionFlags(['workspace']),
         positionalCount: 1,
         run: async (context, flags, connectorInstanceId) => {
@@ -518,13 +542,48 @@ function buildConnectorsRoute() {
           }),
         },
       }),
+      schedules: buildRouteMap({
+        docs: { brief: 'Manage connector schedule policy' },
+        routes: {
+          get: makeCommand({
+            docs: { brief: 'Get connector schedule policy' },
+            flags: optionFlags(['workspace']),
+            positionalCount: 1,
+            run: async (context, flags, connectorInstanceId) => {
+              const connectorClient = await workspaceConnectorClient(context, flags)
+
+              writeJson(context, await connectorClient.schedules.get(connectorInstanceId))
+            },
+          }),
+          upsert: makeCommand({
+            docs: { brief: 'Create or update connector schedule policy' },
+            flags: optionFlags(
+              ['workspace'],
+              ['cadence-json', 'expected-revision', 'state', 'timezone'],
+            ),
+            positionalCount: 1,
+            run: async (context, flags, connectorInstanceId) => {
+              const connectorClient = await workspaceConnectorClient(context, flags)
+
+              writeJson(
+                context,
+                await connectorClient.schedules.upsert(
+                  parseConnectorScheduleUpsert(
+                    connectorInstanceId,
+                    toArgvWithoutWorkspace(flags),
+                  ),
+                ),
+              )
+            },
+          }),
+        },
+      }),
       trigger: makeCommand({
-        docs: { brief: 'Trigger a connector run request' },
+        docs: { brief: 'Advance continuous connector synchronization' },
         flags: {
           ...optionFlags([
-            'coverage-ended-at',
-            'coverage-started-at',
             'filter-signature',
+            'filters-json',
             'mode',
             'reason',
             'workspace',

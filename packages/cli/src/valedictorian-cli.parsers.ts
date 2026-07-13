@@ -63,6 +63,7 @@ const attemptBlockerOutcomes = new Set([
 ])
 
 export {
+  parseConnectorConfiguration,
   parseConnectorObservationsList,
   parseConnectorRunsList,
   parseConnectorRunTrigger,

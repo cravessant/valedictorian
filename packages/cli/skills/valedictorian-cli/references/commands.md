@@ -61,7 +61,7 @@ valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE
 valedictorian-cli --json applications get <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now --limit 25
 valedictorian-cli --json connectors list --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json connectors inspect <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json connectors status <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json connectors runs list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --limit 25
 valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --status in_progress --limit 25
 valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE" --workflow-run-id <run-id> --merge-status new --limit 25
@@ -162,18 +162,19 @@ Connector commands are workspace-scoped and source-agnostic. Pass connector inst
 
 ```sh
 valedictorian-cli --json connectors list --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json connectors inspect <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json connectors status <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json connectors configure <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --enabled true --earliest-backfill-date 2026-04-01 --filters-json '{"search":"software internship"}'
+valedictorian-cli --json connectors schedules upsert <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision null --state enabled --cadence-json '{"kind":"daily","localTime":"09:00"}' --timezone America/New_York
 valedictorian-cli --json connectors runs list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --status queued --limit 25
 valedictorian-cli --json connectors observations list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --connector-run-id <connector-run-id> --limit 25
 valedictorian-cli --json connectors trigger <connector-instance-id> \
   --workspace "$VALEDICTORIAN_WORKSPACE" \
   --mode manual \
-  --coverage-started-at 2026-07-01T00:00:00.000Z \
-  --coverage-ended-at 2026-07-08T00:00:00.000Z \
-  --filter-signature "filters:{}"
+  --filter-signature "filters:{}" \
+  --filters-json '{}'
 ```
 
-`connectors trigger` records a connector run request through the app/backend contract. Adapter-specific auth, link resolution, refresh execution, and upsert logic remain outside the CLI.
+`connectors trigger` advances continuous synchronization through the app/backend contract. It does not request a result count or fixed batch. Adapter-specific auth, link resolution, refresh execution, and upsert logic remain outside the CLI.
 
 ## Workflow Runs
 

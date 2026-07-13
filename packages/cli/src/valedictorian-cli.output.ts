@@ -37,7 +37,67 @@ function formatValue(value: unknown): string {
     return formatRawSourcingReceipts(record.receipts)
   }
 
+  if (isConnectorRun(record)) {
+    return formatConnectorRun(record)
+  }
+
   return formatRecord(record)
+}
+
+function isConnectorRun(record: Record<string, unknown>) {
+  return (
+    typeof record.connectorInstanceId === 'string' &&
+    isPlainRecord(record.newestFrontier) &&
+    isPlainRecord(record.historicalBackfill) &&
+    isPlainRecord(record.outcome)
+  )
+}
+
+function formatConnectorRun(record: Record<string, unknown>) {
+  const outcome = record.outcome as Record<string, unknown>
+  const newest = record.newestFrontier as Record<string, unknown>
+  const backfill = record.historicalBackfill as Record<string, unknown>
+  const operation = isPlainRecord(outcome.operation) ? outcome.operation : undefined
+  const lines = [
+    `Connector run ${String(record.id)} - status=${String(record.status)}`,
+    `Synchronization: ${connectorSynchronizationLabel(record, outcome)}`,
+    `Newest frontier: ${String(newest.state)}`,
+    `Historical backfill: ${String(backfill.state)}`,
+    `Pending link resolution: ${String(record.pendingResolutionCount)}`,
+  ]
+
+  if (outcome.kind === 'cooling_down' && operation?.retryAt) {
+    lines.push(`Next attempt: ${String(operation.retryAt)}`)
+  }
+
+  if (outcome.kind === 'yielded') {
+    lines.push(`Yield reason: ${String(outcome.reason)}`)
+  }
+
+  return lines.join('\n')
+}
+
+function connectorSynchronizationLabel(
+  record: Record<string, unknown>,
+  outcome: Record<string, unknown>,
+) {
+  if (outcome.kind === 'cooling_down') return 'Provider cooling down'
+  if (outcome.kind === 'action_required') return 'Authentication required'
+  if (outcome.kind === 'caught_up') return 'Caught up'
+  if (outcome.kind === 'boundary_exhausted') return 'Boundary exhausted'
+  if (outcome.kind === 'yielded') return 'Execution yielded'
+  if (outcome.kind === 'in_progress' && Number(record.pendingResolutionCount) > 0) {
+    return 'Resolving pending links'
+  }
+  const newest = record.newestFrontier as Record<string, unknown>
+  if (outcome.kind === 'in_progress' && newest.state === 'advancing') {
+    return 'Checking newest jobs'
+  }
+  const backfill = record.historicalBackfill as Record<string, unknown>
+  if (outcome.kind === 'in_progress' && backfill.state === 'advancing') {
+    return 'Backfilling historical jobs'
+  }
+  return String(outcome.kind).replace(/_/g, ' ')
 }
 
 function formatRawSourcingReceipts(receipts: unknown[]) {
@@ -178,6 +238,13 @@ function formatRecord(record: Record<string, unknown>) {
 function summarizeItem(value: unknown): string {
   if (!isPlainRecord(value)) {
     return String(value)
+  }
+
+  if (isConnectorRun(value)) {
+    return `Connector run ${String(value.id)} - ${connectorSynchronizationLabel(
+      value,
+      value.outcome as Record<string, unknown>,
+    )}`
   }
 
   const id = primitiveString(value.id)

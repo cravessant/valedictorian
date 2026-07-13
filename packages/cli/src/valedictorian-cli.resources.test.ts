@@ -94,17 +94,36 @@ describe('valedictorian-cli npm package', () => {
     const payload = {
       id: 'connector-instance-jobright',
       displayName: 'Jobright',
-      status: 'auth_required',
-      actionRequired: [{ kind: 'auth' }],
+      connectorId: 'jobright',
+      connectorVersion: '0.11.0',
+      enabled: true,
+      auth: [],
+      status: 'authentication_required',
+      actionRequired: [{
+        id: 'jobright-auth',
+        kind: 'auth',
+        label: 'Reconnect',
+        message: 'Configure authentication.',
+        severity: 'blocked',
+      }],
+      actions: [{ id: 'reconnect', label: 'Reconnect' }],
+      lastRunAt: null,
+      latestRunId: null,
+      observationCount: 0,
+      severity: 'blocked',
+      statusLabel: 'Authentication required',
+      summary: 'Configure authentication.',
+      warningCount: 0,
+      warnings: [],
     }
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValue(jsonResponse(payload))
     vi.stubGlobal('fetch', fetchMock)
 
-    const missingWorkspace = await runCli(['connectors', 'inspect', 'connector-instance-jobright'])
+    const missingWorkspace = await runCli(['connectors', 'status', 'connector-instance-jobright'])
     const result = await runCli([
       'connectors',
-      'inspect',
+      'status',
       'connector-instance-jobright',
       '--workspace',
       'workspace-1',
@@ -126,15 +145,20 @@ describe('valedictorian-cli npm package', () => {
     const payload = {
       id: 'run-queued',
       connectorInstanceId: 'connector-instance-jobright',
+      executionScopeId: 'scope-jobright',
       mode: 'manual',
       status: 'queued',
-      coverage: { start: '2026-07-01T00:00:00.000Z', end: '2026-07-08T00:00:00.000Z' },
       filterSignature: 'internships',
       observationCount: 0,
       warningCount: 0,
-      stats: {},
       warnings: [],
-      retryHints: null,
+      newestFrontier: { state: 'not_started' },
+      historicalBackfill: {
+        state: 'not_started',
+        boundary: { earliestDate: '2026-04-01' },
+      },
+      pendingResolutionCount: 0,
+      outcome: { kind: 'in_progress' },
       startedAt: '2026-07-12T12:00:00.000Z',
       completedAt: null,
       scheduleOccurrence: null,
@@ -151,10 +175,6 @@ describe('valedictorian-cli npm package', () => {
       'workspace-1',
       '--mode',
       'manual',
-      '--coverage-started-at',
-      '2026-07-01T00:00:00.000Z',
-      '--coverage-ended-at',
-      '2026-07-08T00:00:00.000Z',
       '--filter-signature',
       'internships',
       '--json',
@@ -167,8 +187,6 @@ describe('valedictorian-cli npm package', () => {
       expect.objectContaining({ method: 'POST' }),
     )
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
-      coverageStartedAt: '2026-07-01T00:00:00.000Z',
-      coverageEndedAt: '2026-07-08T00:00:00.000Z',
       filterSignature: 'internships',
       mode: 'manual',
     })
