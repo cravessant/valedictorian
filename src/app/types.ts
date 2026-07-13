@@ -36,6 +36,7 @@ export const APP_VIEWS = {
   CONNECTOR_RUNS: 'connector-runs',
   SETTINGS: 'settings',
   SOURCING: 'sourcing',
+  SOURCING_NORMALIZATION: 'sourcing-normalization',
 } as const
 
 export type AppView = typeof APP_VIEWS[keyof typeof APP_VIEWS]

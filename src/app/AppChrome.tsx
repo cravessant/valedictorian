@@ -162,6 +162,10 @@ function AppSidebar({
   onSettingsPatch,
 }: AppSidebarProps) {
   const connectorsChildrenId = useId()
+  const sourcingChildrenId = useId()
+  const sourcingChildActive = currentView === APP_VIEWS.SOURCING
+    || currentView === APP_VIEWS.SOURCING_NORMALIZATION
+  const [sourcingExpanded, setSourcingExpanded] = useState(sourcingChildActive)
   const connectorsChildActive =
     currentView === APP_VIEWS.CONNECTORS || currentView === APP_VIEWS.CONNECTOR_RUNS
   const [connectorsExpanded, setConnectorsExpanded] = useState(connectorsChildActive)
@@ -171,6 +175,10 @@ function AppSidebar({
       setConnectorsExpanded(true)
     }
   }, [connectorsChildActive])
+
+  useEffect(() => {
+    if (sourcingChildActive) setSourcingExpanded(true)
+  }, [sourcingChildActive])
 
   return (
     <aside
@@ -217,12 +225,37 @@ function AppSidebar({
         </button>
         <button
           type="button"
-          className={applicationNavClass(currentView === APP_VIEWS.SOURCING)}
-          onClick={() => onViewChange(APP_VIEWS.SOURCING)}
+          aria-controls={sourcingChildrenId}
+          aria-expanded={sourcingExpanded}
+          className={applicationNavClass(sourcingChildActive)}
+          onClick={() => {
+            setSourcingExpanded((expanded) => !expanded)
+            onViewChange(APP_VIEWS.SOURCING)
+          }}
         >
           <Search className="h-4 w-4" aria-hidden="true" />
           Sourcing
         </button>
+        {sourcingExpanded ? (
+          <div className="ml-4 space-y-1 border-l border-border pl-2" id={sourcingChildrenId}>
+            <button
+              type="button"
+              aria-current={currentView === APP_VIEWS.SOURCING ? 'page' : undefined}
+              className={applicationNavClass(currentView === APP_VIEWS.SOURCING)}
+              onClick={() => onViewChange(APP_VIEWS.SOURCING)}
+            >
+              Findings
+            </button>
+            <button
+              type="button"
+              aria-current={currentView === APP_VIEWS.SOURCING_NORMALIZATION ? 'page' : undefined}
+              className={applicationNavClass(currentView === APP_VIEWS.SOURCING_NORMALIZATION)}
+              onClick={() => onViewChange(APP_VIEWS.SOURCING_NORMALIZATION)}
+            >
+              Normalization
+            </button>
+          </div>
+        ) : null}
         <button
           type="button"
           aria-controls={connectorsChildrenId}

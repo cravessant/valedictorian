@@ -6,6 +6,7 @@ import {
   defaultConnectorStatusReconnector,
   defaultConnectorStatusSkipper,
   defaultConnectorsApi,
+  defaultRawRecordsApi,
 } from './loaders'
 
 function jsonResponse(body: unknown, status = 200) {
@@ -38,6 +39,28 @@ describe('renderer HTTP loaders', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://valedictorian.test/v1/workspaces/workspace-1/applications?limit=1',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  it('loads the exact raw-revision projection through the workspace client', async () => {
+    const projection = {
+      rawRecordId: 'raw-record-1', rawRevisionId: 'raw-revision-1',
+      status: 'not_eligible', normalizationStatus: null, canonicalCandidateId: null,
+      gateStatus: null, updatedAt: '2026-07-10T12:00:04.000Z',
+    }
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+      .mockResolvedValue(jsonResponse(projection))
+    vi.stubGlobal('fetch', fetchMock)
+    ;(window as Window & {
+      valedictorianHttp?: { apiBaseUrl: string; workspaceId: string }
+    }).valedictorianHttp = {
+      apiBaseUrl: 'https://valedictorian.test', workspaceId: 'workspace-1',
+    }
+
+    await expect(defaultRawRecordsApi.getProjection('raw-revision-1')).resolves.toEqual(projection)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://valedictorian.test/v1/workspaces/workspace-1/sourcing/raw-revisions/raw-revision-1/projection',
       expect.objectContaining({ method: 'GET' }),
     )
   })

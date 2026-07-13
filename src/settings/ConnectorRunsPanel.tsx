@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
@@ -9,6 +10,7 @@ import {
 } from './ConnectorRunDetails'
 import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
+import type { RawNormalizationRunFilter } from '../modules/sourcing/raw-normalization.types'
 
 interface ConnectorRunHistoryItem {
   connectorId: string
@@ -95,9 +97,11 @@ type FocusedConnectorRunLookup =
 export function ConnectorRunsPanel({
   connectorsApi,
   focusedRunId = null,
+  onInspectNormalization,
 }: {
   connectorsApi: ConnectorsPreloadApi
   focusedRunId?: string | null
+  onInspectNormalization?: (filter: RawNormalizationRunFilter) => void
 }) {
   const [items, setItems] = useState<ConnectorRunHistoryItem[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -277,6 +281,19 @@ export function ConnectorRunsPanel({
                 </div>
                 <ConnectorRunSynchronizationDetails run={run} />
                 <ConnectorRunLifecycleDetails run={run} />
+                {onInspectNormalization ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onInspectNormalization({
+                      connectorInstanceId: run.connectorInstanceId,
+                      connectorRunId: run.id,
+                    })}
+                  >
+                    Inspect normalization rows from {run.id}
+                  </Button>
+                ) : null}
                 {warningLabels.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {warningLabels.map((label) => (

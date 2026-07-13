@@ -57,6 +57,7 @@ import {
 import { defaultAppSettings, normalizeAppSettings } from '../settings/app-settings'
 import type { ConnectorScheduleUiApi } from '../settings/connector-schedule.types'
 import { PAGE_LIMIT } from './types'
+import type { RawRecordsReadApi } from '../modules/sourcing/raw-normalization.types'
 
 export const emptyApplicationResult: ApplicationListResult = {
   items: [],
@@ -321,6 +322,21 @@ export const defaultSourcingLoader = (query: SourcingFindingsListInput) => {
   }
 
   return sourcingWindow.sourcing?.findings?.list(query) ?? Promise.resolve(emptySourcingResult)
+}
+
+export const defaultRawRecordsApi: RawRecordsReadApi = {
+  list(query) {
+    return requireRendererHttpWorkspaceClient().sourcing.rawRecords.list(query)
+  },
+  get(rawRecordId) {
+    return requireRendererHttpWorkspaceClient().sourcing.rawRecords.get(rawRecordId)
+  },
+  getNormalization(rawRecordId) {
+    return requireRendererHttpWorkspaceClient().sourcing.rawRecords.normalization.get(rawRecordId)
+  },
+  getProjection(rawRevisionId) {
+    return requireRendererHttpWorkspaceClient().sourcing.rawRevisions.projection.get(rawRevisionId)
+  },
 }
 
 export const defaultConnectorStatusLoader = async () => {
