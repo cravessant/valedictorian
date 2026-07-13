@@ -1,9 +1,43 @@
 import { and, eq, isNull } from 'drizzle-orm'
-import { connectorInstances } from '../../db/schema'
+import { connectorInstances, sourceExecutionScopes } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
-import { assertPersistedEarliestBackfillDate } from './connector.earliest-backfill'
-import type { ConnectorAuthMode, ConnectorAuthReference, ConnectorInstanceRecord } from './connector-instance.persistence-types'
+import { assertPersistedEarliestBackfillDate, defaultEarliestBackfillDate } from './connector.earliest-backfill'
+import type { ConnectorAuthMode, ConnectorAuthReference, ConnectorInstanceRecord, UpsertConnectorInstanceInput } from './connector-instance.persistence-types'
 import { optionalNonEmptyString, requiredNonEmptyString, toJsonRecord } from './connector.persistence-json'
+import { deriveSourceExecutionScopeId } from '../source-execution/source-execution-governor'
+
+export function createConnectorInstance(
+  database: DrizzleDatabase,
+  input: UpsertConnectorInstanceInput,
+): ConnectorInstanceRecord {
+  const now = new Date().toISOString()
+  const createdAt = input.createdAt ?? now
+  const executionScopeId = deriveSourceExecutionScopeId(input.id)
+  return database.transaction((transaction) => {
+    transaction.insert(sourceExecutionScopes).values({
+      id: executionScopeId, createdAt, updatedAt: createdAt, deletedAt: null,
+    }).onConflictDoNothing().run()
+    const persisted = transaction.insert(connectorInstances).values({
+      id: input.id, executionScopeId, connectorId: input.connectorId,
+      connectorVersion: input.connectorVersion, displayName: input.displayName,
+      enabled: input.enabled,
+      authJson: JSON.stringify(normalizeConnectorAuthReferences(input.auth ?? [])),
+      configJson: JSON.stringify(input.config ?? {}),
+      filtersJson: JSON.stringify(input.filters ?? {}),
+      earliestBackfillDate: input.earliestBackfillDate === undefined
+        ? defaultEarliestBackfillDate(createdAt)
+        : assertPersistedEarliestBackfillDate(input.earliestBackfillDate),
+      createdAt, updatedAt: now, deletedAt: null,
+    }).onConflictDoNothing().returning().get()
+    if (!persisted) {
+      throw Object.assign(
+        new Error('This connector is already configured. Manage the existing instance.'),
+        { code: 'already_configured', statusCode: 409 },
+      )
+    }
+    return mapConnectorInstance(persisted)
+  })
+}
 
 export function selectConnectorInstance(
   database: DrizzleDatabase,

@@ -430,6 +430,20 @@ export function createConnectorRunner({
         createdAt: input.createdAt,
       })
     },
+    async registerInstanceIfAbsent(input: RegisterConnectorInstanceInput) {
+      return repository.createInstance({
+        id: input.id,
+        connectorId: input.connector.definition.id,
+        connectorVersion: input.connector.definition.version,
+        displayName: input.displayName,
+        enabled: input.enabled,
+        auth: input.auth,
+        config: input.config,
+        filters: input.filters,
+        earliestBackfillDate: input.earliestBackfillDate,
+        createdAt: input.createdAt,
+      })
+    },
     async refresh(
       connector: AppJobConnector,
       input: RunConnectorRefreshInput,

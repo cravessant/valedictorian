@@ -53,6 +53,7 @@ export interface ValedictorianRuntime {
   connectors: LocalValedictorianClient['connectors'] | null
   close: () => Promise<void>
   server: Pick<StartedValedictorianHttpServer, 'close' | 'url'> | null
+  restartServer: (() => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>) | null
 }
 
 export interface CreateValedictorianRuntimeOptions {
@@ -61,6 +62,7 @@ export interface CreateValedictorianRuntimeOptions {
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
   createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
+  deferServerStart?: boolean
   secretCodec?: ProfileSecretCodec
   startServer?: (
     options: CreateValedictorianHttpServerOptions,
@@ -102,6 +104,7 @@ export async function createValedictorianRuntime({
   createHttpClient = createHttpValedictorianClient,
   createLocalClient = createLocalValedictorianClient,
   connectorRunRecovery,
+  deferServerStart = false,
   secretCodec,
   startServer = createValedictorianHttpServer,
   workspaceManager,
@@ -118,6 +121,7 @@ export async function createValedictorianRuntime({
       }).forWorkspace(config.workspaceId),
       connectors: null,
       close: async () => undefined,
+      restartServer: null,
       server: null,
     }
   }
@@ -139,7 +143,7 @@ export async function createValedictorianRuntime({
   const serverOptions: CreateValedictorianHttpServerOptions = {
     client,
     host: config.apiHost,
-    port: config.apiPort,
+    port: config.mode === 'local-desktop' ? 0 : config.apiPort,
   }
 
   if (workspaceManager) {
@@ -154,13 +158,19 @@ export async function createValedictorianRuntime({
     }
   }
 
-  const server = await startServer(serverOptions)
+  let server = deferServerStart ? null : await startServer(serverOptions)
 
   return {
     client,
     connectors: client.connectors,
-    close: () => server.close(),
-    server,
+    close: async () => server?.close(),
+    get server() {
+      return server
+    },
+    async restartServer() {
+      server = await startServer(serverOptions)
+      return server
+    },
   }
 }
 

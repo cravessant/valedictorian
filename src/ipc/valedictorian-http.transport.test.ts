@@ -258,7 +258,7 @@ describe('Valedictorian HTTP transport boundary', () => {
     })).toThrow(/body/i)
   })
 
-  it('exposes a privileged preload fetch without putting the token in argv or the renderer config', () => {
+  it('exposes a privileged preload fetch without putting the token in argv or the renderer config', async () => {
     const invoke = vi.fn(async () => ({
       body: '{}',
       headers: { 'content-type': 'application/json' },
@@ -276,11 +276,15 @@ describe('Valedictorian HTTP transport boundary', () => {
 
     expect(config).toEqual({
       apiBaseUrl: 'https://api.valedictorian.test',
+      getBackendState: expect.any(Function),
+      onBackendStateChanged: expect.any(Function),
       request: expect.any(Function),
+      retryBackend: expect.any(Function),
       workspaceId: 'ws-1',
     })
     expect(JSON.stringify(config)).not.toContain('remote-token')
     expect(JSON.stringify(config)).not.toContain('token')
+    await config.retryBackend(); expect(invoke).toHaveBeenCalledWith('valedictorian-backend:retry')
 
     const argvConfig = readRendererHttpConfig([
       '--valedictorian-api-url=https://api.valedictorian.test',
@@ -293,6 +297,68 @@ describe('Valedictorian HTTP transport boundary', () => {
       workspaceId: 'ws-1',
     })
     expect(JSON.stringify(argvConfig)).not.toContain('token')
+  })
+
+  it('rebinds subsequent renderer calls only after main publishes a verified origin', () => {
+    let bindingListener: ((_event: unknown, state: unknown) => void) | undefined
+    const config = createValedictorianHttpPreloadApi(
+      {
+        invoke: vi.fn(),
+        on(channel, listener) {
+          expect(channel).toBe('valedictorian-backend:state-changed')
+          bindingListener = listener
+        },
+      },
+      {
+        apiBaseUrl: 'http://127.0.0.1:51001',
+        usePrivilegedTransport: false,
+        workspaceId: 'ws-1',
+      },
+    )
+    const observed = vi.fn()
+    config.onBackendStateChanged(observed)
+
+    bindingListener?.({}, { status: 'unavailable' })
+    expect(config.getBackendState()).toEqual({ status: 'unavailable' })
+    bindingListener?.({}, {
+      origin: 'http://127.0.0.1:51002',
+      status: 'available',
+    })
+
+    expect(config.getBackendState()).toEqual({
+      origin: 'http://127.0.0.1:51002',
+      status: 'available',
+    })
+    expect(observed).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not replay an ambiguous mutation when the backend binding recovers', async () => {
+    let bindingListener: ((_event: unknown, state: unknown) => void) | undefined
+    const invoke = vi.fn(async () => {
+      throw new TypeError('connection closed before the response arrived')
+    })
+    const config = createValedictorianHttpPreloadApi(
+      {
+        invoke,
+        on(_channel, listener) {
+          bindingListener = listener
+        },
+      },
+      {
+        apiBaseUrl: 'http://127.0.0.1:51001',
+        usePrivilegedTransport: true,
+        workspaceId: 'ws-1',
+      },
+    )
+
+    await expect(config.request!(
+      'http://127.0.0.1:51001/v1/workspaces/ws-1/connectors',
+      { body: '{}', method: 'POST' },
+    )).rejects.toThrow(/connection closed/i)
+    bindingListener?.({}, { status: 'unavailable' })
+    bindingListener?.({}, { origin: 'http://127.0.0.1:51002', status: 'available' })
+
+    expect(invoke).toHaveBeenCalledTimes(1)
   })
 
   it('registers a generic HTTP IPC channel that preserves Sparxie response fields and strips secrets', async () => {

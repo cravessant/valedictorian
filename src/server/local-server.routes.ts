@@ -883,7 +883,8 @@ export async function handleRequest({
       typeof error === 'object' &&
       'code' in error &&
       typeof error.code === 'string' &&
-      (error.code === 'capability_unavailable'
+      (error.code === 'already_configured'
+        || error.code === 'capability_unavailable'
         || (connectorScheduleErrorCodes as readonly string[]).includes(error.code)
         || (connectorOverviewErrorCodes as readonly string[]).includes(error.code))
     ) {

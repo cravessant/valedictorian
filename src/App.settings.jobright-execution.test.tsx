@@ -313,10 +313,13 @@ describe('Jobright execution', () => {
     expect(screen.queryByText('Warnings: 1')).not.toBeInTheDocument()
     expect(screen.queryByText('Failures: 2')).not.toBeInTheDocument()
     expect(screen.queryByText('auth_required')).not.toBeInTheDocument()
-    await waitFor(() => {
-      expect(connectorStatusLoader).toHaveBeenCalledTimes(1)
-      expect(sourcingLoader).toHaveBeenCalledTimes(1)
-    })
+    await waitFor(() => expect(sourcingLoader).toHaveBeenCalledTimes(1))
+    expect(connectorStatusLoader).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to app' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
+    await waitFor(() => expect(connectorStatusLoader).toHaveBeenCalledOnce())
   })
 
 })

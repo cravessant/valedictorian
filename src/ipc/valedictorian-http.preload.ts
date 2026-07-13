@@ -3,22 +3,62 @@ import { VALEDICTORIAN_HTTP_REQUEST_CHANNEL } from './valedictorian-http.ipc'
 
 interface IpcRendererLike {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>
+  on?(channel: string, listener: (_event: unknown, state: unknown) => void): void
 }
 
+export type RendererBackendState =
+  | { status: 'starting' | 'unavailable' | 'stopped' }
+  | { status: 'available'; origin: string }
+
+export const VALEDICTORIAN_BACKEND_STATE_CHANGED_CHANNEL =
+  'valedictorian-backend:state-changed'
+export const VALEDICTORIAN_BACKEND_RETRY_CHANNEL = 'valedictorian-backend:retry'
 export type RendererValedictorianHttpConfig = {
   apiBaseUrl: string
+  getBackendState(): RendererBackendState
+  onBackendStateChanged(listener: (state: RendererBackendState) => void): () => void
+  retryBackend(): Promise<void>
   workspaceId: string
   request?: typeof fetch
 }
 
 export function createValedictorianHttpPreloadApi(
   ipcRenderer: IpcRendererLike,
-  config: { apiBaseUrl: string; workspaceId: string; usePrivilegedTransport: boolean },
+  config: {
+    apiBaseUrl: string
+    backendStatus?: 'available' | 'unavailable'
+    workspaceId: string
+    usePrivilegedTransport: boolean
+  },
 ): RendererValedictorianHttpConfig {
+  let backendState: RendererBackendState = config.backendStatus === 'unavailable'
+    ? { status: 'unavailable' }
+    : { origin: config.apiBaseUrl, status: 'available' }
+  const stateListeners = new Set<(state: RendererBackendState) => void>()
   const exposed: RendererValedictorianHttpConfig = {
     apiBaseUrl: config.apiBaseUrl,
+    getBackendState: () => backendState,
+    onBackendStateChanged(listener) {
+      stateListeners.add(listener)
+      return () => stateListeners.delete(listener)
+    },
+    retryBackend: () => ipcRenderer.invoke(VALEDICTORIAN_BACKEND_RETRY_CHANNEL) as Promise<void>,
     workspaceId: config.workspaceId,
   }
+
+  ipcRenderer.on?.(VALEDICTORIAN_BACKEND_STATE_CHANGED_CHANNEL, (_event, value) => {
+    const nextState = parseRendererBackendState(value)
+    if (!nextState) {
+      return
+    }
+    backendState = nextState
+    if (nextState.status === 'available') {
+      exposed.apiBaseUrl = nextState.origin
+    }
+    for (const listener of stateListeners) {
+      listener(nextState)
+    }
+  })
 
   if (!config.usePrivilegedTransport) {
     return exposed
@@ -26,6 +66,27 @@ export function createValedictorianHttpPreloadApi(
 
   exposed.request = createPreloadValedictorianFetch(ipcRenderer)
   return exposed
+}
+
+function parseRendererBackendState(value: unknown): RendererBackendState | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const state = value as { origin?: unknown; status?: unknown }
+  if (state.status === 'available' && typeof state.origin === 'string') {
+    try {
+      const origin = new URL(state.origin)
+      if ((origin.protocol === 'http:' || origin.protocol === 'https:') && origin.origin === state.origin) {
+        return { origin: state.origin, status: 'available' }
+      }
+    } catch {
+      return null
+    }
+  }
+  if (state.status === 'starting' || state.status === 'unavailable' || state.status === 'stopped') {
+    return { status: state.status }
+  }
+  return null
 }
 
 function createPreloadValedictorianFetch(ipcRenderer: IpcRendererLike): typeof fetch {
@@ -60,15 +121,17 @@ function createPreloadValedictorianFetch(ipcRenderer: IpcRendererLike): typeof f
 
 export function readRendererHttpConfig(argv: string[]) {
   const apiBaseUrl = readArgumentValue(argv, '--valedictorian-api-url=')
+  const backendStatus = readArgumentValue(argv, '--valedictorian-backend-status=')
   const workspaceId = readArgumentValue(argv, '--valedictorian-workspace-id=')
   const transportMode = readArgumentValue(argv, '--valedictorian-http-transport=')
 
-  if (!apiBaseUrl || !workspaceId) {
+  if (!workspaceId || (!apiBaseUrl && backendStatus !== 'unavailable')) {
     return null
   }
 
   return {
-    apiBaseUrl,
+    apiBaseUrl: apiBaseUrl ?? '',
+    ...(backendStatus === 'unavailable' ? { backendStatus: 'unavailable' as const } : {}),
     workspaceId,
     usePrivilegedTransport: transportMode === 'privileged',
   }

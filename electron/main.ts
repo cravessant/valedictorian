@@ -20,6 +20,10 @@ import {
   createBoundValedictorianHttpTransport,
   registerValedictorianHttpIpc,
 } from '../src/ipc/valedictorian-http.ipc'
+import {
+  VALEDICTORIAN_BACKEND_RETRY_CHANNEL,
+  VALEDICTORIAN_BACKEND_STATE_CHANGED_CHANNEL,
+} from '../src/ipc/valedictorian-http.preload'
 import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
 import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '../src/server/local-workspaces'
 import { createSqliteProfileRepository } from '../src/modules/profile/profile.repository'
@@ -28,6 +32,12 @@ import {
   resolveValedictorianRuntimeConfig,
   type ValedictorianRuntime,
 } from '../src/runtime/valedictorian-runtime'
+import {
+  createLocalBackendSupervisor,
+  type LocalBackendState,
+  type LocalBackendSupervisor,
+  type SupervisedBackendListener,
+} from '../src/runtime/local-backend-supervisor'
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
 import { type WorkspaceSummary } from '../src/workspace/workspace.initializer'
 import { createWorkspaceMenuTemplate } from '../src/workspace/workspace.menu'
@@ -76,6 +86,10 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 
 app.setName('Valedictorian')
 
+if (process.env.VALEDICTORIAN_USER_DATA_PATH) {
+  app.setPath('userData', path.resolve(process.env.VALEDICTORIAN_USER_DATA_PATH))
+}
+
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.valedictorian.app')
 }
@@ -83,6 +97,8 @@ if (process.platform === 'win32') {
 let mainWindow: BrowserWindow | null = null
 let workspaceLauncherWindow: BrowserWindow | null = null
 let runtime: ValedictorianRuntime | null = null
+let backendSupervisor: LocalBackendSupervisor | null = null
+let rendererBackendState: LocalBackendState = { status: 'stopped' }
 let rendererHttpBinding: {
   apiUrl: string
   apiToken?: string
@@ -175,13 +191,51 @@ async function registerRuntimeServices(
       ...config,
       seedDataMode: options?.seedData ?? config.seedDataMode,
     },
+    deferServerStart: config.mode !== 'remote',
     secretCodec,
     workspaceManager: workspaceManager ?? undefined,
   })
-  rendererHttpBinding = {
-    apiUrl: runtime.server?.url ?? config.apiUrl,
-    ...(config.apiToken === undefined ? {} : { apiToken: config.apiToken }),
-    usePrivilegedTransport: config.mode === 'remote' || Boolean(config.apiToken),
+  if (config.mode !== 'remote') {
+    backendSupervisor = createLocalBackendSupervisor({
+      restart: { baseDelayMs: 100, maxAttempts: 5, maxDelayMs: 2_000 },
+      async startListener() {
+        const server = await runtime?.restartServer?.()
+        if (!server || !('onClosed' in server) || !('onError' in server)) {
+          throw new Error('Local backend listener is unavailable.')
+        }
+        const supervisedServer = server as typeof server & {
+          onClosed(listener: () => void): () => void
+          onError(listener: () => void): () => void
+        }
+        return {
+          close: () => supervisedServer.close(),
+          onClosed: (listener) => supervisedServer.onClosed(listener),
+          onError: (listener) => supervisedServer.onError(listener),
+          origin: supervisedServer.url,
+        } satisfies SupervisedBackendListener
+      },
+      verifyOrigin: verifyLocalBackendOrigin,
+    })
+    backendSupervisor.subscribe((state) => {
+      rendererBackendState = state
+      if (state.status === 'available') {
+        rendererHttpBinding = {
+          apiUrl: state.origin,
+          ...(config.apiToken === undefined ? {} : { apiToken: config.apiToken }),
+          usePrivilegedTransport: Boolean(config.apiToken),
+        }
+      }
+      publishBackendState(state)
+    })
+    await backendSupervisor.start()
+  } else {
+    const origin = runtime.server?.url ?? config.apiUrl
+    rendererBackendState = { origin, status: 'available' }
+    rendererHttpBinding = {
+      apiUrl: origin,
+      ...(config.apiToken === undefined ? {} : { apiToken: config.apiToken }),
+      usePrivilegedTransport: config.mode === 'remote' || Boolean(config.apiToken),
+    }
   }
   const profileSqlite = createFileDatabase(config.sqlitePath)
   migrateDatabase(profileSqlite)
@@ -199,12 +253,8 @@ async function registerRuntimeServices(
   registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain)
   registerValedictorianHttpIpc(
-    rendererHttpBinding.usePrivilegedTransport
-      ? createBoundValedictorianHttpTransport({
-        apiBaseUrl: rendererHttpBinding.apiUrl,
-        apiToken: rendererHttpBinding.apiToken,
-        workspaceId: workspace.id,
-      })
+    (config.mode === 'remote' || Boolean(config.apiToken))
+      ? { request: (input) => createCurrentBoundTransport(workspace.id).request(input) }
       : null,
     ipcMain,
   )
@@ -278,6 +328,10 @@ function createMainWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.webContents.send('main-process-message', (new Date).toLocaleString())
     sendWindowChromeState(mainWindow)
+    mainWindow?.webContents.send(
+      VALEDICTORIAN_BACKEND_STATE_CHANGED_CHANNEL,
+      rendererBackendState,
+    )
   })
 
   loadRenderer(mainWindow)
@@ -456,14 +510,20 @@ function loadRenderer(window: BrowserWindow) {
 }
 
 function createRendererHttpArguments() {
-  if (!rendererHttpBinding || !currentWorkspace) {
+  if (!currentWorkspace) {
     return []
   }
 
   const argumentsForRenderer = [
-    `--valedictorian-api-url=${rendererHttpBinding.apiUrl}`,
     `--valedictorian-workspace-id=${currentWorkspace.id}`,
   ]
+
+  if (!rendererHttpBinding || rendererBackendState.status !== 'available') {
+    argumentsForRenderer.push('--valedictorian-backend-status=unavailable')
+    return argumentsForRenderer
+  }
+
+  argumentsForRenderer.push(`--valedictorian-api-url=${rendererHttpBinding.apiUrl}`)
 
   if (rendererHttpBinding.usePrivilegedTransport) {
     argumentsForRenderer.push('--valedictorian-http-transport=privileged')
@@ -509,6 +569,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('window-chrome:get-state', (event) =>
     getWindowChromeState(BrowserWindow.fromWebContents(event.sender)),
   )
+  ipcMain.handle(VALEDICTORIAN_BACKEND_RETRY_CHANNEL, () => backendSupervisor?.retry())
   registerUpdatesIpc(updateService, ipcMain, () => BrowserWindow.getAllWindows())
   scheduleUpdatePolling()
 
@@ -592,10 +653,46 @@ async function pollForUpdates() {
 }
 
 async function closeRuntime() {
-  await runtime?.close()
+  if (backendSupervisor) {
+    await backendSupervisor.stop()
+  } else {
+    await runtime?.close()
+  }
+  backendSupervisor = null
   runtime = null
   rendererHttpBinding = null
+  rendererBackendState = { status: 'stopped' }
   runtimeServicesRegistered = false
+}
+
+async function verifyLocalBackendOrigin(origin: string) {
+  try {
+    const response = await fetch(`${origin}/v1/health`, {
+      signal: AbortSignal.timeout(2_000),
+    })
+    return response.ok && (await response.json() as { ok?: unknown }).ok === true
+  } catch {
+    return false
+  }
+}
+
+function publishBackendState(state: LocalBackendState) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send(VALEDICTORIAN_BACKEND_STATE_CHANGED_CHANNEL, state)
+    }
+  }
+}
+
+function createCurrentBoundTransport(workspaceId: string) {
+  if (!rendererHttpBinding || rendererBackendState.status !== 'available') {
+    throw new Error('Workspace backend unavailable.')
+  }
+  return createBoundValedictorianHttpTransport({
+    apiBaseUrl: rendererHttpBinding.apiUrl,
+    apiToken: rendererHttpBinding.apiToken,
+    workspaceId,
+  })
 }
 
 async function installWorkspaceMenu(workspaceService: WorkspaceService<BrowserWindow>) {
