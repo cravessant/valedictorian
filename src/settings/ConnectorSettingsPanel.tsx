@@ -686,12 +686,10 @@ export function ConnectorSettingsPanel({
       </div>
 
       {connectorActionError ? (
-        <Alert variant="destructive" className="bg-card" role="alert">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Connector action failed</AlertTitle>
-            <AlertDescription>{connectorActionError}</AlertDescription>
-          </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Connector action failed</AlertTitle>
+          <AlertDescription>{connectorActionError}</AlertDescription>
         </Alert>
       ) : null}
 

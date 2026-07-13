@@ -119,7 +119,7 @@ export function SourcingFindingEditorModal({
     <ModalShell title={title} onClose={onClose}>
       <div className="grid gap-4">
         {error ? (
-          <Alert variant="destructive" className="bg-card">
+          <Alert variant="destructive">
             <AlertTitle>Save failed</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>

@@ -288,8 +288,10 @@ describe('connector-run progress and history', () => {
 
     expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
     expect(await screen.findByText('Jobright public jobs')).toBeInTheDocument()
-    expect(screen.getByText('failed')).toBeInTheDocument()
-    expect(screen.getByText('Authentication required')).toBeInTheDocument()
+    expect(screen.getByText('failed')).toHaveAttribute('data-slot', 'badge')
+    expect(screen.getByText('failed')).toHaveAttribute('data-variant', 'outline')
+    expect(screen.getByText('Authentication required')).toHaveAttribute('data-slot', 'badge')
+    expect(screen.getByText('Authentication required')).toHaveAttribute('data-variant', 'secondary')
     expect(screen.getByText('Update and validate Jobright credentials, then run again.')).toBeInTheDocument()
     expect(screen.getByText('Detail attempts: 3')).toBeInTheDocument()
     expect(screen.queryByText('Projected usable: 2')).not.toBeInTheDocument()

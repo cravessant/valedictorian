@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { AlertCircle } from 'lucide-react'
 import { retryAdviceSchema } from 'sparxie'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
@@ -210,23 +211,19 @@ export function ConnectorRunsPanel({
         <p className="text-sm text-muted-foreground" role="status">Loading connector runs...</p>
       ) : null}
       {error ? (
-        <Alert variant="destructive" className="bg-card" role="alert">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Run history unavailable</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Run history unavailable</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
       {focusedRunLookup === 'not_found' && focusedRunId ? (
-        <Alert variant="destructive" className="bg-card" role="alert">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Connector run not found</AlertTitle>
-            <AlertDescription>
-              The requested connector run could not be found in available history.
-            </AlertDescription>
-          </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Connector run not found</AlertTitle>
+          <AlertDescription>
+            The requested connector run could not be found in available history.
+          </AlertDescription>
         </Alert>
       ) : null}
       {focusedRunLookup === 'search_limit_reached' && focusedRunId ? (
@@ -272,9 +269,9 @@ export function ConnectorRunsPanel({
                       {run.mode} · {run.startedAt}
                     </p>
                   </div>
-                  <span className="rounded-full border border-border px-2 py-1 text-xs font-medium text-foreground">
+                  <Badge variant="outline">
                     {run.status}
-                  </span>
+                  </Badge>
                 </div>
                 <ConnectorRunProgressDetails run={run} />
                 <ConnectorRunLifecycleDetails run={run} />
@@ -286,9 +283,9 @@ export function ConnectorRunsPanel({
                 {warningLabels.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {warningLabels.map((label) => (
-                      <span key={label} className="rounded-full bg-muted px-2 py-1 text-xs text-foreground">
+                      <Badge key={label} variant="secondary">
                         {label}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 ) : null}

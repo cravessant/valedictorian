@@ -46,7 +46,7 @@ export function SourcingFindingDispositionModal({
     <ModalShell title="Set sourcing disposition" onClose={onClose}>
       <div className="grid gap-4">
         {error ? (
-          <Alert variant="destructive" className="bg-card">
+          <Alert variant="destructive">
             <AlertTitle>Save failed</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>

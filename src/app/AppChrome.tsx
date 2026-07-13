@@ -185,40 +185,45 @@ function AppSidebar({
       </div>
 
       <nav aria-label="Application views" className="space-y-1">
-        <button
+        <Button
           type="button"
+          variant="ghost"
           className={applicationNavClass(currentView === APP_VIEWS.PROFILE)}
           onClick={onOpenProfilePage}
         >
           <CircleUserRound className="h-4 w-4" aria-hidden="true" />
           Profile
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
           className={applicationNavClass(currentView === APP_VIEWS.APPLICATIONS)}
           onClick={() => onViewChange(APP_VIEWS.APPLICATIONS)}
         >
           <Database className="h-4 w-4" aria-hidden="true" />
           Applications
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
           className={applicationNavClass(currentView === APP_VIEWS.ACTION_QUEUE)}
           onClick={() => onViewChange(APP_VIEWS.ACTION_QUEUE)}
         >
           <ListChecks className="h-4 w-4" aria-hidden="true" />
           Action Queue
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
           className={applicationNavClass(currentView === APP_VIEWS.SOURCING)}
           onClick={() => onViewChange(APP_VIEWS.SOURCING)}
         >
           <Search className="h-4 w-4" aria-hidden="true" />
           Sourcing
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
           aria-controls={connectorsChildrenId}
           aria-expanded={connectorsExpanded}
           className={applicationNavClass(connectorsChildActive)}
@@ -226,25 +231,27 @@ function AppSidebar({
         >
           <Plug className="h-4 w-4" aria-hidden="true" />
           Connectors
-        </button>
+        </Button>
         {connectorsExpanded ? (
           <div className="ml-4 space-y-1 border-l border-border pl-2" id={connectorsChildrenId}>
-            <button
+            <Button
               type="button"
+              variant="ghost"
               aria-current={currentView === APP_VIEWS.CONNECTORS ? 'page' : undefined}
               className={applicationNavClass(currentView === APP_VIEWS.CONNECTORS)}
               onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
             >
               Overview
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
               aria-current={currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined}
               className={applicationNavClass(currentView === APP_VIEWS.CONNECTOR_RUNS)}
               onClick={() => onViewChange(APP_VIEWS.CONNECTOR_RUNS)}
             >
               Runs
-            </button>
+            </Button>
           </div>
         ) : null}
       </nav>

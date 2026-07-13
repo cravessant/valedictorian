@@ -149,12 +149,10 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
       </div>
 
       {error ? (
-        <Alert variant="destructive" className="bg-card">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Policy failed</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Policy failed</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
 

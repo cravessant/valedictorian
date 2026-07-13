@@ -63,14 +63,15 @@ function WorkspaceLauncherPage({
                   key={workspace.id}
                   className="group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md px-2 hover:bg-accent/40"
                 >
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
                     aria-label={
                       workspace.missing
                         ? `${workspace.name} unavailable`
                         : `Open ${workspace.name}`
                     }
-                    className="min-w-0 rounded-md py-2 text-left disabled:cursor-default"
+                    className="h-auto min-w-0 justify-start rounded-md px-0 py-2 text-left disabled:cursor-default"
                     disabled={workspace.missing}
                     onClick={() => onOpenRecent(workspace.id)}
                   >
@@ -85,7 +86,7 @@ function WorkspaceLauncherPage({
                         Missing folder
                       </span>
                     ) : null}
-                  </button>
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
@@ -159,14 +160,16 @@ function WorkspaceLauncherPage({
               </div>
             ) : (
               <div className="mt-6">
-                <button
+                <Button
                   type="button"
                   aria-label="Back"
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                  variant="ghost"
+                  size="xs"
+                  className="h-auto px-0 py-0 text-xs font-medium text-muted-foreground hover:bg-transparent hover:text-foreground"
                   onClick={() => setView('home')}
                 >
                   Back
-                </button>
+                </Button>
                 <h2 className="mt-4 text-lg font-semibold text-foreground">
                   Create local workspace
                 </h2>

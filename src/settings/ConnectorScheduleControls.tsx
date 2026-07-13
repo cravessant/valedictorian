@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { Button } from '@/components/ui/button'
 import type {
   ConnectorScheduleSummary,
   ConnectorSchedulingCapability,
@@ -328,41 +329,45 @@ export function ConnectorScheduleControls({
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <button
-          className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-50"
+        <Button
+          variant="outline"
+          size="sm"
           disabled={isSaving || !isDirty}
           type="button"
           onClick={onSave}
         >
           {isSaving ? 'Saving...' : 'Save schedule'}
-        </button>
-        <button
-          className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-50"
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           disabled={isSaving || !isDirty}
           type="button"
           onClick={onDiscard}
         >
           Discard
-        </button>
+        </Button>
         {canonical?.state === 'enabled' ? (
-          <button
-            className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-50"
+          <Button
+            variant="outline"
+            size="sm"
             disabled={isSaving || isDirty}
             type="button"
             onClick={onPause}
           >
             Pause schedule
-          </button>
+          </Button>
         ) : null}
         {canonical?.state === 'paused' ? (
-          <button
-            className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-50"
+          <Button
+            variant="outline"
+            size="sm"
             disabled={isSaving || isDirty}
             type="button"
             onClick={onResume}
           >
             Resume schedule
-          </button>
+          </Button>
         ) : null}
       </div>
 

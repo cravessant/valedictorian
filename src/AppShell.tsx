@@ -174,10 +174,11 @@ export function AppShell({
         data-testid="app-layout"
       >
         {isNarrowViewport && narrowSidebarOpen ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
             aria-label="Close sidebar drawer"
-            className="absolute inset-0 z-30 bg-background/70 md:hidden"
+            className="absolute inset-0 z-30 h-auto rounded-none bg-background/70 p-0 hover:bg-background/70 md:hidden"
             onClick={() => setNarrowSidebarOpen(false)}
           />
         ) : null}
@@ -530,12 +531,10 @@ export function AppShell({
               ) : null}
 
               {error ? (
-                <Alert variant="destructive" className="bg-card">
-                  <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-                  <div className="pl-7">
-                    <AlertTitle>Load failed</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
-                  </div>
+                <Alert variant="destructive">
+                  <AlertCircle aria-hidden="true" />
+                  <AlertTitle>Load failed</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
                 </Alert>
               ) : null}
 

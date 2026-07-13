@@ -433,15 +433,17 @@ function ApplicationTable({
                     style={{ width: header.getSize() }}
                   >
                     {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                      <button
+                      <Button
                         type="button"
-                        className="flex min-w-0 items-center gap-1 text-xs font-medium uppercase text-muted-foreground hover:text-foreground"
+                        variant="ghost"
+                        size="xs"
+                        className="h-auto min-w-0 px-0 py-0 text-xs font-medium uppercase text-muted-foreground hover:bg-transparent hover:text-foreground"
                         aria-label={`Sort by ${getColumnLabel(header.column.id).toLowerCase()}`}
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         <span aria-hidden="true">{getSortMark(header.column.getIsSorted())}</span>
-                      </button>
+                      </Button>
                     ) : (
                       flexRender(header.column.columnDef.header, header.getContext())
                     )}

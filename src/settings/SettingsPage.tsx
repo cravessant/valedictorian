@@ -176,9 +176,10 @@ export function SettingsSidebar({
             <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">{group.group}</p>
             <div className="space-y-1">
               {group.items.map((item) => (
-                <button
+                <Button
                   key={item.id}
                   type="button"
+                  variant="ghost"
                   className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${
                     item.id === selectedPanel
                       ? 'bg-accent text-accent-foreground'
@@ -188,7 +189,7 @@ export function SettingsSidebar({
                 >
                   {item.icon}
                   {item.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -224,14 +225,12 @@ export function SettingsPage({
       <div className="mx-auto max-w-4xl">
         <h1 className="text-2xl font-semibold tracking-normal text-foreground">Settings</h1>
         {restartRequired ? (
-          <Alert className="mt-4 bg-card">
-            <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-            <div className="pl-7">
-              <AlertTitle>Restart required</AlertTitle>
-              <AlertDescription>
-                Backend mode, API host, port, token, and remote URL changes apply next launch.
-              </AlertDescription>
-            </div>
+          <Alert className="mt-4">
+            <AlertCircle aria-hidden="true" />
+            <AlertTitle>Restart required</AlertTitle>
+            <AlertDescription>
+              Backend mode, API host, port, token, and remote URL changes apply next launch.
+            </AlertDescription>
           </Alert>
         ) : null}
 
