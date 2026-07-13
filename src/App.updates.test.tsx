@@ -60,8 +60,10 @@ describe('App updates', () => {
     )
 
     expect(await screen.findByText('Checking for updates')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Checking for updates' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Restart to update' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Check for updates' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Checking for updates' })).not.toBeInTheDocument()
     expect(updatesApi.install).not.toHaveBeenCalled()
   })
 

@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
+import { Spinner } from '@/components/ui/spinner'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -83,7 +84,7 @@ function UpdateStatusControl({ onCheck, state, onInstall }: UpdateStatusControlP
   if (state.status === 'checking') {
     return (
       <div className="app-no-drag ml-auto inline-flex h-7 items-center gap-2 rounded-md border border-border bg-card/80 px-2.5 text-xs font-medium text-muted-foreground">
-        <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        <Spinner aria-label="Checking for updates" className="size-3.5" />
         Checking for updates
       </div>
     )
