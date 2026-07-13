@@ -687,7 +687,12 @@ describe('App', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         actionQueueLoader={(query) => {
           actionQueueQueries.push(query)
-          return Promise.resolve(createActionQueueResult([createActionQueueItem()]))
+          return Promise.resolve({
+            ...createActionQueueResult([createActionQueueItem()]),
+            total: 80,
+            offset: query.offset ?? 0,
+            hasMore: (query.offset ?? 0) + 50 < 80,
+          })
         }}
         settingsApi={createSettingsApi()}
       />,
@@ -703,10 +708,14 @@ describe('App', () => {
     expect(within(table).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
     expect(within(table).getByText('Apply now')).toBeInTheDocument()
     expect(within(table).getByText('Queued score 6 meets policy cutoff 6.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Apply now 1' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Apply now 1' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Apply now 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next action queue page' }))
+    await waitFor(() => {
+      expect(actionQueueQueries.at(-1)).toMatchObject({ offset: 50 })
+    })
 
+    fireEvent.click(screen.getByRole('radio', { name: 'Apply now 1' }))
     await waitFor(() => {
       expect(actionQueueQueries.at(-1)).toMatchObject({
         actionBucket: 'apply_now',

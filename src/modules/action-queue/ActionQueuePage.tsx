@@ -11,10 +11,13 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { AlertCircle, ExternalLink, Inbox, Pencil } from 'lucide-react'
 import { actionQueueBuckets, type ActionQueueBucket, type ActionQueueListItem, type ActionQueueListResult } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
 import { formatEnumLabel } from '../../app/labels'
+
+const ACTION_BUCKET_ALL = 'all'
 
 interface ActionQueuePageProps {
   actionBucket: ActionQueueBucket | undefined
@@ -62,28 +65,31 @@ function ActionQueuePage({
           </Badge>
         </header>
 
-        <section aria-label="Action Buckets" className="rounded-md border border-border bg-card p-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={actionBucket === undefined ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onActionBucketChange(undefined)}
-            >
+        <section className="rounded-md border border-border bg-card p-4">
+          <ToggleGroup
+            type="single"
+            aria-label="Action Buckets"
+            variant="outline"
+            size="sm"
+            spacing={2}
+            className="w-full max-w-full flex-wrap justify-start"
+            value={actionBucket ?? ACTION_BUCKET_ALL}
+            onValueChange={(value) => {
+              if (!value) return
+              onActionBucketChange(
+                value === ACTION_BUCKET_ALL ? undefined : (value as ActionQueueBucket),
+              )
+            }}
+          >
+            <ToggleGroupItem value={ACTION_BUCKET_ALL}>
               All {sumActionBucketCounts(result)}
-            </Button>
+            </ToggleGroupItem>
             {actionQueueBuckets.map((availableActionBucket) => (
-              <Button
-                key={availableActionBucket}
-                type="button"
-                variant={actionBucket === availableActionBucket ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => onActionBucketChange(availableActionBucket)}
-              >
+              <ToggleGroupItem key={availableActionBucket} value={availableActionBucket}>
                 {actionBucketLabel(availableActionBucket)} {result.actionBucketCounts[availableActionBucket]}
-              </Button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         </section>
 
         {isLoading ? (
