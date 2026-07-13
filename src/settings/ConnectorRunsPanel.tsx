@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { AlertCircle } from 'lucide-react'
 import { retryAdviceSchema } from 'sparxie'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
@@ -255,43 +263,47 @@ export function ConnectorRunsPanel({
                 ref={isFocused ? focusedRunRef : undefined}
                 aria-current={isFocused ? 'true' : undefined}
                 aria-live={run.status === 'queued' || run.status === 'running' ? 'polite' : undefined}
-                className={`space-y-3 rounded-md border border-border bg-card p-4 ${
-                  isFocused ? 'ring-2 ring-primary' : ''
-                }`}
+                className={`rounded-md ${isFocused ? 'ring-2 ring-primary' : ''}`}
                 data-connector-run-id={run.id}
                 id={`connector-run-${run.id}`}
                 tabIndex={isFocused ? -1 : undefined}
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground">{connectorName}</h3>
-                    <p className="text-xs text-muted-foreground">
+                <Card className="gap-3 rounded-md border-border p-4 shadow-none">
+                  <CardHeader className="gap-1 px-0">
+                    <CardTitle>
+                      <h3 className="text-sm font-semibold text-foreground">{connectorName}</h3>
+                    </CardTitle>
+                    <CardDescription className="text-xs">
                       {run.mode} · {run.startedAt}
-                    </p>
-                  </div>
-                  <Badge variant="outline">
-                    {run.status}
-                  </Badge>
-                </div>
-                <ConnectorRunProgressDetails run={run} />
-                <ConnectorRunLifecycleDetails run={run} />
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {connectorRunMetrics(run).map((metric) => (
-                    <span key={metric.label}>{metric.label}: {metric.value}</span>
-                  ))}
-                </div>
-                {warningLabels.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {warningLabels.map((label) => (
-                      <Badge key={label} variant="secondary">
-                        {label}
+                    </CardDescription>
+                    <CardAction>
+                      <Badge variant="outline">
+                        {run.status}
                       </Badge>
-                    ))}
-                  </div>
-                ) : null}
-                {retryGuidance ? (
-                  <p className="text-xs font-medium text-muted-foreground">{retryGuidance}</p>
-                ) : null}
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="space-y-3 px-0">
+                    <ConnectorRunProgressDetails run={run} />
+                    <ConnectorRunLifecycleDetails run={run} />
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      {connectorRunMetrics(run).map((metric) => (
+                        <span key={metric.label}>{metric.label}: {metric.value}</span>
+                      ))}
+                    </div>
+                    {warningLabels.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {warningLabels.map((label) => (
+                          <Badge key={label} variant="secondary">
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                    {retryGuidance ? (
+                      <p className="text-xs font-medium text-muted-foreground">{retryGuidance}</p>
+                    ) : null}
+                  </CardContent>
+                </Card>
               </article>
             )
           })}

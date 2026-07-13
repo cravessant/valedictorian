@@ -287,15 +287,126 @@ describe('connector-run progress and history', () => {
     openConnectorRuns()
 
     expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
-    expect(await screen.findByText('Jobright public jobs')).toBeInTheDocument()
-    expect(screen.getByText('failed')).toHaveAttribute('data-slot', 'badge')
-    expect(screen.getByText('failed')).toHaveAttribute('data-variant', 'outline')
-    expect(screen.getByText('Authentication required')).toHaveAttribute('data-slot', 'badge')
-    expect(screen.getByText('Authentication required')).toHaveAttribute('data-variant', 'secondary')
-    expect(screen.getByText('Update and validate Jobright credentials, then run again.')).toBeInTheDocument()
-    expect(screen.getByText('Detail attempts: 3')).toBeInTheDocument()
+
+    const runArticle = await screen.findByRole('article')
+    expect(runArticle).toHaveAttribute('data-connector-run-id', 'connector-run-history')
+    expect(runArticle).toHaveAttribute('id', 'connector-run-connector-run-history')
+    expect(runArticle.querySelector('[data-slot="card"]')).not.toBeNull()
+    expect(runArticle.querySelector('[data-slot="card-header"]')).not.toBeNull()
+    expect(runArticle.querySelector('[data-slot="card-content"]')).not.toBeNull()
+    expect(runArticle.querySelector('[data-slot="card-footer"]')).toBeNull()
+    expect(runArticle.querySelector('[data-slot="card-action"]')).not.toBeNull()
+
+    expect(
+      within(runArticle).getByRole('heading', { level: 3, name: 'Jobright public jobs' }),
+    ).toBeInTheDocument()
+    expect(
+      within(runArticle).getByText('Jobright public jobs').closest('[data-slot="card-title"]'),
+    ).not.toBeNull()
+    expect(
+      within(runArticle).getByText('manual · 2026-07-09T16:00:00.000Z'),
+    ).toHaveAttribute('data-slot', 'card-description')
+    expect(within(runArticle).getByText('failed')).toHaveAttribute('data-slot', 'badge')
+    expect(within(runArticle).getByText('failed')).toHaveAttribute('data-variant', 'outline')
+    expect(within(runArticle).getByText('Authentication required')).toHaveAttribute('data-slot', 'badge')
+    expect(within(runArticle).getByText('Authentication required')).toHaveAttribute(
+      'data-variant',
+      'secondary',
+    )
+    expect(
+      within(runArticle).getByText('Update and validate Jobright credentials, then run again.'),
+    ).toBeInTheDocument()
+    expect(within(runArticle).getByText('Detail attempts: 3')).toBeInTheDocument()
     expect(screen.queryByText('Projected usable: 2')).not.toBeInTheDocument()
     expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
+    expect(runArticle).not.toHaveAttribute('aria-live')
+  })
+
+  it('keeps Card composition inside articles while preserving focus and live-region ownership', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    const runningRun = {
+      id: 'connector-run-card-focus',
+      connectorInstanceId: 'jobright-default',
+      mode: 'manual' as const,
+      status: 'running' as const,
+      coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
+      filterSignature: 'filters:{}',
+      observationCount: 0,
+      warningCount: 0,
+      stats: { discovered: 4, stage: 'discovering' },
+      warnings: [],
+      retryHints: null,
+      startedAt: '2026-07-09T16:00:00.000Z',
+      completedAt: null,
+    }
+    const completedRun = {
+      ...runningRun,
+      id: 'connector-run-card-completed',
+      status: 'completed' as const,
+      observationCount: 1,
+      stats: { stage: 'finalizing' },
+      startedAt: '2026-07-09T15:00:00.000Z',
+      completedAt: '2026-07-09T15:00:01.000Z',
+    }
+    vi.mocked(connectorsApi.runs.trigger).mockResolvedValueOnce(runningRun)
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      items: [runningRun, completedRun],
+      total: 2,
+      limit: 20,
+      offset: 0,
+      hasMore: false,
+    })
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await authenticateJobrightInSettings({ connectorsApi, profileApi })
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    expect(await screen.findByText('Latest run: running')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', {
+      name: 'View connector-run-card-focus in Connector Runs',
+    }))
+
+    expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
+
+    const focusedArticle = await screen.findByRole('article', { current: true })
+    expect(focusedArticle).toHaveAttribute('data-connector-run-id', 'connector-run-card-focus')
+    expect(focusedArticle).toHaveAttribute('id', 'connector-run-connector-run-card-focus')
+    expect(focusedArticle).toHaveAttribute('tabIndex', '-1')
+    expect(focusedArticle).toHaveClass('rounded-md', 'ring-2', 'ring-primary')
+    expect(focusedArticle).toHaveAttribute('aria-live', 'polite')
+    expect(focusedArticle).toHaveFocus()
+    expect(scrollIntoView).toHaveBeenCalled()
+    expect(focusedArticle.querySelector('[data-slot="card"]')).not.toBeNull()
+    expect(
+      within(focusedArticle).getByRole('heading', { level: 3 }),
+    ).toBeInTheDocument()
+    expect(within(focusedArticle).getByText('running')).toHaveAttribute('data-slot', 'badge')
+    expect(within(focusedArticle).getByText('Discovered jobs: 4')).toBeInTheDocument()
+
+    const completedArticle = screen
+      .getAllByRole('article')
+      .find((article) => article.getAttribute('data-connector-run-id') === 'connector-run-card-completed')
+    expect(completedArticle).toBeDefined()
+    expect(completedArticle).not.toHaveAttribute('aria-current')
+    expect(completedArticle).not.toHaveAttribute('aria-live')
+    expect(completedArticle).not.toHaveAttribute('tabIndex')
+    expect(completedArticle!.querySelector('[data-slot="card"]')).not.toBeNull()
+    expect(within(completedArticle!).getByText('completed')).toHaveAttribute('data-slot', 'badge')
   })
 
   it('labels per-run zero intake separately from carried cycle counts and explains the arithmetic accessibly', async () => {
