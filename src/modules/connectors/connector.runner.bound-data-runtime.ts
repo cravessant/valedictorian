@@ -56,10 +56,6 @@ export function createBoundConnectorDataRuntime({
   if (connector.definition.capabilities?.resolvesIntermediaryLinks) {
     enabledCapabilities.push('network')
   }
-  if (connector.definition.capabilities?.usesBrowserSession) {
-    enabledCapabilities.push('browser')
-  }
-
   return {
     ...(rawSource
       ? {

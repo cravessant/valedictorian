@@ -1,7 +1,11 @@
 import { connectorRuns } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import { readConnectorRunLifecycleCounts, reconcileConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
-import type { ConnectorRunRecord, ConnectorWarning } from './connector-run.persistence-types'
+import type {
+  ConnectorRunRecord,
+  ConnectorRunStatus,
+  ConnectorWarning,
+} from './connector-run.persistence-types'
 import { parseRetryAdviceJson } from './connector.retry-work'
 import { toJsonRecord } from './connector.persistence-json'
 
@@ -38,7 +42,7 @@ export function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefin
     executionScopeId: row.executionScopeId ?? (() => { throw new Error('Connector run is missing execution scope identity') })(),
     connectorInstanceId: row.connectorInstanceId,
     mode: row.mode,
-    status: row.status,
+    status: persistedConnectorRunStatus(row.status),
     startedAt: row.startedAt,
     completedAt: row.completedAt,
     coverageStartedAt: row.coverageStartedAt,
@@ -52,6 +56,17 @@ export function mapConnectorRun(row: typeof connectorRuns.$inferSelect | undefin
     warnings: JSON.parse(row.warningsJson) as unknown,
     retryHints: parseRetryAdviceJson(row.retryHintsJson),
   }
+}
+
+const connectorRunStatuses = new Set<ConnectorRunStatus>([
+  'cancelled', 'completed', 'failed', 'queued', 'running', 'skipped',
+])
+
+function persistedConnectorRunStatus(value: string): ConnectorRunStatus {
+  if (!connectorRunStatuses.has(value as ConnectorRunStatus)) {
+    throw new Error(`Invalid persisted connector run status: ${value}`)
+  }
+  return value as ConnectorRunStatus
 }
 
 export function withConnectorRunLifecycleCounts(

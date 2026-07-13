@@ -48,7 +48,6 @@ const connectorAuthModes = new Set<ConnectorAuthMode>([
   'bearer_token',
   'oauth',
   'cookie_jar',
-  'browser_session',
   'username_password',
 ])
 
@@ -61,7 +60,6 @@ export function normalizeConnectorAuthReferences(input: unknown): ConnectorAuthR
     const record = toJsonRecord(item)
     const label = optionalNonEmptyString(record.label)
     const secretKey = optionalNonEmptyString(record.secretKey)
-    const sessionKey = optionalNonEmptyString(record.sessionKey)
     const mode = normalizeConnectorAuthMode(record.mode)
 
     return {
@@ -69,7 +67,6 @@ export function normalizeConnectorAuthReferences(input: unknown): ConnectorAuthR
       mode,
       ...(label === undefined ? {} : { label }),
       ...(isSecretBackedAuthMode(mode) && secretKey !== undefined ? { secretKey } : {}),
-      ...(mode === 'browser_session' && sessionKey !== undefined ? { sessionKey } : {}),
     }
   })
 }

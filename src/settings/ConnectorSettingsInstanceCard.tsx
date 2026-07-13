@@ -2,19 +2,8 @@
 import { Button } from '@/components/ui/button'
 import {
   JOBRIGHT_CONNECTOR_ID,
-  JOBRIGHT_CONNECTOR_MAX_REQUESTS_PER_RUN,
-  JOBRIGHT_HOST_REQUEST_BUDGET,
   JOBRIGHT_MAX_DISCOVERY_COUNT,
-  JOBRIGHT_MAX_MAX_DISCOVERY_PAGES,
-  JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS,
-  JOBRIGHT_MAX_USEFUL_TARGET,
   JOBRIGHT_MIN_DISCOVERY_COUNT,
-  JOBRIGHT_MIN_MAX_DISCOVERY_PAGES,
-  JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS,
-  JOBRIGHT_MIN_USEFUL_TARGET,
-  JOBRIGHT_PACING_CONCURRENCY,
-  JOBRIGHT_PACING_MAX_DELAY_SECONDS,
-  JOBRIGHT_PACING_MIN_DELAY_SECONDS,
 } from '../modules/connectors/jobright.constants'
 import { formatRetryAdviceGuidance } from '../modules/connectors/connector.retry-guidance'
 import { retryAdviceSchema } from 'sparxie'
@@ -27,7 +16,6 @@ import { ConnectorEarliestBackfillDateControl } from './ConnectorEarliestBackfil
 import {
   connectorAuthStatusLabel,
   connectorAuthStatusMessage,
-  interpretJobrightSettings,
   isConnectorAuthReady,
   isJobrightCredentialsConfigured,
 } from './connector-settings.helpers'
@@ -129,9 +117,6 @@ export function ConnectorSettingsInstanceCard({
     return advice.success ? formatRetryAdviceGuidance(advice.data) : null
   })()
   const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
-  const settingsInterpretation = isJobrightInstance
-    ? interpretJobrightSettings(instance, draft)
-    : null
   const earliestValid = validateSelectableEarliestBackfillDate({
     candidate: draft.earliestBackfillDate,
     createdAt: instance.createdAt,
@@ -288,47 +273,9 @@ export function ConnectorSettingsInstanceCard({
                       className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] xl:items-end"
                       data-testid={`connector-run-actions-${instance.id}`}
                     >
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Role terms
-                        <input
-                          aria-label="Role terms"
-                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                          disabled={isSavingSettings}
-                          value={draft.roleTerms}
-                          onChange={(event) =>
-                            onUpdateDraft(instance.id, { roleTerms: event.target.value })}
-                        />
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Useful results target
-                        <input
-                          aria-label="Useful results target"
-                          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                          disabled={isSavingSettings}
-                          max={JOBRIGHT_MAX_USEFUL_TARGET}
-                          min={JOBRIGHT_MIN_USEFUL_TARGET}
-                          type="number"
-                          value={draft.usefulTarget}
-                          onChange={(event) =>
-                            onUpdateDraft(instance.id, { usefulTarget: event.target.value })}
-                        />
-                        <span className="font-normal text-muted-foreground">
-                          Bounded backfill intent across runs, not per-run discovery or resolution volume.
-                        </span>
-                      </label>
-                      <div className="grid gap-1 text-xs text-muted-foreground xl:col-span-full">
-                        <p>{settingsInterpretation!.savedUsefulTargetLabel}</p>
-                        {settingsInterpretation!.draftUsefulTargetLabel ? (
-                          <p>{settingsInterpretation!.draftUsefulTargetLabel}</p>
-                        ) : null}
-                        <p>{settingsInterpretation!.requestedAttemptsLabel}</p>
-                        <p>{settingsInterpretation!.effectiveAttemptsLabel}</p>
-                      </div>
                       <details className="xl:col-span-full">
-                        <summary className="cursor-pointer text-xs font-medium text-foreground">
-                          Advanced connector limits
-                        </summary>
-                        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <summary className="cursor-pointer text-xs font-medium text-foreground">Connector settings</summary>
+                        <div className="mt-3 grid gap-3">
                           <label className="grid gap-1 text-xs font-medium text-muted-foreground">
                             Discovery page size
                             <input
@@ -343,74 +290,6 @@ export function ConnectorSettingsInstanceCard({
                                 onUpdateDraft(instance.id, { discoveryCount: event.target.value })}
                             />
                           </label>
-                          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                            Discovery page limit
-                            <input
-                              aria-label="Discovery page limit"
-                              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                              disabled={isSavingSettings}
-                              max={JOBRIGHT_MAX_MAX_DISCOVERY_PAGES}
-                              min={JOBRIGHT_MIN_MAX_DISCOVERY_PAGES}
-                              type="number"
-                              value={draft.maxDiscoveryPages}
-                              onChange={(event) =>
-                                onUpdateDraft(instance.id, {
-                                  maxDiscoveryPages: event.target.value,
-                                })}
-                            />
-                          </label>
-                          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                            Discovery record limit
-                            <input
-                              aria-label="Discovery record limit"
-                              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                              disabled={isSavingSettings}
-                              max={JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS}
-                              min={JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS}
-                              type="number"
-                              value={draft.maxDiscoveryRecords}
-                              onChange={(event) =>
-                                onUpdateDraft(instance.id, {
-                                  maxDiscoveryRecords: event.target.value,
-                                })}
-                            />
-                          </label>
-                          <label className="grid gap-1 text-xs font-medium text-muted-foreground md:col-span-2 xl:col-span-3">
-                            Requested detail-resolution attempts
-                            <input
-                              aria-label="Requested detail-resolution attempts"
-                              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                              disabled={isSavingSettings}
-                              max={JOBRIGHT_HOST_REQUEST_BUDGET}
-                              min={1}
-                              type="number"
-                              value={draft.maxResolutionCount}
-                              onChange={(event) =>
-                                onUpdateDraft(instance.id, {
-                                  maxResolutionCount: event.target.value,
-                                })}
-                            />
-                            {settingsInterpretation!.legacyResolution ? (
-                              <span className="font-normal">
-                                Saved value is labeled legacy; effective attempts remain
-                                {' '}
-                                {settingsInterpretation!.effectiveAttempts}
-                                .
-                              </span>
-                            ) : null}
-                          </label>
-                          <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-3">
-                            Host request budget: effective {JOBRIGHT_HOST_REQUEST_BUDGET} requests/run;
-                            connector-supported maximum {JOBRIGHT_CONNECTOR_MAX_REQUESTS_PER_RUN}.
-                            The host budget currently takes precedence, so this value is disclosure-only.
-                          </p>
-                          <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-3">
-                            Pacing: concurrency {JOBRIGHT_PACING_CONCURRENCY},
-                            {' '}
-                            {JOBRIGHT_PACING_MIN_DELAY_SECONDS}–{JOBRIGHT_PACING_MAX_DELAY_SECONDS}
-                            {' '}
-                            seconds between bounded requests (disclosure-only).
-                          </p>
                         </div>
                       </details>
                       <Button

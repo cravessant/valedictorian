@@ -7,16 +7,8 @@ import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_CONNECTOR_VERSION,
-  JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT,
-  JOBRIGHT_HOST_REQUEST_BUDGET,
   JOBRIGHT_MAX_DISCOVERY_COUNT,
-  JOBRIGHT_MAX_MAX_DISCOVERY_PAGES,
-  JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS,
-  JOBRIGHT_MAX_USEFUL_TARGET,
   JOBRIGHT_MIN_DISCOVERY_COUNT,
-  JOBRIGHT_MIN_MAX_DISCOVERY_PAGES,
-  JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS,
-  JOBRIGHT_MIN_USEFUL_TARGET,
 } from '../modules/connectors/jobright.constants'
 import {
   maximumSelectableEarliestBackfillDate,
@@ -26,7 +18,6 @@ import {
   defaultConnectorSettingsDraft,
   jobrightSecretKeyForInstance,
   parseBoundedInteger,
-  parseCommaSeparatedList,
   recordFromUnknown,
   sanitizedConnectorAuthErrorMessage,
   shouldAutoValidateJobrightAuth,
@@ -271,10 +262,7 @@ export function ConnectorSettingsPanel({
         },
       ],
       config: {},
-      filters: {
-        maxResolutionCount: 10,
-        roleTerms: ['intern'],
-      },
+      filters: {},
     })
       .then((created) => {
         invalidateAuthValidation(created.id)
@@ -530,18 +518,6 @@ export function ConnectorSettingsPanel({
       setConnectorActionError(earliestValidation.message)
       return
     }
-    const usefulTarget = parseBoundedInteger(
-      draft.usefulTarget,
-      JOBRIGHT_MIN_USEFUL_TARGET,
-      JOBRIGHT_MAX_USEFUL_TARGET,
-    )
-    if (usefulTarget === null) {
-      setConnectorActionError(
-        `Useful results target must be an integer from ${JOBRIGHT_MIN_USEFUL_TARGET} to ${JOBRIGHT_MAX_USEFUL_TARGET}.`,
-      )
-      return
-    }
-
     const discoveryCount = parseBoundedInteger(
       draft.discoveryCount,
       JOBRIGHT_MIN_DISCOVERY_COUNT,
@@ -554,85 +530,16 @@ export function ConnectorSettingsPanel({
       return
     }
 
-    const maxDiscoveryPages = parseBoundedInteger(
-      draft.maxDiscoveryPages,
-      JOBRIGHT_MIN_MAX_DISCOVERY_PAGES,
-      JOBRIGHT_MAX_MAX_DISCOVERY_PAGES,
-    )
-    if (maxDiscoveryPages === null) {
-      setConnectorActionError(
-        `Discovery page limit must be an integer from ${JOBRIGHT_MIN_MAX_DISCOVERY_PAGES} to ${JOBRIGHT_MAX_MAX_DISCOVERY_PAGES}.`,
-      )
-      return
-    }
-
-    const maxDiscoveryRecords = parseBoundedInteger(
-      draft.maxDiscoveryRecords,
-      JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS,
-      JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS,
-    )
-    if (maxDiscoveryRecords === null) {
-      setConnectorActionError(
-        `Discovery record limit must be an integer from ${JOBRIGHT_MIN_MAX_DISCOVERY_RECORDS} to ${JOBRIGHT_MAX_MAX_DISCOVERY_RECORDS}.`,
-      )
-      return
-    }
-
-    const existingFilters = recordFromUnknown(instance.filters)
     const existingConfig = recordFromUnknown(instance.config)
-    const resolutionUnchanged = draft.maxResolutionCount === savedDraft.maxResolutionCount
-    let maxResolutionCount: number
-    if (resolutionUnchanged) {
-      maxResolutionCount = typeof existingFilters.maxResolutionCount === 'number'
-        && Number.isFinite(existingFilters.maxResolutionCount)
-        ? existingFilters.maxResolutionCount
-        : JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT
-    } else {
-      const parsedResolution = parseBoundedInteger(
-        draft.maxResolutionCount,
-        1,
-        JOBRIGHT_HOST_REQUEST_BUDGET,
-      )
-      if (parsedResolution === null) {
-        const parsed = Number(draft.maxResolutionCount.trim())
-        if (
-          Number.isSafeInteger(parsed)
-          && parsed > JOBRIGHT_HOST_REQUEST_BUDGET
-        ) {
-          setConnectorActionError(
-            `Requested detail-resolution attempts cannot exceed the effective host request budget of ${JOBRIGHT_HOST_REQUEST_BUDGET}.`,
-          )
-        } else {
-          setConnectorActionError(
-            `Requested detail-resolution attempts must be an integer from 1 to ${JOBRIGHT_HOST_REQUEST_BUDGET}.`,
-          )
-        }
-        return
-      }
-      maxResolutionCount = parsedResolution
-    }
-
-    const nextConfig: Record<string, unknown> = {
-      ...existingConfig,
-      usefulTarget,
+    const nextConfig: Record<string, unknown> = {}
+    for (const key of ['maxRetryAttemptsPerSource', 'maxRunElapsedMs'] as const) {
+      if (typeof existingConfig[key] === 'number') nextConfig[key] = existingConfig[key]
     }
     if (
       draft.discoveryCount !== savedDraft.discoveryCount
       || Object.prototype.hasOwnProperty.call(existingConfig, 'discoveryCount')
     ) {
       nextConfig.discoveryCount = discoveryCount
-    }
-    if (
-      draft.maxDiscoveryPages !== savedDraft.maxDiscoveryPages
-      || Object.prototype.hasOwnProperty.call(existingConfig, 'maxDiscoveryPages')
-    ) {
-      nextConfig.maxDiscoveryPages = maxDiscoveryPages
-    }
-    if (
-      draft.maxDiscoveryRecords !== savedDraft.maxDiscoveryRecords
-      || Object.prototype.hasOwnProperty.call(existingConfig, 'maxDiscoveryRecords')
-    ) {
-      nextConfig.maxDiscoveryRecords = maxDiscoveryRecords
     }
 
     setConnectorActionError(null)
@@ -647,11 +554,7 @@ export function ConnectorSettingsPanel({
       ...(draft.earliestBackfillDate !== savedDraft.earliestBackfillDate
         ? { earliestBackfillDate: earliestValidation.value }
         : {}),
-      filters: {
-        ...existingFilters,
-        maxResolutionCount,
-        roleTerms: parseCommaSeparatedList(draft.roleTerms),
-      },
+      filters: {},
     })
       .then((updated) => {
         setInstances((currentInstances) => currentInstances.map((currentInstance) =>
@@ -686,12 +589,7 @@ export function ConnectorSettingsPanel({
   function isConnectorSettingsDraftDirty(instance: ConnectorSettingsInstance): boolean {
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
     const saved = defaultConnectorSettingsDraft(instance)
-    return draft.roleTerms !== saved.roleTerms
-      || draft.usefulTarget !== saved.usefulTarget
-      || draft.discoveryCount !== saved.discoveryCount
-      || draft.maxDiscoveryPages !== saved.maxDiscoveryPages
-      || draft.maxDiscoveryRecords !== saved.maxDiscoveryRecords
-      || draft.maxResolutionCount !== saved.maxResolutionCount
+    return draft.discoveryCount !== saved.discoveryCount
       || draft.earliestBackfillDate !== saved.earliestBackfillDate
   }
 

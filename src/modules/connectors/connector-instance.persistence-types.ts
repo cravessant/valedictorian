@@ -1,21 +1,10 @@
 import type { JsonRecord } from './connector.persistence-json'
+import type {
+  ConnectorAuthMode,
+  ConnectorAuthReference,
+} from '@sparxie/valedictorian-connectors-core'
 
-export type ConnectorAuthMode =
-  | 'none'
-  | 'api_key'
-  | 'bearer_token'
-  | 'oauth'
-  | 'cookie_jar'
-  | 'browser_session'
-  | 'username_password'
-
-export interface ConnectorAuthReference {
-  id: string
-  mode: ConnectorAuthMode
-  label?: string
-  secretKey?: string
-  sessionKey?: string
-}
+export type { ConnectorAuthMode, ConnectorAuthReference }
 
 export interface UpsertConnectorInstanceInput {
   id: string

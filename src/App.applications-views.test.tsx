@@ -760,7 +760,7 @@ describe('App', () => {
     const connectorStatusReconnector = vi.fn(async () => ({
       action: 'reconnect' as const,
       connectorInstanceId: 'connector-instance-fixture',
-      grants: [{ id: 'fixture-session', mode: 'browser_session' as const, status: 'ready' as const }],
+      grants: [{ id: 'fixture-session', mode: 'api_key' as const, status: 'ready' as const }],
       message: 'Connector auth is ready.',
       status: 'ready' as const,
     }))

@@ -167,7 +167,7 @@ export function createSqliteConnectorRepository(
         )
         const terminalValues = {
           mode: input.mode,
-          status: deferTerminal ? 'running' : input.result.status ?? 'completed',
+          status: deferTerminal ? 'running' : input.result.status,
           startedAt: input.startedAt,
           completedAt: deferTerminal ? null : input.completedAt,
           coverageStartedAt: input.result.coverage.start,
@@ -204,17 +204,15 @@ export function createSqliteConnectorRepository(
             })
             .run()
         }
-        if (input.result.synchronization) {
-          transaction.insert(connectorRunSynchronizations).values({
-            connectorRunId: runId,
-            snapshotJson: JSON.stringify(input.result.synchronization),
-            createdAt: now,
-            updatedAt: now,
-          }).onConflictDoUpdate({
-            target: connectorRunSynchronizations.connectorRunId,
-            set: { snapshotJson: JSON.stringify(input.result.synchronization), updatedAt: now },
-          }).run()
-        }
+        transaction.insert(connectorRunSynchronizations).values({
+          connectorRunId: runId,
+          snapshotJson: JSON.stringify(input.result.synchronization),
+          createdAt: now,
+          updatedAt: now,
+        }).onConflictDoUpdate({
+          target: connectorRunSynchronizations.connectorRunId,
+          set: { snapshotJson: JSON.stringify(input.result.synchronization), updatedAt: now },
+        }).run()
         if ((input.checkpointPersistence ?? 'immediate') === 'immediate') {
           upsertConnectorCheckpoint(
             transaction,

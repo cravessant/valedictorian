@@ -84,10 +84,10 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'prep-credentials', kind: 'password', label: 'Prep', value: JSON.stringify({ username: 'prep@example.test', password: 'prep-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-prep', connectorId: 'jobright.resolver', connectorVersion: '0.10.0',
+      id: 'jobright-prep', connectorId: 'jobright.resolver', connectorVersion: '0.11.0',
       displayName: 'Jobright prep', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'prep-credentials' }],
-      config: { discoveryCount: 1, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 1 },
+      config: { discoveryCount: 1 }, filters: {},
       createdAt: clock,
     })
 
@@ -97,7 +97,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
-    const filterSignature = 'provider-state:jobright.resolver@0.10.0'
+    const filterSignature = 'provider-state:jobright.resolver@0.11.0'
     const checkpoint = await repository.getCheckpoint({ connectorInstanceId: 'jobright-prep', filterSignature })
     expect(checkpoint).toBeTruthy()
     await repository.recordCheckpoint({
@@ -179,10 +179,10 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'final-credentials', kind: 'password', label: 'Final', value: JSON.stringify({ username: 'final@example.test', password: 'final-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-final', connectorId: 'jobright.resolver', connectorVersion: '0.10.0',
+      id: 'jobright-final', connectorId: 'jobright.resolver', connectorVersion: '0.11.0',
       displayName: 'Jobright final', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'final-credentials' }],
-      config: { discoveryCount: 1, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 1 },
+      config: { discoveryCount: 1 }, filters: {},
       createdAt: clock,
     })
 
@@ -192,7 +192,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
-    const filterSignature = 'provider-state:jobright.resolver@0.10.0'
+    const filterSignature = 'provider-state:jobright.resolver@0.11.0'
     const checkpointBefore = await repository.getCheckpoint({ connectorInstanceId: 'jobright-final', filterSignature })
     expect((checkpointBefore!.checkpoint as { retryState: unknown[] }).retryState).toEqual([
       expect.objectContaining({ sourceId: 'jobright.public:job-final' }),
@@ -286,10 +286,10 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'recover-credentials', kind: 'password', label: 'Recover', value: JSON.stringify({ username: 'recover@example.test', password: 'recover-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-recover', connectorId: 'jobright.resolver', connectorVersion: '0.10.0',
+      id: 'jobright-recover', connectorId: 'jobright.resolver', connectorVersion: '0.11.0',
       displayName: 'Jobright recover', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'recover-credentials' }],
-      config: { discoveryCount: 1, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 1 },
+      config: { discoveryCount: 1 }, filters: {},
       createdAt: clock,
     })
 
@@ -299,7 +299,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
-    const filterSignature = 'provider-state:jobright.resolver@0.10.0'
+    const filterSignature = 'provider-state:jobright.resolver@0.11.0'
     sqlite.exec(`
       create trigger inject_checkpoint_recovery_failure
       before update on connector_checkpoints
@@ -406,10 +406,10 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'reopen-credentials', kind: 'password', label: 'Reopen', value: JSON.stringify({ username: 'reopen@example.test', password: 'reopen-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-reopen', connectorId: 'jobright.resolver', connectorVersion: '0.10.0',
+      id: 'jobright-reopen', connectorId: 'jobright.resolver', connectorVersion: '0.11.0',
       displayName: 'Jobright reopen', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'reopen-credentials' }],
-      config: { discoveryCount: 1, maxRequestsPerRun: 10 }, filters: { maxResolutionCount: 1 },
+      config: { discoveryCount: 1 }, filters: {},
       createdAt: clock,
     })
 
@@ -420,7 +420,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
     expect(detailCalls).toBe(1)
-    const filterSignature = 'provider-state:jobright.resolver@0.10.0'
+    const filterSignature = 'provider-state:jobright.resolver@0.11.0'
     sqlite.close()
 
     const midSqlite = createFileDatabase(sqlitePath)

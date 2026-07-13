@@ -169,6 +169,13 @@
       "when": 1783873895756,
       "tag": "0023_supreme_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1783910257485,
+      "tag": "0024_remove_stale_connector_interfaces",
+      "breakpoints": true
     }
   ]
 }

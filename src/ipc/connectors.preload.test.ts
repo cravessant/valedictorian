@@ -62,9 +62,9 @@ describe('connectors preload API', () => {
       connectorVersion: '0.3.0',
       displayName: 'Jobright public jobs',
       enabled: true,
-      auth: [{ id: 'jobright', label: 'Jobright browser session', mode: 'browser_session' }],
+      auth: [{ id: 'jobright', label: 'Jobright API key', mode: 'api_key' }],
       config: { publicFeedUrl: 'https://jobright.ai/jobs/recommend' },
-      filters: { maxResolutionCount: 10, roleTerms: ['intern'] },
+      filters: {},
     } as const
     const updateInput = {
       connectorInstanceId: 'connector-instance',

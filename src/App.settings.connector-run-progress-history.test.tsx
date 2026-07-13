@@ -241,7 +241,7 @@ describe('connector-run progress and history', () => {
           id: 'connector-run-history',
           connectorInstanceId: 'jobright-default',
           mode: 'manual',
-          status: 'partial_success',
+          status: 'failed',
           coverage: {
             start: '2026-07-09T15:00:00.000Z',
             end: '2026-07-09T16:00:00.000Z',
@@ -288,7 +288,7 @@ describe('connector-run progress and history', () => {
 
     expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
     expect(await screen.findByText('Jobright public jobs')).toBeInTheDocument()
-    expect(screen.getByText('partial_success')).toBeInTheDocument()
+    expect(screen.getByText('failed')).toBeInTheDocument()
     expect(screen.getByText('Authentication required')).toBeInTheDocument()
     expect(screen.getByText('Update and validate Jobright credentials, then run again.')).toBeInTheDocument()
     expect(screen.getByText('Detail attempts: 3')).toBeInTheDocument()
@@ -314,7 +314,7 @@ describe('connector-run progress and history', () => {
         id: 'pancake-carried-50',
         connectorInstanceId: 'pancake-jobright',
         mode: 'manual',
-        status: 'partial_success',
+        status: 'failed',
         coverage: { start: null, end: null },
         filterSignature: 'filters:{}',
         observationCount: 0,
@@ -402,7 +402,7 @@ describe('connector-run progress and history', () => {
     expect(screen.getByText(/Returned rows equal valid unique records plus invalid rows plus source duplicates/)).toBeInTheDocument()
   })
 
-  it('makes request budget and stop reason explicit without relabeling carried discovery counts', async () => {
+  it('omits stale request-budget metrics while preserving provider progress', async () => {
     const connectorsApi = createConnectorsApi()
     await connectorsApi.create({
       id: 'budget-jobright',
@@ -420,7 +420,7 @@ describe('connector-run progress and history', () => {
         id: 'budget-stop-reason-run',
         connectorInstanceId: 'budget-jobright',
         mode: 'manual',
-        status: 'partial_success',
+        status: 'completed',
         coverage: { start: null, end: null },
         filterSignature: 'filters:{}',
         observationCount: 0,
@@ -429,9 +429,8 @@ describe('connector-run progress and history', () => {
           attempted: 50,
           discovered: 50,
           discoveryPages: 3,
-          maxRequestsPerRun: 10,
           providerReturned: 0,
-          remainingTarget: 100,
+          pendingResolution: 100,
           stopReason: 'soft_batch_boundary',
           lifecycleCounts: {
             version: 'connector-run-lifecycle-counts/v1',
@@ -493,11 +492,10 @@ describe('connector-run progress and history', () => {
     expect(screen.getByText('Carried connector cycle')).toBeInTheDocument()
     expect(screen.getByText('Discovered jobs: 50')).toBeInTheDocument()
     expect(screen.getByText('Detail attempts: 50')).toBeInTheDocument()
-    expect(screen.getByText('Request budget per run: 10')).toBeInTheDocument()
+    expect(screen.queryByText('Request budget per run: 10')).not.toBeInTheDocument()
     expect(screen.queryByText('Request budget: 50 / 10')).not.toBeInTheDocument()
     expect(screen.queryByText(/Request budget: 50\s*\/\s*10/)).not.toBeInTheDocument()
     expect(screen.getByText('Stop reason: soft_batch_boundary')).toBeInTheDocument()
-    expect(screen.getByText('Paused at a finite batch boundary')).toBeInTheDocument()
     expect(screen.queryByText('Discovered: 50')).not.toBeInTheDocument()
   })
 
@@ -519,7 +517,7 @@ describe('connector-run progress and history', () => {
         id: 'missing-budget-run',
         connectorInstanceId: 'missing-budget-jobright',
         mode: 'manual',
-        status: 'partial_success',
+        status: 'failed',
         coverage: { start: null, end: null },
         filterSignature: 'filters:{}',
         observationCount: 0,

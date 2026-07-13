@@ -186,7 +186,7 @@ describe('Jobright execution', () => {
           attempted: 3,
           discovered: 20,
           lastProgressAt: '2026-07-09T16:00:01.000Z',
-          remainingTarget: 6,
+          pendingResolution: 6,
           resolvedEmployerOrAts: 1,
           resolvedThirdParty: 1,
           unresolved: 1,
@@ -227,7 +227,7 @@ describe('Jobright execution', () => {
     expect(screen.getByText('Discovered jobs: 20')).toBeInTheDocument()
     expect(screen.getByText('Resolved employer / ATS: 1')).toBeInTheDocument()
     expect(screen.getByText('Resolved third-party: 1')).toBeInTheDocument()
-    expect(screen.getByText('Remaining target: 6')).toBeInTheDocument()
+    expect(screen.queryByText('Remaining target: 6')).not.toBeInTheDocument()
     expect(screen.getByText('Waiting between bounded Jobright API requests.')).toBeInTheDocument()
     expect(screen.getByRole('status', { name: 'Jobright internslist run progress' })).toHaveAttribute(
       'aria-live',
@@ -241,7 +241,7 @@ describe('Jobright execution', () => {
         id: 'connector-run-progress',
         connectorInstanceId: 'jobright-default',
         mode: 'manual',
-        status: 'partial_success',
+        status: 'completed',
         coverage: {
           start: '2026-07-09T15:00:00.000Z',
           end: '2026-07-09T16:00:00.000Z',
@@ -274,7 +274,7 @@ describe('Jobright execution', () => {
       })
     })
 
-    expect(await screen.findByText('Latest run: partial_success')).toBeInTheDocument()
+    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
     expect(screen.getByText('Frozen at terminal completion.')).toBeInTheDocument()
     expect(screen.getByText('Discovered jobs: 12')).toBeInTheDocument()
     expect(screen.getByText('Detail attempts: 3')).toBeInTheDocument()

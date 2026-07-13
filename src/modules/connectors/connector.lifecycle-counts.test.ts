@@ -15,6 +15,7 @@ import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '
 import { createSqliteRawSourceRepository } from '../sourcing/raw-source.repository'
 import { reconcileConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
 import { createSqliteConnectorRepository } from './connector.repository'
+import { completedConnectorRefreshContract } from './connector-refresh-result.test-helpers'
 
 describe('connector run lifecycle counts', () => {
   it('reconciles provider rows while repeated occurrences remain one captured record', async () => {
@@ -43,6 +44,7 @@ describe('connector run lifecycle counts', () => {
       filters: {},
       filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         coverage: { start: '2026-07-11T16:00:00.000Z', end: '2026-07-11T17:00:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' },
         observations: [],
@@ -285,6 +287,7 @@ describe('connector run lifecycle counts', () => {
       filters: {},
       filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         coverage: { start: '2026-07-11T17:05:00.000Z', end: '2026-07-11T17:06:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' },
         observations: [],
@@ -361,6 +364,7 @@ async function createRunFixture(id: string) {
     filters: {},
     filterSignature: 'filters:{}',
     result: {
+      ...completedConnectorRefreshContract('2026-07-11'),
       coverage: { start: '2026-07-11T16:00:00.000Z', end: '2026-07-11T17:00:00.000Z' },
       nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' },
       observations: [],

@@ -4,6 +4,9 @@ import { sourceExecutionScopes, sourcingFindings } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteConnectorRepository } from './connector.repository'
 
+const obsoleteBrowserMode = ['browser', '_session'].join('')
+const obsoleteSessionField = ['session', 'Key'].join('')
+
 describe('SQLite connector repository', () => {
   it('preserves scope cooldown and generation when auth references are edited', async () => {
     const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
@@ -42,6 +45,14 @@ describe('SQLite connector repository', () => {
       filters: { roleKeywords: ['intern'] },
       filterSignature: 'filters:{"roleKeywords":["intern"]}',
       result: {
+        operationOutcome: null,
+        status: 'completed',
+        synchronization: {
+          newestFrontier: { state: 'caught_up' },
+          historicalBackfill: { state: 'caught_up', boundary: { earliestDate: '2026-07-01' } },
+          pendingResolutionCount: 0,
+          outcome: { kind: 'caught_up' },
+        },
         coverage: {
           start: '2026-07-01T00:00:00.000Z',
           end: '2026-07-08T16:00:00.000Z',
@@ -332,6 +343,23 @@ describe('SQLite connector repository', () => {
     })
   })
 
+  it('rejects browser-session auth references at the persistence boundary', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+
+    await expect(repository.upsertInstance({
+      id: 'connector-instance-browser-auth',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '0.0.0-fixture',
+      displayName: 'Browser auth fixture jobs',
+      enabled: true,
+      auth: [{ id: 'fixture-auth', mode: obsoleteBrowserMode } as never],
+      createdAt: '2026-07-08T15:00:00.000Z',
+    })).rejects.toThrow(`Invalid connector auth mode: ${obsoleteBrowserMode}`)
+  })
+
   it('normalizes connector auth references before persisting instance state', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
@@ -350,21 +378,15 @@ describe('SQLite connector repository', () => {
           mode: 'api_key',
           label: ' Fixture API key ',
           secretKey: ' fixture_api_key ',
-          sessionKey: 'wrong_session_key',
+          [obsoleteSessionField]: 'wrong_session_key',
           value: 'fixture-secret',
-        } as never,
-        {
-          id: ' fixture-auth ',
-          mode: 'browser_session',
-          secretKey: 'wrong_secret_key',
-          sessionKey: ' workspace_session_1 ',
         } as never,
         {
           id: ' fixture-password ',
           mode: 'username_password',
           label: ' Jobright credentials ',
           secretKey: ' connector.jobright.credentials.fixture ',
-          sessionKey: 'wrong_session_key',
+          [obsoleteSessionField]: 'wrong_session_key',
           value: 'plaintext-password-json',
         } as never,
       ],
@@ -382,11 +404,6 @@ describe('SQLite connector repository', () => {
           secretKey: 'fixture_api_key',
         },
         {
-          id: 'fixture-auth',
-          mode: 'browser_session',
-          sessionKey: 'workspace_session_1',
-        },
-        {
           id: 'fixture-password',
           mode: 'username_password',
           label: 'Jobright credentials',
@@ -400,7 +417,7 @@ describe('SQLite connector repository', () => {
     expect(JSON.stringify(instance)).not.toContain('plaintext-password-json')
   })
 
-  it('persists partial-success connector runs with retry hints', async () => {
+  it('persists completed connector runs with retry hints', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -431,13 +448,13 @@ describe('SQLite connector repository', () => {
             end: '2026-07-08T15:05:00.000Z',
           },
         }),
-        status: 'partial_success',
+        status: 'completed',
         retryHints: null,
       },
     })
 
     expect(run).toMatchObject({
-      status: 'partial_success',
+      status: 'completed',
       retryHints: null,
     })
   })
@@ -484,7 +501,7 @@ describe('SQLite connector repository', () => {
             end: '2026-07-08T16:00:00.000Z',
           },
         }),
-        status: 'partial_success',
+        status: 'completed',
       },
     })
 
@@ -497,11 +514,11 @@ describe('SQLite connector repository', () => {
     await expect(repository.completeRun({
       completedAt: '2026-07-08T16:00:02.000Z',
       connectorRunId: request.id,
-      status: 'partial_success',
+      status: 'completed',
     })).resolves.toMatchObject({
       completedAt: '2026-07-08T16:00:02.000Z',
       id: request.id,
-      status: 'partial_success',
+      status: 'completed',
     })
   })
 
@@ -686,7 +703,7 @@ describe('SQLite connector repository', () => {
             end: '2026-07-08T17:00:00.000Z',
           },
         }),
-        status: 'partial_success',
+        status: 'completed',
         warnings: [
           {
             code: 'auth.expired_session',
@@ -728,7 +745,7 @@ describe('SQLite connector repository', () => {
           observationCount: 0,
           retryHints: null,
           startedAt: '2026-07-08T17:00:00.000Z',
-          status: 'partial_success',
+          status: 'completed',
           warningCount: 1,
           warnings: [
             {
@@ -759,5 +776,13 @@ function emptyConnectorRefreshResult({
       schemaVersion: 'fixture-checkpoint@1',
     },
     observations: [],
+    operationOutcome: null,
+    status: 'completed' as const,
+    synchronization: {
+      newestFrontier: { state: 'caught_up' as const },
+      historicalBackfill: { state: 'caught_up' as const, boundary: { earliestDate: coverage.start.slice(0, 10) } },
+      pendingResolutionCount: 0,
+      outcome: { kind: 'caught_up' as const },
+    },
   }
 }

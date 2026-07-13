@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 
 function createTempSqlitePath() {
@@ -80,8 +81,9 @@ function fixtureConnector(): AppJobConnector {
       version: '0.0.0-fixture',
     },
     async refresh(input) {
-      return {
-        coverage: input.coverage,
+        return {
+          ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+          coverage: input.coverage,
         nextCheckpoint: {
           checkpoint: { cursor: 'fixture-cursor' },
           schemaVersion: 'fixture-checkpoint@1',

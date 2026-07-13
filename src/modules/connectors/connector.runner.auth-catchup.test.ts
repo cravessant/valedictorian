@@ -53,6 +53,7 @@ describe('connector runner', () => {
         })
 
         return {
+          ...releasedRefreshOutcome(input.coverage),
           coverage: input.coverage,
           stats: {
             observations: 1,
@@ -66,7 +67,7 @@ describe('connector runner', () => {
               discovered: 12,
               eligible: 8,
               resolved: 2,
-              sensitiveSessionKey: 'must-not-reach-run-stats',
+              sensitiveSessionHandle: 'must-not-reach-run-stats',
             },
             schemaVersion: 'fixture-checkpoint@1',
           },
@@ -146,7 +147,7 @@ describe('connector runner', () => {
       coverageStartedAt: '2026-07-01T00:00:00.000Z',
       coverageEndedAt: observedAt,
     })
-    expect(firstRun.stats).not.toHaveProperty('sensitiveSessionKey')
+    expect(firstRun.stats).not.toHaveProperty('sensitiveSessionHandle')
     expect(receivedInputs).toEqual([
       {
         connectorInstanceId: 'connector-instance-fixture',
@@ -312,7 +313,7 @@ describe('connector runner', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.10.0',
+        version: '0.11.0',
         capabilities: { supportsFiltering: false },
       },
       async refresh(input) {
@@ -333,10 +334,10 @@ describe('connector runner', () => {
     await repository.upsertInstance({
       id: 'jobright-seeded',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.10.0',
+      connectorVersion: '0.11.0',
       displayName: 'Jobright internslist',
       enabled: true,
-      filters: { roleTerms: ['intern'] },
+      filters: {},
     })
     await repository.recordRefreshResult({
       connectorInstanceId: 'jobright-seeded',
@@ -344,8 +345,8 @@ describe('connector runner', () => {
       startedAt: '2026-06-01T12:00:00.000Z',
       completedAt: '2026-06-01T12:00:01.000Z',
       config: {},
-      filters: { roleTerms: ['intern'] },
-      filterSignature: 'filters:{"roleTerms":["intern"]}',
+      filters: {},
+      filterSignature: 'provider-state:jobright.resolver@0.11.0',
       result: {
         ...emptyConnectorRefreshResult({
           coverage: {
@@ -364,7 +365,7 @@ describe('connector runner', () => {
     })
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-seeded',
-      filterSignature: 'provider-state:jobright.resolver@0.10.0',
+      filterSignature: 'provider-state:jobright.resolver@0.11.0',
       checkpoint: {
         checkpoint: { attempted: 2, pendingDetailRetries: [], retryState: [] },
         schemaVersion: 'jobright-resolution-checkpoint@5',
@@ -390,7 +391,7 @@ describe('connector runner', () => {
         checkpoint: { attempted: 2, pendingDetailRetries: [], retryState: [] },
       }),
     ])
-    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.10.0')
+    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.11.0')
 
     await runner.refresh(connector, {
       connectorInstanceId: 'jobright-seeded',
@@ -755,6 +756,7 @@ describe('connector runner', () => {
         receivedInputs.push(input)
 
         return {
+          ...releasedRefreshOutcome(input.coverage),
           coverage: input.coverage,
           stats: {
             observations: 0,
@@ -813,6 +815,7 @@ describe('connector runner', () => {
         receivedInputs.push(input)
 
         return {
+          ...releasedRefreshOutcome(input.coverage),
           coverage: input.coverage,
           stats: {
             observations: 0,
@@ -848,9 +851,6 @@ describe('connector runner', () => {
       now: '2026-07-10T16:00:00.000Z',
       startedAt: '2026-07-10T16:00:00.000Z',
       completedAt: '2026-07-10T16:00:01.000Z',
-      policy: {
-        overlapMinutes: 30,
-      },
     })
 
     expect(receivedInputs[1]?.coverage).toEqual({
@@ -861,63 +861,6 @@ describe('connector runner', () => {
       mode: 'catch_up',
       coverageStartedAt: '2026-07-01T00:00:00.000Z',
       coverageEndedAt: '2026-07-10T16:00:00.000Z',
-    })
-  })
-
-  it('ignores legacy catch-up backfillDay policy for coverage start', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-    const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
-    const fixtureConnector: AppJobConnector = {
-      definition: {
-        id: 'fixture.jobs',
-        version: '0.0.0-fixture',
-      },
-      async refresh(input) {
-        receivedInputs.push(input)
-
-        return {
-          coverage: input.coverage,
-          stats: {
-            observations: 0,
-          },
-          warnings: [],
-          nextCheckpoint: {
-            checkpoint: {
-              cursor: input.coverage.end,
-            },
-            schemaVersion: 'fixture-checkpoint@1',
-          },
-          observations: [],
-        }
-      },
-    }
-
-    await runner.registerInstance({
-      id: 'connector-instance-fixture',
-      connector: fixtureConnector,
-      displayName: 'Fixture jobs',
-      enabled: true,
-      createdAt: '2026-07-08T16:00:00.000Z',
-    })
-
-    await runner.catchUp(fixtureConnector, {
-      connectorInstanceId: 'connector-instance-fixture',
-      now: '2026-07-09T16:00:00.000Z',
-      startedAt: '2026-07-09T16:00:00.000Z',
-      completedAt: '2026-07-09T16:00:01.000Z',
-      policy: {
-        backfillDays: 90,
-        maxBackfillDays: 30,
-      },
-    })
-
-    expect(receivedInputs[0]?.coverage).toEqual({
-      start: '2026-07-01T00:00:00.000Z',
-      end: '2026-07-09T16:00:00.000Z',
     })
   })
 
@@ -941,6 +884,26 @@ function emptyConnectorRefreshResult({
       schemaVersion: 'fixture-checkpoint@1',
     },
     observations: [],
+    operationOutcome: null,
+    status: 'completed' as const,
+    synchronization: completedSynchronization(coverage),
+  }
+}
+
+function completedSynchronization(coverage: ConnectorCoverageWindow) {
+  return {
+    newestFrontier: { state: 'caught_up' as const },
+    historicalBackfill: { state: 'caught_up' as const, boundary: { earliestDate: coverage.start.slice(0, 10) } },
+    pendingResolutionCount: 0,
+    outcome: { kind: 'caught_up' as const },
+  }
+}
+
+function releasedRefreshOutcome(coverage: ConnectorCoverageWindow) {
+  return {
+    operationOutcome: null,
+    status: 'completed' as const,
+    synchronization: completedSynchronization(coverage),
   }
 }
 

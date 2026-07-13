@@ -6,11 +6,6 @@ export type ConnectorSettingsRun = Awaited<ReturnType<ConnectorsPreloadApi['runs
 
 export interface ConnectorSettingsDraft {
   discoveryCount: string
-  maxDiscoveryPages: string
-  maxDiscoveryRecords: string
-  maxResolutionCount: string
-  roleTerms: string
-  usefulTarget: string
   earliestBackfillDate: string
 }
 

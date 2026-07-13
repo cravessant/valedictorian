@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createHttpValedictorianClient, type ValedictorianWorkspaceClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createValedictorianRuntime } from '../runtime/valedictorian-runtime'
@@ -145,7 +146,7 @@ describe('local Valedictorian HTTP server', () => {
         calls.push(['inspect', connectorInstanceId])
         return {
           id: connectorInstanceId,
-          auth: [{ id: 'jobright-session', configured: false, label: 'Jobright', mode: 'browser_session' }],
+          auth: [{ id: 'jobright-session', configured: false, label: 'Jobright', mode: 'api_key' }],
           actionRequired: [
             {
               id: 'jobright-session',
@@ -227,8 +228,8 @@ describe('local Valedictorian HTTP server', () => {
           {
             id: 'jobright-session',
             label: 'Jobright session',
-            mode: 'browser_session',
-            sessionKey: 'workspace-session',
+            mode: 'api_key',
+            secretKey: 'workspace-session',
           },
         ],
         config: {
@@ -292,7 +293,7 @@ describe('local Valedictorian HTTP server', () => {
     expect(inspectResponse.status).toBe(200)
     await expect(readJson(inspectResponse)).resolves.toMatchObject({
       actionRequired: [{ kind: 'auth' }],
-      auth: [{ configured: false, id: 'jobright-session', mode: 'browser_session' }],
+      auth: [{ configured: false, id: 'jobright-session', mode: 'api_key' }],
       status: 'auth_required',
     })
     expect(triggerResponse.status).toBe(200)
@@ -333,8 +334,8 @@ describe('local Valedictorian HTTP server', () => {
             {
               id: 'jobright-session',
               label: 'Jobright session',
-              mode: 'browser_session',
-              sessionKey: 'workspace-session',
+              mode: 'api_key',
+              secretKey: 'workspace-session',
             },
           ],
           config: {
@@ -581,8 +582,9 @@ describe('local Valedictorian HTTP server', () => {
         refreshCount += 1
         await refreshGate
 
-        return {
-          coverage: input.coverage,
+          return {
+            ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+            coverage: input.coverage,
           nextCheckpoint: {
             checkpoint: { cursor: input.coverage.end },
             schemaVersion: 'fixture-checkpoint@1',
@@ -737,8 +739,9 @@ describe('local Valedictorian HTTP server', () => {
         refreshCount += 1
         await refreshGate
 
-        return {
-          coverage: input.coverage,
+          return {
+            ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+            coverage: input.coverage,
           nextCheckpoint: {
             checkpoint: { cursor: input.coverage.end },
             schemaVersion: 'fixture-checkpoint@1',

@@ -34,15 +34,9 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
     numericRunMetric(stats, 'retryableFailures', 'Retryable request failures'),
     numericRunMetric(stats, 'resolvedEmployerOrAts', 'Resolved employer / ATS'),
     numericRunMetric(stats, 'resolvedThirdParty', 'Resolved third-party'),
-    numericRunMetric(stats, 'remainingTarget', 'Remaining target'),
   ].filter((metric): metric is { label: string; value: number } => metric !== null)
   const stopReason = stringFromUnknown(stats.stopReason)
     || stringFromUnknown(recordFromUnknown(run.retryHints).stopReason)
-  const requestBudget = typeof stats.maxRequestsPerRun === 'number'
-    && Number.isFinite(stats.maxRequestsPerRun)
-    && stats.maxRequestsPerRun > 0
-    ? stats.maxRequestsPerRun
-    : null
   const earliestBackfillDate = utcDateOnlyFromCoverageStart(run.coverage.start)
   const capReached = stopReason === 'coverage_start_reached'
 
@@ -64,11 +58,6 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
         ) : null}
         {stopReason ? (
           <p className="mt-1 text-muted-foreground">Stop reason: {stopReason}</p>
-        ) : null}
-        {requestBudget !== null ? (
-          <p className="mt-1 text-muted-foreground">
-            Request budget per run: {requestBudget}
-          </p>
         ) : null}
       </div>
       {lifecycle ? (

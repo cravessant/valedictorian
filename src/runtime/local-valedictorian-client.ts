@@ -31,6 +31,7 @@ import {
   validateSelectableEarliestBackfillDate,
 } from '../modules/connectors/connector.earliest-backfill'
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
+import { assertSupportedConnectorSettings } from '../modules/connectors/connector.settings-validation'
 import {
   createConnectorRunner,
   type AppConnectorAuthGrant,
@@ -287,6 +288,7 @@ export function createLocalValedictorianClient({
             `Connector version mismatch for ${input.connectorId}: expected ${connector.definition.version}`,
           )
         }
+        assertSupportedConnectorSettings(connector, input.config, input.filters)
         const createdAt = now().toISOString()
         const earliestBackfillDate = input.earliestBackfillDate === undefined
           ? undefined
@@ -325,6 +327,13 @@ export function createLocalValedictorianClient({
         if (connector && existing.connectorVersion !== connector.definition.version) {
           throw new Error(
             `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
+          )
+        }
+        if (connector) {
+          assertSupportedConnectorSettings(
+            connector,
+            input.config ?? existing.config,
+            input.filters ?? existing.filters,
           )
         }
         const connectorVersion = input.connectorVersion
@@ -794,9 +803,6 @@ function isConnectorAuthConfigured(reference: ConnectorAuthReference): boolean {
   if (reference.mode === 'none') {
     return true
   }
-  if (reference.mode === 'browser_session') {
-    return typeof reference.sessionKey === 'string' && reference.sessionKey.trim().length > 0
-  }
   return typeof reference.secretKey === 'string' && reference.secretKey.trim().length > 0
 }
 function actionRequiredForStatus(
@@ -927,13 +933,23 @@ function mapConnectorRunSummary(
 function mapConnectorAuthReferenceInputs(
   references: ConnectorAuthReferenceInput[] | undefined,
 ): ConnectorAuthReference[] | undefined {
-  return references?.map((reference) => ({
-    id: reference.id,
-    mode: reference.mode,
-    ...(reference.label === undefined || reference.label === null ? {} : { label: reference.label }),
-    ...(reference.secretKey === undefined ? {} : { secretKey: reference.secretKey }),
-    ...(reference.sessionKey === undefined ? {} : { sessionKey: reference.sessionKey }),
-  }))
+  return references?.map((reference) => {
+    if (!isLocalConnectorAuthMode(reference.mode)) {
+      throw new Error(`Invalid connector auth mode: ${reference.mode}`)
+    }
+    return {
+      id: reference.id,
+      mode: reference.mode,
+      ...(reference.label === undefined || reference.label === null ? {} : { label: reference.label }),
+      ...(reference.secretKey === undefined ? {} : { secretKey: reference.secretKey }),
+    }
+  })
+}
+const localConnectorAuthModes = new Set<ConnectorAuthReference['mode']>([
+  'none', 'api_key', 'bearer_token', 'oauth', 'cookie_jar', 'username_password',
+])
+function isLocalConnectorAuthMode(value: string): value is ConnectorAuthReference['mode'] {
+  return localConnectorAuthModes.has(value as ConnectorAuthReference['mode'])
 }
 function toConnectorJsonRecord(value: unknown, fieldName: string): Record<string, unknown> {
   if (value && typeof value === 'object' && !Array.isArray(value)) {

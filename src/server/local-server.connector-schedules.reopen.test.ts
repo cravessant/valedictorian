@@ -4,6 +4,7 @@ import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
@@ -82,8 +83,9 @@ describe('local server connector schedule reopen recovery', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             refreshCalls += 1
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: {
                 checkpoint: { cursor: 'recovered-1' },
                 schemaVersion: 'fixture-checkpoint@1',
@@ -224,8 +226,9 @@ describe('local server connector schedule reopen recovery', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             refreshCalls += 1
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
               observations: [],
               stats: { observations: 0 },
@@ -359,8 +362,9 @@ describe('local server connector schedule reopen recovery', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             refreshCalls += 1
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
               observations: [],
               stats: { observations: 0 },
@@ -526,8 +530,9 @@ describe('local server connector schedule reopen recovery', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             refreshCalls += 1
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
               observations: [],
               stats: { observations: 0 },

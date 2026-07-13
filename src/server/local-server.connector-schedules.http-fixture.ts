@@ -51,12 +51,13 @@ export function createScheduleHttpFixtureConnector(): AppJobConnector {
         },
         observations: [],
         operationOutcome: null,
+        status: 'completed',
         stats: { observations: 0 },
         synchronization: {
-          newestFrontier: { state: 'not_started' },
-          historicalBackfill: { state: 'not_started', boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
+          newestFrontier: { state: 'caught_up' },
+          historicalBackfill: { state: 'caught_up', boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
           pendingResolutionCount: 0,
-          outcome: { kind: 'source_exhausted' },
+          outcome: { kind: 'caught_up' },
         },
         warnings: [],
       }

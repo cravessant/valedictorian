@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import {
   createHttpValedictorianClient,
   MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT,
@@ -214,8 +215,9 @@ describe('local server connector schedule occurrence history', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             refreshCalls += 1
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: {
                 checkpoint: { cursor: `history-${refreshCalls}` },
                 schemaVersion: 'fixture-checkpoint@1',

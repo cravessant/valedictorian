@@ -3,6 +3,7 @@ import { connectorRunSummarySchema } from 'sparxie'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createTempSqlitePath, readJson, createLocalServerHttpTestFixture } from './local-server.http-test-harness'
@@ -31,6 +32,7 @@ describe('local Valedictorian HTTP server', () => {
     await repository.recordRefreshResult({
       connectorInstanceId: 'retry-http', mode: 'manual', startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
       config: {}, filters: {}, filterSignature: 'filters:{}', result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-retry@1' },

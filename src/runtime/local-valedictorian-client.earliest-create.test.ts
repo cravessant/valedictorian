@@ -24,10 +24,8 @@ function createFixtureConnector(): AppJobConnector {
         resolvesIntermediaryLinks: false,
         supportsFiltering: false,
         supportsIncrementalRefresh: true,
-        usesBrowserSession: false,
       },
       checkpoint: { schemaVersion: 'fixture-checkpoint@1' },
-      politeness: { maxBackfillDays: 90 },
     },
     async refresh() {
       throw new Error('refresh is not used by earliest-create tracer')

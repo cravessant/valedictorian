@@ -1,11 +1,6 @@
 import {
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_DEFAULT_DISCOVERY_COUNT,
-  JOBRIGHT_DEFAULT_MAX_DISCOVERY_PAGES,
-  JOBRIGHT_DEFAULT_MAX_DISCOVERY_RECORDS,
-  JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT,
-  JOBRIGHT_DEFAULT_USEFUL_TARGET,
-  JOBRIGHT_HOST_REQUEST_BUDGET,
 } from '../modules/connectors/jobright.constants'
 import type {
   ConnectorAuthUiState,
@@ -113,69 +108,11 @@ export function sanitizedConnectorAuthErrorMessage(error: unknown): string {
 export function defaultConnectorSettingsDraft(
   instance: ConnectorSettingsInstance | undefined,
 ): ConnectorSettingsDraft {
-  const filters = recordFromUnknown(instance?.filters)
   const config = recordFromUnknown(instance?.config)
 
   return {
     discoveryCount: String(numberFromUnknown(config.discoveryCount, JOBRIGHT_DEFAULT_DISCOVERY_COUNT)),
-    maxDiscoveryPages: String(numberFromUnknown(
-      config.maxDiscoveryPages,
-      JOBRIGHT_DEFAULT_MAX_DISCOVERY_PAGES,
-    )),
-    maxDiscoveryRecords: String(numberFromUnknown(
-      config.maxDiscoveryRecords,
-      JOBRIGHT_DEFAULT_MAX_DISCOVERY_RECORDS,
-    )),
-    maxResolutionCount: String(numberFromUnknown(
-      filters.maxResolutionCount,
-      JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT,
-    )),
-    roleTerms: arrayTextFromUnknown(filters.roleTerms, 'intern'),
-    usefulTarget: String(numberFromUnknown(config.usefulTarget, JOBRIGHT_DEFAULT_USEFUL_TARGET)),
     earliestBackfillDate: instance?.earliestBackfillDate ?? '',
-  }
-}
-
-export function interpretJobrightSettings(
-  instance: ConnectorSettingsInstance,
-  draft: ConnectorSettingsDraft,
-): {
-  savedUsefulTargetLabel: string
-  draftUsefulTargetLabel: string | null
-  requestedAttemptsLabel: string
-  effectiveAttemptsLabel: string
-  legacyResolution: boolean
-  effectiveAttempts: number
-} {
-  const config = recordFromUnknown(instance.config)
-  const filters = recordFromUnknown(instance.filters)
-  const savedUsefulTarget = typeof config.usefulTarget === 'number'
-    && Number.isFinite(config.usefulTarget)
-    ? config.usefulTarget
-    : null
-  const requestedAttempts = typeof filters.maxResolutionCount === 'number'
-    && Number.isFinite(filters.maxResolutionCount)
-    ? filters.maxResolutionCount
-    : JOBRIGHT_DEFAULT_MAX_RESOLUTION_COUNT
-  const effectiveAttempts = Math.min(requestedAttempts, JOBRIGHT_HOST_REQUEST_BUDGET)
-  const legacyResolution = requestedAttempts > JOBRIGHT_HOST_REQUEST_BUDGET
-  const draftDirtyUsefulTarget = draft.usefulTarget
-    !== String(savedUsefulTarget ?? JOBRIGHT_DEFAULT_USEFUL_TARGET)
-
-  return {
-    savedUsefulTargetLabel: savedUsefulTarget === null
-      ? `Saved useful results target: default ${JOBRIGHT_DEFAULT_USEFUL_TARGET}`
-      : `Saved useful results target: ${savedUsefulTarget}`,
-    draftUsefulTargetLabel: draftDirtyUsefulTarget
-      ? `Unsaved draft useful results target: ${draft.usefulTarget}`
-      : null,
-    requestedAttemptsLabel: legacyResolution
-      ? `Requested detail-resolution attempts (saved): ${requestedAttempts} (legacy)`
-      : `Requested detail-resolution attempts (saved): ${requestedAttempts}`,
-    effectiveAttemptsLabel:
-      `Effective detail-resolution attempts: ${effectiveAttempts} (min of requested and host request budget ${JOBRIGHT_HOST_REQUEST_BUDGET})`,
-    legacyResolution,
-    effectiveAttempts,
   }
 }
 
@@ -193,18 +130,6 @@ export function numberFromUnknown(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
-export function arrayTextFromUnknown(value: unknown, fallback: string): string {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string').join(', ')
-    : fallback
-}
-
-export function parseCommaSeparatedList(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-}
 
 export function parseBoundedInteger(value: string, minimum: number, maximum: number): number | null {
   const trimmed = value.trim()

@@ -1,6 +1,5 @@
-import type { ConnectorRunSummary, RetryAdvice } from 'sparxie'
-import type { ConnectorCoverageWindow, ConnectorCheckpointPayload } from './connector-checkpoint.persistence-types'
-import type { ConnectorObservationInput } from './connector-observation.persistence-types'
+import type { RetryAdvice } from 'sparxie'
+import type { ConnectorRefreshResult } from '@sparxie/valedictorian-connectors-core'
 import type { JsonRecord } from './connector.persistence-json'
 import type { AcquiredRetryWork } from './connector-retry-work.identity-types'
 
@@ -19,16 +18,7 @@ export type ConnectorRunStatus =
 
 export type ConnectorRunTerminalStatus = Exclude<ConnectorRunStatus, 'queued' | 'running'>
 
-export interface ConnectorRefreshResultInput {
-  observations: ConnectorObservationInput[]
-  nextCheckpoint: ConnectorCheckpointPayload
-  coverage: ConnectorCoverageWindow
-  stats: JsonRecord & { observations: number }
-  warnings: ConnectorWarning[]
-  status?: ConnectorRunStatus
-  retryHints?: RetryAdvice | null
-  synchronization?: Pick<ConnectorRunSummary, 'newestFrontier' | 'historicalBackfill' | 'outcome' | 'pendingResolutionCount'>
-}
+export type ConnectorRefreshResultInput = ConnectorRefreshResult
 
 export interface RecordConnectorRefreshResultInput {
   connectorRunId?: string
@@ -115,7 +105,7 @@ export interface ConnectorRunRecord {
   executionScopeId: string
   connectorInstanceId: string
   mode: string
-  status: string
+  status: ConnectorRunStatus
   startedAt: string
   completedAt: string | null
   coverageStartedAt: string | null

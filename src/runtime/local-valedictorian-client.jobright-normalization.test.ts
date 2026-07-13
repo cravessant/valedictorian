@@ -170,7 +170,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
   await connectorRepository.upsertInstance({
     id: connectorInstanceId,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.10.0',
+    connectorVersion: '0.11.0',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [
@@ -183,12 +183,8 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
     ],
     config: {
       discoveryCount: 1,
-      maxRequestsPerRun: 3,
     },
-    filters: {
-      maxResolutionCount: 1,
-      roleTerms: ['intern'],
-    },
+    filters: {},
     createdAt: '2026-07-09T15:00:00.000Z',
   })
 
@@ -468,7 +464,7 @@ describe('runtime local Valedictorian client', () => {
     await connectorRepository.upsertInstance({
       id: 'jobright-api',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.10.0',
+      connectorVersion: '0.11.0',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [
@@ -481,12 +477,8 @@ describe('runtime local Valedictorian client', () => {
       ],
       config: {
         discoveryCount: 20,
-        maxRequestsPerRun: 5,
       },
-      filters: {
-        maxResolutionCount: 2,
-        roleTerms: ['intern'],
-      },
+      filters: {},
       createdAt: '2026-07-09T15:00:00.000Z',
     })
 

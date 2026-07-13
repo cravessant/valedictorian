@@ -13,6 +13,7 @@ import {
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 
 function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
@@ -540,8 +541,8 @@ describe('runtime local Valedictorian client', () => {
         {
           id: 'fixture-session',
           label: 'Fixture session',
-          mode: 'browser_session',
-          sessionKey: 'fixture-session-123',
+          mode: 'api_key',
+          secretKey: 'fixture-session-123',
         },
       ],
       createdAt: '2026-07-08T15:00:00.000Z',
@@ -555,6 +556,7 @@ describe('runtime local Valedictorian client', () => {
       filters: {},
       filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-08'),
         coverage: {
           start: '2026-07-08T16:00:00.000Z',
           end: '2026-07-08T17:00:00.000Z',
@@ -578,7 +580,7 @@ describe('runtime local Valedictorian client', () => {
             },
             resolution: {
               status: 'resolved',
-              method: 'browser_session',
+              method: 'api_key',
               reason: null,
             },
             dedupeKeys: ['official:https://jobs.example.com/delta'],
@@ -599,7 +601,7 @@ describe('runtime local Valedictorian client', () => {
         warnings: [
           {
             code: 'auth.expired_session',
-            message: 'Expired browser session fixture-session-123.',
+            message: 'Expired API key fixture-session-123.',
           },
         ],
       },
@@ -641,13 +643,13 @@ describe('runtime local Valedictorian client', () => {
     })
     expect(instances.items).toMatchObject([
       {
-        auth: [{ configured: true, id: 'fixture-session', mode: 'browser_session' }],
+        auth: [{ configured: true, id: 'fixture-session', mode: 'api_key' }],
         id: 'connector-instance-fixture',
       },
     ])
     expect(inspected).toMatchObject({
       actionRequired: [{ kind: 'auth' }],
-      auth: [{ configured: true, id: 'fixture-session', mode: 'browser_session' }],
+      auth: [{ configured: true, id: 'fixture-session', mode: 'api_key' }],
       status: 'authentication_required',
     })
     expect(runs).toMatchObject({

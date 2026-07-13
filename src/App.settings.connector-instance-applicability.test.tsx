@@ -116,7 +116,7 @@ describe('connector instance applicability', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.10.0',
+        version: '0.11.0',
         capabilities: { supportsFiltering: false },
         auth: {
           modes: ['username_password'],
@@ -137,6 +137,14 @@ describe('connector instance applicability', () => {
       },
       async refresh(input) {
         return {
+          operationOutcome: null,
+          status: 'completed',
+          synchronization: {
+            newestFrontier: { state: 'caught_up' },
+            historicalBackfill: { state: 'caught_up', boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
+            pendingResolutionCount: 0,
+            outcome: { kind: 'caught_up' },
+          },
           observations: [],
           nextCheckpoint: { checkpoint: {}, schemaVersion: 'jobright-test@1' },
           coverage: input.coverage,
@@ -183,11 +191,11 @@ describe('connector instance applicability', () => {
     fireEvent.click(runButton)
     expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
     await expect(client.connectors.list()).resolves.toMatchObject({
-      items: [expect.objectContaining({ connectorVersion: '0.10.0' })],
+      items: [expect.objectContaining({ connectorVersion: '0.11.0' })],
     })
   })
 
-  it('adds a Jobright connector instance from settings with default auth and filters', async () => {
+  it('adds a Jobright connector instance with released auth and empty filters', async () => {
     const connectorsApi = createConnectorsApi()
 
     render(
@@ -215,13 +223,10 @@ describe('connector instance applicability', () => {
         ],
         config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.10.0',
+        connectorVersion: '0.11.0',
         displayName: 'Jobright internslist',
         enabled: true,
-        filters: {
-          maxResolutionCount: 10,
-          roleTerms: ['intern'],
-        },
+        filters: {},
         id: 'jobright-default',
       })
     })
@@ -323,7 +328,7 @@ describe('connector instance applicability', () => {
     expect(screen.getByRole('button', { name: 'Add Jobright connector' })).toBeInTheDocument()
   })
 
-  it('treats legacy Jobright browser_session auth as unconfigured API credentials', async () => {
+  it('treats legacy Jobright api_key auth as unconfigured API credentials', async () => {
     const connectorsApi = createConnectorsApi()
     const profileApi = createProfileApi()
     await connectorsApi.create({
@@ -334,15 +339,12 @@ describe('connector instance applicability', () => {
       enabled: true,
       auth: [{
         id: 'jobright',
-        mode: 'browser_session',
-        label: 'Jobright browser session',
-        sessionKey: 'legacy-jobright-session',
+        mode: 'api_key',
+        label: 'Jobright API key',
+        secretKey: 'legacy-jobright-session',
       }],
       config: {},
-      filters: {
-        maxResolutionCount: 10,
-        roleTerms: ['intern'],
-      },
+      filters: {},
     })
     vi.mocked(connectorsApi.create).mockClear()
     vi.mocked(connectorsApi.update).mockClear()

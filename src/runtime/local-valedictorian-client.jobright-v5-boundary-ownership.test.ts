@@ -119,12 +119,12 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     await repository.upsertInstance({
       id: 'jobright-boundary',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.10.0',
+      connectorVersion: '0.11.0',
       displayName: 'Jobright boundary',
       enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'boundary-credentials' }],
-      config: { discoveryCount: 1, maxRequestsPerRun: 10 },
-      filters: { maxResolutionCount: 1 },
+      config: { discoveryCount: 1 },
+      filters: {},
       earliestBackfillDate: '2026-07-01',
       createdAt: clock,
     })
@@ -139,7 +139,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     expect(detailCalls).toBe(1)
     expect(discoveryCalls).toBe(1)
 
-    const filterSignature = 'provider-state:jobright.resolver@0.10.0'
+    const filterSignature = 'provider-state:jobright.resolver@0.11.0'
     const checkpointAfterFirst = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-boundary',
       filterSignature,

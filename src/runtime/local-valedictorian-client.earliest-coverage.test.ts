@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 
@@ -23,10 +24,8 @@ function createCoverageFixtureConnector(refresh: AppJobConnector['refresh']): Ap
         resolvesIntermediaryLinks: false,
         supportsFiltering: false,
         supportsIncrementalRefresh: true,
-        usesBrowserSession: false,
       },
       checkpoint: { schemaVersion: 'fixture-checkpoint@1' },
-      politeness: { maxBackfillDays: 90 },
     },
     refresh,
   }
@@ -43,6 +42,7 @@ describe('runtime connector coverage from earliest backfill date', () => {
         end: input.coverage.end,
       })
       return {
+        ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
         observations: [],
         nextCheckpoint: { checkpoint: { cursor: input.mode }, schemaVersion: 'fixture-checkpoint@1' },
         coverage: input.coverage,
@@ -177,6 +177,7 @@ describe('runtime connector coverage from earliest backfill date', () => {
       filters: {},
       filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-06-01'),
         observations: [],
         warnings: [],
         stats: { observations: 0 },

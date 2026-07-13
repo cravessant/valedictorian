@@ -29,7 +29,7 @@ describe('connector status mapping', () => {
         latestRun: createRunRecord({
           observationCount: 0,
           retryHints: null,
-          status: 'partial_success',
+          status: 'failed',
           warningCount: 4,
           warnings: [
             {
@@ -152,7 +152,7 @@ describe('connector status mapping', () => {
         displayName: 'Jobright internslist',
         latestRun: createRunRecord({
           observationCount: 1,
-          status: 'partial_success',
+          status: 'failed',
           warningCount: 4,
           warnings: [
             {

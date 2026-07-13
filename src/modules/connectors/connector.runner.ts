@@ -5,6 +5,7 @@ import type { ConnectorAuthGrant, ConnectorAuthMode, ConnectorAuthReference,
   ConnectorAuthValidationResult,
   ConnectorAuthValidationStatus,
   ConnectorCoverageWindow,
+  ConnectorCancellationRuntime,
   ConnectorDefinition,
   ConnectorDelayRuntime,
   ConnectorRefreshInput,
@@ -16,6 +17,7 @@ import type { ConnectorAuthGrant, ConnectorAuthMode, ConnectorAuthReference,
   ConnectorNormalizationInput,
   JobConnector,
 } from '@sparxie/valedictorian-connectors-core'
+import { z } from 'zod'
 import type {
   FieldResolutionOutcome,
   RawSourceIntakeReceipt,
@@ -23,6 +25,7 @@ import type {
   RawSourceRecordInput,
   ResolverCapability,
 } from 'sparxie'
+import { connectorRunSummarySchema, retryAdviceSchema, sourceOperationOutcomeSchema } from 'sparxie'
 import type {
   ConnectorCheckpointPayload,
   ConnectorInstanceRecord,
@@ -45,16 +48,10 @@ export type AppJobConnectorDefinition = ConnectorDefinition
 export type AppConnectorAuthMode = ConnectorAuthMode
 export type AppConnectorAuthRequirement = ConnectorAuthRequirement
 export type AppConnectorRefreshInput = ConnectorRefreshInput
-export type AppConnectorRefreshResult = Omit<ConnectorRefreshResult, 'status'> & ConnectorRefreshResultInput
+export type AppConnectorRefreshResult = ConnectorRefreshResult
 export type AppConnectorAuthGrant = ConnectorAuthGrant
 export type AppConnectorAuthResolveInput = ConnectorAuthResolveInput
 export type AppConnectorRuntime = ConnectorRuntime
-export interface AppConnectorRunBudget {
-  concurrency?: number
-  minDelayMs?: number
-  maxDelayMs?: number
-  maxRequestsPerRun?: number
-}
 export interface AppConnectorSecretResolver {
   revealSecret(key: string): Promise<{ key: string; value: string } | null>
 }
@@ -82,6 +79,7 @@ export interface AppConnectorNormalizationHost {
   release?(connectorRunId: string): void
 }
 export type AppConnectorRuntimePorts = {
+  cancellation?: ConnectorCancellationRuntime
   delay?: ConnectorDelayRuntime
   progress?: ConnectorProgressRuntime
 }
@@ -123,7 +121,6 @@ export interface RunConnectorRefreshInput {
   coverage: ConnectorCoverageWindow
   startedAt?: string
   completedAt?: string
-  budget?: AppConnectorRunBudget
   observations?: AppConnectorRefreshInput['observations']
   checkpointOverride?: unknown
   restoreUnacquiredJobrightRetryEntries?: {
@@ -138,7 +135,6 @@ export interface RunConnectorCatchUpInput {
   now?: string
   startedAt?: string
   completedAt?: string
-  policy?: Partial<AppConnectorRunPolicy>
   observations?: AppConnectorRefreshInput['observations']
   checkpointOverride?: unknown
   restoreUnacquiredJobrightRetryEntries?: {
@@ -159,15 +155,6 @@ export interface AppConnectorRefreshRecord {
   run: ConnectorRunRecord
   terminalStatus: ConnectorRunTerminalStatus
 }
-export interface AppConnectorRunPolicy {
-  backfillDays: number
-  maxBackfillDays: number
-  overlapMinutes: number
-  concurrency?: number
-  minDelayMs?: number
-  maxDelayMs?: number
-  maxRequestsPerRun?: number
-}
 export interface CreateConnectorRunnerOptions {
   auth?: AppConnectorAuthHost
   normalization?: AppConnectorNormalizationHost
@@ -178,9 +165,6 @@ export interface CreateConnectorRunnerOptions {
   workspaceId: string
   now?: () => Date
 }
-const DEFAULT_BACKFILL_DAYS = 7
-const DEFAULT_MAX_BACKFILL_DAYS = 30
-const DEFAULT_OVERLAP_MINUTES = 30
 const REDACTED_SECRET_VALUE = '[redacted-secret]'
 export function createConnectorRunner({
   auth,
@@ -215,10 +199,6 @@ export function createConnectorRunner({
       connectorInstanceId: input.connectorInstanceId,
       filterSignature,
     })
-    const budget = input.budget ?? budgetFromPoliteness(
-      normalizeRunPolicy(undefined, connector.definition.politeness?.maxBackfillDays),
-      connector.definition.politeness,
-    )
     const sensitiveValues = new Set<string>()
     const authRequirements = connector.definition.auth?.requirements ?? []
     const runRuntime = createRunRuntime(
@@ -256,7 +236,6 @@ export function createConnectorRunner({
         coverage: input.coverage,
         config,
         filters,
-        ...(budget ? { budget } : {}),
         ...(input.checkpointOverride !== undefined
           ? { checkpoint: input.checkpointOverride }
           : checkpoint
@@ -265,6 +244,7 @@ export function createConnectorRunner({
         ...(input.observations ? { observations: input.observations } : {}),
       }
       result = await connector.refresh(refreshInput, runRuntime)
+      assertConnectorRefreshResult(result, connectorInstance.executionScopeId)
       if (result.operationOutcome?.kind === 'scope_rate_limited') {
         if (result.operationOutcome.executionScopeId !== connectorInstance.executionScopeId) {
           throw new Error('Connector returned rate-limit evidence for a different execution scope')
@@ -281,7 +261,6 @@ export function createConnectorRunner({
     }
     const safeResult = withRunProgressStats(
       dedupeRefreshWarnings(redactRefreshResult(result, sensitiveValues)),
-      budget,
     )
     const nextCheckpoint = input.restoreUnacquiredJobrightRetryEntries
       ? restoreUnacquiredJobrightV5RetryEntries({
@@ -321,7 +300,7 @@ export function createConnectorRunner({
     }
   }
   async function prepareCatchUpRefresh(
-    connector: AppJobConnector,
+    _connector: AppJobConnector,
     input: RunConnectorCatchUpInput,
   ): Promise<{
     instance: ConnectorInstanceRecord
@@ -332,7 +311,6 @@ export function createConnectorRunner({
       throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
     }
     const end = parseIsoDate(input.now ?? now().toISOString(), 'catch-up now')
-    const policy = normalizeRunPolicy(input.policy, connector.definition.politeness?.maxBackfillDays)
     const coverageStart = inclusiveCoverageStartFromEarliestBackfillDate(
       instance.earliestBackfillDate,
     )
@@ -348,7 +326,6 @@ export function createConnectorRunner({
         },
         startedAt: input.startedAt,
         completedAt: input.completedAt,
-        budget: budgetFromPoliteness(policy, connector.definition.politeness),
         ...(input.observations ? { observations: input.observations } : {}),
         ...(input.checkpointOverride !== undefined
           ? { checkpointOverride: input.checkpointOverride }
@@ -613,7 +590,98 @@ function terminalConnectorRunStatus(value: unknown): ConnectorRunTerminalStatus 
   ) {
     return value
   }
-  return 'completed'
+  if (value === 'completed') return value
+  throw new Error(`Invalid connector refresh status: ${String(value)}`)
+}
+function assertConnectorRefreshStatus(value: unknown): asserts value is ConnectorRunTerminalStatus {
+  terminalConnectorRunStatus(value)
+}
+const connectorRefreshEnvelopeSchema = z.object({
+  observations: z.array(z.unknown()),
+  nextCheckpoint: z.object({ checkpoint: z.unknown(), schemaVersion: z.string().min(1).max(128) }).strict(),
+  coverage: z.object({ start: z.iso.datetime({ offset: true }), end: z.iso.datetime({ offset: true }) }).strict(),
+  stats: z.object({ observations: z.number().int().nonnegative() }).passthrough(),
+  warnings: z.array(z.object({ code: z.string().min(1).max(128), message: z.string().min(1).max(2048) }).strict()),
+  status: z.enum(['completed', 'failed', 'cancelled', 'skipped']),
+  retryHints: z.unknown().optional(),
+  operationOutcome: z.unknown(),
+  synchronization: z.unknown(),
+}).strict()
+function assertConnectorRefreshResult(
+  value: unknown,
+  executionScopeId: import('sparxie').SourceExecutionScopeId,
+): asserts value is ConnectorRefreshResult {
+  if (!isRecord(value)) throw new Error('Invalid connector refresh result')
+  assertConnectorRefreshStatus(value.status)
+  if (!('synchronization' in value)) throw new Error('Invalid connector refresh synchronization')
+  if (!connectorRefreshEnvelopeSchema.safeParse(value).success) throw new Error('Invalid connector refresh result')
+  if (value.retryHints !== undefined && value.retryHints !== null && !retryAdviceSchema.safeParse(value.retryHints).success) {
+    throw new Error('Invalid connector refresh retry advice')
+  }
+  if (value.operationOutcome !== null && !sourceOperationOutcomeSchema.safeParse(value.operationOutcome).success) {
+    throw new Error('Invalid connector refresh operation outcome')
+  }
+  if (isRecord(value.operationOutcome)
+    && (value.operationOutcome.kind === 'authentication_expired' || value.operationOutcome.kind === 'scope_rate_limited')
+    && value.operationOutcome.executionScopeId !== executionScopeId) {
+    throw new Error('Invalid connector refresh operation outcome scope')
+  }
+  assertConnectorRefreshSynchronization(value.synchronization, value.status, executionScopeId)
+  assertConnectorRefreshOperationConsistency(value.operationOutcome, value.synchronization)
+}
+function assertConnectorRefreshSynchronization(
+  value: unknown,
+  status: ConnectorRunTerminalStatus,
+  executionScopeId: import('sparxie').SourceExecutionScopeId,
+): asserts value is ConnectorRefreshResult['synchronization'] {
+  if (!isRecord(value) || !connectorRunSummarySchema.safeParse({
+    id: 'connector-refresh-validation', connectorInstanceId: 'connector-refresh-validation',
+    executionScopeId, status, filterSignature: 'connector-refresh-validation', observationCount: 0,
+    warningCount: 0, warnings: [], newestFrontier: value.newestFrontier,
+    historicalBackfill: value.historicalBackfill, pendingResolutionCount: value.pendingResolutionCount,
+    outcome: value.outcome, startedAt: '2000-01-01T00:00:00.000Z',
+    completedAt: '2000-01-01T00:00:00.000Z', mode: 'manual', scheduleOccurrence: null,
+  }).success) throw new Error('Invalid connector refresh synchronization')
+}
+function assertConnectorRefreshOperationConsistency(
+  operationOutcome: unknown,
+  synchronization: ConnectorRefreshResult['synchronization'],
+) {
+  const synchronizationOutcome = synchronization.outcome
+  const requiredSynchronizationKind = isRecord(operationOutcome)
+    ? operationOutcome.kind === 'scope_rate_limited'
+      ? 'cooling_down'
+      : operationOutcome.kind === 'authentication_expired'
+        ? 'action_required'
+        : null
+    : null
+  const synchronizationRequiresOperation = synchronizationOutcome.kind === 'cooling_down'
+    || synchronizationOutcome.kind === 'action_required'
+  if (requiredSynchronizationKind !== null
+    && (synchronizationOutcome.kind !== requiredSynchronizationKind
+      || !sameScopeOperation(operationOutcome, synchronizationOutcome.operation))) {
+    throw new Error('Inconsistent connector refresh operation outcome')
+  }
+  if (synchronizationRequiresOperation
+    && !sameScopeOperation(operationOutcome, synchronizationOutcome.operation)) {
+    throw new Error('Inconsistent connector refresh operation outcome')
+  }
+}
+function sameScopeOperation(left: unknown, right: unknown) {
+  if (!isRecord(left) || !isRecord(right) || left.kind !== right.kind) return false
+  if (left.kind === 'authentication_expired') {
+    return left.executionScopeId === right.executionScopeId
+      && left.requestRefresh === right.requestRefresh
+  }
+  if (left.kind === 'scope_rate_limited') {
+    return left.executionScopeId === right.executionScopeId
+      && left.retryAt === right.retryAt
+      && left.serverMinimumDelayMs === right.serverMinimumDelayMs
+  }
+  return false
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 const connectorRunProgressMetricKeys = [
   'attempted',
@@ -626,7 +694,6 @@ const connectorRunProgressMetricKeys = [
 ] as const
 function withRunProgressStats(
   result: ConnectorRefreshResultInput,
-  budget?: AppConnectorRunBudget,
 ): ConnectorRefreshResultInput {
   const checkpoint = toJsonRecord(result.nextCheckpoint.checkpoint)
   const checkpointStats: Record<string, number> = {}
@@ -636,18 +703,11 @@ function withRunProgressStats(
       checkpointStats[key] = value
     }
   }
-  const maxRequestsPerRun = budget?.maxRequestsPerRun
-  const budgetStats = typeof maxRequestsPerRun === 'number'
-    && Number.isFinite(maxRequestsPerRun)
-    && maxRequestsPerRun > 0
-    ? { maxRequestsPerRun }
-    : {}
   return {
     ...result,
     stats: {
       ...checkpointStats,
       ...result.stats,
-      ...budgetStats,
     },
   }
 }
@@ -803,22 +863,7 @@ async function resolveAuthGrant(
       status: 'missing',
     }
   }
-  const referenceMode = reference.mode
-  if (
-    referenceMode === 'api_key' ||
-    referenceMode === 'bearer_token' ||
-    referenceMode === 'oauth' ||
-    referenceMode === 'cookie_jar' ||
-    referenceMode === 'username_password'
-  ) {
-    return resolveSecretGrant(reference, authHost, sensitiveValues)
-  }
-  return {
-    id: reference.id,
-    mode: referenceMode,
-    reason: 'browser_session_action_required',
-    status: 'action_required',
-  }
+  return resolveSecretGrant(reference, authHost, sensitiveValues)
 }
 async function resolveSecretGrant(
   reference: ConnectorAuthReference,
@@ -889,68 +934,6 @@ function redactSensitiveString(value: string, sensitiveValues: Set<string>): str
     next = next.split(sensitiveValue).join(REDACTED_SECRET_VALUE)
   }
   return next
-}
-function budgetFromPoliteness(
-  policy: AppConnectorRunPolicy,
-  politeness: ConnectorDefinition['politeness'] | undefined,
-): AppConnectorRunBudget | undefined {
-  const budget: AppConnectorRunBudget = {}
-  const concurrency = lowerPositive(policy.concurrency, politeness?.concurrency)
-  const minDelayMs = higherPositive(policy.minDelayMs, politeness?.minDelayMs)
-  const maxDelayMs = lowerPositive(policy.maxDelayMs, politeness?.maxDelayMs)
-  const maxRequestsPerRun = lowerPositive(policy.maxRequestsPerRun, undefined)
-  if (concurrency !== undefined) {
-    budget.concurrency = concurrency
-  }
-  if (minDelayMs !== undefined) {
-    budget.minDelayMs = minDelayMs
-  }
-  if (maxDelayMs !== undefined) {
-    budget.maxDelayMs = maxDelayMs
-  }
-  if (maxRequestsPerRun !== undefined) {
-    budget.maxRequestsPerRun = maxRequestsPerRun
-  }
-  return Object.keys(budget).length > 0 ? budget : undefined
-}
-function normalizeRunPolicy(
-  policy: Partial<AppConnectorRunPolicy> = {},
-  connectorMaxBackfillDays?: number,
-): AppConnectorRunPolicy {
-  const hostMaxBackfillDays = positiveNumber(policy.maxBackfillDays, DEFAULT_MAX_BACKFILL_DAYS)
-  const maxBackfillDays = connectorMaxBackfillDays
-    ? Math.min(hostMaxBackfillDays, positiveNumber(connectorMaxBackfillDays, hostMaxBackfillDays))
-    : hostMaxBackfillDays
-  const requestedBackfillDays = positiveNumber(policy.backfillDays, DEFAULT_BACKFILL_DAYS)
-  return {
-    backfillDays: Math.min(requestedBackfillDays, maxBackfillDays),
-    maxBackfillDays,
-    overlapMinutes: positiveNumber(policy.overlapMinutes, DEFAULT_OVERLAP_MINUTES),
-    concurrency: positiveOptionalNumber(policy.concurrency),
-    minDelayMs: positiveOptionalNumber(policy.minDelayMs),
-    maxDelayMs: positiveOptionalNumber(policy.maxDelayMs),
-    maxRequestsPerRun: positiveOptionalNumber(policy.maxRequestsPerRun),
-  }
-}
-function positiveNumber(value: number | undefined, fallback: number): number {
-  return value === undefined || !Number.isFinite(value) || value <= 0 ? fallback : value
-}
-function positiveOptionalNumber(value: number | undefined): number | undefined {
-  return value === undefined || !Number.isFinite(value) || value <= 0 ? undefined : value
-}
-function lowerPositive(
-  left: number | undefined,
-  right: number | undefined,
-): number | undefined {
-  const values = [left, right].filter((value): value is number => value !== undefined)
-  return values.length > 0 ? Math.min(...values) : undefined
-}
-function higherPositive(
-  left: number | undefined,
-  right: number | undefined,
-): number | undefined {
-  const values = [left, right].filter((value): value is number => value !== undefined)
-  return values.length > 0 ? Math.max(...values) : undefined
 }
 function parseIsoDate(value: string, label: string): Date {
   const date = new Date(value)

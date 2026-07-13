@@ -1,7 +1,9 @@
-import { connectorAuthModes } from 'sparxie'
+import type { ConnectorAuthMode } from '@sparxie/valedictorian-connectors-core'
 import { readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 
-const connectorAuthModeSet = new Set(connectorAuthModes)
+const connectorAuthModeSet = new Set<ConnectorAuthMode>([
+  'none', 'api_key', 'bearer_token', 'oauth', 'cookie_jar', 'username_password',
+])
 
 export function readBooleanField(record: Record<string, unknown>, field: string) {
   const value = record[field]
@@ -41,23 +43,21 @@ export function readOptionalConnectorAuthReferences(record: Record<string, unkno
     const authRecord = readRecord(entry)
     const mode = readStringField(authRecord, 'mode')
 
-    if (!connectorAuthModeSet.has(mode as never)) {
+    if (!isConnectorAuthMode(mode)) {
       throw new Error(`Invalid auth[${index}].mode: ${mode}`)
     }
 
     const reference = {
       id: readStringField(authRecord, 'id'),
-      mode: mode as (typeof connectorAuthModes)[number],
+      mode,
     } as {
       id: string
-      mode: (typeof connectorAuthModes)[number]
+      mode: ConnectorAuthMode
       label?: string | null
       secretKey?: string
-      sessionKey?: string
     }
     const label = readOptionalNullableStringField(authRecord, 'label')
     const secretKey = readOptionalStringField(authRecord, 'secretKey')
-    const sessionKey = readOptionalStringField(authRecord, 'sessionKey')
 
     if (label !== undefined) {
       reference.label = label
@@ -67,12 +67,12 @@ export function readOptionalConnectorAuthReferences(record: Record<string, unkno
       reference.secretKey = secretKey
     }
 
-    if (sessionKey !== undefined) {
-      reference.sessionKey = sessionKey
-    }
-
     return reference
   })
+}
+
+function isConnectorAuthMode(value: string): value is ConnectorAuthMode {
+  return connectorAuthModeSet.has(value as ConnectorAuthMode)
 }
 
 export function validateConnectorTimestamp(value: string | null | undefined, fieldName: string) {

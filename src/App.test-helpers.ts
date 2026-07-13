@@ -325,7 +325,7 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
           id: auth.id,
           mode: auth.mode,
           label: auth.label ?? null,
-          configured: auth.mode === 'none' || Boolean(auth.secretKey ?? auth.sessionKey),
+          configured: auth.mode === 'none' || Boolean(auth.secretKey),
         })),
         config: input.config ?? {},
         filters: input.filters ?? {},
@@ -351,7 +351,7 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
             id: auth.id,
             mode: auth.mode,
             label: auth.label ?? null,
-            configured: auth.mode === 'none' || Boolean(auth.secretKey ?? auth.sessionKey),
+            configured: auth.mode === 'none' || Boolean(auth.secretKey),
           }))
           : existing.auth,
         config: input.config ?? existing.config,

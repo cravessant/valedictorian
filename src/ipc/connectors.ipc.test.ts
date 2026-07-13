@@ -30,7 +30,7 @@ describe('connectors IPC registration', () => {
     const reconnect = vi.fn(async () => ({
       action: 'reconnect',
       connectorInstanceId: 'connector-instance-fixture',
-      grants: [{ id: 'fixture-session', mode: 'browser_session', status: 'ready' }],
+      grants: [{ id: 'fixture-session', mode: 'api_key', status: 'ready' }],
       message: 'Connector auth is ready.',
       status: 'ready',
     }))

@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { connectorInstances, retryWork } from '../../db/schema'
 import { createDrizzleDatabase, createFileDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteConnectorRepository } from './connector.repository'
+import { completedConnectorRefreshContract } from './connector-refresh-result.test-helpers'
 import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 
 describe('SQLite connector repository retry ledger', () => {
@@ -75,6 +76,7 @@ describe('SQLite connector repository retry ledger', () => {
       startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
       config: {}, filters: {}, filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
@@ -123,6 +125,7 @@ describe('SQLite connector repository retry ledger', () => {
       startedAt: '2026-07-11T12:00:00.000Z', completedAt,
       config: {}, filters: {}, filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
@@ -166,6 +169,7 @@ describe('SQLite connector repository retry ledger', () => {
       startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
       config: {}, filters: {}, filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
@@ -203,6 +207,7 @@ describe('SQLite connector repository retry ledger', () => {
       startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
       config: {}, filters: {}, filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
@@ -241,6 +246,7 @@ describe('SQLite connector repository retry ledger', () => {
         startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
         config: {}, filters: {}, filterSignature: 'filters:{}',
         result: {
+          ...completedConnectorRefreshContract('2026-07-11'),
           observations: [], warnings: [], stats: { observations: 0 },
           coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
           nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
@@ -309,6 +315,7 @@ describe('SQLite connector repository retry ledger', () => {
     await repository.recordRefreshResult({
       connectorInstanceId: 'scope-priority', mode: 'manual', startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
       config: {}, filters: {}, filterSignature: 'filters:{}', result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 }, coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' },
         retryHints: { state: 'scheduled', reason: 'rate_limit', attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 600_000, nextAttemptAt: '2026-07-11T12:10:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z' },
@@ -338,7 +345,7 @@ describe('SQLite connector repository retry ledger', () => {
     await repository.recordRefreshResult({
       connectorRunId: first.run.id, connectorInstanceId: 'untouched', mode: 'catch_up',
       startedAt: '2026-07-11T12:01:00.000Z', completedAt: '2026-07-11T12:01:01.000Z', config: {}, filters: {}, filterSignature: 'filters:{}',
-      result: { observations: [], warnings: [], stats: { observations: 0 }, coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:01:00.000Z' }, nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' }, retryHints: null },
+      result: { ...completedConnectorRefreshContract('2026-07-11'), observations: [], warnings: [], stats: { observations: 0 }, coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:01:00.000Z' }, nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' }, retryHints: null },
     })
     expect(database.select().from(retryWork).all()).toEqual([
       expect.objectContaining({ id: 'normalization-untouched', state: 'scheduled', acquisitionRunId: null }),
@@ -404,7 +411,7 @@ describe('SQLite connector repository retry ledger', () => {
     await repository.upsertInstance({
       id: 'jobright-generic-resolver',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.10.0',
+      connectorVersion: '0.11.0',
       displayName: 'Jobright generic resolver',
       enabled: true,
       filters: {},
@@ -449,7 +456,7 @@ describe('SQLite connector repository retry ledger', () => {
     const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    await repository.upsertInstance({ id: 'jobright-active-third', connectorId: 'jobright.resolver', connectorVersion: '0.10.0', displayName: 'Active third', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
+    await repository.upsertInstance({ id: 'jobright-active-third', connectorId: 'jobright.resolver', connectorVersion: '0.11.0', displayName: 'Active third', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
     for (const id of ['stale-one', 'stale-two', 'active-three']) {
       seedNormalizationRetry(sqlite, database, 'jobright-active-third', id, '2026-07-11T12:01:00.000Z', id)
       database.update(retryWork).set({
@@ -483,7 +490,7 @@ describe('SQLite connector repository retry ledger', () => {
       for (let index = 0; index < 2000; index += 1) {
         insertRecord.run(`history-record-${index}`, '2026-07-10T00:00:00.000Z')
         insertRevision.run(`history-revision-${index}`, `history-record-${index}`, 1, `history-hash-${index}`,
-          'jobright.resolver', 'connector', '0.10.0', '2026-07-10T00:00:00.000Z',
+          'jobright.resolver', 'connector', '0.11.0', '2026-07-10T00:00:00.000Z',
           `history-provider-${index}`, '[]', '2026-07-10T00:00:00.000Z')
       }
     })()
@@ -526,7 +533,7 @@ describe('SQLite connector repository retry ledger', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    await repository.upsertInstance({ id: 'jobright-pending', connectorId: 'jobright.resolver', connectorVersion: '0.10.0', displayName: 'Jobright pending', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
+    await repository.upsertInstance({ id: 'jobright-pending', connectorId: 'jobright.resolver', connectorVersion: '0.11.0', displayName: 'Jobright pending', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
     seedNormalizationRetry(sqlite, database, 'jobright-pending', 'normalization-jobright-pending', '2026-07-11T12:01:00.000Z', 'job-retry')
     const acquisition = await repository.recordRunRequest({ connectorInstanceId: 'jobright-pending', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z' })
     await repository.markRunRunning({ connectorRunId: acquisition.run.id, startedAt: '2026-07-11T12:01:00.000Z' })
@@ -535,6 +542,7 @@ describe('SQLite connector repository retry ledger', () => {
       connectorRunId: acquisition.run.id, connectorInstanceId: 'jobright-pending', mode: 'catch_up',
       startedAt: '2026-07-11T12:01:00.000Z', completedAt: '2026-07-11T12:01:01.000Z', config: {}, filters: {}, filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:01:00.000Z' },
         nextCheckpoint: {
@@ -579,7 +587,7 @@ describe('SQLite connector repository retry ledger', () => {
     await repository.upsertInstance({
       id: 'jobright-disappeared',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.10.0',
+      connectorVersion: '0.11.0',
       displayName: 'Jobright disappeared',
       enabled: true,
       filters: {},
@@ -613,6 +621,7 @@ describe('SQLite connector repository retry ledger', () => {
       filters: {},
       filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [],
         warnings: [],
         stats: { observations: 0 },
@@ -643,7 +652,7 @@ describe('SQLite connector repository retry ledger', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    await repository.upsertInstance({ id: 'jobright-malformed', connectorId: 'jobright.resolver', connectorVersion: '0.10.0', displayName: 'Jobright malformed', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
+    await repository.upsertInstance({ id: 'jobright-malformed', connectorId: 'jobright.resolver', connectorVersion: '0.11.0', displayName: 'Jobright malformed', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
     seedNormalizationRetry(sqlite, database, 'jobright-malformed', 'normalization-jobright-malformed', '2026-07-11T12:01:00.000Z', 'job-retry')
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-malformed',
@@ -688,6 +697,7 @@ describe('SQLite connector repository retry ledger', () => {
       connectorRunId: acquisition.run.id, connectorInstanceId: 'jobright-malformed', mode: 'catch_up',
       startedAt: '2026-07-11T12:01:00.000Z', completedAt: '2026-07-11T12:01:01.000Z', config: {}, filters: {}, filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:01:00.000Z' },
         nextCheckpoint: {
@@ -787,7 +797,7 @@ async function currentRevisionFixture(instanceIds: string[]) {
   const database = createDrizzleDatabase(sqlite)
   const repository = createSqliteConnectorRepository(database)
   for (const id of instanceIds) await repository.upsertInstance({ id, connectorId: 'jobright.resolver',
-    connectorVersion: '0.10.0', displayName: id, enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
+    connectorVersion: '0.11.0', displayName: id, enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
   return { sqlite, database, repository }
 }
 
@@ -795,8 +805,8 @@ function seedSharedProviderRevisionHistory(sqlite: ReturnType<typeof createInMem
   sqlite.exec(`
     insert into raw_source_records (id,created_at) values ('shared-record','2026-07-11T12:00:00.000Z');
     insert into raw_source_revisions (id,raw_record_id,revision,content_hash,adapter_id,adapter_kind,adapter_version,observed_at,provider_record_id,evidence_json,created_at) values
-      ('shared-revision-1','shared-record',1,'shared-hash-1','jobright.resolver','connector','0.10.0','2026-07-11T12:00:00.000Z','shared-provider','[]','2026-07-11T12:00:00.000Z'),
-      ('shared-revision-2','shared-record',2,'shared-hash-2','jobright.resolver','connector','0.10.0','2026-07-11T12:00:01.000Z','shared-provider','[]','2026-07-11T12:00:01.000Z');
+      ('shared-revision-1','shared-record',1,'shared-hash-1','jobright.resolver','connector','0.11.0','2026-07-11T12:00:00.000Z','shared-provider','[]','2026-07-11T12:00:00.000Z'),
+      ('shared-revision-2','shared-record',2,'shared-hash-2','jobright.resolver','connector','0.11.0','2026-07-11T12:00:01.000Z','shared-provider','[]','2026-07-11T12:00:01.000Z');
   `)
 }
 

@@ -57,8 +57,8 @@ describe('runtime local Valedictorian client', () => {
         {
           id: 'fixture-session',
           label: 'Fixture session',
-          mode: 'browser_session',
-          sessionKey: 'fixture-session-123',
+          mode: 'api_key',
+          secretKey: 'fixture-session-123',
         },
       ],
       config: {
@@ -84,7 +84,7 @@ describe('runtime local Valedictorian client', () => {
       connectorVersion: '0.0.0-fixture',
       displayName: 'Fixture Jobs',
       enabled: true,
-      auth: [{ configured: true, id: 'fixture-session', mode: 'browser_session' }],
+      auth: [{ configured: true, id: 'fixture-session', mode: 'api_key' }],
       config: {
         publicFeedUrl: 'https://fixture.example/feed.json',
       },
@@ -306,7 +306,7 @@ describe('runtime local Valedictorian client', () => {
             discovered: 0,
             eligible: 0,
             filtered: 0,
-            remainingTarget: 8,
+            pendingResolution: 8,
             resolvedEmployerOrAts: 0,
             resolvedThirdParty: 0,
             skipped: 0,
@@ -756,6 +756,14 @@ function fixtureConnector({
           observations: observations.length,
         },
         warnings: [],
+        operationOutcome: null,
+        status: 'completed',
+        synchronization: {
+          newestFrontier: { state: 'caught_up' },
+          historicalBackfill: { state: 'caught_up', boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
+          pendingResolutionCount: 0,
+          outcome: { kind: 'caught_up' },
+        },
       }
     },
   }

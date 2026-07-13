@@ -15,7 +15,7 @@ describe('connector schedule migration', () => {
         config_json, auth_json, filters_json, earliest_backfill_date,
         created_at, updated_at, deleted_at
       ) values (
-        'protected-connector', 'jobright.resolver', '0.8.0', 'Protected Jobright', 1,
+        'protected-connector', 'fixture.connector', '1.0.0', 'Protected connector', 1,
         '{"region":"us"}', '[{"id":"jobright","mode":"username_password","secretKey":"cred"}]',
         '{"roleKeywords":["intern"]}', '2026-07-04',
         '2026-07-11T15:30:00.000Z', '2026-07-11T15:30:00.000Z', null
@@ -66,7 +66,7 @@ describe('connector schedule migration', () => {
       user_profile: database.prepare('select id, full_name, email from user_profile order by id').all(),
     })
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 24 })
+      .toEqual({ count: 25 })
     database.close()
   })
 })

@@ -684,7 +684,7 @@ describe('App connector schedules', () => {
           configured: true,
         }],
         config: {},
-        filters: { maxResolutionCount: 10, roleTerms: ['intern'] },
+        filters: {},
         earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',

@@ -59,7 +59,7 @@ describe('connector-run retry guidance', () => {
           id: 'connector-run-auth-failed',
           connectorInstanceId: 'jobright-default',
           mode: 'manual',
-          status: 'partial_success',
+          status: 'failed',
           coverage: {
             start: '2026-07-09T17:00:00.000Z',
             end: '2026-07-09T18:00:00.000Z',
@@ -84,7 +84,7 @@ describe('connector-run retry guidance', () => {
           id: 'connector-run-discovery-failed',
           connectorInstanceId: 'jobright-default',
           mode: 'manual',
-          status: 'partial_success',
+          status: 'failed',
           coverage: {
             start: '2026-07-09T16:00:00.000Z',
             end: '2026-07-09T17:00:00.000Z',
@@ -109,7 +109,7 @@ describe('connector-run retry guidance', () => {
           id: 'connector-run-parser-changed',
           connectorInstanceId: 'jobright-default',
           mode: 'manual',
-          status: 'partial_success',
+          status: 'failed',
           coverage: {
             start: '2026-07-09T15:00:00.000Z',
             end: '2026-07-09T16:00:00.000Z',
@@ -134,7 +134,7 @@ describe('connector-run retry guidance', () => {
           id: 'connector-run-zero-results',
           connectorInstanceId: 'jobright-default',
           mode: 'manual',
-          status: 'partial_success',
+          status: 'failed',
           coverage: {
             start: '2026-07-09T14:00:00.000Z',
             end: '2026-07-09T15:00:00.000Z',

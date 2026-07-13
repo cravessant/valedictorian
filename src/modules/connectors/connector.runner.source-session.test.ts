@@ -6,9 +6,9 @@ import { createSqliteConnectorRepository } from './connector.repository'
 
 function result(input: Parameters<AppJobConnector['refresh']>[0]) {
   return { observations: [], nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' }, coverage: input.coverage,
-    operationOutcome: null, stats: { observations: 0 }, warnings: [],
-    synchronization: { newestFrontier: { state: 'not_started' as const }, historicalBackfill: { state: 'not_started' as const,
-      boundary: { earliestDate: input.coverage.start.slice(0, 10) } }, pendingResolutionCount: 0, outcome: { kind: 'source_exhausted' as const } } }
+    operationOutcome: null, stats: { observations: 0 }, status: 'completed' as const, warnings: [],
+    synchronization: { newestFrontier: { state: 'caught_up' as const }, historicalBackfill: { state: 'caught_up' as const,
+      boundary: { earliestDate: input.coverage.start.slice(0, 10) } }, pendingResolutionCount: 0, outcome: { kind: 'caught_up' as const } } }
 }
 
 describe('connector runner 0.10 auth boundary', () => {
@@ -82,8 +82,12 @@ describe('connector runner 0.10 auth boundary', () => {
     const database = createDrizzleDatabase(sqlite); const governor = createSourceExecutionGovernor(database)
     const connector: AppJobConnector = { definition: { id: 'fixture.rate-limit', version: '1.0.0' },
       async refresh(input) {
-        return { ...result(input), operationOutcome: { kind: 'scope_rate_limited', executionScopeId: input.executionScopeId,
-          retryAt: '2026-07-12T12:02:00.000Z', serverMinimumDelayMs: 120_000 } }
+        const operation = { kind: 'scope_rate_limited' as const, executionScopeId: input.executionScopeId,
+          retryAt: '2026-07-12T12:02:00.000Z', serverMinimumDelayMs: 120_000 }
+        return { ...result(input), operationOutcome: operation,
+          synchronization: { newestFrontier: { state: 'advancing' as const }, historicalBackfill: { state: 'advancing' as const,
+            boundary: { earliestDate: input.coverage.start.slice(0, 10) } }, pendingResolutionCount: 1,
+            outcome: { kind: 'cooling_down' as const, operation } } }
       } }
     const runner = createConnectorRunner({ repository: createSqliteConnectorRepository(database), sourceExecutionGovernor: governor,
       workspaceId: 'workspace', now: () => new Date('2026-07-12T12:00:00.000Z') })

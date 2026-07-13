@@ -18,7 +18,7 @@ const testCodec: ProfileSecretCodec = {
 }
 
 describe('connector runner', () => {
-  it('anchors catch-up coverage at persisted earliest backfill midnight regardless of connector maxBackfillDays', async () => {
+  it('anchors catch-up coverage at persisted earliest backfill midnight', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -29,14 +29,19 @@ describe('connector runner', () => {
       definition: {
         id: 'fixture.jobs',
         version: '0.0.0-fixture',
-        politeness: {
-          maxBackfillDays: 3,
-        },
       },
       async refresh(input) {
         receivedInputs.push(input)
 
         return {
+          operationOutcome: null,
+          status: 'completed' as const,
+          synchronization: {
+            newestFrontier: { state: 'caught_up' as const },
+            historicalBackfill: { state: 'caught_up' as const, boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
+            pendingResolutionCount: 0,
+            outcome: { kind: 'caught_up' as const },
+          },
           coverage: input.coverage,
           stats: {
             observations: 0,
@@ -66,10 +71,6 @@ describe('connector runner', () => {
       now: '2026-07-09T16:00:00.000Z',
       startedAt: '2026-07-09T16:00:00.000Z',
       completedAt: '2026-07-09T16:00:01.000Z',
-      policy: {
-        backfillDays: 7,
-        maxBackfillDays: 30,
-      },
     })
 
     expect(receivedInputs[0]?.coverage).toEqual({
@@ -78,7 +79,7 @@ describe('connector runner', () => {
     })
   })
 
-  it('passes connector politeness defaults as a host-owned run budget during catch-up', async () => {
+  it('does not add a host-owned budget during catch-up', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -102,16 +103,10 @@ describe('connector runner', () => {
       completedAt: '2026-07-09T16:00:01.000Z',
     })
 
-    expect(receivedInputs[0]).toMatchObject({
-      budget: {
-        concurrency: 1,
-        minDelayMs: 1_000,
-        maxDelayMs: 10_000,
-      },
-    })
+    expect(receivedInputs[0]).not.toHaveProperty('budget')
   })
 
-  it('passes connector politeness defaults as a host-owned run budget during manual refresh', async () => {
+  it('does not add a host-owned budget during manual refresh', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -139,16 +134,10 @@ describe('connector runner', () => {
       completedAt: '2026-07-09T16:00:01.000Z',
     })
 
-    expect(receivedInputs[0]).toMatchObject({
-      budget: {
-        concurrency: 1,
-        minDelayMs: 1_000,
-        maxDelayMs: 10_000,
-      },
-    })
+    expect(receivedInputs[0]).not.toHaveProperty('budget')
   })
 
-  it('passes connector politeness defaults as a host-owned run budget during scheduled deferred refresh', async () => {
+  it('does not add a host-owned budget during scheduled deferred refresh', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
@@ -176,263 +165,9 @@ describe('connector runner', () => {
       completedAt: '2026-07-09T16:00:01.000Z',
     })
 
-    expect(receivedInputs[0]).toMatchObject({
-      budget: {
-        concurrency: 1,
-        minDelayMs: 1_000,
-        maxDelayMs: 10_000,
-      },
-    })
+    expect(receivedInputs[0]).not.toHaveProperty('budget')
   })
 
-  it('keeps explicit caller budgets for manual refreshes', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-    const receivedInputs: unknown[] = []
-    const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
-
-    await runner.registerInstance({
-      id: 'connector-instance-fixture',
-      connector: fixtureConnector,
-      displayName: 'Fixture jobs',
-      enabled: true,
-      createdAt: '2026-07-08T16:00:00.000Z',
-    })
-
-    await runner.refresh(fixtureConnector, {
-      connectorInstanceId: 'connector-instance-fixture',
-      mode: 'manual',
-      coverage: {
-        start: '2026-07-09T15:00:00.000Z',
-        end: '2026-07-09T16:00:00.000Z',
-      },
-      startedAt: '2026-07-09T16:00:00.000Z',
-      completedAt: '2026-07-09T16:00:01.000Z',
-      budget: {
-        maxRequestsPerRun: 2,
-      },
-    })
-
-    expect((receivedInputs[0] as { budget?: unknown }).budget).toEqual({
-      maxRequestsPerRun: 2,
-    })
-  })
-
-  it('records the effective host request budget into persisted run stats', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-    const receivedInputs: unknown[] = []
-    const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
-
-    await runner.registerInstance({
-      id: 'connector-instance-fixture',
-      connector: fixtureConnector,
-      displayName: 'Fixture jobs',
-      enabled: true,
-      createdAt: '2026-07-08T16:00:00.000Z',
-    })
-
-    const run = await runner.refresh(fixtureConnector, {
-      connectorInstanceId: 'connector-instance-fixture',
-      mode: 'manual',
-      coverage: {
-        start: '2026-07-09T15:00:00.000Z',
-        end: '2026-07-09T16:00:00.000Z',
-      },
-      startedAt: '2026-07-09T16:00:00.000Z',
-      completedAt: '2026-07-09T16:00:01.000Z',
-      budget: {
-        maxRequestsPerRun: 10,
-      },
-    })
-
-    expect((receivedInputs[0] as { budget?: { maxRequestsPerRun?: number } }).budget)
-      .toMatchObject({ maxRequestsPerRun: 10 })
-    expect(run.stats).toMatchObject({
-      maxRequestsPerRun: 10,
-    })
-  })
-
-  it('uses the stricter host max requests policy when building a catch-up budget', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-    const receivedInputs: unknown[] = []
-    const fixtureConnector: AppJobConnector = {
-      definition: {
-        id: 'fixture.jobs',
-        version: '0.0.0-fixture',
-        politeness: {
-          concurrency: 1,
-          maxRequestsPerRun: 10,
-        },
-      },
-      async refresh(input) {
-        receivedInputs.push(input)
-
-        return {
-          coverage: input.coverage,
-          stats: {
-            observations: 0,
-          },
-          warnings: [],
-          nextCheckpoint: {
-            checkpoint: {
-              cursor: input.coverage.end,
-            },
-            schemaVersion: 'fixture-checkpoint@1',
-          },
-          observations: [],
-        }
-      },
-    }
-
-    await runner.registerInstance({
-      id: 'connector-instance-fixture',
-      connector: fixtureConnector,
-      displayName: 'Fixture jobs',
-      enabled: true,
-      createdAt: '2026-07-08T16:00:00.000Z',
-    })
-
-    await runner.catchUp(fixtureConnector, {
-      connectorInstanceId: 'connector-instance-fixture',
-      now: '2026-07-09T16:00:00.000Z',
-      startedAt: '2026-07-09T16:00:00.000Z',
-      completedAt: '2026-07-09T16:00:01.000Z',
-      policy: {
-        maxRequestsPerRun: 3,
-      },
-    })
-
-    expect(receivedInputs[0]).toMatchObject({
-      budget: {
-        concurrency: 1,
-        maxRequestsPerRun: 3,
-      },
-    })
-  })
-
-  it('records exhausted-budget completion without advancing past the connector checkpoint', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-    const fixtureConnector: AppJobConnector = {
-      definition: {
-        id: 'fixture.jobs',
-        version: '0.0.0-fixture',
-        politeness: {
-          maxRequestsPerRun: 1,
-        },
-      },
-      async refresh(input) {
-        return {
-          coverage: {
-            start: input.coverage.start,
-            end: '2026-07-09T16:05:00.000Z',
-          },
-          stats: {
-            observations: 1,
-            skipped: 4,
-          },
-          warnings: [
-            {
-              code: 'connector.budget_exhausted',
-              message: 'Run stopped after exhausting its host budget.',
-            },
-          ],
-          retryHints: null,
-          nextCheckpoint: {
-            checkpoint: {
-              cursor: 'partial:2026-07-09T16:05:00.000Z',
-            },
-            schemaVersion: 'fixture-checkpoint@1',
-          },
-          observations: [],
-        }
-      },
-    }
-
-    await runner.registerInstance({
-      id: 'connector-instance-fixture',
-      connector: fixtureConnector,
-      displayName: 'Fixture jobs',
-      enabled: true,
-      createdAt: '2026-07-08T16:00:00.000Z',
-    })
-
-    const run = await runner.catchUp(fixtureConnector, {
-      connectorInstanceId: 'connector-instance-fixture',
-      now: '2026-07-09T17:00:00.000Z',
-      startedAt: '2026-07-09T17:00:00.000Z',
-      completedAt: '2026-07-09T17:00:01.000Z',
-    })
-
-    expect(run).toMatchObject({
-      status: 'completed',
-      coverageEndedAt: '2026-07-09T16:05:00.000Z',
-      retryHints: null,
-    })
-    await expect(
-      repository.getCheckpoint({
-        connectorInstanceId: 'connector-instance-fixture',
-        filterSignature: 'filters:{}',
-      }),
-    ).resolves.toMatchObject({
-      coverageEndedAt: '2026-07-09T16:05:00.000Z',
-      checkpoint: {
-        cursor: 'partial:2026-07-09T16:05:00.000Z',
-      },
-    })
-  })
-})
-
-describe('connector direct auth validation trust', () => {
-  it.each([
-    ['ready', 'failed', 'action_required', false],
-    ['rate_limited', 'rate_limited', 'cooldown', true],
-  ] as const)('finalizes direct %s truthfully and gates ordinary admission', async (
-    connectorStatus, publicStatus, scopeStatus, eventuallyAvailable,
-  ) => {
-    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const governor = createSourceExecutionGovernor(database)
-    let clock = new Date('2026-07-12T12:00:00.000Z')
-    const runner = createConnectorRunner({ repository, sourceExecutionGovernor: governor,
-      workspaceId: 'workspace-direct-validation', now: () => clock })
-    const connector: AppJobConnector = {
-      definition: { id: `fixture.direct-${connectorStatus}`, version: '1' },
-      async refresh(input) { return { coverage: input.coverage, stats: { observations: 0 }, warnings: [], observations: [],
-        nextCheckpoint: { schemaVersion: 'fixture@1', checkpoint: {} } } },
-      async validateAuth() { return { status: connectorStatus, reason: `direct_${connectorStatus}` } as never },
-    }
-    const connectorInstanceId = `direct-${connectorStatus}`
-    await runner.registerInstance({ id: connectorInstanceId, connector, displayName: connectorInstanceId, enabled: true })
-    await expect(runner.validateAuth(connector, { connectorInstanceId })).resolves.toMatchObject({ status: publicStatus })
-    const scopeId = (await repository.getInstance(connectorInstanceId))!.executionScopeId
-    expect(governor.getScope(scopeId).status).toBe(scopeStatus)
-    expect(governor.loadActiveSession(scopeId)).toBeNull()
-    const immediate = await repository.recordRunRequest({ connectorInstanceId, mode: 'manual', startedAt: clock.toISOString() })
-    expect(immediate.acquired).toBe(false)
-    clock = new Date('2026-07-12T12:00:31.000Z')
-    const later = await repository.recordRunRequest({ connectorInstanceId, mode: 'manual', startedAt: clock.toISOString() })
-    expect(later.acquired).toBe(eventuallyAvailable)
-    sqlite.close()
-  })
-})
-
-describe('connector validateAuth', () => {
   it('validates username/password credentials without recording run artifacts', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
@@ -792,6 +527,14 @@ function emptyConnectorRefreshResult({
       schemaVersion: 'fixture-checkpoint@1',
     },
     observations: [],
+    operationOutcome: null,
+    status: 'completed' as const,
+    synchronization: {
+      newestFrontier: { state: 'caught_up' as const },
+      historicalBackfill: { state: 'caught_up' as const, boundary: { earliestDate: coverage.start.slice(0, 10) } },
+      pendingResolutionCount: 0,
+      outcome: { kind: 'caught_up' as const },
+    },
   }
 }
 
@@ -800,11 +543,6 @@ function createBudgetCapturingConnector(receivedInputs: unknown[]): AppJobConnec
     definition: {
       id: 'fixture.jobs',
       version: '0.0.0-fixture',
-      politeness: {
-        concurrency: 1,
-        minDelayMs: 1_000,
-        maxDelayMs: 10_000,
-      },
     },
     async refresh(input) {
       receivedInputs.push(input)

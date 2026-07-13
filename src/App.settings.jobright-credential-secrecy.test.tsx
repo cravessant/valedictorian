@@ -210,7 +210,7 @@ describe('Jobright credential secrecy', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.10.0',
+        connectorVersion: '0.11.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -220,10 +220,7 @@ describe('Jobright credential secrecy', () => {
           configured: true,
         }],
         config: {},
-        filters: {
-          maxResolutionCount: 10,
-          roleTerms: ['intern'],
-        },
+        filters: {},
         earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
@@ -282,7 +279,7 @@ describe('Jobright credential secrecy', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.10.0',
+        connectorVersion: '0.11.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -292,10 +289,7 @@ describe('Jobright credential secrecy', () => {
           configured: true,
         }],
         config: {},
-        filters: {
-          maxResolutionCount: 10,
-          roleTerms: ['intern'],
-        },
+        filters: {},
         earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
@@ -374,7 +368,7 @@ describe('Jobright credential secrecy', () => {
       items: [{
         id: 'jobright-default',
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.10.0',
+        connectorVersion: '0.11.0',
         displayName: 'Jobright internslist',
         enabled: true,
         auth: [{
@@ -384,10 +378,7 @@ describe('Jobright credential secrecy', () => {
           configured: true,
         }],
         config: {},
-        filters: {
-          maxResolutionCount: 10,
-          roleTerms: ['intern'],
-        },
+        filters: {},
         earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',

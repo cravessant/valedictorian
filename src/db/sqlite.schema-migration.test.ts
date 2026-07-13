@@ -4,9 +4,10 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { rawSourceProjectionResultSchema } from 'sparxie'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from './sqlite'
-import { doomedConnectorRunMigrationState, indexDefinition, seedDoomedConnectorRunFixture, tableDefinition } from './sqlite.schema-test-helpers'
+import { indexDefinition, tableDefinition } from './sqlite.schema-test-helpers'
 const expectedIdentityTriggers = [
   'trg_source_entity_identities_bound',
   'trg_source_entity_identities_no_delete',
@@ -131,7 +132,7 @@ describe('SQLite database', () => {
     const connectorTables = database
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
-    expect(migrationRows).toHaveLength(24)
+    expect(migrationRows).toHaveLength(25)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -152,7 +153,7 @@ describe('SQLite database', () => {
     expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
       .toEqual({ name: 'retry_work' })
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 24 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 25 })
     const stampedTags = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -170,6 +171,7 @@ describe('SQLite database', () => {
       startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
       config: {}, filters: {}, filterSignature: 'filters:{}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
         observations: [], warnings: [], stats: { observations: 0 },
         coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
         nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-retry@1' },
@@ -244,7 +246,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 24 })
+    ).toEqual({ count: 25 })
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
     for (const table of tables) {
@@ -276,9 +278,11 @@ describe('SQLite database', () => {
       ...before,
       connector_instances: before.connector_instances.map((row) => ({
         ...row,
-        connector_version: '0.8.0',
+        auth_json: '[]', config_json: '{}',
+        connector_version: '0.11.0',
         earliest_backfill_date: '2026-07-03',
         execution_scope_id: `scope_${Buffer.from(String(row.id)).toString('hex')}`,
+        filters_json: '{}',
       })),
     })
     for (const table of disposableResetTables) {
@@ -368,9 +372,11 @@ describe('SQLite database', () => {
       ...before,
       connector_instances: before.connector_instances.map((row) => ({
         ...row,
-        connector_version: '0.8.0',
+        auth_json: '[]', config_json: '{}',
+        connector_version: '0.11.0',
         earliest_backfill_date: '2026-07-03',
         execution_scope_id: `scope_${Buffer.from(String(row.id)).toString('hex')}`,
+        filters_json: '{}',
       })),
     })
     for (const table of disposableResetTables) {
@@ -383,7 +389,7 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 24 })
+      .toEqual({ count: 25 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
@@ -423,15 +429,8 @@ describe('SQLite database', () => {
     expect(database.prepare('select count(*) as count from raw_source_occurrences').get()).toEqual({ count: 0 })
     expect(database.prepare('select count(*) as count from connector_runs').get()).toEqual({ count: 0 })
     expect(database.prepare("select connector_version from connector_instances where connector_id = 'jobright.resolver'").get())
-      .toEqual({ connector_version: '0.8.0' })
+      .toEqual({ connector_version: '0.11.0' })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
-    database.close()
-  })
-  it('deletes every derived dependent before removing an obsolete partial connector run', () => {
-    const database = createInMemoryDatabase(); migrateDatabase(database, { migrationsFolder: migrationFolderThrough(22) }); seedDoomedConnectorRunFixture(database)
-    expect(() => migrateDatabase(database)).not.toThrow(); expect(doomedConnectorRunMigrationState(database)).toEqual({ dependentCounts: [{ count: 0 }, { count: 0 }, { count: 0 }, { count: 0 }], foreignKeyErrors: [],
-      occurrence: { connector_instance_id: null, connector_run_id: null }, revision: { count: 1 }, runReferences: ['connector_observations.connector_run_id', 'connector_run_synchronizations.connector_run_id', 'connector_schedule_occurrences.connector_run_id', 'raw_source_occurrences.connector_instance_id', 'raw_source_occurrences.connector_run_id', 'retry_work.acquisition_run_id', 'retry_work.skipped_run_id'],
-    })
     database.close()
   })
   it('rolls back the retry-ledger reset when migration 0018 fails', () => {

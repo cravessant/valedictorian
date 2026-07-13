@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
@@ -29,8 +30,9 @@ describe('local server connector schedule dispatch', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             refreshCalls += 1
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: {
                 checkpoint: { cursor: 'scheduled-1' },
                 schemaVersion: 'fixture-checkpoint@1',
@@ -242,8 +244,9 @@ describe('local server connector schedule dispatch', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             refreshCalls += 1
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: {
                 checkpoint: { cursor: 'idempotent-1' },
                 schemaVersion: 'fixture-checkpoint@1',
@@ -339,8 +342,9 @@ describe('local server connector schedule dispatch', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             await refreshGate
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
               observations: [],
               stats: { observations: 0 },
@@ -735,8 +739,9 @@ describe('local server connector schedule dispatch', () => {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             await refreshGate
-            return {
-              coverage: input.coverage,
+              return {
+                ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
+                coverage: input.coverage,
               nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
               observations: [],
               stats: { observations: 0 },

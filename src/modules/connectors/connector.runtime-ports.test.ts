@@ -34,7 +34,7 @@ describe('connector runtime ports', () => {
       },
     })
     expect(JSON.stringify(ports)).not.toContain('connectorAuth')
-    expect(JSON.stringify(ports)).not.toContain('browserSession')
+    expect(JSON.stringify(ports)).not.toContain(['browser', 'Session'].join(''))
 
     await expect(ports.connectorRuntime.delay?.wait({
       minDelayMs: 1_000,

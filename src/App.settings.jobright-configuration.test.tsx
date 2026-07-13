@@ -34,7 +34,7 @@ afterEach(() => {
 })
 
 describe('Jobright configuration', () => {
-  it('saves Jobright filters from connector settings before refresh', async () => {
+  it('saves released Jobright config without connector filters', async () => {
     const connectorsApi = createConnectorsApi()
 
     render(
@@ -51,10 +51,7 @@ describe('Jobright configuration', () => {
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
 
-    fireEvent.change(await screen.findByLabelText('Role terms'), {
-      target: { value: 'intern, backend' },
-    })
-    fireEvent.change(screen.getByLabelText('Useful results target'), {
+    fireEvent.change(await screen.findByLabelText('Discovery page size'), {
       target: { value: '3' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
@@ -62,121 +59,10 @@ describe('Jobright configuration', () => {
     await waitFor(() => {
       expect(connectorsApi.update).toHaveBeenCalledWith({
         config: {
-          usefulTarget: 3,
+          discoveryCount: 3,
         },
         connectorInstanceId: 'jobright-default',
-        filters: {
-          maxResolutionCount: 10,
-          roleTerms: ['intern', 'backend'],
-        },
-      })
-    })
-  })
-
-  it('saves exact useful results target 500 as bounded backfill intent without migrating legacy resolution caps', async () => {
-    const connectorsApi = createConnectorsApi()
-    await connectorsApi.create({
-      id: 'jobright-default',
-      connectorId: 'jobright.resolver',
-      connectorVersion: '0.6.0',
-      displayName: 'Jobright internslist',
-      enabled: true,
-      auth: [{
-        id: 'jobright',
-        mode: 'username_password',
-        label: 'Jobright username and password',
-        secretKey: 'connector_jobright_credentials_jobright_default',
-      }],
-      config: {
-        customKeep: 'preserve-me',
-        discoveryCount: 25,
-      },
-      filters: {
-        maxResolutionCount: 50,
-        roleTerms: ['intern'],
-      },
-    })
-    vi.mocked(connectorsApi.create).mockClear()
-    vi.mocked(connectorsApi.update).mockClear()
-
-    const firstRender = render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        connectorsApi={connectorsApi}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-
-    const usefulTarget = await screen.findByLabelText('Useful results target')
-    expect(usefulTarget).toHaveValue(100)
-    expect(screen.getByText(/bounded backfill intent across runs/i)).toBeInTheDocument()
-    expect(screen.queryByLabelText('Max links per refresh')).not.toBeInTheDocument()
-
-    fireEvent.change(usefulTarget, { target: { value: '500' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
-
-    await waitFor(() => {
-      expect(connectorsApi.update).toHaveBeenCalledWith({
-        config: {
-          customKeep: 'preserve-me',
-          discoveryCount: 25,
-          usefulTarget: 500,
-        },
-        connectorInstanceId: 'jobright-default',
-        filters: {
-          maxResolutionCount: 50,
-          roleTerms: ['intern'],
-        },
-      })
-    })
-    expect(connectorsApi.update).not.toHaveBeenCalledWith(expect.objectContaining({
-      config: {},
-    }))
-
-    firstRender.unmount()
-    vi.mocked(connectorsApi.update).mockClear()
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        connectorsApi={connectorsApi}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-    const reloadedNavigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    fireEvent.click(within(reloadedNavigation).getByRole('button', { name: 'Connectors' }))
-
-    expect(await screen.findByLabelText('Useful results target')).toHaveValue(500)
-    expect(screen.getByText(/Saved useful results target: 500/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByText('Advanced connector limits'))
-    expect(screen.getByLabelText('Discovery page size')).toHaveValue(25)
-    expect(screen.getByLabelText('Requested detail-resolution attempts')).toHaveValue(50)
-    expect(screen.getByText(/Requested detail-resolution attempts \(saved\): 50 \(legacy\)/i))
-      .toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText('Role terms'), {
-      target: { value: 'intern, backend' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
-
-    await waitFor(() => {
-      expect(connectorsApi.update).toHaveBeenCalledWith({
-        config: {
-          customKeep: 'preserve-me',
-          discoveryCount: 25,
-          usefulTarget: 500,
-        },
-        connectorInstanceId: 'jobright-default',
-        filters: {
-          maxResolutionCount: 50,
-          roleTerms: ['intern', 'backend'],
-        },
+        filters: {},
       })
     })
   })
@@ -198,12 +84,9 @@ describe('Jobright configuration', () => {
           configured: true,
         }],
         config: {
-          usefulTarget: 100,
+          discoveryCount: 100,
         },
-        filters: {
-          maxResolutionCount: 10,
-          roleTerms: ['intern'],
-        },
+        filters: {},
         earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
@@ -224,8 +107,8 @@ describe('Jobright configuration', () => {
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('Useful results target'), {
-      target: { value: '250' },
+    fireEvent.change(screen.getByLabelText('Discovery page size'), {
+      target: { value: '25' },
     })
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
@@ -254,12 +137,9 @@ describe('Jobright configuration', () => {
           configured: true,
         }],
         config: {
-          usefulTarget: 100,
+          discoveryCount: 100,
         },
-        filters: {
-          maxResolutionCount: 10,
-          roleTerms: ['intern'],
-        },
+        filters: {},
         earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
@@ -281,13 +161,12 @@ describe('Jobright configuration', () => {
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()
 
-    const usefulTarget = screen.getByLabelText('Useful results target')
-    fireEvent.change(usefulTarget, { target: { value: '250' } })
+    const discoveryCount = screen.getByLabelText('Discovery page size')
+    fireEvent.change(discoveryCount, { target: { value: '25' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
 
     expect(await screen.findByRole('button', { name: 'Saving...' })).toBeDisabled()
-    expect(screen.getByLabelText('Useful results target')).toBeDisabled()
-    expect(screen.getByLabelText('Role terms')).toBeDisabled()
+    expect(screen.getByLabelText('Discovery page size')).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Discard unsaved settings' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
 
@@ -308,12 +187,9 @@ describe('Jobright configuration', () => {
           configured: true,
         }],
         config: {
-          usefulTarget: 250,
+          discoveryCount: 25,
         },
-        filters: {
-          maxResolutionCount: 10,
-          roleTerms: ['intern'],
-        },
+        filters: {},
         earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:01:00.000Z',
@@ -321,9 +197,9 @@ describe('Jobright configuration', () => {
     })
 
     expect(await screen.findByRole('button', { name: 'Save Jobright settings' })).toBeEnabled()
-    expect(screen.getByLabelText('Useful results target')).toBeEnabled()
-    expect(screen.getByLabelText('Useful results target')).toHaveValue(250)
-    expect(screen.getByText(/Saved useful results target: 250/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Discovery page size')).toBeEnabled()
+    expect(screen.getByLabelText('Discovery page size')).toHaveValue(25)
+    expect(screen.getByText(/Discovery page size/i)).toBeInTheDocument()
     expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
   })
 
@@ -352,12 +228,9 @@ describe('Jobright configuration', () => {
         configured: true,
       }],
       config: {
-        usefulTarget: 100,
+        discoveryCount: 100,
       },
-      filters: {
-        maxResolutionCount: 10,
-        roleTerms: ['intern'],
-      },
+      filters: {},
       earliestBackfillDate: '2026-07-02',
       createdAt: '2026-07-09T15:00:00.000Z',
       updatedAt: '2026-07-09T15:00:00.000Z',
@@ -398,19 +271,19 @@ describe('Jobright configuration', () => {
     expect(await within(cardA).findByText('Auth verified')).toBeInTheDocument()
     expect(await within(cardB).findByText('Auth verified')).toBeInTheDocument()
 
-    fireEvent.change(within(cardA).getByLabelText('Useful results target'), {
-      target: { value: '210' },
+    fireEvent.change(within(cardA).getByLabelText('Discovery page size'), {
+      target: { value: '21' },
     })
     fireEvent.click(within(cardA).getByRole('button', { name: 'Save Jobright settings' }))
-    fireEvent.change(within(cardB).getByLabelText('Useful results target'), {
-      target: { value: '220' },
+    fireEvent.change(within(cardB).getByLabelText('Discovery page size'), {
+      target: { value: '22' },
     })
     fireEvent.click(within(cardB).getByRole('button', { name: 'Save Jobright settings' }))
 
     expect(await within(cardA).findByRole('button', { name: 'Saving...' })).toBeDisabled()
     expect(await within(cardB).findByRole('button', { name: 'Saving...' })).toBeDisabled()
-    expect(within(cardA).getByLabelText('Useful results target')).toBeDisabled()
-    expect(within(cardB).getByLabelText('Useful results target')).toBeDisabled()
+    expect(within(cardA).getByLabelText('Discovery page size')).toBeDisabled()
+    expect(within(cardB).getByLabelText('Discovery page size')).toBeDisabled()
     expect(within(cardA).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
     expect(within(cardB).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
 
@@ -421,16 +294,16 @@ describe('Jobright configuration', () => {
     await act(async () => {
       resolveUpdateA?.({
         ...instanceA,
-        config: { usefulTarget: 210 },
+        config: { discoveryCount: 21 },
         updatedAt: '2026-07-09T15:01:00.000Z',
       })
     })
 
     expect(await within(cardA).findByRole('button', { name: 'Save Jobright settings' })).toBeEnabled()
-    expect(within(cardA).getByLabelText('Useful results target')).toBeEnabled()
-    expect(within(cardA).getByLabelText('Useful results target')).toHaveValue(210)
+    expect(within(cardA).getByLabelText('Discovery page size')).toBeEnabled()
+    expect(within(cardA).getByLabelText('Discovery page size')).toHaveValue(21)
     expect(within(cardB).getByRole('button', { name: 'Saving...' })).toBeDisabled()
-    expect(within(cardB).getByLabelText('Useful results target')).toBeDisabled()
+    expect(within(cardB).getByLabelText('Discovery page size')).toBeDisabled()
     expect(within(cardB).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
     fireEvent.click(within(cardB).getByRole('button', { name: 'Run Jobright now' }))
     expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
@@ -438,19 +311,19 @@ describe('Jobright configuration', () => {
     await act(async () => {
       resolveUpdateB?.({
         ...instanceB,
-        config: { usefulTarget: 220 },
+        config: { discoveryCount: 22 },
         updatedAt: '2026-07-09T15:02:00.000Z',
       })
     })
 
     expect(await within(cardB).findByRole('button', { name: 'Save Jobright settings' })).toBeEnabled()
-    expect(within(cardB).getByLabelText('Useful results target')).toBeEnabled()
-    expect(within(cardB).getByLabelText('Useful results target')).toHaveValue(220)
-    expect(within(cardA).getByLabelText('Useful results target')).toHaveValue(210)
+    expect(within(cardB).getByLabelText('Discovery page size')).toBeEnabled()
+    expect(within(cardB).getByLabelText('Discovery page size')).toHaveValue(22)
+    expect(within(cardA).getByLabelText('Discovery page size')).toHaveValue(21)
     expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
   })
 
-  it('distinguishes saved, draft, and effective values for legacy resolution caps', async () => {
+  it('exposes only released Jobright connector settings', async () => {
     const connectorsApi = createConnectorsApi()
     vi.mocked(connectorsApi.list).mockResolvedValue({
       items: [{
@@ -466,64 +339,7 @@ describe('Jobright configuration', () => {
           configured: true,
         }],
         config: {},
-        filters: {
-          maxResolutionCount: 50,
-          roleTerms: ['intern'],
-        },
-        earliestBackfillDate: '2026-07-02',
-        createdAt: '2026-07-09T15:00:00.000Z',
-        updatedAt: '2026-07-09T15:00:00.000Z',
-      }],
-    })
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        connectorsApi={connectorsApi}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-
-    expect(await screen.findByLabelText('Useful results target')).toHaveValue(100)
-    expect(screen.getByText(/Saved useful results target: default 100/i)).toBeInTheDocument()
-    expect(screen.getByText(/Requested detail-resolution attempts \(saved\): 50 \(legacy\)/i))
-      .toBeInTheDocument()
-    expect(screen.getByText(/Effective detail-resolution attempts: 10/i)).toBeInTheDocument()
-    expect(screen.getByText(/host request budget 10/i)).toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText('Useful results target'), {
-      target: { value: '200' },
-    })
-    expect(screen.getByText(/Unsaved draft useful results target: 200/i)).toBeInTheDocument()
-    expect(screen.getByText(/Saved useful results target: default 100/i)).toBeInTheDocument()
-  })
-
-  it('exposes advanced discovery controls and rejects resolution attempts above the host budget', async () => {
-    const connectorsApi = createConnectorsApi()
-    vi.mocked(connectorsApi.list).mockResolvedValue({
-      items: [{
-        id: 'jobright-default',
-        connectorId: 'jobright.resolver',
-        connectorVersion: '0.6.0',
-        displayName: 'Jobright internslist',
-        enabled: true,
-        auth: [{
-          id: 'jobright',
-          mode: 'username_password',
-          label: 'Jobright username and password',
-          configured: true,
-        }],
-        config: {
-          customKeep: 'still-here',
-        },
-        filters: {
-          maxResolutionCount: 50,
-          roleTerms: ['intern'],
-        },
+        filters: {},
         earliestBackfillDate: '2026-07-02',
         createdAt: '2026-07-09T15:00:00.000Z',
         updatedAt: '2026-07-09T15:00:00.000Z',
@@ -541,11 +357,8 @@ describe('Jobright configuration', () => {
         label: 'Jobright username and password',
         configured: true,
       }],
-      config: input.config ?? { customKeep: 'still-here' },
-      filters: input.filters ?? {
-        maxResolutionCount: 50,
-        roleTerms: ['intern'],
-      },
+      config: input.config ?? {},
+      filters: input.filters ?? {},
       createdAt: '2026-07-09T15:00:00.000Z',
       updatedAt: '2026-07-09T15:01:00.000Z',
     }))
@@ -562,55 +375,25 @@ describe('Jobright configuration', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
 
-    fireEvent.click(await screen.findByText('Advanced connector limits'))
+    fireEvent.click(await screen.findByText('Connector settings'))
     expect(screen.getByLabelText('Discovery page size')).toHaveValue(20)
-    expect(screen.getByLabelText('Discovery page limit')).toHaveValue(40)
-    expect(screen.getByLabelText('Discovery record limit')).toHaveValue(500)
-    expect(screen.getByText(/Host request budget: effective 10 requests\/run/i)).toBeInTheDocument()
-    expect(screen.getByText(/connector-supported maximum 25/i)).toBeInTheDocument()
-    expect(screen.getByText(/takes precedence/i)).toBeInTheDocument()
-    expect(screen.getByText(/Pacing: concurrency 1, 1–10 seconds between bounded requests/i))
-      .toBeInTheDocument()
-    expect(screen.getByLabelText('Requested detail-resolution attempts')).toHaveValue(50)
-    expect(screen.getByText(/Saved value is labeled legacy/i)).toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText('Requested detail-resolution attempts'), {
-      target: { value: '11' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
-    expect(await screen.findByText(
-      'Requested detail-resolution attempts cannot exceed the effective host request budget of 10.',
-    )).toBeInTheDocument()
-    expect(connectorsApi.update).not.toHaveBeenCalled()
-
-    fireEvent.change(screen.getByLabelText('Requested detail-resolution attempts'), {
-      target: { value: '8' },
-    })
+    expect(screen.queryByLabelText('Role terms')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Useful results target')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Discovery page limit')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Discovery record limit')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Requested detail-resolution attempts')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Discovery page size'), {
       target: { value: '30' },
-    })
-    fireEvent.change(screen.getByLabelText('Discovery page limit'), {
-      target: { value: '12' },
-    })
-    fireEvent.change(screen.getByLabelText('Discovery record limit'), {
-      target: { value: '200' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
 
     await waitFor(() => {
       expect(connectorsApi.update).toHaveBeenCalledWith({
         config: {
-          customKeep: 'still-here',
           discoveryCount: 30,
-          maxDiscoveryPages: 12,
-          maxDiscoveryRecords: 200,
-          usefulTarget: 100,
         },
         connectorInstanceId: 'jobright-default',
-        filters: {
-          maxResolutionCount: 8,
-          roleTerms: ['intern'],
-        },
+        filters: {},
       })
     })
   })

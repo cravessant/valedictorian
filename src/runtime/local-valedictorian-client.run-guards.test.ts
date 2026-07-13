@@ -152,6 +152,13 @@ describe('runtime local Valedictorian client', () => {
       filterSignature: 'filters:{}',
       checkpointPersistence: 'deferred',
       result: {
+        operationOutcome: null,
+        synchronization: {
+          newestFrontier: { state: 'advancing' },
+          historicalBackfill: { state: 'advancing', boundary: { earliestDate: '2026-07-08' } },
+          pendingResolutionCount: 1,
+          outcome: { kind: 'failed', reason: 'source_rate_limited' },
+        },
         coverage: {
           start: '2026-07-08T17:00:00.000Z',
           end: '2026-07-08T18:00:00.000Z',
@@ -166,7 +173,7 @@ describe('runtime local Valedictorian client', () => {
           code: 'source.rate_limited',
           message: 'Sensitive raw rate-limit details.',
         }],
-        status: 'partial_success',
+        status: 'failed',
       },
     })
     sqlite.close()
@@ -514,6 +521,9 @@ describe('runtime local Valedictorian client', () => {
       filters: {},
       filterSignature: 'filters:{}',
       result: {
+        operationOutcome: null,
+        status: 'completed',
+        synchronization: completedSynchronization('2026-07-08'),
         coverage: {
           start: '2026-07-08T15:00:00.000Z',
           end: '2026-07-08T16:00:00.000Z',
@@ -607,6 +617,9 @@ describe('runtime local Valedictorian client', () => {
       filters: {},
       filterSignature: 'filters:{}',
       result: {
+        operationOutcome: null,
+        status: 'completed',
+        synchronization: completedSynchronization('2026-07-08'),
         coverage: {
           start: '2026-07-08T15:00:00.000Z',
           end: '2026-07-08T16:00:00.000Z',
@@ -731,7 +744,7 @@ describe('runtime local Valedictorian client', () => {
     const connector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.10.0',
+        version: '0.11.0',
         capabilities: { supportsFiltering: false },
       },
       refresh,
@@ -747,10 +760,10 @@ describe('runtime local Valedictorian client', () => {
     await repository.upsertInstance({
       id: 'jobright-capture-retry',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.10.0',
+      connectorVersion: '0.11.0',
       displayName: 'Jobright capture retry',
       enabled: true,
-      filters: { roleTerms: ['intern'] },
+      filters: {},
       createdAt: '2026-07-11T11:00:00.000Z',
     })
     await repository.recordRefreshResult({
@@ -759,9 +772,12 @@ describe('runtime local Valedictorian client', () => {
       startedAt: '2026-07-11T12:00:00.000Z',
       completedAt: '2026-07-11T12:00:01.000Z',
       config: {},
-      filters: { roleTerms: ['intern'] },
-      filterSignature: 'provider-state:jobright.resolver@0.10.0',
+      filters: {},
+      filterSignature: 'provider-state:jobright.resolver@0.11.0',
       result: {
+        operationOutcome: null,
+        status: 'completed',
+        synchronization: completedSynchronization('2026-07-11'),
         observations: [],
         warnings: [],
         stats: { observations: 0 },
@@ -794,7 +810,7 @@ describe('runtime local Valedictorian client', () => {
       mode: 'manual',
       scheduleOccurrence: null,
       status: 'skipped',
-      filterSignature: 'provider-state:jobright.resolver@0.10.0',
+      filterSignature: 'provider-state:jobright.resolver@0.11.0',
       retryHints: { state: 'not_due', reason: 'rate_limit' },
     })
     expect(repeated.id).toBe(direct.id)
@@ -804,6 +820,15 @@ describe('runtime local Valedictorian client', () => {
 
 
 })
+
+function completedSynchronization(earliestDate: string) {
+  return {
+    newestFrontier: { state: 'caught_up' as const },
+    historicalBackfill: { state: 'caught_up' as const, boundary: { earliestDate } },
+    pendingResolutionCount: 0,
+    outcome: { kind: 'caught_up' as const },
+  }
+}
 
 function fixtureConnector({
   additionalCompanyNames = [],
@@ -882,6 +907,14 @@ function fixtureConnector({
           observations: observations.length,
         },
         warnings: [],
+        operationOutcome: null,
+        status: 'completed',
+        synchronization: {
+          newestFrontier: { state: 'caught_up' },
+          historicalBackfill: { state: 'caught_up', boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
+          pendingResolutionCount: 0,
+          outcome: { kind: 'caught_up' },
+        },
       }
     },
   }

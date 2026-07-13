@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
 
 function createTempSqlitePath() {
@@ -49,8 +50,8 @@ describe('runtime local Valedictorian client', () => {
         {
           id: 'fixture-session',
           label: 'Fixture session',
-          mode: 'browser_session',
-          sessionKey: 'fixture-session-123',
+          mode: 'api_key',
+          secretKey: 'fixture-session-123',
         },
       ],
       filters: { roleKeywords: ['intern'] },
@@ -65,6 +66,7 @@ describe('runtime local Valedictorian client', () => {
       filters: { roleKeywords: ['intern'] },
       filterSignature: 'filters:{"roleKeywords":["intern"]}',
       result: {
+        ...completedConnectorRefreshContract('2026-07-08'),
         coverage: {
           start: '2026-07-08T16:00:00.000Z',
           end: '2026-07-08T17:00:00.000Z',
@@ -83,7 +85,7 @@ describe('runtime local Valedictorian client', () => {
         warnings: [
           {
             code: 'auth.expired_session',
-            message: 'Expired browser session fixture-session-123.',
+            message: 'Expired API key fixture-session-123.',
           },
         ],
       },
@@ -161,8 +163,8 @@ describe('runtime local Valedictorian client', () => {
         {
           id: 'fixture-session',
           label: 'Fixture session',
-          mode: 'browser_session',
-          sessionKey: 'fixture-session-123',
+          mode: 'api_key',
+          secretKey: 'fixture-session-123',
         },
       ],
       createdAt: '2026-07-08T15:00:00.000Z',
