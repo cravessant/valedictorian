@@ -10,7 +10,8 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "electron-builder install-app-deps && vite",
+    "dev": "electron-builder install-app-deps && tsx scripts/run-supervised.ts dev",
+    "validate:app": "electron-builder install-app-deps && tsx scripts/run-supervised.ts validation",
     "build": "pnpm run typecheck && vite build && electron-builder && NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3",
     "build:mac": "vite build && electron-builder --mac --publish never && NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3",
     "lint": "pnpm run typecheck && oxlint . --react-plugin --type-aware --report-unused-disable-directives --deny-warnings",

@@ -339,6 +339,7 @@ export const defaultConnectorStatusReconnector = (
 ): Promise<LocalConnectorReconnectActionResult> => {
   const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
 
+  if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
   if (!connectorsWindow.connectors?.status.reconnect) {
     return Promise.reject(new Error('Connector reconnect is unavailable for this runtime.'))
   }
@@ -351,6 +352,7 @@ export const defaultConnectorStatusSkipper = (
 ): Promise<ConnectorSkipActionResult> => {
   const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
 
+  if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
   if (!connectorsWindow.connectors?.status.skip) {
     return Promise.reject(new Error('Connector skip is unavailable for this runtime.'))
   }
@@ -363,24 +365,28 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
 
+    if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
     return httpClient?.connectors.list() ?? connectorsWindow.connectors?.list() ?? Promise.resolve({ items: [] })
   },
   create(input) {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
 
+    if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
     return httpClient?.connectors.create(input) ?? connectorsWindow.connectors?.create(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
   },
   update(input) {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
 
+    if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
     return httpClient?.connectors.update(input) ?? connectorsWindow.connectors?.update(input) ?? Promise.reject(new Error('Connectors API is unavailable.'))
   },
   inspect(connectorInstanceId) {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
 
+    if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
     return httpClient?.connectors.inspect(connectorInstanceId) ?? connectorsWindow.connectors?.inspect(connectorInstanceId) ?? Promise.reject(new Error('Connectors API is unavailable.'))
   },
   runs: {
@@ -388,6 +394,7 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
       const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
       const httpClient = getRendererHttpWorkspaceClient()
 
+      if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
       const httpResult = httpClient?.connectors.runs.list(input)
       return httpResult ?? connectorsWindow.connectors?.runs.list(input) ?? Promise.resolve({
         hasMore: false,
@@ -401,6 +408,7 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
       const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
       const httpClient = getRendererHttpWorkspaceClient()
 
+      if (rendererBackendUnavailable()) return Promise.reject(backendUnavailableError())
       return httpClient?.connectors.runs.trigger(input)
         ?? connectorsWindow.connectors?.runs.trigger(input)
         ?? Promise.reject(new Error('Connectors API is unavailable.'))
@@ -517,6 +525,10 @@ export const defaultScoreRecorder = (input: ScoreInput) => {
 
 interface RendererHttpConfig {
   apiBaseUrl: string
+  getBackendState?: () =>
+    | { status: 'starting' | 'unavailable' | 'stopped' }
+    | { status: 'available'; origin: string }
+  onBackendStateChanged?: (listener: (state: { status: string }) => void) => () => void
   token?: string
   workspaceId: string
   request?: typeof fetch
@@ -533,11 +545,27 @@ function getRendererHttpRootClient(): ValedictorianClient | null {
     return null
   }
 
+  const backendState = config.getBackendState?.()
+  if (backendState && backendState.status !== 'available') {
+    return null
+  }
+
   return createHttpValedictorianClient({
-    baseUrl: config.apiBaseUrl,
+    baseUrl: backendState?.status === 'available'
+      ? backendState.origin
+      : config.apiBaseUrl,
     fetch: config.request ?? globalThis.fetch.bind(globalThis),
     token: config.token,
   })
+}
+
+function rendererBackendUnavailable() {
+  const state = getRendererHttpConfig()?.getBackendState?.()
+  return Boolean(state && state.status !== 'available')
+}
+
+function backendUnavailableError() {
+  return new Error('Workspace backend unavailable.')
 }
 
 function getRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient | null {

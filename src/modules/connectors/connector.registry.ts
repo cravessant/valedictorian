@@ -1,3 +1,4 @@
+import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobright'
 import type { AppJobConnector } from './connector.runner'
 
 export interface LocalConnectorRegistry {
@@ -19,5 +20,7 @@ export function createStaticConnectorRegistry(
 }
 
 export function createDefaultLocalConnectorRegistry(): LocalConnectorRegistry {
-  return createStaticConnectorRegistry([])
+  return createStaticConnectorRegistry([
+    createJobrightConnector({ fetch: globalThis.fetch }),
+  ])
 }

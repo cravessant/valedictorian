@@ -102,6 +102,32 @@ export function sanitizedConnectorAuthErrorMessage(error: unknown): string {
   return 'Jobright credentials could not be validated.'
 }
 
+export function sanitizedConnectorCreateErrorMessage(error: unknown): string {
+  const candidate = error && typeof error === 'object'
+    ? error as { code?: unknown; status?: unknown; statusCode?: unknown }
+    : {}
+  const status = typeof candidate.status === 'number'
+    ? candidate.status
+    : candidate.statusCode
+
+  if (status === 409 || candidate.code === 'already_configured') {
+    return 'Jobright is already configured. Reload connector state and manage the existing instance.'
+  }
+  if (status === 400 || status === 422 || candidate.code === 'validation_rejected') {
+    return 'Jobright configuration was rejected. Review the connector fields and try again.'
+  }
+  if (
+    error instanceof TypeError
+    || status === 502
+    || status === 503
+    || status === 504
+    || candidate.code === 'backend_unavailable'
+  ) {
+    return 'The workspace backend is unavailable. Restore it, then retry connector loading.'
+  }
+  return 'The connector action was rejected. Reload connector state before trying again.'
+}
+
 export function defaultConnectorSettingsDraft(
   instance: ConnectorSettingsInstance | undefined,
 ): ConnectorSettingsDraft {

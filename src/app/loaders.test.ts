@@ -3,6 +3,8 @@ import {
   defaultApplicationLoader,
   defaultConnectorScheduleApi,
   defaultConnectorStatusLoader,
+  defaultConnectorStatusReconnector,
+  defaultConnectorStatusSkipper,
   defaultConnectorsApi,
 } from './loaders'
 
@@ -214,6 +216,26 @@ describe('renderer HTTP loaders', () => {
       'Connector Overview HTTP client is unavailable.',
     )
     expect(ipcList).not.toHaveBeenCalled()
+  })
+
+  it('blocks stale reconnect and skip actions while the backend is unavailable', async () => {
+    const reconnect = vi.fn()
+    const skip = vi.fn()
+    ;(window as Window & { connectors?: unknown }).connectors = { status: { reconnect, skip } }
+    ;(window as Window & { valedictorianHttp?: unknown }).valedictorianHttp = {
+      apiBaseUrl: 'http://127.0.0.1:51001',
+      getBackendState: () => ({ status: 'unavailable' }),
+      workspaceId: 'workspace-1',
+    }
+
+    await expect(defaultConnectorStatusReconnector({
+      connectorInstanceId: 'jobright-default',
+    })).rejects.toThrow(/backend unavailable/i)
+    await expect(defaultConnectorStatusSkipper({
+      connectorInstanceId: 'jobright-default', reason: 'user_skipped_auth_required_run',
+    })).rejects.toThrow(/backend unavailable/i)
+    expect(reconnect).not.toHaveBeenCalled()
+    expect(skip).not.toHaveBeenCalled()
   })
 })
 

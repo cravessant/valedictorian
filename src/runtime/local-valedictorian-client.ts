@@ -308,7 +308,7 @@ export function createLocalValedictorianClient({
             createdAt,
             createdAt,
           )
-        return mapConnectorInstanceSummary(await connectorRunner.registerInstance({
+        return mapConnectorInstanceSummary(await connectorRunner.registerInstanceIfAbsent({
           id: input.id,
           connector,
           displayName: input.displayName,

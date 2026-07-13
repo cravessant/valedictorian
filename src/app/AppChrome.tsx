@@ -51,6 +51,7 @@ function AppTopbar({
   onInstallUpdate,
   onToggleSidebar,
 }: AppTopbarProps) {
+  const buildIdentity = import.meta.env.VITE_VALEDICTORIAN_BUILD_IDENTITY
   return (
     <header
       aria-label="App chrome"
@@ -76,6 +77,11 @@ function AppTopbar({
         </TooltipContent>
       </Tooltip>
       <div className="min-w-0 truncate text-sm font-semibold leading-none text-foreground">{title}</div>
+      {buildIdentity ? (
+        <code className="app-no-drag ml-auto max-w-[45vw] truncate rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] text-warning">
+          {buildIdentity}
+        </code>
+      ) : null}
       <UpdateStatusControl
         onCheck={onCheckForUpdates}
         state={updateState}

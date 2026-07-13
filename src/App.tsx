@@ -226,6 +226,7 @@ function App({
   const [isConnectorStatusLoading, setIsConnectorStatusLoading] = useState(false)
   const [hasLoadedConnectorStatus, setHasLoadedConnectorStatus] = useState(false)
   const [connectorStatusError, setConnectorStatusError] = useState<string | null>(null)
+  const connectorBackendGenerationRef = useRef(0)
   const [sourcingMergeStatus, setSourcingMergeStatus] = useState<SourcingMergeStatus | undefined>(undefined)
   const [sourcingDestinationClass, setSourcingDestinationClass] = useState<SourcingDestinationClass | undefined>(undefined)
   const [sourcingUsability, setSourcingUsability] = useState<SourcingUsability | undefined>(undefined)
@@ -332,6 +333,25 @@ function App({
   }, [])
 
   useEffect(() => {
+    const binding = (window as Window & {
+      valedictorianHttp?: {
+        onBackendStateChanged?(listener: (state: { status: string }) => void): () => void
+      }
+    }).valedictorianHttp
+    return binding?.onBackendStateChanged?.((state) => {
+      connectorBackendGenerationRef.current += 1
+      if (state.status === 'available') {
+        setConnectorStatusReloadKey((current) => current + 1)
+      } else {
+        setConnectorStatusResult(emptyConnectorStatusResult)
+        setHasLoadedConnectorStatus(true)
+        setIsConnectorStatusLoading(false)
+        setConnectorStatusError(null)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     let isMounted = true
 
     setIsLoading(true)
@@ -397,24 +417,25 @@ function App({
     }
 
     let isMounted = true
+    const requestGeneration = connectorBackendGenerationRef.current
 
     setIsConnectorStatusLoading(true)
     connectorStatusLoader()
       .then((nextResult) => {
-        if (isMounted) {
+        if (isMounted && requestGeneration === connectorBackendGenerationRef.current) {
           setConnectorStatusResult(nextResult)
           setHasLoadedConnectorStatus(true)
           setConnectorStatusError(null)
         }
       })
       .catch(() => {
-        if (isMounted) {
+        if (isMounted && requestGeneration === connectorBackendGenerationRef.current) {
           setConnectorStatusResult(emptyConnectorStatusResult)
           setConnectorStatusError('Connector status could not be loaded.')
         }
       })
       .finally(() => {
-        if (isMounted) {
+        if (isMounted && requestGeneration === connectorBackendGenerationRef.current) {
           setIsConnectorStatusLoading(false)
         }
       })
@@ -717,16 +738,6 @@ function App({
   function reloadConnectorRunOutcomes() {
     setConnectorStatusReloadKey((current) => current + 1)
     reloadSourcing()
-    void connectorStatusLoader()
-      .then((nextResult) => {
-        setConnectorStatusResult(nextResult)
-        setHasLoadedConnectorStatus(true)
-        setConnectorStatusError(null)
-      })
-      .catch(() => {
-        setConnectorStatusResult(emptyConnectorStatusResult)
-        setConnectorStatusError('Connector status could not be loaded.')
-      })
     void sourcingLoader(sourcingQuery)
       .then((nextResult) => {
         setSourcingResult(nextResult)

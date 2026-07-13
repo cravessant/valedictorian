@@ -25,6 +25,8 @@ export interface CreateValedictorianHttpServerOptions {
 export interface StartedValedictorianHttpServer {
   close: () => Promise<void>
   host: string
+  onClosed: (listener: () => void) => () => void
+  onError: (listener: () => void) => () => void
   port: number
   url: string
 }
@@ -55,6 +57,7 @@ export async function createValedictorianHttpServer({
   workspaceManager,
 }: CreateValedictorianHttpServerOptions): Promise<StartedValedictorianHttpServer> {
   const connectorScheduling = readClientConnectorScheduling(client)
+  const errorListeners = new Set<() => void>()
   const server = http.createServer((request, response) => {
     if (request.method === 'OPTIONS') {
       writeEmpty(response, 204)
@@ -76,6 +79,7 @@ export async function createValedictorianHttpServer({
     server.once('error', reject)
     server.listen(port, host, () => {
       server.off('error', reject)
+      server.on('error', () => errorListeners.forEach((listener) => listener()))
       resolve()
     })
   })
@@ -96,6 +100,14 @@ export async function createValedictorianHttpServer({
       })
     },
     host,
+    onClosed(listener) {
+      server.on('close', listener)
+      return () => server.off('close', listener)
+    },
+    onError(listener) {
+      errorListeners.add(listener)
+      return () => errorListeners.delete(listener)
+    },
     port: resolvedPort,
     url: `http://${host}:${resolvedPort}`,
   }

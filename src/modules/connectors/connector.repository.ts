@@ -18,7 +18,7 @@ import {
 import {
   freezeConnectorRunLifecycleCounts
 } from './connector.lifecycle-counts'
-import { mapConnectorInstance, normalizeConnectorAuthReferences } from './connector-instance.persistence'
+import { createConnectorInstance, mapConnectorInstance, normalizeConnectorAuthReferences } from './connector-instance.persistence'
 import { upsertConnectorCheckpoint, mapConnectorCheckpoint } from './connector-checkpoint.persistence'
 import {
   mapConnectorRun,
@@ -69,6 +69,9 @@ export function createSqliteConnectorRepository(
   return {
     getRunSynchronization(connectorRunId: string) {
       return readConnectorRunSynchronization(database, connectorRunId)
+    },
+    async createInstance(input: UpsertConnectorInstanceInput): Promise<ConnectorInstanceRecord> {
+      return createConnectorInstance(database, input)
     },
     async upsertInstance(input: UpsertConnectorInstanceInput): Promise<ConnectorInstanceRecord> {
       const now = new Date().toISOString()

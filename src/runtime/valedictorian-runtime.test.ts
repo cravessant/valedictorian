@@ -235,10 +235,56 @@ describe('Valedictorian runtime creation', () => {
     expect(startServer).toHaveBeenCalledWith({
       client: localClient,
       host: '127.0.0.1',
-      port: 4317,
+      port: 0,
     })
     await runtime.close()
     expect(server.close).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['local-desktop', 0],
+    ['local-shared', 7331],
+  ] as const)('defers the first %s listener until supervised startup', async (mode, port) => {
+    const server = { close: vi.fn(async () => undefined), url: `http://127.0.0.1:${port}` }
+    const startServer = vi.fn(async () => server)
+    const runtime = await createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({
+        env: { VALEDICTORIAN_API_PORT: '7331', VALEDICTORIAN_MODE: mode },
+        userDataPath: '/tmp/user-data',
+      }),
+      createLocalClient: vi.fn(() => createWorkspaceClient('local')),
+      deferServerStart: true,
+      startServer,
+    })
+
+    expect(runtime.server).toBeNull()
+    expect(startServer).not.toHaveBeenCalled()
+    await runtime.restartServer!()
+    expect(startServer).toHaveBeenCalledWith(expect.objectContaining({ port }))
+    expect(runtime.server).toBe(server)
+  })
+
+  it('restarts only the dynamic desktop listener around the existing local client', async () => {
+    const localClient = createWorkspaceClient('local')
+    const servers = [
+      { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:51001' },
+      { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:51002' },
+    ]
+    const startServer = vi.fn(async () => servers.shift()!)
+    const createLocalClient = vi.fn(() => localClient)
+    const runtime = await createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({ env: {}, userDataPath: '/tmp/user-data' }),
+      createLocalClient,
+      startServer,
+    })
+
+    await runtime.restartServer!()
+
+    expect(createLocalClient).toHaveBeenCalledTimes(1)
+    expect(startServer).toHaveBeenCalledTimes(2)
+    expect(startServer.mock.calls[1]?.[0].client).toBe(localClient)
+    expect(runtime.server?.url).toBe('http://127.0.0.1:51002')
+    await runtime.close()
   })
 
   it('starts a local HTTP server in local shared mode without app-level auth', async () => {
@@ -304,7 +350,7 @@ describe('Valedictorian runtime creation', () => {
     expect(startServer).toHaveBeenCalledWith({
       client: localClient,
       host: '127.0.0.1',
-      port: 4317,
+      port: 0,
       resolveWorkspaceClient: expect.any(Function),
       workspaceManager,
     })

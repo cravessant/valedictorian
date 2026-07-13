@@ -24,6 +24,7 @@ import {
   defaultConnectorSettingsDraft,
   jobrightSecretKeyForInstance,
   sanitizedConnectorAuthErrorMessage,
+  sanitizedConnectorCreateErrorMessage,
   shouldAutoValidateJobrightAuth,
 } from './connector-settings.helpers'
 import type {
@@ -40,6 +41,10 @@ import {
   useConnectorInstanceSchedules,
 } from './useConnectorInstanceSchedules'
 
+type RendererBackendBinding = {
+  onBackendStateChanged?(listener: (state: { status: string }) => void): () => void
+  retryBackend?(): Promise<void>
+}
 export function ConnectorSettingsPanel({
   connectorsApi,
   connectorScheduleApi,
@@ -60,6 +65,8 @@ export function ConnectorSettingsPanel({
   workspaceId: string | null
 }) {
   const [instances, setInstances] = useState<ConnectorSettingsInstance[]>([])
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'unavailable'>('loading')
+  const [loadGeneration, setLoadGeneration] = useState(0)
   const [drafts, setDrafts] = useState<Record<string, ConnectorSettingsDraft>>({})
   const [credentialDrafts, setCredentialDrafts] = useState<Record<string, ConnectorAuthCredentialDraft>>({})
   const [editingAuthInstanceId, setEditingAuthInstanceId] = useState<string | null>(null)
@@ -74,6 +81,7 @@ export function ConnectorSettingsPanel({
   const [latestRuns, setLatestRuns] = useState<Record<string, ConnectorSettingsRun>>({})
   const [connectorActionError, setConnectorActionError] = useState<string | null>(null)
   const authValidationGenerations = useRef<Record<string, number>>({})
+  const backendGeneration = useRef(0)
   const {
     capabilityLoadError,
     discardConnectorSchedule,
@@ -89,6 +97,21 @@ export function ConnectorSettingsPanel({
     instances,
     workspaceId,
   })
+
+  useEffect(() => {
+    const rendererBinding = (window as Window & {
+      valedictorianHttp?: RendererBackendBinding
+    }).valedictorianHttp
+
+    return rendererBinding?.onBackendStateChanged?.((state) => {
+      backendGeneration.current += 1
+      if (state.status === 'available') {
+        setLoadGeneration((generation) => generation + 1)
+      } else {
+        setLoadState('unavailable')
+      }
+    })
+  }, [])
 
 
   useEffect(() => {
@@ -156,15 +179,19 @@ export function ConnectorSettingsPanel({
 
   useEffect(() => {
     let cancelled = false
+    const requestGeneration = backendGeneration.current
     const validationGenerations = authValidationGenerations.current
+
+    setLoadState('loading')
 
     connectorsApi.list()
       .then(async (result) => {
-        if (cancelled) {
+        if (cancelled || requestGeneration !== backendGeneration.current) {
           return
         }
 
         setInstances(result.items)
+        setLoadState('loaded')
 
         const autoValidateInstances = result.items.filter(shouldAutoValidateJobrightAuth)
 
@@ -236,8 +263,8 @@ export function ConnectorSettingsPanel({
         }))
       })
       .catch(() => {
-        if (!cancelled) {
-          setInstances([])
+        if (!cancelled && requestGeneration === backendGeneration.current) {
+          setLoadState('unavailable')
         }
       })
 
@@ -247,7 +274,7 @@ export function ConnectorSettingsPanel({
         validationGenerations[instanceId] = (validationGenerations[instanceId] ?? 0) + 1
       }
     }
-  }, [connectorsApi])
+  }, [connectorsApi, loadGeneration])
 
   function addJobrightConnector() {
     setConnectorActionError(null)
@@ -280,11 +307,15 @@ export function ConnectorSettingsPanel({
         }))
         onConnectorChanged()
       })
-      .catch(() => {
-        setConnectorActionError('Jobright connector could not be added.')
+      .catch((error) => {
+        setConnectorActionError(sanitizedConnectorCreateErrorMessage(error))
       })
       .finally(() => setIsAdding(false))
   }
+
+  const hasJobrightInstance = instances.some(
+    (instance) => instance.connectorId === JOBRIGHT_CONNECTOR_ID,
+  )
 
   function beginCredentialEdit(instance: ConnectorSettingsInstance) {
     invalidateAuthValidation(instance.id)
@@ -672,6 +703,31 @@ export function ConnectorSettingsPanel({
         </Alert>
       ) : null}
 
+      {loadState === 'unavailable' ? (
+        <Alert variant="destructive" className="bg-card" role="alert">
+          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
+          <div className="pl-7">
+            <AlertTitle>Workspace backend unavailable</AlertTitle>
+            <AlertDescription>
+              Connector state could not be loaded. Check the workspace backend, then retry.
+            </AlertDescription>
+            <Button
+              className="mt-3"
+              type="button"
+              variant="outline"
+              onClick={async () => {
+                await (window as Window & { valedictorianHttp?: RendererBackendBinding })
+                  .valedictorianHttp?.retryBackend?.()
+                setLoadGeneration((generation) => generation + 1)
+              }}
+            >
+              Retry connector loading
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
+
+      {loadState === 'loaded' && !hasJobrightInstance ? (
       <div className="rounded-md border border-border bg-card p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -690,8 +746,17 @@ export function ConnectorSettingsPanel({
           </Button>
         </div>
       </div>
+      ) : null}
 
-      {instances.length === 0 ? (
+      {loadState === 'loading' ? (
+        <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+          Loading connector instances...
+        </div>
+      ) : loadState === 'unavailable' ? (
+        <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+          Connector actions are unavailable until the workspace backend recovers.
+        </div>
+      ) : instances.length === 0 ? (
         <Empty
           aria-label="Empty connector instances"
           className="flex-none gap-3 rounded-md border border-solid border-border bg-card p-6"

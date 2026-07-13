@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,
@@ -57,5 +57,15 @@ describe('local server HTTP test harness', () => {
 
     expect(process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH).toBe(original)
     await expect(fetch(`${server.url}/v1/health`)).rejects.toThrow()
+  })
+
+  it('publishes listener closure to lifecycle supervisors', async () => {
+    const server = await startBoundaryServer(createBoundaryWorkspaceClient(() => {}))
+    const onClosed = vi.fn()
+    server.onClosed(onClosed)
+
+    await server.close()
+
+    expect(onClosed).toHaveBeenCalledTimes(1)
   })
 })
