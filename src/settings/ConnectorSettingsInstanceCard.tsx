@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import {
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_MAX_DISCOVERY_COUNT,
@@ -185,10 +186,9 @@ export function ConnectorSettingsInstanceCard({
                       >
                         <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                           Jobright email
-                          <input
+                          <Input
                             aria-label="Jobright email"
                             autoComplete="off"
-                            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
                             type="email"
                             value={credentialDraft.email}
                             onChange={(event) =>
@@ -197,10 +197,9 @@ export function ConnectorSettingsInstanceCard({
                         </Label>
                         <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                           Jobright password
-                          <input
+                          <Input
                             aria-label="Jobright password"
                             autoComplete="new-password"
-                            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
                             type="password"
                             value={credentialDraft.password}
                             onChange={(event) =>
@@ -278,9 +277,8 @@ export function ConnectorSettingsInstanceCard({
                         <div className="mt-3 grid gap-3">
                           <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                             Discovery page size
-                            <input
+                            <Input
                               aria-label="Discovery page size"
-                              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
                               disabled={isSavingSettings}
                               max={JOBRIGHT_MAX_DISCOVERY_COUNT}
                               min={JOBRIGHT_MIN_DISCOVERY_COUNT}

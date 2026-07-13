@@ -3,6 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { formatEnumLabel } from '../../app/labels'
 import {
   applicationStatuses,
@@ -457,9 +458,8 @@ function EditorInput({
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <input
+      <Input
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
         disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/toaster'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
@@ -452,9 +453,8 @@ export function AppShell({
                       </Label>
                       <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Min score
-                        <input
+                        <Input
                           aria-label="Min score"
-                          className={filterControlClassName}
                           min="0"
                           max="10"
                           type="number"

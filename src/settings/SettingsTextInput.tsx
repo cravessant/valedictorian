@@ -1,4 +1,6 @@
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+
 function SettingsTextInput({
   label,
   readOnly = false,
@@ -17,9 +19,9 @@ function SettingsTextInput({
       <span>
         <span className="block font-medium">{label}</span>
       </span>
-      <input
+      <Input
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground read-only:text-muted-foreground"
+        className="read-only:text-muted-foreground"
         readOnly={readOnly}
         type={type}
         value={value}

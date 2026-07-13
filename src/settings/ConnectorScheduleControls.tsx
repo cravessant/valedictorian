@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import type {
   ConnectorScheduleSummary,
   ConnectorSchedulingCapability,
@@ -217,9 +218,8 @@ export function ConnectorScheduleControls({
       {draft.mode === 'custom-interval' ? (
         <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={intervalId}>
           Every minutes
-          <input
+          <Input
             aria-label="Every minutes"
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
             disabled={isSaving}
             id={intervalId}
             inputMode="numeric"
@@ -235,9 +235,8 @@ export function ConnectorScheduleControls({
       {draft.mode === 'custom-daily' ? (
         <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={dailyTimeId}>
           Daily local time
-          <input
+          <Input
             aria-label="Daily local time"
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
             disabled={isSaving}
             id={dailyTimeId}
             pattern="[0-2][0-9]:[0-5][0-9]"
@@ -267,9 +266,8 @@ export function ConnectorScheduleControls({
           </Label>
           <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
             Weekly local time
-            <input
+            <Input
               aria-label="Weekly local time"
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
               disabled={isSaving}
               id={weeklyTimeId}
               pattern="[0-2][0-9]:[0-5][0-9]"

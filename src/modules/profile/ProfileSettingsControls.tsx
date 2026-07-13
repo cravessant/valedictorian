@@ -3,6 +3,7 @@ import type { ProfileSensitiveDetails } from './profile.repository'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import {
   type ProfileAnswer,
   type ProfileEducation,
@@ -372,9 +373,9 @@ export function CompactInput({
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       <span>{label}</span>
-      <input
+      <Input
         aria-label={label}
-        className="h-9 min-w-0 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+        className="px-2"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}

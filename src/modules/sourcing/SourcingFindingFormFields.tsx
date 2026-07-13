@@ -2,6 +2,7 @@ import type { CreateSourcingFindingInput, UpdateSourcingFindingInput } from 'spa
 import { formatEnumLabel } from '../../app/labels'
 
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 
 export function FindingInput({
   disabled,
@@ -17,9 +18,8 @@ export function FindingInput({
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <input
+      <Input
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
         disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}

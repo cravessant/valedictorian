@@ -1,6 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -351,9 +352,8 @@ function SettingsPopover({
 
           <Label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
             Remote API URL
-            <input
+            <Input
               aria-label="Remote API URL"
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!remoteEnabled}
               value={settings.remoteApiUrl}
               onChange={(event) =>

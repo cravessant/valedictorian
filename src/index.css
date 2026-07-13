@@ -90,7 +90,7 @@ textarea {
     background-color 150ms ease;
 }
 
-input:not([type="checkbox"]):not([type="radio"]):focus,
+input:not([data-slot="input"]):not([type="checkbox"]):not([type="radio"]):focus,
 select:focus,
 textarea:focus {
   outline: none;

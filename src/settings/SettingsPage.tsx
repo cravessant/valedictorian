@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
@@ -162,9 +163,9 @@ export function SettingsSidebar({
       <Label className="relative block text-xs font-medium text-muted-foreground">
         <Search className="pointer-events-none absolute left-3 top-8 h-4 w-4 text-muted-foreground" />
         Search settings
-        <input
+        <Input
           aria-label="Search settings"
-          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-9 text-sm text-foreground"
+          className="mt-1 px-9"
           placeholder="Search settings..."
           value={settingsSearch}
           onChange={(event) => setSettingsSearch(event.target.value)}

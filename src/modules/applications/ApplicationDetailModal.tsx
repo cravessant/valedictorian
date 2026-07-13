@@ -6,6 +6,7 @@ import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ModalShell } from '@/components/ui/modal-shell'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { AlertCircle, X } from 'lucide-react'
 import type { ScoreInput, ScoreRecord, VerificationReceiptPayload } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
@@ -460,9 +461,8 @@ function CompactModalInput({
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <input
+      <Input
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}

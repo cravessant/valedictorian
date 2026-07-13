@@ -1,5 +1,5 @@
 import { Label } from '@/components/ui/label'
-const filterControlClassName = 'h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground'
+import { Input } from '@/components/ui/input'
 
 interface FilterInputProps {
   label: string
@@ -11,9 +11,8 @@ export function FilterTextInput({ label, value, onChange }: FilterInputProps) {
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <input
+      <Input
         aria-label={label}
-        className={filterControlClassName}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -25,9 +24,8 @@ export function FilterDateInput({ label, value, onChange }: FilterInputProps) {
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <input
+      <Input
         aria-label={label}
-        className={filterControlClassName}
         type="date"
         value={value}
         onChange={(event) => onChange(event.target.value)}

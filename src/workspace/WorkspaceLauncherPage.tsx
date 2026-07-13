@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import type { CreateWorkspaceInput, WorkspaceLaunchState } from './workspace.service'
 
 interface WorkspaceLauncherPageProps {
@@ -188,8 +189,8 @@ function WorkspaceLauncherPage({
                         Name this workspace.
                       </p>
                     </div>
-                    <input
-                      className="h-8 rounded-md border border-border bg-background px-3 text-xs text-foreground placeholder:text-muted-foreground"
+                    <Input
+                      className="h-8 text-xs"
                       id="workspace-name"
                       placeholder="New workspace name"
                       value={workspaceName}
