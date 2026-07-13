@@ -3,7 +3,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Database from 'better-sqlite3'
-import { migrate as migrateDrizzle } from 'drizzle-orm/better-sqlite3/migrator'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import {
   assertDataMigrationHistoryIsKnown,
@@ -25,12 +24,14 @@ interface DatabaseMigrationOptions {
 
 interface DrizzleMigrationEntry {
   hash: string
+  sql: string[]
   tag: string
   when: number
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DRIZZLE_MIGRATIONS_TABLE = '__drizzle_migrations'
+const LEGACY_PARTIAL_RUN_STATUS = ['partial', 'success'].join('_')
 /** Static legacy schema matches bundled migrations through 0017; 0018+ run via Drizzle. */
 const LEGACY_STATIC_SCHEMA_BASELINE_WHEN = 1783785250659
 
@@ -63,20 +64,82 @@ export function migrateDatabase(database: SqliteDatabase, options: DatabaseMigra
     backupDatabaseIfNeeded(database, options)
   }
 
-  if (isLegacyUnmanagedDatabase(database)) {
-    database.transaction(() => {
+  database.transaction(() => {
+    if (isLegacyUnmanagedDatabase(database)) {
       migrateLegacyDatabaseSchema(database)
       stampDrizzleMigrations(
         database,
         drizzleMigrations.filter((migration) => migration.when <= LEGACY_STATIC_SCHEMA_BASELINE_WHEN),
       )
-    })()
-    migrateDrizzle(createDrizzleDatabase(database), { migrationsFolder })
-  } else {
-    migrateDrizzle(createDrizzleDatabase(database), { migrationsFolder })
-  }
+    }
+
+    preparePendingDrizzleMigrations(database, drizzleMigrations)
+    migratePendingDrizzleMigrations(database, drizzleMigrations)
+  })()
 
   runDataMigrations(database)
+}
+
+function migratePendingDrizzleMigrations(
+  database: SqliteDatabase,
+  drizzleMigrations: DrizzleMigrationEntry[],
+) {
+  database.exec(`
+    create table if not exists ${DRIZZLE_MIGRATIONS_TABLE} (
+      id SERIAL PRIMARY KEY,
+      hash text not null,
+      created_at numeric
+    );
+  `)
+  const latestAppliedMigration = readLatestAppliedDrizzleMigrationMillis(database)
+  const insert = database.prepare(
+    `insert into ${DRIZZLE_MIGRATIONS_TABLE} (hash, created_at) values (?, ?)`,
+  )
+
+  for (const migration of drizzleMigrations) {
+    if (latestAppliedMigration !== null && latestAppliedMigration >= migration.when) continue
+    for (const statement of migration.sql) database.exec(statement)
+    insert.run(migration.hash, migration.when)
+  }
+}
+
+function preparePendingDrizzleMigrations(
+  database: SqliteDatabase,
+  drizzleMigrations: DrizzleMigrationEntry[],
+) {
+  const partialRunCleanup = drizzleMigrations.find(
+    (migration) => migration.tag === '0023_supreme_lenny_balinger',
+  )
+  if (!partialRunCleanup) return
+
+  const appliedMigrationKeys = new Set(
+    readAppliedDrizzleMigrations(database).map((migration) => formatDrizzleMigrationKey(migration)),
+  )
+  if (appliedMigrationKeys.has(formatDrizzleMigrationKey(partialRunCleanup))) return
+  if (!hasLegacyPartialRunNormalizationShape(database)) return
+
+  database.prepare(`
+    update normalization_runs
+    set trigger_occurrence_id = null,
+      trigger_connector_instance_id = null,
+      trigger_connector_run_id = null
+    where trigger_connector_run_id in (
+      select id from connector_runs where status = ?
+    )
+    and exists (
+      select 1 from canonical_source_candidates candidate
+      join sourcing_findings finding on finding.canonical_candidate_id = candidate.id
+      where candidate.run_id = normalization_runs.id
+    );
+  `).run(LEGACY_PARTIAL_RUN_STATUS)
+}
+
+function hasLegacyPartialRunNormalizationShape(database: SqliteDatabase) {
+  return ['connector_runs', 'normalization_runs', 'canonical_source_candidates', 'sourcing_findings']
+    .every((tableName) => tableExists(database, tableName))
+    && ['trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id']
+      .every((columnName) => tableHasColumn(database, 'normalization_runs', columnName))
+    && tableHasColumn(database, 'sourcing_findings', 'canonical_candidate_id')
 }
 
 function databaseHasPendingMigrations(
@@ -142,6 +205,7 @@ function readAppliedDrizzleMigrations(database: SqliteDatabase): DrizzleMigratio
       .all() as Array<{ created_at: number | string; hash: string }>
   ).map((row) => ({
     hash: row.hash,
+    sql: [],
     tag: '',
     when: Number(row.created_at),
   }))
@@ -295,6 +359,7 @@ function readDrizzleMigrations(migrationsFolder: string): DrizzleMigrationEntry[
 
     return {
       hash: crypto.createHash('sha256').update(sql).digest('hex'),
+      sql: sql.split('--> statement-breakpoint'),
       tag: entry.tag,
       when: entry.when,
     }
@@ -305,6 +370,14 @@ function tableExists(database: SqliteDatabase, tableName: string) {
   const row = database
     .prepare("select name from sqlite_master where type = 'table' and name = ?")
     .get(tableName)
+
+  return Boolean(row)
+}
+
+function tableHasColumn(database: SqliteDatabase, tableName: string, columnName: string) {
+  const row = database
+    .prepare(`select name from pragma_table_info(?) where name = ?`)
+    .get(tableName, columnName)
 
   return Boolean(row)
 }
