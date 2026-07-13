@@ -90,9 +90,9 @@ textarea {
     background-color 150ms ease;
 }
 
-input:not([data-slot="input"]):not([type="checkbox"]):not([type="radio"]):focus,
+input:not([data-slot="input"]):not([data-slot="input-group-control"]):not([type="checkbox"]):not([type="radio"]):focus,
 select:not([data-slot="native-select"]):focus,
-textarea:not([data-slot="textarea"]):focus {
+textarea:not([data-slot="textarea"]):not([data-slot="input-group-control"]):focus {
   outline: none;
   border-color: color-mix(in srgb, var(--ring) 72%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 30%, transparent);

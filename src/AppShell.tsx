@@ -2,6 +2,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
+import { InputGroupButton } from '@/components/ui/input-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/toaster'
 import { Input } from '@/components/ui/input'
@@ -381,28 +382,24 @@ export function AppShell({
                 aria-label="Application filters"
                 className="rounded-md border border-border bg-card p-4"
               >
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <FilterTextInput
-                      label="Search"
-                      value={filters.search}
-                      onChange={(value) => updateFilter('search', value)}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button
+                <FilterTextInput
+                  label="Search"
+                  value={filters.search}
+                  onChange={(value) => updateFilter('search', value)}
+                  trailingAction={
+                    <InputGroupButton
                       type="button"
                       variant="outline"
-                      size="icon"
+                      size="icon-sm"
                       aria-label={filtersExpanded ? 'Hide filters' : 'Show filters'}
                       aria-expanded={filtersExpanded}
                       className="h-9 w-9 rounded-md"
                       onClick={() => setFiltersExpanded((current: boolean) => !current)}
                     >
                       <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </div>
+                    </InputGroupButton>
+                  }
+                />
                 {filtersExpanded ? (
                   <>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">

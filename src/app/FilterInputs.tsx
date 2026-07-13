@@ -1,5 +1,11 @@
+import type { ReactNode } from 'react'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
 import { fieldControlId } from '@/lib/field-control-id'
 
 interface FilterInputProps {
@@ -8,7 +14,16 @@ interface FilterInputProps {
   onChange: (value: string) => void
 }
 
-export function FilterTextInput({ label, value, onChange }: FilterInputProps) {
+interface FilterTextInputProps extends FilterInputProps {
+  trailingAction?: ReactNode
+}
+
+export function FilterTextInput({
+  label,
+  value,
+  onChange,
+  trailingAction,
+}: FilterTextInputProps) {
   const controlId = fieldControlId('filter', label)
 
   return (
@@ -16,11 +31,22 @@ export function FilterTextInput({ label, value, onChange }: FilterInputProps) {
       <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
         {label}
       </FieldLabel>
-      <Input
-        id={controlId}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
+      {trailingAction ? (
+        <InputGroup>
+          <InputGroupInput
+            id={controlId}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
+          <InputGroupAddon align="inline-end">{trailingAction}</InputGroupAddon>
+        </InputGroup>
+      ) : (
+        <Input
+          id={controlId}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
     </Field>
   )
 }

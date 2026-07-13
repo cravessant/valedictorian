@@ -278,6 +278,26 @@ describe('compact navigation', () => {
     expect(backToApp).not.toHaveClass('justify-center')
   })
 
+  it('left-anchors the capped settings content column beside the sidebar', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    expect(navigation).toHaveClass('w-[280px]')
+    expect(navigation).not.toHaveClass('mx-auto')
+
+    const heading = screen.getByRole('heading', { name: 'Settings', level: 1 })
+    const contentColumn = heading.parentElement
+    expect(contentColumn).toHaveClass('max-w-4xl')
+    expect(contentColumn).not.toHaveClass('mx-auto')
+  })
+
   it('renders grouped settings navigation and filters the sidebar search', async () => {
     render(
       <App
@@ -299,7 +319,18 @@ describe('compact navigation', () => {
     expect(generalNav).toHaveClass('justify-start')
     expect(generalNav).not.toHaveClass('justify-center')
 
-    fireEvent.change(within(navigation).getByLabelText('Search settings'), {
+    const search = within(navigation).getByRole('textbox', { name: 'Search settings' })
+    expect(search).toHaveAttribute('id', 'settings-search')
+    expect(search).toHaveAttribute('data-slot', 'input-group-control')
+    expect(search).not.toHaveAttribute('aria-label')
+
+    const searchGroup = search.closest('[data-slot="input-group"]')
+    expect(searchGroup).toBeTruthy()
+    const searchAddon = searchGroup!.querySelector('[data-slot="input-group-addon"]')
+    expect(searchAddon).toHaveAttribute('data-align', 'inline-start')
+    expect(search.compareDocumentPosition(searchAddon!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.change(search, {
       target: { value: 'agent' },
     })
 

@@ -6,6 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { ApplicationListQuery } from './modules/applications/application.types'
@@ -449,12 +450,50 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
 
-    expect(screen.getByLabelText('Search')).toHaveClass('h-9', 'rounded-md')
-    expect(screen.getByRole('button', { name: 'Show filters' })).toHaveClass(
-      'h-9',
-      'w-9',
-      'rounded-md',
+    const search = screen.getByRole('textbox', { name: 'Search' })
+    expect(search).toHaveAttribute('data-slot', 'input-group-control')
+    expect(search).toHaveClass('h-9')
+    expect(search.closest('[data-slot="input-group"]')).toHaveClass('h-9', 'rounded-md')
+
+    const toggle = screen.getByRole('button', { name: 'Show filters' })
+    expect(toggle).toHaveClass('h-9', 'w-9', 'rounded-md')
+    expect(toggle.closest('[data-slot="input-group-addon"]')).toHaveAttribute(
+      'data-align',
+      'inline-end',
     )
+    expect(search.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('toggles expanded filters with keyboard on the input-group action', async () => {
+    const user = userEvent.setup()
+    render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))} />)
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    const toggle = screen.getByRole('button', { name: 'Show filters' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+
+    toggle.focus()
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByRole('button', { name: 'Hide filters' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByLabelText('Status')).toBeInTheDocument()
+
+    await user.keyboard(' ')
+
+    expect(screen.getByRole('button', { name: 'Show filters' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+
+    // Accessible name stays singular: Search label + toggle aria-label, no duplicates.
+    expect(screen.getAllByRole('textbox', { name: 'Search' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Show filters' })).toHaveLength(1)
   })
 
   it('places reset in a separate expanded filter action row', async () => {

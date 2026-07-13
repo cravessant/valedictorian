@@ -2,7 +2,11 @@ import { useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
@@ -161,16 +165,19 @@ export function SettingsSidebar({
         Back to app
       </Button>
 
-      <Label className="relative block text-xs font-medium text-muted-foreground">
-        <Search className="pointer-events-none absolute left-3 top-8 h-4 w-4 text-muted-foreground" />
+      <Label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-search">
         Search settings
-        <Input
-          aria-label="Search settings"
-          className="mt-1 px-9"
-          placeholder="Search settings..."
-          value={settingsSearch}
-          onChange={(event) => setSettingsSearch(event.target.value)}
-        />
+        <InputGroup className="mt-1">
+          <InputGroupInput
+            id="settings-search"
+            placeholder="Search settings..."
+            value={settingsSearch}
+            onChange={(event) => setSettingsSearch(event.target.value)}
+          />
+          <InputGroupAddon align="inline-start">
+            <Search className="h-4 w-4" aria-hidden="true" />
+          </InputGroupAddon>
+        </InputGroup>
       </Label>
 
       <nav className="mt-5 space-y-5" aria-label="Settings sections">
@@ -225,7 +232,7 @@ export function SettingsPage({
 
   return (
     <main className={`h-full min-w-0 overflow-auto px-5 py-6 text-foreground md:h-[calc(100vh-3rem)] sm:px-8 lg:px-12 ${contentColumnClass}`}>
-      <div className="mx-auto max-w-4xl">
+      <div className="max-w-4xl">
         <h1 className="text-2xl font-semibold tracking-normal text-foreground">Settings</h1>
         {restartRequired ? (
           <Alert className="mt-4">
