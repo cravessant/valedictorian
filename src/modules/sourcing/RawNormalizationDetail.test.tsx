@@ -1,6 +1,13 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { RawSourceProjectionResult, RawSourceRecord, RawSourceRecordSummary } from 'sparxie'
+import {
+  InvalidPersistedRawDetailHttpError,
+  ValedictorianHttpError,
+  invalidPersistedRawDetailErrorBody,
+  type RawSourceProjectionResult,
+  type RawSourceRecord,
+  type RawSourceRecordSummary,
+} from 'sparxie'
 import { RawNormalizationDetail } from './RawNormalizationDetail'
 import {
   createNeedsEnrichmentNormalization,
@@ -10,6 +17,104 @@ import {
 afterEach(cleanup)
 
 describe('RawNormalizationDetail', () => {
+  it('distinguishes invalid persisted detail without exposing contract internals', async () => {
+    const contractError = new InvalidPersistedRawDetailHttpError(
+      invalidPersistedRawDetailErrorBody,
+      500,
+    )
+    render(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => { throw contractError }),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(),
+        }}
+        onClose={() => undefined}
+        summary={{ id: 'invalid-record' } as RawSourceRecordSummary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Raw record detail is invalid and cannot be displayed.')
+    expect(alert).not.toHaveTextContent('capture lineage')
+  })
+
+  it('does not classify an untyped matching code as invalid persisted detail', async () => {
+    const malformedIntegrityError = new ValedictorianHttpError({
+      status: 500,
+      body: {
+        code: invalidPersistedRawDetailErrorBody.code,
+        message: 'Internal capture lineage validation failed',
+      },
+      message: 'Request failed',
+    })
+    render(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => { throw malformedIntegrityError }),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(),
+        }}
+        onClose={() => undefined}
+        summary={{ id: 'malformed-integrity-record' } as RawSourceRecordSummary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Raw record detail could not be loaded.')
+    expect(alert).not.toHaveTextContent('invalid and cannot be displayed')
+    expect(alert).not.toHaveTextContent('capture lineage')
+  })
+
+  it('shows an unrelated HTTP 400 as a generic load failure', async () => {
+    const badRequest = new ValedictorianHttpError({
+      status: 400,
+      body: { code: 'invalid_request', message: 'Private parser detail' },
+      message: 'Private parser detail',
+    })
+    render(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => { throw badRequest }),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(),
+        }}
+        onClose={() => undefined}
+        summary={{ id: 'bad-request-record' } as RawSourceRecordSummary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Raw record detail could not be loaded.')
+    expect(alert).not.toHaveTextContent('Private parser detail')
+    expect(alert).not.toHaveTextContent('invalid and cannot be displayed')
+    expect(alert).not.toHaveTextContent('backend could not be reached')
+  })
+
+  it('distinguishes an unavailable backend without exposing transport detail', async () => {
+    render(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => { throw new TypeError('fetch failed at private origin') }),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(),
+        }}
+        onClose={() => undefined}
+        summary={{ id: 'unavailable-record' } as RawSourceRecordSummary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'Raw record detail is unavailable because the backend could not be reached.',
+    )
+    expect(alert).not.toHaveTextContent('private origin')
+  })
+
   it('redacts sensitive ordinary strings from facts, evidence, metadata, lineage, and labels', async () => {
     const record = {
       id: 'raw-record-safe',
@@ -102,11 +207,14 @@ describe('RawNormalizationDetail', () => {
   })
 
   it('loads exact-revision projection truth and renders the canonical candidate fields', async () => {
+    const candidateId = '2f0cb73b-a522-4a83-a46a-5e4048ed3010'
+    const findingId = 'dd463b92-d71b-4200-8c7f-8295f8ad783b'
     const base = createPassedNormalization(createNeedsEnrichmentNormalization())
     const normalization = {
       ...base,
       canonicalCandidate: {
         ...base.canonicalCandidate!,
+        id: candidateId,
         location: { raw: 'Boston, MA', city: 'Boston', region: 'MA', country: 'US' },
         compensation: {
           minimum: 120_000, maximum: 160_000, currency: 'USD', interval: 'year' as const,
@@ -132,12 +240,13 @@ describe('RawNormalizationDetail', () => {
     const projection = {
       rawRecordId: 'raw-record-1', rawRevisionId: 'raw-revision-1',
       status: 'projected', normalizationStatus: 'completed', gateStatus: 'passed',
-      canonicalCandidateId: 'candidate-1', projectedAt: '2026-07-10T12:00:04.000Z',
+      canonicalCandidateId: candidateId, projectedAt: '2026-07-10T12:00:04.000Z',
       updatedAt: '2026-07-10T12:00:04.000Z',
-      finding: { id: 'finding-1', mergeStatus: 'duplicate', mergedApplicationId: 'application-1' },
+      finding: { id: findingId, mergeStatus: 'duplicate', mergedApplicationId: 'application-1' },
     } satisfies RawSourceProjectionResult
     const getProjection = vi.fn(async () => projection)
     const getNormalization = vi.fn(async () => normalization)
+    const onOpenFinding = vi.fn()
 
     render(
       <RawNormalizationDetail
@@ -146,12 +255,13 @@ describe('RawNormalizationDetail', () => {
           getNormalization, getProjection,
         }}
         onClose={() => undefined}
+        onOpenFinding={onOpenFinding}
         summary={{ id: 'raw-record-1', normalizationStatus: 'raw_only' } as RawSourceRecordSummary}
       />,
     )
 
     const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-1' })
-    await screen.findByText('Candidate candidate-1')
+    await screen.findByText(`Candidate ${candidateId}`)
     expect(getNormalization).toHaveBeenCalledWith('raw-record-1')
     expect(getProjection).toHaveBeenCalledWith('raw-revision-1')
     expect(dialog).toHaveTextContent('Example Co')
@@ -165,6 +275,9 @@ describe('RawNormalizationDetail', () => {
     expect(dialog).toHaveTextContent('Projection receipt for revision raw-revision-1')
     expect(dialog).toHaveTextContent('Duplicate')
     expect(dialog).toHaveTextContent('Merged application application-1')
+    expect(dialog).toHaveTextContent(`Projected to finding ${findingId}`)
+    fireEvent.click(screen.getByRole('button', { name: `Open finding ${findingId}` }))
+    expect(onOpenFinding).toHaveBeenCalledWith(findingId)
     expect(screen.getByRole('link', { name: 'Open canonical destination' }))
       .toHaveAttribute('href', 'https://jobs.example.test/platform?design=platform')
     expect(screen.getByRole('link', { name: 'Open source listing' }))

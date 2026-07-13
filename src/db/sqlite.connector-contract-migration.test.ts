@@ -178,15 +178,21 @@ describe('continuous connector contract migration', () => {
       'normalization_gates', 'normalization_replay_items', 'normalization_runs', 'retry_work', 'sourcing_projection_outcomes']) {
       expect(database.prepare(`select count(*) as count from ${table}`).get(), table).toEqual({ count: 0 })
     }
-    expect(database.prepare("select connector_instance_id, connector_run_id from raw_source_occurrences where id = 'preserved-occurrence'").get())
-      .toEqual({ connector_instance_id: null, connector_run_id: null })
-    expect(database.prepare("select count(*) as count from raw_source_revisions where id = 'doomed-revision'").get()).toEqual({ count: 1 })
+    for (const [table, id] of [
+      ['raw_source_occurrences', 'preserved-occurrence'],
+      ['raw_source_revisions', 'doomed-revision'],
+      ['raw_source_records', 'doomed-record'],
+      ['source_entities', 'doomed-entity'],
+    ] as const) {
+      expect(database.prepare(`select count(*) as count from ${table} where id = ?`).get(id), table)
+        .toEqual({ count: 0 })
+    }
     expect(database.prepare("select count(*) as count from source_execution_scopes where id = 'scope_doomed_fixture'").get()).toEqual({ count: 1 })
     expect(database.prepare("select count(*) as count from normalization_replay_requests where id = 'doomed-replay'").get()).toEqual({ count: 1 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
-  it('preserves projected finding history while removing its obsolete partial connector run', () => {
+  it('removes projected history that depends on an invalid-only connector graph', () => {
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(23) })
     seedDoomedConnectorRunFixture(database)
@@ -204,19 +210,15 @@ describe('continuous connector contract migration', () => {
       ['normalization_attempts', 'doomed-attempt'], ['normalization_field_outcomes', 'doomed-field'],
       ['normalization_gates', 'doomed-gate'], ['canonical_source_candidates', 'doomed-candidate'],
       ['sourcing_projection_outcomes', 'doomed-projection'], ['sourcing_findings', 'protected-finding'],
-      ['normalization_replay_requests', 'doomed-replay'], ['normalization_replay_items', 'doomed-replay-item'],
+      ['normalization_replay_items', 'doomed-replay-item'],
       ['raw_source_records', 'doomed-record'], ['raw_source_revisions', 'doomed-revision'],
-      ['source_entities', 'doomed-entity'], ['source_execution_scopes', 'scope_doomed_fixture']] as const) {
-      expect(database.prepare(`select count(*) as count from ${table} where id = ?`).get(id), table).toEqual({ count: 1 })
+      ['source_entities', 'doomed-entity']] as const) {
+      expect(database.prepare(`select count(*) as count from ${table} where id = ?`).get(id), table).toEqual({ count: 0 })
     }
-    expect(database.prepare(`select trigger_occurrence_id, trigger_connector_instance_id, trigger_connector_run_id
-      from normalization_runs where id = 'doomed-normalization'`).get()).toEqual({
-      trigger_occurrence_id: null, trigger_connector_instance_id: null, trigger_connector_run_id: null,
-    })
-    expect(database.prepare(`select connector_instance_id, connector_run_id, execution_scope_id
-      from raw_source_occurrences where id = 'preserved-occurrence'`).get()).toEqual({
-      connector_instance_id: null, connector_run_id: null, execution_scope_id: 'scope_doomed_fixture',
-    })
+    expect(database.prepare("select count(*) as count from normalization_replay_requests where id = 'doomed-replay'").get())
+      .toEqual({ count: 1 })
+    expect(database.prepare("select count(*) as count from source_execution_scopes where id = 'scope_doomed_fixture'").get())
+      .toEqual({ count: 1 })
     expect(database.prepare(`select connector_id, connector_version, config_json from connector_instances
       where id = 'unrelated-instance'`).get()).toEqual({
       connector_id: 'fixture.unrelated', connector_version: '1.0.0', config_json: '{"keep":true}',

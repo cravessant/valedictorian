@@ -11,6 +11,7 @@ import {
   createNormalizationResolverRegistry
 } from '../modules/sourcing/normalization.registry'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
+import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
 
 describe('local deterministic raw normalization', () => {
   it('blocks ineligible capabilities, permits fallback, and suppresses lower precedence after authority', async () => {
@@ -151,9 +152,12 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('updates one finding for strong identity while keeping weak similarity reviewable', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'fixture.connector', '1.0.0')
     const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      capture,
       providerRecordId: 'provider-job-1',
       providerSchema: 'fixture/jobs/v1',
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -165,6 +169,7 @@ describe('local deterministic raw normalization', () => {
     }] })
     const updated = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      capture,
       providerRecordId: 'provider-job-1',
       providerSchema: 'fixture/jobs/v1',
       observedAt: '2026-07-10T13:00:00.000Z',
@@ -236,11 +241,17 @@ describe('local deterministic raw normalization', () => {
     ]
 
     for (const orderedRecords of [records, [...records].reverse()]) {
+      const orderedPath = orderedRecords === records ? sqlitePath : tempDatabasePath()
       const orderedClient = orderedRecords === records
         ? client
-        : createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+        : createLocalValedictorianClient({ sqlitePath: orderedPath })
       for (const record of orderedRecords) {
-        await orderedClient.sourcing.rawRecords.ingestBatch({ records: [record] })
+        const capture = await createConnectorCaptureFixture(
+          orderedPath,
+          record.adapter.id,
+          record.adapter.version,
+        )
+        await orderedClient.sourcing.rawRecords.ingestBatch({ records: [{ ...record, capture }] })
       }
 
       const findings = await orderedClient.sourcing.findings.list()
@@ -260,8 +271,17 @@ describe('local deterministic raw normalization', () => {
     expect(persisted.aliases).toContain('alpha-123')
     expect(persisted.aliases).toContain('beta-987')
 
-    const concurrentClient = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
-    await Promise.all(records.map((record) =>
+    const concurrentPath = tempDatabasePath()
+    const concurrentClient = createLocalValedictorianClient({ sqlitePath: concurrentPath })
+    const concurrentRecords = await Promise.all(records.map(async (record) => ({
+      ...record,
+      capture: await createConnectorCaptureFixture(
+        concurrentPath,
+        record.adapter.id,
+        record.adapter.version,
+      ),
+    })))
+    await Promise.all(concurrentRecords.map((record) =>
       concurrentClient.sourcing.rawRecords.ingestBatch({ records: [record] })))
     await expect(concurrentClient.sourcing.findings.list()).resolves.toMatchObject({
       total: 1,
@@ -340,9 +360,12 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('classifies a production-shaped Internist as sourcing not-fit with provenance', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'jobright.resolver', '0.6.0')
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.6.0' },
+      capture,
       providerRecordId: 'jobright-internist-1',
       providerSchema: 'jobright.jobs/v1',
       observedAt: '2026-07-10T15:00:00.000Z',
@@ -480,9 +503,12 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('preserves sourcing-owned cutoff and human rejection across candidate revisions', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'fixture.connector', '1.0.0')
     const record = (title: string, observedAt: string) => ({
       adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1.0.0' },
+      capture,
       providerRecordId: 'policy-owned-job-1',
       providerSchema: 'fixture/jobs/v1',
       observedAt,
@@ -866,7 +892,8 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('reuses provisional destination identity and preserves collision-safe provider identity', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
     const manual = {
       adapter: { id: 'manual.fixture', kind: 'manual' as const, version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -883,6 +910,7 @@ describe('local deterministic raw normalization', () => {
 
     const connector = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture:connector', kind: 'connector', version: '1.0.0' },
+      capture: await createConnectorCaptureFixture(sqlitePath, 'fixture:connector', '1.0.0'),
       providerRecordId: 'job:value:1', providerSchema: 'jobs:v1', observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-2' },
     }] })
@@ -895,9 +923,11 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('uses the trimmed persisted provider identity while preserving padded raw evidence', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      capture: await createConnectorCaptureFixture(sqlitePath, 'fixture.connector', '1.0.0'),
       providerRecordId: ' job-1 ', providerSchema: 'jobs/v1', observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-1' },
     }] })
@@ -922,9 +952,13 @@ describe('local deterministic raw normalization', () => {
       declaration: { id: 'fixture.identity-mismatch', version: '1.0.0', requiredInputs: ['rawRevision'], outputFields: ['canonicalIdentity'], capabilities: ['pure'], costClass: 'none', precedence: 1_000 },
       resolve(context) { return [{ resolverId: 'fixture.identity-mismatch', resolverVersion: '1.0.0', field: 'canonicalIdentity', inputHash: context.hashInput(identity), status: 'resolved', value: identity, confidence: 1, authoritative: true }] },
     }
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath(), normalizationRegistry: createNormalizationResolverRegistry([resolver, ...createDefaultNormalizationResolverRegistry().resolvers]) })
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath, normalizationRegistry: createNormalizationResolverRegistry([resolver, ...createDefaultNormalizationResolverRegistry().resolvers]) })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture.identity', kind: connector ? 'connector' : 'manual', version: '1.0.0' },
+      capture: connector
+        ? await createConnectorCaptureFixture(sqlitePath, 'fixture.identity', '1.0.0')
+        : undefined,
       providerRecordId: connector ? 'job-1' : null,
       observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-1' },

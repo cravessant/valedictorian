@@ -9,6 +9,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { X } from 'lucide-react'
+import { InvalidPersistedRawDetailHttpError } from 'sparxie'
 import type {
   JsonObject,
   RawSourceNormalizationResult,
@@ -30,6 +31,7 @@ type RawDetailIssue =
   | 'normalization_revision'
   | 'normalization_unavailable'
   | 'projection_revision'
+type RawDetailLoadError = 'backend_unavailable' | 'invalid_detail' | 'load_failed'
 
 export function RawNormalizationDetail({
   api,
@@ -46,7 +48,7 @@ export function RawNormalizationDetail({
   const [normalization, setNormalization] = useState<RawSourceNormalizationResult | null>(null)
   const [projection, setProjection] = useState<RawSourceProjectionResult | null>(null)
   const [detailIssue, setDetailIssue] = useState<RawDetailIssue | null>(null)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<RawDetailLoadError | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -54,7 +56,7 @@ export function RawNormalizationDetail({
     setNormalization(null)
     setProjection(null)
     setDetailIssue(null)
-    setError(false)
+    setError(null)
     void Promise.allSettled([api.get(summary.id), api.getNormalization(summary.id)])
       .then(async ([recordResult, normalizationResult]) => {
         if (cancelled) return
@@ -69,15 +71,15 @@ export function RawNormalizationDetail({
           setRecord(nextRecord)
           setNormalization(nextNormalization)
           setDetailIssue(getRawDetailIssue(nextRecord, nextNormalization, nextProjection))
-          setError(false)
+          setError(null)
         }
-      }).catch(() => {
+      }).catch((reason: unknown) => {
         if (!cancelled) {
           setProjection(null)
           setRecord(null)
           setNormalization(null)
           setDetailIssue(null)
-          setError(true)
+          setError(classifyRawDetailLoadError(reason))
         }
       })
     return () => { cancelled = true }
@@ -106,7 +108,7 @@ export function RawNormalizationDetail({
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-4 px-5 py-4">
             {!record && !error ? <p role="status">Loading raw record detail...</p> : null}
-            {error ? <p role="alert">Raw record detail could not be loaded.</p> : null}
+            {error ? <RawDetailLoadFailure error={error} /> : null}
             {record ? <RawRecordDetail record={record} /> : null}
             {record && projection && detailIssue ? <RawDetailConflict issue={detailIssue} /> : null}
             {record && projection && !detailIssue ? (
@@ -121,6 +123,23 @@ export function RawNormalizationDetail({
       </DialogContent>
     </Dialog>
   )
+}
+
+function RawDetailLoadFailure({ error }: { error: RawDetailLoadError }) {
+  return (
+    <p role="alert">
+      {error === 'invalid_detail'
+        ? 'Raw record detail is invalid and cannot be displayed.'
+        : error === 'backend_unavailable'
+          ? 'Raw record detail is unavailable because the backend could not be reached.'
+          : 'Raw record detail could not be loaded.'}
+    </p>
+  )
+}
+
+function classifyRawDetailLoadError(error: unknown): RawDetailLoadError {
+  if (error instanceof InvalidPersistedRawDetailHttpError) return 'invalid_detail'
+  return error instanceof TypeError ? 'backend_unavailable' : 'load_failed'
 }
 
 function RawDetailConflict({ issue }: { issue: RawDetailIssue }) {
@@ -202,9 +221,67 @@ function RawRecordDetail({ record }: { record: RawSourceRecord }) {
           </ul>
         ) : null}
       </section>
+      <CaptureProvenance record={record} />
       <OccurrenceLineage record={record} />
     </div>
   )
+}
+
+function CaptureProvenance({ record }: { record: RawSourceRecord }) {
+  const revision = record.latestRevision
+  const origin = record.reportedOrigin
+  return (
+    <section aria-label="Capture provenance" className="space-y-2">
+      <h3 className="font-semibold">Capture provenance</h3>
+      <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <ProvenanceFact
+          label="Adapter"
+          value={[revision.adapter.id, revision.adapter.kind, revision.adapter.version]
+            .map(technicalValue).join(' · ')}
+        />
+        <ProvenanceFact
+          label="Reported origin"
+          value={origin
+            ? [origin.name, origin.kind, origin.providerId, origin.url]
+                .map(technicalValue).join(' · ')
+            : 'Unavailable'}
+        />
+        <ProvenanceFact
+          label="Provider identity"
+          value={[revision.providerRecordId, revision.providerSchema]
+            .map(technicalValue).join(' · ')}
+        />
+        {record.occurrences.map((occurrence) => (
+          <ProvenanceFact
+            key={occurrence.id}
+            label={`Capture ${technicalValue(occurrence.id)}`}
+            value={occurrence.capture
+              ? [
+                  occurrence.capture.connectorInstanceId,
+                  occurrence.capture.connectorRunId,
+                  occurrence.capture.executionScopeId,
+                ].map(technicalValue).join(' · ')
+              : 'Not connector-captured'}
+          />
+        ))}
+      </dl>
+    </section>
+  )
+}
+
+function ProvenanceFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border p-3">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="break-all">{value}</dd>
+    </div>
+  )
+}
+
+function technicalValue(value: string | null | undefined) {
+  if (!value) return 'Unavailable'
+  const sanitized = sanitizeDisplayText(value)
+  return sanitized.length <= 512 ? sanitized : 'Detail omitted'
 }
 
 function Fact({ label, missing, value }: { label: string; missing: string; value: unknown }) {

@@ -10,6 +10,7 @@ import {
   createNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
+import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
 
 describe('local raw normalization replay', () => {
   it('replays an exactly selected raw revision when its canonical schema is invalidated', async () => {
@@ -377,9 +378,12 @@ describe('local raw normalization replay', () => {
   })
 
   it('does not let an older raw revision replay roll back the current finding', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const sqlitePath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ sqlitePath })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'fixture.connector', '1.0.0')
     const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      capture,
       providerRecordId: 'chronology-job-1', providerSchema: 'fixture/jobs/v1',
       observedAt: '2026-07-10T12:00:00.000Z',
       payload: {
@@ -390,6 +394,7 @@ describe('local raw normalization replay', () => {
     }] })
     const second = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      capture,
       providerRecordId: 'chronology-job-1', providerSchema: 'fixture/jobs/v1',
       observedAt: '2026-07-10T13:00:00.000Z',
       payload: {

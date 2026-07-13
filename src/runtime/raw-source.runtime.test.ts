@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
+import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
 
 describe('local raw source runtime', () => {
   it('wires raw source persistence to deterministic normalization', async () => {
@@ -39,14 +40,16 @@ describe('local raw source runtime', () => {
     })
   })
 
-  it('keeps cached non-connector normalization deliberately free of connector trigger lineage', async () => {
+  it('keeps cached normalization trigger-free while connector capture remains complete', async () => {
     const sqlitePath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-runtime-')),
       'valedictorian.sqlite',
     )
     const client = createLocalValedictorianClient({ sqlitePath })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'fixture.connector', '1')
     const record = {
       adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
+      capture,
       observedAt: '2026-07-10T12:00:00.000Z',
       providerRecordId: 'job-1',
       providerSchema: 'fixture@1',

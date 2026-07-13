@@ -66,7 +66,7 @@ describe('earliest backfill date migration', () => {
       select count(*) as count from retry_work where id = 'keep-normalization-retry'
     `).get()).toEqual({ count: 1 })
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 26 })
+      .toEqual({ count: 27 })
 
     migrateDatabase(database)
     expect(
@@ -84,7 +84,7 @@ describe('earliest backfill date migration', () => {
       expect.arrayContaining(['earliest_backfill_date']),
     )
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 26 })
+      .toEqual({ count: 27 })
     database.close()
   })
 })

@@ -10,6 +10,21 @@ describe('raw source repository', () => {
     databases.splice(0).forEach((database) => database.close())
   })
 
+  it('rejects connector intake without complete capture lineage', async () => {
+    const sqlite = createInMemoryDatabase()
+    databases.push(sqlite)
+    migrateDatabase(sqlite)
+    const repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
+
+    await expect(repository.ingestBatch({
+      records: [{
+        adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+        observedAt: '2026-07-10T12:00:00.000Z',
+        payload: { title: 'Fixture role' },
+      }],
+    } as never)).rejects.toThrow('records[0].capture is required for a connector adapter')
+  })
+
   it('scopes strong identity independently from adapter version and preserves revision provenance', async () => {
     const sqlite = createInMemoryDatabase()
     databases.push(sqlite)
@@ -18,14 +33,17 @@ describe('raw source repository', () => {
       new Date('2026-07-10T14:00:00.000Z'),
       new Date('2026-07-10T15:00:00.000Z'),
     ]
+    const database = createDrizzleDatabase(sqlite)
+    const capture = await createConnectorCapture(database, 'fixture.connector')
     const repository = createSqliteRawSourceRepository(
-      createDrizzleDatabase(sqlite),
+      database,
       () => receivedTimes.shift()!,
     )
     const first = await repository.ingestBatch({
       records: [
         {
           adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+          capture,
           observedAt: '2026-07-10T13:00:00.000Z',
           providerRecordId: 'job-1',
           providerSchema: null,
@@ -43,6 +61,7 @@ describe('raw source repository', () => {
       records: [
         {
           adapter: { id: 'fixture.connector', kind: 'connector', version: '2.0.0' },
+          capture,
           observedAt: '2026-07-10T12:00:00.000Z',
           providerRecordId: 'job-1',
           providerSchema: null,
@@ -146,8 +165,13 @@ describe('raw source repository', () => {
         startedAt: '2026-07-10T12:00:00.000Z',
       })).run)
     }
-    const raw = await rawRepository.ingestBatch({ records: ['one', 'two'].map((suffix) => ({
+    const raw = await rawRepository.ingestBatch({ records: ['one', 'two'].map((suffix, index) => ({
       adapter: { id: `fixture.${suffix}`, kind: 'connector' as const, version: '1.0.0' },
+      capture: {
+        connectorInstanceId: runs[index]!.connectorInstanceId,
+        connectorRunId: runs[index]!.id,
+        executionScopeId: runs[index]!.executionScopeId,
+      },
       observedAt: '2026-07-10T12:00:00.000Z',
       providerRecordId: `job-${suffix}`,
       providerSchema: 'fixture@1',
@@ -207,9 +231,9 @@ describe('raw source repository', () => {
       'bad-normalization-history',
       raw.receipts[0].rawRecordId,
       raw.receipts[0].revision.id,
-      raw.receipts[0].occurrence.id,
-      runs[0].connectorInstanceId,
-      runs[0].id,
+      raw.receipts[1].occurrence.id,
+      runs[1].connectorInstanceId,
+      runs[1].id,
       'sha256:bad-normalization-history',
     )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
     expect(() => insertNormalization.run(
@@ -228,10 +252,13 @@ describe('raw source repository', () => {
     const sqlite = createInMemoryDatabase()
     databases.push(sqlite)
     migrateDatabase(sqlite)
-    const repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
+    const database = createDrizzleDatabase(sqlite)
+    const capture = await createConnectorCapture(database, 'fixture.connector')
+    const repository = createSqliteRawSourceRepository(database)
     const result = await repository.ingestBatch({
       records: ['', '   '].map((providerRecordId) => ({
         adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
+        capture,
         observedAt: '2026-07-10T12:00:00.000Z',
         providerRecordId,
         payload: { same: true },
@@ -246,9 +273,12 @@ describe('raw source repository', () => {
     const sqlite = createInMemoryDatabase()
     databases.push(sqlite)
     migrateDatabase(sqlite)
-    const repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
+    const database = createDrizzleDatabase(sqlite)
+    const capture = await createConnectorCapture(database, 'fixture.connector')
+    const repository = createSqliteRawSourceRepository(database)
     const base = {
       adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
+      capture,
       observedAt: '2026-07-10T12:00:00.000Z',
       providerSchema: 'jobs@1',
       payload: { unchanged: true },
@@ -274,10 +304,13 @@ describe('raw source repository', () => {
     const sqlite = createInMemoryDatabase()
     databases.push(sqlite)
     migrateDatabase(sqlite)
-    const repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
+    const database = createDrizzleDatabase(sqlite)
+    const capture = await createConnectorCapture(database, 'fixture.connector')
+    const repository = createSqliteRawSourceRepository(database)
     const result = await repository.ingestBatch({
       records: [null, 'null'].map((providerSchema) => ({
         adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
+        capture,
         observedAt: '2026-07-10T12:00:00.000Z',
         providerRecordId: 'job-1',
         providerSchema,
@@ -399,3 +432,28 @@ describe('raw source repository', () => {
     }
   })
 })
+
+async function createConnectorCapture(
+  database: ReturnType<typeof createDrizzleDatabase>,
+  connectorId: string,
+) {
+  const connectorRepository = createSqliteConnectorRepository(database)
+  const connectorInstanceId = `${connectorId.replaceAll('.', '-')}-instance`
+  await connectorRepository.upsertInstance({
+    id: connectorInstanceId,
+    connectorId,
+    connectorVersion: '1.0.0',
+    displayName: connectorId,
+    enabled: true,
+  })
+  const { run } = await connectorRepository.recordRunRequest({
+    connectorInstanceId,
+    mode: 'manual',
+    startedAt: '2026-07-10T12:00:00.000Z',
+  })
+  return {
+    connectorInstanceId,
+    connectorRunId: run.id,
+    executionScopeId: run.executionScopeId,
+  }
+}

@@ -10,7 +10,7 @@ import {
   type RawRecordFilters,
 } from './RawNormalizationFilters'
 import { RawNormalizationDetail } from './RawNormalizationDetail'
-import { isSafeDisplayString, sanitizeDisplayText } from './raw-detail-sanitization'
+import { sanitizeDisplayText } from './raw-detail-sanitization'
 
 export function RawNormalizationPage({
   api,
@@ -191,7 +191,7 @@ function RawRecordsTable({
     <Table aria-label="Raw sourcing normalization">
       <TableHeader>
         <TableRow>
-          <TableHead>Connector capture</TableHead>
+          <TableHead>Source</TableHead>
           <TableHead>Captured facts</TableHead>
           <TableHead>Seen</TableHead>
           <TableHead>Lineage</TableHead>
@@ -205,11 +205,10 @@ function RawRecordsTable({
         {items.map((item) => (
           <TableRow key={item.id}>
             <TableCell>
-              <CaptureOwnership item={item} />
-              <ProviderIdentity item={item} />
+              <SourceLabel item={item} />
               <button
                 type="button"
-                aria-label={`Inspect raw record ${sanitizeDisplayText(item.id)}`}
+                aria-label="Inspect raw record"
                 className="mt-2 rounded-md border border-border px-2 py-1 text-xs"
                 onClick={() => onSelect(item)}
               >
@@ -236,7 +235,7 @@ function RawRecordsTable({
             </TableCell>
             <TableCell>
               {item.canonicalCandidateId
-                ? sanitizeDisplayText(item.canonicalCandidateId)
+                ? 'Candidate created'
                 : 'No candidate'}
             </TableCell>
             <TableCell>{projectionLabel(item)}</TableCell>
@@ -247,39 +246,12 @@ function RawRecordsTable({
   )
 }
 
-function CaptureOwnership({ item }: { item: RawSourceRecordSummary }) {
-  const adapterKind = item.adapter.kind ? statusLabel(item.adapter.kind) : 'Unknown kind'
+function SourceLabel({ item }: { item: RawSourceRecordSummary }) {
   return (
-    <span className="block text-xs">
-      <span className="block font-medium">
-        Capture adapter {sanitizeDisplayText(item.adapter.id)} · {adapterKind}
-      </span>
-      {item.connectorInstanceId ? (
-        <span className="block text-muted-foreground">
-          Connector instance {sanitizeDisplayText(item.connectorInstanceId)}
-        </span>
-      ) : null}
-      {item.reportedOrigin ? (
-        <span className="block text-muted-foreground">
-          Reported origin {sanitizeDisplayText(item.reportedOrigin.name)}
-        </span>
-      ) : null}
-    </span>
-  )
-}
-
-function ProviderIdentity({ item }: { item: RawSourceRecordSummary }) {
-  const labels = [
-    item.providerRecordId && isSafeDisplayString(item.providerRecordId)
-      ? `Provider record ${item.providerRecordId}`
-      : null,
-    item.reportedOrigin?.providerId && isSafeDisplayString(item.reportedOrigin.providerId)
-      ? `Provider ${item.reportedOrigin.providerId}`
-      : null,
-  ].filter((label): label is string => label !== null)
-  return (
-    <span className="mt-1 block text-xs text-muted-foreground">
-      {labels.length > 0 ? labels.join(' · ') : 'Provider identity unavailable'}
+    <span className="block text-xs font-medium">
+      {item.reportedOrigin
+        ? sanitizeDisplayText(item.reportedOrigin.name)
+        : 'Unknown source'}
     </span>
   )
 }
@@ -290,14 +262,8 @@ function statusLabel(value: string) {
 }
 
 function projectionLabel(item: RawSourceRecordSummary) {
-  if (item.projectionStatus === 'projected') {
-    return `Finding ${item.findingId ? sanitizeDisplayText(item.findingId) : 'unavailable'}`
-  }
-  if (item.projectionStatus === 'pending') {
-    return `Candidate ${item.canonicalCandidateId
-      ? sanitizeDisplayText(item.canonicalCandidateId)
-      : 'unavailable'}`
-  }
+  if (item.projectionStatus === 'projected') return 'Projected'
+  if (item.projectionStatus === 'pending') return 'Projection pending'
   if (item.projectionStatus === 'failed') return 'Projection failed'
   return 'Not projected'
 }

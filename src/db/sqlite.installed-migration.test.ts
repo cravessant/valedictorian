@@ -5,39 +5,18 @@ import { describe, expect, it } from 'vitest'
 import { createInMemoryDatabase, migrateDatabase } from './sqlite'
 
 describe('installed SQLite migration repair', () => {
-  it('preserves a referenced candidate while removing its obsolete partial connector run', () => {
+  it('removes an invalid partial-run graph and all dependent projected history', () => {
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(22) })
     seedReferencedPartialRun(database)
 
     migrateDatabase(database)
 
-    expect(database.prepare(`
-      select trigger_occurrence_id, trigger_connector_instance_id, trigger_connector_run_id
-      from normalization_runs where id = 'normalization-partial'
-    `).get()).toEqual({
-      trigger_occurrence_id: null,
-      trigger_connector_instance_id: null,
-      trigger_connector_run_id: null,
-    })
-    expect(database.prepare(`
-      select id, canonical_candidate_id from sourcing_findings where id = 'finding-partial'
-    `).get()).toEqual({ id: 'finding-partial', canonical_candidate_id: 'candidate-partial' })
-    expect(database.prepare(`
-      select id, run_id from canonical_source_candidates where id = 'candidate-partial'
-    `).get()).toEqual({ id: 'candidate-partial', run_id: 'normalization-partial' })
-    expect(database.prepare(`
-      select id, candidate_id from normalization_gates where id = 'gate-partial'
-    `).get()).toEqual({ id: 'gate-partial', candidate_id: 'candidate-partial' })
-    expect(database.prepare(`
-      select id, canonical_candidate_id, finding_id, status
-      from sourcing_projection_outcomes where id = 'projection-partial'
-    `).get()).toEqual({
-      id: 'projection-partial',
-      canonical_candidate_id: 'candidate-partial',
-      finding_id: 'finding-partial',
-      status: 'projected',
-    })
+    for (const table of ['normalization_runs', 'canonical_source_candidates', 'normalization_gates',
+      'sourcing_projection_outcomes', 'sourcing_findings', 'raw_source_occurrences', 'raw_source_revisions',
+      'raw_source_records', 'source_entities']) {
+      expect(database.prepare(`select count(*) as count from ${table}`).get(), table).toEqual({ count: 0 })
+    }
     expect(database.prepare(`select count(*) as count from connector_runs where id = 'run-partial'`).get())
       .toEqual({ count: 0 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])

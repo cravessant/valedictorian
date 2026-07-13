@@ -8,6 +8,7 @@ import { createDrizzleDatabase, createFileDatabase, createInMemoryDatabase, migr
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
+import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
 import type { NormalizationResolver } from '../modules/sourcing/normalization.registry'
 import {
   createDefaultNormalizationResolverRegistry,
@@ -130,13 +131,17 @@ describe('local deterministic raw normalization', () => {
     const sqlitePath = tempDatabasePath()
     const client = createLocalValedictorianClient({ sqlitePath })
     const destination = 'https://jobs.lever.co/acme/shared-role'
+    const alphaCapture = await createConnectorCaptureFixture(sqlitePath, 'connector.alpha', '1.0.0')
+    const betaCapture = await createConnectorCaptureFixture(sqlitePath, 'connector.beta', '2.0.0')
     const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
+      capture: alphaCapture,
       observedAt: '2026-07-10T12:00:00.000Z', providerRecordId: 'alpha-1', providerSchema: 'jobs/v1',
       payload: { company: 'Acme', title: 'Intern', url: destination },
     }] })
     const second = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.beta', kind: 'connector', version: '2.0.0' },
+      capture: betaCapture,
       observedAt: '2026-07-10T12:01:00.000Z', providerRecordId: 'beta-9', providerSchema: 'jobs/v2',
       payload: { company: 'Acme', title: 'Intern', url: destination },
     }] })
@@ -171,13 +176,16 @@ describe('local deterministic raw normalization', () => {
   it('records incompatible strong destination evidence as an idempotent conflict without merging history', async () => {
     const sqlitePath = tempDatabasePath()
     const client = createLocalValedictorianClient({ sqlitePath })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'connector.alpha', '1.0.0')
     const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
+      capture,
       observedAt: '2026-07-10T12:00:00.000Z', providerRecordId: 'alpha-1', providerSchema: 'jobs/v1',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/role-one' },
     }] })
     const conflicting = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
+      capture,
       observedAt: '2026-07-10T12:05:00.000Z', providerRecordId: 'alpha-1', providerSchema: 'jobs/v1',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/role-two' },
     }] })
@@ -240,8 +248,10 @@ describe('local deterministic raw normalization', () => {
         ...createDefaultNormalizationResolverRegistry().resolvers,
       ]),
     })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'connector.jobright', '3.2.1')
     const accepted = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.jobright', kind: 'connector', version: '3.2.1' },
+      capture,
       observedAt: '2026-07-10T12:00:00.000Z', providerRecordId: 'jobright-1', providerSchema: 'jobs/v1',
       payload: {
         company: 'Acme', title: 'Intern',
@@ -253,6 +263,7 @@ describe('local deterministic raw normalization', () => {
     })
     await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.jobright', kind: 'connector', version: '3.2.1' },
+      capture,
       observedAt: '2026-07-10T12:05:00.000Z', providerRecordId: 'jobright-1', providerSchema: 'jobs/v1',
       payload: { company: 'Acme', title: 'Intern', intermediaryUrl: 'https://jobright.ai/companies/acme' },
     }] })
@@ -317,8 +328,10 @@ describe('local deterministic raw normalization', () => {
         ...createDefaultNormalizationResolverRegistry().resolvers,
       ]),
     })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'connector.alpha', '1.0.0')
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
+      capture,
       observedAt: '2026-07-10T12:00:00.000Z', providerRecordId: 'alpha-1', providerSchema: 'jobs/v1',
       payload: { company: 'Acme', title: 'Intern' },
     }] })
@@ -428,8 +441,10 @@ describe('local deterministic raw normalization', () => {
   it('does not partially attach a proposal that would cross the identity bound', async () => {
     const sqlitePath = tempDatabasePath()
     const client = createLocalValedictorianClient({ sqlitePath })
+    const capture = await createConnectorCaptureFixture(sqlitePath, 'connector.alpha', '1.0.0')
     const initial = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
+      capture,
       observedAt: '2026-07-10T12:00:00.000Z', providerRecordId: 'alpha-1', providerSchema: 'jobs/v1',
       payload: {},
     }] })
@@ -449,6 +464,7 @@ describe('local deterministic raw normalization', () => {
     sqlite.close()
     const completed = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
+      capture,
       observedAt: '2026-07-10T12:05:00.000Z', providerRecordId: 'alpha-1', providerSchema: 'jobs/v1',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/overflow-role' },
     }] })
@@ -557,7 +573,7 @@ describe('local deterministic raw normalization', () => {
     const database = createDrizzleDatabase(sqlite)
     const rawRepository = createSqliteRawSourceRepository(database)
     const intake = await rawRepository.ingestBatch({ records: [{
-      adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
+      adapter: { id: 'manual.alpha', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z', providerRecordId: 'alpha-1', providerSchema: 'jobs/v1',
       payload: { company: 'Acme', title: 'Intern' },
     }] })

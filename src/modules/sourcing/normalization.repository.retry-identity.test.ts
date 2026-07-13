@@ -82,6 +82,11 @@ describe('normalization repository acquired retry identity', () => {
     const receipt = (await rawRepository.ingestBatch({
       records: [{
         adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+        capture: {
+          connectorInstanceId: instance.id,
+          connectorRunId: acquisition.run.id,
+          executionScopeId: instance.executionScopeId,
+        },
         observedAt: '2026-07-11T12:00:00.000Z',
         providerRecordId: 'hash-mismatch-job',
         payload: { companyName: 'Hash Co', roleTitle: 'Intern' },

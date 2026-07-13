@@ -6,7 +6,9 @@ import {
   connectorOverviewListResultSchema,
   connectorOverviewErrorCodes,
   defaultLocalCapabilities,
+  invalidPersistedRawDetailErrorBody,
   isApplicationStatus,
+  rawSourceRecordSchema,
   rawSourceRecordsListResultSchema,
   type BatchRawSourceRecordsInput,
   type ConnectorSchedulingCapability,
@@ -583,10 +585,19 @@ export async function handleRequest({
     const rawRecordMatch = requestUrl.pathname.match(/^\/v1\/sourcing\/raw-records\/([^/]+)$/)
 
     if (request.method === 'GET' && rawRecordMatch) {
+      const rawRecord = rawSourceRecordSchema.safeParse(
+        await client.sourcing.rawRecords.get(decodeURIComponent(rawRecordMatch[1])),
+      )
+      if (!rawRecord.success) {
+        throw Object.assign(new Error(invalidPersistedRawDetailErrorBody.message), {
+          code: invalidPersistedRawDetailErrorBody.code,
+          statusCode: 500,
+        })
+      }
       writeJson(
         response,
         200,
-        await client.sourcing.rawRecords.get(decodeURIComponent(rawRecordMatch[1])),
+        rawRecord.data,
       )
       return
     }
@@ -915,7 +926,8 @@ export async function handleRequest({
       typeof error === 'object' &&
       'code' in error &&
       typeof error.code === 'string' &&
-      (error.code === 'already_configured'
+      (error.code === invalidPersistedRawDetailErrorBody.code
+        || error.code === 'already_configured'
         || error.code === 'capability_unavailable'
         || (connectorScheduleErrorCodes as readonly string[]).includes(error.code)
         || (connectorOverviewErrorCodes as readonly string[]).includes(error.code))

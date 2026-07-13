@@ -86,14 +86,14 @@ describe('RawNormalizationPage connector-run inspection', () => {
       />,
     )
 
-    expect(await screen.findByRole('button', { name: 'Inspect raw record old-row' }))
+    expect(await screen.findByRole('button', { name: 'Inspect raw record' }))
       .toBeInTheDocument()
     fireEvent.change(screen.getByRole('textbox', { name: 'Source adapter' }), {
       target: { value: 'first-filter' },
     })
     expect(screen.getByRole('status', { name: 'Loading raw sourcing records' }))
       .toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Inspect raw record old-row' }))
+    expect(screen.queryByRole('button', { name: 'Inspect raw record' }))
       .not.toBeInTheDocument()
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Source adapter' }), {
@@ -103,17 +103,16 @@ describe('RawNormalizationPage connector-run inspection', () => {
       currentRequest.resolve({ items: [summary('current-row')], nextCursor: null })
       await currentRequest.promise
     })
-    expect(await screen.findByRole('button', { name: 'Inspect raw record current-row' }))
+    expect(await screen.findByRole('button', { name: 'Inspect raw record' }))
       .toBeInTheDocument()
 
     await act(async () => {
       staleRequest.resolve({ items: [summary('stale-row')], nextCursor: null })
       await staleRequest.promise
     })
-    expect(screen.getByRole('button', { name: 'Inspect raw record current-row' }))
+    expect(screen.getByRole('button', { name: 'Inspect raw record' }))
       .toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Inspect raw record stale-row' }))
-      .not.toBeInTheDocument()
+    expect(screen.queryByText('stale-row')).not.toBeInTheDocument()
   })
 
   it('redacts sensitive ordinary strings from table content and accessible row labels', async () => {
@@ -144,11 +143,11 @@ describe('RawNormalizationPage connector-run inspection', () => {
     const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
     expect(table).toHaveTextContent('Apply at https://jobs.example.test/platform today')
     expect(table).not.toHaveTextContent('private-value')
-    expect(screen.getByRole('button', { name: 'Inspect raw record Sensitive detail omitted' }))
+    expect(screen.getByRole('button', { name: 'Inspect raw record' }))
       .toBeInTheDocument()
   })
 
-  it('shows safe provider identity while treating missing and hostile identity as unavailable', async () => {
+  it('shows concise source labels without provider identity in the table', async () => {
     const common = {
       adapter: { id: 'jobright' }, roleTitle: null, companyName: null,
       firstObservedAt: '2026-07-10T12:00:00.000Z',
@@ -170,6 +169,9 @@ describe('RawNormalizationPage connector-run inspection', () => {
         ...common, id: 'raw-hostile', providerRecordId: 'credentialId=private-value',
         reportedOrigin: { name: 'Jobright', providerId: 'clientSecret=private-value' },
       },
+      {
+        ...common, id: 'raw-unknown', providerRecordId: null, reportedOrigin: null,
+      },
     ] as RawSourceRecordSummary[]
 
     render(
@@ -183,13 +185,15 @@ describe('RawNormalizationPage connector-run inspection', () => {
     )
 
     const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
-    expect(table).toHaveTextContent('Provider record provider-job-123')
-    expect(table).toHaveTextContent('Provider jobright-provider')
-    expect(within(table).getAllByText('Provider identity unavailable')).toHaveLength(2)
+    expect(table).toHaveTextContent('Jobright')
+    expect(table).toHaveTextContent('Manual import')
+    expect(table).toHaveTextContent('Unknown source')
+    expect(table).not.toHaveTextContent('provider-job-123')
+    expect(table).not.toHaveTextContent('jobright-provider')
     expect(table).not.toHaveTextContent('private-value')
   })
 
-  it('shows capture ownership separately from the origin reported by a connector', async () => {
+  it('hides technical capture ownership behind a concise source label', async () => {
     const item = {
       id: 'raw-jobright-linkedin',
       adapter: { id: 'jobright', kind: 'connector', version: '0.11.0' },
@@ -215,9 +219,12 @@ describe('RawNormalizationPage connector-run inspection', () => {
 
     const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
     const row = within(table).getAllByRole('row')[1]
-    expect(row).toHaveTextContent('Capture adapter jobright · Connector')
-    expect(row).toHaveTextContent('Connector instance jobright-default')
-    expect(row).toHaveTextContent('Reported origin LinkedIn')
+    expect(row).toHaveTextContent('LinkedIn')
+    expect(row).not.toHaveTextContent('jobright')
+    expect(row).not.toHaveTextContent('0.11.0')
+    expect(row).not.toHaveTextContent('jobright-default')
+    expect(row).not.toHaveTextContent('linkedin-job-123')
+    expect(row).not.toHaveTextContent('linkedin')
   })
 
   it('renders eight logical data cells with an explicit accessible inspect action', async () => {
@@ -244,8 +251,8 @@ describe('RawNormalizationPage connector-run inspection', () => {
     const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
     const dataRow = within(table).getAllByRole('row')[1]
     expect(within(dataRow).getAllByRole('cell')).toHaveLength(8)
-    expect(within(dataRow).getByRole('button', { name: 'Inspect raw record raw-semantic' }))
-      .toBeInTheDocument()
+    const inspect = within(dataRow).getByRole('button', { name: 'Inspect raw record' })
+    expect(inspect).toHaveAccessibleName('Inspect raw record')
   })
 })
 

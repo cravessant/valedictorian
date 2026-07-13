@@ -133,7 +133,7 @@ describe('SQLite database', () => {
     const connectorTables = database
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
-    expect(migrationRows).toHaveLength(26)
+    expect(migrationRows).toHaveLength(27)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -154,7 +154,7 @@ describe('SQLite database', () => {
     expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
       .toEqual({ name: 'retry_work' })
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 26 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 27 })
     const stampedTags = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -247,7 +247,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 26 })
+    ).toEqual({ count: 27 })
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
     for (const table of tables) {
@@ -390,7 +390,7 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 26 })
+      .toEqual({ count: 27 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
@@ -416,17 +416,15 @@ describe('SQLite database', () => {
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 15 })
     database.close()
   })
-  it('migrates to an empty retry ledger while preserving raw records and revisions', () => {
+  it('migrates to an empty retry ledger while retaining a contract-valid empty occurrence record', () => {
     const database = createInMemoryDatabase()
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(17) })
     seedReferencedOccurrenceFixture(database)
     database.prepare("update connector_instances set connector_id = 'jobright.resolver', connector_version = '0.6.0' where id = 'instance-one'").run()
-    const records = database.prepare('select * from raw_source_records order by id').all()
-    const revisions = database.prepare('select * from raw_source_revisions order by id').all()
     migrateDatabase(database)
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select * from raw_source_records order by id').all()).toEqual(records)
-    expect(database.prepare('select * from raw_source_revisions order by id').all()).toEqual(revisions)
+    expect(database.prepare('select count(*) as count from raw_source_records').get()).toEqual({ count: 1 })
+    expect(database.prepare('select count(*) as count from raw_source_revisions').get()).toEqual({ count: 2 })
     expect(database.prepare('select count(*) as count from raw_source_occurrences').get()).toEqual({ count: 0 })
     expect(database.prepare('select count(*) as count from connector_runs').get()).toEqual({ count: 0 })
     expect(database.prepare("select connector_version from connector_instances where connector_id = 'jobright.resolver'").get())

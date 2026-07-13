@@ -67,7 +67,7 @@ function createRawRecord(): RawSourceRecord {
     reportedOrigin: {
       kind: 'job_board',
       name: 'Jobright',
-      providerId: null,
+      providerId: 'jobright-provider',
       url: 'javascript:alert(document.cookie)',
     },
     createdAt: '2026-07-10T12:00:00.000Z',
@@ -79,8 +79,8 @@ function createRawRecord(): RawSourceRecord {
       adapter: { id: 'jobright', kind: 'connector', version: '0.11.0' },
       reportedOrigin: null,
       observedAt: '2026-07-10T11:45:00.000Z',
-      providerRecordId: null,
-      providerSchema: null,
+      providerRecordId: 'provider-job-123',
+      providerSchema: 'jobright-visitor-list@1',
       payload: {
         title: 'Platform Engineer',
         company: 'Example Co',
@@ -158,7 +158,7 @@ describe('sourcing normalization inspection', () => {
 
     expect(navigation.getByRole('button', { name: 'Findings' })).toBeInTheDocument()
     const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
-    const row = within(table).getByRole('button', { name: /raw-record-1/i }).closest('tr')!
+    const row = within(table).getByRole('button', { name: 'Inspect raw record' }).closest('tr')!
     expect(row).toHaveTextContent('Jobright')
     expect(row).toHaveTextContent('Missing title')
     expect(row).toHaveTextContent('Missing company')
@@ -220,14 +220,14 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    await screen.findByRole('button', { name: /raw-record-1/i })
+    await screen.findByRole('button', { name: 'Inspect raw record' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
-    expect(await screen.findByRole('button', { name: /raw-record-2/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Inspect raw record' })).toBeInTheDocument()
     expect(list).toHaveBeenLastCalledWith({ cursor: 'next-page', limit: 50 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous page' }))
-    expect(await screen.findByRole('button', { name: /raw-record-1/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Inspect raw record' })).toBeInTheDocument()
     expect(list).toHaveBeenLastCalledWith({ limit: 50 })
   })
 
@@ -263,15 +263,24 @@ describe('sourcing normalization inspection', () => {
     expect(alert).not.toHaveTextContent('unsafe upstream details')
     fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByRole('button', { name: /raw-record-1/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Inspect raw record' })).toBeInTheDocument()
     expect(list).toHaveBeenCalledTimes(2)
   })
 
-  it('shows truthful latest-revision facts and occurrence lineage without sensitive or unsafe values', async () => {
-    const get = vi.fn(async () => createRawRecord())
+  it('separates the reported source from technical connector capture provenance', async () => {
+    const reportedOrigin = {
+      kind: 'job_board' as const,
+      name: 'LinkedIn',
+      providerId: 'linkedin',
+      url: null,
+    }
+    const get = vi.fn(async () => ({ ...createRawRecord(), reportedOrigin }))
     const getNormalization = vi.fn()
     renderApp({
-      list: vi.fn(async () => ({ items: [createRawSummary()], nextCursor: null })),
+      list: vi.fn(async () => ({
+        items: [createRawSummary({ reportedOrigin })],
+        nextCursor: null,
+      })),
       get,
       getNormalization,
       getProjection: vi.fn(async () => createNotEligibleProjection()),
@@ -279,7 +288,14 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    fireEvent.click(await screen.findByRole('button', { name: /raw-record-1/i }))
+    const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
+    expect(within(table).getByRole('columnheader', { name: 'Source' })).toBeInTheDocument()
+    expect(within(table).queryByRole('columnheader', { name: 'Connector capture' }))
+      .not.toBeInTheDocument()
+    const row = within(table).getAllByRole('row')[1]
+    expect(row).toHaveTextContent('LinkedIn')
+    expect(row).not.toHaveTextContent('jobright')
+    fireEvent.click(within(row).getByRole('button', { name: 'Inspect raw record' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-1' })
     expect(within(dialog).getByRole('heading', { name: 'Latest revision facts' })).toBeInTheDocument()
@@ -290,6 +306,16 @@ describe('sourcing normalization inspection', () => {
     expect(dialog).toHaveTextContent('https://jobs.example.test/platform')
     expect(within(dialog).getByRole('table', { name: 'Occurrence and revision lineage' }))
       .toHaveTextContent('occurrence-1')
+    const provenance = within(dialog).getByRole('region', { name: 'Capture provenance' })
+    expect(provenance).toHaveTextContent('jobright · connector · 0.11.0')
+    expect(provenance).toHaveTextContent('jobright-default')
+    expect(provenance).toHaveTextContent('connector-run-1')
+    expect(provenance).toHaveTextContent('scope-1')
+    expect(provenance).toHaveTextContent('LinkedIn')
+    expect(provenance).toHaveTextContent('linkedin')
+    expect(provenance).toHaveTextContent('provider-job-123')
+    expect(provenance).toHaveTextContent('jobright-visitor-list@1')
+    expect(provenance).not.toHaveTextContent('javascript:')
     expect(dialog).toHaveTextContent('raw-revision-1')
     expect(dialog).toHaveTextContent('connector-run-1')
     expect(dialog).not.toHaveTextContent(/credential|password|authorization|cookie/i)
@@ -319,7 +345,7 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    fireEvent.click(await screen.findByRole('button', { name: /raw-record-1/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Inspect raw record' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-1' })
     const outcomes = within(dialog).getByRole('region', { name: 'Normalization resolver outcomes' })
@@ -344,11 +370,13 @@ describe('sourcing normalization inspection', () => {
   })
 
   it('keeps normalization, gate, candidate, and finding projection as separate lifecycle columns', async () => {
+    const candidateId = '2f0cb73b-a522-4a83-a46a-5e4048ed3010'
+    const findingId = 'dd463b92-d71b-4200-8c7f-8295f8ad783b'
     const projected = createRawSummary({
       id: 'raw-projected',
       normalizationStatus: 'completed', normalizationUpdatedAt: '2026-07-10T12:00:03.000Z',
       normalizationRawRevisionId: 'raw-revision-1', gateStatus: 'passed',
-      canonicalCandidateId: 'candidate-1', projectionStatus: 'projected', findingId: 'finding-1',
+      canonicalCandidateId: candidateId, projectionStatus: 'projected', findingId,
     })
     const rejected = createRawSummary({
       id: 'raw-rejected',
@@ -367,17 +395,19 @@ describe('sourcing normalization inspection', () => {
     const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
     expect(within(table).getByRole('columnheader', { name: 'Canonical candidate' }))
       .toBeInTheDocument()
-    const projectedRow = within(table).getByRole('button', { name: /raw-projected/i })
-      .closest('tr')!
+    const projectedRow = within(table).getByText('Projected').closest('tr')!
     expect(projectedRow).toHaveTextContent('Completed')
     expect(projectedRow).toHaveTextContent('Passed')
-    expect(projectedRow).toHaveTextContent('candidate-1')
-    expect(projectedRow).toHaveTextContent('finding-1')
-    const rejectedRow = within(table).getByRole('button', { name: /raw-rejected/i })
-      .closest('tr')!
+    expect(projectedRow).toHaveTextContent('Candidate created')
+    expect(projectedRow).toHaveTextContent('Projected')
+    const rejectedRow = within(table).getByText('Rejected').closest('tr')!
     expect(rejectedRow).toHaveTextContent('Rejected')
     expect(rejectedRow).toHaveTextContent('No candidate')
     expect(rejectedRow).toHaveTextContent('Not projected')
+    expect(table).not.toHaveTextContent(candidateId)
+    expect(table).not.toHaveTextContent(findingId)
+    expect(table).not.toContainHTML(candidateId)
+    expect(table).not.toContainHTML(findingId)
   })
 
   it('requests exact raw rows for an aggregate connector run', async () => {
@@ -426,8 +456,8 @@ describe('sourcing normalization inspection', () => {
       name: `Inspect normalization rows from ${run.id}`,
     }))
 
-    expect(await screen.findByRole('button', { name: /raw-from-run/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /raw-from-other-run/i })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Inspect raw record' })).toBeInTheDocument()
+    expect(screen.queryByText('raw-from-other-run')).not.toBeInTheDocument()
     expect(rawList).toHaveBeenCalledOnce()
     expect(rawList).toHaveBeenCalledWith({
       connectorInstanceId: 'jobright-default', connectorRunId: run.id, limit: 50,
@@ -467,7 +497,7 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    fireEvent.click(await screen.findByRole('button', { name: /raw-record-1/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Inspect raw record' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-1' })
     const destination = within(dialog).getByRole('link', { name: 'Open canonical destination' })

@@ -421,6 +421,9 @@ function validateCapture(
   index: number,
 ) {
   if (capture === undefined) {
+    if (adapterKind === 'connector') {
+      throw validationError(`records[${index}].capture is required for a connector adapter`)
+    }
     return
   }
   if (adapterKind !== 'connector') {
