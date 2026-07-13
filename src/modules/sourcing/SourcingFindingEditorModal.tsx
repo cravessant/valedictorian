@@ -2,10 +2,9 @@ import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
-import { Label } from '@/components/ui/label'
 import { roleKinds, type CreateSourcingFindingInput, type JobTimingMode, type SourcingFinding, type UpdateSourcingFindingInput } from 'sparxie'
 import { FindingTimingFields, buildFindingTimingInput } from './SourcingFindingTiming'
-import { FindingInput, FindingSelect, applyOptionalFindingFields } from './SourcingFindingFormFields'
+import { FindingInput, FindingSelect, FindingTextarea, applyOptionalFindingFields } from './SourcingFindingFormFields'
 
 export function SourcingFindingEditorModal({
   finding,
@@ -152,15 +151,12 @@ export function SourcingFindingEditorModal({
           <FindingInput label="Posted age" value={postedAge} onChange={setPostedAge} />
           <FindingInput label="Priority score" value={priorityScore} onChange={setPriorityScore} />
           <FindingInput label="Priority band" value={priorityBand} onChange={setPriorityBand} />
-          <Label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
-            Fit notes
-            <textarea
-              aria-label="Fit notes"
-              className="min-h-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              value={fitNotes}
-              onChange={(event) => setFitNotes(event.target.value)}
-            />
-          </Label>
+          <FindingTextarea
+            className="min-h-24"
+            label="Fit notes"
+            value={fitNotes}
+            onChange={setFitNotes}
+          />
           {mode === 'edit' ? (
             <>
               <FindingInput label="Duplicate notes" value={duplicateNotes} onChange={setDuplicateNotes} />

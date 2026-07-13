@@ -7,6 +7,7 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
 import { fieldControlId } from '@/lib/field-control-id'
 import { formatEnumLabel } from '../../app/labels'
 import {
@@ -437,16 +438,20 @@ function EditorTextarea({
   onChange: (value: string) => void
   value: string
 }) {
+  const controlId = fieldControlId('application-editor', label)
+
   return (
-    <Label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
-      {label}
-      <textarea
-        aria-label={label}
-        className="min-h-20 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Textarea
+        className="min-h-20 resize-y"
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </Label>
+    </Field>
   )
 }
 

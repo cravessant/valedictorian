@@ -141,7 +141,11 @@ describe('policy settings', () => {
 
     fireEvent.change(screen.getByLabelText('Apply cutoff'), { target: { value: '7' } })
     fireEvent.change(screen.getByLabelText('Manual pickup delay'), { target: { value: '8' } })
-    fireEvent.change(screen.getByLabelText('Explicit approval companies'), {
+    const explicitApprovalCompanies = screen.getByLabelText('Explicit approval companies')
+    expect(explicitApprovalCompanies).toHaveAttribute('data-slot', 'textarea')
+    expect(explicitApprovalCompanies).toHaveClass('min-h-24', 'resize-y')
+    expect(explicitApprovalCompanies.closest('[data-slot="field"]')).not.toBeNull()
+    fireEvent.change(explicitApprovalCompanies, {
       target: { value: 'TikTok\nByteDance\nOpenAI' },
     })
 

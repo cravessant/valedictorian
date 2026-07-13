@@ -170,7 +170,10 @@ describe('App', () => {
     fireEvent.change(within(addDialog).getByLabelText('Priority band'), {
       target: { value: 'high' },
     })
-    fireEvent.change(within(addDialog).getByLabelText('Fit notes'), {
+    const fitNotes = within(addDialog).getByLabelText('Fit notes')
+    expect(fitNotes).toHaveAttribute('data-slot', 'textarea')
+    expect(fitNotes).toHaveClass('min-h-24')
+    fireEvent.change(fitNotes, {
       target: { value: 'Strong frontend internship fit.' },
     })
     fireEvent.click(within(addDialog).getByRole('button', { name: 'Save finding' }))
@@ -280,7 +283,10 @@ describe('App', () => {
     fireEvent.change(within(dialog).getByLabelText('Policy blocker'), {
       target: { value: 'needs_user_decision' },
     })
-    fireEvent.change(within(dialog).getByLabelText('Disposition notes'), {
+    const dispositionNotes = within(dialog).getByLabelText('Disposition notes')
+    expect(dispositionNotes).toHaveAttribute('data-slot', 'textarea')
+    expect(dispositionNotes).toHaveClass('min-h-28')
+    fireEvent.change(dispositionNotes, {
       target: { value: 'Requires a non-student schedule.' },
     })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save disposition' }))

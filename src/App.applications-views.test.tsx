@@ -298,7 +298,10 @@ describe('App', () => {
     fireEvent.change(within(dialog).getByLabelText('Blocker reason'), {
       target: { value: 'Captcha requires user session.' },
     })
-    fireEvent.change(within(dialog).getByLabelText('Application note'), {
+    const applicationNote = within(dialog).getByLabelText('Application note')
+    expect(applicationNote).toHaveAttribute('data-slot', 'textarea')
+    expect(applicationNote).toHaveClass('min-h-20', 'resize-y')
+    fireEvent.change(applicationNote, {
       target: { value: 'Recruiter replied with next steps.' },
     })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))

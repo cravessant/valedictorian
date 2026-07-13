@@ -1,8 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
-import { Label } from '@/components/ui/label'
+import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, ShieldCheck } from 'lucide-react'
 import {
   defaultPolicyConfig,
@@ -637,18 +639,20 @@ function PolicyTextArea({
   onChange: (value: string) => void
   value: string
 }) {
+  const controlId = fieldControlId('policy-settings', label)
+
   return (
-    <Label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[220px_1fr]">
-      <span className="pt-2">
-        <span className="block font-medium">{label}</span>
-      </span>
-      <textarea
-        aria-label={label}
-        className="min-h-24 w-full min-w-0 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm leading-5 text-foreground"
+    <Field className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[220px_1fr]">
+      <FieldLabel className="block pt-2 font-medium text-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Textarea
+        className="min-h-24 resize-y leading-5"
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </Label>
+    </Field>
   )
 }
 
