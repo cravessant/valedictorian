@@ -8,6 +8,7 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
@@ -154,16 +155,18 @@ export function SettingsSidebar({
   return (
     <aside
       aria-label="Settings navigation"
-      className={`absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-auto border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none ${
+      className={`absolute left-0 top-0 z-40 flex h-full w-[280px] max-w-[85vw] flex-col overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none ${
         temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
       }`}
       role="complementary"
       onMouseLeave={onMouseLeave}
     >
-      <Button type="button" variant="ghost" className="mb-4 justify-start gap-2 px-2" onClick={onBack}>
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Back to app
-      </Button>
+      <ScrollArea className="min-h-0 flex-1">
+        <div>
+          <Button type="button" variant="ghost" className="mb-4 justify-start gap-2 px-2" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back to app
+          </Button>
 
       <Label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-search">
         Search settings
@@ -180,7 +183,7 @@ export function SettingsSidebar({
         </InputGroup>
       </Label>
 
-      <nav className="mt-5 space-y-5" aria-label="Settings sections">
+          <nav className="mt-5 space-y-5" aria-label="Settings sections">
         {visibleGroups.map((group) => (
           <div key={group.group}>
             <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">{group.group}</p>
@@ -204,7 +207,9 @@ export function SettingsSidebar({
             </div>
           </div>
         ))}
-      </nav>
+          </nav>
+        </div>
+      </ScrollArea>
     </aside>
   )
 }

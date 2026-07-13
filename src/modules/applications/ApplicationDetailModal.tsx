@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ModalShell } from '@/components/ui/modal-shell'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
@@ -88,7 +89,8 @@ function ApplicationDetailModal({
             <X className="h-4 w-4" aria-hidden="true" />
           </Button>
         </header>
-        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="px-5 py-4">
           <div className="mb-4 flex flex-wrap gap-2">
             <Badge variant="secondary">{formatEnumLabel(application.status)}</Badge>
             {'currentPriorityScore' in application ? (
@@ -273,7 +275,8 @@ function ApplicationDetailModal({
             </div>
           ) : null}
           </section>
-        </div>
+          </div>
+        </ScrollArea>
         </section>
       </div>
       {linkEditorOpen && onCreateLink ? (

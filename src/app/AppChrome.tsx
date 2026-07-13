@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Tooltip,
   TooltipContent,
@@ -188,22 +189,24 @@ function AppSidebar({
   return (
     <aside
       aria-label="Application navigation"
-      className={`absolute left-0 top-0 z-40 flex h-full w-[280px] max-w-[85vw] flex-col overflow-auto border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible ${
+      className={`absolute left-0 top-0 z-40 flex h-full w-[280px] max-w-[85vw] flex-col overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible ${
         temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
       }`}
       role="complementary"
       onMouseLeave={onMouseLeave}
     >
-      <div className="mb-5">
-        <p className="text-sm font-semibold text-foreground">Valedictorian</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          <code className="rounded-md bg-secondary px-1.5 py-0.5 text-secondary-foreground">
-            {settings.runtimeMode}
-          </code>
-        </p>
-      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div>
+          <div className="mb-5">
+            <p className="text-sm font-semibold text-foreground">Valedictorian</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              <code className="rounded-md bg-secondary px-1.5 py-0.5 text-secondary-foreground">
+                {settings.runtimeMode}
+              </code>
+            </p>
+          </div>
 
-      <nav aria-label="Application views" className="space-y-1">
+          <nav aria-label="Application views" className="space-y-1">
         <Button
           type="button"
           variant="ghost"
@@ -273,7 +276,9 @@ function AppSidebar({
             </Button>
           </div>
         ) : null}
-      </nav>
+          </nav>
+        </div>
+      </ScrollArea>
 
       <div className="mt-auto">
         <SettingsPopover

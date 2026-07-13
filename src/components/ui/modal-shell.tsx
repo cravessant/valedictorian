@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { Button } from './button'
+import { ScrollArea } from './scroll-area'
 
 interface ModalShellProps {
   children: ReactNode
@@ -34,7 +35,9 @@ function ModalShell({ children, onClose, title }: ModalShellProps) {
             <X className="h-4 w-4" aria-hidden="true" />
           </Button>
         </header>
-        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">{children}</div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="px-5 py-4">{children}</div>
+        </ScrollArea>
       </section>
     </div>
   )
