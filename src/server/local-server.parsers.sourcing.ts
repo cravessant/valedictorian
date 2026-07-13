@@ -1,7 +1,26 @@
-import { isManualSourcingDecisionStatus, isRoleKind, isSourcingDestinationClass, isSourcingMergeStatus, isSourcingUsability, isWorkMode, type SourcingFindingsListInput, type ValedictorianWorkspaceClient } from 'sparxie'
+import { isManualSourcingDecisionStatus, isRoleKind, isSourcingDestinationClass, isSourcingMergeStatus, isSourcingUsability, isWorkMode, rawSourceRecordsListQueryParamKeys, rawSourceRecordsListQuerySchema, type RawSourceRecordsListQuery, type SourcingFindingsListInput, type ValedictorianWorkspaceClient } from 'sparxie'
 import { readNumberField, readOptionalNullableStringField, readOptionalNumberField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 import { setNumberQuery, setStringQuery } from './local-server.parsers.query-primitives'
 import { readOptionalJobTermsField, readOptionalJobTimingModeField } from './local-server.parsers.job-timing'
+
+export function parseRawSourceRecordsListQuery(requestUrl: URL): RawSourceRecordsListQuery {
+  const allowed = new Set<string>(rawSourceRecordsListQueryParamKeys)
+  const query: Record<string, unknown> = {}
+
+  for (const key of requestUrl.searchParams.keys()) {
+    if (!allowed.has(key)) throw new Error(`Invalid raw source list query parameter: ${key}`)
+    if (requestUrl.searchParams.getAll(key).length !== 1) {
+      throw new Error(`Duplicate raw source list query parameter: ${key}`)
+    }
+  }
+  for (const key of rawSourceRecordsListQueryParamKeys) {
+    const value = requestUrl.searchParams.get(key)
+    if (value === null) continue
+    query[key] = key === 'limit' && /^\d+$/.test(value) ? Number(value) : value
+  }
+
+  return rawSourceRecordsListQuerySchema.parse(query)
+}
 
 export function parseSourcingFindingsListQuery(requestUrl: URL): SourcingFindingsListInput {
   const query: SourcingFindingsListInput = {}

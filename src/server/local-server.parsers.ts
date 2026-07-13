@@ -26,6 +26,7 @@ export {
   parseRunCompleteInput,
 } from './local-server.parsers.workflow-runs'
 export {
+  parseRawSourceRecordsListQuery,
   parseSourcingFindingsListQuery,
   parseSourcingFindingCreateInput,
   parseSourcingCandidateProcessInput,

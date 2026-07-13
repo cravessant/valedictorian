@@ -495,7 +495,7 @@ export function createLocalValedictorianClient({
           },
         },
       },
-      rawRecords: {
+      rawRecords: { list: (query) => rawSourceRepository.list(query),
         ingestBatch: async (input) => {
           const result = await rawSourceRepository.ingestBatch(input)
           for (const receipt of result.receipts) {

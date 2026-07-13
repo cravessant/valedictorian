@@ -5,6 +5,7 @@ import {
   connectorRunsListResultSchema,
   defaultLocalCapabilities,
   isApplicationStatus,
+  rawSourceRecordsListResultSchema,
   type BatchRawSourceRecordsInput,
   type ConnectorSchedulingCapability,
   type ValedictorianWorkspaceClient,
@@ -46,6 +47,7 @@ import {
   parseRunCompleteInput,
   parseRunStartInput,
   parseRunStepInput,
+  parseRawSourceRecordsListQuery,
   parseSourcingCandidateProcessInput,
   parseSourcingFindingDecisionInput,
   parseSourcingFindingCreateInput,
@@ -480,6 +482,17 @@ export async function handleRequest({
           (await readJsonBody(request, {
             maxBytes: MAX_RAW_SOURCE_BATCH_BODY_BYTES,
           })) as BatchRawSourceRecordsInput,
+        ),
+      )
+      return
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/sourcing/raw-records') {
+      writeJson(
+        response,
+        200,
+        rawSourceRecordsListResultSchema.parse(
+          await client.sourcing.rawRecords.list(parseRawSourceRecordsListQuery(requestUrl)),
         ),
       )
       return
