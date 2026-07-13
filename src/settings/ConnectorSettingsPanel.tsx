@@ -701,7 +701,6 @@ export function ConnectorSettingsPanel({
     void connectorsApi.runs.trigger({
       connectorInstanceId: instance.id,
       mode: 'manual',
-      coverageEndedAt: new Date().toISOString(),
     })
       .then((run) => {
         setLatestRuns((currentRuns) => ({
@@ -715,10 +714,11 @@ export function ConnectorSettingsPanel({
       })
       .catch(() => {
         setConnectorActionError('Jobright run could not be completed.')
-        setLatestRunStatuses((currentStatuses) => ({
-          ...currentStatuses,
-          [instance.id]: 'failed',
-        }))
+        setLatestRunStatuses((currentStatuses) => {
+          const nextStatuses = { ...currentStatuses }
+          delete nextStatuses[instance.id]
+          return nextStatuses
+        })
       })
       .finally(() => {
         setRunningInstanceId(null)

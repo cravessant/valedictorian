@@ -4,6 +4,7 @@ import {
   isActionQueueBucket,
   canonicalDateOnlySchema,
   connectorOverviewListQuerySchema,
+  triggerConnectorRunInputSchema,
   type CreateConnectorInstanceInput,
   type ConnectorOverviewListQuery,
   type EvaluateApplicationPolicyInput,
@@ -13,6 +14,7 @@ import {
   type PolicyEvidenceInput,
   type PolicyEvidenceListInput,
   type ActionQueueListQuery,
+  type TriggerConnectorRunInput,
   type UpdateConnectorInstanceInput
 } from 'sparxie'
 import {
@@ -29,14 +31,11 @@ import {
   readBooleanField,
   readOptionalConnectorAuthReferences,
   readOptionalRecordField,
-  validateConnectorTimestamp
 } from './local-server.parsers.connector-body-primitives'
 import {
   setNumberQuery,
   setStringQuery,
 } from './local-server.parsers.query-primitives'
-
-const connectorRunModes = new Set(['manual'])
 
 export function parseConnectorOverviewListQuery(requestUrl: URL): ConnectorOverviewListQuery {
   const query: Record<string, unknown> = {}
@@ -56,17 +55,6 @@ export interface ConnectorRunsListQuery {
   mode?: string
   limit?: number
   offset?: number
-}
-
-export interface ConnectorRunTriggerInput {
-  connectorInstanceId: string
-  mode?: 'manual'
-  coverageStartedAt?: string | null
-  coverageEndedAt?: string | null
-  filterSignature?: string | null
-  filters?: unknown
-  reason?: string | null
-  dryRun?: boolean
 }
 
 export function parseCreateConnectorInstanceInput(body: unknown): CreateConnectorInstanceInput {
@@ -207,55 +195,12 @@ export function parseConnectorRunsListQuery(
 export function parseConnectorRunTriggerInput(
   connectorInstanceId: string,
   body: unknown,
-): ConnectorRunTriggerInput {
-  const record = readRecord(body)
-  const mode = readOptionalStringField(record, 'mode')
-  const input: ConnectorRunTriggerInput = {
+): TriggerConnectorRunInput {
+  const record = body === undefined || body === null ? {} : readRecord(body)
+  return triggerConnectorRunInputSchema.parse({
+    ...record,
     connectorInstanceId,
-  }
-
-  if (mode !== undefined) {
-    if (!connectorRunModes.has(mode)) {
-      throw new Error(`Invalid connector run mode: ${mode}`)
-    }
-
-    input.mode = mode as ConnectorRunTriggerInput['mode']
-  }
-
-  const coverageStartedAt = readOptionalNullableStringField(record, 'coverageStartedAt')
-  const coverageEndedAt = readOptionalNullableStringField(record, 'coverageEndedAt')
-  const filterSignature = readOptionalNullableStringField(record, 'filterSignature')
-  const reason = readOptionalNullableStringField(record, 'reason')
-  const dryRun = readOptionalBooleanField(record, 'dryRun')
-
-  if (coverageStartedAt !== undefined) {
-    input.coverageStartedAt = coverageStartedAt
-  }
-
-  if (coverageEndedAt !== undefined) {
-    input.coverageEndedAt = coverageEndedAt
-  }
-
-  if (filterSignature !== undefined) {
-    input.filterSignature = filterSignature
-  }
-
-  if (reason !== undefined) {
-    input.reason = reason
-  }
-
-  if (dryRun !== undefined) {
-    input.dryRun = dryRun
-  }
-
-  if ('filters' in record) {
-    input.filters = record.filters
-  }
-
-  validateConnectorTimestamp(input.coverageStartedAt, 'coverageStartedAt')
-  validateConnectorTimestamp(input.coverageEndedAt, 'coverageEndedAt')
-
-  return input
+  })
 }
 
 export function parseConnectorCheckpointsListQuery(

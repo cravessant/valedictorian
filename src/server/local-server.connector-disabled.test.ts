@@ -62,7 +62,6 @@ describe('disabled connector execution', () => {
     const trigger = {
       connectorInstanceId: 'disabled-fixture',
       mode: 'manual' as const,
-      coverageEndedAt: '2026-07-13T13:00:00.000Z',
     }
 
     await expect(localClient.connectors.runs.trigger(trigger))
@@ -80,9 +79,8 @@ describe('disabled connector execution', () => {
     })
     const httpClient = createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace(workspaceId)
-    const disabledResponse = await triggerThroughHttp(server.url, workspaceId, trigger)
-    expect(disabledResponse.status).toBe(409)
-    await expect(disabledResponse.json()).resolves.toEqual({
+    await expect(httpClient.connectors.runs.trigger(trigger)).rejects.toMatchObject({
+      status: 409,
       message: 'Connector instance is disabled: disabled-fixture',
     })
     expect(refreshCalls).toBe(0)
@@ -91,30 +89,10 @@ describe('disabled connector execution', () => {
       connectorInstanceId: 'disabled-fixture',
       enabled: true,
     })
-    const enabledResponse = await triggerThroughHttp(server.url, workspaceId, trigger)
-    expect(enabledResponse.status).toBe(200)
-    await expect(enabledResponse.json()).resolves.toMatchObject({
+    await expect(httpClient.connectors.runs.trigger(trigger)).resolves.toMatchObject({
       connectorInstanceId: 'disabled-fixture',
       status: 'completed',
     })
     expect(refreshCalls).toBe(1)
   })
 })
-
-function triggerThroughHttp(
-  baseUrl: string,
-  workspaceId: string,
-  trigger: { connectorInstanceId: string; coverageEndedAt: string; mode: 'manual' },
-) {
-  return fetch(
-    `${baseUrl}/v1/workspaces/${workspaceId}/connectors/${trigger.connectorInstanceId}/runs`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        coverageEndedAt: trigger.coverageEndedAt,
-        mode: trigger.mode,
-      }),
-    },
-  )
-}

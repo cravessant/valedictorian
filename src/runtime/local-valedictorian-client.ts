@@ -92,7 +92,7 @@ export type {
   LocalConnectorStatusSummary,
   LocalConnectorRunSummary,
   LocalConnectorObservationListInput,
-  LocalConnectorRunTriggerInput,
+  LocalConnectorInternalRunTriggerInput,
   LocalConnectorStatusActionInput,
   LocalConnectorSkipActionInput,
   LocalConnectorAuthGrantSummary,
@@ -695,12 +695,7 @@ async function executeConnectorRunTrigger({
     supportsFiltering: connector.definition.capabilities?.supportsFiltering,
     filters,
   })
-  const coverageEndedAt = executionIntent === 'deferred_refresh'
-    ? (input.coverageEndedAt ?? startedAt)
-    : input.coverageEndedAt
-  if (!coverageEndedAt) {
-    throw new Error('coverageEndedAt is required for connector runs')
-  }
+  const coverageEndedAt = input.coverageEndedAt ?? startedAt
   const coverageStartedAt = inclusiveCoverageStartFromEarliestBackfillDate(
     instance.earliestBackfillDate,
   )
@@ -771,9 +766,6 @@ function assertExecutableConnectorTrigger(
   }
   if (executionIntent === 'deferred_refresh') {
     return
-  }
-  if (!input.coverageEndedAt) {
-    throw new Error('coverageEndedAt is required for manual connector runs')
   }
 }
 function validateSelectableEarliestBackfillDateOrThrow(

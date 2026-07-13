@@ -1,4 +1,14 @@
-import type { ConnectorObservation, ConnectorRunSummary, ConnectorSchedulingCapability, ConnectorStatusSummary, CreateConnectorInstanceInput, RetryAdvice, UpdateConnectorInstanceInput, ValedictorianWorkspaceClient } from 'sparxie'
+import type {
+  ConnectorObservation,
+  ConnectorRunSummary,
+  ConnectorSchedulingCapability,
+  ConnectorStatusSummary,
+  CreateConnectorInstanceInput,
+  RetryAdvice,
+  TriggerConnectorRunInput,
+  UpdateConnectorInstanceInput,
+  ValedictorianWorkspaceClient,
+} from 'sparxie'
 import type { AppConnectorAuthGrant, AppConnectorAuthValidationResult } from '../modules/connectors/connector.runner'
 import type { ConnectorAuthMode } from '../modules/connectors/connector.repository'
 import type { ConnectorStatusListResult, ConnectorStatusView } from '../modules/connectors/connector.status'
@@ -53,10 +63,11 @@ export interface LocalConnectorObservationListInput {
   offset?: number
 }
 
-/** Public ordinary trigger input — Sparxie manual-only mode, with private local execution intent. */
-export interface LocalConnectorRunTriggerInput {
-  connectorInstanceId: string
-  mode?: 'manual'
+/**
+ * Private app-owned trigger fields for deferred refresh / retry / normalization.
+ * Never leaked through renderer preload or Sparxie public HTTP trigger types.
+ */
+export type LocalConnectorInternalRunTriggerInput = TriggerConnectorRunInput & {
   /**
    * Private app-owned execution intent. Not part of Sparxie DTOs.
    * `deferred_refresh` preserves Jobright/retry maintenance behavior without persisting catch_up mode.
@@ -64,19 +75,7 @@ export interface LocalConnectorRunTriggerInput {
   executionIntent?: LocalConnectorExecutionIntent
   coverageStartedAt?: string | null
   coverageEndedAt?: string | null
-  filterSignature?: string | null
-  filters?: unknown
-  reason?: string | null
-  dryRun?: boolean
 }
-
-/**
- * Private app-owned execution intent for non-schedule maintenance work
- * (Jobright deferred refresh, retry-ledger, normalization catch-up).
- * Never persisted as public connector-run mode and never leaked through Sparxie DTOs.
- */
-
-export type LocalConnectorInternalRunTriggerInput = LocalConnectorRunTriggerInput
 
 export interface LocalConnectorStatusActionInput {
   connectorInstanceId: string
@@ -132,7 +131,7 @@ export interface LocalConnectorClient {
       offset: number
       hasMore: boolean
     }>
-    trigger(input: LocalConnectorRunTriggerInput): Promise<LocalConnectorRunSummary>
+    trigger(input: LocalConnectorInternalRunTriggerInput): Promise<LocalConnectorRunSummary>
   }
   schedules: ValedictorianWorkspaceClient['connectors']['schedules']
   checkpoints: {

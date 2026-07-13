@@ -306,9 +306,6 @@ describe('local Valedictorian HTTP server', () => {
       `${server.url}/v1/workspaces/workspace-1/connectors/connector%20one/runs`,
       {
         body: JSON.stringify({
-          coverageStartedAt: '2026-07-01T00:00:00.000Z',
-          coverageEndedAt: '2026-07-08T00:00:00.000Z',
-          filterSignature: 'internships',
           mode: 'manual',
         }),
         headers: { 'content-type': 'application/json' },
@@ -413,9 +410,6 @@ describe('local Valedictorian HTTP server', () => {
         'trigger',
         {
           connectorInstanceId: 'connector one',
-          coverageStartedAt: '2026-07-01T00:00:00.000Z',
-          coverageEndedAt: '2026-07-08T00:00:00.000Z',
-          filterSignature: 'internships',
           mode: 'manual',
         },
       ],
@@ -693,13 +687,13 @@ describe('local Valedictorian HTTP server', () => {
       enabled: true,
     })
 
-    const triggerInput = {
+    const internalTrigger = {
       connectorInstanceId,
       coverageStartedAt: '2026-07-08T17:00:00.000Z',
       coverageEndedAt: '2026-07-08T18:00:00.000Z',
       mode: 'manual' as const,
     }
-    const ipcRunPromise = connectors.runs.trigger(triggerInput)
+    const ipcRunPromise = connectors.runs.trigger(internalTrigger)
 
     await vi.waitFor(() => {
       expect(refreshCount).toBe(1)
@@ -709,7 +703,7 @@ describe('local Valedictorian HTTP server', () => {
     const httpRunPromise = fetch(
       `${runtime.server.url}/v1/workspaces/${workspaceId}/connectors/${connectorInstanceId}/runs`,
       {
-        body: JSON.stringify(triggerInput),
+        body: JSON.stringify({ mode: 'manual' }),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
       },

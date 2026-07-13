@@ -8,6 +8,7 @@ import type {
   ConnectorStatusSummary,
   CreateConnectorInstanceInput,
   RemoveConnectorInstanceInput,
+  TriggerConnectorRunInput,
   UpdateConnectorInstanceInput,
 } from 'sparxie'
 import {
@@ -17,7 +18,6 @@ import {
 } from 'sparxie'
 import type {
   LocalConnectorReconnectActionResult,
-  LocalConnectorRunTriggerInput,
   LocalConnectorSkipActionInput,
   LocalConnectorStatusActionInput,
 } from '../runtime/local-valedictorian-client'
@@ -39,7 +39,7 @@ export interface ConnectorsPreloadApi {
   inspect: (connectorInstanceId: string) => Promise<ConnectorStatusSummary>
   runs: {
     list: (input: ConnectorRunsListInput) => Promise<ConnectorRunsListResult>
-    trigger: (input: LocalConnectorRunTriggerInput) => Promise<ConnectorRunSummary>
+    trigger: (input: TriggerConnectorRunInput) => Promise<ConnectorRunSummary>
   }
   status: {
     reconnect: (

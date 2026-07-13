@@ -57,7 +57,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const response = await fetch(`${server.url}/v1/workspaces/workspace-retry/connectors/retry-http/runs`, {
-      body: JSON.stringify({ mode: 'manual', coverageEndedAt: clock }),
+      body: JSON.stringify({ mode: 'manual' }),
       headers: { 'content-type': 'application/json' }, method: 'POST',
     })
     const httpRun = connectorRunSummarySchema.parse(await readJson(response))

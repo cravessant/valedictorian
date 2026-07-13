@@ -16,7 +16,6 @@ export {
 } from './local-server.parsers.connectors-policy'
 export type {
   ConnectorRunsListQuery,
-  ConnectorRunTriggerInput,
   ConnectorCheckpointsListQuery,
   ConnectorObservationsListQuery,
 } from './local-server.parsers.connectors-policy'

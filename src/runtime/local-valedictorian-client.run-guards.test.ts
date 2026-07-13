@@ -323,18 +323,20 @@ describe('runtime local Valedictorian client', () => {
     sqlite.close()
   })
 
-  it('requires explicit coverage for manual connector execution', async () => {
+  it('derives ordinary manual coverage end from the injected clock when omitted', async () => {
     const sqlitePath = createTempSqlitePath()
+    const clock = '2026-07-08T18:30:00.000Z'
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
             ? fixtureConnector({
-              observedAt: '2026-07-08T18:00:00.000Z',
+              observedAt: clock,
             })
             : null
         },
       },
+      now: () => new Date(clock),
       seedDataMode: 'none',
       sqlitePath,
     })
@@ -349,6 +351,7 @@ describe('runtime local Valedictorian client', () => {
       displayName: 'Fixture Jobs',
       enabled: true,
       createdAt: '2026-07-08T15:00:00.000Z',
+      earliestBackfillDate: '2026-07-01',
     })
 
     await expect(
@@ -356,13 +359,27 @@ describe('runtime local Valedictorian client', () => {
         connectorInstanceId: 'connector-instance-fixture',
         mode: 'manual',
       }),
-    ).rejects.toThrow('coverageEndedAt is required for manual connector runs')
+    ).resolves.toMatchObject({
+      connectorInstanceId: 'connector-instance-fixture',
+      mode: 'manual',
+      status: 'completed',
+      coverage: {
+        start: '2026-07-01T00:00:00.000Z',
+        end: clock,
+      },
+    })
     await expect(
       client.connectors.runs.list({
         connectorInstanceId: 'connector-instance-fixture',
       }),
     ).resolves.toMatchObject({
-      total: 0,
+      total: 1,
+      items: [{
+        coverage: {
+          start: '2026-07-01T00:00:00.000Z',
+          end: clock,
+        },
+      }],
     })
     sqlite.close()
   })

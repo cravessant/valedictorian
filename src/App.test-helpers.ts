@@ -405,8 +405,8 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
         scheduleOccurrence: null,
         status: 'completed' as const,
         coverage: {
-          start: input.coverageStartedAt ?? null,
-          end: input.coverageEndedAt ?? null,
+          start: null,
+          end: null,
         },
         filterSignature: 'filters:{}',
         observationCount: 1,

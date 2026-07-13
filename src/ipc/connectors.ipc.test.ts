@@ -221,6 +221,29 @@ describe('connectors IPC registration', () => {
     )).resolves.toEqual(expected)
   })
 
+  it('rejects private coverageEndedAt on the public IPC manual trigger surface', async () => {
+    const trigger = vi.fn(async () => connectorRunWithLocalFields())
+    const connectors = {
+      runs: { trigger },
+    } as unknown as LocalValedictorianClient['connectors']
+    const handlers = new Map<string, (_event: unknown, input?: unknown) => Promise<unknown>>()
+    registerConnectorsIpc(connectors, {
+      handle(channel, handler) {
+        handlers.set(channel, handler)
+      },
+    })
+
+    await expect(handlers.get('connectors:runs:trigger')?.(
+      {},
+      {
+        connectorInstanceId: 'connector-1',
+        mode: 'manual',
+        coverageEndedAt: '2026-07-13T15:00:00.000Z',
+      },
+    )).rejects.toThrow(/unrecognized_keys|Unrecognized key/i)
+    expect(trigger).not.toHaveBeenCalled()
+  })
+
   it('publishes a strict skip result without local run fields or the caller reason', async () => {
     const run = {
       ...connectorRunWithLocalFields(),

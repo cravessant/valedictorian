@@ -1,6 +1,7 @@
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import {
   removeConnectorInstanceInputSchema,
+  triggerConnectorRunInputSchema,
 } from 'sparxie'
 import {
   publicConnectorRunsListResult,
@@ -51,10 +52,11 @@ export function registerConnectorsIpc(
     return connectors.runs.list(input as Parameters<typeof connectors.runs.list>[0])
       .then(publicConnectorRunsListResult)
   })
-  ipcMain.handle('connectors:runs:trigger', (_event, input) => {
+  ipcMain.handle('connectors:runs:trigger', async (_event, input) => {
     assertConnectorsAvailable(connectors)
-    return connectors.runs.trigger(input as Parameters<typeof connectors.runs.trigger>[0])
-      .then(publicConnectorRunSummary)
+    return publicConnectorRunSummary(
+      await connectors.runs.trigger(triggerConnectorRunInputSchema.parse(input)),
+    )
   })
   ipcMain.handle('connectors:status:reconnect', (_event, input) => {
     assertConnectorsAvailable(connectors)
