@@ -5,6 +5,11 @@ import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sidebar,
@@ -263,57 +268,60 @@ function AppSidebar({
                   Sourcing
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  type="button"
-                  aria-controls={connectorsChildrenId}
-                  aria-expanded={connectorsExpanded}
-                  isActive={connectorsChildActive}
-                  onClick={() => setConnectorsExpanded((expanded) => !expanded)}
-                >
-                  <Plug className="h-4 w-4" aria-hidden="true" />
-                  Connectors
-                </SidebarMenuButton>
-                {connectorsExpanded ? (
-                  <SidebarMenuSub
-                    className="mx-0 ml-4 translate-x-0 px-0 py-0 pl-2"
-                    id={connectorsChildrenId}
-                  >
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        isActive={currentView === APP_VIEWS.CONNECTORS}
-                      >
-                        <button
-                          type="button"
-                          aria-current={
-                            currentView === APP_VIEWS.CONNECTORS ? 'page' : undefined
-                          }
-                          onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
+              <Collapsible
+                asChild
+                open={connectorsExpanded}
+                onOpenChange={setConnectorsExpanded}
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      type="button"
+                      aria-controls={connectorsChildrenId}
+                      isActive={connectorsChildActive}
+                    >
+                      <Plug className="h-4 w-4" aria-hidden="true" />
+                      Connectors
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent id={connectorsChildrenId}>
+                    <SidebarMenuSub className="mx-0 ml-4 translate-x-0 px-0 py-0 pl-2">
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton
+                          asChild
+                          isActive={currentView === APP_VIEWS.CONNECTORS}
                         >
-                          Overview
-                        </button>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                    <SidebarMenuSubItem>
-                      <SidebarMenuSubButton
-                        asChild
-                        isActive={currentView === APP_VIEWS.CONNECTOR_RUNS}
-                      >
-                        <button
-                          type="button"
-                          aria-current={
-                            currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined
-                          }
-                          onClick={() => onViewChange(APP_VIEWS.CONNECTOR_RUNS)}
+                          <button
+                            type="button"
+                            aria-current={
+                              currentView === APP_VIEWS.CONNECTORS ? 'page' : undefined
+                            }
+                            onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
+                          >
+                            Overview
+                          </button>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton
+                          asChild
+                          isActive={currentView === APP_VIEWS.CONNECTOR_RUNS}
                         >
-                          Runs
-                        </button>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  </SidebarMenuSub>
-                ) : null}
-              </SidebarMenuItem>
+                          <button
+                            type="button"
+                            aria-current={
+                              currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined
+                            }
+                            onClick={() => onViewChange(APP_VIEWS.CONNECTOR_RUNS)}
+                          >
+                            Runs
+                          </button>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
           </nav>
         </div>

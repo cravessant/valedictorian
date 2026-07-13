@@ -209,13 +209,23 @@ describe('navigation hierarchy', () => {
     expect(connectorsToggle).toHaveAttribute('aria-controls')
     const childrenId = connectorsToggle.getAttribute('aria-controls')
     expect(childrenId).toBeTruthy()
-    expect(document.getElementById(childrenId!)).not.toBeInTheDocument()
+    expect(within(appNavigation).queryByRole('button', { name: 'Overview' })).not.toBeInTheDocument()
+    expect(within(appNavigation).queryByRole('button', { name: 'Runs' })).not.toBeInTheDocument()
+    const closedContent = document.getElementById(childrenId!)
+    if (closedContent) {
+      expect(closedContent).toHaveAttribute('data-slot', 'collapsible-content')
+      expect(closedContent).toHaveAttribute('data-state', 'closed')
+      expect(closedContent).toHaveAttribute('hidden')
+    }
 
     fireEvent.click(connectorsToggle)
 
     expect(connectorsToggle).toHaveAttribute('aria-expanded', 'true')
     const children = document.getElementById(childrenId!)
     expect(children).toBeInTheDocument()
+    expect(children).toHaveAttribute('data-slot', 'collapsible-content')
+    expect(children).toHaveAttribute('data-state', 'open')
+    expect(children).not.toHaveAttribute('hidden')
     expect(connectorsToggle).toHaveAttribute('aria-controls', childrenId)
 
     const overview = within(appNavigation).getByRole('button', { name: 'Overview' })
