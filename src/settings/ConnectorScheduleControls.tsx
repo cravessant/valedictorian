@@ -2,6 +2,7 @@ import { useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import type {
   ConnectorScheduleSummary,
   ConnectorSchedulingCapability,
@@ -171,8 +172,7 @@ export function ConnectorScheduleControls({
 
       <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={modeId}>
         Schedule mode
-        <select
-          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+        <NativeSelect
           disabled={isSaving}
           id={modeId}
           value={draft.mode}
@@ -184,34 +184,33 @@ export function ConnectorScheduleControls({
             })
           }}
         >
-          <option value="manual">Manual only</option>
-          {presets.length > 0 ? <option value="preset">Common preset</option> : null}
+          <NativeSelectOption value="manual">Manual only</NativeSelectOption>
+          {presets.length > 0 ? <NativeSelectOption value="preset">Common preset</NativeSelectOption> : null}
           {capability.supportedCadences.includes('interval') ? (
-            <option value="custom-interval">Custom interval</option>
+            <NativeSelectOption value="custom-interval">Custom interval</NativeSelectOption>
           ) : null}
           {capability.supportedCadences.includes('daily') ? (
-            <option value="custom-daily">Custom daily</option>
+            <NativeSelectOption value="custom-daily">Custom daily</NativeSelectOption>
           ) : null}
           {capability.supportedCadences.includes('weekly') ? (
-            <option value="custom-weekly">Custom weekly</option>
+            <NativeSelectOption value="custom-weekly">Custom weekly</NativeSelectOption>
           ) : null}
-        </select>
+        </NativeSelect>
       </Label>
 
       {draft.mode === 'preset' ? (
         <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={presetId}>
           Preset
-          <select
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+          <NativeSelect
             disabled={isSaving}
             id={presetId}
             value={draft.presetId ?? ''}
             onChange={(event) => onDraftChange({ presetId: event.target.value || null })}
           >
             {presets.map((preset) => (
-              <option key={preset.id} value={preset.id}>{preset.label}</option>
+              <NativeSelectOption key={preset.id} value={preset.id}>{preset.label}</NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </Label>
       ) : null}
 
@@ -251,18 +250,17 @@ export function ConnectorScheduleControls({
         <div className="grid gap-3 sm:grid-cols-2">
           <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyDayId}>
             Weekday
-            <select
+            <NativeSelect
               aria-label="Weekday"
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
               disabled={isSaving}
               id={weeklyDayId}
               value={draft.dayOfWeek}
               onChange={(event) => onDraftChange({ dayOfWeek: event.target.value })}
             >
               {WEEKDAY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <NativeSelectOption key={option.value} value={option.value}>{option.label}</NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </Label>
           <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
             Weekly local time
@@ -282,18 +280,17 @@ export function ConnectorScheduleControls({
       {draft.mode !== 'manual' ? (
         <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
           Timezone
-          <select
+          <NativeSelect
             aria-label="Timezone"
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
             disabled={isSaving}
             id={timezoneId}
             value={draft.timezone}
             onChange={(event) => onDraftChange({ timezone: event.target.value })}
           >
             {timezones.map((timezone) => (
-              <option key={timezone} value={timezone}>{timezone}</option>
+              <NativeSelectOption key={timezone} value={timezone}>{timezone}</NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </Label>
       ) : null}
 

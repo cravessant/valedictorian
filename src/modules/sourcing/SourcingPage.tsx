@@ -6,6 +6,7 @@ import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Label } from '@/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { AlertCircle, Ban, Pencil } from 'lucide-react'
 import {
   sourcingMergeStatuses,
@@ -137,25 +138,23 @@ function SourcingPage({
             </div>
             <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
               Source
-              <select
+              <NativeSelect
                 aria-label="Source"
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
                 value={sourceId}
                 onChange={(event) => onSourceChange(event.target.value)}
               >
-                <option value="">Any source</option>
+                <NativeSelectOption value="">Any source</NativeSelectOption>
                 {sourceOptions.map((sourceOption) => (
-                  <option key={sourceOption.sourceId} value={sourceOption.sourceId}>
+                  <NativeSelectOption key={sourceOption.sourceId} value={sourceOption.sourceId}>
                     {sourceOption.sourceName}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
               Destination class
-              <select
+              <NativeSelect
                 aria-label="Destination class"
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
                 value={destinationClass ?? ''}
                 onChange={(event) => onDestinationClassChange(
                   event.target.value
@@ -163,33 +162,31 @@ function SourcingPage({
                     : undefined,
                 )}
               >
-                <option value="">Any destination</option>
+                <NativeSelectOption value="">Any destination</NativeSelectOption>
                 {sourcingDestinationClasses.map((value) => (
-                  <option key={value} value={value}>{destinationClassLabel(value)}</option>
+                  <NativeSelectOption key={value} value={value}>{destinationClassLabel(value)}</NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
               Usability
-              <select
+              <NativeSelect
                 aria-label="Usability"
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
                 value={usability ?? ''}
                 onChange={(event) => onUsabilityChange(
                   event.target.value ? event.target.value as SourcingUsability : undefined,
                 )}
               >
-                <option value="">Any usability</option>
+                <NativeSelectOption value="">Any usability</NativeSelectOption>
                 {sourcingUsabilities.map((value) => (
-                  <option key={value} value={value}>{usabilityLabel(value)}</option>
+                  <NativeSelectOption key={value} value={value}>{usabilityLabel(value)}</NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
             <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
               Merge status
-              <select
+              <NativeSelect
                 aria-label="Merge status"
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
                 value={mergeStatus ?? ''}
                 onChange={(event) =>
                   onMergeStatusChange(
@@ -197,13 +194,13 @@ function SourcingPage({
                   )
                 }
               >
-                <option value="">Any status</option>
+                <NativeSelectOption value="">Any status</NativeSelectOption>
                 {sourcingMergeStatuses.map((status) => (
-                  <option key={status} value={status}>
+                  <NativeSelectOption key={status} value={status}>
                     {formatEnumLabel(status)}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </Label>
           </div>
         </section>

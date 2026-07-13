@@ -4,6 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/use-toast'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   defaultUserProfile,
   normalizeProfileEducationInput,
@@ -802,9 +803,9 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                   <span>Education type</span>
-                  <select
+                  <NativeSelect
                     aria-label="Education type"
-                    className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                    className="px-2"
                     value={educationDraft.educationType}
                     onChange={(event) =>
                       setEducationDraft((current) => ({
@@ -814,11 +815,11 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     }
                   >
                     {profileEducationTypeOptions.map((option) => (
-                      <option key={option} value={option}>
+                      <NativeSelectOption key={option} value={option}>
                         {option}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </Label>
                 {educationDraft.educationType === 'Other' ? (
                   <CompactInput
@@ -975,9 +976,9 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                 />
                 <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                   <span>Type</span>
-                  <select
+                  <NativeSelect
                     aria-label="Secure value type"
-                    className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                    className="px-2"
                     value={secretDraft.kind}
                     onChange={(event) =>
                       setSecretDraft((current) => ({
@@ -986,11 +987,11 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                       }))
                     }
                   >
-                    <option value="password">password</option>
-                    <option value="token">token</option>
-                    <option value="identity">identity</option>
-                    <option value="other">other</option>
-                  </select>
+                    <NativeSelectOption value="password">password</NativeSelectOption>
+                    <NativeSelectOption value="token">token</NativeSelectOption>
+                    <NativeSelectOption value="identity">identity</NativeSelectOption>
+                    <NativeSelectOption value="other">other</NativeSelectOption>
+                  </NativeSelect>
                 </Label>
                 <CompactInput
                   label="Secure value"

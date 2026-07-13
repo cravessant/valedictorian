@@ -5,6 +5,7 @@ import { ModalShell } from '@/components/ui/modal-shell'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { formatEnumLabel } from '../../app/labels'
 import {
   applicationStatuses,
@@ -405,19 +406,18 @@ function EditorOptionalSelect({
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <select
+      <NativeSelect
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">None</option>
+        <NativeSelectOption value="">None</NativeSelectOption>
         {options.map((option) => (
-          <option key={option} value={option}>
+          <NativeSelectOption key={option} value={option}>
             {formatEnumLabel(option)}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
+      </NativeSelect>
     </Label>
   )
 }
@@ -484,19 +484,18 @@ function EditorSelect({
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <select
+      <NativeSelect
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
         disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
         {options.map((option) => (
-          <option key={option} value={option}>
+          <NativeSelectOption key={option} value={option}>
             {formatEnumLabel(option)}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
+      </NativeSelect>
     </Label>
   )
 }

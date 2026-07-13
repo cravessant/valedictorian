@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/toaster'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
@@ -28,8 +29,6 @@ import {
   APP_VIEWS,
   PAGE_LIMIT,
 } from './app/types'
-
-const filterControlClassName = 'h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground'
 
 export function AppShell({
   actionQueueBucket,
@@ -408,48 +407,45 @@ export function AppShell({
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                       <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Status
-                        <select
+                        <NativeSelect
                           aria-label="Status"
-                          className={filterControlClassName}
                           value={filters.status}
                           onChange={(event) => updateFilter('status', event.target.value)}
                         >
-                          <option value="">Any status</option>
+                          <NativeSelectOption value="">Any status</NativeSelectOption>
                           {applicationStatuses.map((status) => (
-                            <option key={status} value={status}>
+                            <NativeSelectOption key={status} value={status}>
                               {formatEnumLabel(status)}
-                            </option>
+                            </NativeSelectOption>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </Label>
                       <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Sort
-                        <select
+                        <NativeSelect
                           aria-label="Sort"
-                          className={filterControlClassName}
                           value={filters.sort}
                           onChange={(event) => updateFilter('sort', event.target.value)}
                         >
                           {applicationListSorts.map((sort) => (
-                            <option key={sort} value={sort}>
+                            <NativeSelectOption key={sort} value={sort}>
                               {formatEnumLabel(sort)}
-                            </option>
+                            </NativeSelectOption>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </Label>
                       <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Score band
-                        <select
+                        <NativeSelect
                           aria-label="Score band"
-                          className={filterControlClassName}
                           value={filters.priorityBand}
                           onChange={(event) => updateFilter('priorityBand', event.target.value)}
                         >
-                          <option value="">Any band</option>
-                          <option value="high">High</option>
-                          <option value="medium">Medium</option>
-                          <option value="skip">Skip</option>
-                        </select>
+                          <NativeSelectOption value="">Any band</NativeSelectOption>
+                          <NativeSelectOption value="high">High</NativeSelectOption>
+                          <NativeSelectOption value="medium">Medium</NativeSelectOption>
+                          <NativeSelectOption value="skip">Skip</NativeSelectOption>
+                        </NativeSelect>
                       </Label>
                       <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Min score
@@ -464,18 +460,17 @@ export function AppShell({
                       </Label>
                       <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Work mode
-                        <select
+                        <NativeSelect
                           aria-label="Work mode"
-                          className={filterControlClassName}
                           value={filters.workMode}
                           onChange={(event) => updateFilter('workMode', event.target.value)}
                         >
-                          <option value="">Any mode</option>
-                          <option value="remote">Remote</option>
-                          <option value="onsite">Onsite</option>
-                          <option value="hybrid">Hybrid</option>
-                          <option value="unclear">Unclear</option>
-                        </select>
+                          <NativeSelectOption value="">Any mode</NativeSelectOption>
+                          <NativeSelectOption value="remote">Remote</NativeSelectOption>
+                          <NativeSelectOption value="onsite">Onsite</NativeSelectOption>
+                          <NativeSelectOption value="hybrid">Hybrid</NativeSelectOption>
+                          <NativeSelectOption value="unclear">Unclear</NativeSelectOption>
+                        </NativeSelect>
                       </Label>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

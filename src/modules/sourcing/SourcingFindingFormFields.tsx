@@ -3,6 +3,7 @@ import { formatEnumLabel } from '../../app/labels'
 
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
 export function FindingInput({
   disabled,
@@ -129,18 +130,17 @@ export function FindingSelect({
   return (
     <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <select
+      <NativeSelect
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
         {options.map((option) => (
-          <option key={option} value={option}>
+          <NativeSelectOption key={option} value={option}>
             {formatEnumLabel(option)}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
+      </NativeSelect>
     </Label>
   )
 }

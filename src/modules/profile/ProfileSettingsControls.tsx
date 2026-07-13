@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
   type ProfileAnswer,
   type ProfileEducation,
@@ -168,19 +169,18 @@ export function SettingsSelectInput({
       <span>
         <span className="block font-medium">{label}</span>
       </span>
-      <select
+      <NativeSelect
         aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">Select...</option>
+        <NativeSelectOption value="">Select...</NativeSelectOption>
         {options.map((option) => (
-          <option key={option} value={option}>
+          <NativeSelectOption key={option} value={option}>
             {option}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
+      </NativeSelect>
     </Label>
   )
 }
@@ -199,19 +199,18 @@ export function CompactSelect({
   onChange: (value: string) => void
 }) {
   return (
-    <select
+    <NativeSelect
       aria-label={label}
-      className="h-9 min-w-0 rounded-md border border-border bg-background px-3 text-sm text-foreground"
       value={value}
       onChange={(event) => onChange(event.target.value)}
     >
-      <option value="">{placeholder}</option>
+      <NativeSelectOption value="">{placeholder}</NativeSelectOption>
       {options.map((option) => (
-        <option key={option.value} value={option.value}>
+        <NativeSelectOption key={option.value} value={option.value}>
           {option.label}
-        </option>
+        </NativeSelectOption>
       ))}
-    </select>
+    </NativeSelect>
   )
 }
 
