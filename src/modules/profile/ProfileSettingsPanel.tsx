@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/use-toast'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import {
   defaultUserProfile,
@@ -929,16 +930,15 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     setAnswerDraft((current) => ({ ...current, answer: value }))
                   }
                 />
-                <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
-                  <input
+                <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground" htmlFor="profile-answer-agent-context">
+                  <Checkbox
                     aria-label="Available to automation"
                     checked={answerDraft.includeInAgentContext}
-                    className="h-4 w-4 accent-primary"
-                    type="checkbox"
-                    onChange={(event) =>
+                    id="profile-answer-agent-context"
+                    onCheckedChange={(value) =>
                       setAnswerDraft((current) => ({
                         ...current,
-                        includeInAgentContext: event.target.checked,
+                        includeInAgentContext: value === true,
                       }))
                     }
                   />

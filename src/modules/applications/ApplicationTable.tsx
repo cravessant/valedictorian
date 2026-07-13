@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -12,6 +12,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import {
   Table,
@@ -57,15 +58,21 @@ const applicationColumns: ColumnDef<ApplicationListItem>[] = [
     header: ({ table }) => (
       <SelectionCheckbox
         aria-label="Select all applications on page"
-        checked={table.getIsAllRowsSelected()}
-        onChange={table.getToggleAllRowsSelectedHandler()}
+        checked={
+          table.getIsAllPageRowsSelected()
+            ? true
+            : table.getIsSomePageRowsSelected()
+              ? 'indeterminate'
+              : false
+        }
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(value)}
       />
     ),
     cell: ({ row }) => (
       <SelectionCheckbox
         aria-label={`Select ${row.original.companyName}`}
         checked={row.getIsSelected()}
-        onChange={row.getToggleSelectedHandler()}
+        onCheckedChange={(value) => row.toggleSelected(value)}
       />
     ),
   },
@@ -377,12 +384,13 @@ function ApplicationTable({
                     <Label
                       key={column.id}
                       className="flex items-center gap-2 text-xs text-foreground"
+                      htmlFor={`application-column-${column.id}`}
                     >
-                      <input
+                      <Checkbox
                         aria-label={`${getColumnLabel(column.id)} column`}
                         checked={column.getIsVisible()}
-                        type="checkbox"
-                        onChange={column.getToggleVisibilityHandler()}
+                        id={`application-column-${column.id}`}
+                        onCheckedChange={(value) => column.toggleVisibility(value === true)}
                       />
                       {getColumnLabel(column.id)}
                     </Label>
@@ -645,22 +653,21 @@ function getColumnChromeClassName(columnId: string) {
 
 interface SelectionCheckboxProps {
   'aria-label': string
-  checked: boolean
-  onChange: ChangeEventHandler<HTMLInputElement>
+  checked: boolean | 'indeterminate'
+  onCheckedChange: (checked: boolean) => void
 }
 
 function SelectionCheckbox({
   checked,
-  onChange,
+  onCheckedChange,
   ...props
 }: SelectionCheckboxProps) {
   return (
-    <input
+    <Checkbox
       {...props}
       checked={checked}
-      className="mx-auto block h-4 w-4 rounded border-border bg-background accent-primary"
-      type="checkbox"
-      onChange={onChange}
+      className="mx-auto"
+      onCheckedChange={(value) => onCheckedChange(value === true)}
       onClick={(event) => event.stopPropagation()}
     />
   )

@@ -592,7 +592,7 @@ describe('App', () => {
       name: 'Select Astranis Space Technologies',
     })
 
-    expect(pageCheckbox).toHaveClass('mx-auto', 'block', 'h-4', 'w-4')
+    expect(pageCheckbox).toHaveClass('mx-auto', 'size-4')
     expect(pageCheckbox.closest('th')).toHaveClass('px-0', 'text-center')
 
     fireEvent.click(rowCheckbox)

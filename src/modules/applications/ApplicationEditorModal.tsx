@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { formatEnumLabel } from '../../app/labels'
@@ -228,13 +229,12 @@ function ApplicationEditorModal({
             </>
           ) : null}
           {mode === 'edit' ? (
-            <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
-              <input
+            <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground" htmlFor="application-has-applied">
+              <Checkbox
                 aria-label="Has applied"
                 checked={hasApplied}
-                className="h-4 w-4 accent-primary"
-                type="checkbox"
-                onChange={(event) => setHasApplied(event.target.checked)}
+                id="application-has-applied"
+                onCheckedChange={(value) => setHasApplied(value === true)}
               />
               <span>Has applied</span>
             </Label>

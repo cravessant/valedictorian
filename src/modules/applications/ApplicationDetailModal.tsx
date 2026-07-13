@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ModalShell } from '@/components/ui/modal-shell'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { AlertCircle, X } from 'lucide-react'
@@ -362,13 +363,12 @@ function ApplicationLinkEditorModal({
           <div className="sm:col-span-2">
             <CompactModalInput label="Link URL" value={url} onChange={setUrl} />
           </div>
-          <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
-            <input
+          <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground" htmlFor="application-link-primary">
+            <Checkbox
               aria-label="Primary link"
               checked={isPrimary}
-              className="h-4 w-4 accent-primary"
-              type="checkbox"
-              onChange={(event) => setIsPrimary(event.target.checked)}
+              id="application-link-primary"
+              onCheckedChange={(value) => setIsPrimary(value === true)}
             />
             <span>Primary link</span>
           </Label>

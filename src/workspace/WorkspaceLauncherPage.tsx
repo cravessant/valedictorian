@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import type { CreateWorkspaceInput, WorkspaceLaunchState } from './workspace.service'
@@ -226,12 +227,11 @@ function WorkspaceLauncherPage({
                   {canSeedSampleData ? (
                     <>
                       <div className="my-5 h-px bg-border" />
-                      <Label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <input
+                      <Label className="flex items-center gap-2 text-xs font-medium text-muted-foreground" htmlFor="workspace-seed-demo-data">
+                        <Checkbox
                           checked={seedSampleData}
-                          className="h-4 w-4 rounded border-border bg-background text-primary"
-                          onChange={(event) => setSeedSampleData(event.target.checked)}
-                          type="checkbox"
+                          id="workspace-seed-demo-data"
+                          onCheckedChange={(value) => setSeedSampleData(value === true)}
                         />
                         Seed demo data
                       </Label>
