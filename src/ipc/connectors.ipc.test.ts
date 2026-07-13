@@ -4,29 +4,6 @@ import { registerConnectorsIpc } from './connectors.ipc'
 
 describe('connectors IPC registration', () => {
   it('registers a connector status handler against the local client', async () => {
-    const status = {
-      available: true,
-      items: [
-        {
-          id: 'connector-instance-fixture',
-          connectorId: 'fixture.jobs',
-          displayName: 'Fixture Jobs',
-          enabled: true,
-          lastRunAt: '2026-07-08T17:00:01.000Z',
-          latestRunId: 'connector-run-1',
-          observationCount: 0,
-          severity: 'blocked',
-          status: 'auth_required',
-          statusLabel: 'Auth required',
-          summary: 'Reconnect the connector session to continue refreshes.',
-          warningCount: 1,
-          warnings: [],
-          actionLabel: 'Reconnect',
-          actions: [{ id: 'reconnect', label: 'Reconnect' }],
-        },
-      ],
-    } as const
-    const listStatus = vi.fn(async () => status)
     const reconnect = vi.fn(async () => ({
       action: 'reconnect',
       connectorInstanceId: 'connector-instance-fixture',
@@ -38,12 +15,16 @@ describe('connectors IPC registration', () => {
       action: 'skip',
       connectorInstanceId: 'connector-instance-fixture',
       message: 'Connector run skipped.',
-      run: { id: 'connector-run-skipped', status: 'skipped' },
+      run: {
+        ...connectorRunWithLocalFields(),
+        connectorInstanceId: 'connector-instance-fixture',
+        status: 'cancelled',
+        outcome: { kind: 'cancelled', reason: 'user_skipped_auth_required_run' },
+      },
       status: 'skipped',
     }))
     const connectors = {
       status: {
-        list: listStatus,
         reconnect,
         skip,
       },
@@ -56,7 +37,6 @@ describe('connectors IPC registration', () => {
       },
     })
 
-    await expect(handlers.get('connectors:status:list')?.({})).resolves.toEqual(status)
     await expect(
       handlers.get('connectors:status:reconnect')?.(
         {},
@@ -72,7 +52,6 @@ describe('connectors IPC registration', () => {
         },
       ),
     ).resolves.toMatchObject({ action: 'skip', status: 'skipped' })
-    expect(listStatus).toHaveBeenCalled()
     expect(reconnect).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance-fixture' })
     expect(skip).toHaveBeenCalledWith({
       connectorInstanceId: 'connector-instance-fixture',
@@ -86,10 +65,28 @@ describe('connectors IPC registration', () => {
     const update = vi.fn(async (input: unknown) => ({ id: 'connector-instance', input }))
     const inspect = vi.fn(async (connectorInstanceId: string) => ({
       id: connectorInstanceId,
-      status: 'healthy',
+      connectorId: 'fixture.jobs',
+      connectorVersion: '1.0.0',
+      displayName: 'Fixture jobs',
+      enabled: true,
+      auth: [],
+      actionRequired: [],
+      actions: [],
+      lastRunAt: '2026-07-12T12:00:00.000Z',
+      latestRunId: 'connector-run-fixture',
+      observationCount: 1,
+      severity: 'healthy',
+      status: 'caught_up',
+      statusLabel: 'Caught up',
+      summary: 'Connector synchronization is caught up.',
+      warningCount: 0,
+      warnings: [],
+      secretSession: 'must-not-cross-ipc',
     }))
-    const listRuns = vi.fn(async (input: unknown) => ({ items: [], input }))
-    const trigger = vi.fn(async (input: unknown) => ({ id: 'connector-run', input }))
+    const listRuns = vi.fn(async () => ({
+      items: [], total: 0, limit: 20, offset: 0, hasMore: false,
+    }))
+    const trigger = vi.fn(async () => connectorRunWithLocalFields())
     const connectors = {
       list,
       create,
@@ -123,7 +120,25 @@ describe('connectors IPC registration', () => {
       ),
     ).resolves.toMatchObject({ id: 'connector-instance' })
     await expect(handlers.get('connectors:inspect')?.({}, 'connector-instance'))
-      .resolves.toMatchObject({ id: 'connector-instance', status: 'healthy' })
+      .resolves.toEqual({
+        id: 'connector-instance',
+        connectorId: 'fixture.jobs',
+        connectorVersion: '1.0.0',
+        displayName: 'Fixture jobs',
+        enabled: true,
+        auth: [],
+        actionRequired: [],
+        actions: [],
+        lastRunAt: '2026-07-12T12:00:00.000Z',
+        latestRunId: 'connector-run-fixture',
+        observationCount: 1,
+        severity: 'healthy',
+        status: 'caught_up',
+        statusLabel: 'Caught up',
+        summary: 'Connector synchronization is caught up.',
+        warningCount: 0,
+        warnings: [],
+      })
     await expect(
       handlers.get('connectors:runs:list')?.({}, { connectorInstanceId: 'connector-instance' }),
     ).resolves.toMatchObject({ items: [] })
@@ -132,7 +147,7 @@ describe('connectors IPC registration', () => {
         {},
         { connectorInstanceId: 'connector-instance', mode: 'manual' },
       ),
-    ).resolves.toMatchObject({ id: 'connector-run' })
+    ).resolves.toMatchObject({ id: 'run-1' })
 
     expect(list).toHaveBeenCalled()
     expect(create).toHaveBeenCalledWith({ id: 'connector-instance' })
@@ -142,7 +157,76 @@ describe('connectors IPC registration', () => {
     expect(trigger).toHaveBeenCalledWith({ connectorInstanceId: 'connector-instance', mode: 'manual' })
   })
 
-  it('returns an empty connector status list when local connectors are unavailable', async () => {
+  it('publishes the same sanitized connector run shape as HTTP', async () => {
+    const run = connectorRunWithLocalFields()
+    const connectors = {
+      runs: {
+        list: vi.fn(async () => ({
+          items: [run], total: 1, limit: 20, offset: 0, hasMore: false,
+        })),
+        trigger: vi.fn(async () => run),
+      },
+    } as unknown as LocalValedictorianClient['connectors']
+    const handlers = new Map<
+      string,
+      (_event: unknown, input?: unknown) => Promise<unknown>
+    >()
+    registerConnectorsIpc(connectors, {
+      handle(channel, handler) {
+        handlers.set(channel, handler)
+      },
+    })
+
+    const expected = publicRunFixture(run)
+    await expect(handlers.get('connectors:runs:list')?.(
+      {},
+      { connectorInstanceId: 'connector-1' },
+    )).resolves.toEqual({
+      items: [expected], total: 1, limit: 20, offset: 0, hasMore: false,
+    })
+    await expect(handlers.get('connectors:runs:trigger')?.(
+      {},
+      { connectorInstanceId: 'connector-1' },
+    )).resolves.toEqual(expected)
+  })
+
+  it('publishes a strict skip result without local run fields or the caller reason', async () => {
+    const run = {
+      ...connectorRunWithLocalFields(),
+      status: 'cancelled',
+      outcome: { kind: 'cancelled', reason: 'user_skipped_private_caller_reason' },
+    }
+    const connectors = {
+      status: {
+        skip: vi.fn(async () => ({
+          action: 'skip', connectorInstanceId: 'connector-1', message: 'Connector run skipped.',
+          run, status: 'skipped', internalStatusReason: 'must-not-cross-ipc',
+        })),
+      },
+    } as unknown as LocalValedictorianClient['connectors']
+    const handlers = new Map<string, (_event: unknown, input?: unknown) => Promise<unknown>>()
+    registerConnectorsIpc(connectors, {
+      handle(channel, handler) { handlers.set(channel, handler) },
+    })
+
+    const result = await handlers.get('connectors:status:skip')?.(
+      {}, { connectorInstanceId: 'connector-1', reason: 'user_skipped_private_caller_reason' },
+    )
+
+    expect(result).toEqual({
+      action: 'skip', connectorInstanceId: 'connector-1', message: 'Connector run skipped.',
+      run: {
+        ...publicRunFixture(run),
+        outcome: { kind: 'cancelled', reason: 'user_skipped' },
+      },
+      status: 'skipped',
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /coverage|retryHints|stats|secretSession|private_caller_reason|internalStatusReason/,
+    )
+  })
+
+  it('does not register an IPC-only connector status list', async () => {
     const handlers = new Map<string, (_event: unknown) => Promise<unknown>>()
 
     registerConnectorsIpc(null, {
@@ -151,9 +235,58 @@ describe('connectors IPC registration', () => {
       },
     })
 
-    await expect(handlers.get('connectors:status:list')?.({})).resolves.toEqual({
-      available: false,
-      items: [],
-    })
+    expect(handlers.has('connectors:status:list')).toBe(false)
   })
 })
+
+function connectorRunWithLocalFields() {
+  return {
+    id: 'run-1', connectorInstanceId: 'connector-1',
+    executionScopeId: 'scope_connector_1', mode: 'manual', scheduleOccurrence: null,
+    status: 'completed', filterSignature: 'all', observationCount: 1,
+    warningCount: 0, warnings: [], newestFrontier: { state: 'advancing' },
+    historicalBackfill: {
+      state: 'advancing', boundary: { earliestDate: '2026-07-01' },
+    },
+    pendingResolutionCount: 0,
+    lifecycleCounts: {
+      version: 'connector-run-lifecycle-counts/v1', source: 'frozen_terminal',
+      scope: {
+        kind: 'connector_run', connectorRunId: 'run-1',
+        executionScopeId: 'scope_connector_1',
+      },
+      provider: {
+        returnedRows: 1, validRecords: 1, invalidRecords: 0, sourceDuplicates: 0,
+        capturedRecords: 1, occurrenceCount: 1, captureShortfall: 0,
+        unclassifiedRows: 0, invariant: 'reconciled', gaps: [],
+      },
+      destination: {
+        normalized: 1, resolvedEmployerOrAts: 1, resolvedThirdParty: 0,
+        unresolved: 0, pending: 0, gateRejected: 0, unclassified: 0,
+        invariant: 'reconciled',
+      },
+      sourcing: {
+        findingsAdded: 1, canonicalDuplicates: 0, notFit: 0, rejected: 0,
+        actionableReview: 0, unclassified: 0, invariant: 'reconciled',
+      },
+    },
+    outcome: { kind: 'yielded', reason: 'invocation_budget' },
+    startedAt: '2026-07-13T04:00:00.000Z',
+    completedAt: '2026-07-13T04:00:01.000Z',
+    coverage: { start: null, end: null },
+    retryHints: { token: 'must-not-cross-ipc' },
+    stats: { session: 'must-not-cross-ipc' },
+    secretSession: 'must-not-cross-ipc',
+  }
+}
+
+function publicRunFixture(run: ReturnType<typeof connectorRunWithLocalFields>) {
+  const {
+    coverage: _coverage,
+    retryHints: _retryHints,
+    stats: _stats,
+    secretSession: _secretSession,
+    ...publicRun
+  } = run
+  return publicRun
+}

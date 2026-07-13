@@ -119,7 +119,7 @@ export function reconcileConnectorRunLifecycleCounts(
       gaps.push('provider_equation_mismatch')
     }
   }
-  const returnedRows = reportedReturnedRows ?? occurrences.length
+  const returnedRows = reportedReturnedRows ?? 0
   const invalidRecords = reportedInvalidRows ?? capturedInvalidRecords
   const sourceDuplicates = reportedSourceDuplicates ?? 0
   const validRecords = reportedValidRows !== null
@@ -154,11 +154,16 @@ export function reconcileConnectorRunLifecycleCounts(
     gateRejected: 0,
     unclassified: 0,
   }
-  const normalizedJobs: Array<{ candidateId: string; sourceEntityId: string }> = []
+  const normalizedJobs: Array<{
+    candidateId: string
+    ownerConnectorRunId: string | null
+    sourceEntityId: string
+  }> = []
   for (const revision of scopedRevisions.values()) {
     const normalization = database
       .select({
         runId: normalizationRuns.id,
+        ownerConnectorRunId: normalizationRuns.triggerConnectorRunId,
         gateStatus: normalizationGates.status,
         candidateId: canonicalSourceCandidates.id,
         sourceEntityId: canonicalSourceCandidates.sourceEntityId,
@@ -198,6 +203,7 @@ export function reconcileConnectorRunLifecycleCounts(
       if (normalization.candidateId && normalization.sourceEntityId) {
         normalizedJobs.push({
           candidateId: normalization.candidateId,
+          ownerConnectorRunId: normalization.ownerConnectorRunId,
           sourceEntityId: normalization.sourceEntityId,
         })
       }
@@ -256,6 +262,7 @@ export function reconcileConnectorRunLifecycleCounts(
       .select({
         id: sourcingFindings.id,
         blocker: sourcingFindings.blocker,
+        createdAt: sourcingFindings.createdAt,
         dispositionReason: sourcingFindings.dispositionReason,
         mergeStatus: sourcingFindings.mergeStatus,
       })
@@ -264,6 +271,10 @@ export function reconcileConnectorRunLifecycleCounts(
       .get()
     if (!finding) {
       sourcing.unclassified += 1
+      continue
+    }
+    if (job.ownerConnectorRunId !== run.id || finding.createdAt < run.startedAt) {
+      sourcing.queueDuplicate += 1
       continue
     }
     if (seenFindingIds.has(finding.id)) {

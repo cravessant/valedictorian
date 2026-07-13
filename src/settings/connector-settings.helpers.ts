@@ -1,7 +1,4 @@
-import {
-  JOBRIGHT_CONNECTOR_ID,
-  JOBRIGHT_DEFAULT_DISCOVERY_COUNT,
-} from '../modules/connectors/jobright.constants'
+import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import type {
   ConnectorAuthUiState,
   ConnectorSettingsDraft,
@@ -108,10 +105,8 @@ export function sanitizedConnectorAuthErrorMessage(error: unknown): string {
 export function defaultConnectorSettingsDraft(
   instance: ConnectorSettingsInstance | undefined,
 ): ConnectorSettingsDraft {
-  const config = recordFromUnknown(instance?.config)
-
   return {
-    discoveryCount: String(numberFromUnknown(config.discoveryCount, JOBRIGHT_DEFAULT_DISCOVERY_COUNT)),
+    enabled: instance?.enabled ?? true,
     earliestBackfillDate: instance?.earliestBackfillDate ?? '',
   }
 }

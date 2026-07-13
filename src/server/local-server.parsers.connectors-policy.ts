@@ -3,7 +3,9 @@ import {
   isPolicySubjectType,
   isActionQueueBucket,
   canonicalDateOnlySchema,
+  connectorOverviewListQuerySchema,
   type CreateConnectorInstanceInput,
+  type ConnectorOverviewListQuery,
   type EvaluateApplicationPolicyInput,
   type EvaluateRunWindowPolicyInput,
   type EvaluateSourcingCandidatePolicyInput,
@@ -35,6 +37,19 @@ import {
 } from './local-server.parsers.query-primitives'
 
 const connectorRunModes = new Set(['manual'])
+
+export function parseConnectorOverviewListQuery(requestUrl: URL): ConnectorOverviewListQuery {
+  const query: Record<string, unknown> = {}
+  setStringQuery(requestUrl, 'cursor', (value) => { query.cursor = value })
+  setNumberQuery(requestUrl, 'limit', (value) => { query.limit = value })
+  setStringQuery(requestUrl, 'enabled', (value) => {
+    if (value !== 'true' && value !== 'false') throw new Error(`Invalid enabled filter: ${value}`)
+    query.enabled = value === 'true'
+  })
+  setStringQuery(requestUrl, 'severity', (value) => { query.severity = value })
+  setStringQuery(requestUrl, 'status', (value) => { query.status = value })
+  return connectorOverviewListQuerySchema.parse(query)
+}
 export interface ConnectorRunsListQuery {
   connectorInstanceId: string
   status?: string

@@ -74,6 +74,9 @@ describe('connector instance applicability', () => {
     const runActions = screen.getByTestId('connector-run-actions-jobright-default')
     expect(runActions).toHaveClass('lg:grid-cols-2')
     expect(runActions).not.toHaveClass('md:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto]')
+    expect(within(runActions).getByText(
+      'Run now advances the newest frontier, historical backfill, and pending link resolution.',
+    )).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add credentials' }))
     const credentialForm = screen.getByTestId('connector-credential-form-jobright-default')
@@ -101,7 +104,7 @@ describe('connector instance applicability', () => {
         mode: 'manual',
       }))
     })
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'View connector runs' }))
 
@@ -189,7 +192,7 @@ describe('connector instance applicability', () => {
     const runButton = screen.getByRole('button', { name: 'Run Jobright now' })
     await waitFor(() => expect(runButton).toBeEnabled())
     fireEvent.click(runButton)
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
     await expect(client.connectors.list()).resolves.toMatchObject({
       items: [expect.objectContaining({ connectorVersion: '0.11.0' })],
     })

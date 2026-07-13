@@ -748,7 +748,7 @@ describe('runtime local Valedictorian client', () => {
       retryHints: authFailed.run.retryHints,
     })
     expect(authFailed.status).toMatchObject({
-      status: 'skipped',
+      status: 'auth_required',
     })
     expect(authFailed.fetchUrls).toHaveLength(1)
     expect(authFailed.retryItems).toEqual([])
@@ -835,7 +835,7 @@ describe('runtime local Valedictorian client', () => {
       retryHints: zeroUsefulResults.run.retryHints,
     })
     expect(zeroUsefulResults.status).toMatchObject({
-      status: 'healthy',
+      status: 'source_exhausted',
       warnings: zeroUsefulResults.run.warnings,
     })
     expect(zeroUsefulResults.fetchUrls).toHaveLength(5)

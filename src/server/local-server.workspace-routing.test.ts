@@ -146,6 +146,10 @@ describe('local Valedictorian HTTP server', () => {
         calls.push(['inspect', connectorInstanceId])
         return {
           id: connectorInstanceId,
+          connectorId: 'jobright.resolver',
+          connectorVersion: '1.0.0',
+          displayName: 'Jobright',
+          enabled: true,
           auth: [{ id: 'jobright-session', configured: false, label: 'Jobright', mode: 'api_key' }],
           actionRequired: [
             {
@@ -156,7 +160,17 @@ describe('local Valedictorian HTTP server', () => {
               severity: 'blocked',
             },
           ],
-          status: 'auth_required',
+          actions: [{ id: 'reconnect', label: 'Reconnect' }],
+          lastRunAt: '2026-07-08T00:00:00.000Z',
+          latestRunId: 'run-auth-required',
+          observationCount: 0,
+          severity: 'blocked',
+          status: 'authentication_required',
+          statusLabel: 'Authentication required',
+          summary: 'Reconnect the connector session.',
+          warningCount: 0,
+          warnings: [],
+          secretSession: 'must-not-cross-http',
         }
       },
       runs: {
@@ -176,9 +190,38 @@ describe('local Valedictorian HTTP server', () => {
             newestFrontier: { state: 'not_started' },
             historicalBackfill: { state: 'not_started', boundary: { earliestDate: '2026-07-01' } },
             pendingResolutionCount: 0,
+            lifecycleCounts: {
+              version: 'connector-run-lifecycle-counts/v1',
+              source: 'live_current',
+              scope: {
+                kind: 'connector_run',
+                connectorRunId: 'run-queued',
+                executionScopeId: 'scope_connector_one',
+              },
+              provider: {
+                returnedRows: 0, validRecords: 0, invalidRecords: 0,
+                sourceDuplicates: 0, capturedRecords: 0, occurrenceCount: 0,
+                captureShortfall: 0, unclassifiedRows: 0,
+                invariant: 'reconciled', gaps: [],
+              },
+              destination: {
+                normalized: 0, resolvedEmployerOrAts: 0, resolvedThirdParty: 0,
+                unresolved: 0, pending: 0, gateRejected: 0, unclassified: 0,
+                invariant: 'reconciled',
+              },
+              sourcing: {
+                findingsAdded: 0, canonicalDuplicates: 0, notFit: 0,
+                rejected: 0, actionableReview: 0, unclassified: 0,
+                invariant: 'reconciled',
+              },
+            },
             outcome: { kind: 'in_progress' },
             startedAt: '2026-07-08T00:00:00.000Z',
             completedAt: null,
+            coverage: { start: null, end: null },
+            retryHints: { token: 'must-not-cross-http' },
+            stats: { session: 'must-not-cross-http' },
+            secretSession: 'must-not-cross-http',
           }
         },
       },
@@ -291,17 +334,25 @@ describe('local Valedictorian HTTP server', () => {
       displayName: 'Jobright Internships',
     })
     expect(inspectResponse.status).toBe(200)
-    await expect(readJson(inspectResponse)).resolves.toMatchObject({
+    const inspected = await readJson(inspectResponse) as Record<string, unknown>
+    expect(inspected).toMatchObject({
       actionRequired: [{ kind: 'auth' }],
       auth: [{ configured: false, id: 'jobright-session', mode: 'api_key' }],
-      status: 'auth_required',
+      status: 'authentication_required',
     })
+    expect(inspected).not.toHaveProperty('secretSession')
     expect(triggerResponse.status).toBe(200)
-    await expect(readJson(triggerResponse)).resolves.toMatchObject({
+    const triggered = await readJson(triggerResponse) as Record<string, unknown>
+    expect(triggered).toMatchObject({
       connectorInstanceId: 'connector one',
       id: 'run-queued',
+      lifecycleCounts: { source: 'live_current' },
       status: 'queued',
     })
+    expect(triggered).not.toHaveProperty('coverage')
+    expect(triggered).not.toHaveProperty('retryHints')
+    expect(triggered).not.toHaveProperty('stats')
+    expect(triggered).not.toHaveProperty('secretSession')
     expect(observationsResponse.status).toBe(200)
     await expect(readJson(observationsResponse)).resolves.toEqual({
       hasMore: false,

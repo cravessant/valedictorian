@@ -33,6 +33,7 @@ describe('Electron sourcing wiring', () => {
   it('exposes connector preload APIs and registers connector IPC handlers', () => {
     const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const runtimeIpcSource = fs.readFileSync(path.resolve('electron/runtime-ipc.ts'), 'utf8')
     const envSource = fs.readFileSync(path.resolve('electron/electron-env.d.ts'), 'utf8')
 
     expect(preloadSource).toContain('createConnectorsPreloadApi')
@@ -48,16 +49,37 @@ describe('Electron sourcing wiring', () => {
     expect(mainSource).not.toContain('resolveJobrightLink')
     expect(fs.existsSync(path.resolve('electron/connector-ports.ts'))).toBe(false)
     expect(fs.existsSync(path.resolve('electron/connector-ports.test.ts'))).toBe(false)
-    expect(mainSource).toContain("'connectors:list'")
-    expect(mainSource).toContain("'connectors:create'")
-    expect(mainSource).toContain("'connectors:update'")
-    expect(mainSource).toContain("'connectors:inspect'")
-    expect(mainSource).toContain("'connectors:runs:list'")
-    expect(mainSource).toContain("'connectors:runs:trigger'")
-    expect(mainSource).toContain("'connectors:status:list'")
-    expect(mainSource).toContain("'connectors:status:reconnect'")
-    expect(mainSource).toContain("'connectors:status:skip'")
+    expect(runtimeIpcSource).toContain("'connectors:list'")
+    expect(runtimeIpcSource).toContain("'connectors:create'")
+    expect(runtimeIpcSource).toContain("'connectors:update'")
+    expect(runtimeIpcSource).toContain("'connectors:inspect'")
+    expect(runtimeIpcSource).not.toContain("'connectors:overview:list'")
+    expect(runtimeIpcSource).toContain("'connectors:runs:list'")
+    expect(runtimeIpcSource).toContain("'connectors:runs:trigger'")
+    expect(runtimeIpcSource).not.toContain("'connectors:status:list'")
+    expect(runtimeIpcSource).toContain("'connectors:status:reconnect'")
+    expect(runtimeIpcSource).toContain("'connectors:status:skip'")
     expect(envSource).toContain("connectors: import('../src/ipc/connectors.preload').ConnectorsPreloadApi")
+  })
+
+  it('keeps Connector Overview on the workspace-scoped HTTP boundary', () => {
+    const runtimeIpcSource = fs.readFileSync(path.resolve('electron/runtime-ipc.ts'), 'utf8')
+    const connectorsIpcSource = fs.readFileSync(path.resolve('src/ipc/connectors.ipc.ts'), 'utf8')
+    const connectorsPreloadSource = fs.readFileSync(
+      path.resolve('src/ipc/connectors.preload.ts'),
+      'utf8',
+    )
+    const loadersSource = fs.readFileSync(path.resolve('src/app/loaders.ts'), 'utf8')
+
+    for (const source of [runtimeIpcSource, connectorsIpcSource, connectorsPreloadSource]) {
+      expect(source).not.toContain("'connectors:overview:list'")
+    }
+
+    expect(connectorsPreloadSource).not.toContain('ConnectorOverviewList')
+    expect(connectorsPreloadSource).not.toMatch(/\boverview:\s*\{/)
+    expect(loadersSource).not.toContain('defaultConnectorsApi.overview')
+    expect(loadersSource).not.toContain('connectorsWindow.connectors?.overview')
+    expect(loadersSource).toContain('httpClient.connectors.overview.list')
   })
 
   it('exposes workspace preload APIs and registers workspace IPC handlers', () => {
@@ -231,7 +253,7 @@ describe('Electron sourcing wiring', () => {
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
 
     expect(mainSource).toContain('replaceMainWindowForWorkspace')
-    expect(mainSource).toContain('removeRuntimeIpcHandlers()')
+    expect(mainSource).toContain('removeRuntimeIpcHandlers(ipcMain)')
     expect(mainSource).not.toContain('app.relaunch()')
     expect(mainSource).not.toContain('app.exit(0)')
   })

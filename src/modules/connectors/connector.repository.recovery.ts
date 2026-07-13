@@ -1,11 +1,13 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import {
   connectorRuns,
+  connectorRunSynchronizations,
   connectorScheduleOccurrences,
   retryWork,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import {
+  persistFrozenConnectorRunLifecycleCounts,
   readConnectorWarnings,
 } from './connector-run.persistence'
 import { toJsonRecord } from './connector.persistence-json'
@@ -60,6 +62,22 @@ export function recoverInterruptedConnectorRuns(
         })
         .where(eq(connectorRuns.id, run.id))
         .run()
+      const synchronization = transaction
+        .select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
+        .from(connectorRunSynchronizations)
+        .where(eq(connectorRunSynchronizations.connectorRunId, run.id))
+        .get()
+      if (synchronization) {
+        const snapshot = toJsonRecord(JSON.parse(synchronization.snapshotJson))
+        transaction.update(connectorRunSynchronizations).set({
+          snapshotJson: JSON.stringify({
+            ...snapshot,
+            outcome: { kind: 'cancelled', reason: 'connector_interrupted' },
+          }),
+          updatedAt: input.completedAt,
+        }).where(eq(connectorRunSynchronizations.connectorRunId, run.id)).run()
+      }
+      persistFrozenConnectorRunLifecycleCounts(database, run.id, input.completedAt)
       transaction.update(retryWork).set({
         state: 'scheduled', acquiredAt: null,
         acquisitionToken: null, acquisitionRunId: null, updatedAt: input.completedAt,

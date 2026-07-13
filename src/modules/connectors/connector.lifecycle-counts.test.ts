@@ -95,6 +95,52 @@ describe('connector run lifecycle counts', () => {
   })
 
   it.each([
+    [
+      'missing',
+      { providerValid: 1, providerInvalid: 0, sourceDuplicates: 0 },
+      'reported_stats_missing',
+      'missing_provider_returned',
+    ],
+    [
+      'invalid',
+      { providerReturned: -1, providerValid: 1, providerInvalid: 0, sourceDuplicates: 0 },
+      'reported_stats_invalid',
+      'invalid_provider_returned',
+    ],
+  ] as const)(
+    'keeps %s returned rows unknown instead of substituting capture occurrences',
+    async (name, stats, invariant, gap) => {
+      const fixture = await createRunFixture(`${name}-provider-returned`)
+      const record = {
+        adapter: { id: 'jobright.resolver', kind: 'connector' as const, version: '0.6.0' },
+        capture: {
+          connectorInstanceId: fixture.connectorInstanceId,
+          connectorRunId: fixture.run.id,
+          executionScopeId: fixture.run.executionScopeId,
+        },
+        observedAt: '2026-07-11T17:00:00.000Z',
+        providerRecordId: 'job-missing-provider-returned',
+        providerSchema: 'jobright-visitor-list@1',
+        payload: { jobResult: { jobId: 'job-missing-provider-returned' } },
+      }
+      await fixture.rawSources.ingestBatch({ records: [record, record] })
+
+      expect(reconcileConnectorRunLifecycleCounts(fixture.database, {
+        ...fixture.run,
+        stats,
+      }).provider).toMatchObject({
+        returnedRows: 0,
+        capturedRecords: 1,
+        occurrenceCount: 2,
+        captureShortfall: 0,
+        unclassifiedRows: 0,
+        invariant,
+        gaps: [gap],
+      })
+    },
+  )
+
+  it.each([
     ['missing returned rows with occurrences', { providerValid: 1, providerInvalid: 0, sourceDuplicates: 0 }, true, 'reported_stats_missing', ['missing_provider_returned']],
     ['missing valid records', { providerReturned: 1, providerInvalid: 0, sourceDuplicates: 0 }, false, 'reported_stats_missing', ['missing_provider_valid']],
     ['missing invalid records', { providerReturned: 1, providerValid: 1, sourceDuplicates: 0 }, true, 'reported_stats_missing', ['missing_provider_invalid']],
@@ -307,10 +353,61 @@ describe('connector run lifecycle counts', () => {
     expect(reconcileConnectorRunLifecycleCounts(first.database, restartedRun)).toMatchObject({
       provider: { capturedRecords: 1, occurrenceCount: 1 },
       destination: { normalized: 1, resolvedEmployerOrAts: 1 },
-      sourcing: { added: 1 },
+      sourcing: { added: 0, queueDuplicate: 1 },
     })
     expect((await connectors.listRuns({ connectorInstanceId: first.connectorInstanceId })).items[0].stats)
-      .toMatchObject({ lifecycleCounts: { source: 'derived_pre_feature' } })
+      .toMatchObject({ lifecycleCounts: { source: 'frozen_terminal' } })
+  })
+
+  it('counts a preexisting finding as a canonical duplicate for fresh normalization in a later run', async () => {
+    const fixture = await createRunFixture('cross-run-finding')
+    const raw = {
+      adapter: { id: 'jobright.resolver', kind: 'connector' as const, version: '0.6.0' },
+      observedAt: '2026-07-11T17:02:00.000Z',
+      providerRecordId: 'job-cross-run',
+      providerSchema: 'jobright-visitor-list@1',
+      payload: { jobResult: { jobId: 'job-cross-run' } },
+    }
+    const firstReceipt = (await fixture.rawSources.ingestBatch({ records: [{
+      ...raw,
+      capture: {
+        connectorInstanceId: fixture.connectorInstanceId,
+        connectorRunId: fixture.run.id,
+        executionScopeId: fixture.run.executionScopeId,
+      },
+    }] })).receipts[0]
+    persistNormalizationOutcome(fixture.database, firstReceipt, 'employer_or_ats', 7)
+    persistFinding(fixture.database, firstReceipt.sourceEntityId!, 7, { status: 'new' })
+
+    const later = await createSqliteConnectorRepository(fixture.database).recordRefreshResult({
+      connectorInstanceId: fixture.connectorInstanceId,
+      mode: 'manual',
+      startedAt: '2026-07-11T17:06:00.000Z',
+      completedAt: '2026-07-11T17:06:01.000Z',
+      config: {}, filters: {}, filterSignature: 'filters:{}',
+      result: {
+        ...completedConnectorRefreshContract('2026-07-11'),
+        coverage: { start: '2026-07-11T17:05:00.000Z', end: '2026-07-11T17:06:00.000Z' },
+        nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' },
+        observations: [],
+        stats: { observations: 0, providerReturned: 1, providerValid: 1, providerInvalid: 0, sourceDuplicates: 0 },
+        warnings: [],
+      },
+    })
+    const laterReceipt = (await fixture.rawSources.ingestBatch({ records: [{
+      ...raw,
+      capture: {
+        connectorInstanceId: fixture.connectorInstanceId,
+        connectorRunId: later.id,
+        executionScopeId: later.executionScopeId,
+      },
+    }] })).receipts[0]
+    persistNormalizationOutcome(fixture.database, laterReceipt, 'employer_or_ats', 8)
+
+    expect(reconcileConnectorRunLifecycleCounts(fixture.database, later)).toMatchObject({
+      destination: { normalized: 1 },
+      sourcing: { added: 0, queueDuplicate: 1 },
+    })
   })
 
   it('keeps repeated detail retries technical while one job remains one pending lifecycle record', async () => {

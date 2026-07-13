@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { sourceExecutionScopes, sourcingFindings } from '../../db/schema'
+import { connectorRuns, sourceExecutionScopes, sourcingFindings } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteConnectorRepository } from './connector.repository'
 
@@ -8,6 +8,36 @@ const obsoleteBrowserMode = ['browser', '_session'].join('')
 const obsoleteSessionField = ['session', 'Key'].join('')
 
 describe('SQLite connector repository', () => {
+  it('omits ordinary legacy completed and running rows without synchronization snapshots', async () => {
+    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    const instance = await repository.upsertInstance({
+      id: 'legacy-unsynchronized', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
+      displayName: 'Legacy unsynchronized', enabled: true,
+      createdAt: '2026-07-01T00:00:00.000Z',
+    })
+    for (const [id, status, completedAt] of [
+      ['legacy-completed', 'completed', '2026-07-02T00:00:01.000Z'],
+      ['legacy-running', 'running', null],
+    ] as const) {
+      database.insert(connectorRuns).values({
+        id, executionScopeId: instance.executionScopeId, connectorInstanceId: instance.id,
+        mode: 'manual', status, startedAt: '2026-07-02T00:00:00.000Z', completedAt,
+        coverageStartedAt: null, coverageEndedAt: null, configJson: '{}', filtersJson: '{}',
+        filterSignature: 'filters:{}', observationCount: 0, warningCount: 0,
+        statsJson: '{}', warningsJson: '[]', retryHintsJson: 'null',
+        createdAt: '2026-07-02T00:00:00.000Z', updatedAt: '2026-07-02T00:00:00.000Z',
+        deletedAt: null,
+      }).run()
+    }
+
+    await expect(repository.listRuns({ connectorInstanceId: instance.id })).resolves.toMatchObject({
+      items: [], total: 0,
+    })
+    await expect(repository.getStatusSummary(instance.id)).resolves.toMatchObject({ latestRun: null })
+    sqlite.close()
+  })
   it('preserves scope cooldown and generation when auth references are edited', async () => {
     const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)

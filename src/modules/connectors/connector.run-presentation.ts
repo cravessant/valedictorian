@@ -1,130 +1,123 @@
-import type { RetryAdvice } from 'sparxie'
+import type {
+  ConnectorRunSummary,
+  ConnectorStatusState,
+} from 'sparxie'
 
-export interface ConnectorRunTerminalCopy {
+type ConnectorSynchronizationInput = Pick<
+  ConnectorRunSummary,
+  'historicalBackfill' | 'newestFrontier' | 'outcome' | 'pendingResolutionCount' | 'status'
+>
+
+export interface ConnectorSynchronizationCopy {
+  label: string
+  nextAttemptAt: string | null
+  state: ConnectorStatusState
   summary: string
-  detail: string | null
-  technical: string | null
 }
 
-export function connectorRunTerminalCopy(run: {
-  status: string
-  stats: unknown
-  retryHints: RetryAdvice | null
-  warnings?: unknown
-}): ConnectorRunTerminalCopy {
-  const stats = recordFromUnknown(run.stats)
-  const lifecycle = recordFromUnknown(stats.lifecycleCounts)
-  const destination = recordFromUnknown(lifecycle.destination)
-  const sourcing = recordFromUnknown(lifecycle.sourcing)
-  const pending = nonNegativeInteger(destination.pending)
-  const stopReason = stringFromUnknown(stats.stopReason)
-  const warningCodes = Array.isArray(run.warnings)
-    ? run.warnings.map((warning) => stringFromUnknown(recordFromUnknown(warning).code))
-    : []
-  const summary = terminalSummary(run.status, stopReason, sourcing, warningCodes, run.retryHints)
-  const resumes = new Set([
-    'auth_required',
-    'challenge',
-    'rate_limited',
-    'retryable_failure',
-    'runtime_limit',
-    'soft_batch_boundary',
-  ]).has(stopReason) || run.retryHints?.state === 'scheduled' || run.retryHints?.state === 'not_due'
-  const detail = pending > 0
-    ? `${pending} unique ${pending === 1 ? 'job remains' : 'jobs remain'} pending.${resumes ? ' The next run resumes from the persisted checkpoint.' : ''}`
-    : null
-
+export function connectorRunSynchronizationCopy(
+  run: ConnectorSynchronizationInput,
+): ConnectorSynchronizationCopy {
+  if (run.outcome.kind === 'action_required') {
+    return {
+      label: 'Authentication required',
+      nextAttemptAt: null,
+      state: 'authentication_required',
+      summary: 'Refresh connector credentials to continue synchronization.',
+    }
+  }
+  if (run.outcome.kind === 'cooling_down') {
+    return {
+      label: 'Cooling down',
+      nextAttemptAt: run.outcome.operation.retryAt,
+      state: 'cooling_down',
+      summary: 'The provider asked this connector to pause requests.',
+    }
+  }
+  if (run.outcome.kind === 'caught_up') {
+    return {
+      label: 'Caught up',
+      nextAttemptAt: null,
+      state: 'caught_up',
+      summary: 'Newest jobs, historical backfill, and pending link resolution are caught up.',
+    }
+  }
+  if (run.outcome.kind === 'boundary_exhausted') {
+    return {
+      label: 'Boundary reached',
+      nextAttemptAt: null,
+      state: 'boundary_exhausted',
+      summary: 'Historical backfill reached the configured boundary.',
+    }
+  }
+  if (run.outcome.kind === 'source_exhausted') {
+    return {
+      label: 'Provider history exhausted',
+      nextAttemptAt: null,
+      state: 'source_exhausted',
+      summary: 'The provider has no older history available before this point.',
+    }
+  }
+  if (run.outcome.kind === 'yielded') {
+    return {
+      label: 'Continuing later',
+      nextAttemptAt: null,
+      state: 'skipped',
+      summary: 'Yielded work is safely checkpointed for the next admitted manual or scheduled work opportunity.',
+    }
+  }
+  if (run.outcome.kind === 'failed') {
+    return {
+      label: 'Failed',
+      nextAttemptAt: null,
+      state: 'failed',
+      summary: 'Synchronization stopped because the connector failed.',
+    }
+  }
+  if (run.outcome.kind === 'cancelled') {
+    if (run.outcome.reason.startsWith('user_skipped')) {
+      return {
+        label: 'Skipped by user',
+        nextAttemptAt: null,
+        state: 'skipped',
+        summary: 'This synchronization work opportunity was skipped by the user.',
+      }
+    }
+    return {
+      label: 'Cancelled',
+      nextAttemptAt: null,
+      state: 'cancelled',
+      summary: 'Synchronization was cancelled before this work opportunity finished.',
+    }
+  }
+  if (run.newestFrontier.state === 'advancing') {
+    return {
+      label: 'Checking newest',
+      nextAttemptAt: null,
+      state: 'checking_newest',
+      summary: 'Checking the provider for newly published jobs.',
+    }
+  }
+  if (run.historicalBackfill.state === 'advancing') {
+    return {
+      label: 'Backfilling',
+      nextAttemptAt: null,
+      state: 'backfilling',
+      summary: 'Checking older provider history toward the configured boundary.',
+    }
+  }
+  if (run.pendingResolutionCount > 0) {
+    return {
+      label: 'Resolving links',
+      nextAttemptAt: null,
+      state: 'resolving',
+      summary: `${run.pendingResolutionCount} captured ${run.pendingResolutionCount === 1 ? 'job still needs' : 'jobs still need'} destination resolution.`,
+    }
+  }
   return {
-    summary,
-    detail,
-    technical: null,
+    label: 'Queued',
+    nextAttemptAt: null,
+    state: 'queued',
+    summary: 'Waiting to advance connector synchronization.',
   }
-}
-
-function terminalSummary(
-  status: string,
-  stopReason: string,
-  sourcing: Record<string, unknown>,
-  warningCodes: string[],
-  retryAdvice: RetryAdvice | null,
-): string {
-  if (status === 'cancelled' || stopReason === 'cancelled') return 'Cancelled'
-  if (stopReason === 'target_met') return 'Target reached'
-  if (stopReason === 'source_exhausted') return 'Provider exhausted'
-  if (stopReason === 'backfill_horizon') return 'Backfill horizon reached'
-  if (stopReason === 'coverage_start_reached') return 'Reached the selected earliest backfill date'
-  if (stopReason === 'cycle_attempt_limit') return 'Cycle attempt limit reached'
-  if (stopReason === 'discovery_page_limit') return 'Finite discovery page limit reached'
-  if (stopReason === 'discovery_record_limit') return 'Finite discovery record limit reached'
-  if (stopReason === 'soft_batch_boundary') return 'Paused at a finite batch boundary'
-  if (stopReason === 'runtime_limit') return 'Paused at the run time limit'
-  if (stopReason === 'rate_limited' || stopReason === 'retryable_failure') {
-    return 'Paused until retry'
-  }
-  if (
-    stopReason === 'auth_required'
-    || stopReason === 'challenge'
-    || stopReason === 'failed'
-    || stopReason === 'invalid_discovery_position'
-  ) {
-    return 'Needs action'
-  }
-  if (retryAdvice?.state === 'cancelled') return 'Cancelled'
-  if (retryAdvice?.state === 'exhausted') return 'Needs action'
-  if ((retryAdvice?.state === 'scheduled' || retryAdvice?.state === 'not_due')
-    && transientRetryReasons.has(retryAdvice.reason)) {
-    return 'Paused until retry'
-  }
-  if (warningCodes.some((code) =>
-    code.includes('rate_limited') || code.includes('retryable'))) {
-    return 'Paused until retry'
-  }
-  if (warningCodes.some((code) =>
-    code.includes('auth')
-    || code.includes('captcha')
-    || code.includes('challenge')
-    || code.includes('parser')
-    || code.includes('raw_intake')
-    || code.includes('normalization')
-    || code.includes('execution_failed'))) {
-    return 'Needs action'
-  }
-
-  const added = nonNegativeInteger(sourcing.added)
-  const duplicates = nonNegativeInteger(sourcing.queueDuplicate)
-  const rejected = nonNegativeInteger(sourcing.notFit) + nonNegativeInteger(sourcing.rejected)
-  if (added === 0 && duplicates > 0 && rejected === 0) {
-    return 'Completed with queue duplicates'
-  }
-  if (added === 0 && rejected > 0) {
-    return 'Completed with sourcing rejections'
-  }
-  if (status === 'failed') return 'Needs action'
-  if (status === 'skipped') return 'Skipped'
-  if (status === 'queued') return 'Queued'
-  if (status === 'running') return 'Running'
-  return 'Completed'
-}
-
-const transientRetryReasons = new Set<RetryAdvice['reason']>([
-  'network_interruption',
-  'operation_timeout',
-  'rate_limit',
-  'server_failure',
-])
-
-function recordFromUnknown(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
-}
-
-function stringFromUnknown(value: unknown): string {
-  return typeof value === 'string' ? value : ''
-}
-
-function nonNegativeInteger(value: unknown): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : 0
 }

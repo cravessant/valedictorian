@@ -3,6 +3,7 @@ export {
   parseUpdateConnectorInstanceInput,
   parseActionQueueListQuery,
   parseConnectorRunsListQuery,
+  parseConnectorOverviewListQuery,
   parseConnectorRunTriggerInput,
   parseConnectorCheckpointsListQuery,
   parseConnectorObservationsListQuery,

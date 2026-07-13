@@ -66,7 +66,7 @@ describe('connector schedule migration', () => {
       user_profile: database.prepare('select id, full_name, email from user_profile order by id').all(),
     })
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 25 })
+      .toEqual({ count: 26 })
     database.close()
   })
 })

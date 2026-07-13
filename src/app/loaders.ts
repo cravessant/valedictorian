@@ -1,5 +1,6 @@
 import type { ApplicationsPreloadApi } from '../ipc/applications.preload'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
+import type { ConnectorSkipActionResult } from '../ipc/connectors.public'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import type { ActionQueuePreloadApi } from '../ipc/action-queue.preload'
@@ -9,11 +10,10 @@ import type { UpdatesPreloadApi } from '../ipc/updates.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { ProfileSensitiveDetails } from '../modules/profile/profile.repository'
 import type { ConnectorStatusListResult } from '../modules/connectors/connector.status'
+import { connectorStatusViewFromOverview } from '../modules/connectors/connector.status'
 import type {
   LocalConnectorReconnectActionResult,
-  LocalConnectorRunSummary,
   LocalConnectorSkipActionInput,
-  LocalConnectorSkipActionResult,
   LocalConnectorStatusActionInput,
 } from '../runtime/local-valedictorian-client'
 import type {
@@ -323,10 +323,15 @@ export const defaultSourcingLoader = (query: SourcingFindingsListInput) => {
   return sourcingWindow.sourcing?.findings?.list(query) ?? Promise.resolve(emptySourcingResult)
 }
 
-export const defaultConnectorStatusLoader = () => {
-  const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
+export const defaultConnectorStatusLoader = async () => {
+  const httpClient = getRendererHttpWorkspaceClient()
 
-  return connectorsWindow.connectors?.status.list() ?? Promise.resolve(emptyConnectorStatusResult)
+  if (!httpClient) {
+    throw new Error('Connector Overview HTTP client is unavailable.')
+  }
+
+  const result = await httpClient.connectors.overview.list({ enabled: true, limit: 100 })
+  return { available: true, items: result.items.map(connectorStatusViewFromOverview) }
 }
 
 export const defaultConnectorStatusReconnector = (
@@ -343,7 +348,7 @@ export const defaultConnectorStatusReconnector = (
 
 export const defaultConnectorStatusSkipper = (
   input: LocalConnectorSkipActionInput,
-): Promise<LocalConnectorSkipActionResult> => {
+): Promise<ConnectorSkipActionResult> => {
   const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
 
   if (!connectorsWindow.connectors?.status.skip) {
@@ -384,7 +389,6 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
       const httpClient = getRendererHttpWorkspaceClient()
 
       const httpResult = httpClient?.connectors.runs.list(input)
-        .then((result) => ({ ...result, items: result.items.map(localizeConnectorRun) }))
       return httpResult ?? connectorsWindow.connectors?.runs.list(input) ?? Promise.resolve({
         hasMore: false,
         items: [],
@@ -397,20 +401,15 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
       const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
       const httpClient = getRendererHttpWorkspaceClient()
 
-      return httpClient?.connectors.runs.trigger(input).then(localizeConnectorRun)
+      return httpClient?.connectors.runs.trigger(input)
         ?? connectorsWindow.connectors?.runs.trigger(input)
         ?? Promise.reject(new Error('Connectors API is unavailable.'))
     },
   },
   status: {
-    list: defaultConnectorStatusLoader,
     reconnect: defaultConnectorStatusReconnector,
     skip: defaultConnectorStatusSkipper,
   },
-}
-
-function localizeConnectorRun(run: import('sparxie').ConnectorRunSummary): LocalConnectorRunSummary {
-  return { ...run, coverage: { start: null, end: null }, retryHints: null, stats: {} }
 }
 
 export const defaultConnectorScheduleApi: ConnectorScheduleUiApi = {

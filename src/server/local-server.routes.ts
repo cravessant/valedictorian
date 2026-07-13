@@ -1,8 +1,8 @@
 import http from 'node:http'
 import {
   connectorScheduleErrorCodes,
-  connectorRunSummarySchema,
-  connectorRunsListResultSchema,
+  connectorOverviewListResultSchema,
+  connectorOverviewErrorCodes,
   defaultLocalCapabilities,
   isApplicationStatus,
   rawSourceRecordsListResultSchema,
@@ -31,6 +31,7 @@ import {
   parseConnectorCheckpointsListQuery,
   parseConnectorObservationsListQuery,
   parseConnectorRunsListQuery,
+  parseConnectorOverviewListQuery,
   parseConnectorRunTriggerInput,
   parseCreateConnectorInstanceInput,
   parseUpdateConnectorInstanceInput,
@@ -59,6 +60,11 @@ import {
 import type { WorkspaceClientResolver } from './local-server'
 import type { LocalWorkspaceManager } from './local-workspaces'
 import { handleConnectorScheduleRoutes } from './local-server.routes.connector-schedules'
+import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
+import {
+  publicConnectorRunsListResult,
+  publicConnectorRunSummary,
+} from '../runtime/local-connector-public-run'
 
 function buildLocalCapabilities(connectorScheduling: ConnectorSchedulingCapability) {
   return {
@@ -333,6 +339,19 @@ export async function handleRequest({
       return
     }
 
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/connectors/overview') {
+      writeJson(
+        response,
+        200,
+        connectorOverviewListResultSchema.parse(
+          await connectorExtensions(client).overview.list(
+            parseConnectorOverviewListQuery(requestUrl),
+          ),
+        ),
+      )
+      return
+    }
+
     const connectorStatusMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)\/status$/)
 
     const connectorInstanceMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)$/)
@@ -355,7 +374,9 @@ export async function handleRequest({
       writeJson(
         response,
         200,
-        await connectorExtensions(client).inspect(decodeURIComponent(connectorStatusMatch[1])),
+        publicConnectorStatusSummary(
+          await connectorExtensions(client).inspect(decodeURIComponent(connectorStatusMatch[1])),
+        ),
       )
       return
     }
@@ -366,9 +387,9 @@ export async function handleRequest({
       writeJson(
         response,
         200,
-        connectorRunsListResultSchema.parse(publicConnectorRunsList(await connectorExtensions(client).runs.list(
+        publicConnectorRunsListResult(await connectorExtensions(client).runs.list(
           parseConnectorRunsListQuery(decodeURIComponent(connectorRunsMatch[1]), requestUrl),
-        ))),
+        )),
       )
       return
     }
@@ -377,12 +398,12 @@ export async function handleRequest({
       writeJson(
         response,
         200,
-        connectorRunSummarySchema.parse(publicConnectorRun(await connectorExtensions(client).runs.trigger(
+        publicConnectorRunSummary(await connectorExtensions(client).runs.trigger(
           parseConnectorRunTriggerInput(
             decodeURIComponent(connectorRunsMatch[1]),
             await readJsonBody(request),
           ),
-        ))),
+        )),
       )
       return
     }
@@ -863,24 +884,14 @@ export async function handleRequest({
       'code' in error &&
       typeof error.code === 'string' &&
       (error.code === 'capability_unavailable'
-        || (connectorScheduleErrorCodes as readonly string[]).includes(error.code))
+        || (connectorScheduleErrorCodes as readonly string[]).includes(error.code)
+        || (connectorOverviewErrorCodes as readonly string[]).includes(error.code))
     ) {
       body.code = error.code
     }
 
     writeJson(response, readErrorStatusCode(error), body)
   }
-}
-
-function publicConnectorRunsList(value: unknown) {
-  const result = value as Record<string, unknown> & { items: unknown[] }
-  return { ...result, items: result.items.map(publicConnectorRun) }
-}
-
-function publicConnectorRun(value: unknown) {
-  const run = value as Record<string, unknown>
-  const { coverage: _coverage, retryHints: _retryHints, stats: _stats, ...publicRun } = run
-  return publicRun
 }
 
 function readErrorStatusCode(error: unknown) {
@@ -908,6 +919,7 @@ type ConnectorExtensionsClient = ValedictorianWorkspaceClient & {
     create(input: unknown): Promise<unknown>
     update(input: unknown): Promise<unknown>
     inspect(connectorInstanceId: string): Promise<unknown>
+    overview: ValedictorianWorkspaceClient['connectors']['overview']
     runs: {
       list(input: unknown): Promise<unknown>
       trigger(input: unknown): Promise<unknown>

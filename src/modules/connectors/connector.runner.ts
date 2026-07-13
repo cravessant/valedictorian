@@ -132,6 +132,7 @@ export interface RunConnectorRefreshInput {
 export interface RunConnectorCatchUpInput {
   connectorRunId?: string
   connectorInstanceId: string
+  coverageStartedAt?: string
   now?: string
   startedAt?: string
   completedAt?: string
@@ -311,9 +312,9 @@ export function createConnectorRunner({
       throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
     }
     const end = parseIsoDate(input.now ?? now().toISOString(), 'catch-up now')
-    const coverageStart = inclusiveCoverageStartFromEarliestBackfillDate(
-      instance.earliestBackfillDate,
-    )
+    const coverageStart = input.coverageStartedAt === undefined
+      ? inclusiveCoverageStartFromEarliestBackfillDate(instance.earliestBackfillDate)
+      : parseIsoDate(input.coverageStartedAt, 'catch-up coverage start').toISOString()
     return {
       instance,
       refreshInput: {

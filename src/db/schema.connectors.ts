@@ -58,6 +58,11 @@ export const connectorRuns = sqliteTable(
       table.connectorInstanceId,
     ),
     instanceIdx: index('idx_connector_runs_instance').on(table.connectorInstanceId),
+    instanceLatestIdx: index('idx_connector_runs_instance_latest').on(
+      table.connectorInstanceId,
+      table.startedAt,
+      table.createdAt,
+    ),
     instanceStatusStartedIdx: index('idx_connector_runs_instance_status_started').on(
       table.connectorInstanceId,
       table.status,

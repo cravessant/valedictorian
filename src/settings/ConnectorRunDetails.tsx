@@ -1,80 +1,109 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import type { ConnectorRunLifecycleCounts } from '../modules/connectors/connector.lifecycle-counts'
-import { connectorRunTerminalCopy } from '../modules/connectors/connector.run-presentation'
+import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
-import { recordFromUnknown, stringFromUnknown } from './connector-settings.helpers'
 
-export function connectorRunMetrics(run: ConnectorSettingsRun): Array<{ label: string; value: number }> {
-  const stats = recordFromUnknown(run.stats)
-  const failureMetric = numericRunMetric(stats, 'failures', 'Failures')
-    ?? numericRunMetric(stats, 'failed', 'Failures')
-    ?? (run.status === 'failed' ? { label: 'Failures', value: 1 } : null)
-  const metrics = [
-    { label: 'Warnings', value: run.warningCount },
-    failureMetric,
-  ]
+export function ConnectorRunSynchronizationDetails({
+  ariaLabel = 'Connector synchronization state',
+  run,
+}: {
+  ariaLabel?: string
+  run: ConnectorSettingsRun
+}) {
+  const [showExplanation, setShowExplanation] = useState(false)
+  const presentation = connectorRunSynchronizationCopy(run)
+  return (
+    <section
+      className="grid gap-2 rounded-md border border-border/70 bg-background/35 p-3 text-xs"
+    >
+      <div aria-atomic="true" aria-label={ariaLabel} aria-live="polite" role="status">
+        <div>
+          <p className="font-semibold text-foreground">{presentation.label}</p>
+          <p className="mt-1 text-muted-foreground">{presentation.summary}</p>
+          {presentation.nextAttemptAt ? (
+            <p className="mt-1 text-muted-foreground">
+              Next attempt {new Date(presentation.nextAttemptAt).toLocaleString()}
+            </p>
+          ) : null}
+        </div>
+        <div className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-3">
+          <p><span className="font-medium text-foreground">Newest frontier:</span>{' '}
+            {formatNewestFrontier(run.newestFrontier.state)}</p>
+          <p><span className="font-medium text-foreground">Historical backfill:</span>{' '}
+            {formatHistoricalBackfill(run.historicalBackfill.state)}</p>
+          <p><span className="font-medium text-foreground">Pending link resolution:</span>{' '}
+            {run.pendingResolutionCount}</p>
+        </div>
+      </div>
+      <Button
+        aria-expanded={showExplanation}
+        className="w-fit"
+        size="sm"
+        type="button"
+        variant="outline"
+        onClick={() => setShowExplanation((shown) => !shown)}
+      >
+        How synchronization works
+      </Button>
+      {showExplanation ? (
+        <div className="grid gap-1 text-muted-foreground">
+          <p>
+            Each work opportunity checks the newest frontier first, then advances historical
+            backfill toward the configured boundary, and resumes pending link resolution.
+          </p>
+          <p>
+            Yielded work is safely checkpointed for the next admitted manual or scheduled work
+            opportunity.
+          </p>
+        </div>
+      ) : null}
+    </section>
+  )
+}
 
-  return metrics.filter((metric): metric is { label: string; value: number } => metric !== null)
+function formatNewestFrontier(state: ConnectorSettingsRun['newestFrontier']['state']) {
+  return {
+    advancing: 'Checking newest',
+    caught_up: 'Caught up',
+    not_started: 'Not started',
+  }[state]
+}
+
+function formatHistoricalBackfill(state: ConnectorSettingsRun['historicalBackfill']['state']) {
+  return {
+    advancing: 'Backfilling',
+    boundary_reached: 'Boundary reached',
+    caught_up: 'Caught up',
+    not_started: 'Not started',
+    source_exhausted: 'Provider history exhausted',
+  }[state]
 }
 
 export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRun }) {
   const [showExplanation, setShowExplanation] = useState(false)
-  const stats = recordFromUnknown(run.stats)
-  const lifecycle = connectorRunLifecycleCounts(stats.lifecycleCounts, run.id)
-  const terminal = connectorRunTerminalCopy(run)
-  const providerGaps = lifecycle && Array.isArray(lifecycle.provider.gaps)
-    ? lifecycle.provider.gaps
-    : []
-  const carried = [
-    numericRunMetric(stats, 'discovered', 'Discovered jobs'),
-    numericRunMetric(stats, 'discoveryPages', 'Discovery page requests'),
-    numericRunMetric(stats, 'attempted', 'Detail attempts'),
-    numericRunMetric(stats, 'authRequired', 'Auth-required requests'),
-    numericRunMetric(stats, 'retryableFailures', 'Retryable request failures'),
-    numericRunMetric(stats, 'resolvedEmployerOrAts', 'Resolved employer / ATS'),
-    numericRunMetric(stats, 'resolvedThirdParty', 'Resolved third-party'),
-  ].filter((metric): metric is { label: string; value: number } => metric !== null)
-  const stopReason = stringFromUnknown(stats.stopReason)
-    || stringFromUnknown(recordFromUnknown(run.retryHints).stopReason)
-  const earliestBackfillDate = utcDateOnlyFromCoverageStart(run.coverage.start)
-  const capReached = stopReason === 'coverage_start_reached'
+  const lifecycle = run.lifecycleCounts ?? null
+  const providerGaps = lifecycle?.provider.gaps ?? []
+  const providerReturnedRowsUnknown = providerGaps.includes('missing_provider_returned')
+    || providerGaps.includes('invalid_provider_returned')
 
   return (
     <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 text-xs">
-      <div>
-        <p className="font-semibold text-foreground">{terminal.summary}</p>
-        {terminal.detail ? <p className="mt-1 text-muted-foreground">{terminal.detail}</p> : null}
-        {terminal.technical ? <p className="mt-1 text-muted-foreground">{terminal.technical}</p> : null}
-        {earliestBackfillDate ? (
-          <p className="mt-1 text-muted-foreground">
-            Selected earliest backfill date: {earliestBackfillDate}
-          </p>
-        ) : null}
-        {capReached ? (
-          <p className="mt-1 text-muted-foreground">
-            Discovery stopped because the selected earliest backfill date was reached.
-          </p>
-        ) : null}
-        {stopReason ? (
-          <p className="mt-1 text-muted-foreground">Stop reason: {stopReason}</p>
-        ) : null}
-      </div>
       {lifecycle ? (
         <>
           <div>
-            <p className="font-semibold text-foreground">Unique jobs in this connector run</p>
+            <p className="font-semibold text-foreground">Stage-specific synchronization counts</p>
             <p className="mt-1 text-muted-foreground">
               {lifecycle.source === 'frozen_terminal'
                 ? 'Frozen at terminal completion.'
-                : lifecycle.source === 'live_current'
-                  ? 'Live counts derived from current persisted lineage.'
-                  : 'Derived from current persisted lineage for a pre-feature terminal run.'}
+                : 'Live counts derived from current persisted lineage.'}
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-3" aria-label="Run lifecycle counts">
             <RunCountStage title="Provider intake" values={[
-              ['Provider returned rows', lifecycle.provider.returnedRows],
+              [
+                'Provider returned rows',
+                providerReturnedRowsUnknown ? 'Unknown' : lifecycle.provider.returnedRows,
+              ],
               ['Valid unique records', lifecycle.provider.validRecords],
               ['Invalid records', lifecycle.provider.invalidRecords],
               ['Source duplicates', lifecycle.provider.sourceDuplicates],
@@ -90,8 +119,8 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
               ['Gate rejected', lifecycle.destination.gateRejected],
             ]} />
             <RunCountStage title="Sourcing" values={[
-              ['Added / new', lifecycle.sourcing.added],
-              ['Queue duplicate', lifecycle.sourcing.queueDuplicate],
+              ['Sourcing findings added', lifecycle.sourcing.findingsAdded],
+              ['Canonical duplicates', lifecycle.sourcing.canonicalDuplicates],
               ['Not fit', lifecycle.sourcing.notFit],
               ['Cutoff / rejected', lifecycle.sourcing.rejected],
               ['Actionable review', lifecycle.sourcing.actionableReview],
@@ -113,20 +142,12 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
               Provider stats gaps: {providerGaps.map(formatProviderStatsGap).join(', ')}.
             </p>
           ) : null}
+          {providerReturnedRowsUnknown ? (
+            <p className="font-medium text-warning">
+              Provider did not report a valid returned-row count.
+            </p>
+          ) : null}
         </>
-      ) : null}
-      {carried.length > 0 ? (
-        <div>
-          <p className="font-semibold text-foreground">Carried connector cycle</p>
-          <p className="mt-1 text-muted-foreground">
-            Cumulative checkpoint and request details; these are not jobs returned by this run.
-          </p>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
-            {carried.map((metric) => (
-              <span key={metric.label}>{metric.label}: {metric.value}</span>
-            ))}
-          </div>
-        </div>
       ) : null}
       <Button
         aria-expanded={showExplanation}
@@ -140,8 +161,9 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
       </Button>
       {showExplanation ? (
         <div className="grid gap-1 text-muted-foreground">
-          <p>Every primary count is scoped to unique jobs captured by this connector run id.</p>
-          <p>Returned rows equal valid unique records plus invalid rows plus source duplicates when provider totals reconcile.</p>
+          <p>Provider returned rows are response rows, not a unique-job total.</p>
+          <p>Valid records and invalid rows classify provider rows; source duplicates repeat a provider identity.</p>
+          <p>Capture occurrences are intake events; captured records are unique persisted raw records for this run.</p>
           <p>Captured records equal normalized plus pending, unresolved, gate-rejected, and explicitly unclassified records.</p>
           <p>Normalized equals resolved employer / ATS plus resolved third-party jobs.</p>
           <p>Sourcing outcomes partition normalized jobs; only a persisted concrete question counts as actionable review.</p>
@@ -165,7 +187,7 @@ function RunCountStage({
   values,
 }: {
   title: string
-  values: Array<readonly [string, number]>
+  values: Array<readonly [string, number | string]>
 }) {
   return (
     <section>
@@ -175,74 +197,4 @@ function RunCountStage({
       </div>
     </section>
   )
-}
-
-function connectorRunLifecycleCounts(
-  value: unknown,
-  connectorRunId: string,
-): ConnectorRunLifecycleCounts | null {
-  const lifecycle = recordFromUnknown(value)
-  const scope = recordFromUnknown(lifecycle.scope)
-  if (
-    lifecycle.version !== 'connector-run-lifecycle-counts/v1'
-    || !['frozen_terminal', 'live_current', 'derived_pre_feature'].includes(
-      String(lifecycle.source),
-    )
-    || scope.kind !== 'connector_run'
-    || scope.connectorRunId !== connectorRunId
-  ) {
-    return null
-  }
-  return lifecycle as unknown as ConnectorRunLifecycleCounts
-}
-
-export function ConnectorRunProgressDetails({ run }: { run: ConnectorSettingsRun }) {
-  const stats = recordFromUnknown(run.stats)
-  const stage = stringFromUnknown(stats.stage)
-  const lastProgressAt = stringFromUnknown(stats.lastProgressAt)
-  const wait = recordFromUnknown(stats.wait)
-  const startedAtMs = Date.parse(run.startedAt)
-  const endAtMs = run.completedAt ? Date.parse(run.completedAt) : Date.now()
-  const elapsedSeconds = Number.isFinite(startedAtMs) && Number.isFinite(endAtMs)
-    ? Math.max(0, Math.floor((endAtMs - startedAtMs) / 1_000))
-    : null
-
-  return (
-    <div className="grid gap-1 text-xs text-muted-foreground">
-      {stage ? <span>Stage: {formatConnectorStage(stage)}</span> : null}
-      <span>Started: {run.startedAt}</span>
-      {elapsedSeconds !== null ? <span>Elapsed: {elapsedSeconds}s</span> : null}
-      {lastProgressAt ? <span>Last progress: {lastProgressAt}</span> : null}
-      {Object.keys(wait).length > 0 ? (
-        <span>Waiting between bounded Jobright API requests.</span>
-      ) : null}
-    </div>
-  )
-}
-
-function formatConnectorStage(stage: string): string {
-  return stage
-    .split('_')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-}
-
-function numericRunMetric(
-  stats: Record<string, unknown>,
-  key: string,
-  label: string,
-): { label: string; value: number } | null {
-  const value = stats[key]
-
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0
-    ? { label, value }
-    : null
-}
-
-function utcDateOnlyFromCoverageStart(value: string | null | undefined): string | null {
-  if (typeof value !== 'string' || !value.endsWith('T00:00:00.000Z')) {
-    return null
-  }
-  const dateOnly = value.slice(0, 10)
-  return /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? dateOnly : null
 }

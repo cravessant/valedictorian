@@ -36,10 +36,10 @@ describe('connectors preload API', () => {
 
         if (args[0] === 'connectors:runs:trigger') {
           return Promise.resolve({
-            id: 'connector-run', connectorInstanceId: 'connector-instance', mode: 'manual', status: 'skipped',
+            id: 'connector-run', connectorInstanceId: 'connector-instance', mode: 'manual', status: 'completed',
             executionScopeId: 'scope_connector_instance',
-            coverage: { start: null, end: null }, filterSignature: 'filters:{}',
-            observationCount: 0, warningCount: 0, stats: {}, warnings: [], retryHints: null,
+            filterSignature: 'filters:{}',
+            observationCount: 0, warningCount: 0, warnings: [],
             scheduleOccurrence: null,
             newestFrontier: { state: 'not_started' },
             historicalBackfill: { state: 'not_started', boundary: { earliestDate: '2026-07-01' } },
@@ -81,7 +81,11 @@ describe('connectors preload API', () => {
       status: 'healthy',
     })
     await expect(api.runs.list(runsListInput)).resolves.toEqual({ items: [], total: 0, limit: 5, offset: 0, hasMore: false })
-    await expect(api.runs.trigger(runTriggerInput)).resolves.toMatchObject({ id: 'connector-run', retryHints: null })
+    const triggered = await api.runs.trigger(runTriggerInput)
+    expect(triggered).toMatchObject({ id: 'connector-run' })
+    expect(triggered).not.toHaveProperty('coverage')
+    expect(triggered).not.toHaveProperty('retryHints')
+    expect(triggered).not.toHaveProperty('stats')
     expect(invocations).toEqual([
       ['connectors:list'],
       ['connectors:create', createInput],
@@ -102,14 +106,13 @@ describe('connectors preload API', () => {
         }
 
         if (args[0] === 'connectors:status:skip') {
-          return Promise.resolve({ action: 'skip', status: 'skipped' })
+          return Promise.resolve(publicSkippedActionFixture())
         }
 
         return Promise.resolve({ items: [] })
       },
     })
 
-    await expect(api.status.list()).resolves.toEqual({ items: [] })
     await expect(
       api.status.reconnect({ connectorInstanceId: 'connector-instance-fixture' }),
     ).resolves.toEqual({ action: 'reconnect', status: 'ready' })
@@ -118,9 +121,8 @@ describe('connectors preload API', () => {
         connectorInstanceId: 'connector-instance-fixture',
         reason: 'user_skipped_auth_required_run',
       }),
-    ).resolves.toEqual({ action: 'skip', status: 'skipped' })
+    ).resolves.toEqual(publicSkippedActionFixture())
     expect(invocations).toEqual([
-      ['connectors:status:list'],
       ['connectors:status:reconnect', { connectorInstanceId: 'connector-instance-fixture' }],
       [
         'connectors:status:skip',
@@ -132,3 +134,25 @@ describe('connectors preload API', () => {
     ])
   })
 })
+
+function publicSkippedActionFixture() {
+  return {
+    action: 'skip' as const,
+    connectorInstanceId: 'connector-instance-fixture',
+    message: 'Connector run skipped.',
+    run: {
+      id: 'connector-run-skipped', connectorInstanceId: 'connector-instance-fixture',
+      executionScopeId: 'scope_connector_instance', mode: 'manual' as const,
+      scheduleOccurrence: null, status: 'cancelled' as const, filterSignature: 'filters:{}',
+      observationCount: 0, warningCount: 0, warnings: [],
+      newestFrontier: { state: 'not_started' as const },
+      historicalBackfill: {
+        state: 'not_started' as const, boundary: { earliestDate: '2026-07-01' as const },
+      },
+      pendingResolutionCount: 0,
+      outcome: { kind: 'cancelled' as const, reason: 'user_skipped' },
+      startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:00.000Z',
+    },
+    status: 'skipped' as const,
+  }
+}

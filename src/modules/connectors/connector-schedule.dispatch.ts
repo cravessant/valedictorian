@@ -15,8 +15,16 @@ import {
   connectorSchedules,
 } from '../../db/schema.connectors'
 import type { DrizzleDatabase } from '../../db/sqlite'
+import {
+  assertPersistedEarliestBackfillDate,
+  inclusiveCoverageStartFromEarliestBackfillDate,
+} from './connector.earliest-backfill'
 import { computeNextEligibleAt, resolveMissedNominals } from './connector-schedule.eligibility'
 import { createConnectorScheduleError } from './connector-schedule.errors'
+import {
+  connectorSynchronizationSnapshot,
+  writeConnectorRunSynchronization,
+} from './connector-synchronization.persistence'
 
 export function admitConnectorScheduleDue({
   database,
@@ -206,6 +214,9 @@ export function admitConnectorScheduleDue({
     const occurrenceId = randomUUID()
     const runId = randomUUID()
     const revisionAfter = scheduleRow.revision
+    const earliestBackfillDate = assertPersistedEarliestBackfillDate(
+      instance.earliestBackfillDate,
+    )
 
     const updated = tx.update(connectorSchedules).set({
       nextEligibleAt,
@@ -231,7 +242,7 @@ export function admitConnectorScheduleDue({
       status: 'queued',
       startedAt: clockIso,
       completedAt: null,
-      coverageStartedAt: null,
+      coverageStartedAt: inclusiveCoverageStartFromEarliestBackfillDate(earliestBackfillDate),
       coverageEndedAt: clockIso,
       configJson: instance.configJson,
       filtersJson: instance.filtersJson,
@@ -245,6 +256,9 @@ export function admitConnectorScheduleDue({
       updatedAt: clockIso,
       deletedAt: null,
     }).run()
+    writeConnectorRunSynchronization(tx, runId, connectorSynchronizationSnapshot(
+      earliestBackfillDate, { kind: 'in_progress' },
+    ), clockIso)
 
     tx.insert(connectorScheduleOccurrences).values({
       id: occurrenceId,

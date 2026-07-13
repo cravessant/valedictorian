@@ -3,6 +3,7 @@ import { useToast } from '@/components/ui/use-toast'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
+import type { ConnectorSkipActionResult } from './ipc/connectors.public'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { UpdatesPreloadApi } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
@@ -11,10 +12,10 @@ import type {
   ConnectorStatusListResult,
   ConnectorStatusView
 } from './modules/connectors/connector.status'
+import { performConnectorStatusAction } from './modules/connectors/connector-status-actions'
 import type {
   LocalConnectorReconnectActionResult,
   LocalConnectorSkipActionInput,
-  LocalConnectorSkipActionResult,
   LocalConnectorStatusActionInput
 } from './runtime/local-valedictorian-client'
 import { requiresRestart } from './settings/requiresRestart'
@@ -145,7 +146,7 @@ interface AppProps {
   ) => Promise<LocalConnectorReconnectActionResult>
   connectorStatusSkipper?: (
     input: LocalConnectorSkipActionInput
-  ) => Promise<LocalConnectorSkipActionResult>
+  ) => Promise<ConnectorSkipActionResult>
   connectorsApi?: ConnectorsPreloadApi
   connectorScheduleApi?: ConnectorScheduleUiApi
   scoreRecorder?: (input: ScoreInput) => Promise<ScoreRecord>
@@ -740,30 +741,10 @@ function App({
     connector: ConnectorStatusView,
     action: ConnectorStatusAction,
   ) {
-    const title = action.id === 'reconnect'
-      ? `Reconnect ${connector.displayName}`
-      : `Skip ${connector.displayName}`
-    const actionPromise = action.id === 'reconnect'
-      ? connectorStatusReconnector({ connectorInstanceId: connector.id })
-      : connectorStatusSkipper({
-        connectorInstanceId: connector.id,
-        reason: 'user_skipped_auth_required_run',
-      })
-
-    void actionPromise
-      .then((result) => {
-        toast({
-          description: result.message,
-          title,
-        })
-        setConnectorStatusReloadKey((current) => current + 1)
-      })
-      .catch(() => {
-        toast({
-          description: 'Connector status action could not be completed.',
-          title,
-        })
-      })
+    performConnectorStatusAction({
+      action, connector, reconnect: connectorStatusReconnector, skip: connectorStatusSkipper,
+      onCompleted: () => setConnectorStatusReloadKey((current) => current + 1), toast,
+    })
   }
 
   function promoteFinding(findingId: string) {

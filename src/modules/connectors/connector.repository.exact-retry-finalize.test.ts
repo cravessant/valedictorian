@@ -10,6 +10,11 @@ import {
 } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteConnectorRepository } from './connector.repository'
+import { mapConnectorRunSummary, publicConnectorRunSummary } from '../../runtime/local-connector-public-run'
+import {
+  finalizeInProgressConnectorSynchronization,
+  updateConnectorSynchronizationOutcome,
+} from './connector-synchronization.persistence'
 
 const RESOLVER_ID = 'jobright.authenticated-destination'
 const RESOLVER_VERSION = 'jobright-authenticated-destination@1'
@@ -234,6 +239,15 @@ describe('exact acquired normalization retry finalization success gate', () => {
         filterSignature: FILTER_SIGNATURE,
       }))!.checkpoint).toEqual(checkpointPayload.checkpoint)
 
+      if (destinationStatus === 'failed') {
+        updateConnectorSynchronizationOutcome(
+          database,
+          connectorRunId,
+          { kind: 'failed', reason: 'connector_authored_normalization_failure' },
+          '2026-07-11T12:00:01.500Z',
+        )
+      }
+
       await repository.finalizeExactAcquiredNormalizationRetry({
         acquiredRetryWork,
         checkpoint: checkpointPayload,
@@ -245,6 +259,37 @@ describe('exact acquired normalization retry finalization success gate', () => {
         finalizationMode: 'complete-only-on-persisted-exact-success',
         savedAt: '2026-07-11T12:00:02.000Z',
         terminalStatus: 'failed',
+      })
+
+      const [failedRun] = (await repository.listRuns({
+        connectorInstanceId: 'jobright-finalize-gate', limit: 1,
+      })).items
+      const expectedFailureReason = destinationStatus === 'failed'
+        ? 'connector_authored_normalization_failure'
+        : 'normalization_retry_failed'
+      expect(publicConnectorRunSummary(mapConnectorRunSummary(failedRun!))).toMatchObject({
+        status: 'failed',
+        outcome: { kind: 'failed', reason: expectedFailureReason },
+        lifecycleCounts: { source: 'frozen_terminal' },
+      })
+      finalizeInProgressConnectorSynchronization(
+        database,
+        connectorRunId,
+        { kind: 'cancelled', reason: 'repeated_finalize_must_not_replace_terminal' },
+        '2026-07-11T12:00:03.000Z',
+      )
+      finalizeInProgressConnectorSynchronization(
+        database,
+        connectorRunId,
+        { kind: 'yielded', reason: 'invocation_budget' },
+        '2026-07-11T12:00:04.000Z',
+      )
+      const [afterRepeatedFinalize] = (await repository.listRuns({
+        connectorInstanceId: 'jobright-finalize-gate', limit: 1,
+      })).items
+      expect(publicConnectorRunSummary(mapConnectorRunSummary(afterRepeatedFinalize!))).toMatchObject({
+        status: 'failed',
+        outcome: { kind: 'failed', reason: expectedFailureReason },
       })
 
       expect(database.select().from(retryWork).all()).toEqual([

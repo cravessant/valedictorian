@@ -43,6 +43,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorVersion: '0.0.0-fixture',
       displayName: 'Fixture Jobs',
       enabled: true,
+      earliestBackfillDate: '2026-06-15',
     })
 
     const created = await setupClient.connectors.schedules.upsert({
@@ -74,15 +75,21 @@ describe('local server connector schedule reopen recovery', () => {
     if (admittedOnly.status !== 'admitted') {
       throw new Error('expected admitted queued setup')
     }
+    await setupClient.connectors.update({
+      connectorInstanceId: 'connector-instance-schedule',
+      earliestBackfillDate: '2026-07-01',
+    })
 
     // Process boundary: reopen the same SQLite file with a new local client (startup recovery runs).
     let refreshCalls = 0
+    let refreshCoverageStart: string | null = null
     const reopenedClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
           async refresh(input) {
             refreshCalls += 1
+            refreshCoverageStart = input.coverage.start
               return {
                 ...completedConnectorRefreshContract(input.coverage.start.slice(0, 10)),
                 coverage: input.coverage,
@@ -115,6 +122,10 @@ describe('local server connector schedule reopen recovery', () => {
         id: admittedOnly.run.id,
         status: 'queued',
         mode: 'scheduled',
+        historicalBackfill: {
+          boundary: { earliestDate: '2026-06-15' },
+          state: 'not_started',
+        },
       }],
     })
 
@@ -145,6 +156,7 @@ describe('local server connector schedule reopen recovery', () => {
       },
     })
     expect(refreshCalls).toBe(1)
+    expect(refreshCoverageStart).toBe('2026-06-15T00:00:00.000Z')
 
     const runs = await httpClient.connectors.runs.list({
       connectorInstanceId: 'connector-instance-schedule',
@@ -152,7 +164,10 @@ describe('local server connector schedule reopen recovery', () => {
       offset: 0,
     })
     expect(runs.total).toBe(1)
-    expect(runs.items[0]?.id).toBe(admittedOnly.run.id)
+    expect(runs.items[0]).toMatchObject({
+      id: admittedOnly.run.id,
+      historicalBackfill: { boundary: { earliestDate: '2026-06-15' } },
+    })
 
     const occurrences = await httpClient.connectors.schedules.listOccurrences({
       connectorInstanceId: 'connector-instance-schedule',

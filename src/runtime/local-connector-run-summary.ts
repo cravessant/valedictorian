@@ -26,46 +26,27 @@ export function parseConnectorRetryAdvice(value: unknown): RetryAdvice | null {
 }
 
 export function runFrontiers(record: ConnectorRunRecord) {
-  const reported = reportedSynchronization(record)
-  return reported ? {
+  const reported = requireReportedSynchronization(record)
+  return {
     newestFrontier: reported.newestFrontier,
     historicalBackfill: reported.historicalBackfill,
-  } : {
-    newestFrontier: { state: 'not_started' as const },
-    historicalBackfill: { state: 'not_started' as const, boundary: { earliestDate: runBoundary(record) } },
   }
 }
 
 export function runOutcome(record: ConnectorRunRecord): ConnectorRunSummary['outcome'] {
-  const reported = reportedSynchronization(record)
-  if (reported) return reported.outcome
-  if (record.status === 'queued' || record.status === 'running') return { kind: 'in_progress' }
-  if (record.status === 'failed') return { kind: 'failed', reason: 'connector_run_failed' }
-  if (record.status === 'cancelled') return { kind: 'cancelled', reason: 'connector_run_cancelled' }
-  if (record.status === 'skipped') {
-    const retry = parseConnectorRetryAdvice(record.retryHints)
-    if (retry?.reason === 'rate_limit' && retry.nextAttemptAt) {
-      return {
-        kind: 'cooling_down',
-        operation: {
-          kind: 'scope_rate_limited',
-          executionScopeId: record.executionScopeId,
-          retryAt: retry.nextAttemptAt,
-          serverMinimumDelayMs: retry.serverMinimumDelayMs ?? null,
-        },
-      }
-    }
-    return { kind: 'yielded', reason: 'operation_timeout' }
-  }
-  if (record.status === 'completed' && record.warningCount > 0) {
-    return { kind: 'yielded', reason: 'operation_timeout' }
-  }
-  if (record.status === 'completed' && record.retryHints) return { kind: 'yielded', reason: 'invocation_budget' }
-  return { kind: 'yielded', reason: 'invocation_budget' }
+  return requireReportedSynchronization(record).outcome
 }
 
 export function pendingResolutionCount(record: ConnectorRunRecord) {
-  return reportedSynchronization(record)?.pendingResolutionCount ?? 0
+  return requireReportedSynchronization(record).pendingResolutionCount
+}
+
+function requireReportedSynchronization(record: ConnectorRunRecord) {
+  const reported = reportedSynchronization(record)
+  if (!reported) {
+    throw new Error(`Missing or invalid persisted connector run synchronization: ${record.id}`)
+  }
+  return reported
 }
 
 function reportedSynchronization(record: ConnectorRunRecord) {
@@ -75,7 +56,10 @@ function reportedSynchronization(record: ConnectorRunRecord) {
   const outcome = value.outcome as { kind?: unknown } | undefined
   const status = outcome?.kind === 'in_progress' ? 'running'
     : outcome?.kind === 'failed' ? 'failed'
-      : outcome?.kind === 'cancelled' ? 'cancelled' : 'completed'
+      : outcome?.kind === 'cancelled' ? 'cancelled'
+        : outcome?.kind === 'yielded'
+          || outcome?.kind === 'cooling_down'
+          || outcome?.kind === 'action_required' ? 'skipped' : 'completed'
   const parsed = connectorRunSummarySchema.safeParse({
     id: record.id, connectorInstanceId: record.connectorInstanceId,
     executionScopeId: record.executionScopeId, mode: 'manual', scheduleOccurrence: null,
@@ -92,8 +76,4 @@ function reportedSynchronization(record: ConnectorRunRecord) {
     pendingResolutionCount: parsed.data.pendingResolutionCount,
     outcome: parsed.data.outcome,
   }
-}
-
-function runBoundary(record: ConnectorRunRecord) {
-  return (record.coverageStartedAt ?? record.startedAt).slice(0, 10)
 }

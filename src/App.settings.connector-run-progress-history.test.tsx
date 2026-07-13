@@ -79,38 +79,31 @@ describe('connector-run progress and history', () => {
     const activeRun = {
       id: 'connector-run-navigation',
       connectorInstanceId: 'jobright-default',
-      mode: 'manual',
-      status: 'running',
-      coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
+      executionScopeId: 'scope_jobright_default',
+      mode: 'manual' as const,
+      scheduleOccurrence: null,
+      status: 'running' as const,
       filterSignature: 'filters:{}',
       observationCount: 0,
       warningCount: 0,
-      stats: {
-        attempted: 3,
-        discovered: 20,
-        lastProgressAt: '2026-07-09T16:00:01.000Z',
-        stage: 'normalizing',
+      newestFrontier: { state: 'advancing' as const },
+      historicalBackfill: {
+        state: 'not_started' as const,
+        boundary: { earliestDate: '2026-07-09' },
       },
+      pendingResolutionCount: 0,
+      outcome: { kind: 'in_progress' as const },
       warnings: [],
-      retryHints: null,
       startedAt: '2026-07-09T16:00:00.000Z',
       completedAt: null,
     }
-    vi.mocked(connectorsApi.runs.list)
-      .mockResolvedValue({
-        items: [activeRun],
-        total: 1,
-        limit: 20,
-        offset: 0,
-        hasMore: false,
-      })
-      .mockResolvedValueOnce({
-        items: [{ ...activeRun, stats: { discovered: 0, stage: 'authenticating' } }],
-        total: 1,
-        limit: 1,
-        offset: 0,
-        hasMore: false,
-      })
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      items: [activeRun],
+      total: 1,
+      limit: 20,
+      offset: 0,
+      hasMore: false,
+    })
 
     render(
       <App
@@ -128,14 +121,15 @@ describe('connector-run progress and history', () => {
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
-    expect(await screen.findByText('Stage: Authenticating')).toBeInTheDocument()
+    expect(await screen.findByRole('status', { name: 'Jobright internslist run progress' }))
+      .toHaveTextContent('Checking newest')
     fireEvent.click(screen.getByRole('button', {
       name: 'View connector-run-navigation in Connector Runs',
     }))
 
     expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
-    expect(await screen.findByText('Stage: Normalizing')).toBeInTheDocument()
-    expect(screen.getByText('Discovered jobs: 20')).toBeInTheDocument()
+    expect(screen.getAllByText('Checking newest').length).toBeGreaterThan(0)
+    expect(screen.getByText('Checking the provider for newly published jobs.')).toBeInTheDocument()
     expect(connectorsApi.runs.list).toHaveBeenCalledWith({
       connectorInstanceId: 'jobright-default',
       limit: 20,
@@ -151,12 +145,21 @@ describe('connector-run progress and history', () => {
       items: [{
         id: 'connector-run-terminal-poll',
         connectorInstanceId: 'jobright-default',
+        executionScopeId: 'scope_jobright_default',
         mode: 'manual',
+        scheduleOccurrence: null,
         status: 'completed',
         coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
         filterSignature: 'filters:{}',
         observationCount: 1,
         warningCount: 0,
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'caught_up',
+          boundary: { earliestDate: '2026-07-09' },
+        },
+        pendingResolutionCount: 0,
+        outcome: { kind: 'caught_up' },
         stats: { completed: true, stage: 'finalizing' },
         warnings: [],
         retryHints: null,
@@ -185,7 +188,7 @@ describe('connector-run progress and history', () => {
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Running...' })).toBeDisabled()
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 650))
@@ -240,7 +243,9 @@ describe('connector-run progress and history', () => {
         {
           id: 'connector-run-history',
           connectorInstanceId: 'jobright-default',
+          executionScopeId: 'scope_jobright_default',
           mode: 'manual',
+          scheduleOccurrence: null,
           status: 'failed',
           coverage: {
             start: '2026-07-09T15:00:00.000Z',
@@ -249,13 +254,59 @@ describe('connector-run progress and history', () => {
           filterSignature: 'filters:{}',
           observationCount: 8,
           warningCount: 1,
-          stats: {
-            attempted: 3,
-            authRequired: 1,
-            discovered: 12,
-            eligible: 8,
-            projectedUsable: 2,
-            resolved: 2,
+          newestFrontier: { state: 'not_started' },
+          historicalBackfill: {
+            state: 'not_started',
+            boundary: { earliestDate: '2026-07-09' },
+          },
+          pendingResolutionCount: 0,
+          outcome: {
+            kind: 'action_required',
+            operation: {
+              kind: 'authentication_expired',
+              executionScopeId: 'scope_jobright_default',
+              requestRefresh: true,
+            },
+          },
+          lifecycleCounts: {
+            version: 'connector-run-lifecycle-counts/v1',
+            source: 'frozen_terminal',
+            scope: {
+              kind: 'connector_run',
+              connectorRunId: 'connector-run-history',
+              executionScopeId: 'scope_jobright_default',
+            },
+            provider: {
+              returnedRows: 12,
+              validRecords: 8,
+              invalidRecords: 0,
+              sourceDuplicates: 4,
+              capturedRecords: 8,
+              occurrenceCount: 8,
+              captureShortfall: 0,
+              unclassifiedRows: 0,
+              invariant: 'reconciled',
+              gaps: [],
+            },
+            destination: {
+              normalized: 2,
+              resolvedEmployerOrAts: 1,
+              resolvedThirdParty: 1,
+              unresolved: 0,
+              pending: 0,
+              gateRejected: 0,
+              unclassified: 0,
+              invariant: 'reconciled',
+            },
+            sourcing: {
+              findingsAdded: 1,
+              canonicalDuplicates: 1,
+              notFit: 0,
+              rejected: 0,
+              actionableReview: 0,
+              unclassified: 0,
+              invariant: 'reconciled',
+            },
           },
           warnings: [
             {
@@ -265,7 +316,6 @@ describe('connector-run progress and history', () => {
               severity: 'blocked',
             },
           ],
-          retryHints: null,
           startedAt: '2026-07-09T16:00:00.000Z',
           completedAt: '2026-07-09T16:00:02.000Z',
         },
@@ -288,15 +338,21 @@ describe('connector-run progress and history', () => {
 
     expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
     expect(await screen.findByText('Jobright public jobs')).toBeInTheDocument()
-    expect(screen.getByText('failed')).toBeInTheDocument()
-    expect(screen.getByText('Authentication required')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
+      .toHaveTextContent('Authentication required')
+    expect(screen.queryByText('failed')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Authentication required')).toHaveLength(3)
     expect(screen.getByText('Update and validate Jobright credentials, then run again.')).toBeInTheDocument()
-    expect(screen.getByText('Detail attempts: 3')).toBeInTheDocument()
+    expect(screen.getByText('Provider returned rows: 12')).toBeInTheDocument()
+    expect(screen.getByText('Captured records: 8')).toBeInTheDocument()
+    expect(screen.getByText('Sourcing findings added: 1')).toBeInTheDocument()
+    expect(screen.getByText('Canonical duplicates: 1')).toBeInTheDocument()
+    expect(screen.queryByText('Detail attempts: 3')).not.toBeInTheDocument()
     expect(screen.queryByText('Projected usable: 2')).not.toBeInTheDocument()
     expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
   })
 
-  it('labels per-run zero intake separately from carried cycle counts and explains the arithmetic accessibly', async () => {
+  it('reconciles released lifecycle counts without opaque carried cycle stats', async () => {
     const connectorsApi = createConnectorsApi()
     await connectorsApi.create({
       id: 'pancake-jobright',
@@ -313,52 +369,58 @@ describe('connector-run progress and history', () => {
       items: [{
         id: 'pancake-carried-50',
         connectorInstanceId: 'pancake-jobright',
+        executionScopeId: 'scope_pancake_jobright',
         mode: 'manual',
+        scheduleOccurrence: null,
         status: 'failed',
-        coverage: { start: null, end: null },
         filterSignature: 'filters:{}',
         observationCount: 0,
         warningCount: 1,
-        stats: {
-          discovered: 50,
-          discoveryPages: 3,
-          providerReturned: 0,
-          stopReason: 'failed',
-          lifecycleCounts: {
-            version: 'connector-run-lifecycle-counts/v1',
-            source: 'frozen_terminal',
-            scope: { kind: 'connector_run', connectorRunId: 'pancake-carried-50' },
-            provider: {
-              returnedRows: 0,
-              validRecords: 0,
-              invalidRecords: 0,
-              sourceDuplicates: 0,
-              capturedRecords: 0,
-              occurrenceCount: 0,
-              captureShortfall: 0,
-              unclassifiedRows: 0,
-              invariant: 'reported_stats_missing',
-              gaps: ['missing_provider_valid'],
-            },
-            destination: {
-              normalized: 0,
-              resolvedEmployerOrAts: 0,
-              resolvedThirdParty: 0,
-              unresolved: 0,
-              pending: 0,
-              gateRejected: 0,
-              unclassified: 0,
-              invariant: 'reconciled',
-            },
-            sourcing: {
-              added: 0,
-              queueDuplicate: 0,
-              notFit: 0,
-              rejected: 0,
-              actionableReview: 0,
-              unclassified: 0,
-              invariant: 'reconciled',
-            },
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'advancing',
+          boundary: { earliestDate: '2026-07-01' },
+        },
+        pendingResolutionCount: 0,
+        outcome: { kind: 'failed', reason: 'provider_schema_changed' },
+        lifecycleCounts: {
+          version: 'connector-run-lifecycle-counts/v1',
+          source: 'frozen_terminal',
+          scope: {
+            kind: 'connector_run',
+            connectorRunId: 'pancake-carried-50',
+            executionScopeId: 'scope_pancake_jobright',
+          },
+          provider: {
+            returnedRows: 0,
+            validRecords: 0,
+            invalidRecords: 0,
+            sourceDuplicates: 0,
+            capturedRecords: 0,
+            occurrenceCount: 0,
+            captureShortfall: 0,
+            unclassifiedRows: 0,
+            invariant: 'reported_stats_missing',
+            gaps: ['missing_provider_valid'],
+          },
+          destination: {
+            normalized: 0,
+            resolvedEmployerOrAts: 0,
+            resolvedThirdParty: 0,
+            unresolved: 0,
+            pending: 0,
+            gateRejected: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
+          },
+          sourcing: {
+            findingsAdded: 0,
+            canonicalDuplicates: 0,
+            notFit: 0,
+            rejected: 0,
+            actionableReview: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
           },
         },
         warnings: [{
@@ -367,7 +429,6 @@ describe('connector-run progress and history', () => {
           message: 'raw message',
           severity: 'blocked',
         }],
-        retryHints: { stopReason: 'failed' },
         startedAt: '2026-07-11T14:00:00.000Z',
         completedAt: '2026-07-11T14:00:01.000Z',
       }],
@@ -384,13 +445,15 @@ describe('connector-run progress and history', () => {
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
 
-    expect(await screen.findByText('Unique jobs in this connector run')).toBeInTheDocument()
+    expect(await screen.findByText('Stage-specific synchronization counts')).toBeInTheDocument()
     expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
     expect(screen.getByText('Captured records: 0')).toBeInTheDocument()
-    expect(screen.getByText('Carried connector cycle')).toBeInTheDocument()
-    expect(screen.getByText('Discovered jobs: 50')).toBeInTheDocument()
-    expect(screen.getByText('Discovery page requests: 3')).toBeInTheDocument()
-    expect(screen.getByText('Needs action')).toBeInTheDocument()
+    expect(screen.getByText('Canonical duplicates: 0')).toBeInTheDocument()
+    expect(screen.getByText('Sourcing findings added: 0')).toBeInTheDocument()
+    expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
+    expect(screen.queryByText('Discovered jobs: 50')).not.toBeInTheDocument()
+    expect(screen.queryByText('Discovery page requests: 3')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Failed')).toHaveLength(2)
     expect(screen.queryByText(/Technical status:/)).not.toBeInTheDocument()
     expect(screen.getByText('Provider stats gaps: missing provider valid.')).toBeInTheDocument()
     expect(screen.queryByText('Discovered: 50')).not.toBeInTheDocument()
@@ -399,7 +462,8 @@ describe('connector-run progress and history', () => {
     expect(explanation).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(explanation)
     expect(explanation).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText(/Returned rows equal valid unique records plus invalid rows plus source duplicates/)).toBeInTheDocument()
+    expect(screen.getByText(/Provider returned rows are response rows, not a unique-job total/)).toBeInTheDocument()
+    expect(screen.getByText(/Capture occurrences are intake events; captured records are unique persisted raw records/)).toBeInTheDocument()
   })
 
   it('omits stale request-budget metrics while preserving provider progress', async () => {
@@ -419,58 +483,61 @@ describe('connector-run progress and history', () => {
       items: [{
         id: 'budget-stop-reason-run',
         connectorInstanceId: 'budget-jobright',
+        executionScopeId: 'scope_budget_jobright',
         mode: 'manual',
-        status: 'completed',
-        coverage: { start: null, end: null },
+        scheduleOccurrence: null,
+        status: 'skipped',
         filterSignature: 'filters:{}',
         observationCount: 0,
         warningCount: 0,
-        stats: {
-          attempted: 50,
-          discovered: 50,
-          discoveryPages: 3,
-          providerReturned: 0,
-          pendingResolution: 100,
-          stopReason: 'soft_batch_boundary',
-          lifecycleCounts: {
-            version: 'connector-run-lifecycle-counts/v1',
-            source: 'frozen_terminal',
-            scope: { kind: 'connector_run', connectorRunId: 'budget-stop-reason-run' },
-            provider: {
-              returnedRows: 0,
-              validRecords: 0,
-              invalidRecords: 0,
-              sourceDuplicates: 0,
-              capturedRecords: 0,
-              occurrenceCount: 0,
-              captureShortfall: 0,
-              unclassifiedRows: 0,
-              invariant: 'reconciled',
-              gaps: [],
-            },
-            destination: {
-              normalized: 0,
-              resolvedEmployerOrAts: 0,
-              resolvedThirdParty: 0,
-              unresolved: 0,
-              pending: 4,
-              gateRejected: 0,
-              unclassified: 0,
-              invariant: 'reconciled',
-            },
-            sourcing: {
-              added: 0,
-              queueDuplicate: 0,
-              notFit: 0,
-              rejected: 0,
-              actionableReview: 0,
-              unclassified: 0,
-              invariant: 'reconciled',
-            },
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'advancing',
+          boundary: { earliestDate: '2026-07-01' },
+        },
+        pendingResolutionCount: 4,
+        outcome: { kind: 'yielded', reason: 'invocation_budget' },
+        lifecycleCounts: {
+          version: 'connector-run-lifecycle-counts/v1',
+          source: 'frozen_terminal',
+          scope: {
+            kind: 'connector_run',
+            connectorRunId: 'budget-stop-reason-run',
+            executionScopeId: 'scope_budget_jobright',
+          },
+          provider: {
+            returnedRows: 0,
+            validRecords: 0,
+            invalidRecords: 0,
+            sourceDuplicates: 0,
+            capturedRecords: 0,
+            occurrenceCount: 0,
+            captureShortfall: 0,
+            unclassifiedRows: 0,
+            invariant: 'reconciled',
+            gaps: [],
+          },
+          destination: {
+            normalized: 0,
+            resolvedEmployerOrAts: 0,
+            resolvedThirdParty: 0,
+            unresolved: 0,
+            pending: 4,
+            gateRejected: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
+          },
+          sourcing: {
+            findingsAdded: 0,
+            canonicalDuplicates: 0,
+            notFit: 0,
+            rejected: 0,
+            actionableReview: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
           },
         },
         warnings: [],
-        retryHints: { stopReason: 'soft_batch_boundary' },
         startedAt: '2026-07-11T14:00:00.000Z',
         completedAt: '2026-07-11T14:00:01.000Z',
       }],
@@ -489,13 +556,15 @@ describe('connector-run progress and history', () => {
 
     expect(await screen.findByText('Provider returned rows: 0')).toBeInTheDocument()
     expect(screen.getByText('Captured records: 0')).toBeInTheDocument()
-    expect(screen.getByText('Carried connector cycle')).toBeInTheDocument()
-    expect(screen.getByText('Discovered jobs: 50')).toBeInTheDocument()
-    expect(screen.getByText('Detail attempts: 50')).toBeInTheDocument()
+    expect(screen.getByText('Pending: 4')).toBeInTheDocument()
+    expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
+    expect(screen.queryByText('Discovered jobs: 50')).not.toBeInTheDocument()
+    expect(screen.queryByText('Detail attempts: 50')).not.toBeInTheDocument()
     expect(screen.queryByText('Request budget per run: 10')).not.toBeInTheDocument()
     expect(screen.queryByText('Request budget: 50 / 10')).not.toBeInTheDocument()
     expect(screen.queryByText(/Request budget: 50\s*\/\s*10/)).not.toBeInTheDocument()
-    expect(screen.getByText('Stop reason: soft_batch_boundary')).toBeInTheDocument()
+    expect(screen.getAllByText('Continuing later')).toHaveLength(2)
+    expect(screen.queryByText(/Stop reason:/)).not.toBeInTheDocument()
     expect(screen.queryByText('Discovered: 50')).not.toBeInTheDocument()
   })
 
@@ -516,55 +585,61 @@ describe('connector-run progress and history', () => {
       items: [{
         id: 'missing-budget-run',
         connectorInstanceId: 'missing-budget-jobright',
+        executionScopeId: 'scope_missing_budget_jobright',
         mode: 'manual',
+        scheduleOccurrence: null,
         status: 'failed',
-        coverage: { start: null, end: null },
         filterSignature: 'filters:{}',
         observationCount: 0,
         warningCount: 0,
-        stats: {
-          attempted: 50,
-          discovered: 50,
-          stopReason: 'soft_batch_boundary',
-          lifecycleCounts: {
-            version: 'connector-run-lifecycle-counts/v1',
-            source: 'frozen_terminal',
-            scope: { kind: 'connector_run', connectorRunId: 'missing-budget-run' },
-            provider: {
-              returnedRows: 0,
-              validRecords: 0,
-              invalidRecords: 0,
-              sourceDuplicates: 0,
-              capturedRecords: 0,
-              occurrenceCount: 0,
-              captureShortfall: 0,
-              unclassifiedRows: 0,
-              invariant: 'reconciled',
-              gaps: [],
-            },
-            destination: {
-              normalized: 0,
-              resolvedEmployerOrAts: 0,
-              resolvedThirdParty: 0,
-              unresolved: 0,
-              pending: 0,
-              gateRejected: 0,
-              unclassified: 0,
-              invariant: 'reconciled',
-            },
-            sourcing: {
-              added: 0,
-              queueDuplicate: 0,
-              notFit: 0,
-              rejected: 0,
-              actionableReview: 0,
-              unclassified: 0,
-              invariant: 'reconciled',
-            },
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'advancing',
+          boundary: { earliestDate: '2026-07-01' },
+        },
+        pendingResolutionCount: 0,
+        outcome: { kind: 'failed', reason: 'provider_schema_changed' },
+        lifecycleCounts: {
+          version: 'connector-run-lifecycle-counts/v1',
+          source: 'frozen_terminal',
+          scope: {
+            kind: 'connector_run',
+            connectorRunId: 'missing-budget-run',
+            executionScopeId: 'scope_missing_budget_jobright',
+          },
+          provider: {
+            returnedRows: 0,
+            validRecords: 0,
+            invalidRecords: 0,
+            sourceDuplicates: 0,
+            capturedRecords: 0,
+            occurrenceCount: 0,
+            captureShortfall: 0,
+            unclassifiedRows: 0,
+            invariant: 'reconciled',
+            gaps: [],
+          },
+          destination: {
+            normalized: 0,
+            resolvedEmployerOrAts: 0,
+            resolvedThirdParty: 0,
+            unresolved: 0,
+            pending: 0,
+            gateRejected: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
+          },
+          sourcing: {
+            findingsAdded: 0,
+            canonicalDuplicates: 0,
+            notFit: 0,
+            rejected: 0,
+            actionableReview: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
           },
         },
         warnings: [],
-        retryHints: { stopReason: 'soft_batch_boundary' },
         startedAt: '2026-07-11T14:00:00.000Z',
         completedAt: '2026-07-11T14:00:01.000Z',
       }],
@@ -581,8 +656,10 @@ describe('connector-run progress and history', () => {
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
 
-    expect(await screen.findByText('Detail attempts: 50')).toBeInTheDocument()
-    expect(screen.getByText('Stop reason: soft_batch_boundary')).toBeInTheDocument()
+    expect(await screen.findByText('Provider returned rows: 0')).toBeInTheDocument()
+    expect(screen.getAllByText('Failed')).toHaveLength(2)
+    expect(screen.queryByText('Detail attempts: 50')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Stop reason:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/Request budget per run:/i)).not.toBeInTheDocument()
   })
 

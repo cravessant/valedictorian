@@ -1,5 +1,10 @@
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
-
+import {
+  publicConnectorRunsListResult,
+  publicConnectorRunSummary,
+} from '../runtime/local-connector-public-run'
+import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
+import { publicConnectorSkipActionResult } from './connectors.public'
 interface IpcMainLike {
   handle: (channel: string, handler: (_event: unknown, input?: unknown) => Promise<unknown>) => void
 }
@@ -22,18 +27,18 @@ export function registerConnectorsIpc(
   ipcMain.handle('connectors:inspect', (_event, connectorInstanceId) => {
     assertConnectorsAvailable(connectors)
     return connectors.inspect(parseConnectorInstanceId(connectorInstanceId))
+      .then(publicConnectorStatusSummary)
   })
   ipcMain.handle('connectors:runs:list', (_event, input) => {
     assertConnectorsAvailable(connectors)
     return connectors.runs.list(input as Parameters<typeof connectors.runs.list>[0])
+      .then(publicConnectorRunsListResult)
   })
   ipcMain.handle('connectors:runs:trigger', (_event, input) => {
     assertConnectorsAvailable(connectors)
     return connectors.runs.trigger(input as Parameters<typeof connectors.runs.trigger>[0])
+      .then(publicConnectorRunSummary)
   })
-  ipcMain.handle('connectors:status:list', () =>
-    connectors?.status.list() ?? Promise.resolve({ available: false, items: [] }),
-  )
   ipcMain.handle('connectors:status:reconnect', (_event, input) => {
     assertConnectorsAvailable(connectors)
     return connectors.status.reconnect(parseConnectorStatusActionInput(input))
@@ -41,6 +46,7 @@ export function registerConnectorsIpc(
   ipcMain.handle('connectors:status:skip', (_event, input) => {
     assertConnectorsAvailable(connectors)
     return connectors.status.skip(parseConnectorStatusActionInput(input))
+      .then(publicConnectorSkipActionResult)
   })
 }
 

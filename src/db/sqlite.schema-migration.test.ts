@@ -104,6 +104,7 @@ describe('SQLite database', () => {
     expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_canonical_candidate')
     expect(sourceIndexes).toContain('idx_sources_name')
     expect(connectorRunIndexes).toContain('idx_connector_runs_instance')
+    expect(connectorRunIndexes).toContain('idx_connector_runs_instance_latest')
     expect(connectorRunIndexes).toContain('idx_connector_runs_instance_status_started')
     expect(connectorObservationIndexes).toContain('idx_connector_observations_instance')
     expect(connectorObservationIndexes).toContain('idx_connector_observations_run')
@@ -132,7 +133,7 @@ describe('SQLite database', () => {
     const connectorTables = database
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
-    expect(migrationRows).toHaveLength(25)
+    expect(migrationRows).toHaveLength(26)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -153,7 +154,7 @@ describe('SQLite database', () => {
     expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
       .toEqual({ name: 'retry_work' })
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 25 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 26 })
     const stampedTags = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -246,7 +247,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 25 })
+    ).toEqual({ count: 26 })
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
     for (const table of tables) {
@@ -389,7 +390,7 @@ describe('SQLite database', () => {
       'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 25 })
+      .toEqual({ count: 26 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })

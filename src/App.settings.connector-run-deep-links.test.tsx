@@ -1,9 +1,9 @@
 import {
-  act,
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
   within
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -69,6 +69,22 @@ async function authenticateJobrightInSettings({
   expect(screen.queryByDisplayValue(password)).not.toBeInTheDocument()
 }
 
+function continuousSynchronization(status: 'completed' | 'running') {
+  return {
+    executionScopeId: 'scope_jobright_default',
+    scheduleOccurrence: null,
+    newestFrontier: { state: status === 'running' ? 'advancing' as const : 'caught_up' as const },
+    historicalBackfill: {
+      state: 'not_started' as const,
+      boundary: { earliestDate: '2026-07-01' },
+    },
+    pendingResolutionCount: 0,
+    outcome: status === 'running'
+      ? { kind: 'in_progress' as const }
+      : { kind: 'caught_up' as const },
+  }
+}
+
 describe('connector-run deep links', () => {
   it('navigates run-specific actions to Connector Runs and focuses the supplied run', async () => {
     const connectorsApi = createConnectorsApi()
@@ -76,6 +92,7 @@ describe('connector-run deep links', () => {
     const focusedRun = {
       id: 'connector-run-focus',
       connectorInstanceId: 'jobright-default',
+      ...continuousSynchronization('completed'),
       mode: 'manual' as const,
       status: 'completed' as const,
       coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
@@ -125,7 +142,7 @@ describe('connector-run deep links', () => {
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'View connector runs' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', {
       name: 'View connector-run-focus in Connector Runs',
@@ -149,23 +166,22 @@ describe('connector-run deep links', () => {
     const runningRun = {
       id: 'connector-run-poll-focus',
       connectorInstanceId: 'jobright-default',
+      ...continuousSynchronization('running'),
       mode: 'manual' as const,
       status: 'running' as const,
-      coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
       filterSignature: 'filters:{}',
       observationCount: 0,
       warningCount: 0,
-      stats: { discovered: 1, stage: 'discovering' },
       warnings: [],
-      retryHints: null,
       startedAt: '2026-07-09T16:00:00.000Z',
       completedAt: null,
     }
     let listCalls = 0
+    let releaseProgressUpdate = false
     vi.mocked(connectorsApi.runs.trigger).mockResolvedValueOnce(runningRun)
     vi.mocked(connectorsApi.runs.list).mockImplementation(async () => {
       listCalls += 1
-      if (listCalls <= 2) {
+      if (!releaseProgressUpdate) {
         return {
           items: [runningRun],
           total: 1,
@@ -178,7 +194,12 @@ describe('connector-run deep links', () => {
         items: [{
           ...runningRun,
           observationCount: 4,
-          stats: { discovered: 12, stage: 'normalizing' },
+          pendingResolutionCount: 12,
+          newestFrontier: { state: 'caught_up' as const },
+          historicalBackfill: {
+            state: 'caught_up' as const,
+            boundary: { earliestDate: '2026-07-01' },
+          },
         }],
         total: 1,
         limit: 20,
@@ -203,7 +224,7 @@ describe('connector-run deep links', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-    expect(await screen.findByText('Latest run: running')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Checking newest')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', {
       name: 'View connector-run-poll-focus in Connector Runs',
@@ -221,13 +242,13 @@ describe('connector-run deep links', () => {
     elsewhere.focus()
     expect(elsewhere).toHaveFocus()
 
-    vi.useFakeTimers()
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1_100)
-    })
-    vi.useRealTimers()
-
-    expect(await screen.findByText('Discovered jobs: 12')).toBeInTheDocument()
+    releaseProgressUpdate = true
+    await waitFor(() => {
+      expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
+        .toHaveTextContent('Resolving links')
+      expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
+        .toHaveTextContent('Pending link resolution: 12')
+    }, { timeout: 2_500 })
     expect(scrollIntoView).toHaveBeenCalledTimes(focusCallsAfterLanding)
     expect(elsewhere).toHaveFocus()
     expect(screen.getByRole('article', { current: true })).toHaveAttribute(
@@ -245,6 +266,7 @@ describe('connector-run deep links', () => {
     const olderFocusedRun = {
       id: 'connector-run-page-two',
       connectorInstanceId: 'jobright-default',
+      ...continuousSynchronization('completed'),
       mode: 'manual' as const,
       status: 'completed' as const,
       coverage: { start: '2026-07-08T15:00:00.000Z', end: '2026-07-08T16:00:00.000Z' },
@@ -319,7 +341,7 @@ describe('connector-run deep links', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', {
       name: 'View connector-run-page-two in Connector Runs',
@@ -341,6 +363,7 @@ describe('connector-run deep links', () => {
     const recentRun = {
       id: 'connector-run-present',
       connectorInstanceId: 'jobright-default',
+      ...continuousSynchronization('completed'),
       mode: 'manual' as const,
       status: 'completed' as const,
       coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
@@ -391,7 +414,7 @@ describe('connector-run deep links', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', {
       name: 'View connector-run-missing in Connector Runs',
@@ -411,6 +434,7 @@ describe('connector-run deep links', () => {
     const deepRun = {
       id: 'connector-run-beyond-cap',
       connectorInstanceId: 'jobright-default',
+      ...continuousSynchronization('completed'),
       mode: 'manual' as const,
       status: 'completed' as const,
       coverage: { start: '2026-06-01T15:00:00.000Z', end: '2026-06-01T16:00:00.000Z' },
@@ -473,7 +497,7 @@ describe('connector-run deep links', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', {
       name: 'View connector-run-beyond-cap in Connector Runs',
@@ -512,6 +536,7 @@ describe('connector-run deep links', () => {
     const focusedRun = {
       id: 'connector-run-stale-focus',
       connectorInstanceId: 'jobright-default',
+      ...continuousSynchronization('completed'),
       mode: 'manual' as const,
       status: 'completed' as const,
       coverage: { start: '2026-07-09T15:00:00.000Z', end: '2026-07-09T16:00:00.000Z' },
@@ -548,7 +573,7 @@ describe('connector-run deep links', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', {
       name: 'View connector-run-stale-focus in Connector Runs',

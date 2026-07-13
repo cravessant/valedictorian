@@ -161,6 +161,11 @@ describe('runtime local Valedictorian client', () => {
 
     expect(run).toMatchObject({
       connectorInstanceId: 'connector-instance-fixture',
+      lifecycleCounts: {
+        source: 'frozen_terminal',
+        provider: { capturedRecords: 0 },
+        sourcing: { canonicalDuplicates: 0, findingsAdded: 0 },
+      },
       mode: 'manual',
       observationCount: 1,
       stats: {

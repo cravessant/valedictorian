@@ -84,8 +84,8 @@ describe('ConnectorStatusPage', () => {
     expect(screen.queryByText('No enabled connectors.')).not.toBeInTheDocument()
   })
 
-  it('shows full typed retry guidance for a skipped not-due run', () => {
-    const nextAttemptAt = '2026-07-11T12:01:00.000Z'
+  it('shows a localized next attempt for provider cooldown without failure copy', () => {
+    const nextAttemptAt = '2026-07-12T12:02:00.000Z'
     render(
       <ConnectorStatusPage
         contentColumnClass=""
@@ -94,22 +94,46 @@ describe('ConnectorStatusPage', () => {
         result={{
           available: true,
           items: [createConnectorStatusView({
-            retryAdvice: {
-              state: 'not_due', reason: 'rate_limit', attempt: 2, maxAttempts: 4,
-              lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
-              nextAttemptAt, horizonAt: '2026-07-11T13:00:00.000Z',
-            },
-            severity: 'warning', status: 'skipped', statusLabel: 'Skipped / not due',
-            summary: 'Latest run was skipped because retry work is not due yet.',
+            nextAttemptAt,
+            severity: 'warning',
+            status: 'cooling_down',
+            statusLabel: 'Cooling down',
+            summary: 'The provider asked this connector to pause requests.',
           })],
         }}
         onAction={vi.fn()}
       />,
     )
 
+    expect(screen.getByText(`Next attempt ${new Date(nextAttemptAt).toLocaleString()}`)).toBeInTheDocument()
+    expect(screen.queryByText(/failed|stuck/i)).not.toBeInTheDocument()
+  })
+
+  it('renders continuing later without treating a worker-lease yield as failure', () => {
+    render(
+      <ConnectorStatusPage
+        contentColumnClass=""
+        error={null}
+        isLoading={false}
+        result={{
+          available: true,
+          items: [createConnectorStatusView({
+            severity: 'warning',
+            status: 'skipped',
+            statusLabel: 'Continuing later',
+            summary:
+              'Yielded work is safely checkpointed for the next admitted manual or scheduled work opportunity.',
+          })],
+        }}
+        onAction={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Continuing later')).toBeInTheDocument()
     expect(screen.getByText(
-      `Skipped — not due · Rate limited · Attempt 2 of 4 · Next attempt ${new Date(nextAttemptAt).toLocaleString()}`,
+      'Yielded work is safely checkpointed for the next admitted manual or scheduled work opportunity.',
     )).toBeInTheDocument()
+    expect(screen.queryByText(/failed|partial success|stuck/i)).not.toBeInTheDocument()
   })
 })
 
@@ -125,8 +149,8 @@ function createConnectorStatusView(
     id: 'connector-instance-fixture',
     lastRunAt: '2026-07-08T17:00:01.000Z',
     latestRunId: 'connector-run-1',
+    nextAttemptAt: null,
     observationCount: 0,
-    retryAdvice: null,
     severity: 'healthy',
     status: 'healthy',
     statusLabel: 'Healthy',

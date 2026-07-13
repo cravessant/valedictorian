@@ -11,9 +11,9 @@ describe('local connector run synchronization persistence boundary', () => {
       outcome: { kind: 'caught_up' },
       injected: 'ignored only by permissive parsing',
     } })
-    expect(runFrontiers(run)).toMatchObject({ newestFrontier: { state: 'not_started' } })
-    expect(runOutcome(run)).toEqual({ kind: 'yielded', reason: 'invocation_budget' })
-    expect(pendingResolutionCount(run)).toBe(0)
+    expect(() => runFrontiers(run)).toThrow('persisted connector run synchronization')
+    expect(() => runOutcome(run)).toThrow('persisted connector run synchronization')
+    expect(() => pendingResolutionCount(run)).toThrow('persisted connector run synchronization')
     expect(() => publicRunStatus(['partial', '_success'].join(''))).toThrow('Invalid persisted connector run status')
   })
 })

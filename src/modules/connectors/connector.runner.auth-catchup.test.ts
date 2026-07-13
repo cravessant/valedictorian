@@ -596,10 +596,11 @@ describe('connector runner', () => {
           stats: {
             observations: 0,
             copiedValue: 'abc123',
+            unrelatedMetadataId: 'connector-run-1233-not-a-secret',
           },
           warnings: [
             {
-              code: 'fixture.leak',
+              code: 'fixture.abc123.leak',
               message: 'leaked abc123',
             },
           ],
@@ -657,15 +658,34 @@ describe('connector runner', () => {
       connectorInstanceId: 'connector-instance-overlap-secret',
       filterSignature: 'filters:{}',
     })
-    const persisted = JSON.stringify({
-      checkpoint: checkpoint?.checkpoint,
-      stats: run.stats,
-      warnings: run.warnings,
-    })
+    const persistedRun = await repository.getRun(run.id)
+    const checkpointOutput = checkpoint?.checkpoint as { copiedValue: string }
+    const statsOutput = persistedRun?.stats as {
+      copiedValue: string
+      unrelatedMetadataId: string
+    }
+    const warningOutput = persistedRun?.warnings as Array<{ code: string; message: string }>
+    const secretBearingValues = [
+      checkpointOutput.copiedValue,
+      statsOutput.copiedValue,
+      ...warningOutput.flatMap(({ code, message }) => [code, message]),
+    ]
 
-    expect(persisted).toContain('[redacted-secret]')
-    expect(persisted).not.toContain('abc')
-    expect(persisted).not.toContain('123')
+    expect(checkpointOutput).toEqual({ copiedValue: '[redacted-secret]' })
+    expect(statsOutput).toMatchObject({
+      copiedValue: '[redacted-secret]',
+      unrelatedMetadataId: 'connector-run-1233-not-a-secret',
+    })
+    expect(warningOutput).toEqual([{
+      code: 'fixture.[redacted-secret].leak',
+      message: 'leaked [redacted-secret]',
+    }])
+    for (const value of secretBearingValues) {
+      expect(value).toContain('[redacted-secret]')
+      expect(value).not.toContain('abc123')
+      expect(value).not.toContain('abc')
+      expect(value).not.toContain('123')
+    }
   })
 
   it('returns missing secret-backed grants without exposing persistence to connectors', async () => {
