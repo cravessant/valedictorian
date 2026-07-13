@@ -5,7 +5,7 @@ export type ConnectorReconnectResult = Awaited<ReturnType<ConnectorsPreloadApi['
 export type ConnectorSettingsRun = Awaited<ReturnType<ConnectorsPreloadApi['runs']['trigger']>>
 
 export interface ConnectorSettingsDraft {
-  discoveryCount: string
+  enabled: boolean
   earliestBackfillDate: string
 }
 

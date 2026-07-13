@@ -4,6 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 
 function createTempSqlitePath() {
@@ -63,20 +64,26 @@ describe('runtime connectors.status.skip coverage', () => {
       action: 'skip',
       status: 'skipped',
       run: {
-        status: 'skipped',
         mode: 'manual',
         coverage: {
           start: '2026-06-01T00:00:00.000Z',
           end: skipInstant,
         },
+        outcome: { kind: 'cancelled', reason: 'user_skipped_for_coverage_tracer' },
+        status: 'cancelled',
       },
+    })
+    expect(connectorRunSynchronizationCopy(skipped.run)).toMatchObject({
+      label: 'Skipped by user',
+      state: 'skipped',
+      summary: 'This synchronization work opportunity was skipped by the user.',
     })
 
     const listed = await client.connectors.runs.list({
       connectorInstanceId: 'skip-coverage',
     })
     expect(listed.items[0]).toMatchObject({
-      status: 'skipped',
+      status: 'cancelled',
       coverage: {
         start: '2026-06-01T00:00:00.000Z',
         end: skipInstant,

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   defaultApplicationLoader,
   defaultConnectorScheduleApi,
+  defaultConnectorStatusLoader,
   defaultConnectorsApi,
 } from './loaders'
 
@@ -159,4 +160,85 @@ describe('renderer HTTP loaders', () => {
       expect.objectContaining({ method: 'GET' }),
     )
   })
+
+  it('loads many Overview rows with one bounded overview request and no connector fanout', async () => {
+    const retryAt = '2026-07-13T12:05:00.000Z'
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValue(jsonResponse({
+      items: Array.from({ length: 40 }, (_, index) => publicOverviewFixture(
+        `connector-${String(index).padStart(2, '0')}`,
+        retryAt,
+      )),
+      nextCursor: null,
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const list = vi.fn()
+    const inspect = vi.fn()
+    const listRuns = vi.fn()
+    const internalList = vi.fn()
+    ;(window as Window & { connectors?: unknown }).connectors = {
+      list, inspect, runs: { list: listRuns }, status: { list: internalList },
+    }
+    ;(window as Window & {
+      valedictorianHttp?: { apiBaseUrl: string; workspaceId: string }
+    }).valedictorianHttp = {
+      apiBaseUrl: 'https://valedictorian.test',
+      workspaceId: 'workspace-overview',
+    }
+
+    const result = await defaultConnectorStatusLoader()
+
+    expect(result).toMatchObject({ available: true })
+    expect(result.items[0]).toMatchObject({
+      id: 'connector-00', nextAttemptAt: retryAt, status: 'cooling_down',
+      statusLabel: 'Cooling down', actions: [{ id: 'review', label: 'Review' }],
+    })
+    expect(result.items).toHaveLength(40)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://valedictorian.test/v1/workspaces/workspace-overview/connectors/overview?limit=100&enabled=true',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(list).not.toHaveBeenCalled()
+    expect(inspect).not.toHaveBeenCalled()
+    expect(listRuns).not.toHaveBeenCalled()
+    expect(JSON.stringify(result)).not.toMatch(/retryAdvice|maxAttempts|session|secret/)
+    expect(internalList).not.toHaveBeenCalled()
+  })
+
+  it('fails Overview loading when the workspace HTTP client is unavailable', async () => {
+    const ipcList = vi.fn()
+    ;(window as Window & { connectors?: unknown }).connectors = { list: ipcList }
+
+    await expect(defaultConnectorStatusLoader()).rejects.toThrow(
+      'Connector Overview HTTP client is unavailable.',
+    )
+    expect(ipcList).not.toHaveBeenCalled()
+  })
 })
+
+function publicOverviewFixture(id: string, retryAt: string) {
+  return {
+    id, connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
+    displayName: `Fixture Jobs ${id}`, enabled: true,
+    health: {
+      severity: 'warning' as const, status: 'cooling_down' as const,
+      statusLabel: 'Cooling down', summary: 'The provider asked this connector to pause requests.',
+      warningCount: 0, warnings: [],
+    },
+    actionRequired: [],
+    actions: id === 'connector-00' ? [{ id: 'review' as const, label: 'Review' }] : [],
+    latestRun: {
+      id: `run-${id}`, mode: 'manual' as const, status: 'skipped' as const,
+      outcome: 'cooling_down' as const, cancellationKind: null,
+      observationCount: 0, warningCount: 0,
+      newestFrontier: { state: 'caught_up' as const },
+      historicalBackfill: {
+        state: 'advancing' as const, boundary: { earliestDate: '2026-07-01' },
+      },
+      pendingResolutionCount: 0,
+      startedAt: '2026-07-13T12:00:00.000Z', completedAt: '2026-07-13T12:00:01.000Z',
+    },
+    cooldown: { retryAt },
+  }
+}

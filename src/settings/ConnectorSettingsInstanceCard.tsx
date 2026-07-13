@@ -2,18 +2,12 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { fieldControlId } from '@/lib/field-control-id'
-import {
-  JOBRIGHT_CONNECTOR_ID,
-  JOBRIGHT_MAX_DISCOVERY_COUNT,
-  JOBRIGHT_MIN_DISCOVERY_COUNT,
-} from '../modules/connectors/jobright.constants'
-import { formatRetryAdviceGuidance } from '../modules/connectors/connector.retry-guidance'
-import { retryAdviceSchema } from 'sparxie'
+import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
   ConnectorRunLifecycleDetails,
-  ConnectorRunProgressDetails,
-  connectorRunMetrics,
+  ConnectorRunSynchronizationDetails,
 } from './ConnectorRunDetails'
+import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import { ConnectorEarliestBackfillDateControl } from './ConnectorEarliestBackfillDateControl'
 import {
   connectorAuthStatusLabel,
@@ -113,18 +107,16 @@ export function ConnectorSettingsInstanceCard({
   const authReady = isConnectorAuthReady(authState)
   const authLabel = connectorAuthStatusLabel(authState, authConfigured)
   const authMessage = connectorAuthStatusMessage(authState)
-  const runMetrics = latestRun ? connectorRunMetrics(latestRun) : []
-  const retryGuidance = (() => {
-    const advice = retryAdviceSchema.safeParse(latestRun?.retryHints)
-    return advice.success ? formatRetryAdviceGuidance(advice.data) : null
-  })()
+  const latestSynchronization = latestRun ? connectorRunSynchronizationCopy(latestRun) : null
   const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
   const earliestValid = validateSelectableEarliestBackfillDate({
     candidate: draft.earliestBackfillDate,
     createdAt: instance.createdAt,
     todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
   }).ok
-  const runBlocked = !authReady
+  const runBlocked = !instance.enabled
+    || !draft.enabled
+    || !authReady
     || runningInstanceId === instance.id
     || isSavingSettings
     || isDraftDirty(instance)
@@ -279,36 +271,24 @@ export function ConnectorSettingsInstanceCard({
                       onChange={(earliestBackfillDate) =>
                         onUpdateDraft(instance.id, { earliestBackfillDate })}
                     />
+                    <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <input
+                        aria-label="Jobright connector enabled"
+                        checked={draft.enabled}
+                        disabled={isSavingSettings}
+                        type="checkbox"
+                        onChange={(event) =>
+                          onUpdateDraft(instance.id, { enabled: event.target.checked })}
+                      />
+                      Connector enabled
+                    </label>
                     <div
                       className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] xl:items-end"
                       data-testid={`connector-run-actions-${instance.id}`}
                     >
-                      <details className="xl:col-span-full">
-                        <summary className="cursor-pointer text-xs font-medium text-foreground">Connector settings</summary>
-                        <div className="mt-3 grid gap-3">
-                          <Field
-                            className="grid gap-1 text-xs font-medium text-muted-foreground"
-                            data-disabled={isSavingSettings ? true : undefined}
-                          >
-                            <FieldLabel
-                              className="text-xs font-medium text-muted-foreground"
-                              htmlFor={fieldControlId(`connector-${instance.id}`, 'Discovery page size')}
-                            >
-                              Discovery page size
-                            </FieldLabel>
-                            <Input
-                              disabled={isSavingSettings}
-                              id={fieldControlId(`connector-${instance.id}`, 'Discovery page size')}
-                              max={JOBRIGHT_MAX_DISCOVERY_COUNT}
-                              min={JOBRIGHT_MIN_DISCOVERY_COUNT}
-                              type="number"
-                              value={draft.discoveryCount}
-                              onChange={(event) =>
-                                onUpdateDraft(instance.id, { discoveryCount: event.target.value })}
-                            />
-                          </Field>
-                        </div>
-                      </details>
+                      <p className="text-xs text-muted-foreground xl:col-span-full">
+                        Run now advances the newest frontier, historical backfill, and pending link resolution.
+                      </p>
                       <Button
                         type="button"
                         variant="outline"
@@ -336,27 +316,24 @@ export function ConnectorSettingsInstanceCard({
                     </div>
                     {latestRunStatus ? (
                       <div
-                        aria-atomic="true"
-                        aria-label={`${instance.displayName} run progress`}
-                        aria-live="polite"
                         className="grid gap-2"
-                        role="status"
                       >
-                        <p className="text-xs font-medium text-muted-foreground">
-                          Latest run: {latestRunStatus}
+                        <p
+                          aria-atomic={!latestRun ? 'true' : undefined}
+                          aria-label={!latestRun ? `${instance.displayName} run progress` : undefined}
+                          aria-live={!latestRun ? 'polite' : undefined}
+                          className="text-xs font-medium text-muted-foreground"
+                          role={!latestRun ? 'status' : undefined}
+                        >
+                          Latest synchronization: {latestSynchronization?.label ?? 'Starting'}
                         </p>
-                        {retryGuidance ? (
-                          <p className="text-xs font-medium text-muted-foreground">{retryGuidance}</p>
+                        {latestRun ? (
+                          <ConnectorRunSynchronizationDetails
+                            ariaLabel={`${instance.displayName} run progress`}
+                            run={latestRun}
+                          />
                         ) : null}
-                        {latestRun ? <ConnectorRunProgressDetails run={latestRun} /> : null}
                         {latestRun ? <ConnectorRunLifecycleDetails run={latestRun} /> : null}
-                        {runMetrics.length > 0 ? (
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            {runMetrics.map((metric) => (
-                              <span key={metric.label}>{metric.label}: {metric.value}</span>
-                            ))}
-                          </div>
-                        ) : null}
                         {latestRun ? (
                           <Button
                             aria-label={`View ${latestRun.id} in Connector Runs`}

@@ -1,8 +1,12 @@
 import fs from 'node:fs'
 import type {
   ConnectorAuthReferenceInput,
-  ConnectorRunSummary,
   ValedictorianWorkspaceClient
+} from 'sparxie'
+import {
+  connectorOverviewListQuerySchema,
+  connectorOverviewListResultSchema,
+  DEFAULT_CONNECTOR_OVERVIEW_LIST_LIMIT,
 } from 'sparxie'
 import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
@@ -31,6 +35,7 @@ import {
   validateSelectableEarliestBackfillDate,
 } from '../modules/connectors/connector.earliest-backfill'
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
+import { connectorDisabledExecutionError } from '../modules/connectors/connector-execution.errors'
 import { assertSupportedConnectorSettings } from '../modules/connectors/connector.settings-validation'
 import {
   createConnectorRunner,
@@ -39,10 +44,7 @@ import {
   type AppConnectorAuthValidationResult,
 } from '../modules/connectors/connector.runner'
 import {
-  mapConnectorWarnings,
   mapConnectorStatusSummaries,
-  mapConnectorStatusSummary,
-  type ConnectorStatusView
 } from '../modules/connectors/connector.status'
 import type {
   ConnectorAuthReference,
@@ -61,13 +63,23 @@ import {
   dispatchAcquiredNormalizationWork,
 } from './local-connector-retry-dispatch'
 import { executeClaimedConnectorRun } from './local-connector-claimed-execution'
+import { mapConnectorRunSummary } from './local-connector-public-run'
+import {
+  mapConnectorAuthSummary,
+  mapLocalConnectorStatusSummary,
+} from './local-connector-status-mapping'
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
 import {
   createDefaultNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
-import { mapConnectorCheckpoint, mapConnectorObservation, parseConnectorRetryAdvice, pendingResolutionCount, publicRunStatus, runFrontiers, runOutcome } from './local-connector-run-summary'
+import { mapConnectorCheckpoint, mapConnectorObservation } from './local-connector-run-summary'
+import { mapLocalConnectorOverviewRecord } from './local-connector-overview'
+import {
+  createConnectorOverviewCursor,
+  readConnectorOverviewCursor,
+} from './local-connector-overview.cursor'
 import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 export type {
   LocalValedictorianClientOptions,
@@ -92,11 +104,9 @@ import type {
   LocalValedictorianClientOptions,
 } from './local-valedictorian-runtime-options'
 import type {
-  LocalConnectorAuthSummary,
   LocalConnectorInstanceSummary,
-  LocalConnectorStatusSummary,
-  LocalConnectorRunSummary,
   LocalConnectorInternalRunTriggerInput,
+  LocalConnectorRunSummary,
   LocalConnectorStatusActionInput,
   LocalConnectorReconnectActionResult,
   LocalValedictorianClient
@@ -223,7 +233,8 @@ export function createLocalValedictorianClient({
   const mapRun = (record: ConnectorRunRecord): LocalConnectorRunSummary => {
     const synchronizedRecord = {
       ...record,
-      synchronization: connectorRepository.getRunSynchronization(record.id),
+      synchronization: record.synchronization
+        ?? connectorRepository.getRunSynchronization(record.id),
     }
     const occurrence = scheduleRepository.getOccurrenceLinkForRun(record.id)
     if (!occurrence || !occurrence.connectorRunId) {
@@ -367,6 +378,27 @@ export function createLocalValedictorianClient({
         }
         return mapLocalConnectorStatusSummary(record)
       },
+      overview: {
+        list: async (input = {}) => {
+          const query = connectorOverviewListQuerySchema.parse(input)
+          const page = await connectorRepository.listOverviewStatusSummaries({
+            cursorId: query.cursor
+              ? readConnectorOverviewCursor(query.cursor, query)
+              : undefined,
+            enabled: query.enabled,
+            limit: query.limit ?? DEFAULT_CONNECTOR_OVERVIEW_LIST_LIMIT,
+            severity: query.severity,
+            status: query.status,
+          })
+          const items = page.items.map(mapLocalConnectorOverviewRecord)
+          return connectorOverviewListResultSchema.parse({
+            items,
+            nextCursor: page.hasMore
+              ? createConnectorOverviewCursor(items.at(-1)!.id, query)
+              : null,
+          })
+        },
+      },
       runs: {
         list: async (input) => {
           const result = await connectorRepository.listRuns(input)
@@ -495,7 +527,7 @@ export function createLocalValedictorianClient({
           },
         },
       },
-      rawRecords: {
+      rawRecords: { list: (query) => rawSourceRepository.list(query),
         ingestBatch: async (input) => {
           const result = await rawSourceRepository.ingestBatch(input)
           for (const receipt of result.receipts) {
@@ -635,6 +667,9 @@ async function executeConnectorRunTrigger({
   if (!instance) {
     throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
   }
+  if (!instance.enabled) {
+    throw connectorDisabledExecutionError(input.connectorInstanceId)
+  }
   const connector = connectorRegistry?.get(instance.connectorId) ?? null
   if (!connector) {
     throw new Error(`Unsupported connector id: ${instance.connectorId}`)
@@ -765,169 +800,6 @@ function mapConnectorInstanceSummary(
     earliestBackfillDate: record.earliestBackfillDate,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
-  }
-}
-function mapLocalConnectorStatusSummary(
-  record: ConnectorInstanceRecord & { latestRun: ConnectorRunRecord | null },
-): LocalConnectorStatusSummary {
-  const status = mapConnectorStatusSummary(record)
-  const auth = record.auth.map(mapConnectorAuthSummary)
-  return {
-    ...status,
-    status: publicConnectorStatus(status.status),
-    actions: status.actions.map((action) => ({ id: action.id, label: action.label })),
-    warnings: status.warnings.map((warning) => ({ ...warning, label: warning.label ?? null })),
-    connectorVersion: record.connectorVersion,
-    auth,
-    actionRequired: actionRequiredForStatus(status, auth),
-  }
-}
-function publicConnectorStatus(status: ConnectorStatusView['status']): LocalConnectorStatusSummary['status'] {
-  const mappings: Record<ConnectorStatusView['status'], LocalConnectorStatusSummary['status']> = {
-    auth_required: 'authentication_required',
-    blocked: 'blocked', cancelled: 'cancelled', failed: 'failed', healthy: 'caught_up',
-    never_run: 'never_run', no_jobs: 'source_exhausted',
-    queued: 'queued', running: 'checking_newest', skipped: 'skipped',
-  }
-  return mappings[status]
-}
-function mapConnectorAuthSummary(reference: ConnectorAuthReference): LocalConnectorAuthSummary {
-  return {
-    id: reference.id,
-    mode: reference.mode,
-    label: reference.label ?? null,
-    configured: isConnectorAuthConfigured(reference),
-  }
-}
-function isConnectorAuthConfigured(reference: ConnectorAuthReference): boolean {
-  if (reference.mode === 'none') {
-    return true
-  }
-  return typeof reference.secretKey === 'string' && reference.secretKey.trim().length > 0
-}
-function actionRequiredForStatus(
-  status: ConnectorStatusView,
-  auth: LocalConnectorAuthSummary[],
-): LocalConnectorStatusSummary['actionRequired'] {
-  if (status.status === 'auth_required') {
-    return [
-      {
-        id: auth[0]?.id ?? status.id,
-        kind: 'auth',
-        label: status.actionLabel ?? 'Reconnect',
-        message: status.summary,
-        severity: status.severity,
-      },
-    ]
-  }
-  const actions: LocalConnectorStatusSummary['actionRequired'] = []
-  for (const warning of status.warnings) {
-    if (warning.code === 'source.captcha') {
-      actions.push({
-        id: warning.code,
-        kind: 'captcha',
-        label: warning.label,
-        message: warning.message,
-        severity: warning.severity,
-      })
-      continue
-    }
-    if (warning.code === 'source.rate_limited') {
-      actions.push({
-        id: warning.code,
-        kind: 'rate_limit',
-        label: warning.label,
-        message: warning.message,
-        severity: warning.severity,
-      })
-    }
-  }
-  return actions
-}
-function mapConnectorRunSummary(
-  record: ConnectorRunRecord,
-  scheduleOccurrence: ConnectorRunSummary['scheduleOccurrence'] = null,
-): LocalConnectorRunSummary {
-  if (
-    scheduleOccurrence
-    && record.mode === 'scheduled'
-    && scheduleOccurrence.admittedMode === 'scheduled'
-  ) {
-    return {
-      id: record.id,
-      connectorInstanceId: record.connectorInstanceId,
-      executionScopeId: record.executionScopeId,
-      mode: 'scheduled',
-      scheduleOccurrence,
-      status: publicRunStatus(record.status),
-      coverage: {
-        start: record.coverageStartedAt,
-        end: record.coverageEndedAt,
-      },
-      filterSignature: record.filterSignature,
-      observationCount: record.observationCount,
-      warningCount: record.warningCount,
-      ...runFrontiers(record),
-      pendingResolutionCount: pendingResolutionCount(record),
-      outcome: runOutcome(record),
-      stats: record.stats,
-      warnings: mapConnectorWarnings(record.warnings),
-      retryHints: parseConnectorRetryAdvice(record.retryHints),
-      startedAt: record.startedAt,
-      completedAt: record.completedAt,
-    }
-  }
-  if (
-    scheduleOccurrence
-    && record.mode === 'catch_up'
-    && scheduleOccurrence.admittedMode === 'catch_up'
-  ) {
-    return {
-      id: record.id,
-      connectorInstanceId: record.connectorInstanceId,
-      executionScopeId: record.executionScopeId,
-      mode: 'catch_up',
-      scheduleOccurrence,
-      status: publicRunStatus(record.status),
-      coverage: {
-        start: record.coverageStartedAt,
-        end: record.coverageEndedAt,
-      },
-      filterSignature: record.filterSignature,
-      observationCount: record.observationCount,
-      warningCount: record.warningCount,
-      ...runFrontiers(record),
-      pendingResolutionCount: pendingResolutionCount(record),
-      outcome: runOutcome(record),
-      stats: record.stats,
-      warnings: mapConnectorWarnings(record.warnings),
-      retryHints: parseConnectorRetryAdvice(record.retryHints),
-      startedAt: record.startedAt,
-      completedAt: record.completedAt,
-    }
-  }
-  return {
-    id: record.id,
-    connectorInstanceId: record.connectorInstanceId,
-    executionScopeId: record.executionScopeId,
-    mode: 'manual',
-    scheduleOccurrence: null,
-    status: publicRunStatus(record.status),
-    coverage: {
-      start: record.coverageStartedAt,
-      end: record.coverageEndedAt,
-    },
-    filterSignature: record.filterSignature,
-    observationCount: record.observationCount,
-    warningCount: record.warningCount,
-    ...runFrontiers(record),
-    pendingResolutionCount: pendingResolutionCount(record),
-    outcome: runOutcome(record),
-    stats: record.stats,
-    warnings: mapConnectorWarnings(record.warnings),
-    retryHints: parseConnectorRetryAdvice(record.retryHints),
-    startedAt: record.startedAt,
-    completedAt: record.completedAt,
   }
 }
 function mapConnectorAuthReferenceInputs(

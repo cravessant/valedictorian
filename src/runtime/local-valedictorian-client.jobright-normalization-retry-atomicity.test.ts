@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobright'
+import { connectorOverviewListResultSchema } from 'sparxie'
 import {
   connectorCheckpoints,
   normalizationAttempts,
@@ -18,6 +19,10 @@ import { createStaticConnectorRegistry } from '../modules/connectors/connector.r
 import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
+import {
+  publicConnectorRunsListResult,
+  publicConnectorRunSummary,
+} from './local-connector-public-run'
 
 function createTempSqlitePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
@@ -339,11 +344,29 @@ describe('runtime Jobright normalization retry atomicity', () => {
     midDb.update(retryWork).set({ nextAttemptAt: clock }).run()
     midSqlite.close()
 
-    await client.connectors.runs.trigger({
+    const recovered = await client.connectors.runs.trigger({
       connectorInstanceId: 'jobright-recover', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
 
     expect(detailCalls).toBe(detailCallsBeforeRecovery)
+    expect(publicConnectorRunSummary(recovered)).toMatchObject({
+      status: 'completed',
+      outcome: { kind: 'yielded', reason: 'invocation_budget' },
+      lifecycleCounts: { source: 'frozen_terminal' },
+    })
+    expect(publicConnectorRunsListResult(await client.connectors.runs.list({
+      connectorInstanceId: 'jobright-recover', limit: 1,
+    })).items[0]).toMatchObject({
+      status: 'completed',
+      outcome: { kind: 'yielded', reason: 'invocation_budget' },
+    })
+    expect(connectorOverviewListResultSchema.parse(
+      await client.connectors.overview.list({ enabled: true }),
+    ).items[0]).toMatchObject({
+      id: 'jobright-recover',
+      health: { status: 'skipped' },
+      latestRun: { status: 'completed', outcome: 'yielded' },
+    })
     const verifySqlite = createFileDatabase(sqlitePath)
     const verifyDb = createDrizzleDatabase(verifySqlite)
     const verifyRepository = createSqliteConnectorRepository(verifyDb)

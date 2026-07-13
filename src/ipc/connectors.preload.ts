@@ -1,22 +1,27 @@
-import type { ConnectorStatusListResult } from '../modules/connectors/connector.status'
 import type {
   ConnectorInstanceSummary,
   ConnectorInstancesListResult,
   ConnectorRunsListInput,
   ConnectorRunsListResult,
+  ConnectorRunSummary,
   ConnectorStatusSummary,
   CreateConnectorInstanceInput,
   UpdateConnectorInstanceInput,
 } from 'sparxie'
-import { connectorRunSummarySchema, connectorRunsListResultSchema } from 'sparxie'
+import {
+  connectorRunSummarySchema,
+  connectorRunsListResultSchema,
+} from 'sparxie'
 import type {
   LocalConnectorReconnectActionResult,
-  LocalConnectorRunSummary,
   LocalConnectorRunTriggerInput,
   LocalConnectorSkipActionInput,
-  LocalConnectorSkipActionResult,
   LocalConnectorStatusActionInput,
 } from '../runtime/local-valedictorian-client'
+import {
+  publicConnectorSkipActionResult,
+  type ConnectorSkipActionResult,
+} from './connectors.public'
 
 interface IpcRendererLike {
   invoke: (channel: string, input?: unknown) => Promise<unknown>
@@ -28,15 +33,14 @@ export interface ConnectorsPreloadApi {
   update: (input: UpdateConnectorInstanceInput) => Promise<ConnectorInstanceSummary>
   inspect: (connectorInstanceId: string) => Promise<ConnectorStatusSummary>
   runs: {
-    list: (input: ConnectorRunsListInput) => Promise<Omit<ConnectorRunsListResult, 'items'> & { items: LocalConnectorRunSummary[] }>
-    trigger: (input: LocalConnectorRunTriggerInput) => Promise<LocalConnectorRunSummary>
+    list: (input: ConnectorRunsListInput) => Promise<ConnectorRunsListResult>
+    trigger: (input: LocalConnectorRunTriggerInput) => Promise<ConnectorRunSummary>
   }
   status: {
-    list: () => Promise<ConnectorStatusListResult>
     reconnect: (
       input: LocalConnectorStatusActionInput
     ) => Promise<LocalConnectorReconnectActionResult>
-    skip: (input: LocalConnectorSkipActionInput) => Promise<LocalConnectorSkipActionResult>
+    skip: (input: LocalConnectorSkipActionInput) => Promise<ConnectorSkipActionResult>
   }
 }
 
@@ -57,21 +61,14 @@ export function createConnectorsPreloadApi(ipcRenderer: IpcRendererLike): Connec
     runs: {
       list(input) {
         return ipcRenderer.invoke('connectors:runs:list', input)
-          .then((value) => {
-            const parsed = connectorRunsListResultSchema.parse(value)
-            const raw = value as { items?: LocalConnectorRunSummary[] }
-            return { ...parsed, items: parsed.items.map((item, index) => ({ ...raw.items?.[index], ...item }) as LocalConnectorRunSummary) }
-          })
+          .then((value) => connectorRunsListResultSchema.parse(value))
       },
       trigger(input) {
         return ipcRenderer.invoke('connectors:runs:trigger', input)
-          .then((value) => ({ ...(value as LocalConnectorRunSummary), ...connectorRunSummarySchema.parse(publicConnectorRun(value)) }))
+          .then((value) => connectorRunSummarySchema.parse(value))
       },
     },
     status: {
-      list() {
-        return ipcRenderer.invoke('connectors:status:list') as Promise<ConnectorStatusListResult>
-      },
       reconnect(input) {
         return ipcRenderer.invoke(
           'connectors:status:reconnect',
@@ -82,13 +79,8 @@ export function createConnectorsPreloadApi(ipcRenderer: IpcRendererLike): Connec
         return ipcRenderer.invoke(
           'connectors:status:skip',
           input,
-        ) as Promise<LocalConnectorSkipActionResult>
+        ).then(publicConnectorSkipActionResult)
       },
     },
   }
-}
-
-function publicConnectorRun(value: unknown) {
-  const { coverage: _coverage, retryHints: _retryHints, stats: _stats, ...run } = value as Record<string, unknown>
-  return run
 }

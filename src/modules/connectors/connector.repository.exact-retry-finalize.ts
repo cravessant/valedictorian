@@ -6,6 +6,7 @@ import {
 import type { DrizzleDatabase } from '../../db/sqlite'
 import { hasPersistedExactSuccessfulNormalizationAttempt } from '../sourcing/normalization.repository'
 import { freezeConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
+import { finalizeInProgressConnectorSynchronization } from './connector-synchronization.persistence'
 import {
   mapConnectorRun,
 } from './connector-run.persistence'
@@ -171,6 +172,14 @@ export function finalizeExactAcquiredNormalizationRetry(
       }),
       updatedAt: input.completedAt,
     }).where(eq(connectorRuns.id, input.connectorRunId)).run()
+    finalizeInProgressConnectorSynchronization(
+      transaction,
+      input.connectorRunId,
+      terminalStatus === 'failed'
+        ? { kind: 'failed', reason: 'normalization_retry_failed' }
+        : { kind: 'yielded', reason: 'invocation_budget' },
+      input.completedAt,
+    )
 
     return mapConnectorRun(
       transaction

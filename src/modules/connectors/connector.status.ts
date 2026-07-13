@@ -2,26 +2,38 @@ import type {
   ConnectorStatusSummaryRecord,
   ConnectorWarning,
 } from './connector.repository'
-import type { RetryAdvice } from 'sparxie'
+import type {
+  ConnectorOverviewRecord,
+  ConnectorStatusAction as PublicConnectorStatusAction,
+} from 'sparxie'
+import {
+  pendingResolutionCount,
+  runFrontiers,
+  runOutcome,
+} from '../../runtime/local-connector-run-summary'
 
 export type ConnectorStatusSeverity = 'healthy' | 'warning' | 'blocked'
 
 export type ConnectorStatusState =
   | 'auth_required'
+  | 'backfilling'
   | 'blocked'
+  | 'boundary_exhausted'
   | 'cancelled'
+  | 'checking_newest'
+  | 'cooling_down'
+  | 'caught_up'
   | 'failed'
   | 'healthy'
   | 'never_run'
   | 'no_jobs'
   | 'queued'
+  | 'resolving'
   | 'running'
   | 'skipped'
+  | 'source_exhausted'
 
-export interface ConnectorStatusAction {
-  id: 'reconnect' | 'skip'
-  label: string
-}
+export type ConnectorStatusAction = PublicConnectorStatusAction
 
 export interface ConnectorStatusWarningView {
   code: string
@@ -37,8 +49,8 @@ export interface ConnectorStatusView {
   enabled: boolean
   lastRunAt: string | null
   latestRunId: string | null
+  nextAttemptAt: string | null
   observationCount: number
-  retryAdvice: RetryAdvice | null
   severity: ConnectorStatusSeverity
   status: ConnectorStatusState
   statusLabel: string
@@ -81,12 +93,14 @@ export function mapConnectorStatusSummary(
       enabled: record.enabled,
       lastRunAt: null,
       latestRunId: null,
+      nextAttemptAt: null,
       observationCount: 0,
-      retryAdvice: null,
       severity: 'warning',
       status: 'never_run',
       statusLabel: 'Never run',
-      summary: 'Connector is enabled but has not run yet.',
+      summary: record.enabled
+        ? 'Connector is enabled but has not run yet.'
+        : 'Connector is disabled and has not run yet.',
       warningCount: 0,
       warnings: [],
       actionLabel: null,
@@ -100,9 +114,79 @@ export function mapConnectorStatusSummary(
     rawWarnings.some((warning) => isAuthWarningCode(warning.code))
   const hasBlockedWarning = warnings.some((warning) => warning.severity === 'blocked')
   const latestRunStatus = latestRun.status
+  const frontiers = runFrontiers(latestRun)
+  const pendingResolutions = pendingResolutionCount(latestRun)
+  const outcome = runOutcome(latestRun)
   const completedWithWarnings = latestRun.status === 'completed' && warnings.length > 0
   const noJobs = latestRun.observationCount === 0
-  const state: ConnectorStatusStateView = hasAuthBlocker
+  const state: ConnectorStatusStateView = outcome.kind === 'action_required'
+    ? {
+        actionLabel: 'Reconnect',
+        actions: [
+          { id: 'reconnect', label: 'Reconnect' },
+          { id: 'skip', label: 'Skip this run' },
+        ],
+        severity: 'blocked',
+        status: 'auth_required',
+        statusLabel: 'Authentication required',
+        summary: 'Refresh connector credentials to continue synchronization.',
+      }
+    : outcome.kind === 'cooling_down'
+    ? {
+        actionLabel: null,
+        actions: [],
+        severity: 'warning',
+        status: 'cooling_down',
+        statusLabel: 'Cooling down',
+        summary: 'The provider asked this connector to pause requests.',
+      }
+    : outcome.kind === 'source_exhausted'
+      ? {
+          actionLabel: null,
+          actions: [],
+          severity: 'healthy',
+          status: 'source_exhausted',
+          statusLabel: 'Provider history exhausted',
+          summary: 'The provider has no older history available before this point.',
+        }
+    : outcome.kind === 'boundary_exhausted'
+      ? {
+          actionLabel: null,
+          actions: [],
+          severity: 'healthy',
+          status: 'boundary_exhausted',
+          statusLabel: 'Boundary reached',
+          summary: `Historical backfill reached the configured ${formatDateOnly(frontiers.historicalBackfill.boundary.earliestDate)} boundary.`,
+        }
+    : outcome.kind === 'caught_up'
+      ? {
+          actionLabel: null,
+          actions: [],
+          severity: 'healthy',
+          status: 'caught_up',
+          statusLabel: 'Caught up',
+          summary: 'Newest jobs, historical backfill, and pending link resolution are caught up.',
+        }
+    : outcome.kind === 'yielded' && latestRun.synchronization
+      ? {
+          actionLabel: null,
+          actions: [],
+          severity: 'warning',
+          status: 'skipped',
+          statusLabel: 'Continuing later',
+          summary:
+            'Yielded work is safely checkpointed for the next admitted manual or scheduled work opportunity.',
+        }
+    : outcome.kind === 'cancelled' && outcome.reason.startsWith('user_skipped')
+      ? {
+          actionLabel: null,
+          actions: [],
+          severity: 'warning',
+          status: 'skipped',
+          statusLabel: 'Skipped by user',
+          summary: 'This synchronization work opportunity was skipped by the user.',
+        }
+    : hasAuthBlocker
     ? {
         actionLabel: 'Reconnect',
         actions: [
@@ -133,14 +217,7 @@ export function mapConnectorStatusSummary(
             summary: 'Connector run is queued.',
           }
         : latestRunStatus === 'running'
-          ? {
-              actionLabel: null,
-              actions: [],
-              severity: 'warning',
-              status: 'running',
-              statusLabel: 'Running',
-              summary: 'Connector run is in progress.',
-            }
+          ? activeSynchronizationState(frontiers, pendingResolutions)
           : latestRunStatus === 'failed'
             ? {
                 actionLabel: null,
@@ -206,12 +283,94 @@ export function mapConnectorStatusSummary(
     enabled: record.enabled,
     lastRunAt: latestRun.completedAt ?? latestRun.startedAt,
     latestRunId: latestRun.id,
+    nextAttemptAt: outcome.kind === 'cooling_down' ? outcome.operation.retryAt : null,
     observationCount: latestRun.observationCount,
-    retryAdvice: latestRun.retryHints,
     warningCount: latestRun.warningCount,
     warnings,
     ...state,
   }
+}
+
+export function connectorStatusViewFromOverview(
+  overview: ConnectorOverviewRecord,
+): ConnectorStatusView {
+  const actions = overview.actions
+  return {
+    id: overview.id,
+    connectorId: overview.connectorId,
+    displayName: overview.displayName,
+    enabled: overview.enabled,
+    lastRunAt: overview.latestRun?.completedAt ?? overview.latestRun?.startedAt ?? null,
+    latestRunId: overview.latestRun?.id ?? null,
+    nextAttemptAt: overview.cooldown?.retryAt ?? null,
+    observationCount: overview.latestRun?.observationCount ?? 0,
+    severity: overview.health.severity,
+    status: overview.health.status === 'authentication_required'
+      ? 'auth_required'
+      : overview.health.status,
+    statusLabel: overview.health.statusLabel,
+    summary: overview.health.summary,
+    warningCount: overview.health.warningCount,
+    warnings: overview.health.warnings.map((warning) => ({
+      ...warning,
+      label: warning.label ?? 'Connector warning',
+    })),
+    actionLabel: actions[0]?.label ?? null,
+    actions,
+  }
+}
+
+function activeSynchronizationState(
+  frontiers: ReturnType<typeof runFrontiers>,
+  pendingResolutions: number,
+): ConnectorStatusStateView {
+  if (frontiers.newestFrontier.state === 'advancing') {
+    return {
+      actionLabel: null,
+      actions: [],
+      severity: 'warning',
+      status: 'checking_newest',
+      statusLabel: 'Checking newest',
+      summary: 'Checking the provider for newly published jobs.',
+    }
+  }
+  if (frontiers.historicalBackfill.state === 'advancing') {
+    return {
+      actionLabel: null,
+      actions: [],
+      severity: 'warning',
+      status: 'backfilling',
+      statusLabel: 'Backfilling',
+      summary: `Checking older provider history back to ${formatDateOnly(frontiers.historicalBackfill.boundary.earliestDate)}.`,
+    }
+  }
+  if (pendingResolutions > 0) {
+    return {
+      actionLabel: null,
+      actions: [],
+      severity: 'warning',
+      status: 'resolving',
+      statusLabel: 'Resolving links',
+      summary: `Resolving destinations for ${pendingResolutions} captured ${pendingResolutions === 1 ? 'job' : 'jobs'}.`,
+    }
+  }
+  return {
+    actionLabel: null,
+    actions: [],
+    severity: 'warning',
+    status: 'running',
+    statusLabel: 'Running',
+    summary: 'Connector run is in progress.',
+  }
+}
+
+function formatDateOnly(value: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'UTC',
+    year: 'numeric',
+  }).format(new Date(`${value}T00:00:00.000Z`))
 }
 
 export function mapConnectorWarnings(value: unknown): ConnectorStatusWarningView[] {

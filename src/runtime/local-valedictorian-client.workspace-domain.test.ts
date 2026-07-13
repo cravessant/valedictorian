@@ -636,8 +636,8 @@ describe('runtime local Valedictorian client', () => {
       items: [
         {
           displayName: 'Fixture Jobs',
-          status: 'auth_required',
-          summary: 'Reconnect the connector session to continue refreshes.',
+          status: 'caught_up',
+          summary: 'Newest jobs, historical backfill, and pending link resolution are caught up.',
         },
       ],
     })
@@ -648,9 +648,9 @@ describe('runtime local Valedictorian client', () => {
       },
     ])
     expect(inspected).toMatchObject({
-      actionRequired: [{ kind: 'auth' }],
+      actionRequired: [],
       auth: [{ configured: true, id: 'fixture-session', mode: 'api_key' }],
-      status: 'authentication_required',
+      status: 'caught_up',
     })
     expect(runs).toMatchObject({
       items: [

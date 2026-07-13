@@ -1,6 +1,11 @@
 import { connectorRuns } from '../../db/schema'
+import { eq } from 'drizzle-orm'
 import type { DrizzleDatabase } from '../../db/sqlite'
-import { readConnectorRunLifecycleCounts, reconcileConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
+import {
+  freezeConnectorRunLifecycleCounts,
+  readConnectorRunLifecycleCounts,
+  reconcileConnectorRunLifecycleCounts,
+} from './connector.lifecycle-counts'
 import type {
   ConnectorRunRecord,
   ConnectorRunStatus,
@@ -74,10 +79,36 @@ export function withConnectorRunLifecycleCounts(
   run: ConnectorRunRecord,
 ): ConnectorRunRecord {
   const stats = toJsonRecord(run.stats)
-  const lifecycleCounts = readConnectorRunLifecycleCounts(stats, run.id)
-    ?? reconcileConnectorRunLifecycleCounts(database, run)
+  const persisted = readConnectorRunLifecycleCounts(stats, run.id)
+  if (persisted) {
+    return { ...run, stats: { ...stats, lifecycleCounts: persisted } }
+  }
+  if (run.status !== 'queued' && run.status !== 'running') return run
   return {
     ...run,
-    stats: { ...stats, lifecycleCounts },
+    stats: {
+      ...stats,
+      lifecycleCounts: reconcileConnectorRunLifecycleCounts(database, run),
+    },
   }
+}
+
+export function persistFrozenConnectorRunLifecycleCounts(
+  database: DrizzleDatabase,
+  connectorRunId: string,
+  updatedAt: string,
+): ConnectorRunRecord {
+  const row = database.select().from(connectorRuns)
+    .where(eq(connectorRuns.id, connectorRunId)).get()
+  const run = mapConnectorRun(row)
+  const stats = toJsonRecord(run.stats)
+  database.update(connectorRuns).set({
+    statsJson: JSON.stringify({
+      ...stats,
+      lifecycleCounts: freezeConnectorRunLifecycleCounts(database, run),
+    }),
+    updatedAt,
+  }).where(eq(connectorRuns.id, connectorRunId)).run()
+  return mapConnectorRun(database.select().from(connectorRuns)
+    .where(eq(connectorRuns.id, connectorRunId)).get())
 }

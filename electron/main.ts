@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { runLegacyJobrightBrowserPartitionCleanup } from './legacy-jobright-partition-cleanup'
 import { createElectronSecretCodec } from './profile-secret-codec'
+import { removeRuntimeIpcHandlers } from './runtime-ipc'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
 import { registerApplicationIpc } from '../src/ipc/applications.ipc'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
@@ -94,57 +95,6 @@ let runtimeServicesRegistered = false
 let updatePollingScheduled = false
 const updatePollInitialDelayMs = 3000
 const updatePollIntervalMs = 30 * 60 * 1000
-const runtimeIpcChannels = [
-  'action-queue:list',
-  'applications:list',
-  'applications:get',
-  'applications:create',
-  'applications:update',
-  'applications:update-status',
-  'applications:archive',
-  'applications:workflow:update',
-  'applications:notes:append',
-  'applications:events:list',
-  'applications:links:list',
-  'applications:links:create',
-  'applications:links:update',
-  'applications:attempts:list',
-  'connectors:list',
-  'connectors:create',
-  'connectors:update',
-  'connectors:inspect',
-  'connectors:runs:list',
-  'connectors:runs:trigger',
-  'connectors:status:list',
-  'connectors:status:reconnect',
-  'connectors:status:skip',
-  'policy:config:get',
-  'policy:config:update',
-  'policy:config:reset',
-  'policy:evidence:list',
-  'policy:evidence:record',
-  'policy:evaluate:application',
-  'policy:evaluate:sourcing-candidate',
-  'policy:evaluate:run-window',
-  'profile:get',
-  'profile:update',
-  'profile:agent-context:get',
-  'profile:sensitive:get',
-  'profile:sensitive:update',
-  'profile:secrets:list',
-  'profile:secrets:upsert',
-  'profile:secrets:delete',
-  'scores:record',
-  'settings:get',
-  'settings:update',
-  'settings:reset',
-  'sourcing:findings:list',
-  'sourcing:findings:create',
-  'sourcing:findings:update',
-  'sourcing:findings:decide',
-  'sourcing:findings:promote',
-  'valedictorian-http:request',
-]
 const updateService = createElectronUpdateService(app, {
   get autoDownload() {
     return autoUpdater.autoDownload
@@ -199,7 +149,7 @@ async function activateWorkspace(
 
   if (runtimeServicesRegistered) {
     await closeRuntime()
-    removeRuntimeIpcHandlers()
+    removeRuntimeIpcHandlers(ipcMain)
   }
 
   currentWorkspace = workspace
@@ -646,12 +596,6 @@ async function closeRuntime() {
   runtime = null
   rendererHttpBinding = null
   runtimeServicesRegistered = false
-}
-
-function removeRuntimeIpcHandlers() {
-  for (const channel of runtimeIpcChannels) {
-    ipcMain.removeHandler(channel)
-  }
 }
 
 async function installWorkspaceMenu(workspaceService: WorkspaceService<BrowserWindow>) {

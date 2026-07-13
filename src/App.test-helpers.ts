@@ -277,8 +277,8 @@ export function createConnectorStatusView(
     id: 'connector-instance-fixture',
     lastRunAt: '2026-07-08T17:00:01.000Z',
     latestRunId: 'connector-run-1',
+    nextAttemptAt: null,
     observationCount: 0,
-    retryAdvice: null,
     severity: 'blocked',
     status: 'auth_required',
     statusLabel: 'Auth required',
@@ -402,7 +402,6 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
       })),
     },
     status: {
-      list: vi.fn(async () => createConnectorStatusResult([])),
       reconnect: vi.fn(async (
         input: LocalConnectorStatusActionInput,
       ): Promise<LocalConnectorReconnectActionResult> => ({

@@ -97,7 +97,7 @@ describe('Jobright execution', () => {
         mode: 'manual',
       }))
     })
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
   })
 
   it('shows two persisted non-terminal progress snapshots before terminal connector counts', async () => {
@@ -112,69 +112,90 @@ describe('Jobright execution', () => {
     })
     vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(pendingRun)
     const lifecycleCounts = (source: 'live_current' | 'frozen_terminal') => ({
-      version: 'connector-run-lifecycle-counts/v1',
+      version: 'connector-run-lifecycle-counts/v1' as const,
       source,
-      scope: { kind: 'connector_run', connectorRunId: 'connector-run-progress' },
+      scope: {
+        kind: 'connector_run' as const,
+        connectorRunId: 'connector-run-progress',
+        executionScopeId: 'scope_jobright_default' as const,
+      },
       provider: {
-        returnedRows: 0,
-        validRecords: 0,
+        returnedRows: 20,
+        validRecords: 20,
         invalidRecords: 0,
         sourceDuplicates: 0,
-        capturedRecords: 0,
-        occurrenceCount: 0,
+        capturedRecords: 20,
+        occurrenceCount: 20,
         captureShortfall: 0,
         unclassifiedRows: 0,
-        invariant: 'reported_stats_missing',
-        gaps: [
-          'missing_provider_returned',
-          'missing_provider_valid',
-          'missing_provider_invalid',
-          'missing_source_duplicates',
-        ],
+        invariant: 'reconciled' as const,
+        gaps: [] as [],
       },
       destination: {
-        normalized: 0,
-        resolvedEmployerOrAts: 0,
-        resolvedThirdParty: 0,
-        unresolved: 0,
-        pending: 0,
+        normalized: 2,
+        resolvedEmployerOrAts: 1,
+        resolvedThirdParty: 1,
+        unresolved: 1,
+        pending: 6,
         gateRejected: 0,
         unclassified: 0,
-        invariant: 'reconciled',
+        invariant: 'reconciled' as const,
       },
       sourcing: {
-        added: 0,
-        queueDuplicate: 0,
+        findingsAdded: 0,
+        canonicalDuplicates: 0,
         notFit: 0,
         rejected: 0,
         actionableReview: 0,
         unclassified: 0,
-        invariant: 'reconciled',
+        invariant: 'reconciled' as const,
       },
     })
-    const progressRun = (stage: string, stats: Record<string, unknown>): ConnectorRun => ({
+    const progressRun = (overrides: Partial<ConnectorRun> = {}): ConnectorRun => ({
       id: 'connector-run-progress',
       connectorInstanceId: 'jobright-default',
+      executionScopeId: 'scope_jobright_default',
       mode: 'manual',
+      scheduleOccurrence: null,
       status: 'running',
-      coverage: {
-        start: '2026-07-09T15:00:00.000Z',
-        end: '2026-07-09T16:00:00.000Z',
-      },
       filterSignature: 'filters:{}',
       observationCount: 0,
       warningCount: 0,
-      stats: { stage, ...stats, lifecycleCounts: lifecycleCounts('live_current') },
+      newestFrontier: { state: 'advancing' },
+      historicalBackfill: {
+        state: 'not_started', boundary: { earliestDate: '2026-07-01' },
+      },
+      pendingResolutionCount: 0,
+      outcome: { kind: 'in_progress' },
+      lifecycleCounts: lifecycleCounts('live_current'),
       warnings: [],
-      retryHints: null,
       startedAt: '2026-07-09T16:00:00.000Z',
       completedAt: null,
+      ...overrides,
     })
     vi.mocked(connectorsApi.runs.list)
       .mockResolvedValueOnce({
-        items: [progressRun('authenticating', {
-          discovered: 0,
-          lastProgressAt: '2026-07-09T16:00:00.250Z',
+        items: [progressRun({
+          newestFrontier: { state: 'advancing' },
+          pendingResolutionCount: 0,
+          lifecycleCounts: {
+            ...lifecycleCounts('live_current'),
+            provider: {
+              ...lifecycleCounts('live_current').provider,
+              returnedRows: 0,
+              validRecords: 0,
+              capturedRecords: 0,
+              occurrenceCount: 0,
+            },
+            destination: {
+              ...lifecycleCounts('live_current').destination,
+              normalized: 0,
+              resolvedEmployerOrAts: 0,
+              resolvedThirdParty: 0,
+              unresolved: 0,
+              pending: 0,
+            },
+          },
         })],
         total: 1,
         limit: 1,
@@ -182,19 +203,13 @@ describe('Jobright execution', () => {
         hasMore: false,
       })
       .mockResolvedValueOnce({
-        items: [progressRun('normalizing', {
-          attempted: 3,
-          discovered: 20,
-          lastProgressAt: '2026-07-09T16:00:01.000Z',
-          pendingResolution: 6,
-          resolvedEmployerOrAts: 1,
-          resolvedThirdParty: 1,
-          unresolved: 1,
-          wait: {
-            maxDelayMs: 2_000,
-            minDelayMs: 1_000,
-            reason: 'jobright_resolution',
+        items: [progressRun({
+          newestFrontier: { state: 'caught_up' },
+          historicalBackfill: {
+            state: 'caught_up', boundary: { earliestDate: '2026-07-01' },
           },
+          pendingResolutionCount: 6,
+          lifecycleCounts: lifecycleCounts('live_current'),
         })],
         total: 1,
         limit: 1,
@@ -221,14 +236,19 @@ describe('Jobright execution', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
-    expect(await screen.findByText('Stage: Authenticating')).toBeInTheDocument()
-    expect(await screen.findByText('Stage: Normalizing', {}, { timeout: 2_000 })).toBeInTheDocument()
+    expect(await screen.findByRole('status', { name: 'Jobright internslist run progress' }))
+      .toHaveTextContent('Checking newest')
+    await waitFor(() => {
+      expect(screen.getByRole('status', { name: 'Jobright internslist run progress' }))
+        .toHaveTextContent('Resolving links')
+    }, { timeout: 2_000 })
     expect(screen.getByText('Live counts derived from current persisted lineage.')).toBeInTheDocument()
-    expect(screen.getByText('Discovered jobs: 20')).toBeInTheDocument()
+    expect(screen.getByText('Captured records: 20')).toBeInTheDocument()
     expect(screen.getByText('Resolved employer / ATS: 1')).toBeInTheDocument()
     expect(screen.getByText('Resolved third-party: 1')).toBeInTheDocument()
+    expect(screen.getByText('Pending: 6')).toBeInTheDocument()
     expect(screen.queryByText('Remaining target: 6')).not.toBeInTheDocument()
-    expect(screen.getByText('Waiting between bounded Jobright API requests.')).toBeInTheDocument()
+    expect(screen.queryByText(/Waiting between bounded Jobright API requests/)).not.toBeInTheDocument()
     expect(screen.getByRole('status', { name: 'Jobright internslist run progress' })).toHaveAttribute(
       'aria-live',
       'polite',
@@ -240,50 +260,58 @@ describe('Jobright execution', () => {
       resolveRun?.({
         id: 'connector-run-progress',
         connectorInstanceId: 'jobright-default',
+        executionScopeId: 'scope_jobright_default',
         mode: 'manual',
+        scheduleOccurrence: null,
         status: 'completed',
-        coverage: {
-          start: '2026-07-09T15:00:00.000Z',
-          end: '2026-07-09T16:00:00.000Z',
-        },
         filterSignature: 'filters:{}',
         observationCount: 8,
         warningCount: 1,
-        stats: {
-          attempted: 3,
-          authRequired: 1,
-          discovered: 12,
-          eligible: 8,
-          failures: 2,
-          observations: 8,
-          projectedUsable: 2,
-          retainedForReview: 6,
-          resolved: 2,
-          resolvedEmployerOrAts: 1,
-          resolvedThirdParty: 1,
-          stage: 'finalizing',
-          stopReason: 'source_exhausted',
-          lifecycleCounts: lifecycleCounts('frozen_terminal'),
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'source_exhausted', boundary: { earliestDate: '2026-07-01' },
+        },
+        pendingResolutionCount: 0,
+        outcome: { kind: 'source_exhausted' },
+        lifecycleCounts: {
+          ...lifecycleCounts('frozen_terminal'),
+          provider: {
+            ...lifecycleCounts('frozen_terminal').provider,
+            returnedRows: 12,
+            validRecords: 8,
+            capturedRecords: 8,
+            occurrenceCount: 8,
+            sourceDuplicates: 4,
+          },
+          destination: {
+            ...lifecycleCounts('frozen_terminal').destination,
+            pending: 0,
+            unresolved: 0,
+          },
+          sourcing: {
+            ...lifecycleCounts('frozen_terminal').sourcing,
+            findingsAdded: 2,
+            canonicalDuplicates: 1,
+          },
         },
         warnings: [],
-        retryHints: {
-          reason: 'auth_required',
-        },
         startedAt: '2026-07-09T16:00:00.000Z',
         completedAt: '2026-07-09T16:00:02.000Z',
       })
     })
 
-    expect(await screen.findByText('Latest run: completed')).toBeInTheDocument()
+    expect(await screen.findByText('Latest synchronization: Provider history exhausted')).toBeInTheDocument()
     expect(screen.getByText('Frozen at terminal completion.')).toBeInTheDocument()
-    expect(screen.getByText('Discovered jobs: 12')).toBeInTheDocument()
-    expect(screen.getByText('Detail attempts: 3')).toBeInTheDocument()
-    expect(screen.getByText('Auth-required requests: 1')).toBeInTheDocument()
+    expect(screen.getByText('Captured records: 8')).toBeInTheDocument()
+    expect(screen.getByText('Sourcing findings added: 2')).toBeInTheDocument()
+    expect(screen.getByText('Canonical duplicates: 1')).toBeInTheDocument()
+    expect(screen.queryByText('Detail attempts: 3')).not.toBeInTheDocument()
+    expect(screen.queryByText('Auth-required requests: 1')).not.toBeInTheDocument()
     expect(screen.queryByText('Eligible: 8')).not.toBeInTheDocument()
     expect(screen.queryByText('Projected usable: 2')).not.toBeInTheDocument()
     expect(screen.queryByText('Retained for review: 6')).not.toBeInTheDocument()
-    expect(screen.getByText('Warnings: 1')).toBeInTheDocument()
-    expect(screen.getByText('Failures: 2')).toBeInTheDocument()
+    expect(screen.queryByText('Warnings: 1')).not.toBeInTheDocument()
+    expect(screen.queryByText('Failures: 2')).not.toBeInTheDocument()
     expect(screen.queryByText('auth_required')).not.toBeInTheDocument()
     await waitFor(() => {
       expect(connectorStatusLoader).toHaveBeenCalledTimes(1)

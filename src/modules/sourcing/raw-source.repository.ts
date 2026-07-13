@@ -15,6 +15,8 @@ import {
   type RawSourceEvidenceInput,
   type RawSourceRecord,
   type RawSourceRecordInput,
+  type RawSourceRecordsListQuery,
+  type RawSourceRecordsListResult,
   type RawSourceRevision,
   type ReportedSourceOrigin,
   type SourceAdapterProvenance,
@@ -27,6 +29,7 @@ import {
   sourceEntityIdentities,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
+import { listRawSourceRecords } from './raw-source-list.repository'
 
 const PROVIDER_JOB_IDENTITY_KIND = 'provider_job'
 const forbiddenKeyNames = new Set(
@@ -58,6 +61,7 @@ const forbiddenKeyNames = new Set(
 
 export interface RawSourceRepository {
   ingestBatch(input: BatchRawSourceRecordsInput): Promise<BatchRawSourceRecordsResult>
+  list(query?: RawSourceRecordsListQuery): Promise<RawSourceRecordsListResult>
   get(rawRecordId: string): Promise<RawSourceRecord | null>
 }
 
@@ -66,6 +70,10 @@ export function createSqliteRawSourceRepository(
   now: () => Date = () => new Date(),
 ): RawSourceRepository {
   return {
+    async list(query) {
+      return listRawSourceRecords(database, query)
+    },
+
     async ingestBatch(input) {
       const records = validateBatch(input)
       const receivedAt = now().toISOString()

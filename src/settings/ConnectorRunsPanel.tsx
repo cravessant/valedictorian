@@ -18,15 +18,13 @@ import {
 } from '@/components/ui/empty'
 import { AlertCircle, History } from 'lucide-react'
 import { typography } from '@/components/ui/typography'
-import { retryAdviceSchema } from 'sparxie'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
-import { formatRetryAdviceGuidance } from '../modules/connectors/connector.retry-guidance'
 import {
   ConnectorRunLifecycleDetails,
-  ConnectorRunProgressDetails,
-  connectorRunMetrics,
+  ConnectorRunSynchronizationDetails,
 } from './ConnectorRunDetails'
+import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
 
 interface ConnectorRunHistoryItem {
@@ -279,6 +277,7 @@ export function ConnectorRunsPanel({
               safeRunWarningLabel(warning.code)))]
             const retryGuidance = safeRunRetryGuidance(run, connectorId)
             const isFocused = focusedRunId === run.id && focusedRunLookup === 'found'
+            const synchronization = connectorRunSynchronizationCopy(run)
 
             return (
               <article
@@ -301,18 +300,13 @@ export function ConnectorRunsPanel({
                     </CardDescription>
                     <CardAction>
                       <Badge variant="outline">
-                        {run.status}
+                        {synchronization.label}
                       </Badge>
                     </CardAction>
                   </CardHeader>
                   <CardContent className="space-y-3 px-0">
-                    <ConnectorRunProgressDetails run={run} />
+                    <ConnectorRunSynchronizationDetails run={run} />
                     <ConnectorRunLifecycleDetails run={run} showDebugData={showDebugData} />
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                      {connectorRunMetrics(run).map((metric) => (
-                        <span key={metric.label}>{metric.label}: {metric.value}</span>
-                      ))}
-                    </div>
                     {warningLabels.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {warningLabels.map((label) => (
@@ -362,10 +356,6 @@ function safeRunWarningLabel(code: string): string {
 
 function safeRunRetryGuidance(run: ConnectorSettingsRun, connectorId: string): string | null {
   const warningCodes = new Set(run.warnings.map((warning) => warning.code))
-  const advice = retryAdviceSchema.safeParse(run.retryHints)
-  if (advice.success) {
-    return formatRetryAdviceGuidance(advice.data)
-  }
 
   if (warningCodes.has('jobright_auth_failed')) {
     return 'Jobright authentication failed. Validate credentials and retry the run.'

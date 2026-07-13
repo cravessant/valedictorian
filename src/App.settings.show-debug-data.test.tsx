@@ -138,53 +138,66 @@ describe('show debug data setting', () => {
       items: [{
         id: 'debug-carried-run',
         connectorInstanceId: 'debug-jobright',
+        executionScopeId: 'scope_debug_jobright',
         mode: 'manual',
+        scheduleOccurrence: null,
         status: 'failed',
         coverage: { start: null, end: null },
         filterSignature: 'filters:{}',
         observationCount: 0,
         warningCount: 1,
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'advancing',
+          boundary: { earliestDate: '2026-07-01' },
+        },
+        pendingResolutionCount: 0,
+        outcome: { kind: 'failed', reason: 'provider_schema_changed' },
+        lifecycleCounts: {
+          version: 'connector-run-lifecycle-counts/v1',
+          source: 'frozen_terminal',
+          scope: {
+            kind: 'connector_run',
+            connectorRunId: 'debug-carried-run',
+            executionScopeId: 'scope_debug_jobright',
+          },
+          provider: {
+            returnedRows: 0,
+            validRecords: 0,
+            invalidRecords: 0,
+            sourceDuplicates: 0,
+            capturedRecords: 0,
+            occurrenceCount: 0,
+            captureShortfall: 0,
+            unclassifiedRows: 0,
+            invariant: 'reported_stats_missing',
+            gaps: ['missing_provider_valid'],
+          },
+          destination: {
+            normalized: 0,
+            resolvedEmployerOrAts: 0,
+            resolvedThirdParty: 0,
+            unresolved: 0,
+            pending: 0,
+            gateRejected: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
+          },
+          sourcing: {
+            findingsAdded: 0,
+            canonicalDuplicates: 0,
+            notFit: 0,
+            rejected: 0,
+            actionableReview: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
+          },
+        },
         stats: {
           discovered: 50,
           discoveryPages: 3,
           providerReturned: 0,
           stopReason: 'failed',
-          lifecycleCounts: {
-            version: 'connector-run-lifecycle-counts/v1',
-            source: 'frozen_terminal',
-            scope: { kind: 'connector_run', connectorRunId: 'debug-carried-run' },
-            provider: {
-              returnedRows: 0,
-              validRecords: 0,
-              invalidRecords: 0,
-              sourceDuplicates: 0,
-              capturedRecords: 0,
-              occurrenceCount: 0,
-              captureShortfall: 0,
-              unclassifiedRows: 0,
-              invariant: 'reported_stats_missing',
-              gaps: ['missing_provider_valid'],
-            },
-            destination: {
-              normalized: 0,
-              resolvedEmployerOrAts: 0,
-              resolvedThirdParty: 0,
-              unresolved: 0,
-              pending: 0,
-              gateRejected: 0,
-              unclassified: 0,
-              invariant: 'reconciled',
-            },
-            sourcing: {
-              added: 0,
-              queueDuplicate: 0,
-              notFit: 0,
-              rejected: 0,
-              actionableReview: 0,
-              unclassified: 0,
-              invariant: 'reconciled',
-            },
-          },
         },
         warnings: [{
           code: 'jobright_raw_intake_unavailable',
@@ -211,8 +224,8 @@ describe('show debug data setting', () => {
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
 
-    expect(await screen.findByText('Needs action')).toBeInTheDocument()
-    expect(screen.getByText('Unique jobs in this connector run')).toBeInTheDocument()
+    expect(await screen.findAllByText('Failed')).not.toHaveLength(0)
+    expect(screen.getByText('Stage-specific synchronization counts')).toBeInTheDocument()
     expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
     expect(screen.queryByText('Frozen at terminal completion.')).not.toBeInTheDocument()
     expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
@@ -233,8 +246,8 @@ describe('show debug data setting', () => {
     expect(screen.getByText('Discovered jobs: 50')).toBeInTheDocument()
     expect(screen.getByText('Provider stats gaps: missing provider valid.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'How these counts work' })).toBeInTheDocument()
-    expect(screen.getByText('Needs action')).toBeInTheDocument()
-    expect(screen.getByText('Unique jobs in this connector run')).toBeInTheDocument()
+    expect(screen.getAllByText('Failed')).not.toHaveLength(0)
+    expect(screen.getByText('Stage-specific synchronization counts')).toBeInTheDocument()
   })
 
   it('keeps sensitive secret text absent from designated surfaces in both debug modes', async () => {
@@ -271,12 +284,21 @@ describe('show debug data setting', () => {
       items: [{
         id: 'secret-run',
         connectorInstanceId: 'secret-jobright',
+        executionScopeId: 'scope_secret_jobright',
         mode: 'manual',
+        scheduleOccurrence: null,
         status: 'completed',
         coverage: { start: null, end: null },
         filterSignature: 'filters:{}',
         observationCount: 0,
         warningCount: 0,
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'caught_up',
+          boundary: { earliestDate: '2026-07-01' },
+        },
+        pendingResolutionCount: 0,
+        outcome: { kind: 'caught_up' },
         stats: {
           discovered: 1,
           password: secretPassword,

@@ -38,6 +38,20 @@ function openConnectorRuns() {
   return appNavigation
 }
 
+function failedSynchronization() {
+  return {
+    executionScopeId: 'scope_jobright_default',
+    scheduleOccurrence: null,
+    newestFrontier: { state: 'not_started' as const },
+    historicalBackfill: {
+      state: 'not_started' as const,
+      boundary: { earliestDate: '2026-07-01' },
+    },
+    pendingResolutionCount: 0,
+    outcome: { kind: 'failed' as const, reason: 'provider_schema_changed' },
+  }
+}
+
 
 describe('connector-run retry guidance', () => {
   it('renders actionable Jobright failure and retry guidance', async () => {
@@ -58,6 +72,7 @@ describe('connector-run retry guidance', () => {
         {
           id: 'connector-run-auth-failed',
           connectorInstanceId: 'jobright-default',
+          ...failedSynchronization(),
           mode: 'manual',
           status: 'failed',
           coverage: {
@@ -83,6 +98,7 @@ describe('connector-run retry guidance', () => {
         {
           id: 'connector-run-discovery-failed',
           connectorInstanceId: 'jobright-default',
+          ...failedSynchronization(),
           mode: 'manual',
           status: 'failed',
           coverage: {
@@ -108,6 +124,7 @@ describe('connector-run retry guidance', () => {
         {
           id: 'connector-run-parser-changed',
           connectorInstanceId: 'jobright-default',
+          ...failedSynchronization(),
           mode: 'manual',
           status: 'failed',
           coverage: {
@@ -133,6 +150,7 @@ describe('connector-run retry guidance', () => {
         {
           id: 'connector-run-zero-results',
           connectorInstanceId: 'jobright-default',
+          ...failedSynchronization(),
           mode: 'manual',
           status: 'failed',
           coverage: {
@@ -189,23 +207,32 @@ describe('connector-run retry guidance', () => {
     expect(screen.queryByText(/raw sensitive/i)).not.toBeInTheDocument()
   })
 
-  it('renders persisted not-due retry timing separately from failure', async () => {
+  it('renders persisted cooldown timing separately from failure', async () => {
     const connectorsApi = createConnectorsApi()
     await connectorsApi.create({
       id: 'retry-ui', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Retry fixture', enabled: true, auth: [], config: {}, filters: {},
     })
+    const retryAt = '2026-07-11T12:01:00.000Z'
     vi.mocked(connectorsApi.runs.list).mockResolvedValue({
       hasMore: false, limit: 20, offset: 0, total: 1,
       items: [{
         id: 'retry-not-due', connectorInstanceId: 'retry-ui', mode: 'manual', status: 'skipped',
-        coverage: { start: null, end: null }, filterSignature: 'filters:{}',
-        observationCount: 0, warningCount: 0, stats: { skipped: true }, warnings: [],
-        retryHints: {
-          state: 'not_due', reason: 'rate_limit', attempt: 2, maxAttempts: 4,
-          lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
-          nextAttemptAt: '2026-07-11T12:01:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z',
+        executionScopeId: 'scope_retry_ui', scheduleOccurrence: null,
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'advancing', boundary: { earliestDate: '2026-07-01' },
         },
+        pendingResolutionCount: 0,
+        outcome: {
+          kind: 'cooling_down',
+          operation: {
+            kind: 'scope_rate_limited', executionScopeId: 'scope_retry_ui',
+            retryAt, serverMinimumDelayMs: null,
+          },
+        },
+        filterSignature: 'filters:{}',
+        observationCount: 0, warningCount: 0, warnings: [],
         startedAt: '2026-07-11T12:00:30.000Z', completedAt: '2026-07-11T12:00:30.000Z',
       }],
     })
@@ -215,10 +242,10 @@ describe('connector-run retry guidance', () => {
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
 
-    expect(await screen.findByText(
-      `Skipped — not due · Rate limited · Attempt 2 of 4 · Next attempt ${new Date('2026-07-11T12:01:00.000Z').toLocaleString()}`,
-    )).toBeInTheDocument()
-    expect(screen.queryByText(/failed/i)).not.toBeInTheDocument()
+    const status = await screen.findByRole('status', { name: 'Connector synchronization state' })
+    expect(status).toHaveTextContent('Cooling down')
+    expect(status).toHaveTextContent(`Next attempt ${new Date(retryAt).toLocaleString()}`)
+    expect(status).not.toHaveTextContent(/failed|stuck/i)
   })
 
 })

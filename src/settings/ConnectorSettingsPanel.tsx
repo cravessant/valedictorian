@@ -15,8 +15,6 @@ import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_CONNECTOR_VERSION,
-  JOBRIGHT_MAX_DISCOVERY_COUNT,
-  JOBRIGHT_MIN_DISCOVERY_COUNT,
 } from '../modules/connectors/jobright.constants'
 import {
   maximumSelectableEarliestBackfillDate,
@@ -25,8 +23,6 @@ import {
 import {
   defaultConnectorSettingsDraft,
   jobrightSecretKeyForInstance,
-  parseBoundedInteger,
-  recordFromUnknown,
   sanitizedConnectorAuthErrorMessage,
   shouldAutoValidateJobrightAuth,
 } from './connector-settings.helpers'
@@ -526,30 +522,6 @@ export function ConnectorSettingsPanel({
       setConnectorActionError(earliestValidation.message)
       return
     }
-    const discoveryCount = parseBoundedInteger(
-      draft.discoveryCount,
-      JOBRIGHT_MIN_DISCOVERY_COUNT,
-      JOBRIGHT_MAX_DISCOVERY_COUNT,
-    )
-    if (discoveryCount === null) {
-      setConnectorActionError(
-        `Discovery page size must be an integer from ${JOBRIGHT_MIN_DISCOVERY_COUNT} to ${JOBRIGHT_MAX_DISCOVERY_COUNT}.`,
-      )
-      return
-    }
-
-    const existingConfig = recordFromUnknown(instance.config)
-    const nextConfig: Record<string, unknown> = {}
-    for (const key of ['maxRetryAttemptsPerSource', 'maxRunElapsedMs'] as const) {
-      if (typeof existingConfig[key] === 'number') nextConfig[key] = existingConfig[key]
-    }
-    if (
-      draft.discoveryCount !== savedDraft.discoveryCount
-      || Object.prototype.hasOwnProperty.call(existingConfig, 'discoveryCount')
-    ) {
-      nextConfig.discoveryCount = discoveryCount
-    }
-
     setConnectorActionError(null)
     setSavingInstanceIds((currentIds) => {
       const nextIds = new Set(currentIds)
@@ -558,11 +530,10 @@ export function ConnectorSettingsPanel({
     })
     void connectorsApi.update({
       connectorInstanceId: instance.id,
-      config: nextConfig,
+      enabled: draft.enabled,
       ...(draft.earliestBackfillDate !== savedDraft.earliestBackfillDate
         ? { earliestBackfillDate: earliestValidation.value }
         : {}),
-      filters: {},
     })
       .then((updated) => {
         setInstances((currentInstances) => currentInstances.map((currentInstance) =>
@@ -597,7 +568,7 @@ export function ConnectorSettingsPanel({
   function isConnectorSettingsDraftDirty(instance: ConnectorSettingsInstance): boolean {
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
     const saved = defaultConnectorSettingsDraft(instance)
-    return draft.discoveryCount !== saved.discoveryCount
+    return draft.enabled !== saved.enabled
       || draft.earliestBackfillDate !== saved.earliestBackfillDate
   }
 

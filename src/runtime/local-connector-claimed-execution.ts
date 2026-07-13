@@ -1,7 +1,6 @@
 import type { ConnectorRefreshMode } from '@sparxie/valedictorian-connectors-core'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { createSqliteConnectorRepository, ConnectorRunRecord } from '../modules/connectors/connector.repository'
-import { inclusiveCoverageStartFromEarliestBackfillDate } from '../modules/connectors/connector.earliest-backfill'
 import type { createConnectorRunner, AppConnectorRefreshRecord } from '../modules/connectors/connector.runner'
 import { finalizeDeferredConnectorRefreshRecord } from './local-connector-retry-dispatch'
 
@@ -50,8 +49,9 @@ export async function executeClaimedConnectorRun({
       )
     }
 
-    const coverageStartedAt = inclusiveCoverageStartFromEarliestBackfillDate(
-      instance.earliestBackfillDate,
+    const coverageStartedAt = persistedClaimedCoverageStart(
+      connectorRepository,
+      runRequest,
     )
 
     const refreshRecord: AppConnectorRefreshRecord = (
@@ -59,6 +59,7 @@ export async function executeClaimedConnectorRun({
         ? await connectorRunner.catchUpWithDeferredCheckpoint(connector, {
           connectorRunId: runRequest.id,
           connectorInstanceId: runRequest.connectorInstanceId,
+          coverageStartedAt,
           now: coverageEndedAt,
           startedAt,
         })
@@ -92,6 +93,31 @@ export async function executeClaimedConnectorRun({
     })
     throw error
   }
+}
+
+function persistedClaimedCoverageStart(
+  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>,
+  run: ConnectorRunRecord,
+): string {
+  if (!run.coverageStartedAt || !Number.isFinite(Date.parse(run.coverageStartedAt))) {
+    throw new Error(`Claimed connector run has invalid persisted coverage start: ${run.id}`)
+  }
+  const snapshot = connectorRepository.getRunSynchronization(run.id)
+  const synchronization = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
+    ? snapshot as Record<string, unknown>
+    : null
+  const backfill = synchronization?.historicalBackfill
+  const boundary = backfill && typeof backfill === 'object' && !Array.isArray(backfill)
+    ? (backfill as Record<string, unknown>).boundary
+    : null
+  const earliestDate = boundary && typeof boundary === 'object' && !Array.isArray(boundary)
+    ? (boundary as Record<string, unknown>).earliestDate
+    : null
+  const normalized = new Date(run.coverageStartedAt).toISOString()
+  if (earliestDate !== normalized.slice(0, 10)) {
+    throw new Error(`Claimed connector run has inconsistent persisted coverage boundary: ${run.id}`)
+  }
+  return normalized
 }
 
 async function markClaimedRunFailedIfStillRunning({

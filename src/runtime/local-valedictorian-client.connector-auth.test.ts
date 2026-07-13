@@ -118,14 +118,14 @@ describe('runtime local Valedictorian client', () => {
       run: {
         connectorInstanceId: 'connector-instance-fixture',
         mode: 'manual',
-        status: 'skipped',
+        status: 'cancelled',
       },
       status: 'skipped',
     })
     expect(runs.items).toEqual([
       expect.objectContaining({
         retryHints: null,
-        status: 'skipped',
+        status: 'cancelled',
         stats: expect.objectContaining({
           reason: 'user_skipped_auth_required_run',
           skipped: true,
@@ -139,7 +139,8 @@ describe('runtime local Valedictorian client', () => {
       {
         actions: [],
         status: 'skipped',
-        summary: 'Latest run was skipped.',
+        statusLabel: 'Skipped by user',
+        summary: 'This synchronization work opportunity was skipped by the user.',
       },
     ])
     expect(JSON.stringify(reconnect)).not.toContain('fixture-session-123')

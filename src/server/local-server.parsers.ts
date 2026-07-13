@@ -3,6 +3,7 @@ export {
   parseUpdateConnectorInstanceInput,
   parseActionQueueListQuery,
   parseConnectorRunsListQuery,
+  parseConnectorOverviewListQuery,
   parseConnectorRunTriggerInput,
   parseConnectorCheckpointsListQuery,
   parseConnectorObservationsListQuery,
@@ -26,6 +27,7 @@ export {
   parseRunCompleteInput,
 } from './local-server.parsers.workflow-runs'
 export {
+  parseRawSourceRecordsListQuery,
   parseSourcingFindingsListQuery,
   parseSourcingFindingCreateInput,
   parseSourcingCandidateProcessInput,
