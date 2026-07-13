@@ -12,6 +12,7 @@ describe('app navigation type constants', () => {
       CONNECTOR_RUNS: 'connector-runs',
       SETTINGS: 'settings',
       SOURCING: 'sourcing',
+      SOURCING_NORMALIZATION: 'sourcing-normalization',
     })
   })
 

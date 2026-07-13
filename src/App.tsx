@@ -92,6 +92,7 @@ import {
   defaultUpdatesApi,
   defaultWorkspaceApi,
   defaultSourcingLoader,
+  defaultRawRecordsApi,
   defaultUpdateSourcingFinding,
   emptyApplicationEventsResult,
   emptyApplicationLinksResult,
@@ -108,6 +109,7 @@ import { AppShell } from './AppShell'
 import { useWindowChromeState } from './app/use-window-chrome-state'
 import {
   APP_VIEWS,
+  PAGE_LIMIT,
   SETTINGS_PANELS,
   defaultFilters,
   type ApplicationDetailSeed,
@@ -117,6 +119,9 @@ import {
 } from './app/types'
 import type { WorkspaceSummary } from './workspace/workspace.initializer'
 import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
+import type { RawRecordsReadApi } from './modules/sourcing/raw-normalization.types'
+import type { RawNormalizationRunFilter } from './modules/sourcing/raw-normalization.types'
+import { locateSourcingFinding } from './modules/sourcing/locate-sourcing-finding'
 
 const narrowSidebarMediaQuery = '(max-width: 767px)'
 const DATA_AUTO_REFRESH_INTERVAL_MS = 15_000
@@ -152,6 +157,7 @@ interface AppProps {
   connectorScheduleApi?: ConnectorScheduleUiApi
   scoreRecorder?: (input: ScoreInput) => Promise<ScoreRecord>
   sourcingLoader?: (input: SourcingFindingsListInput) => Promise<SourcingFindingsListResult>
+  rawRecordsApi?: RawRecordsReadApi
   promoteSourcingFinding?: (input: PromoteSourcingFindingInput) => Promise<SourcingFinding>
   decideSourcingFinding?: (input: SetSourcingFindingDecisionInput) => Promise<SourcingFinding>
   updateSourcingFinding?: (input: UpdateSourcingFindingInput) => Promise<SourcingFinding>
@@ -184,6 +190,7 @@ function App({
   connectorScheduleApi = defaultConnectorScheduleApi,
   scoreRecorder = defaultScoreRecorder,
   sourcingLoader = defaultSourcingLoader,
+  rawRecordsApi = defaultRawRecordsApi,
   promoteSourcingFinding = defaultPromoteSourcingFinding,
   decideSourcingFinding = defaultDecideSourcingFinding,
   updateSourcingFinding = defaultUpdateSourcingFinding,
@@ -203,6 +210,7 @@ function App({
     SETTINGS_PANELS.GENERAL,
   )
   const [focusedConnectorRunId, setFocusedConnectorRunId] = useState<string | null>(null)
+  const [normalizationRunFilter, setNormalizationRunFilter] = useState<RawNormalizationRunFilter | null>(null)
   const [settingsRestartRequired, setSettingsRestartRequired] = useState(false)
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false)
@@ -238,6 +246,8 @@ function App({
   const [hasLoadedSourcing, setHasLoadedSourcing] = useState(false)
   const [sourcingError, setSourcingError] = useState<string | null>(null)
   const [promotingFindingId, setPromotingFindingId] = useState<string | null>(null)
+  const [focusedSourcingFindingId, setFocusedSourcingFindingId] = useState<string | null>(null)
+  const [pendingSourcingFindingId, setPendingSourcingFindingId] = useState<string | null>(null)
   const [selectedApplication, setSelectedApplication] = useState<ApplicationDetailSeed | null>(null)
   const [applicationDetail, setApplicationDetail] = useState<ApplicationDetail | null>(null)
   const [applicationLinksResult, setApplicationLinksResult] = useState<ApplicationLinksListResult>(emptyApplicationLinksResult)
@@ -453,10 +463,21 @@ function App({
     let isMounted = true
 
     setIsSourcingLoading(true)
-    sourcingLoader(sourcingQuery)
+    const request = pendingSourcingFindingId
+      ? locateSourcingFinding(sourcingLoader, pendingSourcingFindingId, PAGE_LIMIT)
+      : sourcingLoader(sourcingQuery)
+    request
       .then((nextResult) => {
         if (isMounted) {
+          if (!nextResult) {
+            setSourcingError(`Sourcing finding ${pendingSourcingFindingId} could not be located.`)
+            return
+          }
           setSourcingResult(nextResult)
+          if (pendingSourcingFindingId) {
+            setSourcingOffset(nextResult.offset)
+            setPendingSourcingFindingId(null)
+          }
           setHasLoadedSourcing(true)
           setSourcingError(null)
         }
@@ -475,7 +496,18 @@ function App({
     return () => {
       isMounted = false
     }
-  }, [appView, sourcingLoader, sourcingQuery, sourcingReloadKey])
+  }, [appView, pendingSourcingFindingId, sourcingLoader, sourcingQuery, sourcingReloadKey])
+
+  function openSourcingFinding(findingId: string) {
+    setSourcingMergeStatus(undefined)
+    setSourcingDestinationClass(undefined)
+    setSourcingUsability(undefined)
+    setSourcingSourceId('')
+    setSourcingOffset(0)
+    setFocusedSourcingFindingId(findingId)
+    setPendingSourcingFindingId(findingId)
+    setAppView(APP_VIEWS.SOURCING)
+  }
 
   useEffect(() => {
     const previousAppView = previousAppViewRef.current
@@ -865,6 +897,8 @@ function App({
             ? 'Connectors'
             : appView === APP_VIEWS.CONNECTOR_RUNS
               ? 'Connector Runs'
+              : appView === APP_VIEWS.SOURCING_NORMALIZATION
+                ? 'Sourcing · Normalization'
               : appView === APP_VIEWS.SOURCING
                 ? 'Sourcing'
                 : 'Applications'
@@ -949,8 +983,11 @@ function App({
       offset={offset}
       openActionQueueApplicationEditor={openActionQueueApplicationEditor}
       openApplicationDetail={openApplicationDetail}
+      openSourcingFinding={openSourcingFinding}
       policyApi={policyApi}
       profileApi={profileApi}
+      rawRecordsApi={rawRecordsApi}
+      normalizationRunFilter={normalizationRunFilter}
       promoteFinding={promoteFinding}
       promotingFindingId={promotingFindingId}
       reloadApplicationViews={reloadApplicationViews}
@@ -966,6 +1003,7 @@ function App({
       setEditingApplication={setEditingApplication}
       setFiltersExpanded={setFiltersExpanded}
       setFocusedConnectorRunId={setFocusedConnectorRunId}
+      setNormalizationRunFilter={setNormalizationRunFilter}
       setIsAddingApplication={setIsAddingApplication}
       setNarrowSidebarOpen={setNarrowSidebarOpen}
       setOffset={setOffset}
@@ -985,6 +1023,7 @@ function App({
       sidebarVisible={sidebarVisible}
       sourcingDestinationClass={sourcingDestinationClass}
       sourcingError={sourcingError}
+      focusedSourcingFindingId={focusedSourcingFindingId}
       sourcingMergeStatus={sourcingMergeStatus}
       sourcingOffset={sourcingOffset}
       sourcingResult={sourcingResult}

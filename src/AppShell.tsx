@@ -17,6 +17,7 @@ import { ProfileSettingsPanel } from './modules/profile/ProfileSettingsPanel'
 import { ActionQueuePage } from './modules/action-queue/ActionQueuePage'
 import { ConnectorStatusPage } from './modules/connectors/ConnectorStatusPage'
 import { SourcingPage } from './modules/sourcing/SourcingPage'
+import { RawNormalizationPage } from './modules/sourcing/RawNormalizationPage'
 import { AppSidebar, AppTopbar } from './app/AppChrome'
 import { formatEnumLabel } from './app/labels'
 import { ConnectorRunsPanel, ConnectorSettingsPanel, SettingsPage, SettingsSidebar } from './settings/SettingsPage'
@@ -88,8 +89,11 @@ export function AppShell({
   offset,
   openActionQueueApplicationEditor,
   openApplicationDetail,
+  openSourcingFinding,
   policyApi,
   profileApi,
+  rawRecordsApi,
+  normalizationRunFilter,
   promoteFinding,
   promotingFindingId,
   reloadApplicationViews,
@@ -105,6 +109,7 @@ export function AppShell({
   setEditingApplication,
   setFiltersExpanded,
   setFocusedConnectorRunId,
+  setNormalizationRunFilter,
   setIsAddingApplication,
   setNarrowSidebarOpen,
   setOffset,
@@ -124,6 +129,7 @@ export function AppShell({
   sidebarVisible,
   sourcingDestinationClass,
   sourcingError,
+  focusedSourcingFindingId,
   sourcingMergeStatus,
   sourcingOffset,
   sourcingResult,
@@ -230,6 +236,7 @@ export function AppShell({
               onViewChange={(view) => {
                 closeTransientSidebar()
                 setFocusedConnectorRunId(null)
+                setNormalizationRunFilter(null)
                 setAppView(view)
               }}
               onSettingsOpenChange={setSettingsOpen}
@@ -314,6 +321,10 @@ export function AppShell({
                 connectorsApi={connectorsApi}
                 focusedRunId={focusedConnectorRunId}
                 showDebugData={settings.showDebugData}
+                onInspectNormalization={(filter) => {
+                  setNormalizationRunFilter(filter)
+                  setAppView(APP_VIEWS.SOURCING_NORMALIZATION)
+                }}
               />
             </div>
           </main>
@@ -321,6 +332,7 @@ export function AppShell({
           <SourcingPage
             contentColumnClass={contentColumnClass}
             error={sourcingError}
+            focusedFindingId={focusedSourcingFindingId}
             isLoading={isSourcingLoading && !hasLoadedSourcing}
             mergeStatus={sourcingMergeStatus}
             destinationClass={sourcingDestinationClass}
@@ -358,6 +370,13 @@ export function AppShell({
               reloadSourcing()
               return finding
             }}
+          />
+        ) : appView === APP_VIEWS.SOURCING_NORMALIZATION ? (
+          <RawNormalizationPage
+            api={rawRecordsApi}
+            contentColumnClass={contentColumnClass}
+            onOpenFinding={openSourcingFinding}
+            runFilter={normalizationRunFilter}
           />
         ) : (
           <main className={`flex h-full min-w-0 flex-col overflow-hidden px-4 py-5 text-foreground md:h-[calc(100vh-3rem)] sm:px-6 lg:px-8 ${contentColumnClass}`}>

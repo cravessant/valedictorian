@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -55,6 +55,7 @@ import { sourcingFindingToApplication } from './SourcingFindingPromotion'
 interface SourcingPageProps {
   contentColumnClass: string
   error: string | null
+  focusedFindingId: string | null
   isLoading: boolean
   mergeStatus: SourcingMergeStatus | undefined
   destinationClass: SourcingDestinationClass | undefined
@@ -79,6 +80,7 @@ interface SourcingPageProps {
 function SourcingPage({
   contentColumnClass,
   error,
+  focusedFindingId,
   isLoading,
   mergeStatus,
   destinationClass,
@@ -312,6 +314,7 @@ function SourcingPage({
                 <TableBody>
                   {result.items.map((item) => (
                     <SourcingFindingRow
+                      focused={focusedFindingId === item.id}
                       key={item.id}
                       item={item}
                       isPromoting={promotingFindingId === item.id}
@@ -370,6 +373,7 @@ function SourcingPage({
 }
 
 function SourcingFindingRow({
+  focused,
   item,
   isPromoting,
   showDebugData,
@@ -378,6 +382,7 @@ function SourcingFindingRow({
   onOpenApplication,
   onPromoteFinding,
 }: {
+  focused: boolean
   item: SourcingFinding
   isPromoting: boolean
   showDebugData: boolean
@@ -386,6 +391,10 @@ function SourcingFindingRow({
   onOpenApplication: (application: ApplicationDetailSeed) => void
   onPromoteFinding: (findingId: string) => void
 }) {
+  const rowRef = useRef<HTMLTableRowElement>(null)
+  useEffect(() => {
+    if (focused) rowRef.current?.focus()
+  }, [focused])
   const canPromote =
     (item.mergeStatus === 'new' && item.usability !== 'review_only') ||
     (item.mergeStatus === 'blocked' && item.policyBlocker === 'third_party_destination')
@@ -397,7 +406,13 @@ function SourcingFindingRow({
   )
 
   return (
-    <TableRow>
+    <TableRow
+      ref={rowRef}
+      aria-label={focused ? `Focused sourcing finding ${item.id}` : undefined}
+      aria-current={focused ? 'true' : undefined}
+      data-state={focused ? 'selected' : undefined}
+      tabIndex={focused ? 0 : -1}
+    >
       <TableCell>
         <span className="font-medium text-foreground">{item.companyName}</span>
       </TableCell>

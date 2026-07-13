@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardAction,
@@ -26,6 +27,7 @@ import {
 } from './ConnectorRunDetails'
 import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
+import type { RawNormalizationRunFilter } from '../modules/sourcing/raw-normalization.types'
 
 interface ConnectorRunHistoryItem {
   connectorId: string
@@ -113,10 +115,12 @@ export function ConnectorRunsPanel({
   connectorsApi,
   focusedRunId = null,
   showDebugData = false,
+  onInspectNormalization,
 }: {
   connectorsApi: ConnectorsPreloadApi
   focusedRunId?: string | null
   showDebugData?: boolean
+  onInspectNormalization?: (filter: RawNormalizationRunFilter) => void
 }) {
   const [items, setItems] = useState<ConnectorRunHistoryItem[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -307,6 +311,19 @@ export function ConnectorRunsPanel({
                   <CardContent className="space-y-3 px-0">
                     <ConnectorRunSynchronizationDetails run={run} />
                     <ConnectorRunLifecycleDetails run={run} showDebugData={showDebugData} />
+                    {onInspectNormalization ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onInspectNormalization({
+                          connectorInstanceId: run.connectorInstanceId,
+                          connectorRunId: run.id,
+                        })}
+                      >
+                        Inspect normalization rows from {run.id}
+                      </Button>
+                    ) : null}
                     {warningLabels.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {warningLabels.map((label) => (

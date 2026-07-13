@@ -44,6 +44,7 @@ import type {
   UpdateSourcingFindingInput,
 } from 'sparxie'
 import type { ApplicationDetailSeed, AppView, FilterState, SettingsPanelId } from './types'
+import type { RawNormalizationRunFilter, RawRecordsReadApi } from '../modules/sourcing/raw-normalization.types'
 
 export interface AppShellProps {
   actionQueueBucket: ActionQueueBucket | undefined
@@ -103,8 +104,11 @@ export interface AppShellProps {
   offset: number
   openActionQueueApplicationEditor: (application: ApplicationDetailSeed) => void
   openApplicationDetail: (application: ApplicationDetailSeed) => void
+  openSourcingFinding: (findingId: string) => void
   policyApi: PolicyPreloadApi
   profileApi: ProfilePreloadApi
+  rawRecordsApi: RawRecordsReadApi
+  normalizationRunFilter: RawNormalizationRunFilter | null
   promoteFinding: (findingId: string) => void
   promotingFindingId: string | null
   reloadApplicationViews: () => void
@@ -120,6 +124,7 @@ export interface AppShellProps {
   setEditingApplication: Dispatch<SetStateAction<ApplicationListItem | null>>
   setFiltersExpanded: Dispatch<SetStateAction<boolean>>
   setFocusedConnectorRunId: Dispatch<SetStateAction<string | null>>
+  setNormalizationRunFilter: Dispatch<SetStateAction<RawNormalizationRunFilter | null>>
   setIsAddingApplication: Dispatch<SetStateAction<boolean>>
   setNarrowSidebarOpen: Dispatch<SetStateAction<boolean>>
   setOffset: Dispatch<SetStateAction<number>>
@@ -139,6 +144,7 @@ export interface AppShellProps {
   sidebarVisible: boolean
   sourcingDestinationClass: SourcingDestinationClass | undefined
   sourcingError: string | null
+  focusedSourcingFindingId: string | null
   sourcingMergeStatus: SourcingMergeStatus | undefined
   sourcingOffset: number
   sourcingResult: SourcingFindingsListResult
