@@ -22,6 +22,8 @@ import {
   createSettingsApi,
   createWorkspaceApi,
   createWorkspaceSummary,
+  selectComboboxOption,
+  stubCmdkEnvironment,
 } from './App.test-helpers'
 import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
 import {
@@ -30,7 +32,7 @@ import {
 } from './settings/connector-schedule.helpers'
 
 beforeEach(() => {
-  HTMLElement.prototype.scrollIntoView = vi.fn()
+  stubCmdkEnvironment()
 })
 
 afterEach(() => {
@@ -320,9 +322,7 @@ describe('App connector schedules', () => {
     fireEvent.change(screen.getByLabelText('Preset'), {
       target: { value: 'interval-60' },
     })
-    fireEvent.change(screen.getByLabelText('Timezone'), {
-      target: { value: 'UTC' },
-    })
+    selectComboboxOption('Timezone', 'UTC')
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
     await waitFor(() => {
@@ -455,9 +455,7 @@ describe('App connector schedules', () => {
     fireEvent.change(screen.getByLabelText('Daily local time'), {
       target: { value: '14:30' },
     })
-    fireEvent.change(screen.getByLabelText('Timezone'), {
-      target: { value: 'America/New_York' },
-    })
+    selectComboboxOption('Timezone', 'America/New_York')
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
     await waitFor(() => {
@@ -479,9 +477,7 @@ describe('App connector schedules', () => {
     fireEvent.change(screen.getByLabelText('Weekly local time'), {
       target: { value: '08:15' },
     })
-    fireEvent.change(screen.getByLabelText('Timezone'), {
-      target: { value: 'Europe/London' },
-    })
+    selectComboboxOption('Timezone', 'Europe/London')
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
     await waitFor(() => {
@@ -918,10 +914,12 @@ describe('App connector schedules', () => {
       await authenticateJobrightInConnectors({ connectorsApi, profileApi })
       await waitFor(() => expect(scheduleApi.getSchedule).toHaveBeenCalled())
 
-      const timezone = await screen.findByLabelText('Timezone')
-      expect(timezone).toHaveValue('US/Eastern')
-      expect(within(timezone).getByRole('option', { name: 'US/Eastern' })).toBeInTheDocument()
-      expect(within(timezone).queryByRole('option', { name: 'UTC' })).toBeInTheDocument()
+      const timezone = await screen.findByRole('combobox', { name: 'Timezone' })
+      expect(timezone).toHaveTextContent('US/Eastern')
+      fireEvent.click(timezone)
+      expect(screen.getByRole('option', { name: 'US/Eastern' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'UTC' })).toBeInTheDocument()
+      fireEvent.keyDown(timezone, { key: 'Escape' })
 
       fireEvent.change(screen.getByLabelText('Schedule mode'), {
         target: { value: 'custom-daily' },
@@ -929,7 +927,7 @@ describe('App connector schedules', () => {
       fireEvent.change(screen.getByLabelText('Daily local time'), {
         target: { value: '10:30' },
       })
-      expect(screen.getByLabelText('Timezone')).toHaveValue('US/Eastern')
+      expect(screen.getByRole('combobox', { name: 'Timezone' })).toHaveTextContent('US/Eastern')
       fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
       await waitFor(() => expect(scheduleApi.upsertSchedule).toHaveBeenCalled())
@@ -940,7 +938,7 @@ describe('App connector schedules', () => {
         cadence: { kind: 'daily', localTime: '10:30' },
         timezone: 'US/Eastern',
       })
-      expect(screen.getByLabelText('Timezone')).toHaveValue('US/Eastern')
+      expect(screen.getByRole('combobox', { name: 'Timezone' })).toHaveTextContent('US/Eastern')
     } finally {
       supportedValuesOf.mockRestore()
     }

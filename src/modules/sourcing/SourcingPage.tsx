@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Combobox } from '@/components/ui/combobox'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { fieldControlId } from '@/lib/field-control-id'
@@ -157,18 +158,21 @@ function SourcingPage({
               >
                 Source
               </FieldLabel>
-              <NativeSelect
+              <Combobox
+                emptyText="No source found."
                 id={fieldControlId('sourcing-filter', 'Source')}
+                options={[
+                  { label: 'Any source', value: '' },
+                  ...sourceOptions.map((sourceOption) => ({
+                    label: sourceOption.sourceName,
+                    value: sourceOption.sourceId,
+                  })),
+                ]}
+                placeholder="Any source"
+                searchPlaceholder="Search source..."
                 value={sourceId}
-                onChange={(event) => onSourceChange(event.target.value)}
-              >
-                <NativeSelectOption value="">Any source</NativeSelectOption>
-                {sourceOptions.map((sourceOption) => (
-                  <NativeSelectOption key={sourceOption.sourceId} value={sourceOption.sourceId}>
-                    {sourceOption.sourceName}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+                onValueChange={onSourceChange}
+              />
             </Field>
             <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
               <FieldLabel

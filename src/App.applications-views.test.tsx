@@ -7,7 +7,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { ApplicationListQuery } from './modules/applications/application.types'
 import type { ActionQueueListQuery } from './modules/action-queue/action-queue.repository'
@@ -25,12 +25,19 @@ import {
   createConnectorStatusView,
   createSettingsApi,
   createSourcingFinding,
-  createSourcingResult
+  createSourcingResult,
+  selectComboboxOption,
+  stubCmdkEnvironment,
 } from './App.test-helpers'
+
+beforeEach(() => {
+  stubCmdkEnvironment()
+})
 
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
   delete (window as Window & { applications?: unknown }).applications
   delete (window as Window & { sourcing?: unknown }).sourcing
   delete (window as Window & { settings?: unknown }).settings
@@ -1068,11 +1075,11 @@ describe('App', () => {
 
     const sourceFilter = screen.getByRole('combobox', { name: 'Source' })
 
-    expect(within(sourceFilter).getByRole('option', { name: 'Any source' })).toBeInTheDocument()
-    expect(within(sourceFilter).getByRole('option', { name: 'LinkedIn' })).toHaveValue(
-      'source-linkedin',
-    )
-    expect(sourceFilter).toHaveDisplayValue('Any source')
+    expect(sourceFilter).toHaveTextContent('Any source')
+    fireEvent.click(sourceFilter)
+    expect(screen.getByRole('option', { name: 'Any source' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'LinkedIn' })).toBeInTheDocument()
+    fireEvent.keyDown(sourceFilter, { key: 'Escape' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Review blocked' }))
 
@@ -1094,7 +1101,7 @@ describe('App', () => {
       })
     })
 
-    fireEvent.change(sourceFilter, { target: { value: 'source-linkedin' } })
+    selectComboboxOption('Source', 'LinkedIn')
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({
@@ -1104,6 +1111,7 @@ describe('App', () => {
         sourceId: 'source-linkedin',
       })
     })
+    expect(screen.getByRole('combobox', { name: 'Source' })).toHaveTextContent('LinkedIn')
 
     fireEvent.click(within(table).getByRole('button', { name: 'Promote Delta Labs' }))
 

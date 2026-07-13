@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
@@ -152,6 +153,7 @@ export function ConnectorScheduleControls({
 
   const presets = supportedSchedulePresets(capability)
   const timezones = listIanaTimeZones(draft.timezone)
+  const timezoneOptions = timezones.map((timezone) => ({ label: timezone, value: timezone }))
   const scheduleStateLabel = !connectorEnabled
     ? 'Connector disabled'
     : canonical?.state === 'paused'
@@ -311,16 +313,16 @@ export function ConnectorScheduleControls({
           <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
             Timezone
           </FieldLabel>
-          <NativeSelect
+          <Combobox
             disabled={isSaving}
+            emptyText="No timezone found."
             id={timezoneId}
+            options={timezoneOptions}
+            placeholder="Select timezone"
+            searchPlaceholder="Search timezone..."
             value={draft.timezone}
-            onChange={(event) => onDraftChange({ timezone: event.target.value })}
-          >
-            {timezones.map((timezone) => (
-              <NativeSelectOption key={timezone} value={timezone}>{timezone}</NativeSelectOption>
-            ))}
-          </NativeSelect>
+            onValueChange={(timezone) => onDraftChange({ timezone })}
+          />
         </Field>
       ) : null}
 

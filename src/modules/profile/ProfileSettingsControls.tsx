@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import type { ProfileSensitiveDetails } from './profile.repository'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { ModalShell } from '@/components/ui/modal-shell'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
@@ -144,15 +145,43 @@ export function BirthDateSelectRow({
           value={day}
           onChange={onDayChange}
         />
-        <CompactSelect
-          label="Birth year"
-          options={birthYearOptions}
-          placeholder="Year"
+        <BirthYearCombobox
           value={year}
           onChange={onYearChange}
         />
       </div>
     </div>
+  )
+}
+
+function BirthYearCombobox({
+  onChange,
+  value,
+}: {
+  onChange: (value: string) => void
+  value: string
+}) {
+  const controlId = fieldControlId('compact-select', 'Birth year')
+  const options = [
+    { label: 'Year', value: '' },
+    ...birthYearOptions,
+  ]
+
+  return (
+    <Field className="gap-1">
+      <FieldLabel className="sr-only" htmlFor={controlId}>
+        Birth year
+      </FieldLabel>
+      <Combobox
+        emptyText="No year found."
+        id={controlId}
+        options={options}
+        placeholder="Year"
+        searchPlaceholder="Search year..."
+        value={value}
+        onValueChange={onChange}
+      />
+    </Field>
   )
 }
 

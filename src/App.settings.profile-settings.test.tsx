@@ -13,11 +13,13 @@ import {
   createListResult,
   createProfileApi,
   createSettingsApi,
-  openSettingsPage
+  openSettingsPage,
+  selectComboboxOption,
+  stubCmdkEnvironment,
 } from './App.test-helpers'
 
 beforeEach(() => {
-  HTMLElement.prototype.scrollIntoView = vi.fn()
+  stubCmdkEnvironment()
 })
 afterEach(() => {
   cleanup()
@@ -138,7 +140,7 @@ describe('profile settings', () => {
     })
     fireEvent.change(screen.getByLabelText('Birth month'), { target: { value: '03' } })
     fireEvent.change(screen.getByLabelText('Birth day'), { target: { value: '16' } })
-    fireEvent.change(screen.getByLabelText('Birth year'), { target: { value: '2004' } })
+    selectComboboxOption('Birth year', '2004')
     fireEvent.change(screen.getByLabelText('Last 4 SSN'), { target: { value: '5125' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save private identifiers' }))
 
