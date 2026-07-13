@@ -561,8 +561,10 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
 
-    const pagination = screen.getByRole('group', { name: 'Application pagination' })
-    expect(pagination).toHaveAttribute('data-slot', 'button-group')
+    const pagination = screen.getByRole('navigation', { name: 'Application pagination' })
+    expect(pagination).toHaveAttribute('data-slot', 'pagination')
+    const paginationControls = within(pagination).getByRole('group')
+    expect(paginationControls).toHaveAttribute('data-slot', 'button-group')
     expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeDisabled()
     expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeEnabled()
     expect(within(pagination).queryByRole('button', { name: 'Columns' })).toBeNull()
@@ -587,7 +589,7 @@ describe('App', () => {
     expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeEnabled()
   })
 
-  it('pages through sourcing results in a labeled button group', async () => {
+  it('pages through sourcing results in labeled pagination', async () => {
     const queries: SourcingFindingsListInput[] = []
 
     render(
@@ -610,8 +612,9 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     await screen.findByRole('table', { name: 'Sourcing findings' })
 
-    const pagination = screen.getByRole('group', { name: 'Sourcing pagination' })
-    expect(pagination).toHaveAttribute('data-slot', 'button-group')
+    const pagination = screen.getByRole('navigation', { name: 'Sourcing pagination' })
+    expect(pagination).toHaveAttribute('data-slot', 'pagination')
+    expect(within(pagination).getByRole('group')).toHaveAttribute('data-slot', 'button-group')
     expect(
       within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
     ).toBeDisabled()

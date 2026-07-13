@@ -3,6 +3,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
+import {
+  Pagination,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import {
   Empty,
@@ -262,28 +267,24 @@ function SourcingPage({
               <p className="text-sm font-medium text-foreground">
                 {pageStart}-{pageEnd} of {result.total}
               </p>
-              <ButtonGroup aria-label="Sourcing pagination">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Previous sourcing page"
-                  disabled={result.offset === 0}
-                  onClick={onPreviousPage}
-                >
-                  Previous
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Next sourcing page"
-                  disabled={!result.hasMore}
-                  onClick={onNextPage}
-                >
-                  Next
-                </Button>
-              </ButtonGroup>
+              <Pagination aria-label="Sourcing pagination" className="mx-0 w-auto">
+                <ButtonGroup>
+                  <PaginationPrevious
+                    aria-label="Previous sourcing page"
+                    disabled={result.offset === 0}
+                    onClick={onPreviousPage}
+                  >
+                    Previous
+                  </PaginationPrevious>
+                  <PaginationNext
+                    aria-label="Next sourcing page"
+                    disabled={!result.hasMore}
+                    onClick={onNextPage}
+                  >
+                    Next
+                  </PaginationNext>
+                </ButtonGroup>
+              </Pagination>
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <Table aria-label="Sourcing findings" className="min-w-[1100px]">
