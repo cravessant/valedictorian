@@ -81,9 +81,7 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("the host single-flights, fences, and persists a ready session")
     expect(readme).toContain("does not run sourcing refresh, visitor-list discovery, job-detail normalization, application calls")
     expect(readme).toContain("must not launch or control Electron `BrowserWindow`")
-    expect(readme).toContain("must not scrape HTML, inspect the DOM, depend on Cheerio, require `browser_session`")
-    expect(readme).toContain("browser-session resolution behavior present in the `v0.3.1` implementation")
-    expect(readme).toContain("deprecated architecture")
+    expect(readme).toContain("must not scrape HTML, inspect the DOM, depend on Cheerio, accept browser-backed auth grants")
     expect(readme).toContain("visitor-list")
     expect(readme).toContain("## Bounded Jobright Backfill")
     expect(readme).toContain("Newest-frontier checking and historical backfill advance independently")
@@ -180,7 +178,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.10.0",
+      version: "0.11.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -196,7 +194,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.10.0",
+      version: "0.11.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -212,7 +210,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.10.0",
+      version: "0.11.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -236,11 +234,11 @@ describe("connector repository conventions", () => {
       sparxie: "^0.15.0",
     })
     expect(harnessPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.10.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.11.0",
       sparxie: "^0.15.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.10.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.11.0",
     })
     expect(Object.keys(jobrightPackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
@@ -254,7 +252,7 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(jobrightPackage.devDependencies).toMatchObject({
-      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.10.0",
+      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.11.0",
     })
   })
 
@@ -275,6 +273,16 @@ describe("connector repository conventions", () => {
     expect(coreDeclarations).toContain('from "sparxie"')
     expect(harnessDeclarations).toContain("retryHints: RetryAdvice | null")
     expect(jobrightDeclarations).not.toContain('from "sparxie"')
+  })
+
+  it("publishes the forward-only connector ABI without retired host contracts", () => {
+    const coreDeclarations = readText("packages/core/dist/index.d.ts")
+    const harnessDeclarations = readText("packages/test-harness/dist/index.d.ts")
+    const declarations = `${coreDeclarations}\n${harnessDeclarations}`
+
+    expect(declarations).not.toMatch(
+      /ConnectorPolitenessDefaults|\bpoliteness\??:|\bbudget\??:|browser_session|ConnectorBrowserSession|\bbrowserSession\??:|\busesBrowserSession\??:/,
+    )
   })
 
   it("publishes from GitHub OIDC workflows", () => {

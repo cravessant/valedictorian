@@ -183,7 +183,6 @@ export type ConnectorDefinition = {
   auth?: ConnectorAuthDeclaration
   capabilities?: ConnectorCapabilityDeclaration
   checkpoint?: ConnectorCheckpointDeclaration
-  politeness?: ConnectorPolitenessDefaults
 }
 
 export const jobObservationSchemaVersion = "job-observation@1"
@@ -203,7 +202,6 @@ export type ConnectorAuthMode =
   | "bearer_token"
   | "oauth"
   | "cookie_jar"
-  | "browser_session"
   | "username_password"
 
 export type ConnectorAuthDeclaration = {
@@ -223,7 +221,6 @@ export type ConnectorAuthReference = {
   mode: ConnectorAuthMode
   label?: string
   secretKey?: string
-  sessionKey?: string
 }
 
 export type ConnectorAuthGrantStatus =
@@ -237,7 +234,6 @@ export type ConnectorAuthGrant = {
   mode: ConnectorAuthMode
   status: ConnectorAuthGrantStatus
   secretKey?: string
-  sessionKey?: string
   value?: string
   sessionId?: string
   expiresAt?: string
@@ -393,53 +389,15 @@ export type ConnectorNormalizationRuntime = {
   run(input: ConnectorNormalizationInput): Promise<FieldResolutionOutcome[]>
 }
 
-export type ConnectorBrowserSessionResolveStatus =
-  | "resolved"
-  | "auth_required"
-  | "closed"
-  | "hidden"
-  | "direct_apply"
-  | "rate_limited"
-  | "captcha"
-  | "unresolved"
-
-export type ConnectorBrowserSessionResolveInput = {
-  sessionId: string
-  url: string
-  source: string
-}
-
-export type ConnectorBrowserSessionResolveResult = {
-  status: ConnectorBrowserSessionResolveStatus
-  officialUrl?: string | null
-  method?: string | null
-  reason?: string | null
-  evidence?: JobObservationEvidence[]
-}
-
-export type ConnectorBrowserSessionRuntime = {
-  resolveLink(
-    input: ConnectorBrowserSessionResolveInput,
-  ): Promise<ConnectorBrowserSessionResolveResult>
-}
-
 export type ConnectorCapabilityDeclaration = {
   fetchesPublicPages?: boolean
   resolvesIntermediaryLinks?: boolean
-  usesBrowserSession?: boolean
   supportsIncrementalRefresh?: boolean
   supportsFiltering?: boolean
 }
 
 export type ConnectorCheckpointDeclaration = {
   schemaVersion: string
-}
-
-export type ConnectorPolitenessDefaults = {
-  concurrency?: number
-  minDelayMs?: number
-  maxDelayMs?: number
-  maxBackfillDays?: number
 }
 
 export type ConnectorCoverageWindow = {
@@ -457,14 +415,12 @@ export type ConnectorRefreshInput = {
   checkpoint?: unknown
   config?: unknown
   filters?: unknown
-  budget?: unknown
   observations?: JobObservation[]
   executionScopeId: SourceExecutionScopeId
 }
 
 export type ConnectorRuntime = {
   auth: ConnectorAuthRuntime
-  browserSession?: ConnectorBrowserSessionRuntime
   cancellation?: ConnectorCancellationRuntime
   delay?: ConnectorDelayRuntime
   progress?: ConnectorProgressRuntime

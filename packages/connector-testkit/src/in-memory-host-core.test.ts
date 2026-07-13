@@ -43,10 +43,6 @@ describe("in-memory connector host — core", () => {
       checkpoint: {
         schemaVersion: "fixture-checkpoint@1",
       },
-      politeness: {
-        concurrency: 1,
-        maxBackfillDays: 7,
-      },
     })
   })
 

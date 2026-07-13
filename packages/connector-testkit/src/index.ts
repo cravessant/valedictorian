@@ -7,8 +7,6 @@ import type {
   ConnectorAuthRequirement,
   ConnectorAuthResolveInput,
   ConnectorAuthValidationResult,
-  ConnectorBrowserSessionResolveInput,
-  ConnectorBrowserSessionResolveResult,
   ConnectorCoverageWindow,
   ConnectorDelayInput,
   ConnectorDefinition,
@@ -80,7 +78,6 @@ export function createFixtureConnector(
     capabilities: {
       fetchesPublicPages: false,
       resolvesIntermediaryLinks: false,
-      usesBrowserSession: false,
       supportsIncrementalRefresh: true,
       supportsFiltering: true,
     },
@@ -89,12 +86,6 @@ export function createFixtureConnector(
     },
     observation: {
       schemaVersion: jobObservationSchemaVersion,
-    },
-    politeness: {
-      concurrency: 1,
-      minDelayMs: 0,
-      maxDelayMs: 0,
-      maxBackfillDays: 7,
     },
   }
 
@@ -258,23 +249,12 @@ export type InMemoryConnectorHost = {
   snapshot: () => InMemoryConnectorHostSnapshot
 }
 
-export type InMemoryConnectorBrowserSession = Pick<
-  ConnectorAuthGrant,
-  "expiresAt" | "reason" | "sessionId" | "status"
->
-
 export type InMemoryConnectorHostOptions = {
   authSessions?: Record<string, {
     expiresAt?: string
     generation: number
     sessionId: string
   }>
-  browserSessionResolver?: (
-    input: ConnectorBrowserSessionResolveInput,
-  ) =>
-    | ConnectorBrowserSessionResolveResult
-    | Promise<ConnectorBrowserSessionResolveResult>
-  browserSessions?: Record<string, InMemoryConnectorBrowserSession>
   delay?: (input: ConnectorDelayInput) => number | Promise<number>
   progress?: (
     snapshot: ConnectorProgressSnapshot,
@@ -707,14 +687,6 @@ function createConnectorRuntime(
     runtime.cancellation = { signal }
   }
 
-  if (options.browserSessionResolver) {
-    runtime.browserSession = {
-      async resolveLink(input) {
-        return await options.browserSessionResolver!(input)
-      },
-    }
-  }
-
   if (options.delay) {
     runtime.delay = {
       async wait(input) {
@@ -814,54 +786,7 @@ function resolveAuthGrant(
       status: "missing",
     }
   }
-  const referenceMode = reference.mode
-
-  if (
-    referenceMode === "api_key" ||
-    referenceMode === "bearer_token" ||
-    referenceMode === "oauth" ||
-    referenceMode === "cookie_jar" ||
-    referenceMode === "username_password"
-  ) {
-    return resolveSecretGrant(reference, options)
-  }
-
-  const sessionKey = reference.sessionKey
-
-  if (!sessionKey) {
-    return {
-      id: reference.id,
-      mode: referenceMode,
-      reason: "session_reference_missing",
-      status: "missing",
-    }
-  }
-
-  const sessionGrant = options.browserSessions?.[sessionKey]
-
-  if (sessionGrant) {
-    return {
-      id: reference.id,
-      mode: referenceMode,
-      sessionKey,
-      status: sessionGrant.status,
-      ...(sessionGrant.expiresAt === undefined
-        ? {}
-        : { expiresAt: sessionGrant.expiresAt }),
-      ...(sessionGrant.reason === undefined ? {} : { reason: sessionGrant.reason }),
-      ...(sessionGrant.sessionId === undefined
-        ? {}
-        : { sessionId: sessionGrant.sessionId }),
-    }
-  }
-
-  return {
-    id: reference.id,
-    mode: referenceMode,
-    sessionKey,
-    reason: "browser_session_action_required",
-    status: "action_required",
-  }
+  return resolveSecretGrant(reference, options)
 }
 
 function resolveSecretGrant(
