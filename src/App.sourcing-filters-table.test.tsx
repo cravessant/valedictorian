@@ -669,6 +669,7 @@ describe('App', () => {
   })
 
   it('hides optional columns from the table without reloading rows', async () => {
+    const user = userEvent.setup()
     const queries: ApplicationListQuery[] = []
 
     render(
@@ -682,14 +683,37 @@ describe('App', () => {
 
     const table = await screen.findByRole('table', { name: 'Applications' })
     const initialQueryCount = queries.length
+    const columnsTrigger = screen.getByRole('button', { name: 'Columns' })
 
     expect(within(table).getByText('LinkedIn')).toBeInTheDocument()
+    expect(within(table).getByText('8/10')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Columns' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Source column' }))
+    columnsTrigger.focus()
+    await user.keyboard('{Enter}')
 
+    const menu = await screen.findByRole('menu', { name: 'Column visibility' })
+    const sourceItem = within(menu).getByRole('menuitemcheckbox', { name: 'Source' })
+    const scoreItem = within(menu).getByRole('menuitemcheckbox', { name: 'Score' })
+
+    expect(sourceItem).toBeChecked()
+    expect(scoreItem).toBeChecked()
+
+    await user.click(sourceItem)
+    expect(sourceItem).not.toBeChecked()
     expect(within(table).queryByText('LinkedIn')).not.toBeInTheDocument()
+    expect(screen.getByRole('menu', { name: 'Column visibility' })).toBeInTheDocument()
+
+    await user.click(scoreItem)
+    expect(scoreItem).not.toBeChecked()
+    expect(within(table).queryByText('8/10')).not.toBeInTheDocument()
+    expect(screen.getByRole('menu', { name: 'Column visibility' })).toBeInTheDocument()
     expect(queries).toHaveLength(initialQueryCount)
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('menu', { name: 'Column visibility' })).not.toBeInTheDocument()
+    })
+    expect(columnsTrigger).toHaveFocus()
   })
 
   it('tracks selected rows locally', async () => {

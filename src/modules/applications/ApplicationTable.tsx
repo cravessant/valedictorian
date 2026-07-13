@@ -19,6 +19,12 @@ import {
   PaginationPrevious,
 } from '@/components/ui/pagination'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import {
   Table,
@@ -28,7 +34,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Label } from '@/components/ui/label'
 import { ExternalLink, Pencil } from 'lucide-react'
 import { formatEnumLabel } from '../../app/labels'
 import type {
@@ -205,7 +210,6 @@ function ApplicationTable({
     defaultColumnVisibility,
   )
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
-  const [columnsOpen, setColumnsOpen] = useState(false)
   const tableContainerRef = useRef<HTMLDivElement>(null)
   const sorting = useMemo(() => sortToSortingState(sort), [sort])
   const rowIds = result.items.map((item) => item.id).join('|')
@@ -367,43 +371,28 @@ function ApplicationTable({
           <span className="text-xs text-muted-foreground">
             {table.getSelectedRowModel().rows.length} selected
           </span>
-          <div className="relative">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              aria-expanded={columnsOpen}
-              onClick={() => setColumnsOpen((current) => !current)}
-            >
-              Columns
-            </Button>
-            {columnsOpen ? (
-              <div
-                role="group"
-                aria-label="Column visibility"
-                className="absolute right-0 z-10 mt-2 grid min-w-40 gap-2 rounded-md border border-border bg-card p-3 shadow-sm"
-              >
-                {table
-                  .getAllLeafColumns()
-                  .filter((column) => column.getCanHide())
-                  .map((column) => (
-                    <Label
-                      key={column.id}
-                      className="flex items-center gap-2 text-xs text-foreground"
-                      htmlFor={`application-column-${column.id}`}
-                    >
-                      <Checkbox
-                        aria-label={`${getColumnLabel(column.id)} column`}
-                        checked={column.getIsVisible()}
-                        id={`application-column-${column.id}`}
-                        onCheckedChange={(value) => column.toggleVisibility(value === true)}
-                      />
-                      {getColumnLabel(column.id)}
-                    </Label>
-                  ))}
-              </div>
-            ) : null}
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm">
+                Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent aria-label="Column visibility" align="end">
+              {table
+                .getAllLeafColumns()
+                .filter((column) => column.getCanHide())
+                .map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) => column.toggleVisibility(value)}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    {getColumnLabel(column.id)}
+                  </DropdownMenuCheckboxItem>
+                ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Pagination aria-label="Application pagination" className="mx-0 w-auto">
             <ButtonGroup>
               <PaginationPrevious
