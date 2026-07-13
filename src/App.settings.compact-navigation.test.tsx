@@ -6,6 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
@@ -147,8 +148,8 @@ describe('compact navigation', () => {
     const dialog = screen.getByRole('dialog', { name: 'Settings' })
 
     expect(within(dialog).getByText('Valedictorian')).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Use remote backend')).not.toBeChecked()
-    expect(within(dialog).getByLabelText('Local API sharing')).not.toBeChecked()
+    expect(within(dialog).getByRole('switch', { name: 'Use remote backend' })).not.toBeChecked()
+    expect(within(dialog).getByRole('switch', { name: 'Local API sharing' })).not.toBeChecked()
     expect(within(dialog).queryByLabelText('Show advanced filters')).not.toBeInTheDocument()
     expect(within(dialog).getByLabelText('Remote API URL')).toBeDisabled()
     expect(within(dialog).getByRole('button', { name: 'Open settings' })).toBeInTheDocument()
@@ -156,6 +157,7 @@ describe('compact navigation', () => {
   })
 
   it('toggles settings from the compact popover', async () => {
+    const user = userEvent.setup()
     const settingsApi = createSettingsApi()
 
     render(
@@ -170,22 +172,28 @@ describe('compact navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Settings' })
+    const localSharing = within(dialog).getByRole('switch', { name: 'Local API sharing' })
+    const remoteBackend = within(dialog).getByRole('switch', { name: 'Use remote backend' })
 
-    fireEvent.click(within(dialog).getByLabelText('Local API sharing'))
+    await user.click(localSharing)
 
     await waitFor(() => {
       expect(settingsApi.update).toHaveBeenCalledWith({ runtimeMode: 'local-shared' })
     })
+    expect(localSharing).toBeChecked()
     expect(within(dialog).getByText('local-shared')).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByLabelText('Use remote backend'))
+    remoteBackend.focus()
+    await user.keyboard(' ')
 
     await waitFor(() => {
       expect(settingsApi.update).toHaveBeenCalledWith({ runtimeMode: 'remote' })
     })
+    expect(remoteBackend).toBeChecked()
     expect(within(dialog).getByLabelText('Remote API URL')).not.toBeDisabled()
     expect(within(dialog).getByText('remote')).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Local API sharing')).not.toBeChecked()
+    expect(localSharing).not.toBeChecked()
+    expect(localSharing).toBeDisabled()
 
     fireEvent.change(within(dialog).getByLabelText('Remote API URL'), {
       target: { value: 'https://valedictorian.test' },

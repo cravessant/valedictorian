@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -421,13 +422,11 @@ function SettingsToggleRow({
         <span className="block font-medium">{label}</span>
         <span className="block text-xs text-muted-foreground">{description}</span>
       </span>
-      <input
+      <Switch
         aria-label={label}
         checked={checked}
-        className="h-5 w-5 shrink-0 accent-primary"
         disabled={disabled}
-        type="checkbox"
-        onChange={(event) => onChange(event.target.checked)}
+        onCheckedChange={onChange}
       />
     </Label>
   )
