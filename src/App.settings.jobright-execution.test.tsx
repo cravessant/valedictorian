@@ -17,6 +17,7 @@ import {
   createProfileApi,
   createSettingsApi,
   createSourcingResult,
+  lastCreatedConnectorInstanceId,
   openSettingsPage
 } from './App.test-helpers'
 
@@ -83,6 +84,8 @@ describe('Jobright execution', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
+    const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
 
     const runButtonBeforeAuth = await screen.findByRole('button', { name: 'Run Jobright now' })
     expect(runButtonBeforeAuth).toBeDisabled()
@@ -93,7 +96,7 @@ describe('Jobright execution', () => {
 
     await waitFor(() => {
       expect(connectorsApi.runs.trigger).toHaveBeenCalledWith(expect.objectContaining({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         mode: 'manual',
       }))
     })

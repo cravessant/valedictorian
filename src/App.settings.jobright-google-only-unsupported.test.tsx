@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,6 +13,7 @@ import {
   createConnectorsApi,
   createListResult,
   createSettingsApi,
+  lastCreatedConnectorInstanceId,
   openSettingsPage
 } from './App.test-helpers'
 
@@ -46,8 +48,9 @@ describe('Jobright Google-only unsupported explanation', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-
-    const card = await screen.findByTestId('connector-instance-card-jobright-default')
+    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
+    const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
+    const card = await screen.findByTestId(`connector-instance-card-${instanceId}`)
     expect(within(card).getByText(/Jobright password is required/i)).toBeInTheDocument()
     expect(within(card).getByText(/Gmail address is only the username/i)).toBeInTheDocument()
     expect(within(card).getByText(/does not initiate Google OAuth/i)).toBeInTheDocument()

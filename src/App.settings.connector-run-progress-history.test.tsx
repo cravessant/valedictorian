@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,6 +15,7 @@ import {
   createListResult,
   createProfileApi,
   createSettingsApi,
+  lastCreatedConnectorInstanceId,
   openSettingsPage
 } from './App.test-helpers'
 
@@ -118,6 +120,8 @@ describe('connector-run progress and history', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
+    const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
@@ -131,7 +135,7 @@ describe('connector-run progress and history', () => {
     expect(screen.getAllByText('Checking newest').length).toBeGreaterThan(0)
     expect(screen.getByText('Checking the provider for newly published jobs.')).toBeInTheDocument()
     expect(connectorsApi.runs.list).toHaveBeenCalledWith({
-      connectorInstanceId: 'jobright-default',
+      connectorInstanceId: instanceId,
       limit: 20,
       offset: 0,
     })

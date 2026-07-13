@@ -13,7 +13,8 @@ import {
   createConnectorsApi,
   createListResult,
   createProfileApi,
-  createSettingsApi
+  createSettingsApi,
+  lastCreatedConnectorInstanceId
 } from './App.test-helpers'
 
 beforeEach(() => {
@@ -339,6 +340,8 @@ describe('connector-run deep links', () => {
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
+    const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
     await authenticateJobrightInSettings({ connectorsApi, profileApi })
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
     expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
@@ -352,7 +355,7 @@ describe('connector-run deep links', () => {
     expect(focusedArticle).toHaveFocus()
     expect(scrollIntoView).toHaveBeenCalled()
     expect(connectorsApi.runs.list).toHaveBeenCalledWith(expect.objectContaining({
-      connectorInstanceId: 'jobright-default',
+      connectorInstanceId: instanceId,
       offset: pageSize,
     }))
   })

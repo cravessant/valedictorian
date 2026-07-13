@@ -22,6 +22,7 @@ import {
   createSettingsApi,
   createWorkspaceApi,
   createWorkspaceSummary,
+  lastCreatedConnectorInstanceId,
   selectComboboxOption,
   stubCmdkEnvironment,
 } from './App.test-helpers'
@@ -187,6 +188,8 @@ async function authenticateJobrightInConnectors({
   profileApi: ReturnType<typeof createProfileApi>
 }) {
   fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+  await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
+  const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
   fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
   fireEvent.change(await screen.findByLabelText('Jobright email'), {
     target: { value: 'demo@example.com' },
@@ -198,6 +201,7 @@ async function authenticateJobrightInConnectors({
   await screen.findByText('Auth verified')
   expect(profileApi.secrets.upsert).toHaveBeenCalled()
   expect(connectorsApi.status.reconnect).toHaveBeenCalled()
+  return instanceId
 }
 
 describe('App connector schedules', () => {
@@ -310,7 +314,7 @@ describe('App connector schedules', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
-    await authenticateJobrightInConnectors({ connectorsApi, profileApi })
+    const instanceId = await authenticateJobrightInConnectors({ connectorsApi, profileApi })
 
     await waitFor(() => {
       expect(scheduleApi.getSchedule).toHaveBeenCalled()
@@ -327,7 +331,7 @@ describe('App connector schedules', () => {
 
     await waitFor(() => {
       expect(scheduleApi.upsertSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         expectedRevision: null,
         state: 'enabled',
         cadence: { kind: 'interval', everyMinutes: 60 },
@@ -446,7 +450,7 @@ describe('App connector schedules', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
-    await authenticateJobrightInConnectors({ connectorsApi, profileApi })
+    const instanceId = await authenticateJobrightInConnectors({ connectorsApi, profileApi })
     await waitFor(() => expect(scheduleApi.getSchedule).toHaveBeenCalled())
 
     fireEvent.change(await screen.findByLabelText('Schedule mode'), {
@@ -460,7 +464,7 @@ describe('App connector schedules', () => {
 
     await waitFor(() => {
       expect(scheduleApi.upsertSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         expectedRevision: null,
         state: 'enabled',
         cadence: { kind: 'daily', localTime: '14:30' },
@@ -482,7 +486,7 @@ describe('App connector schedules', () => {
 
     await waitFor(() => {
       expect(scheduleApi.upsertSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         expectedRevision: 'rev-1',
         state: 'enabled',
         cadence: { kind: 'weekly', dayOfWeek: 5, localTime: '08:15' },
@@ -561,7 +565,7 @@ describe('App connector schedules', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
-    await authenticateJobrightInConnectors({ connectorsApi, profileApi })
+    const instanceId = await authenticateJobrightInConnectors({ connectorsApi, profileApi })
     expect(await screen.findByText('Cadence: Every hour')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Schedule mode'), {
@@ -614,7 +618,7 @@ describe('App connector schedules', () => {
 
     await waitFor(() => {
       expect(scheduleApi.deleteSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         expectedRevision: 'rev-2',
       })
     })
@@ -717,7 +721,7 @@ describe('App connector schedules', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
-    await authenticateJobrightInConnectors({ connectorsApi, profileApi })
+    const instanceId = await authenticateJobrightInConnectors({ connectorsApi, profileApi })
     expect(await screen.findByText('Enabled')).toBeInTheDocument()
     expect(screen.getByText(/Last occurrence: completed/)).toBeInTheDocument()
     expect(screen.getByText(/Last scheduled run: completed \(scheduled\)/)).toBeInTheDocument()
@@ -725,7 +729,7 @@ describe('App connector schedules', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pause schedule' }))
     await waitFor(() => {
       expect(scheduleApi.pauseSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         expectedRevision: 'rev-live',
       })
     })
@@ -734,7 +738,7 @@ describe('App connector schedules', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Resume schedule' }))
     await waitFor(() => {
       expect(scheduleApi.resumeSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         expectedRevision: 'rev-live-paused',
       })
     })
@@ -988,7 +992,7 @@ describe('App connector schedules', () => {
 
       await screen.findByRole('table', { name: 'Applications' })
       openConnectorsOverview()
-      await authenticateJobrightInConnectors({ connectorsApi, profileApi })
+      const instanceId = await authenticateJobrightInConnectors({ connectorsApi, profileApi })
       await waitFor(() => expect(scheduleApi.getSchedule).toHaveBeenCalled())
 
       const timezone = await screen.findByRole('combobox', { name: 'Timezone' })
@@ -1009,7 +1013,7 @@ describe('App connector schedules', () => {
 
       await waitFor(() => expect(scheduleApi.upsertSchedule).toHaveBeenCalled())
       expect(scheduleApi.upsertSchedule).toHaveBeenCalledWith({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         expectedRevision: 'rev-1',
         state: 'enabled',
         cadence: { kind: 'daily', localTime: '10:30' },

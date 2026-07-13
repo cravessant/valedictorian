@@ -5,6 +5,7 @@ import { assertPersistedEarliestBackfillDate, defaultEarliestBackfillDate } from
 import type { ConnectorAuthMode, ConnectorAuthReference, ConnectorInstanceRecord, UpsertConnectorInstanceInput } from './connector-instance.persistence-types'
 import { optionalNonEmptyString, requiredNonEmptyString, toJsonRecord } from './connector.persistence-json'
 import { deriveSourceExecutionScopeId } from '../source-execution/source-execution-governor'
+import { JOBRIGHT_CONNECTOR_ID } from './jobright.constants'
 
 export function createConnectorInstance(
   database: DrizzleDatabase,
@@ -14,6 +15,19 @@ export function createConnectorInstance(
   const createdAt = input.createdAt ?? now
   const executionScopeId = deriveSourceExecutionScopeId(input.id)
   return database.transaction((transaction) => {
+    if (input.connectorId === JOBRIGHT_CONNECTOR_ID) {
+      const activeJobright = transaction
+        .select({ id: connectorInstances.id })
+        .from(connectorInstances)
+        .where(and(
+          eq(connectorInstances.connectorId, JOBRIGHT_CONNECTOR_ID),
+          isNull(connectorInstances.deletedAt),
+        ))
+        .get()
+      if (activeJobright) {
+        throw alreadyConfiguredError()
+      }
+    }
     transaction.insert(sourceExecutionScopes).values({
       id: executionScopeId, createdAt, updatedAt: createdAt, deletedAt: null,
     }).onConflictDoNothing().run()
@@ -30,13 +44,17 @@ export function createConnectorInstance(
       createdAt, updatedAt: now, deletedAt: null,
     }).onConflictDoNothing().returning().get()
     if (!persisted) {
-      throw Object.assign(
-        new Error('This connector is already configured. Manage the existing instance.'),
-        { code: 'already_configured', statusCode: 409 },
-      )
+      throw alreadyConfiguredError()
     }
     return mapConnectorInstance(persisted)
-  })
+  }, { behavior: 'immediate' })
+}
+
+function alreadyConfiguredError() {
+  return Object.assign(
+    new Error('This connector is already configured. Manage the existing instance.'),
+    { code: 'already_configured', statusCode: 409 },
+  )
 }
 
 export function selectConnectorInstance(

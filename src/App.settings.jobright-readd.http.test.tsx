@@ -10,11 +10,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createHttpValedictorianClient } from 'sparxie'
 import App from './App'
 import { createApplication, createListResult, createSettingsApi } from './App.test-helpers'
+import { createFileDatabase } from './db/sqlite'
 import { createStaticConnectorRegistry } from './modules/connectors/connector.registry'
 import type { AppJobConnector } from './modules/connectors/connector.runner'
 import { JOBRIGHT_CONNECTOR_ID, JOBRIGHT_CONNECTOR_VERSION } from './modules/connectors/jobright.constants'
+import { deriveSourceExecutionScopeId } from './modules/source-execution/source-execution-governor'
 import { createLocalValedictorianClient } from './runtime/local-valedictorian-client'
 import {
   createValedictorianHttpServer,
@@ -22,7 +25,7 @@ import {
 } from './server/local-server'
 
 const CLOCK = '2026-07-13T18:00:00.000Z'
-const WORKSPACE_ID = 'workspace-public-trigger'
+const WORKSPACE_ID = 'workspace-connector-readd'
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
@@ -30,23 +33,17 @@ beforeEach(() => {
 
 afterEach(async () => {
   cleanup()
-  vi.unstubAllGlobals()
   delete (window as Window & { valedictorianHttp?: unknown }).valedictorianHttp
   delete (window as Window & { connectors?: unknown }).connectors
-  delete (window as Window & { applications?: unknown }).applications
-  delete (window as Window & { sourcing?: unknown }).sourcing
-  delete (window as Window & { settings?: unknown }).settings
-  delete (window as Window & { profile?: unknown }).profile
-  delete (window as Window & { workspace?: unknown }).workspace
-  delete (window as Window & { valedictorianWindowChrome?: unknown }).valedictorianWindowChrome
   await activeServer?.close()
   activeServer = null
 })
 
 let activeServer: StartedValedictorianHttpServer | null = null
+let activeSqlitePath: string | null = null
 
-describe('Jobright public trigger through default HTTP client', () => {
-  it('persists a connector run when Run Jobright now uses the real Sparxie HTTP client', async () => {
+describe('Jobright remove then re-add through renderer HTTP and SQLite', () => {
+  it('adds a fresh connector-instance id after remove without resurrecting the retired tombstone', async () => {
     const { client } = await startFixtureServer()
 
     render(
@@ -60,86 +57,81 @@ describe('Jobright public trigger through default HTTP client', () => {
     openConnectorsOverview()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
-    fireEvent.change(screen.getByLabelText('Jobright email'), {
-      target: { value: 'public-trigger@example.test' },
-    })
-    fireEvent.change(screen.getByLabelText('Jobright password'), {
-      target: { value: 'public-trigger-fixture-password' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
+    expect(await screen.findByText('1 connector instance configured.')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Remove Jobright internslist' }))
+      .toBeInTheDocument()
 
-    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
-    const runButton = screen.getByRole('button', { name: 'Run Jobright now' })
-    await waitFor(() => expect(runButton).toBeEnabled())
-    fireEvent.click(runButton)
+    const firstList = await client.connectors.list()
+    expect(firstList.items).toHaveLength(1)
+    const retiredId = firstList.items[0]!.id
 
-    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
-    expect(screen.queryByText('Jobright run could not be completed.')).not.toBeInTheDocument()
-    expect(screen.queryByText('Latest synchronization: Starting')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Jobright internslist' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Remove connector',
+    }))
 
-    const listed = await client.connectors.list()
-    expect(listed.items).toHaveLength(1)
-    const connectorInstanceId = listed.items[0]!.id
-    await expect(client.connectors.runs.list({
-      connectorInstanceId,
-    })).resolves.toMatchObject({
-      total: 1,
-      items: [{
-        connectorInstanceId,
-        mode: 'manual',
-        status: 'completed',
-        coverage: {
-          end: CLOCK,
-        },
-      }],
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Remove Jobright internslist' }))
+        .not.toBeInTheDocument()
     })
+    expect(await screen.findByRole('button', { name: 'Add Jobright connector' })).toBeEnabled()
+    await expect(client.connectors.list()).resolves.toEqual({ items: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Jobright connector' }))
+    expect(await screen.findByText('1 connector instance configured.')).toBeInTheDocument()
+    expect(screen.queryByText(/already configured/i)).not.toBeInTheDocument()
+
+    const secondList = await client.connectors.list()
+    expect(secondList.items).toHaveLength(1)
+    const replacement = secondList.items[0]!
+    expect(replacement.id).not.toBe(retiredId)
+    expect(replacement.id).not.toBe('jobright-default')
+    expect(deriveSourceExecutionScopeId(replacement.id))
+      .not.toBe(deriveSourceExecutionScopeId(retiredId))
+
+    const sqlite = createFileDatabase(activeSqlitePath!)
+    expect(sqlite.prepare(
+      'select deleted_at as deletedAt from connector_instances where id = ?',
+    ).get(retiredId)).toEqual({ deletedAt: expect.any(String) })
+    expect(sqlite.prepare(
+      'select deleted_at as deletedAt from connector_instances where id = ?',
+    ).get(replacement.id)).toEqual({ deletedAt: null })
+    sqlite.close()
   })
+})
 
-  it('clears optimistic Starting when the public trigger is rejected before persistence', async () => {
-    await startFixtureServer()
-    const originalFetch = globalThis.fetch.bind(globalThis)
-    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : String(input)
-      if (url.includes('/connectors/') && url.endsWith('/runs') && init?.method === 'POST') {
-        return new Response(JSON.stringify({ message: 'forced rejection' }), {
-          headers: { 'content-type': 'application/json' },
-          status: 409,
-        })
-      }
-      return originalFetch(input, init)
-    })
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
+describe('active Jobright uniqueness after fresh-id create', () => {
+  it('rejects a second active Jobright with a different instance id', async () => {
+    const sqlitePath = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-active-dup-')),
+      'valedictorian.sqlite',
     )
-
-    await screen.findByRole('table', { name: 'Applications' })
-    openConnectorsOverview()
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
-    fireEvent.change(screen.getByLabelText('Jobright email'), {
-      target: { value: 'reject@example.test' },
+    const client = createLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([createJobrightFixtureConnector()]),
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: WORKSPACE_ID,
     })
-    fireEvent.change(screen.getByLabelText('Jobright password'), {
-      target: { value: 'reject-fixture-password' },
+    activeServer = await createValedictorianHttpServer({
+      client,
+      host: '127.0.0.1',
+      port: 0,
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
-    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+    const workspace = createHttpValedictorianClient({ baseUrl: activeServer.url })
+      .forWorkspace(WORKSPACE_ID)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-
-    expect(await screen.findByText('Jobright run could not be completed.')).toBeInTheDocument()
-    expect(screen.queryByText('Latest synchronization: Starting')).not.toBeInTheDocument()
+    await workspace.connectors.create(jobrightCreateInput('jobright-active-a'))
+    await expect(workspace.connectors.create(jobrightCreateInput('jobright-active-b')))
+      .rejects.toMatchObject({ status: 409, body: { code: 'already_configured' } })
+    await expect(workspace.connectors.list()).resolves.toMatchObject({
+      items: [{ id: 'jobright-active-a' }],
+    })
   })
 })
 
 async function startFixtureServer() {
-  const sqlitePath = path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-public-trigger-')),
+  activeSqlitePath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-readd-')),
     'valedictorian.sqlite',
   )
   const connector = createJobrightFixtureConnector()
@@ -151,7 +143,7 @@ async function startFixtureServer() {
       encrypt: (value) => `enc:${value}`,
     },
     seedDataMode: 'none',
-    sqlitePath,
+    sqlitePath: activeSqlitePath,
     workspaceId: WORKSPACE_ID,
   })
   activeServer = await createValedictorianHttpServer({
@@ -165,7 +157,6 @@ async function startFixtureServer() {
     onBackendStateChanged: () => () => undefined,
     workspaceId: WORKSPACE_ID,
   }
-  // Reconnect remains IPC-only in production composition; expose the local status surface.
   ;(window as Window & { connectors?: unknown }).connectors = {
     status: {
       reconnect: (input: { connectorInstanceId: string }) =>
@@ -196,7 +187,7 @@ function createJobrightFixtureConnector(): AppJobConnector {
         id: 'jobright',
         mode: 'username_password',
         executionScopeId: input.executionScopeId,
-      }, async () => ({ status: 'ready', sessionId: 'public-trigger-session' }))
+      }, async () => ({ status: 'ready', sessionId: 'readd-session' }))
       return result.status === 'ready'
         ? { status: 'ready', reason: 'jobright_auth_ready' }
         : { status: 'failed', reason: 'auth_validation_failed' }
@@ -215,7 +206,7 @@ function createJobrightFixtureConnector(): AppJobConnector {
           outcome: { kind: 'caught_up' },
         },
         observations: [],
-        nextCheckpoint: { checkpoint: {}, schemaVersion: 'jobright-public-trigger@1' },
+        nextCheckpoint: { checkpoint: {}, schemaVersion: 'jobright-readd@1' },
         coverage: input.coverage,
         stats: { observations: 0 },
         warnings: [],
@@ -231,4 +222,17 @@ function openConnectorsOverview() {
   fireEvent.click(within(appNavigation).getByRole('button', { name: 'Connectors' }))
   fireEvent.click(within(appNavigation).getByRole('button', { name: 'Overview' }))
   return appNavigation
+}
+
+function jobrightCreateInput(id: string) {
+  return {
+    id,
+    connectorId: JOBRIGHT_CONNECTOR_ID,
+    connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
+    displayName: 'Jobright internslist',
+    enabled: true,
+    auth: [{ id: 'jobright', label: 'Jobright credentials', mode: 'username_password' as const }],
+    config: {},
+    filters: {},
+  }
 }

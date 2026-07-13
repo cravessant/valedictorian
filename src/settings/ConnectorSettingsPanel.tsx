@@ -283,7 +283,7 @@ export function ConnectorSettingsPanel({
     setConnectorActionError(null)
     setIsAdding(true)
     void connectorsApi.create({
-      id: 'jobright-default',
+      id: crypto.randomUUID(),
       connectorId: JOBRIGHT_CONNECTOR_ID,
       connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
       displayName: 'Jobright internslist',

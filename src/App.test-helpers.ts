@@ -310,10 +310,20 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
   type CreateConnectorInput = Parameters<ConnectorsPreloadApi['create']>[0]
   type UpdateConnectorInput = Parameters<ConnectorsPreloadApi['update']>[0]
   let instances: ConnectorInstance[] = []
+  const retiredIds = new Set<string>()
 
   return {
     list: vi.fn(async () => ({ items: instances })),
     create: vi.fn(async (input: CreateConnectorInput) => {
+      if (
+        retiredIds.has(input.id)
+        || instances.some((item) => item.id === input.id)
+      ) {
+        throw Object.assign(
+          new Error('This connector is already configured. Manage the existing instance.'),
+          { code: 'already_configured', status: 409, statusCode: 409 },
+        )
+      }
       const now = '2026-07-09T15:00:00.000Z'
       const instance: ConnectorInstance = {
         id: input.id,
@@ -335,7 +345,7 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
         createdAt: now,
         updatedAt: now,
       }
-      instances = [...instances.filter((item) => item.id !== instance.id), instance]
+      instances = [...instances, instance]
       return instance
     }),
     update: vi.fn(async (input: UpdateConnectorInput) => {
@@ -368,7 +378,12 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
       return updated
     }),
     remove: vi.fn(async ({ connectorInstanceId }) => {
+      const existing = instances.find((instance) => instance.id === connectorInstanceId)
+      if (!existing) {
+        throw new Error(`Connector instance not found: ${connectorInstanceId}`)
+      }
       instances = instances.filter((instance) => instance.id !== connectorInstanceId)
+      retiredIds.add(connectorInstanceId)
       return {
         connectorInstanceId,
         lifecycle: 'retired',
@@ -438,6 +453,15 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
       skip: vi.fn(),
     },
   }
+}
+
+export function lastCreatedConnectorInstanceId(connectorsApi: ConnectorsPreloadApi): string {
+  const calls = vi.mocked(connectorsApi.create).mock.calls
+  const input = calls.at(-1)?.[0]
+  if (!input?.id) {
+    throw new Error('Expected connectorsApi.create to have been called with an instance id')
+  }
+  return input.id
 }
 
 type LegacySourcingFinding = SourcingFinding & {

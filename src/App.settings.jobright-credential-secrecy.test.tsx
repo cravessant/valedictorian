@@ -15,8 +15,10 @@ import {
   createListResult,
   createProfileApi,
   createSettingsApi,
+  lastCreatedConnectorInstanceId,
   openSettingsPage
 } from './App.test-helpers'
+import { jobrightSecretKeyForInstance } from './settings/connector-settings.helpers'
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
@@ -52,6 +54,9 @@ describe('Jobright credential secrecy', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
+    const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
+    const secretKey = jobrightSecretKeyForInstance(instanceId)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(await screen.findByLabelText('Jobright email'), {
@@ -64,7 +69,7 @@ describe('Jobright credential secrecy', () => {
 
     await waitFor(() => {
       expect(profileApi.secrets.upsert).toHaveBeenCalledWith({
-        key: 'connector_jobright_credentials_jobright_default',
+        key: secretKey,
         kind: 'password',
         label: 'Jobright username and password',
         value: JSON.stringify({
@@ -78,13 +83,13 @@ describe('Jobright credential secrecy', () => {
             id: 'jobright',
             label: 'Jobright username and password',
             mode: 'username_password',
-            secretKey: 'connector_jobright_credentials_jobright_default',
+            secretKey,
           },
         ],
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
       })
       expect(connectorsApi.status.reconnect).toHaveBeenCalledWith({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
       })
     })
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()

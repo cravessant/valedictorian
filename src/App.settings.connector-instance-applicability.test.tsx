@@ -17,6 +17,7 @@ import {
   createListResult,
   createProfileApi,
   createSettingsApi,
+  lastCreatedConnectorInstanceId,
   openSettingsPage
 } from './App.test-helpers'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
@@ -70,8 +71,9 @@ describe('connector instance applicability', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Jobright connector' }))
 
     expect(await screen.findByText('jobright.resolver')).toBeInTheDocument()
-    expect(screen.getByTestId('connector-auth-actions-jobright-default')).toHaveClass('flex-wrap')
-    const runActions = screen.getByTestId('connector-run-actions-jobright-default')
+    const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
+    expect(screen.getByTestId(`connector-auth-actions-${instanceId}`)).toHaveClass('flex-wrap')
+    const runActions = screen.getByTestId(`connector-run-actions-${instanceId}`)
     expect(runActions).toHaveClass('lg:grid-cols-2')
     expect(runActions).not.toHaveClass('md:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto]')
     expect(within(runActions).getByText(
@@ -79,7 +81,7 @@ describe('connector instance applicability', () => {
     )).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add credentials' }))
-    const credentialForm = screen.getByTestId('connector-credential-form-jobright-default')
+    const credentialForm = screen.getByTestId(`connector-credential-form-${instanceId}`)
     expect(credentialForm).toHaveClass('lg:grid-cols-2')
     expect(credentialForm).not.toHaveClass(
       'md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto]',
@@ -100,7 +102,7 @@ describe('connector instance applicability', () => {
 
     await waitFor(() => {
       expect(connectorsApi.runs.trigger).toHaveBeenCalledWith(expect.objectContaining({
-        connectorInstanceId: 'jobright-default',
+        connectorInstanceId: instanceId,
         mode: 'manual',
       }))
     })
@@ -216,7 +218,7 @@ describe('connector instance applicability', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
 
     await waitFor(() => {
-      expect(connectorsApi.create).toHaveBeenCalledWith({
+      expect(connectorsApi.create).toHaveBeenCalledWith(expect.objectContaining({
         auth: [
           {
             id: 'jobright',
@@ -230,9 +232,11 @@ describe('connector instance applicability', () => {
         displayName: 'Jobright internslist',
         enabled: true,
         filters: {},
-        id: 'jobright-default',
-      })
+      }))
     })
+    const createdId = lastCreatedConnectorInstanceId(connectorsApi)
+    expect(createdId).not.toBe('jobright-default')
+    expect(createdId.length).toBeGreaterThan(0)
     expect(await screen.findByText('jobright.resolver')).toBeInTheDocument()
     expect(screen.getByText('Auth required')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add credentials' })).toBeInTheDocument()
