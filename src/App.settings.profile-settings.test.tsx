@@ -31,6 +31,25 @@ afterEach(() => {
 })
 
 describe('profile settings', () => {
+  it('exposes a named loading status while profile data is pending', async () => {
+    const profileApi = createProfileApi()
+    profileApi.get = vi.fn(() => new Promise(() => undefined))
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+
+    expect(await screen.findByRole('heading', { name: 'Profile' })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Profile loading' })).toBeInTheDocument()
+  })
+
   it('renders and persists structured profile sections with compact reusable answers and secure values', async () => {
     const profileApi = createProfileApi()
 

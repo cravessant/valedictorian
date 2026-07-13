@@ -458,7 +458,9 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
       </div>
 
       {isProfileLoading ? (
-        <Skeleton className="h-32 w-full" />
+        <div role="status" aria-label="Profile loading">
+          <Skeleton className="h-32 w-full" />
+        </div>
       ) : (
         <>
           <ProfileSection title="Profile Basics">

@@ -5,10 +5,15 @@ import { cn } from '@/lib/utils'
 function Skeleton({
   className,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.ComponentProps<'div'>) {
   return (
     <div
-      className={cn('animate-pulse rounded-md bg-muted', className)}
+      data-slot="skeleton"
+      className={cn(
+        'animate-pulse rounded-md bg-accent motion-reduce:animate-none',
+        className,
+      )}
+      aria-hidden="true"
       {...props}
     />
   )
