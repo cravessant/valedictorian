@@ -33,6 +33,7 @@ export function ConnectorEarliestBackfillDateControl({
   const selected = parseCalendarDateOnly(value)
   const fromDate = parseCalendarDateOnly(minimum)!
   const toDate = parseCalendarDateOnly(todayUtc)!
+  const descriptionId = `connector-earliest-backfill-description-${instanceId}`
 
   return (
     <div
@@ -51,6 +52,8 @@ export function ConnectorEarliestBackfillDateControl({
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button
+              aria-describedby={descriptionId}
+              aria-invalid={!validation.ok}
               aria-label={`Choose earliest backfill date for ${instanceId}`}
               className="h-9 gap-2"
               disabled={disabled}
@@ -79,11 +82,11 @@ export function ConnectorEarliestBackfillDateControl({
         </Popover>
       </div>
       {validation.ok ? (
-        <span className="font-normal text-muted-foreground">
+        <span className="font-normal text-muted-foreground" id={descriptionId}>
           Inclusive UTC start. Allowed range: {minimum} to {todayUtc}.
         </span>
       ) : (
-        <span className="font-normal text-warning" role="alert">
+        <span className="font-normal text-warning" id={descriptionId} role="alert">
           {validation.message}
         </span>
       )}
