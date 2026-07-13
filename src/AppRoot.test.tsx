@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AppRoot from './AppRoot'
 import {
@@ -86,11 +87,9 @@ describe('AppRoot workspace gate', () => {
     expect(screen.getByRole('button', { name: 'Open folder' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create workspace' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open Job Search' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Open Job Search' })).toHaveTextContent('Job Search')
+    expect(screen.getByText('Job Search')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Missing Search unavailable' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Missing Search unavailable' })).toHaveTextContent(
-      'Missing Search',
-    )
+    expect(screen.getByText('Missing Search')).toBeInTheDocument()
   })
 
   it('renders the workspace launcher in an Obsidian-style two-pane shell', async () => {
@@ -118,6 +117,88 @@ describe('AppRoot workspace gate', () => {
     expect(container.querySelector('.lucide-gem')).toBeNull()
   })
 
+  it('composes recent workspaces as Item rows with distinct Open and Remove controls', async () => {
+    const recentWorkspaces = [
+      {
+        id: 'workspace-recent',
+        lastOpenedAt: '2026-06-08T13:00:00.000Z',
+        missing: false,
+        name: 'Job Search',
+        open: true,
+        path: '/Users/keni/Job Search',
+      },
+      {
+        id: 'workspace-missing',
+        lastOpenedAt: '2026-06-08T12:00:00.000Z',
+        missing: true,
+        name: 'Missing Search',
+        open: false,
+        path: '/Users/keni/Missing Search',
+      },
+    ]
+    const openRecent = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
+      recentWorkspaces,
+      status: 'needs-workspace' as const,
+    }))
+    const removeRecent = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
+      recentWorkspaces: [recentWorkspaces[1]],
+      status: 'needs-workspace' as const,
+    }))
+
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi(
+          {
+            recentWorkspaces,
+            status: 'needs-workspace',
+          },
+          { openRecent, removeRecent },
+        )}
+      />,
+    )
+
+    const openButton = await screen.findByRole('button', { name: 'Open Job Search' })
+    const item = openButton.closest('[data-slot="item"]')
+    expect(item).not.toBeNull()
+    expect(item).toHaveAttribute('data-size', 'sm')
+    expect(item!.closest('[data-slot="item-group"]')).not.toBeNull()
+
+    const content = item!.querySelector('[data-slot="item-content"]')
+    expect(content).not.toBeNull()
+    expect(content!.querySelector('[data-slot="item-title"]')).toHaveTextContent('Job Search')
+    const description = content!.querySelector('[data-slot="item-description"]')
+    expect(description).toHaveTextContent('/Users/keni/Job Search')
+    expect(description).toHaveClass('truncate', 'text-nowrap')
+    expect(description).not.toHaveClass('text-balance')
+
+    const removeButton = screen.getByRole('button', { name: 'Remove Job Search' })
+    const actions = openButton.closest('[data-slot="item-actions"]')
+    expect(actions).not.toBeNull()
+    expect(actions).toContainElement(openButton)
+    expect(actions).toContainElement(removeButton)
+    expect(openButton.contains(removeButton)).toBe(false)
+    expect(openButton.contains(content)).toBe(false)
+    expect(removeButton.contains(content)).toBe(false)
+    expect(item!.contains(content)).toBe(true)
+    expect(item!.contains(actions)).toBe(true)
+
+    fireEvent.click(openButton)
+    await waitFor(() => expect(openRecent).toHaveBeenCalledWith('workspace-recent'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Job Search' }))
+    await waitFor(() => expect(removeRecent).toHaveBeenCalledWith('workspace-recent'))
+
+    const missingOpen = screen.getByRole('button', { name: 'Missing Search unavailable' })
+    expect(missingOpen).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove Missing Search' })).toBeEnabled()
+  })
+
   it('renders an Obsidian-style launcher with a recent sidebar and action panel', async () => {
     render(
       <AppRoot
@@ -141,7 +222,8 @@ describe('AppRoot workspace gate', () => {
       'grid-cols-[250px_minmax(0,1fr)]',
     )
     expect(screen.getByRole('complementary', { name: 'Recent workspaces' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open Mango' })).toHaveTextContent('Mango')
+    expect(screen.getByRole('button', { name: 'Open Mango' })).toBeInTheDocument()
+    expect(screen.getByText('Mango')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Valedictorian' })).toBeInTheDocument()
     expect(screen.getByText('Create workspace')).toBeInTheDocument()
     expect(screen.getByText('Open folder as workspace')).toBeInTheDocument()
@@ -159,11 +241,174 @@ describe('AppRoot workspace gate', () => {
 
     await screen.findByRole('button', { name: 'Open folder' })
 
-    const separators = container.querySelectorAll('[data-slot="separator"]')
+    const separators = container.querySelectorAll('[data-slot="item-separator"]')
     expect(separators).toHaveLength(1)
     expect(separators[0]).toHaveClass('my-4', 'bg-border')
     expect(separators[0]).toHaveAttribute('data-orientation', 'horizontal')
     expect(screen.queryByRole('separator')).toBeNull()
+  })
+
+  it('composes home Create and Open choices as Item rows with h2 semantics', async () => {
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi({
+          recentWorkspaces: [],
+          status: 'needs-workspace',
+        })}
+      />,
+    )
+
+    const createHeading = await screen.findByRole('heading', {
+      level: 2,
+      name: 'Create workspace',
+    })
+    const createItem = createHeading.closest('[data-slot="item"]')
+    expect(createItem).not.toBeNull()
+    expect(createItem!.closest('[data-slot="item-group"]')).not.toBeNull()
+    expect(createHeading.closest('[data-slot="item-title"]')).not.toBeNull()
+    expect(createItem!.querySelector('[data-slot="item-description"]')).toHaveTextContent(
+      'Create a new workspace under a folder.',
+    )
+    expect(
+      createItem!.querySelector('[data-slot="item-actions"]')?.querySelector(
+        '[aria-label="Create workspace"]',
+      ),
+    ).not.toBeNull()
+
+    const openHeading = screen.getByRole('heading', {
+      level: 2,
+      name: 'Open folder as workspace',
+    })
+    const openItem = openHeading.closest('[data-slot="item"]')
+    expect(openItem).not.toBeNull()
+    expect(openHeading.closest('[data-slot="item-title"]')).not.toBeNull()
+    expect(openItem!.querySelector('[data-slot="item-description"]')).toHaveTextContent(
+      'Open an existing workspace folder.',
+    )
+    expect(
+      openItem!.querySelector('[data-slot="item-actions"]')?.querySelector(
+        '[aria-label="Open folder"]',
+      ),
+    ).not.toBeNull()
+
+    expect(screen.getByRole('button', { name: 'Create workspace' })).toHaveTextContent('Create')
+    expect(screen.getByRole('button', { name: 'Open folder' })).toHaveTextContent('Open')
+  })
+
+  it('preserves Tab Enter and Space on launcher Item actions and skips disabled Open', async () => {
+    const user = userEvent.setup()
+    const openRecent = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
+      recentWorkspaces: [
+        {
+          id: 'workspace-recent',
+          lastOpenedAt: '2026-06-08T13:00:00.000Z',
+          missing: false,
+          name: 'Job Search',
+          open: true,
+          path: '/Users/keni/Job Search',
+        },
+        {
+          id: 'workspace-missing',
+          lastOpenedAt: '2026-06-08T12:00:00.000Z',
+          missing: true,
+          name: 'Missing Search',
+          open: false,
+          path: '/Users/keni/Missing Search',
+        },
+      ],
+      status: 'needs-workspace' as const,
+    }))
+    const removeRecent = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
+      recentWorkspaces: [
+        {
+          id: 'workspace-recent',
+          lastOpenedAt: '2026-06-08T13:00:00.000Z',
+          missing: false,
+          name: 'Job Search',
+          open: true,
+          path: '/Users/keni/Job Search',
+        },
+        {
+          id: 'workspace-missing',
+          lastOpenedAt: '2026-06-08T12:00:00.000Z',
+          missing: true,
+          name: 'Missing Search',
+          open: false,
+          path: '/Users/keni/Missing Search',
+        },
+      ],
+      status: 'needs-workspace' as const,
+    }))
+    const openFolder = vi.fn(async () => ({
+      devOptions: {
+        canSeedSampleData: false,
+      },
+      recentWorkspaces: [],
+      status: 'needs-workspace' as const,
+    }))
+
+    render(
+      <AppRoot
+        workspaceApi={createLauncherWorkspaceApi(
+          {
+            recentWorkspaces: [
+              {
+                id: 'workspace-recent',
+                lastOpenedAt: '2026-06-08T13:00:00.000Z',
+                missing: false,
+                name: 'Job Search',
+                open: true,
+                path: '/Users/keni/Job Search',
+              },
+              {
+                id: 'workspace-missing',
+                lastOpenedAt: '2026-06-08T12:00:00.000Z',
+                missing: true,
+                name: 'Missing Search',
+                open: false,
+                path: '/Users/keni/Missing Search',
+              },
+            ],
+            status: 'needs-workspace',
+          },
+          { openFolder, openRecent, removeRecent },
+        )}
+      />,
+    )
+
+    await screen.findByRole('button', { name: 'Open Job Search' })
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Open Job Search' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(openRecent).toHaveBeenCalledWith('workspace-recent'))
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Remove Job Search' })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Remove Missing Search' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Missing Search unavailable' })).not.toHaveFocus()
+
+    await user.keyboard(' ')
+    await waitFor(() => expect(removeRecent).toHaveBeenCalledWith('workspace-missing'))
+
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Create workspace' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(await screen.findByRole('heading', { name: 'Create local workspace' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await screen.findByRole('button', { name: 'Open folder' })
+
+    screen.getByRole('button', { name: 'Open folder' }).focus()
+    await user.keyboard(' ')
+    await waitFor(() => expect(openFolder).toHaveBeenCalled())
   })
 
   it('keeps create details on a compact secondary create screen', async () => {

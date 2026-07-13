@@ -1,10 +1,19 @@
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { FolderOpen, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemSeparator,
+  ItemTitle,
+} from '@/components/ui/item'
 import type { CreateWorkspaceInput, WorkspaceLaunchState } from './workspace.service'
 
 interface WorkspaceLauncherPageProps {
@@ -62,46 +71,55 @@ function WorkspaceLauncherPage({
           <h2 className="sr-only">Recent workspaces</h2>
           <div className="space-y-2">
             {launchState.recentWorkspaces.length > 0 ? (
-              launchState.recentWorkspaces.map((workspace) => (
-                <div
-                  key={workspace.id}
-                  className="group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 rounded-md px-2 hover:bg-accent/40"
-                >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    aria-label={
-                      workspace.missing
-                        ? `${workspace.name} unavailable`
-                        : `Open ${workspace.name}`
-                    }
-                    className="h-auto min-w-0 justify-start rounded-md px-0 py-2 text-left disabled:cursor-default"
-                    disabled={workspace.missing}
-                    onClick={() => onOpenRecent(workspace.id)}
+              <ItemGroup>
+                {launchState.recentWorkspaces.map((workspace) => (
+                  <Item
+                    key={workspace.id}
+                    size="sm"
+                    role="listitem"
+                    className="group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md px-2 py-0 hover:bg-accent/40"
                   >
-                    <span className="block truncate text-lg font-semibold text-foreground">
-                      {workspace.name}
-                    </span>
-                    <span className="mt-1 block truncate text-sm font-medium text-muted-foreground">
-                      {workspace.path}
-                    </span>
-                    {workspace.missing ? (
-                      <span className="mt-2 block text-xs font-medium text-destructive">
-                        Missing folder
-                      </span>
-                    ) : null}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="mt-2 h-8 w-8 p-0 text-muted-foreground opacity-80"
-                    aria-label={`Remove ${workspace.name}`}
-                    onClick={() => onRemoveRecent(workspace.id)}
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </div>
-              ))
+                    <ItemContent className="min-w-0 gap-0 py-2">
+                      <ItemTitle className="block w-full truncate text-lg font-semibold text-foreground">
+                        {workspace.name}
+                      </ItemTitle>
+                      <ItemDescription className="mt-1 block truncate text-nowrap text-sm font-medium text-muted-foreground">
+                        {workspace.path}
+                      </ItemDescription>
+                      {workspace.missing ? (
+                        <span className="mt-2 block text-xs font-medium text-destructive">
+                          Missing folder
+                        </span>
+                      ) : null}
+                    </ItemContent>
+                    <ItemActions className="mt-2 gap-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        aria-label={
+                          workspace.missing
+                            ? `${workspace.name} unavailable`
+                            : `Open ${workspace.name}`
+                        }
+                        className="h-8 w-8 p-0 text-muted-foreground opacity-80"
+                        disabled={workspace.missing}
+                        onClick={() => onOpenRecent(workspace.id)}
+                      >
+                        <FolderOpen className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-muted-foreground opacity-80"
+                        aria-label={`Remove ${workspace.name}`}
+                        onClick={() => onRemoveRecent(workspace.id)}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </ItemActions>
+                  </Item>
+                ))}
+              </ItemGroup>
             ) : (
               <div className="px-2 py-2 text-sm text-muted-foreground">
                 No recent workspaces
@@ -123,44 +141,62 @@ function WorkspaceLauncherPage({
 
             {view === 'home' ? (
               <div className="mt-6 rounded-lg border border-border bg-card px-5 py-3.5 shadow-lg">
-                <div className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-5 py-1">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-foreground">Create workspace</h2>
-                    <p className="mt-1 text-xs font-medium text-muted-foreground">
-                      Create a new workspace under a folder.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    aria-label="Create workspace"
-                    className="h-8 rounded-md text-xs"
-                    onClick={() => setView('create')}
+                <ItemGroup>
+                  <Item
+                    size="sm"
+                    role="listitem"
+                    className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-5 px-0 py-1"
                   >
-                    Create
-                  </Button>
-                </div>
+                    <ItemContent className="min-w-0 gap-0">
+                      <ItemTitle>
+                        <h2 className="text-sm font-semibold text-foreground">Create workspace</h2>
+                      </ItemTitle>
+                      <ItemDescription className="mt-1 text-xs font-medium text-muted-foreground">
+                        Create a new workspace under a folder.
+                      </ItemDescription>
+                    </ItemContent>
+                    <ItemActions>
+                      <Button
+                        type="button"
+                        aria-label="Create workspace"
+                        className="h-8 rounded-md text-xs"
+                        onClick={() => setView('create')}
+                      >
+                        Create
+                      </Button>
+                    </ItemActions>
+                  </Item>
 
-                <Separator className="my-4" />
+                  <ItemSeparator className="my-4" />
 
-                <div className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-5 py-1">
-                  <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-foreground">
-                      Open folder as workspace
-                    </h2>
-                    <p className="mt-1 text-xs font-medium text-muted-foreground">
-                      Open an existing workspace folder.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    aria-label="Open folder"
-                    variant="outline"
-                    className="h-8 rounded-md text-xs"
-                    onClick={onOpenFolder}
+                  <Item
+                    size="sm"
+                    role="listitem"
+                    className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-5 px-0 py-1"
                   >
-                    Open
-                  </Button>
-                </div>
+                    <ItemContent className="min-w-0 gap-0">
+                      <ItemTitle>
+                        <h2 className="text-sm font-semibold text-foreground">
+                          Open folder as workspace
+                        </h2>
+                      </ItemTitle>
+                      <ItemDescription className="mt-1 text-xs font-medium text-muted-foreground">
+                        Open an existing workspace folder.
+                      </ItemDescription>
+                    </ItemContent>
+                    <ItemActions>
+                      <Button
+                        type="button"
+                        aria-label="Open folder"
+                        variant="outline"
+                        className="h-8 rounded-md text-xs"
+                        onClick={onOpenFolder}
+                      >
+                        Open
+                      </Button>
+                    </ItemActions>
+                  </Item>
+                </ItemGroup>
               </div>
             ) : (
               <div className="mt-6">
