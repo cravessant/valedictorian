@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { Progress } from '@/components/ui/progress'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -105,14 +106,16 @@ function UpdateStatusControl({ onCheck, state, onInstall }: UpdateStatusControlP
   }
 
   if (state.status === 'downloading') {
-    const percent = Math.round(state.percent ?? 0)
+    const percent = Math.min(100, Math.max(0, Math.round(state.percent ?? 0)))
     return (
       <div className="app-no-drag ml-auto inline-flex h-7 items-center gap-2 rounded-md border border-border bg-card/80 px-2.5 text-xs font-medium text-muted-foreground">
         <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>Downloading update {percent}%</span>
-        <span className="h-1 w-16 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
-          <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
-        </span>
+        <Progress
+          aria-label="Downloading update"
+          className="h-1 w-16"
+          value={percent}
+        />
       </div>
     )
   }

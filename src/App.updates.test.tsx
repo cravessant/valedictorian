@@ -95,6 +95,8 @@ describe('App updates', () => {
     })
 
     expect(await screen.findByText('Downloading update 43%')).toBeInTheDocument()
+    const progressbar = screen.getByRole('progressbar', { name: 'Downloading update' })
+    expect(progressbar).toHaveAttribute('aria-valuenow', '43')
 
     updatesApi.emitState({
       availableVersion: '0.1.0-alpha.11',
@@ -106,6 +108,29 @@ describe('App updates', () => {
     await waitFor(() => {
       expect(updatesApi.install).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('clamps overflowed download progress text and progressbar to 100', async () => {
+    const updatesApi = createUpdatesApi({
+      availableVersion: '0.1.0-alpha.11',
+      currentVersion: '0.1.0-alpha.10',
+      percent: 140,
+      status: 'downloading',
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+        updatesApi={updatesApi}
+      />,
+    )
+
+    expect(await screen.findByText('Downloading update 100%')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Downloading update' })).toHaveAttribute(
+      'aria-valuenow',
+      '100',
+    )
   })
 
   it('shows an update-ready toast once per available version with a restart action', async () => {
