@@ -26,12 +26,17 @@ describe('connector backend availability', () => {
     renderApp(connectorsApi)
     await openConnectors()
     expect(await screen.findByText('Workspace backend unavailable')).toBeInTheDocument()
+    expect(
+      screen.getByText('Connector actions are unavailable until the workspace backend recovers.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Empty connector instances')).not.toBeInTheDocument()
     expect(screen.queryByText('No connector instances configured.')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add Jobright connector' })).not.toBeInTheDocument()
     expect(screen.queryByText(/secret session detail/i)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Retry connector loading' }))
     await waitFor(() => expect(connectorsApi.list).toHaveBeenCalledTimes(2))
     expect(await screen.findByText('1 connector instance configured.')).toBeInTheDocument()
+    expect(screen.queryByText('Connector actions are unavailable until the workspace backend recovers.')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add Jobright connector' })).not.toBeInTheDocument()
   })
   it('sanitizes an already-configured create rejection into an actionable category', async () => {
@@ -64,13 +69,19 @@ describe('connector backend availability', () => {
     renderApp(connectorsApi)
     await openConnectors()
     await waitFor(() => expect(connectorsApi.list).toHaveBeenCalledOnce())
+    expect(screen.getByText('Loading connector instances...')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Empty connector instances')).not.toBeInTheDocument()
     lifecycleListener?.({ status: 'unavailable' })
     expect(await screen.findByText('Workspace backend unavailable')).toBeInTheDocument()
+    expect(
+      screen.getByText('Connector actions are unavailable until the workspace backend recovers.'),
+    ).toBeInTheDocument()
     resolveStaleList({ items: [jobrightInstance()] })
     await waitFor(() => expect(screen.queryByText('1 connector instance configured.')).not.toBeInTheDocument())
     expect(screen.getByText('Workspace backend unavailable')).toBeInTheDocument()
     lifecycleListener?.({ status: 'available' })
     expect(await screen.findByText('1 connector instance configured.')).toBeInTheDocument()
+    expect(screen.queryByText('Loading connector instances...')).not.toBeInTheDocument()
     expect(connectorsApi.list).toHaveBeenCalledTimes(2)
   })
 
@@ -140,12 +151,12 @@ describe('connector backend availability', () => {
     await act(async () => {
       pendingReloads[1]?.(createConnectorStatusResult([]))
     })
-    expect(await screen.findByText('No enabled connectors.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No enabled connectors' })).toBeInTheDocument()
 
     await act(async () => {
       pendingReloads[0]?.(createConnectorStatusResult())
     })
-    expect(screen.getByText('No enabled connectors.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'No enabled connectors' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reconnect Fixture Jobs' })).not.toBeInTheDocument()
   })
 })

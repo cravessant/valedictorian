@@ -8,6 +8,7 @@ export interface AppSettings {
   runtimeMode: RuntimePreference
   sidebarCollapsed: boolean
   showAdvancedFilters: boolean
+  showDebugData: boolean
 }
 
 export type AppSettingsPatch = Partial<AppSettings>
@@ -26,6 +27,7 @@ export const defaultAppSettings: AppSettings = {
   runtimeMode: 'local-desktop',
   sidebarCollapsed: false,
   showAdvancedFilters: false,
+  showDebugData: false,
 }
 
 export function normalizeAppSettings(value: unknown): AppSettings {
@@ -61,6 +63,10 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       typeof candidate.showAdvancedFilters === 'boolean'
         ? candidate.showAdvancedFilters
         : defaultAppSettings.showAdvancedFilters,
+    showDebugData:
+      typeof candidate.showDebugData === 'boolean'
+        ? candidate.showDebugData
+        : defaultAppSettings.showDebugData,
   }
 }
 

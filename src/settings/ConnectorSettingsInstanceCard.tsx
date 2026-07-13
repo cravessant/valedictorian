@@ -1,5 +1,7 @@
-
 import { Button } from '@/components/ui/button'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { fieldControlId } from '@/lib/field-control-id'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
   ConnectorRunLifecycleDetails,
@@ -175,30 +177,38 @@ export function ConnectorSettingsInstanceCard({
                         className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
                         data-testid={`connector-credential-form-${instance.id}`}
                       >
-                        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                          Jobright email
-                          <input
-                            aria-label="Jobright email"
+                        <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                          <FieldLabel
+                            className="text-xs font-medium text-muted-foreground"
+                            htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
+                          >
+                            Jobright email
+                          </FieldLabel>
+                          <Input
                             autoComplete="off"
-                            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                            id={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
                             type="email"
                             value={credentialDraft.email}
                             onChange={(event) =>
                               onUpdateCredentialDraft(instance.id, { email: event.target.value })}
                           />
-                        </label>
-                        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                          Jobright password
-                          <input
-                            aria-label="Jobright password"
+                        </Field>
+                        <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                          <FieldLabel
+                            className="text-xs font-medium text-muted-foreground"
+                            htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
+                          >
+                            Jobright password
+                          </FieldLabel>
+                          <Input
                             autoComplete="new-password"
-                            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                            id={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
                             type="password"
                             value={credentialDraft.password}
                             onChange={(event) =>
                               onUpdateCredentialDraft(instance.id, { password: event.target.value })}
                           />
-                        </label>
+                        </Field>
                         <Button
                           type="button"
                           disabled={authenticatingInstanceId === instance.id}

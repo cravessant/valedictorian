@@ -487,6 +487,21 @@ export async function openSettingsPage() {
   fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
 }
 
+export function selectComboboxOption(label: string, optionName: string) {
+  fireEvent.click(screen.getByRole('combobox', { name: label }))
+  fireEvent.click(screen.getByRole('option', { name: optionName }))
+}
+
+export function stubCmdkEnvironment() {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+}
+
 export function createSettingsApi(overrides: Partial<AppSettings> = {}): SettingsPreloadApi {
   let currentSettings: AppSettings = {
     ...defaultAppSettings,

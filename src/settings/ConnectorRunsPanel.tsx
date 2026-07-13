@@ -1,7 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { AlertCircle } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { AlertCircle, History } from 'lucide-react'
+import { typography } from '@/components/ui/typography'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
@@ -97,10 +114,12 @@ type FocusedConnectorRunLookup =
 export function ConnectorRunsPanel({
   connectorsApi,
   focusedRunId = null,
+  showDebugData = false,
   onInspectNormalization,
 }: {
   connectorsApi: ConnectorsPreloadApi
   focusedRunId?: string | null
+  showDebugData?: boolean
   onInspectNormalization?: (filter: RawNormalizationRunFilter) => void
 }) {
   const [items, setItems] = useState<ConnectorRunHistoryItem[]>([])
@@ -200,41 +219,37 @@ export function ConnectorRunsPanel({
   return (
     <section aria-labelledby="connector-runs-title" className="space-y-7">
       <div>
-        <h2 id="connector-runs-title" className="text-xl font-semibold text-foreground">
+        <h2 id="connector-runs-title" className={typography.sectionTitle}>
           Connector Runs
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Inspect connector progress, results, warnings, and safe retry guidance.
         </p>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground" role="status">Loading connector runs...</p>
+        <p className={typography.muted} role="status">Loading connector runs...</p>
       ) : null}
       {error ? (
-        <Alert variant="destructive" className="bg-card" role="alert">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Run history unavailable</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Run history unavailable</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
       {focusedRunLookup === 'not_found' && focusedRunId ? (
-        <Alert variant="destructive" className="bg-card" role="alert">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Connector run not found</AlertTitle>
-            <AlertDescription>
-              The requested connector run could not be found in available history.
-            </AlertDescription>
-          </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Connector run not found</AlertTitle>
+          <AlertDescription>
+            The requested connector run could not be found in available history.
+          </AlertDescription>
         </Alert>
       ) : null}
       {focusedRunLookup === 'search_limit_reached' && focusedRunId ? (
         <p
           aria-label="Requested connector run was not located within the searched recent-history window"
-          className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground"
+          className={`rounded-md border border-border bg-card p-4 ${typography.muted}`}
           role="status"
         >
           The requested connector run was not located within the searched recent-history window.
@@ -242,9 +257,22 @@ export function ConnectorRunsPanel({
         </p>
       ) : null}
       {!isLoading && !error && items.length === 0 ? (
-        <p className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-          No connector runs recorded yet.
-        </p>
+        <Empty
+          aria-label="Empty connector runs"
+          className="flex-none gap-3 rounded-md border border-solid border-border bg-card p-6"
+        >
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <History aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>
+              <h3>No connector runs yet</h3>
+            </EmptyTitle>
+            <EmptyDescription>
+              Start a connector run to see progress and results here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : null}
       {items.length > 0 ? (
         <div className="space-y-3" aria-label="Connector run history">
@@ -261,51 +289,55 @@ export function ConnectorRunsPanel({
                 ref={isFocused ? focusedRunRef : undefined}
                 aria-current={isFocused ? 'true' : undefined}
                 aria-live={run.status === 'queued' || run.status === 'running' ? 'polite' : undefined}
-                className={`space-y-3 rounded-md border border-border bg-card p-4 ${
-                  isFocused ? 'ring-2 ring-primary' : ''
-                }`}
+                className={`rounded-md ${isFocused ? 'ring-2 ring-primary' : ''}`}
                 data-connector-run-id={run.id}
                 id={`connector-run-${run.id}`}
                 tabIndex={isFocused ? -1 : undefined}
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground">{connectorName}</h3>
-                    <p className="text-xs text-muted-foreground">
+                <Card className="gap-3 rounded-md border-border p-4 shadow-none">
+                  <CardHeader className="gap-1 px-0">
+                    <CardTitle>
+                      <h3 className={typography.panelTitle}>{connectorName}</h3>
+                    </CardTitle>
+                    <CardDescription className="text-xs">
                       {run.mode} · {run.startedAt}
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-border px-2 py-1 text-xs font-medium text-foreground">
-                    {synchronization.label}
-                  </span>
-                </div>
-                <ConnectorRunSynchronizationDetails run={run} />
-                <ConnectorRunLifecycleDetails run={run} />
-                {onInspectNormalization ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onInspectNormalization({
-                      connectorInstanceId: run.connectorInstanceId,
-                      connectorRunId: run.id,
-                    })}
-                  >
-                    Inspect normalization rows from {run.id}
-                  </Button>
-                ) : null}
-                {warningLabels.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {warningLabels.map((label) => (
-                      <span key={label} className="rounded-full bg-muted px-2 py-1 text-xs text-foreground">
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                {retryGuidance ? (
-                  <p className="text-xs font-medium text-muted-foreground">{retryGuidance}</p>
-                ) : null}
+                    </CardDescription>
+                    <CardAction>
+                      <Badge variant="outline">
+                        {synchronization.label}
+                      </Badge>
+                    </CardAction>
+                  </CardHeader>
+                  <CardContent className="space-y-3 px-0">
+                    <ConnectorRunSynchronizationDetails run={run} />
+                    <ConnectorRunLifecycleDetails run={run} showDebugData={showDebugData} />
+                    {onInspectNormalization ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onInspectNormalization({
+                          connectorInstanceId: run.connectorInstanceId,
+                          connectorRunId: run.id,
+                        })}
+                      >
+                        Inspect normalization rows from {run.id}
+                      </Button>
+                    ) : null}
+                    {warningLabels.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {warningLabels.map((label) => (
+                          <Badge key={label} variant="secondary">
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                    {retryGuidance ? (
+                      <p className="text-xs font-medium text-muted-foreground">{retryGuidance}</p>
+                    ) : null}
+                  </CardContent>
+                </Card>
               </article>
             )
           })}

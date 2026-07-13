@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   flexRender,
   getCoreRowModel,
@@ -12,6 +12,19 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
+import {
+  Pagination,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import {
   Table,
@@ -56,15 +69,21 @@ const applicationColumns: ColumnDef<ApplicationListItem>[] = [
     header: ({ table }) => (
       <SelectionCheckbox
         aria-label="Select all applications on page"
-        checked={table.getIsAllRowsSelected()}
-        onChange={table.getToggleAllRowsSelectedHandler()}
+        checked={
+          table.getIsAllPageRowsSelected()
+            ? true
+            : table.getIsSomePageRowsSelected()
+              ? 'indeterminate'
+              : false
+        }
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(value)}
       />
     ),
     cell: ({ row }) => (
       <SelectionCheckbox
         aria-label={`Select ${row.original.companyName}`}
         checked={row.getIsSelected()}
-        onChange={row.getToggleSelectedHandler()}
+        onCheckedChange={(value) => row.toggleSelected(value)}
       />
     ),
   },
@@ -191,7 +210,6 @@ function ApplicationTable({
     defaultColumnVisibility,
   )
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
-  const [columnsOpen, setColumnsOpen] = useState(false)
   const tableContainerRef = useRef<HTMLDivElement>(null)
   const sorting = useMemo(() => sortToSortingState(sort), [sort])
   const rowIds = result.items.map((item) => item.id).join('|')
@@ -353,62 +371,46 @@ function ApplicationTable({
           <span className="text-xs text-muted-foreground">
             {table.getSelectedRowModel().rows.length} selected
           </span>
-          <div className="relative">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              aria-expanded={columnsOpen}
-              onClick={() => setColumnsOpen((current) => !current)}
-            >
-              Columns
-            </Button>
-            {columnsOpen ? (
-              <div
-                role="group"
-                aria-label="Column visibility"
-                className="absolute right-0 z-10 mt-2 grid min-w-40 gap-2 rounded-md border border-border bg-card p-3 shadow-sm"
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm">
+                Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent aria-label="Column visibility" align="end">
+              {table
+                .getAllLeafColumns()
+                .filter((column) => column.getCanHide())
+                .map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    checked={column.getIsVisible()}
+                    onCheckedChange={(value) => column.toggleVisibility(value)}
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    {getColumnLabel(column.id)}
+                  </DropdownMenuCheckboxItem>
+                ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Pagination aria-label="Application pagination" className="mx-0 w-auto">
+            <ButtonGroup>
+              <PaginationPrevious
+                aria-label="Previous page"
+                disabled={result.offset === 0}
+                onClick={onPreviousPage}
               >
-                {table
-                  .getAllLeafColumns()
-                  .filter((column) => column.getCanHide())
-                  .map((column) => (
-                    <label
-                      key={column.id}
-                      className="flex items-center gap-2 text-xs text-foreground"
-                    >
-                      <input
-                        aria-label={`${getColumnLabel(column.id)} column`}
-                        checked={column.getIsVisible()}
-                        type="checkbox"
-                        onChange={column.getToggleVisibilityHandler()}
-                      />
-                      {getColumnLabel(column.id)}
-                    </label>
-                  ))}
-              </div>
-            ) : null}
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Previous page"
-            disabled={result.offset === 0}
-            onClick={onPreviousPage}
-          >
-            Previous
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Next page"
-            disabled={!result.hasMore}
-            onClick={onNextPage}
-          >
-            Next
-          </Button>
+                Previous
+              </PaginationPrevious>
+              <PaginationNext
+                aria-label="Next page"
+                disabled={!result.hasMore}
+                onClick={onNextPage}
+              >
+                Next
+              </PaginationNext>
+            </ButtonGroup>
+          </Pagination>
         </div>
       </div>
 
@@ -433,15 +435,17 @@ function ApplicationTable({
                     style={{ width: header.getSize() }}
                   >
                     {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                      <button
+                      <Button
                         type="button"
-                        className="flex min-w-0 items-center gap-1 text-xs font-medium uppercase text-muted-foreground hover:text-foreground"
+                        variant="ghost"
+                        size="xs"
+                        className="h-auto min-w-0 px-0 py-0 text-xs font-medium uppercase text-muted-foreground hover:bg-transparent hover:text-foreground"
                         aria-label={`Sort by ${getColumnLabel(header.column.id).toLowerCase()}`}
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
                         <span aria-hidden="true">{getSortMark(header.column.getIsSorted())}</span>
-                      </button>
+                      </Button>
                     ) : (
                       flexRender(header.column.columnDef.header, header.getContext())
                     )}
@@ -642,22 +646,21 @@ function getColumnChromeClassName(columnId: string) {
 
 interface SelectionCheckboxProps {
   'aria-label': string
-  checked: boolean
-  onChange: ChangeEventHandler<HTMLInputElement>
+  checked: boolean | 'indeterminate'
+  onCheckedChange: (checked: boolean) => void
 }
 
 function SelectionCheckbox({
   checked,
-  onChange,
+  onCheckedChange,
   ...props
 }: SelectionCheckboxProps) {
   return (
-    <input
+    <Checkbox
       {...props}
       checked={checked}
-      className="mx-auto block h-4 w-4 rounded border-border bg-background accent-primary"
-      type="checkbox"
-      onChange={onChange}
+      className="mx-auto"
+      onCheckedChange={(value) => onCheckedChange(value === true)}
       onClick={(event) => event.stopPropagation()}
     />
   )

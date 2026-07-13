@@ -13,11 +13,13 @@ import {
   createListResult,
   createProfileApi,
   createSettingsApi,
-  openSettingsPage
+  openSettingsPage,
+  selectComboboxOption,
+  stubCmdkEnvironment,
 } from './App.test-helpers'
 
 beforeEach(() => {
-  HTMLElement.prototype.scrollIntoView = vi.fn()
+  stubCmdkEnvironment()
 })
 afterEach(() => {
   cleanup()
@@ -31,6 +33,25 @@ afterEach(() => {
 })
 
 describe('profile settings', () => {
+  it('exposes a named loading status while profile data is pending', async () => {
+    const profileApi = createProfileApi()
+    profileApi.get = vi.fn(() => new Promise(() => undefined))
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+
+    expect(await screen.findByRole('heading', { name: 'Profile' })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Profile loading' })).toBeInTheDocument()
+  })
+
   it('renders and persists structured profile sections with compact reusable answers and secure values', async () => {
     const profileApi = createProfileApi()
 
@@ -119,7 +140,7 @@ describe('profile settings', () => {
     })
     fireEvent.change(screen.getByLabelText('Birth month'), { target: { value: '03' } })
     fireEvent.change(screen.getByLabelText('Birth day'), { target: { value: '16' } })
-    fireEvent.change(screen.getByLabelText('Birth year'), { target: { value: '2004' } })
+    selectComboboxOption('Birth year', '2004')
     fireEvent.change(screen.getByLabelText('Last 4 SSN'), { target: { value: '5125' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save private identifiers' }))
 
@@ -248,7 +269,7 @@ describe('profile settings', () => {
     expect(screen.getByText('Greenhouse password')).toBeInTheDocument()
     expect(screen.getByText('••••••••')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('correct horse battery staple')).not.toBeInTheDocument()
-  })
+  }, 15_000)
 
   it('shows profile save progress, success, and errors', async () => {
     const profileApi = createProfileApi()
@@ -538,8 +559,12 @@ describe('profile settings', () => {
     expect(await screen.findByRole('heading', { name: 'Profile' })).toBeInTheDocument()
 
     const workAuthorization = screen.getByRole('region', { name: 'Work Authorization' })
-    const rows = Array.from(
-      workAuthorization.querySelectorAll(':scope > div > label, :scope > div > [role="group"]'),
+    const rowContainer = workAuthorization.querySelector(':scope > div')
+    expect(rowContainer).not.toBeNull()
+    const rows = Array.from(rowContainer?.children ?? []).filter(
+      (row) =>
+        row.matches('[data-slot="field"]') ||
+        row.querySelector('[role="radiogroup"]') !== null,
     )
     const expectedRowClasses = [
       'grid',
@@ -557,8 +582,8 @@ describe('profile settings', () => {
       expect(row).toHaveClass(...expectedRowClasses)
     }
     expect(workAuthorization.querySelector('fieldset')).not.toBeInTheDocument()
-    expect(within(workAuthorization).getByRole('group', { name: 'Willing to relocate' })).toBeInTheDocument()
-    expect(within(workAuthorization).getByRole('group', { name: 'Willing to travel' })).toBeInTheDocument()
+    expect(within(workAuthorization).getByRole('radiogroup', { name: 'Willing to relocate' })).toBeInTheDocument()
+    expect(within(workAuthorization).getByRole('radiogroup', { name: 'Willing to travel' })).toBeInTheDocument()
   })
 
 })

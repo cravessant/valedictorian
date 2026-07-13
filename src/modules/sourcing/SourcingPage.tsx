@@ -2,10 +2,28 @@ import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
+import {
+  Pagination,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AlertCircle, Ban, Pencil } from 'lucide-react'
+import { Combobox } from '@/components/ui/combobox'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { typography, typographyClass } from '@/components/ui/typography'
+import { fieldControlId } from '@/lib/field-control-id'
+import { AlertCircle, Ban, Pencil, Search } from 'lucide-react'
 import {
   sourcingMergeStatuses,
   sourcingDestinationClasses,
@@ -43,6 +61,7 @@ interface SourcingPageProps {
   destinationClass: SourcingDestinationClass | undefined
   promotingFindingId: string | null
   result: SourcingFindingsListResult
+  showDebugData: boolean
   sourceId: string
   usability: SourcingUsability | undefined
   onCreateFinding: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
@@ -67,6 +86,7 @@ function SourcingPage({
   destinationClass,
   promotingFindingId,
   result,
+  showDebugData,
   sourceId,
   usability,
   onCreateFinding,
@@ -96,10 +116,10 @@ function SourcingPage({
       <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
         <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+            <p className={typography.pageEyebrow}>
               Job automation
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">
+            <h1 className={typographyClass('pageTitle', 'mt-1')}>
               Sourcing
             </h1>
           </div>
@@ -136,27 +156,38 @@ function SourcingPage({
                 </Button>
               </div>
             </div>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Source
-              <select
-                aria-label="Source"
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                value={sourceId}
-                onChange={(event) => onSourceChange(event.target.value)}
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId('sourcing-filter', 'Source')}
               >
-                <option value="">Any source</option>
-                {sourceOptions.map((sourceOption) => (
-                  <option key={sourceOption.sourceId} value={sourceOption.sourceId}>
-                    {sourceOption.sourceName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Destination class
-              <select
-                aria-label="Destination class"
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                Source
+              </FieldLabel>
+              <Combobox
+                emptyText="No source found."
+                id={fieldControlId('sourcing-filter', 'Source')}
+                options={[
+                  { label: 'Any source', value: '' },
+                  ...sourceOptions.map((sourceOption) => ({
+                    label: sourceOption.sourceName,
+                    value: sourceOption.sourceId,
+                  })),
+                ]}
+                placeholder="Any source"
+                searchPlaceholder="Search source..."
+                value={sourceId}
+                onValueChange={onSourceChange}
+              />
+            </Field>
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId('sourcing-filter', 'Destination class')}
+              >
+                Destination class
+              </FieldLabel>
+              <NativeSelect
+                id={fieldControlId('sourcing-filter', 'Destination class')}
                 value={destinationClass ?? ''}
                 onChange={(event) => onDestinationClassChange(
                   event.target.value
@@ -164,33 +195,41 @@ function SourcingPage({
                     : undefined,
                 )}
               >
-                <option value="">Any destination</option>
+                <NativeSelectOption value="">Any destination</NativeSelectOption>
                 {sourcingDestinationClasses.map((value) => (
-                  <option key={value} value={value}>{destinationClassLabel(value)}</option>
+                  <NativeSelectOption key={value} value={value}>{destinationClassLabel(value)}</NativeSelectOption>
                 ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Usability
-              <select
-                aria-label="Usability"
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+              </NativeSelect>
+            </Field>
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId('sourcing-filter', 'Usability')}
+              >
+                Usability
+              </FieldLabel>
+              <NativeSelect
+                id={fieldControlId('sourcing-filter', 'Usability')}
                 value={usability ?? ''}
                 onChange={(event) => onUsabilityChange(
                   event.target.value ? event.target.value as SourcingUsability : undefined,
                 )}
               >
-                <option value="">Any usability</option>
+                <NativeSelectOption value="">Any usability</NativeSelectOption>
                 {sourcingUsabilities.map((value) => (
-                  <option key={value} value={value}>{usabilityLabel(value)}</option>
+                  <NativeSelectOption key={value} value={value}>{usabilityLabel(value)}</NativeSelectOption>
                 ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-              Merge status
-              <select
-                aria-label="Merge status"
-                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+              </NativeSelect>
+            </Field>
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId('sourcing-filter', 'Merge status')}
+              >
+                Merge status
+              </FieldLabel>
+              <NativeSelect
+                id={fieldControlId('sourcing-filter', 'Merge status')}
                 value={mergeStatus ?? ''}
                 onChange={(event) =>
                   onMergeStatusChange(
@@ -198,14 +237,14 @@ function SourcingPage({
                   )
                 }
               >
-                <option value="">Any status</option>
+                <NativeSelectOption value="">Any status</NativeSelectOption>
                 {sourcingMergeStatuses.map((status) => (
-                  <option key={status} value={status}>
+                  <NativeSelectOption key={status} value={status}>
                     {formatEnumLabel(status)}
-                  </option>
+                  </NativeSelectOption>
                 ))}
-              </select>
-            </label>
+              </NativeSelect>
+            </Field>
           </div>
         </section>
 
@@ -224,12 +263,10 @@ function SourcingPage({
         ) : null}
 
         {error ? (
-          <Alert variant="destructive" className="bg-card">
-            <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-            <div className="pl-7">
-              <AlertTitle>Load failed</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </div>
+          <Alert variant="destructive">
+            <AlertCircle aria-hidden="true" />
+            <AlertTitle>Load failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
 
@@ -239,28 +276,24 @@ function SourcingPage({
               <p className="text-sm font-medium text-foreground">
                 {pageStart}-{pageEnd} of {result.total}
               </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Previous sourcing page"
-                  disabled={result.offset === 0}
-                  onClick={onPreviousPage}
-                >
-                  Previous
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Next sourcing page"
-                  disabled={!result.hasMore}
-                  onClick={onNextPage}
-                >
-                  Next
-                </Button>
-              </div>
+              <Pagination aria-label="Sourcing pagination" className="mx-0 w-auto">
+                <ButtonGroup>
+                  <PaginationPrevious
+                    aria-label="Previous sourcing page"
+                    disabled={result.offset === 0}
+                    onClick={onPreviousPage}
+                  >
+                    Previous
+                  </PaginationPrevious>
+                  <PaginationNext
+                    aria-label="Next sourcing page"
+                    disabled={!result.hasMore}
+                    onClick={onNextPage}
+                  >
+                    Next
+                  </PaginationNext>
+                </ButtonGroup>
+              </Pagination>
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <Table aria-label="Sourcing findings" className="min-w-[1100px]">
@@ -285,6 +318,7 @@ function SourcingPage({
                       key={item.id}
                       item={item}
                       isPromoting={promotingFindingId === item.id}
+                      showDebugData={showDebugData}
                       onDecideFinding={setDecidingFinding}
                       onEditFinding={setEditingFinding}
                       onOpenApplication={onOpenApplication}
@@ -296,9 +330,20 @@ function SourcingPage({
             </div>
           </section>
         ) : !isLoading && !error ? (
-          <section className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
-            No sourcing findings match the current filters.
-          </section>
+          <Empty
+            aria-label="Empty sourcing findings"
+            className="min-h-[11.25rem] flex-none gap-4 rounded-md border border-solid border-border bg-card p-6 md:min-h-[13.5rem] md:max-h-60 md:p-8"
+          >
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Search aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>
+                <h2>No sourcing findings</h2>
+              </EmptyTitle>
+              <EmptyDescription>No findings match the current filters.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : null}
         {addingFinding ? (
           <SourcingFindingEditorModal
@@ -331,6 +376,7 @@ function SourcingFindingRow({
   focused,
   item,
   isPromoting,
+  showDebugData,
   onDecideFinding,
   onEditFinding,
   onOpenApplication,
@@ -339,6 +385,7 @@ function SourcingFindingRow({
   focused: boolean
   item: SourcingFinding
   isPromoting: boolean
+  showDebugData: boolean
   onDecideFinding: (finding: SourcingFinding) => void
   onEditFinding: (finding: SourcingFinding) => void
   onOpenApplication: (application: ApplicationDetailSeed) => void
@@ -352,6 +399,11 @@ function SourcingFindingRow({
     (item.mergeStatus === 'new' && item.usability !== 'review_only') ||
     (item.mergeStatus === 'blocked' && item.policyBlocker === 'third_party_destination')
   const decision = getSourcingDecision(item)
+  const mergedApplicationLabel = formatMergedApplicationLabel(item)
+  const showMergedApplicationLink = Boolean(item.mergedApplicationId) && !canPromote
+  const showRawMergedApplicationId = Boolean(item.mergedApplicationId) && (
+    showDebugData || (!mergedApplicationLabel && !showMergedApplicationLink)
+  )
 
   return (
     <TableRow
@@ -386,7 +438,9 @@ function SourcingFindingRow({
         </div>
       </TableCell>
       <TableCell>
-        <span className="font-mono text-xs text-muted-foreground">{item.workflowRunId}</span>
+        {showDebugData ? (
+          <span className="font-mono text-xs text-muted-foreground">{item.workflowRunId}</span>
+        ) : null}
       </TableCell>
       <TableCell>
         <span className="block min-w-44 text-muted-foreground">
@@ -418,11 +472,11 @@ function SourcingFindingRow({
               item.blocker ??
               'None'}
           </span>
-          {item.mergedApplicationId ? (
+          {showRawMergedApplicationId ? (
             <span className="font-mono text-xs">{item.mergedApplicationId}</span>
           ) : null}
-          {formatMergedApplicationLabel(item) ? (
-            <span className="text-xs">{formatMergedApplicationLabel(item)}</span>
+          {mergedApplicationLabel ? (
+            <span className="text-xs">{mergedApplicationLabel}</span>
           ) : null}
         </div>
       </TableCell>

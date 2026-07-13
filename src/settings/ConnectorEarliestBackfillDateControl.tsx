@@ -2,6 +2,13 @@ import { useState } from 'react'
 import { CalendarIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from '@/components/ui/field'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   maximumSelectableEarliestBackfillDate,
@@ -33,14 +40,20 @@ export function ConnectorEarliestBackfillDateControl({
   const selected = parseCalendarDateOnly(value)
   const fromDate = parseCalendarDateOnly(minimum)!
   const toDate = parseCalendarDateOnly(todayUtc)!
+  const controlId = `connector-earliest-backfill-control-${instanceId}`
+  const descriptionId = `connector-earliest-backfill-description-${instanceId}`
 
   return (
-    <div
-      className="grid gap-1 text-xs font-medium text-muted-foreground"
+    <Field
+      className="gap-1 text-xs font-medium text-muted-foreground"
+      data-disabled={disabled ? true : undefined}
+      data-invalid={!validation.ok ? true : undefined}
       data-testid={`connector-earliest-backfill-${instanceId}`}
     >
-      <span>Earliest backfill date</span>
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        Earliest backfill date
+      </FieldLabel>
+      <FieldContent className="flex min-w-0 flex-row flex-wrap items-center gap-2">
         <p
           aria-live="polite"
           className="text-sm font-normal text-foreground"
@@ -51,9 +64,12 @@ export function ConnectorEarliestBackfillDateControl({
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <Button
+              aria-describedby={descriptionId}
+              aria-invalid={!validation.ok}
               aria-label={`Choose earliest backfill date for ${instanceId}`}
               className="h-9 gap-2"
               disabled={disabled}
+              id={controlId}
               size="sm"
               type="button"
               variant="outline"
@@ -77,17 +93,17 @@ export function ConnectorEarliestBackfillDateControl({
             />
           </PopoverContent>
         </Popover>
-      </div>
+      </FieldContent>
       {validation.ok ? (
-        <span className="font-normal text-muted-foreground">
+        <FieldDescription className="text-xs text-muted-foreground" id={descriptionId}>
           Inclusive UTC start. Allowed range: {minimum} to {todayUtc}.
-        </span>
+        </FieldDescription>
       ) : (
-        <span className="font-normal text-warning" role="alert">
+        <FieldError className="text-xs text-warning" id={descriptionId}>
           {validation.message}
-        </span>
+        </FieldError>
       )}
-    </div>
+    </Field>
   )
 }
 

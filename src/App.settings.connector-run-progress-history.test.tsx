@@ -110,7 +110,7 @@ describe('connector-run progress and history', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
         profileApi={profileApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -177,7 +177,7 @@ describe('connector-run progress and history', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
         profileApi={profileApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -209,7 +209,7 @@ describe('connector-run progress and history', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
         profileApi={profileApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -329,7 +329,7 @@ describe('connector-run progress and history', () => {
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         connectorsApi={connectorsApi}
-        settingsApi={createSettingsApi()}
+        settingsApi={createSettingsApi({ showDebugData: true })}
       />,
     )
 
@@ -337,19 +337,148 @@ describe('connector-run progress and history', () => {
     openConnectorRuns()
 
     expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
-    expect(await screen.findByText('Jobright public jobs')).toBeInTheDocument()
+
+    const runArticle = await screen.findByRole('article')
+    expect(runArticle).toHaveAttribute('data-connector-run-id', 'connector-run-history')
+    expect(runArticle).toHaveAttribute('id', 'connector-run-connector-run-history')
+    expect(runArticle.querySelector('[data-slot="card"]')).not.toBeNull()
+    expect(runArticle.querySelector('[data-slot="card-header"]')).not.toBeNull()
+    expect(runArticle.querySelector('[data-slot="card-content"]')).not.toBeNull()
+    expect(runArticle.querySelector('[data-slot="card-footer"]')).toBeNull()
+    expect(runArticle.querySelector('[data-slot="card-action"]')).not.toBeNull()
+
+    expect(
+      within(runArticle).getByRole('heading', { level: 3, name: 'Jobright public jobs' }),
+    ).toBeInTheDocument()
+    expect(
+      within(runArticle).getByText('Jobright public jobs').closest('[data-slot="card-title"]'),
+    ).not.toBeNull()
+    expect(
+      within(runArticle).getByText('manual · 2026-07-09T16:00:00.000Z'),
+    ).toHaveAttribute('data-slot', 'card-description')
     expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
       .toHaveTextContent('Authentication required')
     expect(screen.queryByText('failed')).not.toBeInTheDocument()
     expect(screen.getAllByText('Authentication required')).toHaveLength(3)
-    expect(screen.getByText('Update and validate Jobright credentials, then run again.')).toBeInTheDocument()
-    expect(screen.getByText('Provider returned rows: 12')).toBeInTheDocument()
-    expect(screen.getByText('Captured records: 8')).toBeInTheDocument()
-    expect(screen.getByText('Sourcing findings added: 1')).toBeInTheDocument()
-    expect(screen.getByText('Canonical duplicates: 1')).toBeInTheDocument()
-    expect(screen.queryByText('Detail attempts: 3')).not.toBeInTheDocument()
+    const syncBadge = within(runArticle).getAllByText('Authentication required')
+      .find((node) => node.getAttribute('data-variant') === 'outline')
+    const warningBadge = within(runArticle).getAllByText('Authentication required')
+      .find((node) => node.getAttribute('data-variant') === 'secondary')
+    expect(syncBadge).toHaveAttribute('data-slot', 'badge')
+    expect(warningBadge).toHaveAttribute('data-slot', 'badge')
+    expect(
+      within(runArticle).getByText('Update and validate Jobright credentials, then run again.'),
+    ).toBeInTheDocument()
+    expect(within(runArticle).getByText('Provider returned rows: 12')).toBeInTheDocument()
+    expect(within(runArticle).getByText('Captured records: 8')).toBeInTheDocument()
+    expect(within(runArticle).getByText('Sourcing findings added: 1')).toBeInTheDocument()
+    expect(within(runArticle).getByText('Canonical duplicates: 1')).toBeInTheDocument()
+    expect(within(runArticle).queryByText('Detail attempts: 3')).not.toBeInTheDocument()
     expect(screen.queryByText('Projected usable: 2')).not.toBeInTheDocument()
     expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
+    expect(runArticle).not.toHaveAttribute('aria-live')
+  })
+
+  it('keeps Card composition inside articles while preserving focus and live-region ownership', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    const runningRun = {
+      id: 'connector-run-card-focus',
+      connectorInstanceId: 'jobright-default',
+      executionScopeId: 'scope_jobright_default',
+      mode: 'manual' as const,
+      scheduleOccurrence: null,
+      status: 'running' as const,
+      filterSignature: 'filters:{}',
+      observationCount: 0,
+      warningCount: 0,
+      newestFrontier: { state: 'advancing' as const },
+      historicalBackfill: {
+        state: 'not_started' as const,
+        boundary: { earliestDate: '2026-07-09' },
+      },
+      pendingResolutionCount: 0,
+      outcome: { kind: 'in_progress' as const },
+      stats: { discovered: 4, stage: 'discovering' },
+      warnings: [],
+      startedAt: '2026-07-09T16:00:00.000Z',
+      completedAt: null,
+    }
+    const completedRun = {
+      ...runningRun,
+      id: 'connector-run-card-completed',
+      status: 'completed' as const,
+      observationCount: 1,
+      newestFrontier: { state: 'caught_up' as const },
+      historicalBackfill: {
+        state: 'caught_up' as const,
+        boundary: { earliestDate: '2026-07-09' },
+      },
+      outcome: { kind: 'caught_up' as const },
+      stats: { stage: 'finalizing' },
+      startedAt: '2026-07-09T15:00:00.000Z',
+      completedAt: '2026-07-09T15:00:01.000Z',
+    }
+    vi.mocked(connectorsApi.runs.trigger).mockResolvedValueOnce(runningRun)
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      items: [runningRun, completedRun],
+      total: 2,
+      limit: 20,
+      offset: 0,
+      hasMore: false,
+    })
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi({ showDebugData: true })}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await authenticateJobrightInSettings({ connectorsApi, profileApi })
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    expect(await screen.findByText('Latest synchronization: Checking newest')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', {
+      name: 'View connector-run-card-focus in Connector Runs',
+    }))
+
+    expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
+
+    const focusedArticle = await screen.findByRole('article', { current: true })
+    expect(focusedArticle).toHaveAttribute('data-connector-run-id', 'connector-run-card-focus')
+    expect(focusedArticle).toHaveAttribute('id', 'connector-run-connector-run-card-focus')
+    expect(focusedArticle).toHaveAttribute('tabIndex', '-1')
+    expect(focusedArticle).toHaveClass('rounded-md', 'ring-2', 'ring-primary')
+    expect(focusedArticle).toHaveAttribute('aria-live', 'polite')
+    expect(focusedArticle).toHaveFocus()
+    expect(scrollIntoView).toHaveBeenCalled()
+    expect(focusedArticle.querySelector('[data-slot="card"]')).not.toBeNull()
+    expect(
+      within(focusedArticle).getByRole('heading', { level: 3 }),
+    ).toBeInTheDocument()
+    expect(within(focusedArticle).getAllByText('Checking newest')
+      .some((node) => node.getAttribute('data-slot') === 'badge')).toBe(true)
+    expect(within(focusedArticle).getByText('Discovered jobs: 4')).toBeInTheDocument()
+
+    const completedArticle = screen
+      .getAllByRole('article')
+      .find((article) => article.getAttribute('data-connector-run-id') === 'connector-run-card-completed')
+    expect(completedArticle).toBeDefined()
+    expect(completedArticle).not.toHaveAttribute('aria-current')
+    expect(completedArticle).not.toHaveAttribute('aria-live')
+    expect(completedArticle).not.toHaveAttribute('tabIndex')
+    expect(completedArticle!.querySelector('[data-slot="card"]')).not.toBeNull()
+    expect(within(completedArticle!).getAllByText('Caught up')
+      .some((node) => node.getAttribute('data-slot') === 'badge')).toBe(true)
   })
 
   it('reconciles released lifecycle counts without opaque carried cycle stats', async () => {
@@ -440,7 +569,7 @@ describe('connector-run progress and history', () => {
     render(<App
       applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
       connectorsApi={connectorsApi}
-      settingsApi={createSettingsApi()}
+      settingsApi={createSettingsApi({ showDebugData: true })}
     />)
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
@@ -549,7 +678,7 @@ describe('connector-run progress and history', () => {
     render(<App
       applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
       connectorsApi={connectorsApi}
-      settingsApi={createSettingsApi()}
+      settingsApi={createSettingsApi({ showDebugData: true })}
     />)
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()
@@ -651,7 +780,7 @@ describe('connector-run progress and history', () => {
     render(<App
       applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
       connectorsApi={connectorsApi}
-      settingsApi={createSettingsApi()}
+      settingsApi={createSettingsApi({ showDebugData: true })}
     />)
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorRuns()

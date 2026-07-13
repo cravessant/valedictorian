@@ -1,8 +1,14 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { InputGroupButton } from '@/components/ui/input-group'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Toaster } from '@/components/ui/toaster'
+import { Toaster } from '@/components/ui/sonner'
+import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { typography, typographyClass } from '@/components/ui/typography'
+import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
@@ -27,8 +33,6 @@ import {
   APP_VIEWS,
   PAGE_LIMIT,
 } from './app/types'
-
-const filterControlClassName = 'h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground'
 
 export function AppShell({
   actionQueueBucket,
@@ -180,10 +184,11 @@ export function AppShell({
         data-testid="app-layout"
       >
         {isNarrowViewport && narrowSidebarOpen ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
             aria-label="Close sidebar drawer"
-            className="absolute inset-0 z-30 bg-background/70 md:hidden"
+            className="absolute inset-0 z-30 h-auto rounded-none bg-background/70 p-0 hover:bg-background/70 md:hidden"
             onClick={() => setNarrowSidebarOpen(false)}
           />
         ) : null}
@@ -315,6 +320,7 @@ export function AppShell({
               <ConnectorRunsPanel
                 connectorsApi={connectorsApi}
                 focusedRunId={focusedConnectorRunId}
+                showDebugData={settings.showDebugData}
                 onInspectNormalization={(filter) => {
                   setNormalizationRunFilter(filter)
                   setAppView(APP_VIEWS.SOURCING_NORMALIZATION)
@@ -332,6 +338,7 @@ export function AppShell({
             destinationClass={sourcingDestinationClass}
             promotingFindingId={promotingFindingId}
             result={sourcingResult}
+            showDebugData={settings.showDebugData}
             sourceId={sourcingSourceId}
             usability={sourcingUsability}
             onCreateFinding={async (input) => {
@@ -376,10 +383,10 @@ export function AppShell({
             <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
               <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                  <p className={typography.pageEyebrow}>
                     Job automation
                   </p>
-                  <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">
+                  <h1 className={typographyClass('pageTitle', 'mt-1')}>
                     Applications
                   </h1>
                 </div>
@@ -397,103 +404,119 @@ export function AppShell({
                 aria-label="Application filters"
                 className="rounded-md border border-border bg-card p-4"
               >
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <FilterTextInput
-                      label="Search"
-                      value={filters.search}
-                      onChange={(value) => updateFilter('search', value)}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button
+                <FilterTextInput
+                  label="Search"
+                  value={filters.search}
+                  onChange={(value) => updateFilter('search', value)}
+                  trailingAction={
+                    <InputGroupButton
                       type="button"
                       variant="outline"
-                      size="icon"
+                      size="icon-sm"
                       aria-label={filtersExpanded ? 'Hide filters' : 'Show filters'}
                       aria-expanded={filtersExpanded}
                       className="h-9 w-9 rounded-md"
                       onClick={() => setFiltersExpanded((current: boolean) => !current)}
                     >
                       <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </div>
+                    </InputGroupButton>
+                  }
+                />
                 {filtersExpanded ? (
                   <>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Status
-                        <select
-                          aria-label="Status"
-                          className={filterControlClassName}
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Status')}
+                        >
+                          Status
+                        </FieldLabel>
+                        <NativeSelect
+                          id={fieldControlId('filter', 'Status')}
                           value={filters.status}
                           onChange={(event) => updateFilter('status', event.target.value)}
                         >
-                          <option value="">Any status</option>
+                          <NativeSelectOption value="">Any status</NativeSelectOption>
                           {applicationStatuses.map((status) => (
-                            <option key={status} value={status}>
+                            <NativeSelectOption key={status} value={status}>
                               {formatEnumLabel(status)}
-                            </option>
+                            </NativeSelectOption>
                           ))}
-                        </select>
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Sort
-                        <select
-                          aria-label="Sort"
-                          className={filterControlClassName}
+                        </NativeSelect>
+                      </Field>
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Sort')}
+                        >
+                          Sort
+                        </FieldLabel>
+                        <NativeSelect
+                          id={fieldControlId('filter', 'Sort')}
                           value={filters.sort}
                           onChange={(event) => updateFilter('sort', event.target.value)}
                         >
                           {applicationListSorts.map((sort) => (
-                            <option key={sort} value={sort}>
+                            <NativeSelectOption key={sort} value={sort}>
                               {formatEnumLabel(sort)}
-                            </option>
+                            </NativeSelectOption>
                           ))}
-                        </select>
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Score band
-                        <select
-                          aria-label="Score band"
-                          className={filterControlClassName}
+                        </NativeSelect>
+                      </Field>
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Score band')}
+                        >
+                          Score band
+                        </FieldLabel>
+                        <NativeSelect
+                          id={fieldControlId('filter', 'Score band')}
                           value={filters.priorityBand}
                           onChange={(event) => updateFilter('priorityBand', event.target.value)}
                         >
-                          <option value="">Any band</option>
-                          <option value="high">High</option>
-                          <option value="medium">Medium</option>
-                          <option value="skip">Skip</option>
-                        </select>
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Min score
-                        <input
-                          aria-label="Min score"
-                          className={filterControlClassName}
+                          <NativeSelectOption value="">Any band</NativeSelectOption>
+                          <NativeSelectOption value="high">High</NativeSelectOption>
+                          <NativeSelectOption value="medium">Medium</NativeSelectOption>
+                          <NativeSelectOption value="skip">Skip</NativeSelectOption>
+                        </NativeSelect>
+                      </Field>
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Min score')}
+                        >
+                          Min score
+                        </FieldLabel>
+                        <Input
+                          id={fieldControlId('filter', 'Min score')}
                           min="0"
                           max="10"
                           type="number"
                           value={filters.minScore}
                           onChange={(event) => updateFilter('minScore', event.target.value)}
                         />
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-                        Work mode
-                        <select
-                          aria-label="Work mode"
-                          className={filterControlClassName}
+                      </Field>
+                      <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <FieldLabel
+                          className="text-xs font-medium text-muted-foreground"
+                          htmlFor={fieldControlId('filter', 'Work mode')}
+                        >
+                          Work mode
+                        </FieldLabel>
+                        <NativeSelect
+                          id={fieldControlId('filter', 'Work mode')}
                           value={filters.workMode}
                           onChange={(event) => updateFilter('workMode', event.target.value)}
                         >
-                          <option value="">Any mode</option>
-                          <option value="remote">Remote</option>
-                          <option value="onsite">Onsite</option>
-                          <option value="hybrid">Hybrid</option>
-                          <option value="unclear">Unclear</option>
-                        </select>
-                      </label>
+                          <NativeSelectOption value="">Any mode</NativeSelectOption>
+                          <NativeSelectOption value="remote">Remote</NativeSelectOption>
+                          <NativeSelectOption value="onsite">Onsite</NativeSelectOption>
+                          <NativeSelectOption value="hybrid">Hybrid</NativeSelectOption>
+                          <NativeSelectOption value="unclear">Unclear</NativeSelectOption>
+                        </NativeSelect>
+                      </Field>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <FilterDateInput
@@ -549,12 +572,10 @@ export function AppShell({
               ) : null}
 
               {error ? (
-                <Alert variant="destructive" className="bg-card">
-                  <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-                  <div className="pl-7">
-                    <AlertTitle>Load failed</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
-                  </div>
+                <Alert variant="destructive">
+                  <AlertCircle aria-hidden="true" />
+                  <AlertTitle>Load failed</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
                 </Alert>
               ) : null}
 

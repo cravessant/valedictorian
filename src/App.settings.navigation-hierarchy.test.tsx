@@ -86,6 +86,15 @@ describe('navigation hierarchy', () => {
     expect(within(sidebar).getByRole('button', { name: 'Applications' })).toBeInTheDocument()
     expect(within(sidebar).getByRole('button', { name: 'Settings' })).toBeInTheDocument()
 
+    const applicationsNav = within(sidebar).getByRole('button', { name: 'Applications' })
+    expect(applicationsNav).toHaveClass('justify-start')
+    expect(applicationsNav).not.toHaveClass('justify-center')
+    expect(applicationsNav).toHaveAttribute('aria-current', 'page')
+    expect(within(sidebar).getByRole('button', { name: 'Profile' })).not.toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+
     fireEvent.click(within(sidebar).getByRole('button', { name: 'Settings' }))
 
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
@@ -164,7 +173,10 @@ describe('navigation hierarchy', () => {
       within(screen.getByRole('banner', { name: 'App chrome' })).getByText('Connectors'),
     ).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Connectors' })).toBeInTheDocument()
-    expect(within(appNavigation).getByRole('button', { name: 'Overview' })).toHaveAttribute(
+    const overviewNav = within(appNavigation).getByRole('button', { name: 'Overview' })
+    expect(overviewNav).toHaveClass('justify-start')
+    expect(overviewNav).not.toHaveClass('justify-center')
+    expect(overviewNav).toHaveAttribute(
       'aria-current',
       'page',
     )
@@ -197,13 +209,23 @@ describe('navigation hierarchy', () => {
     expect(connectorsToggle).toHaveAttribute('aria-controls')
     const childrenId = connectorsToggle.getAttribute('aria-controls')
     expect(childrenId).toBeTruthy()
-    expect(document.getElementById(childrenId!)).not.toBeInTheDocument()
+    expect(within(appNavigation).queryByRole('button', { name: 'Overview' })).not.toBeInTheDocument()
+    expect(within(appNavigation).queryByRole('button', { name: 'Runs' })).not.toBeInTheDocument()
+    const closedContent = document.getElementById(childrenId!)
+    if (closedContent) {
+      expect(closedContent).toHaveAttribute('data-slot', 'collapsible-content')
+      expect(closedContent).toHaveAttribute('data-state', 'closed')
+      expect(closedContent).toHaveAttribute('hidden')
+    }
 
     fireEvent.click(connectorsToggle)
 
     expect(connectorsToggle).toHaveAttribute('aria-expanded', 'true')
     const children = document.getElementById(childrenId!)
     expect(children).toBeInTheDocument()
+    expect(children).toHaveAttribute('data-slot', 'collapsible-content')
+    expect(children).toHaveAttribute('data-state', 'open')
+    expect(children).not.toHaveAttribute('hidden')
     expect(connectorsToggle).toHaveAttribute('aria-controls', childrenId)
 
     const overview = within(appNavigation).getByRole('button', { name: 'Overview' })

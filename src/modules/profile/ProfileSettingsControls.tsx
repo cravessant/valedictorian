@@ -1,7 +1,22 @@
 import { type ReactNode } from 'react'
 import type { ProfileSensitiveDetails } from './profile.repository'
 import { Button } from '@/components/ui/button'
-import { ModalShell } from '@/components/ui/modal-shell'
+import { Combobox } from '@/components/ui/combobox'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { typography } from '@/components/ui/typography'
+import { fieldControlId } from '@/lib/field-control-id'
+import { X } from 'lucide-react'
 import {
   type ProfileAnswer,
   type ProfileEducation,
@@ -58,9 +73,30 @@ export function ProfileRowModal({
   title: string
 }) {
   return (
-    <ModalShell title={title} onClose={onClose}>
-      <div className="grid gap-4">{children}</div>
-    </ModalShell>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[88vh] w-full max-w-3xl translate-x-[-50%] translate-y-[-50%] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b border-border px-5 py-4 text-left">
+          <DialogTitle>{title}</DialogTitle>
+          <Button type="button" variant="ghost" size="icon" aria-label={`Close ${title}`} onClick={onClose}>
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </DialogHeader>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="px-5 py-4">
+            <div className="grid gap-4">{children}</div>
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -95,7 +131,7 @@ export function ProfileSection({
 
 export function SectionHeader({ id, title }: { id: string; title: string }) {
   return (
-    <h3 id={id} className="text-sm font-semibold text-foreground">
+    <h3 id={id} className={typography.panelTitle}>
       {title}
     </h3>
   )
@@ -138,15 +174,43 @@ export function BirthDateSelectRow({
           value={day}
           onChange={onDayChange}
         />
-        <CompactSelect
-          label="Birth year"
-          options={birthYearOptions}
-          placeholder="Year"
+        <BirthYearCombobox
           value={year}
           onChange={onYearChange}
         />
       </div>
     </div>
+  )
+}
+
+function BirthYearCombobox({
+  onChange,
+  value,
+}: {
+  onChange: (value: string) => void
+  value: string
+}) {
+  const controlId = fieldControlId('compact-select', 'Birth year')
+  const options = [
+    { label: 'Year', value: '' },
+    ...birthYearOptions,
+  ]
+
+  return (
+    <Field className="gap-1">
+      <FieldLabel className="sr-only" htmlFor={controlId}>
+        Birth year
+      </FieldLabel>
+      <Combobox
+        emptyText="No year found."
+        id={controlId}
+        options={options}
+        placeholder="Year"
+        searchPlaceholder="Search year..."
+        value={value}
+        onValueChange={onChange}
+      />
+    </Field>
   )
 }
 
@@ -161,25 +225,26 @@ export function SettingsSelectInput({
   value: string
   onChange: (value: string) => void
 }) {
+  const controlId = fieldControlId('settings-select', label)
+
   return (
-    <label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
-      <span>
-        <span className="block font-medium">{label}</span>
-      </span>
-      <select
-        aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+    <Field className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
+      <FieldLabel className="block font-medium text-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <NativeSelect
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">Select...</option>
+        <NativeSelectOption value="">Select...</NativeSelectOption>
         {options.map((option) => (
-          <option key={option} value={option}>
+          <NativeSelectOption key={option} value={option}>
             {option}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
-    </label>
+      </NativeSelect>
+    </Field>
   )
 }
 
@@ -196,20 +261,26 @@ export function CompactSelect({
   value: string
   onChange: (value: string) => void
 }) {
+  const controlId = fieldControlId('compact-select', label)
+
   return (
-    <select
-      aria-label={label}
-      className="h-9 min-w-0 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-    >
-      <option value="">{placeholder}</option>
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <Field className="gap-1">
+      <FieldLabel className="sr-only" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <NativeSelect
+        id={controlId}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <NativeSelectOption value="">{placeholder}</NativeSelectOption>
+        {options.map((option) => (
+          <NativeSelectOption key={option.value} value={option.value}>
+            {option.label}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
+    </Field>
   )
 }
 
@@ -262,7 +333,12 @@ export function ProfileAnswerRow({
         >
           Edit
         </Button>
-        <Button type="button" variant="ghost" onClick={() => onRemove(answer.key)}>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={`Remove answer ${answer.label}`}
+          onClick={() => onRemove(answer.key)}
+        >
           Remove
         </Button>
       </td>
@@ -305,7 +381,12 @@ export function ProfileEducationRow({
         >
           Edit
         </Button>
-        <Button type="button" variant="ghost" onClick={() => onRemove(education.id)}>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={`Remove education ${education.school}`}
+          onClick={() => onRemove(education.id)}
+        >
           Remove
         </Button>
       </td>
@@ -322,37 +403,43 @@ export function BooleanPreferenceControl({
   value: boolean | null
   onChange: (value: boolean) => void
 }) {
+  const yesId = fieldControlId('boolean-preference', `${label} Yes`)
+  const noId = fieldControlId('boolean-preference', `${label} No`)
+  const groupLabelId = fieldControlId('boolean-preference', label)
+  const groupValue = value === true ? 'true' : value === false ? 'false' : ''
+
   return (
-    <div
-      aria-label={label}
-      className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center"
-      role="group"
-    >
-      <div className="font-medium">{label}</div>
-      <div className="flex flex-wrap gap-2">
-        <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3">
-          <input
+    <div className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
+      <div className="font-medium" id={groupLabelId}>{label}</div>
+      <RadioGroup
+        aria-labelledby={groupLabelId}
+        className="flex flex-wrap gap-2"
+        value={groupValue}
+        onValueChange={(next) => onChange(next === 'true')}
+      >
+        <Label
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3"
+          htmlFor={yesId}
+        >
+          <RadioGroupItem
             aria-label={`${label} Yes`}
-            checked={value === true}
-            className="h-4 w-4 accent-primary"
-            name={label}
-            type="radio"
-            onChange={() => onChange(true)}
+            id={yesId}
+            value="true"
           />
           <span>Yes</span>
-        </label>
-        <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3">
-          <input
+        </Label>
+        <Label
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3"
+          htmlFor={noId}
+        >
+          <RadioGroupItem
             aria-label={`${label} No`}
-            checked={value === false}
-            className="h-4 w-4 accent-primary"
-            name={label}
-            type="radio"
-            onChange={() => onChange(false)}
+            id={noId}
+            value="false"
           />
           <span>No</span>
-        </label>
-      </div>
+        </Label>
+      </RadioGroup>
     </div>
   )
 }
@@ -368,17 +455,21 @@ export function CompactInput({
   value: string
   onChange: (value: string) => void
 }) {
+  const controlId = fieldControlId('compact-input', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      <span>{label}</span>
-      <input
-        aria-label={label}
-        className="h-9 min-w-0 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Input
+        className="px-2"
+        id={controlId}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Field>
   )
 }
 

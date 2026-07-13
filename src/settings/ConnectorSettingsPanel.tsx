@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { AlertCircle } from 'lucide-react'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { AlertCircle, Cable } from 'lucide-react'
+import { typography, typographyClass } from '@/components/ui/typography'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
@@ -669,12 +677,12 @@ export function ConnectorSettingsPanel({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           {displayMode === 'main' ? (
-            <p className="text-xs font-medium uppercase text-muted-foreground">Run desk</p>
+            <p className={typography.pageEyebrow}>Run desk</p>
           ) : null}
-          <h2 id="connector-settings-title" className="text-xl font-semibold text-foreground">
+          <h2 id="connector-settings-title" className={typography.sectionTitle}>
             {displayMode === 'main' ? 'Operate connectors' : 'Connectors'}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className={typography.sectionDescription}>
             {displayMode === 'main'
               ? 'Authenticate, tune, and start API-only sourcing from one place.'
               : 'Add sources and manage connector auth for this workspace.'}
@@ -688,12 +696,10 @@ export function ConnectorSettingsPanel({
       </div>
 
       {connectorActionError ? (
-        <Alert variant="destructive" className="bg-card" role="alert">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Connector action failed</AlertTitle>
-            <AlertDescription>{connectorActionError}</AlertDescription>
-          </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Connector action failed</AlertTitle>
+          <AlertDescription>{connectorActionError}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -725,8 +731,8 @@ export function ConnectorSettingsPanel({
       <div className="rounded-md border border-border bg-card p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-foreground">Jobright internslist</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <h3 className={typography.panelTitle}>Jobright internslist</h3>
+            <p className={typography.sectionDescription}>
               Authenticate with Jobright API credentials and run connector refresh.
             </p>
           </div>
@@ -742,67 +748,84 @@ export function ConnectorSettingsPanel({
       </div>
       ) : null}
 
-      <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-        {loadState === 'loading' ? (
-          'Loading connector instances...'
-        ) : loadState === 'unavailable' ? (
-          'Connector actions are unavailable until the workspace backend recovers.'
-        ) : instances.length === 0 ? (
-          'No connector instances configured.'
-        ) : (
-          <>
-            <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
-            <div className="divide-y divide-border rounded-md border border-border">
-              {instances.map((instance) => {
-                const scheduleState = scheduleStates[instance.id] ?? createInitialInstanceScheduleState()
-                return (
-                <ConnectorSettingsInstanceCard
-                  key={instance.id}
-                  instance={instance}
-                  authState={authStates[instance.id] ?? { kind: 'idle' as const }}
-                  draft={drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)}
-                  credentialDraft={credentialDrafts[instance.id] ?? { email: '', password: '' }}
-                  isEditingAuth={editingAuthInstanceId === instance.id}
-                  latestRun={latestRuns[instance.id]}
-                  latestRunStatus={latestRunStatuses[instance.id]}
-                  isSavingSettings={savingInstanceIds.has(instance.id)}
-                  authenticatingInstanceId={authenticatingInstanceId}
-                  runningInstanceId={runningInstanceId}
-                  schedulingCapability={schedulingCapability}
-                  capabilityLoadError={capabilityLoadError}
-                  scheduleCanonical={scheduleState.canonical}
-                  scheduleDraft={scheduleState.draft}
-                  scheduleIsDirty={isScheduleDraftDirty(
-                    scheduleState.draft,
-                    scheduleState.canonical,
-                  )}
-                  scheduleIsLoading={scheduleState.isLoading && Boolean(schedulingCapability?.available)}
-                  scheduleIsSaving={scheduleState.isSaving}
-                  scheduleStatusMessage={scheduleState.statusMessage}
-                  scheduleStatusTone={scheduleState.statusTone}
-                  onBeginCredentialEdit={beginCredentialEdit}
-                  onCancelCredentialEdit={cancelCredentialEdit}
-                  onUpdateCredentialDraft={updateCredentialDraft}
-                  onSaveAndValidateCredentials={saveAndValidateJobrightCredentials}
-                  onRevalidateCredentials={revalidateJobrightCredentials}
-                  onUpdateDraft={updateDraft}
-                  onSaveSettings={saveConnectorSettings}
-                  onDiscardSettings={discardConnectorSettings}
-                  onRunNow={runConnectorNow}
-                  isDraftDirty={isConnectorSettingsDraftDirty}
-                  onOpenSourcingRuns={onOpenSourcingRuns}
-                  onScheduleDraftChange={updateScheduleDraft}
-                  onSaveSchedule={saveConnectorSchedule}
-                  onDiscardSchedule={discardConnectorSchedule}
-                  onPauseSchedule={pauseConnectorSchedule}
-                  onResumeSchedule={resumeConnectorSchedule}
-                />
-                )
-              })}
-            </div>
-          </>
-        )}
-      </div>
+      {loadState === 'loading' ? (
+        <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+          Loading connector instances...
+        </div>
+      ) : loadState === 'unavailable' ? (
+        <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
+          Connector actions are unavailable until the workspace backend recovers.
+        </div>
+      ) : instances.length === 0 ? (
+        <Empty
+          aria-label="Empty connector instances"
+          className="flex-none gap-3 rounded-md border border-solid border-border bg-card p-6"
+        >
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <Cable aria-hidden="true" />
+            </EmptyMedia>
+            <EmptyTitle>
+              <h3>No connector instances</h3>
+            </EmptyTitle>
+            <EmptyDescription>
+              Add the Jobright connector above to configure authentication and schedules.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <div className={typographyClass('muted', 'min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4')}>
+          <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
+          <div className="divide-y divide-border rounded-md border border-border">
+            {instances.map((instance) => {
+              const scheduleState = scheduleStates[instance.id] ?? createInitialInstanceScheduleState()
+              return (
+              <ConnectorSettingsInstanceCard
+                key={instance.id}
+                instance={instance}
+                authState={authStates[instance.id] ?? { kind: 'idle' as const }}
+                draft={drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)}
+                credentialDraft={credentialDrafts[instance.id] ?? { email: '', password: '' }}
+                isEditingAuth={editingAuthInstanceId === instance.id}
+                latestRun={latestRuns[instance.id]}
+                latestRunStatus={latestRunStatuses[instance.id]}
+                isSavingSettings={savingInstanceIds.has(instance.id)}
+                authenticatingInstanceId={authenticatingInstanceId}
+                runningInstanceId={runningInstanceId}
+                schedulingCapability={schedulingCapability}
+                capabilityLoadError={capabilityLoadError}
+                scheduleCanonical={scheduleState.canonical}
+                scheduleDraft={scheduleState.draft}
+                scheduleIsDirty={isScheduleDraftDirty(
+                  scheduleState.draft,
+                  scheduleState.canonical,
+                )}
+                scheduleIsLoading={scheduleState.isLoading && Boolean(schedulingCapability?.available)}
+                scheduleIsSaving={scheduleState.isSaving}
+                scheduleStatusMessage={scheduleState.statusMessage}
+                scheduleStatusTone={scheduleState.statusTone}
+                onBeginCredentialEdit={beginCredentialEdit}
+                onCancelCredentialEdit={cancelCredentialEdit}
+                onUpdateCredentialDraft={updateCredentialDraft}
+                onSaveAndValidateCredentials={saveAndValidateJobrightCredentials}
+                onRevalidateCredentials={revalidateJobrightCredentials}
+                onUpdateDraft={updateDraft}
+                onSaveSettings={saveConnectorSettings}
+                onDiscardSettings={discardConnectorSettings}
+                onRunNow={runConnectorNow}
+                isDraftDirty={isConnectorSettingsDraftDirty}
+                onOpenSourcingRuns={onOpenSourcingRuns}
+                onScheduleDraftChange={updateScheduleDraft}
+                onSaveSchedule={saveConnectorSchedule}
+                onDiscardSchedule={discardConnectorSchedule}
+                onPauseSchedule={pauseConnectorSchedule}
+                onResumeSchedule={resumeConnectorSchedule}
+              />
+              )
+            })}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

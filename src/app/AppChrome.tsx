@@ -1,5 +1,32 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Progress } from '@/components/ui/progress'
+import { Spinner } from '@/components/ui/spinner'
+import { Switch } from '@/components/ui/switch'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Sidebar,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
+} from '@/components/ui/sidebar'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -32,16 +59,23 @@ function AppTopbar({
         isFullScreen ? 'pl-3' : 'pl-[4.75rem]'
       }`}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="app-no-drag h-7 w-7 shrink-0 border border-border/70 bg-card/70 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        onClick={onToggleSidebar}
-      >
-        <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="app-no-drag h-7 w-7 shrink-0 border border-border/70 bg-card/70 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            onClick={onToggleSidebar}
+          >
+            <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        </TooltipContent>
+      </Tooltip>
       <div className="min-w-0 truncate text-sm font-semibold leading-none text-foreground">{title}</div>
       {buildIdentity ? (
         <code className="app-no-drag ml-auto max-w-[45vw] truncate rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] text-warning">
@@ -86,7 +120,7 @@ function UpdateStatusControl({ onCheck, state, onInstall }: UpdateStatusControlP
   if (state.status === 'checking') {
     return (
       <div className="app-no-drag ml-auto inline-flex h-7 items-center gap-2 rounded-md border border-border bg-card/80 px-2.5 text-xs font-medium text-muted-foreground">
-        <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        <Spinner aria-label="Checking for updates" className="size-3.5" />
         Checking for updates
       </div>
     )
@@ -109,14 +143,16 @@ function UpdateStatusControl({ onCheck, state, onInstall }: UpdateStatusControlP
   }
 
   if (state.status === 'downloading') {
-    const percent = Math.round(state.percent ?? 0)
+    const percent = Math.min(100, Math.max(0, Math.round(state.percent ?? 0)))
     return (
       <div className="app-no-drag ml-auto inline-flex h-7 items-center gap-2 rounded-md border border-border bg-card/80 px-2.5 text-xs font-medium text-muted-foreground">
         <Download className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span>Downloading update {percent}%</span>
-        <span className="h-1 w-16 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
-          <span className="block h-full bg-primary" style={{ width: `${percent}%` }} />
-        </span>
+        <Progress
+          aria-label="Downloading update"
+          className="h-1 w-16"
+          value={percent}
+        />
       </div>
     )
   }
@@ -181,114 +217,175 @@ function AppSidebar({
   }, [sourcingChildActive])
 
   return (
-    <aside
+    <Sidebar
       aria-label="Application navigation"
-      className={`absolute left-0 top-0 z-40 flex h-full w-[280px] max-w-[85vw] flex-col overflow-auto border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible ${
+      className={`absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible ${
         temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
       }`}
       role="complementary"
       onMouseLeave={onMouseLeave}
     >
-      <div className="mb-5">
-        <p className="text-sm font-semibold text-foreground">Valedictorian</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          <code className="rounded-md bg-secondary px-1.5 py-0.5 text-secondary-foreground">
-            {settings.runtimeMode}
-          </code>
-        </p>
-      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div>
+          <SidebarHeader className="mb-5 gap-1 p-0">
+            <p className="text-sm font-semibold text-foreground">Valedictorian</p>
+            <p className="text-xs text-muted-foreground">
+              <code className="rounded-md bg-secondary px-1.5 py-0.5 text-secondary-foreground">
+                {settings.runtimeMode}
+              </code>
+            </p>
+          </SidebarHeader>
 
-      <nav aria-label="Application views" className="space-y-1">
-        <button
-          type="button"
-          className={applicationNavClass(currentView === APP_VIEWS.PROFILE)}
-          onClick={onOpenProfilePage}
-        >
-          <CircleUserRound className="h-4 w-4" aria-hidden="true" />
-          Profile
-        </button>
-        <button
-          type="button"
-          className={applicationNavClass(currentView === APP_VIEWS.APPLICATIONS)}
-          onClick={() => onViewChange(APP_VIEWS.APPLICATIONS)}
-        >
-          <Database className="h-4 w-4" aria-hidden="true" />
-          Applications
-        </button>
-        <button
-          type="button"
-          className={applicationNavClass(currentView === APP_VIEWS.ACTION_QUEUE)}
-          onClick={() => onViewChange(APP_VIEWS.ACTION_QUEUE)}
-        >
-          <ListChecks className="h-4 w-4" aria-hidden="true" />
-          Action Queue
-        </button>
-        <button
-          type="button"
-          aria-controls={sourcingChildrenId}
-          aria-expanded={sourcingExpanded}
-          className={applicationNavClass(sourcingChildActive)}
-          onClick={() => {
-            setSourcingExpanded((expanded) => !expanded)
-            onViewChange(APP_VIEWS.SOURCING)
-          }}
-        >
-          <Search className="h-4 w-4" aria-hidden="true" />
-          Sourcing
-        </button>
-        {sourcingExpanded ? (
-          <div className="ml-4 space-y-1 border-l border-border pl-2" id={sourcingChildrenId}>
-            <button
-              type="button"
-              aria-current={currentView === APP_VIEWS.SOURCING ? 'page' : undefined}
-              className={applicationNavClass(currentView === APP_VIEWS.SOURCING)}
-              onClick={() => onViewChange(APP_VIEWS.SOURCING)}
-            >
-              Findings
-            </button>
-            <button
-              type="button"
-              aria-current={currentView === APP_VIEWS.SOURCING_NORMALIZATION ? 'page' : undefined}
-              className={applicationNavClass(currentView === APP_VIEWS.SOURCING_NORMALIZATION)}
-              onClick={() => onViewChange(APP_VIEWS.SOURCING_NORMALIZATION)}
-            >
-              Normalization
-            </button>
-          </div>
-        ) : null}
-        <button
-          type="button"
-          aria-controls={connectorsChildrenId}
-          aria-expanded={connectorsExpanded}
-          className={applicationNavClass(connectorsChildActive)}
-          onClick={() => setConnectorsExpanded((expanded) => !expanded)}
-        >
-          <Plug className="h-4 w-4" aria-hidden="true" />
-          Connectors
-        </button>
-        {connectorsExpanded ? (
-          <div className="ml-4 space-y-1 border-l border-border pl-2" id={connectorsChildrenId}>
-            <button
-              type="button"
-              aria-current={currentView === APP_VIEWS.CONNECTORS ? 'page' : undefined}
-              className={applicationNavClass(currentView === APP_VIEWS.CONNECTORS)}
-              onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
-            >
-              Overview
-            </button>
-            <button
-              type="button"
-              aria-current={currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined}
-              className={applicationNavClass(currentView === APP_VIEWS.CONNECTOR_RUNS)}
-              onClick={() => onViewChange(APP_VIEWS.CONNECTOR_RUNS)}
-            >
-              Runs
-            </button>
-          </div>
-        ) : null}
-      </nav>
+          <nav aria-label="Application views">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={currentView === APP_VIEWS.PROFILE}
+                  aria-current={currentView === APP_VIEWS.PROFILE ? 'page' : undefined}
+                  onClick={onOpenProfilePage}
+                >
+                  <CircleUserRound className="h-4 w-4" aria-hidden="true" />
+                  Profile
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={currentView === APP_VIEWS.APPLICATIONS}
+                  aria-current={currentView === APP_VIEWS.APPLICATIONS ? 'page' : undefined}
+                  onClick={() => onViewChange(APP_VIEWS.APPLICATIONS)}
+                >
+                  <Database className="h-4 w-4" aria-hidden="true" />
+                  Applications
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  type="button"
+                  isActive={currentView === APP_VIEWS.ACTION_QUEUE}
+                  aria-current={currentView === APP_VIEWS.ACTION_QUEUE ? 'page' : undefined}
+                  onClick={() => onViewChange(APP_VIEWS.ACTION_QUEUE)}
+                >
+                  <ListChecks className="h-4 w-4" aria-hidden="true" />
+                  Action Queue
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <Collapsible
+                asChild
+                open={sourcingExpanded}
+                onOpenChange={setSourcingExpanded}
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      type="button"
+                      aria-controls={sourcingChildrenId}
+                      isActive={sourcingChildActive}
+                      onClick={() => onViewChange(APP_VIEWS.SOURCING)}
+                    >
+                      <Search className="h-4 w-4" aria-hidden="true" />
+                      Sourcing
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent id={sourcingChildrenId}>
+                    <SidebarMenuSub className="mx-0 ml-4 translate-x-0 px-0 py-0 pl-2">
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton
+                          asChild
+                          isActive={currentView === APP_VIEWS.SOURCING}
+                        >
+                          <button
+                            type="button"
+                            aria-current={
+                              currentView === APP_VIEWS.SOURCING ? 'page' : undefined
+                            }
+                            onClick={() => onViewChange(APP_VIEWS.SOURCING)}
+                          >
+                            Findings
+                          </button>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton
+                          asChild
+                          isActive={currentView === APP_VIEWS.SOURCING_NORMALIZATION}
+                        >
+                          <button
+                            type="button"
+                            aria-current={
+                              currentView === APP_VIEWS.SOURCING_NORMALIZATION ? 'page' : undefined
+                            }
+                            onClick={() => onViewChange(APP_VIEWS.SOURCING_NORMALIZATION)}
+                          >
+                            Normalization
+                          </button>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
+              <Collapsible
+                asChild
+                open={connectorsExpanded}
+                onOpenChange={setConnectorsExpanded}
+              >
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      type="button"
+                      aria-controls={connectorsChildrenId}
+                      isActive={connectorsChildActive}
+                    >
+                      <Plug className="h-4 w-4" aria-hidden="true" />
+                      Connectors
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent id={connectorsChildrenId}>
+                    <SidebarMenuSub className="mx-0 ml-4 translate-x-0 px-0 py-0 pl-2">
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton
+                          asChild
+                          isActive={currentView === APP_VIEWS.CONNECTORS}
+                        >
+                          <button
+                            type="button"
+                            aria-current={
+                              currentView === APP_VIEWS.CONNECTORS ? 'page' : undefined
+                            }
+                            onClick={() => onViewChange(APP_VIEWS.CONNECTORS)}
+                          >
+                            Overview
+                          </button>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                      <SidebarMenuSubItem>
+                        <SidebarMenuSubButton
+                          asChild
+                          isActive={currentView === APP_VIEWS.CONNECTOR_RUNS}
+                        >
+                          <button
+                            type="button"
+                            aria-current={
+                              currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined
+                            }
+                            onClick={() => onViewChange(APP_VIEWS.CONNECTOR_RUNS)}
+                          >
+                            Runs
+                          </button>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
+            </SidebarMenu>
+          </nav>
+        </div>
+      </ScrollArea>
 
-      <div className="mt-auto">
+      <SidebarFooter className="mt-auto gap-0 p-0">
         <SettingsPopover
           open={settingsOpen}
           settings={settings}
@@ -297,17 +394,9 @@ function AppSidebar({
           onOpenSettingsPage={onOpenSettingsPage}
           onSettingsPatch={onSettingsPatch}
         />
-      </div>
-    </aside>
+      </SidebarFooter>
+    </Sidebar>
   )
-}
-
-function applicationNavClass(active: boolean) {
-  return `flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium ${
-    active
-      ? 'bg-accent text-accent-foreground'
-      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-  }`
 }
 
 interface SettingsPopoverProps {
@@ -351,15 +440,20 @@ function SettingsPopover({
                 </code>
               </p>
             </div>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label="Close settings"
-              onClick={onClose}
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Close settings"
+                  onClick={onClose}
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Close settings</TooltipContent>
+            </Tooltip>
           </div>
 
           <div className="divide-y divide-border rounded-md border border-border bg-card/80">
@@ -380,11 +474,10 @@ function SettingsPopover({
             />
           </div>
 
-          <label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
+          <Label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
             Remote API URL
-            <input
+            <Input
               aria-label="Remote API URL"
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!remoteEnabled}
               value={settings.remoteApiUrl}
               onChange={(event) =>
@@ -393,7 +486,7 @@ function SettingsPopover({
                 })
               }
             />
-          </label>
+          </Label>
           <div className="mt-3 border-t border-border pt-3">
             <Button
               type="button"
@@ -442,21 +535,19 @@ function SettingsToggleRow({
   onChange,
 }: SettingsToggleRowProps) {
   return (
-    <label className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,22rem)_auto] items-center justify-start gap-3 px-3 py-3 text-sm text-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
+    <Label className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,22rem)_auto] items-center justify-start gap-3 px-3 py-3 text-sm text-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
       <span className="text-muted-foreground">{icon}</span>
       <span className="min-w-0">
         <span className="block font-medium">{label}</span>
         <span className="block text-xs text-muted-foreground">{description}</span>
       </span>
-      <input
+      <Switch
         aria-label={label}
         checked={checked}
-        className="h-5 w-5 shrink-0 accent-primary"
         disabled={disabled}
-        type="checkbox"
-        onChange={(event) => onChange(event.target.checked)}
+        onCheckedChange={onChange}
       />
-    </label>
+    </Label>
   )
 }
 

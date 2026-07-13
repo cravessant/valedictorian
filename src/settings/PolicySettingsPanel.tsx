@@ -1,7 +1,20 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
+import { typography, typographyClass } from '@/components/ui/typography'
+import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, ShieldCheck } from 'lucide-react'
 import {
   defaultPolicyConfig,
@@ -20,7 +33,10 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [savingSection, setSavingSection] = useState<PolicySaveScope>(null)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [resetConfirmError, setResetConfirmError] = useState<string | null>(null)
   const { toast } = useToast()
+  const isResetting = savingSection === 'reset'
 
   useEffect(() => {
     let cancelled = false
@@ -101,14 +117,21 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
       .finally(() => setSavingSection(null))
   }
 
+  function openResetConfirm() {
+    setResetConfirmError(null)
+    setResetConfirmOpen(true)
+  }
+
   function resetPolicyConfig() {
     setSavingSection('reset')
+    setResetConfirmError(null)
     void policyApi.config
       .reset()
       .then((nextConfig) => {
         setDraftConfig(nextConfig)
         setSavedConfig(nextConfig)
         setError(null)
+        setResetConfirmOpen(false)
         toast({
           title: 'Policy reset.',
           variant: 'success',
@@ -117,6 +140,7 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
       .catch((resetError: unknown) => {
         const message = resetError instanceof Error ? resetError.message : 'Policy reset failed.'
         setError(message)
+        setResetConfirmError(message)
         toast({
           description: message,
           title: 'Policy update failed',
@@ -130,10 +154,10 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
     <section aria-labelledby="policy-settings-title" className="space-y-7">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 id="policy-settings-title" className="text-xl font-semibold text-foreground">
+          <h2 id="policy-settings-title" className={typography.sectionTitle}>
             Policy
           </h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          <p className={typographyClass('sectionDescription', 'max-w-2xl')}>
             Action buckets, evidence gates, submit checks, retry thresholds, and sourcing windows.
           </p>
         </div>
@@ -142,19 +166,55 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
           variant="outline"
           className="self-start"
           disabled={isLoading || savingSection !== null}
-          onClick={resetPolicyConfig}
+          onClick={openResetConfirm}
         >
-          {savingSection === 'reset' ? 'Resetting...' : 'Reset policy'}
+          {isResetting ? 'Resetting...' : 'Reset policy'}
         </Button>
       </div>
 
+      <AlertDialog
+        open={resetConfirmOpen}
+        onOpenChange={(open) => {
+          if (isResetting) {
+            return
+          }
+          setResetConfirmOpen(open)
+          if (!open) {
+            setResetConfirmError(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset policy?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This restores default policy buckets, gates, and sourcing windows.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {resetConfirmError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {resetConfirmError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isResetting}
+              onClick={resetPolicyConfig}
+            >
+              {isResetting ? 'Resetting...' : 'Reset policy'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {error ? (
-        <Alert variant="destructive" className="bg-card">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Policy failed</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </div>
+        <Alert variant="destructive">
+          <AlertCircle aria-hidden="true" />
+          <AlertTitle>Policy failed</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -614,7 +674,7 @@ function PolicySection({
 }) {
   return (
     <section aria-labelledby={`policy-section-${slugify(title)}`} className="space-y-3">
-      <h3 id={`policy-section-${slugify(title)}`} className="text-sm font-semibold text-foreground">
+      <h3 id={`policy-section-${slugify(title)}`} className={typography.panelTitle}>
         {title}
       </h3>
       <div className="divide-y divide-border rounded-md border border-border bg-card">
@@ -638,18 +698,20 @@ function PolicyTextArea({
   onChange: (value: string) => void
   value: string
 }) {
+  const controlId = fieldControlId('policy-settings', label)
+
   return (
-    <label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[220px_1fr]">
-      <span className="pt-2">
-        <span className="block font-medium">{label}</span>
-      </span>
-      <textarea
-        aria-label={label}
-        className="min-h-24 w-full min-w-0 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm leading-5 text-foreground"
+    <Field className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[220px_1fr]">
+      <FieldLabel className="block pt-2 font-medium text-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Textarea
+        className="min-h-24 resize-y leading-5"
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Field>
   )
 }
 

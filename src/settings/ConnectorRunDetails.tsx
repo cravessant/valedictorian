@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
+import { recordFromUnknown } from './connector-settings.helpers'
 
 export function ConnectorRunSynchronizationDetails({
   ariaLabel = 'Connector synchronization state',
@@ -79,12 +80,33 @@ function formatHistoricalBackfill(state: ConnectorSettingsRun['historicalBackfil
   }[state]
 }
 
-export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRun }) {
+export function ConnectorRunLifecycleDetails({
+  run,
+  showDebugData = false,
+}: {
+  run: ConnectorSettingsRun
+  showDebugData?: boolean
+}) {
   const [showExplanation, setShowExplanation] = useState(false)
   const lifecycle = run.lifecycleCounts ?? null
   const providerGaps = lifecycle?.provider.gaps ?? []
   const providerReturnedRowsUnknown = providerGaps.includes('missing_provider_returned')
     || providerGaps.includes('invalid_provider_returned')
+  const stats = recordFromUnknown(
+    'stats' in run ? (run as { stats?: unknown }).stats : undefined,
+  )
+  const carried = [
+    numericRunMetric(stats, 'discovered', 'Discovered jobs'),
+    numericRunMetric(stats, 'discoveryPages', 'Discovery page requests'),
+    numericRunMetric(stats, 'attempted', 'Detail attempts'),
+    numericRunMetric(stats, 'authRequired', 'Auth-required requests'),
+    numericRunMetric(stats, 'retryableFailures', 'Retryable request failures'),
+    numericRunMetric(stats, 'resolvedEmployerOrAts', 'Resolved employer / ATS'),
+    numericRunMetric(stats, 'resolvedThirdParty', 'Resolved third-party'),
+  ].filter((metric): metric is { label: string; value: number } => metric !== null)
+  const showLifecycleDiagnostics = showDebugData && lifecycle !== null
+  const showReconciliationWarning = showLifecycleDiagnostics
+    && hasLifecycleReconciliationWarning(lifecycle)
 
   return (
     <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 text-xs">
@@ -92,11 +114,13 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
         <>
           <div>
             <p className="font-semibold text-foreground">Stage-specific synchronization counts</p>
-            <p className="mt-1 text-muted-foreground">
-              {lifecycle.source === 'frozen_terminal'
-                ? 'Frozen at terminal completion.'
-                : 'Live counts derived from current persisted lineage.'}
-            </p>
+            {showLifecycleDiagnostics ? (
+              <p className="mt-1 text-muted-foreground">
+                {lifecycle.source === 'frozen_terminal'
+                  ? 'Frozen at terminal completion.'
+                  : 'Live counts derived from current persisted lineage.'}
+              </p>
+            ) : null}
           </div>
           <div className="grid gap-3 md:grid-cols-3" aria-label="Run lifecycle counts">
             <RunCountStage title="Provider intake" values={[
@@ -126,18 +150,12 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
               ['Actionable review', lifecycle.sourcing.actionableReview],
             ]} />
           </div>
-          {lifecycle.provider.invariant !== 'reconciled'
-            || lifecycle.destination.invariant !== 'reconciled'
-            || lifecycle.sourcing.invariant !== 'reconciled'
-            || lifecycle.provider.captureShortfall > 0
-            || lifecycle.provider.unclassifiedRows > 0
-            || lifecycle.destination.unclassified > 0
-            || lifecycle.sourcing.unclassified > 0 ? (
-              <p className="font-medium text-warning">
-                Some persisted rows do not reconcile; shortfalls and unclassified records remain visible in the count explanation.
-              </p>
-            ) : null}
-          {providerGaps.length > 0 ? (
+          {showReconciliationWarning ? (
+            <p className="font-medium text-warning">
+              Some persisted rows do not reconcile; shortfalls and unclassified records remain visible in the count explanation.
+            </p>
+          ) : null}
+          {showDebugData && providerGaps.length > 0 ? (
             <p className="font-medium text-warning">
               Provider stats gaps: {providerGaps.map(formatProviderStatsGap).join(', ')}.
             </p>
@@ -149,17 +167,32 @@ export function ConnectorRunLifecycleDetails({ run }: { run: ConnectorSettingsRu
           ) : null}
         </>
       ) : null}
-      <Button
-        aria-expanded={showExplanation}
-        className="w-fit"
-        size="sm"
-        type="button"
-        variant="outline"
-        onClick={() => setShowExplanation((shown) => !shown)}
-      >
-        How these counts work
-      </Button>
-      {showExplanation ? (
+      {showDebugData && carried.length > 0 ? (
+        <div>
+          <p className="font-semibold text-foreground">Carried connector cycle</p>
+          <p className="mt-1 text-muted-foreground">
+            Cumulative checkpoint and request details; these are not jobs returned by this run.
+          </p>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+            {carried.map((metric) => (
+              <span key={metric.label}>{metric.label}: {metric.value}</span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {showDebugData ? (
+        <Button
+          aria-expanded={showExplanation}
+          className="w-fit"
+          size="sm"
+          type="button"
+          variant="outline"
+          onClick={() => setShowExplanation((shown) => !shown)}
+        >
+          How these counts work
+        </Button>
+      ) : null}
+      {showDebugData && showExplanation ? (
         <div className="grid gap-1 text-muted-foreground">
           <p>Provider returned rows are response rows, not a unique-job total.</p>
           <p>Valid records and invalid rows classify provider rows; source duplicates repeat a provider identity.</p>
@@ -197,4 +230,28 @@ function RunCountStage({
       </div>
     </section>
   )
+}
+
+function hasLifecycleReconciliationWarning(
+  lifecycle: NonNullable<ConnectorSettingsRun['lifecycleCounts']>,
+) {
+  return lifecycle.provider.invariant !== 'reconciled'
+    || lifecycle.destination.invariant !== 'reconciled'
+    || lifecycle.sourcing.invariant !== 'reconciled'
+    || lifecycle.provider.captureShortfall > 0
+    || lifecycle.provider.unclassifiedRows > 0
+    || lifecycle.destination.unclassified > 0
+    || lifecycle.sourcing.unclassified > 0
+}
+
+function numericRunMetric(
+  stats: Record<string, unknown>,
+  key: string,
+  label: string,
+): { label: string; value: number } | null {
+  const value = stats[key]
+
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? { label, value }
+    : null
 }

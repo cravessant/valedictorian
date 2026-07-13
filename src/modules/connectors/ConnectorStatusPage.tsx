@@ -1,9 +1,17 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AlertCircle } from 'lucide-react'
+import { typography, typographyClass } from '@/components/ui/typography'
+import { AlertCircle, Cable } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type {
   ConnectorStatusAction,
@@ -36,10 +44,10 @@ function ConnectorStatusPage({
       <section className="mx-auto flex w-full max-w-7xl flex-col gap-5 pb-6">
         <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+            <p className={typography.pageEyebrow}>
               Job automation
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">
+            <h1 className={typographyClass('pageTitle', 'mt-1')}>
               Connectors
             </h1>
           </div>
@@ -69,12 +77,10 @@ function ConnectorStatusPage({
         ) : null}
 
         {error ? (
-          <Alert variant="destructive" className="bg-card">
-            <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-            <div className="pl-7">
-              <AlertTitle>Load failed</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </div>
+          <Alert variant="destructive">
+            <AlertCircle aria-hidden="true" />
+            <AlertTitle>Load failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
 
@@ -110,9 +116,22 @@ function ConnectorStatusPage({
             </div>
           </section>
         ) : !isLoading && !error ? (
-          <section className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
-            No enabled connectors.
-          </section>
+          <Empty
+            aria-label="Empty connector status"
+            className="min-h-[11.25rem] flex-none gap-4 rounded-md border border-solid border-border bg-card p-6 md:min-h-[13.5rem] md:max-h-60 md:p-8"
+          >
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Cable aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>
+                <h2>No enabled connectors</h2>
+              </EmptyTitle>
+              <EmptyDescription>
+                Enable a connector to monitor refresh health here.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : null}
       </section>
     </main>

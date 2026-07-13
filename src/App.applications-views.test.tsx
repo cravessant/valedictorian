@@ -7,7 +7,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { ApplicationListQuery } from './modules/applications/application.types'
 import type { ActionQueueListQuery } from './modules/action-queue/action-queue.repository'
@@ -25,12 +25,19 @@ import {
   createConnectorStatusView,
   createSettingsApi,
   createSourcingFinding,
-  createSourcingResult
+  createSourcingResult,
+  selectComboboxOption,
+  stubCmdkEnvironment,
 } from './App.test-helpers'
+
+beforeEach(() => {
+  stubCmdkEnvironment()
+})
 
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
   delete (window as Window & { applications?: unknown }).applications
   delete (window as Window & { sourcing?: unknown }).sourcing
   delete (window as Window & { settings?: unknown }).settings
@@ -298,7 +305,10 @@ describe('App', () => {
     fireEvent.change(within(dialog).getByLabelText('Blocker reason'), {
       target: { value: 'Captcha requires user session.' },
     })
-    fireEvent.change(within(dialog).getByLabelText('Application note'), {
+    const applicationNote = within(dialog).getByLabelText('Application note')
+    expect(applicationNote).toHaveAttribute('data-slot', 'textarea')
+    expect(applicationNote).toHaveClass('min-h-20', 'resize-y')
+    fireEvent.change(applicationNote, {
       target: { value: 'Recruiter replied with next steps.' },
     })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
@@ -390,7 +400,8 @@ describe('App', () => {
     expect(detailQueries).toContain('application-1')
     expect(linkQueries).toContain('application-1')
     expect(eventQueries).toContain('application-1')
-    expect(dialog).toHaveClass('backdrop-blur-sm')
+    expect(dialog).toHaveAttribute('data-slot', 'dialog-content')
+    expect(document.querySelector('[data-slot="dialog-overlay"]')).toHaveClass('backdrop-blur-sm')
     expect(within(dialog).getByText('Application detail')).toBeInTheDocument()
     expect(within(dialog).getByText('Software Engineer- Backend Intern (Fall 2026)')).toBeInTheDocument()
     expect(within(dialog).getAllByText('Needs User Info')).toHaveLength(2)
@@ -684,7 +695,12 @@ describe('App', () => {
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         actionQueueLoader={(query) => {
           actionQueueQueries.push(query)
-          return Promise.resolve(createActionQueueResult([createActionQueueItem()]))
+          return Promise.resolve({
+            ...createActionQueueResult([createActionQueueItem()]),
+            total: 80,
+            offset: query.offset ?? 0,
+            hasMore: (query.offset ?? 0) + 50 < 80,
+          })
         }}
         settingsApi={createSettingsApi()}
       />,
@@ -700,10 +716,14 @@ describe('App', () => {
     expect(within(table).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
     expect(within(table).getByText('Apply now')).toBeInTheDocument()
     expect(within(table).getByText('Queued score 6 meets policy cutoff 6.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Apply now 1' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Apply now 1' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Apply now 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next action queue page' }))
+    await waitFor(() => {
+      expect(actionQueueQueries.at(-1)).toMatchObject({ offset: 50 })
+    })
 
+    fireEvent.click(screen.getByRole('radio', { name: 'Apply now 1' }))
     await waitFor(() => {
       expect(actionQueueQueries.at(-1)).toMatchObject({
         actionBucket: 'apply_now',
@@ -711,6 +731,54 @@ describe('App', () => {
         offset: 0,
       })
     })
+  })
+
+  it('pages through action queue results in labeled pagination', async () => {
+    const actionQueueQueries: ActionQueueListQuery[] = []
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        actionQueueLoader={(query) => {
+          actionQueueQueries.push(query)
+          return Promise.resolve({
+            ...createActionQueueResult([createActionQueueItem()]),
+            total: 80,
+            offset: query.offset ?? 0,
+            hasMore: (query.offset ?? 0) + 50 < 80,
+          })
+        }}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
+    await screen.findByRole('table', { name: 'Action Queue' })
+
+    const pagination = screen.getByRole('navigation', { name: 'Action Queue pagination' })
+    expect(pagination).toHaveAttribute('data-slot', 'pagination')
+    expect(within(pagination).getByRole('group')).toHaveAttribute('data-slot', 'button-group')
+    expect(within(pagination).getByRole('button', { name: 'Previous action queue page' })).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next action queue page' })).toBeEnabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Next action queue page' }))
+
+    await waitFor(() => {
+      expect(actionQueueQueries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
+    })
+
+    expect(within(pagination).getByRole('button', { name: 'Previous action queue page' })).toBeEnabled()
+    expect(within(pagination).getByRole('button', { name: 'Next action queue page' })).toBeDisabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous action queue page' }))
+
+    await waitFor(() => {
+      expect(actionQueueQueries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
+    })
+
+    expect(within(pagination).getByRole('button', { name: 'Previous action queue page' })).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next action queue page' })).toBeEnabled()
   })
 
   it('renders connector status from the configured loader', async () => {
@@ -852,7 +920,8 @@ describe('App', () => {
       resolveConnectorStatus(createConnectorStatusResult([]))
     })
 
-    expect(await screen.findByText('No enabled connectors.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No enabled connectors' })).toBeInTheDocument()
+    expect(screen.getByText('Enable a connector to monitor refresh health here.')).toBeInTheDocument()
   })
 
   it('lets users edit the underlying application from an action queue row and reloads action queue', async () => {
@@ -983,11 +1052,11 @@ describe('App', () => {
     expect(within(table).getAllByText('Fall 2026').length).toBeGreaterThan(0)
     expect(within(table).getByText('Software Engineering Intern')).toBeInTheDocument()
     expect(within(table).getAllByText('LinkedIn')).toHaveLength(2)
-    expect(within(table).getAllByText('run-1')).toHaveLength(2)
+    expect(within(table).queryByText('run-1')).not.toBeInTheDocument()
     expect(within(table).getByText('new')).toBeInTheDocument()
     expect(within(table).getByText('Ready to review')).toBeInTheDocument()
     expect(within(table).getAllByText('7/10')).toHaveLength(2)
-    expect(within(table).getByText('application-versant-platform')).toBeInTheDocument()
+    expect(within(table).queryByText('application-versant-platform')).not.toBeInTheDocument()
     expect(
       within(table).getByText('Versant Media - Academic Year Internships: Platform Engineering'),
     ).toBeInTheDocument()
@@ -1007,11 +1076,11 @@ describe('App', () => {
 
     const sourceFilter = screen.getByRole('combobox', { name: 'Source' })
 
-    expect(within(sourceFilter).getByRole('option', { name: 'Any source' })).toBeInTheDocument()
-    expect(within(sourceFilter).getByRole('option', { name: 'LinkedIn' })).toHaveValue(
-      'source-linkedin',
-    )
-    expect(sourceFilter).toHaveDisplayValue('Any source')
+    expect(sourceFilter).toHaveTextContent('Any source')
+    fireEvent.click(sourceFilter)
+    expect(screen.getByRole('option', { name: 'Any source' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'LinkedIn' })).toBeInTheDocument()
+    fireEvent.keyDown(sourceFilter, { key: 'Escape' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Review blocked' }))
 
@@ -1033,7 +1102,7 @@ describe('App', () => {
       })
     })
 
-    fireEvent.change(sourceFilter, { target: { value: 'source-linkedin' } })
+    selectComboboxOption('Source', 'LinkedIn')
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({
@@ -1043,6 +1112,7 @@ describe('App', () => {
         sourceId: 'source-linkedin',
       })
     })
+    expect(screen.getByRole('combobox', { name: 'Source' })).toHaveTextContent('LinkedIn')
 
     fireEvent.click(within(table).getByRole('button', { name: 'Promote Delta Labs' }))
 

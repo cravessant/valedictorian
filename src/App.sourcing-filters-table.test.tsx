@@ -6,6 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { ApplicationListQuery } from './modules/applications/application.types'
@@ -170,7 +171,10 @@ describe('App', () => {
     fireEvent.change(within(addDialog).getByLabelText('Priority band'), {
       target: { value: 'high' },
     })
-    fireEvent.change(within(addDialog).getByLabelText('Fit notes'), {
+    const fitNotes = within(addDialog).getByLabelText('Fit notes')
+    expect(fitNotes).toHaveAttribute('data-slot', 'textarea')
+    expect(fitNotes).toHaveClass('min-h-24')
+    fireEvent.change(fitNotes, {
       target: { value: 'Strong frontend internship fit.' },
     })
     fireEvent.click(within(addDialog).getByRole('button', { name: 'Save finding' }))
@@ -280,7 +284,10 @@ describe('App', () => {
     fireEvent.change(within(dialog).getByLabelText('Policy blocker'), {
       target: { value: 'needs_user_decision' },
     })
-    fireEvent.change(within(dialog).getByLabelText('Disposition notes'), {
+    const dispositionNotes = within(dialog).getByLabelText('Disposition notes')
+    expect(dispositionNotes).toHaveAttribute('data-slot', 'textarea')
+    expect(dispositionNotes).toHaveClass('min-h-28')
+    fireEvent.change(dispositionNotes, {
       target: { value: 'Requires a non-student schedule.' },
     })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save disposition' }))
@@ -443,12 +450,50 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
 
-    expect(screen.getByLabelText('Search')).toHaveClass('h-9', 'rounded-md')
-    expect(screen.getByRole('button', { name: 'Show filters' })).toHaveClass(
-      'h-9',
-      'w-9',
-      'rounded-md',
+    const search = screen.getByRole('textbox', { name: 'Search' })
+    expect(search).toHaveAttribute('data-slot', 'input-group-control')
+    expect(search).toHaveClass('h-9')
+    expect(search.closest('[data-slot="input-group"]')).toHaveClass('h-9', 'rounded-md')
+
+    const toggle = screen.getByRole('button', { name: 'Show filters' })
+    expect(toggle).toHaveClass('h-9', 'w-9', 'rounded-md')
+    expect(toggle.closest('[data-slot="input-group-addon"]')).toHaveAttribute(
+      'data-align',
+      'inline-end',
     )
+    expect(search.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('toggles expanded filters with keyboard on the input-group action', async () => {
+    const user = userEvent.setup()
+    render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))} />)
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    const toggle = screen.getByRole('button', { name: 'Show filters' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+
+    toggle.focus()
+    await user.keyboard('{Enter}')
+
+    expect(screen.getByRole('button', { name: 'Hide filters' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByLabelText('Status')).toBeInTheDocument()
+
+    await user.keyboard(' ')
+
+    expect(screen.getByRole('button', { name: 'Show filters' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+
+    // Accessible name stays singular: Search label + toggle aria-label, no duplicates.
+    expect(screen.getAllByRole('textbox', { name: 'Search' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Show filters' })).toHaveLength(1)
   })
 
   it('places reset in a separate expanded filter action row', async () => {
@@ -516,17 +561,86 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    const pagination = screen.getByRole('navigation', { name: 'Application pagination' })
+    expect(pagination).toHaveAttribute('data-slot', 'pagination')
+    const paginationControls = within(pagination).getByRole('group')
+    expect(paginationControls).toHaveAttribute('data-slot', 'button-group')
+    expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeEnabled()
+    expect(within(pagination).queryByRole('button', { name: 'Columns' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Columns' })).toBeInTheDocument()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Next page' }))
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }))
+    expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeEnabled()
+    expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeDisabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous page' }))
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
     })
+
+    expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeEnabled()
+  })
+
+  it('pages through sourcing results in labeled pagination', async () => {
+    const queries: SourcingFindingsListInput[] = []
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        sourcingLoader={(query) => {
+          queries.push(query)
+          return Promise.resolve({
+            ...createSourcingResult([createSourcingFinding()]),
+            total: 80,
+            offset: query.offset ?? 0,
+            hasMore: (query.offset ?? 0) + 50 < 80,
+          })
+        }}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
+    await screen.findByRole('table', { name: 'Sourcing findings' })
+
+    const pagination = screen.getByRole('navigation', { name: 'Sourcing pagination' })
+    expect(pagination).toHaveAttribute('data-slot', 'pagination')
+    expect(within(pagination).getByRole('group')).toHaveAttribute('data-slot', 'button-group')
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+    ).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeEnabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Next sourcing page' }))
+
+    await waitFor(() => {
+      expect(queries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
+    })
+
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+    ).toBeEnabled()
+    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeDisabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous sourcing page' }))
+
+    await waitFor(() => {
+      expect(queries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
+    })
+
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+    ).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeEnabled()
   })
 
   it('reloads rows when sortable table headers are clicked', async () => {
@@ -555,6 +669,7 @@ describe('App', () => {
   })
 
   it('hides optional columns from the table without reloading rows', async () => {
+    const user = userEvent.setup()
     const queries: ApplicationListQuery[] = []
 
     render(
@@ -568,14 +683,37 @@ describe('App', () => {
 
     const table = await screen.findByRole('table', { name: 'Applications' })
     const initialQueryCount = queries.length
+    const columnsTrigger = screen.getByRole('button', { name: 'Columns' })
 
     expect(within(table).getByText('LinkedIn')).toBeInTheDocument()
+    expect(within(table).getByText('8/10')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Columns' }))
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Source column' }))
+    columnsTrigger.focus()
+    await user.keyboard('{Enter}')
 
+    const menu = await screen.findByRole('menu', { name: 'Column visibility' })
+    const sourceItem = within(menu).getByRole('menuitemcheckbox', { name: 'Source' })
+    const scoreItem = within(menu).getByRole('menuitemcheckbox', { name: 'Score' })
+
+    expect(sourceItem).toBeChecked()
+    expect(scoreItem).toBeChecked()
+
+    await user.click(sourceItem)
+    expect(sourceItem).not.toBeChecked()
     expect(within(table).queryByText('LinkedIn')).not.toBeInTheDocument()
+    expect(screen.getByRole('menu', { name: 'Column visibility' })).toBeInTheDocument()
+
+    await user.click(scoreItem)
+    expect(scoreItem).not.toBeChecked()
+    expect(within(table).queryByText('8/10')).not.toBeInTheDocument()
+    expect(screen.getByRole('menu', { name: 'Column visibility' })).toBeInTheDocument()
     expect(queries).toHaveLength(initialQueryCount)
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByRole('menu', { name: 'Column visibility' })).not.toBeInTheDocument()
+    })
+    expect(columnsTrigger).toHaveFocus()
   })
 
   it('tracks selected rows locally', async () => {
@@ -592,7 +730,7 @@ describe('App', () => {
       name: 'Select Astranis Space Technologies',
     })
 
-    expect(pageCheckbox).toHaveClass('mx-auto', 'block', 'h-4', 'w-4')
+    expect(pageCheckbox).toHaveClass('mx-auto', 'size-4')
     expect(pageCheckbox.closest('th')).toHaveClass('px-0', 'text-center')
 
     fireEvent.click(rowCheckbox)

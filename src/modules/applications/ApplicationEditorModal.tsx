@@ -1,7 +1,21 @@
 import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { ModalShell } from '@/components/ui/modal-shell'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
+import { fieldControlId } from '@/lib/field-control-id'
+import { X } from 'lucide-react'
 import { formatEnumLabel } from '../../app/labels'
 import {
   applicationStatuses,
@@ -189,81 +203,101 @@ function ApplicationEditorModal({
   }
 
   return (
-    <ModalShell title={title} onClose={onClose}>
-      <div className="grid gap-4">
-        {error ? (
-          <Alert variant="destructive" className="bg-card">
-            <AlertTitle>Save failed</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <EditorInput label="Company" value={companyName} disabled={mode === 'edit'} onChange={setCompanyName} />
-          <EditorInput label="Role" value={roleTitle} onChange={setRoleTitle} />
-          <EditorInput label="Source" value={sourceName} disabled={mode === 'edit'} onChange={setSourceName} />
-          <EditorInput label="Country" value={country} onChange={setCountry} />
-          <EditorSelect label="Role kind" value={roleKind} options={roleKindOptions} onChange={(value) => setRoleKind(value as CreateApplicationInput['roleKind'])} />
-          <EditorSelect label="Work mode" value={workMode} options={workModeOptions} onChange={(value) => setWorkMode(value as CreateApplicationInput['workMode'])} />
-          <EditorSelect label="Status" value={status} options={applicationStatuses} onChange={(value) => setStatus(value as CreateApplicationInput['status'])} />
-          <TimingFields
-            endDate={endDate}
-            startDate={startDate}
-            timingLabel={timingLabel}
-            timingMode={timingMode}
-            termsJson={termsJson}
-            onEndDateChange={setEndDate}
-            onStartDateChange={setStartDate}
-            onTimingLabelChange={setTimingLabel}
-            onTimingModeChange={setTimingMode}
-            onTermsJsonChange={setTermsJson}
-          />
-          <EditorInput label="Location" value={locationRaw} onChange={setLocationRaw} />
-          <EditorInput label="Primary URL" value={primaryUrl} disabled={mode === 'edit'} onChange={setPrimaryUrl} />
-          {mode === 'add' ? (
-            <>
-              <EditorInput label="Source URL" value={sourceUrl} onChange={setSourceUrl} />
-              <EditorInput label="Initial note" value={initialNote} onChange={setInitialNote} />
-            </>
-          ) : null}
-          {mode === 'edit' ? (
-            <label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
-              <input
-                aria-label="Has applied"
-                checked={hasApplied}
-                className="h-4 w-4 accent-primary"
-                type="checkbox"
-                onChange={(event) => setHasApplied(event.target.checked)}
-              />
-              <span>Has applied</span>
-            </label>
-          ) : null}
-          {mode === 'edit' ? (
-            <>
-              <EditorInput label="Status note" value={statusNote} onChange={setStatusNote} />
-              <EditorOptionalSelect
-                label="Manual review kind"
-                value={manualReviewKind}
-                options={manualReviewKindOptions}
-                onChange={(value) =>
-                  setManualReviewKind(value as ManualReviewKindSelection)
-                }
-              />
-              <EditorInput label="Missing user info" value={missingUserInfo} onChange={setMissingUserInfo} />
-              <EditorInput label="Blocker reason" value={blockerReason} onChange={setBlockerReason} />
-              <EditorTextarea label="Application note" value={applicationNote} onChange={setApplicationNote} />
-            </>
-          ) : null}
-        </div>
-        <div className="flex justify-end gap-2 border-t border-border pt-4">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[88vh] w-full max-w-3xl translate-x-[-50%] translate-y-[-50%] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b border-border px-5 py-4 text-left">
+          <DialogTitle>{title}</DialogTitle>
+          <Button type="button" variant="ghost" size="icon" aria-label={`Close ${title}`} onClick={onClose}>
+            <X className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <Button type="button" disabled={isSaving} onClick={saveApplication}>
-            {isSaving ? 'Saving...' : 'Save application'}
-          </Button>
-        </div>
-      </div>
-    </ModalShell>
+        </DialogHeader>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="px-5 py-4">
+            <div className="grid gap-4">
+              {error ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Save failed</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              ) : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <EditorInput label="Company" value={companyName} disabled={mode === 'edit'} onChange={setCompanyName} />
+                <EditorInput label="Role" value={roleTitle} onChange={setRoleTitle} />
+                <EditorInput label="Source" value={sourceName} disabled={mode === 'edit'} onChange={setSourceName} />
+                <EditorInput label="Country" value={country} onChange={setCountry} />
+                <EditorSelect label="Role kind" value={roleKind} options={roleKindOptions} onChange={(value) => setRoleKind(value as CreateApplicationInput['roleKind'])} />
+                <EditorSelect label="Work mode" value={workMode} options={workModeOptions} onChange={(value) => setWorkMode(value as CreateApplicationInput['workMode'])} />
+                <EditorSelect label="Status" value={status} options={applicationStatuses} onChange={(value) => setStatus(value as CreateApplicationInput['status'])} />
+                <TimingFields
+                  endDate={endDate}
+                  startDate={startDate}
+                  timingLabel={timingLabel}
+                  timingMode={timingMode}
+                  termsJson={termsJson}
+                  onEndDateChange={setEndDate}
+                  onStartDateChange={setStartDate}
+                  onTimingLabelChange={setTimingLabel}
+                  onTimingModeChange={setTimingMode}
+                  onTermsJsonChange={setTermsJson}
+                />
+                <EditorInput label="Location" value={locationRaw} onChange={setLocationRaw} />
+                <EditorInput label="Primary URL" value={primaryUrl} disabled={mode === 'edit'} onChange={setPrimaryUrl} />
+                {mode === 'add' ? (
+                  <>
+                    <EditorInput label="Source URL" value={sourceUrl} onChange={setSourceUrl} />
+                    <EditorInput label="Initial note" value={initialNote} onChange={setInitialNote} />
+                  </>
+                ) : null}
+                {mode === 'edit' ? (
+                  <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground" htmlFor="application-has-applied">
+                    <Checkbox
+                      aria-label="Has applied"
+                      checked={hasApplied}
+                      id="application-has-applied"
+                      onCheckedChange={(value) => setHasApplied(value === true)}
+                    />
+                    <span>Has applied</span>
+                  </Label>
+                ) : null}
+                {mode === 'edit' ? (
+                  <>
+                    <EditorInput label="Status note" value={statusNote} onChange={setStatusNote} />
+                    <EditorOptionalSelect
+                      label="Manual review kind"
+                      value={manualReviewKind}
+                      options={manualReviewKindOptions}
+                      onChange={(value) =>
+                        setManualReviewKind(value as ManualReviewKindSelection)
+                      }
+                    />
+                    <EditorInput label="Missing user info" value={missingUserInfo} onChange={setMissingUserInfo} />
+                    <EditorInput label="Blocker reason" value={blockerReason} onChange={setBlockerReason} />
+                    <EditorTextarea label="Application note" value={applicationNote} onChange={setApplicationNote} />
+                  </>
+                ) : null}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-border pt-4">
+                <Button type="button" variant="ghost" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button type="button" disabled={isSaving} onClick={saveApplication}>
+                  {isSaving ? 'Saving...' : 'Save application'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -400,23 +434,26 @@ function EditorOptionalSelect({
   options: readonly string[]
   value: string
 }) {
+  const controlId = fieldControlId('application-editor', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      <select
-        aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <NativeSelect
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">None</option>
+        <NativeSelectOption value="">None</NativeSelectOption>
         {options.map((option) => (
-          <option key={option} value={option}>
+          <NativeSelectOption key={option} value={option}>
             {formatEnumLabel(option)}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
-    </label>
+      </NativeSelect>
+    </Field>
   )
 }
 
@@ -429,16 +466,20 @@ function EditorTextarea({
   onChange: (value: string) => void
   value: string
 }) {
+  const controlId = fieldControlId('application-editor', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
-      {label}
-      <textarea
-        aria-label={label}
-        className="min-h-20 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Textarea
+        className="min-h-20 resize-y"
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Field>
   )
 }
 
@@ -453,17 +494,23 @@ function EditorInput({
   onChange: (value: string) => void
   value: string
 }) {
+  const controlId = fieldControlId('application-editor', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      <input
-        aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
+    <Field
+      className="grid gap-1 text-xs font-medium text-muted-foreground"
+      data-disabled={disabled ? true : undefined}
+    >
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Input
         disabled={disabled}
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Field>
   )
 }
 
@@ -480,23 +527,29 @@ function EditorSelect({
   options: readonly string[]
   value: string
 }) {
+  const controlId = fieldControlId('application-editor', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      <select
-        aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
+    <Field
+      className="grid gap-1 text-xs font-medium text-muted-foreground"
+      data-disabled={disabled ? true : undefined}
+    >
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <NativeSelect
         disabled={disabled}
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
         {options.map((option) => (
-          <option key={option} value={option}>
+          <NativeSelectOption key={option} value={option}>
             {formatEnumLabel(option)}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
-    </label>
+      </NativeSelect>
+    </Field>
   )
 }
 

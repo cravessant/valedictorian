@@ -1,12 +1,31 @@
 import { useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Sidebar,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@/components/ui/sidebar'
+import { typography, typographyClass } from '@/components/ui/typography'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
-import type { AppSettings, AppSettingsPatch } from './app-settings'
+import type { AppSettings, AppSettingsPatch, RuntimePreference } from './app-settings'
 import { SETTINGS_PANELS, type SettingsPanelId } from '../app/types'
 import { SettingsToggleRow } from '../app/AppChrome'
 import { ProfileSettingsPanel } from '../modules/profile/ProfileSettingsPanel'
@@ -145,56 +164,72 @@ export function SettingsSidebar({
     .filter((group) => group.items.length > 0)
 
   return (
-    <aside
+    <Sidebar
       aria-label="Settings navigation"
-      className={`absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-auto border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none ${
+      className={`absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none ${
         temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
       }`}
       role="complementary"
       onMouseLeave={onMouseLeave}
     >
-      <Button type="button" variant="ghost" className="mb-4 gap-2 px-2" onClick={onBack}>
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Back to app
-      </Button>
+      <ScrollArea className="min-h-0 flex-1">
+        <div>
+          <SidebarHeader className="mb-4 gap-0 p-0">
+            <Button type="button" variant="ghost" className="justify-start gap-2 px-2" onClick={onBack}>
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back to app
+            </Button>
+          </SidebarHeader>
 
-      <label className="relative block text-xs font-medium text-muted-foreground">
-        <Search className="pointer-events-none absolute left-3 top-8 h-4 w-4 text-muted-foreground" />
-        Search settings
-        <input
-          aria-label="Search settings"
-          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-9 text-sm text-foreground"
-          placeholder="Search settings..."
-          value={settingsSearch}
-          onChange={(event) => setSettingsSearch(event.target.value)}
-        />
-      </label>
+          <Label className="block text-xs font-medium text-muted-foreground" htmlFor="settings-search">
+            Search settings
+            <InputGroup className="mt-1">
+              <InputGroupInput
+                id="settings-search"
+                placeholder="Search settings..."
+                value={settingsSearch}
+                onChange={(event) => setSettingsSearch(event.target.value)}
+              />
+              <InputGroupAddon align="inline-start">
+                <Search className="h-4 w-4" aria-hidden="true" />
+              </InputGroupAddon>
+            </InputGroup>
+          </Label>
 
-      <nav className="mt-5 space-y-5" aria-label="Settings sections">
-        {visibleGroups.map((group) => (
-          <div key={group.group}>
-            <p className="mb-1 px-2 text-xs font-medium text-muted-foreground">{group.group}</p>
-            <div className="space-y-1">
-              {group.items.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${
-                    item.id === selectedPanel
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground'
-                  }`}
-                  onClick={() => onPanelChange(item.id)}
-                >
-                  {item.icon}
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </nav>
-    </aside>
+          <nav className="mt-5 space-y-5" aria-label="Settings sections">
+            {visibleGroups.map((group) => (
+              <SidebarGroup key={group.group} className="p-0">
+                <SidebarGroupLabel className="mb-1 h-auto px-2 py-0">
+                  {group.group}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {group.items.map((item) => (
+                      <SidebarMenuItem key={item.id}>
+                        <SidebarMenuButton
+                          type="button"
+                          isActive={item.id === selectedPanel}
+                          aria-current={item.id === selectedPanel ? 'page' : undefined}
+                          className={
+                            item.id === selectedPanel
+                              ? undefined
+                              : 'hover:bg-accent/70 hover:text-foreground'
+                          }
+                          onClick={() => onPanelChange(item.id)}
+                        >
+                          {item.icon}
+                          {item.label}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))}
+          </nav>
+        </div>
+      </ScrollArea>
+    </Sidebar>
   )
 }
 
@@ -221,17 +256,15 @@ export function SettingsPage({
 
   return (
     <main className={`h-full min-w-0 overflow-auto px-5 py-6 text-foreground md:h-[calc(100vh-3rem)] sm:px-8 lg:px-12 ${contentColumnClass}`}>
-      <div className="mx-auto max-w-4xl">
-        <h1 className="text-2xl font-semibold tracking-normal text-foreground">Settings</h1>
+      <div className="max-w-4xl">
+        <h1 className={typography.pageTitle}>Settings</h1>
         {restartRequired ? (
-          <Alert className="mt-4 bg-card">
-            <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-            <div className="pl-7">
-              <AlertTitle>Restart required</AlertTitle>
-              <AlertDescription>
-                Backend mode, API host, port, token, and remote URL changes apply next launch.
-              </AlertDescription>
-            </div>
+          <Alert className="mt-4">
+            <AlertCircle aria-hidden="true" />
+            <AlertTitle>Restart required</AlertTitle>
+            <AlertDescription>
+              Backend mode, API host, port, token, and remote URL changes apply next launch.
+            </AlertDescription>
           </Alert>
         ) : null}
 
@@ -271,6 +304,9 @@ export function SettingsPage({
           {selectedPanel === SETTINGS_PANELS.POLICY ? (
             <PolicySettingsPanel policyApi={policyApi} />
           ) : null}
+          {selectedPanel === SETTINGS_PANELS.ADVANCED ? (
+            <DeveloperSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
+          ) : null}
           {!isFunctionalSettingsPanel(selectedPanel) ? (
             <ComingLaterSettingsPanel label={selectedLabel} />
           ) : null}
@@ -290,39 +326,45 @@ function GeneralSettingsPanel({
   return (
     <section aria-labelledby="general-settings-title" className="space-y-7">
       <div>
-        <h2 id="general-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="general-settings-title" className={typography.sectionTitle}>
           General
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Choose how this app talks to job data and which controls stay visible.
         </p>
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-foreground">Backend mode</h3>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <h3 className={typography.panelTitle} id="backend-mode-heading">
+          Backend mode
+        </h3>
+        <RadioGroup
+          aria-labelledby="backend-mode-heading"
+          className="mt-3 grid gap-3 md:grid-cols-3"
+          value={settings.runtimeMode}
+          onValueChange={(value) =>
+            onSettingsPatch({ runtimeMode: value as RuntimePreference })
+          }
+        >
           <RuntimeModeOption
-            checked={settings.runtimeMode === 'local-desktop'}
             description="SQLite through Electron IPC, no local HTTP server."
             icon={<Monitor className="h-4 w-4" aria-hidden="true" />}
             label="Local desktop"
-            onChange={() => onSettingsPatch({ runtimeMode: 'local-desktop' })}
+            value="local-desktop"
           />
           <RuntimeModeOption
-            checked={settings.runtimeMode === 'local-shared'}
             description="SQLite plus the embedded HTTP API for Tailscale or CLI access."
             icon={<Server className="h-4 w-4" aria-hidden="true" />}
             label="Local shared"
-            onChange={() => onSettingsPatch({ runtimeMode: 'local-shared' })}
+            value="local-shared"
           />
           <RuntimeModeOption
-            checked={settings.runtimeMode === 'remote'}
             description="Use a hosted or remote HTTP API instead of local SQLite."
             icon={<Globe2 className="h-4 w-4" aria-hidden="true" />}
             label="Remote"
-            onChange={() => onSettingsPatch({ runtimeMode: 'remote' })}
+            value="remote"
           />
-        </div>
+        </RadioGroup>
       </div>
 
       <SettingsToggleRow
@@ -347,10 +389,10 @@ function ConfigurationSettingsPanel({
   return (
     <section aria-labelledby="configuration-settings-title" className="space-y-7">
       <div>
-        <h2 id="configuration-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="configuration-settings-title" className={typography.sectionTitle}>
           Configuration
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Configure remote and local API settings. These backend values apply after restart.
         </p>
       </div>
@@ -398,10 +440,10 @@ function AgentAccessSettingsPanel({
   return (
     <section aria-labelledby="agent-access-settings-title" className="space-y-7">
       <div>
-        <h2 id="agent-access-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="agent-access-settings-title" className={typography.sectionTitle}>
           Agent access
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Local CLI and future MCP access go through the same HTTP surface.
         </p>
       </div>
@@ -410,27 +452,27 @@ function AgentAccessSettingsPanel({
         <p className="text-sm font-medium text-foreground">
           Local API is available in local-shared mode.
         </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Current selection: <code>{settings.runtimeMode}</code>
+        <p className={typography.sectionDescription}>
+          Current selection: <code className={typography.inlineCode}>{settings.runtimeMode}</code>
         </p>
       </div>
 
       <div className="rounded-md border border-border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground">CLI examples</h3>
-        <pre className="mt-3 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
+        <h3 className={typography.panelTitle}>CLI examples</h3>
+        <pre className={typographyClass('codeBlock', 'mt-3')}>
           <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json workspaces list`}</code>
         </pre>
-        <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
+        <pre className={typographyClass('codeBlock', 'mt-2')}>
           <code>{`VALEDICTORIAN_API_URL=${apiBaseUrl} valedictorian-cli --json applications list --workspace ${workspaceSelector}`}</code>
         </pre>
-        <pre className="mt-2 whitespace-pre-wrap break-all rounded-md bg-background p-3 text-xs text-foreground">
+        <pre className={typographyClass('codeBlock', 'mt-2')}>
           <code>{`VALEDICTORIAN_API_TOKEN=<token> valedictorian-cli --json applications get <id> --workspace ${workspaceSelector}`}</code>
         </pre>
       </div>
 
       <div className="rounded-md border border-border bg-card p-4">
-        <h3 className="text-sm font-semibold text-foreground">Tailscale</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h3 className={typography.panelTitle}>Tailscale</h3>
+        <p className={typography.sectionDescription}>
           Use local shared mode, bind to the reachable host when needed, and keep the API token
           private.
         </p>
@@ -449,10 +491,10 @@ function DataSettingsPanel({
   return (
     <section aria-labelledby="data-settings-title" className="space-y-7">
       <div>
-        <h2 id="data-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="data-settings-title" className={typography.sectionTitle}>
           Data
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Workspace files and local database paths.
         </p>
       </div>
@@ -505,10 +547,10 @@ function AppearanceSettingsPanel({
   return (
     <section aria-labelledby="appearance-settings-title" className="space-y-7">
       <div>
-        <h2 id="appearance-settings-title" className="text-xl font-semibold text-foreground">
+        <h2 id="appearance-settings-title" className={typography.sectionTitle}>
           Appearance
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className={typography.sectionDescription}>
           Visual theming stays minimal for now; this section holds UI preferences.
         </p>
       </div>
@@ -524,12 +566,41 @@ function AppearanceSettingsPanel({
   )
 }
 
+function DeveloperSettingsPanel({
+  settings,
+  onSettingsPatch,
+}: {
+  settings: AppSettings
+  onSettingsPatch: (patch: AppSettingsPatch) => void
+}) {
+  return (
+    <section aria-labelledby="developer-settings-title" className="space-y-7">
+      <div>
+        <h2 id="developer-settings-title" className={typography.sectionTitle}>
+          Developer settings
+        </h2>
+        <p className={typography.sectionDescription}>
+          Reveal advanced diagnostic identifiers and connector run internals when troubleshooting.
+        </p>
+      </div>
+
+      <SettingsToggleRow
+        checked={settings.showDebugData}
+        description="Show raw workflow and application ids plus connector lifecycle diagnostics."
+        icon={<KeyRound className="h-4 w-4" aria-hidden="true" />}
+        label="Show debug data"
+        onChange={(checked) => onSettingsPatch({ showDebugData: checked })}
+      />
+    </section>
+  )
+}
+
 function ComingLaterSettingsPanel({ label }: { label: string }) {
   return (
     <section className="rounded-md border border-border bg-card p-5">
-      <h2 className="text-xl font-semibold text-foreground">{label}</h2>
+      <h2 className={typography.sectionTitle}>{label}</h2>
       <p className="mt-3 text-sm font-medium text-foreground">Coming later</p>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <p className={typography.sectionDescription}>
         This page is wired into navigation now so the settings layout can grow without changing the
         shell.
       </p>
@@ -538,34 +609,35 @@ function ComingLaterSettingsPanel({ label }: { label: string }) {
 }
 
 function RuntimeModeOption({
-  checked,
   description,
   icon,
   label,
-  onChange,
+  value,
 }: {
-  checked: boolean
   description: string
   icon: ReactNode
   label: string
-  onChange: () => void
+  value: RuntimePreference
 }) {
+  const controlId = `runtime-mode-${value}`
+
   return (
-    <label className="flex cursor-pointer gap-3 rounded-md border border-border bg-card p-3 text-sm text-foreground">
+    <Label
+      className="flex cursor-pointer gap-3 rounded-md border border-border bg-card p-3 text-sm text-foreground"
+      htmlFor={controlId}
+    >
       <span className="mt-0.5 text-muted-foreground">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block font-medium">{label}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
       </span>
-      <input
+      <RadioGroupItem
         aria-label={label}
-        checked={checked}
-        className="mt-1 h-4 w-4 accent-primary"
-        name="runtimeMode"
-        type="radio"
-        onChange={onChange}
+        className="mt-1"
+        id={controlId}
+        value={value}
       />
-    </label>
+    </Label>
   )
 }
 
@@ -578,6 +650,7 @@ function isFunctionalSettingsPanel(panel: SettingsPanelId) {
     panel === SETTINGS_PANELS.AGENT_ACCESS ||
     panel === SETTINGS_PANELS.APPEARANCE ||
     panel === SETTINGS_PANELS.POLICY ||
+    panel === SETTINGS_PANELS.ADVANCED ||
     panel === SETTINGS_PANELS.DATA
   )
 }

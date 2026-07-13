@@ -22,6 +22,8 @@ import {
   createSettingsApi,
   createWorkspaceApi,
   createWorkspaceSummary,
+  selectComboboxOption,
+  stubCmdkEnvironment,
 } from './App.test-helpers'
 import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
 import {
@@ -30,7 +32,7 @@ import {
 } from './settings/connector-schedule.helpers'
 
 beforeEach(() => {
-  HTMLElement.prototype.scrollIntoView = vi.fn()
+  stubCmdkEnvironment()
 })
 
 afterEach(() => {
@@ -320,9 +322,7 @@ describe('App connector schedules', () => {
     fireEvent.change(screen.getByLabelText('Preset'), {
       target: { value: 'interval-60' },
     })
-    fireEvent.change(screen.getByLabelText('Timezone'), {
-      target: { value: 'UTC' },
-    })
+    selectComboboxOption('Timezone', 'UTC')
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
     await waitFor(() => {
@@ -455,9 +455,7 @@ describe('App connector schedules', () => {
     fireEvent.change(screen.getByLabelText('Daily local time'), {
       target: { value: '14:30' },
     })
-    fireEvent.change(screen.getByLabelText('Timezone'), {
-      target: { value: 'America/New_York' },
-    })
+    selectComboboxOption('Timezone', 'America/New_York')
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
     await waitFor(() => {
@@ -479,9 +477,7 @@ describe('App connector schedules', () => {
     fireEvent.change(screen.getByLabelText('Weekly local time'), {
       target: { value: '08:15' },
     })
-    fireEvent.change(screen.getByLabelText('Timezone'), {
-      target: { value: 'Europe/London' },
-    })
+    selectComboboxOption('Timezone', 'Europe/London')
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
     await waitFor(() => {
@@ -594,6 +590,28 @@ describe('App connector schedules', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
+    const cancelDialog = await screen.findByRole('alertdialog', {
+      name: 'Remove automatic schedule?',
+    })
+    expect(scheduleApi.deleteSchedule).not.toHaveBeenCalled()
+    fireEvent.click(within(cancelDialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('alertdialog', { name: 'Remove automatic schedule?' }),
+      ).not.toBeInTheDocument()
+    })
+    expect(scheduleApi.deleteSchedule).not.toHaveBeenCalled()
+    expect(screen.getByText('Cadence: Every 30 minutes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
+    const confirmDialog = await screen.findByRole('alertdialog', {
+      name: 'Remove automatic schedule?',
+    })
+    expect(confirmDialog).toHaveAccessibleDescription(
+      'Saving Manual only permanently removes the persisted Jobright internslist schedule.',
+    )
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Remove schedule' }))
+
     await waitFor(() => {
       expect(scheduleApi.deleteSchedule).toHaveBeenCalledWith({
         connectorInstanceId: 'jobright-default',
@@ -601,6 +619,61 @@ describe('App connector schedules', () => {
       })
     })
     expect(await screen.findByText(/No automatic schedule is persisted/)).toBeInTheDocument()
+  })
+
+  it('disables schedule removal confirm while pending and keeps the alert open on error', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    const initial = createScheduleSummary({
+      revision: 'rev-pending',
+      cadence: { kind: 'interval', everyMinutes: 60 },
+    })
+    let rejectDelete: ((reason?: unknown) => void) | undefined
+    const scheduleApi = createAvailableScheduleApi({ initialSchedule: initial })
+    scheduleApi.deleteSchedule = vi.fn(
+      () =>
+        new Promise((_, reject) => {
+          rejectDelete = reject
+        }),
+    )
+    const workspace = createWorkspaceSummary({ id: 'workspace-schedule-manual-error' })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        connectorScheduleApi={scheduleApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+        workspaceApi={createWorkspaceApi(workspace)}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    openConnectorsOverview()
+    await authenticateJobrightInConnectors({ connectorsApi, profileApi })
+    expect(await screen.findByText('Cadence: Every hour')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Schedule mode'), {
+      target: { value: 'manual' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Remove automatic schedule?',
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove schedule' }))
+
+    await waitFor(() => {
+      expect(scheduleApi.deleteSchedule).toHaveBeenCalledTimes(1)
+    })
+    expect(within(dialog).getByRole('button', { name: 'Removing...' })).toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+
+    rejectDelete?.(new Error('Schedule revision conflict.'))
+
+    expect(await within(dialog).findByText(/Schedule revision conflict/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Remove schedule' })).toBeEnabled()
+    expect(screen.getByRole('alertdialog', { name: 'Remove automatic schedule?' })).toBeInTheDocument()
   })
 
   it('pauses and resumes using returned revisions and shows last schedule outcomes', async () => {
@@ -918,10 +991,12 @@ describe('App connector schedules', () => {
       await authenticateJobrightInConnectors({ connectorsApi, profileApi })
       await waitFor(() => expect(scheduleApi.getSchedule).toHaveBeenCalled())
 
-      const timezone = await screen.findByLabelText('Timezone')
-      expect(timezone).toHaveValue('US/Eastern')
-      expect(within(timezone).getByRole('option', { name: 'US/Eastern' })).toBeInTheDocument()
-      expect(within(timezone).queryByRole('option', { name: 'UTC' })).toBeInTheDocument()
+      const timezone = await screen.findByRole('combobox', { name: 'Timezone' })
+      expect(timezone).toHaveTextContent('US/Eastern')
+      fireEvent.click(timezone)
+      expect(screen.getByRole('option', { name: 'US/Eastern' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'UTC' })).toBeInTheDocument()
+      fireEvent.keyDown(timezone, { key: 'Escape' })
 
       fireEvent.change(screen.getByLabelText('Schedule mode'), {
         target: { value: 'custom-daily' },
@@ -929,7 +1004,7 @@ describe('App connector schedules', () => {
       fireEvent.change(screen.getByLabelText('Daily local time'), {
         target: { value: '10:30' },
       })
-      expect(screen.getByLabelText('Timezone')).toHaveValue('US/Eastern')
+      expect(screen.getByRole('combobox', { name: 'Timezone' })).toHaveTextContent('US/Eastern')
       fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
       await waitFor(() => expect(scheduleApi.upsertSchedule).toHaveBeenCalled())
@@ -940,7 +1015,7 @@ describe('App connector schedules', () => {
         cadence: { kind: 'daily', localTime: '10:30' },
         timezone: 'US/Eastern',
       })
-      expect(screen.getByLabelText('Timezone')).toHaveValue('US/Eastern')
+      expect(screen.getByRole('combobox', { name: 'Timezone' })).toHaveTextContent('US/Eastern')
     } finally {
       supportedValuesOf.mockRestore()
     }

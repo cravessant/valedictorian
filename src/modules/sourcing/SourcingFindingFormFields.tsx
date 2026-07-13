@@ -1,6 +1,13 @@
 import type { CreateSourcingFindingInput, UpdateSourcingFindingInput } from 'sparxie'
 import { formatEnumLabel } from '../../app/labels'
 
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
+import { fieldControlId } from '@/lib/field-control-id'
+import { cn } from '@/lib/utils'
+
 export function FindingInput({
   disabled,
   label,
@@ -12,39 +19,51 @@ export function FindingInput({
   onChange: (value: string) => void
   value: string
 }) {
+  const controlId = fieldControlId('sourcing-finding', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      <input
-        aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground disabled:opacity-60"
+    <Field
+      className="grid gap-1 text-xs font-medium text-muted-foreground"
+      data-disabled={disabled ? true : undefined}
+    >
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Input
         disabled={disabled}
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Field>
   )
 }
 
 export function FindingTextarea({
+  className,
   label,
   onChange,
   value,
 }: {
+  className?: string
   label: string
   onChange: (value: string) => void
   value: string
 }) {
+  const controlId = fieldControlId('sourcing-finding', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
-      {label}
-      <textarea
-        aria-label={label}
-        className="min-h-20 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Textarea
+        className={cn('min-h-20', className)}
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Field>
   )
 }
 
@@ -124,21 +143,24 @@ export function FindingSelect({
   options: readonly string[]
   value: string
 }) {
+  const controlId = fieldControlId('sourcing-finding', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      <select
-        aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <NativeSelect
+        id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
         {options.map((option) => (
-          <option key={option} value={option}>
+          <NativeSelectOption key={option} value={option}>
             {formatEnumLabel(option)}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
-    </label>
+      </NativeSelect>
+    </Field>
   )
 }

@@ -1,10 +1,22 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ModalShell } from '@/components/ui/modal-shell'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { fieldControlId } from '@/lib/field-control-id'
 import { AlertCircle, X } from 'lucide-react'
 import type { ScoreInput, ScoreRecord, VerificationReceiptPayload } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
@@ -64,215 +76,218 @@ function ApplicationDetailModal({
 
   return (
     <>
-      <div
-        aria-label="Application detail"
-        aria-modal="true"
-        className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm"
-        role="dialog"
+      <Dialog
+        open
+        onOpenChange={(open) => {
+          if (!open) onClose()
+        }}
       >
-        <section className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-md border border-border bg-card shadow-2xl">
-        <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Application detail
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-foreground">{application.companyName}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{application.roleTitle}</p>
-          </div>
-          <Button type="button" variant="ghost" size="icon" aria-label="Close application detail" onClick={onClose}>
-            <X className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </header>
-        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
-          <div className="mb-4 flex flex-wrap gap-2">
-            <Badge variant="secondary">{formatEnumLabel(application.status)}</Badge>
-            {'currentPriorityScore' in application ? (
-              <Badge variant={application.currentPriorityScore === null ? 'outline' : 'default'}>
-                {application.currentPriorityScore === null ? 'Unscored' : `${application.currentPriorityScore}/10`}
-              </Badge>
-            ) : null}
-            <Badge variant="outline">{attempts.length} attempts</Badge>
-            {onRecordScore ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => setScoreEditorOpen(true)}>
-                Record score
-              </Button>
-            ) : null}
-          </div>
-          {isDetailLoading ? (
-            <div role="status" aria-label="Application detail loading" className="mb-4">
-              <Skeleton className="h-8 w-2/3" />
+        <DialogContent
+          showCloseButton={false}
+          className="flex max-h-[88vh] w-full max-w-4xl translate-x-[-50%] translate-y-[-50%] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl"
+        >
+          <DialogHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b border-border px-5 py-4 text-left">
+            <div className="min-w-0">
+              <DialogTitle className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
+                Application detail
+              </DialogTitle>
+              <p className="mt-1 text-lg font-semibold text-foreground">{application.companyName}</p>
+              <DialogDescription className="mt-1">{application.roleTitle}</DialogDescription>
             </div>
-          ) : null}
-          {detailError ? <InlineLoadError message={detailError} /> : null}
-          <section className="mb-4 rounded-md border border-border px-4 py-3">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Overview
-            </p>
-            <dl className="mt-2 grid gap-3 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-xs text-muted-foreground">Source</dt>
-                <dd className="font-medium text-foreground">{application.sourceName}</dd>
-              </div>
-              {'location' in application ? (
-                <div>
-                  <dt className="text-xs text-muted-foreground">Location</dt>
-                  <dd className="font-medium text-foreground">{application.location}</dd>
-                </div>
+            <Button type="button" variant="ghost" size="icon" aria-label="Close application detail" onClick={onClose}>
+              <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </DialogHeader>
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="px-5 py-4">
+            <div className="mb-4 flex flex-wrap gap-2">
+              <Badge variant="secondary">{formatEnumLabel(application.status)}</Badge>
+              {'currentPriorityScore' in application ? (
+                <Badge variant={application.currentPriorityScore === null ? 'outline' : 'default'}>
+                  {application.currentPriorityScore === null ? 'Unscored' : `${application.currentPriorityScore}/10`}
+                </Badge>
               ) : null}
-              {timingLabel ? (
-                <div>
-                  <dt className="text-xs text-muted-foreground">Timing</dt>
-                  <dd className="font-medium text-foreground">{timingLabel}</dd>
-                </div>
-              ) : null}
-            </dl>
-          </section>
-          <section className="mb-4 rounded-md border border-border px-4 py-3">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Source context
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{application.sourceName}</Badge>
-              {application.primaryLink ? (
-                <ExternalLinkButton className="px-2" href={application.primaryLink.url}>
-                  {application.primaryLink.label}
-                </ExternalLinkButton>
-              ) : (
-                <span className="text-sm text-muted-foreground">No primary link</span>
-              )}
-            </div>
-          </section>
-
-          <section className="mb-4 rounded-md border border-border px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-medium uppercase text-muted-foreground">
-                Links
-              </p>
-              {onCreateLink ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => setLinkEditorOpen(true)}>
-                  Add link
+              <Badge variant="outline">{attempts.length} attempts</Badge>
+              {onRecordScore ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => setScoreEditorOpen(true)}>
+                  Record score
                 </Button>
               ) : null}
             </div>
-            {isLinksLoading ? (
-              <div role="status" aria-label="Application links loading" className="mt-2 space-y-2">
-                <Skeleton className="h-8 w-48" />
-              </div>
-            ) : linksError ? (
-              <InlineLoadError message={linksError} />
-            ) : links.length === 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground">No links recorded.</p>
-            ) : (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {links.map((link) => (
-                  <div key={link.id} className="flex items-center gap-1">
-                    <ExternalLinkButton className="px-2" href={link.url}>
-                      {link.label}
-                    </ExternalLinkButton>
-                    {onUpdateLink ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Edit link ${link.label}`}
-                        onClick={() => setEditingLink(link)}
-                      >
-                        Edit
-                      </Button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section className="mb-4 rounded-md border border-border px-4 py-3">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Events
-            </p>
-            {isEventsLoading ? (
-              <div role="status" aria-label="Application events loading" className="mt-2 space-y-2">
-                <Skeleton className="h-8 w-full" />
+            {isDetailLoading ? (
+              <div role="status" aria-label="Application detail loading" className="mb-4">
                 <Skeleton className="h-8 w-2/3" />
               </div>
-            ) : eventsError ? (
-              <InlineLoadError message={eventsError} />
-            ) : events.length === 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground">No events recorded.</p>
-            ) : (
-              <ol className="mt-2 divide-y divide-border">
-                {events.map((event) => (
-                  <li key={event.id} className="grid gap-1 py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{formatEnumLabel(event.type)}</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {formatTimestamp(event.createdAt)}
-                      </span>
+            ) : null}
+            {detailError ? <InlineLoadError message={detailError} /> : null}
+            <section className="mb-4 rounded-md border border-border px-4 py-3">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Overview
+              </p>
+              <dl className="mt-2 grid gap-3 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Source</dt>
+                  <dd className="font-medium text-foreground">{application.sourceName}</dd>
+                </div>
+                {'location' in application ? (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Location</dt>
+                    <dd className="font-medium text-foreground">{application.location}</dd>
+                  </div>
+                ) : null}
+                {timingLabel ? (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Timing</dt>
+                    <dd className="font-medium text-foreground">{timingLabel}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </section>
+            <section className="mb-4 rounded-md border border-border px-4 py-3">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Source context
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">{application.sourceName}</Badge>
+                {application.primaryLink ? (
+                  <ExternalLinkButton className="px-2" href={application.primaryLink.url}>
+                    {application.primaryLink.label}
+                  </ExternalLinkButton>
+                ) : (
+                  <span className="text-sm text-muted-foreground">No primary link</span>
+                )}
+              </div>
+            </section>
+
+            <section className="mb-4 rounded-md border border-border px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-medium uppercase text-muted-foreground">
+                  Links
+                </p>
+                {onCreateLink ? (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setLinkEditorOpen(true)}>
+                    Add link
+                  </Button>
+                ) : null}
+              </div>
+              {isLinksLoading ? (
+                <div role="status" aria-label="Application links loading" className="mt-2 space-y-2">
+                  <Skeleton className="h-8 w-48" />
+                </div>
+              ) : linksError ? (
+                <InlineLoadError message={linksError} />
+              ) : links.length === 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">No links recorded.</p>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {links.map((link) => (
+                    <div key={link.id} className="flex items-center gap-1">
+                      <ExternalLinkButton className="px-2" href={link.url}>
+                        {link.label}
+                      </ExternalLinkButton>
+                      {onUpdateLink ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Edit link ${link.label}`}
+                          onClick={() => setEditingLink(link)}
+                        >
+                          Edit
+                        </Button>
+                      ) : null}
                     </div>
-                    <p className="text-sm text-foreground">{event.message}</p>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+                  ))}
+                </div>
+              )}
+            </section>
 
-          <section className="rounded-md border border-border px-4 py-3">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Attempts
-            </p>
+            <section className="mb-4 rounded-md border border-border px-4 py-3">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Events
+              </p>
+              {isEventsLoading ? (
+                <div role="status" aria-label="Application events loading" className="mt-2 space-y-2">
+                  <Skeleton className="h-8 w-full" />
+                  <Skeleton className="h-8 w-2/3" />
+                </div>
+              ) : eventsError ? (
+                <InlineLoadError message={eventsError} />
+              ) : events.length === 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">No events recorded.</p>
+              ) : (
+                <ol className="mt-2 divide-y divide-border">
+                  {events.map((event) => (
+                    <li key={event.id} className="grid gap-1 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{formatEnumLabel(event.type)}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {formatTimestamp(event.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-foreground">{event.message}</p>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
 
-          {isAttemptsLoading ? (
-            <div role="status" aria-label="Attempts loading" className="space-y-2">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-3/4" />
-            </div>
-          ) : null}
+            <section className="rounded-md border border-border px-4 py-3">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Attempts
+              </p>
 
-          {attemptsError ? (
-            <Alert variant="destructive" className="bg-card">
-              <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-              <div className="pl-7">
+            {isAttemptsLoading ? (
+              <div role="status" aria-label="Attempts loading" className="space-y-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-3/4" />
+              </div>
+            ) : null}
+
+            {attemptsError ? (
+              <Alert variant="destructive">
+                <AlertCircle aria-hidden="true" />
                 <AlertTitle>Load failed</AlertTitle>
                 <AlertDescription>{attemptsError}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            {!isAttemptsLoading && !attemptsError && attempts.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">No attempts recorded.</p>
+            ) : null}
+
+            {!isAttemptsLoading && !attemptsError && attempts.length > 0 ? (
+              <div className="mt-2 space-y-4">
+                {attempts.map((attempt) => (
+                  <section key={attempt.id} className="rounded-md border border-border">
+                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {attempt.summary ?? `Attempt ${attempt.id}`}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatTimestamp(attempt.startedAt)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge>{formatEnumLabel(attempt.status)}</Badge>
+                        {attempt.outcome ? <Badge variant="secondary">{formatEnumLabel(attempt.outcome)}</Badge> : null}
+                      </div>
+                    </div>
+                    <ol className="divide-y divide-border">
+                      {attempt.steps.map((step) => (
+                        <AttemptStepItem key={step.id} step={step} />
+                      ))}
+                    </ol>
+                  </section>
+                ))}
               </div>
-            </Alert>
-          ) : null}
-
-          {!isAttemptsLoading && !attemptsError && attempts.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">No attempts recorded.</p>
-          ) : null}
-
-          {!isAttemptsLoading && !attemptsError && attempts.length > 0 ? (
-            <div className="mt-2 space-y-4">
-              {attempts.map((attempt) => (
-                <section key={attempt.id} className="rounded-md border border-border">
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">
-                        {attempt.summary ?? `Attempt ${attempt.id}`}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatTimestamp(attempt.startedAt)}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge>{formatEnumLabel(attempt.status)}</Badge>
-                      {attempt.outcome ? <Badge variant="secondary">{formatEnumLabel(attempt.outcome)}</Badge> : null}
-                    </div>
-                  </div>
-                  <ol className="divide-y divide-border">
-                    {attempt.steps.map((step) => (
-                      <AttemptStepItem key={step.id} step={step} />
-                    ))}
-                  </ol>
-                </section>
-              ))}
+            ) : null}
+            </section>
             </div>
-          ) : null}
-          </section>
-        </div>
-        </section>
-      </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
       {linkEditorOpen && onCreateLink ? (
         <ApplicationLinkEditorModal
           applicationId={application.id}
@@ -353,7 +368,7 @@ function ApplicationLinkEditorModal({
   }
 
   return (
-    <ModalShell title={title} onClose={onClose}>
+    <FormDialog title={title} onClose={onClose}>
       <div className="grid gap-4">
         {error ? <InlineLoadError message={error} /> : null}
         <div className="grid gap-3 sm:grid-cols-2">
@@ -362,16 +377,15 @@ function ApplicationLinkEditorModal({
           <div className="sm:col-span-2">
             <CompactModalInput label="Link URL" value={url} onChange={setUrl} />
           </div>
-          <label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
-            <input
+          <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground" htmlFor="application-link-primary">
+            <Checkbox
               aria-label="Primary link"
               checked={isPrimary}
-              className="h-4 w-4 accent-primary"
-              type="checkbox"
-              onChange={(event) => setIsPrimary(event.target.checked)}
+              id="application-link-primary"
+              onCheckedChange={(value) => setIsPrimary(value === true)}
             />
             <span>Primary link</span>
-          </label>
+          </Label>
         </div>
         <div className="flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -382,7 +396,7 @@ function ApplicationLinkEditorModal({
           </Button>
         </div>
       </div>
-    </ModalShell>
+    </FormDialog>
   )
 }
 
@@ -424,7 +438,7 @@ function ScoreEditorModal({
   }
 
   return (
-    <ModalShell title="Record application score" onClose={onClose}>
+    <FormDialog title="Record application score" onClose={onClose}>
       <div className="grid gap-4">
         {error ? <InlineLoadError message={error} /> : null}
         <div className="grid gap-3 sm:grid-cols-2">
@@ -443,7 +457,42 @@ function ScoreEditorModal({
           </Button>
         </div>
       </div>
-    </ModalShell>
+    </FormDialog>
+  )
+}
+
+function FormDialog({
+  children,
+  onClose,
+  title,
+}: {
+  children: ReactNode
+  onClose: () => void
+  title: string
+}) {
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[88vh] w-full max-w-3xl translate-x-[-50%] translate-y-[-50%] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b border-border px-5 py-4 text-left">
+          <DialogTitle>{title}</DialogTitle>
+          <Button type="button" variant="ghost" size="icon" aria-label={`Close ${title}`} onClick={onClose}>
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </DialogHeader>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="px-5 py-4">{children}</div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -458,17 +507,20 @@ function CompactModalInput({
   type?: string
   value: string
 }) {
+  const controlId = fieldControlId('application-detail', label)
+
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-      {label}
-      <input
-        aria-label={label}
-        className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+    <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+      <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={controlId}>
+        {label}
+      </FieldLabel>
+      <Input
+        id={controlId}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Field>
   )
 }
 
@@ -605,12 +657,10 @@ function formatApplicationTiming(application: ApplicationDetail | ApplicationDet
 
 function InlineLoadError({ message }: { message: string }) {
   return (
-    <Alert variant="destructive" className="mt-2 bg-card">
-      <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-      <div className="pl-7">
-        <AlertTitle>Load failed</AlertTitle>
-        <AlertDescription>{message}</AlertDescription>
-      </div>
+    <Alert variant="destructive" className="mt-2">
+      <AlertCircle aria-hidden="true" />
+      <AlertTitle>Load failed</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
     </Alert>
   )
 }

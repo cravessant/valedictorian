@@ -1,12 +1,29 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
+import {
+  Pagination,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { AlertCircle, ExternalLink, Pencil } from 'lucide-react'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { typography, typographyClass } from '@/components/ui/typography'
+import { AlertCircle, ExternalLink, Inbox, Pencil } from 'lucide-react'
 import { actionQueueBuckets, type ActionQueueBucket, type ActionQueueListItem, type ActionQueueListResult } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
 import { formatEnumLabel } from '../../app/labels'
+
+const ACTION_BUCKET_ALL = 'all'
 
 interface ActionQueuePageProps {
   actionBucket: ActionQueueBucket | undefined
@@ -42,10 +59,10 @@ function ActionQueuePage({
       <section className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-4">
         <header className="flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+            <p className={typography.pageEyebrow}>
               Job automation
             </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-foreground">
+            <h1 className={typographyClass('pageTitle', 'mt-1')}>
               Action Queue
             </h1>
           </div>
@@ -54,28 +71,31 @@ function ActionQueuePage({
           </Badge>
         </header>
 
-        <section aria-label="Action Buckets" className="rounded-md border border-border bg-card p-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={actionBucket === undefined ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onActionBucketChange(undefined)}
-            >
+        <section className="rounded-md border border-border bg-card p-4">
+          <ToggleGroup
+            type="single"
+            aria-label="Action Buckets"
+            variant="outline"
+            size="sm"
+            spacing={2}
+            className="w-full max-w-full flex-wrap justify-start"
+            value={actionBucket ?? ACTION_BUCKET_ALL}
+            onValueChange={(value) => {
+              if (!value) return
+              onActionBucketChange(
+                value === ACTION_BUCKET_ALL ? undefined : (value as ActionQueueBucket),
+              )
+            }}
+          >
+            <ToggleGroupItem value={ACTION_BUCKET_ALL}>
               All {sumActionBucketCounts(result)}
-            </Button>
+            </ToggleGroupItem>
             {actionQueueBuckets.map((availableActionBucket) => (
-              <Button
-                key={availableActionBucket}
-                type="button"
-                variant={actionBucket === availableActionBucket ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => onActionBucketChange(availableActionBucket)}
-              >
+              <ToggleGroupItem key={availableActionBucket} value={availableActionBucket}>
                 {actionBucketLabel(availableActionBucket)} {result.actionBucketCounts[availableActionBucket]}
-              </Button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         </section>
 
         {isLoading ? (
@@ -93,12 +113,10 @@ function ActionQueuePage({
         ) : null}
 
         {error ? (
-          <Alert variant="destructive" className="bg-card">
-            <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-            <div className="pl-7">
-              <AlertTitle>Load failed</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </div>
+          <Alert variant="destructive">
+            <AlertCircle aria-hidden="true" />
+            <AlertTitle>Load failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
 
@@ -108,28 +126,24 @@ function ActionQueuePage({
               <p className="text-sm font-medium text-foreground">
                 {pageStart}-{pageEnd} of {result.total}
               </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Previous action queue page"
-                  disabled={result.offset === 0}
-                  onClick={onPreviousPage}
-                >
-                  Previous
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Next action queue page"
-                  disabled={!result.hasMore}
-                  onClick={onNextPage}
-                >
-                  Next
-                </Button>
-              </div>
+              <Pagination aria-label="Action Queue pagination" className="mx-0 w-auto">
+                <ButtonGroup>
+                  <PaginationPrevious
+                    aria-label="Previous action queue page"
+                    disabled={result.offset === 0}
+                    onClick={onPreviousPage}
+                  >
+                    Previous
+                  </PaginationPrevious>
+                  <PaginationNext
+                    aria-label="Next action queue page"
+                    disabled={!result.hasMore}
+                    onClick={onNextPage}
+                  >
+                    Next
+                  </PaginationNext>
+                </ButtonGroup>
+              </Pagination>
             </div>
             <Table aria-label="Action Queue" className="min-w-[960px] table-fixed">
               <TableHeader>
@@ -156,9 +170,20 @@ function ActionQueuePage({
             </Table>
           </section>
         ) : !isLoading && !error ? (
-          <section className="rounded-md border border-border bg-card p-6 text-sm text-muted-foreground">
-            No action queue items match the current bucket.
-          </section>
+          <Empty
+            aria-label="Empty action queue"
+            className="min-h-[11.25rem] flex-none gap-4 rounded-md border border-solid border-border bg-card p-6 md:min-h-[13.5rem] md:max-h-60 md:p-8"
+          >
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Inbox aria-hidden="true" />
+              </EmptyMedia>
+              <EmptyTitle>
+                <h2>No action queue items</h2>
+              </EmptyTitle>
+              <EmptyDescription>No items match the current bucket.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : null}
       </section>
     </main>

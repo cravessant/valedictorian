@@ -6,6 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
@@ -17,6 +18,12 @@ import {
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 })
 
 afterEach(() => {
@@ -147,8 +154,8 @@ describe('compact navigation', () => {
     const dialog = screen.getByRole('dialog', { name: 'Settings' })
 
     expect(within(dialog).getByText('Valedictorian')).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Use remote backend')).not.toBeChecked()
-    expect(within(dialog).getByLabelText('Local API sharing')).not.toBeChecked()
+    expect(within(dialog).getByRole('switch', { name: 'Use remote backend' })).not.toBeChecked()
+    expect(within(dialog).getByRole('switch', { name: 'Local API sharing' })).not.toBeChecked()
     expect(within(dialog).queryByLabelText('Show advanced filters')).not.toBeInTheDocument()
     expect(within(dialog).getByLabelText('Remote API URL')).toBeDisabled()
     expect(within(dialog).getByRole('button', { name: 'Open settings' })).toBeInTheDocument()
@@ -156,6 +163,7 @@ describe('compact navigation', () => {
   })
 
   it('toggles settings from the compact popover', async () => {
+    const user = userEvent.setup()
     const settingsApi = createSettingsApi()
 
     render(
@@ -170,22 +178,28 @@ describe('compact navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Settings' })
+    const localSharing = within(dialog).getByRole('switch', { name: 'Local API sharing' })
+    const remoteBackend = within(dialog).getByRole('switch', { name: 'Use remote backend' })
 
-    fireEvent.click(within(dialog).getByLabelText('Local API sharing'))
+    await user.click(localSharing)
 
     await waitFor(() => {
       expect(settingsApi.update).toHaveBeenCalledWith({ runtimeMode: 'local-shared' })
     })
+    expect(localSharing).toBeChecked()
     expect(within(dialog).getByText('local-shared')).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByLabelText('Use remote backend'))
+    remoteBackend.focus()
+    await user.keyboard(' ')
 
     await waitFor(() => {
       expect(settingsApi.update).toHaveBeenCalledWith({ runtimeMode: 'remote' })
     })
+    expect(remoteBackend).toBeChecked()
     expect(within(dialog).getByLabelText('Remote API URL')).not.toBeDisabled()
     expect(within(dialog).getByText('remote')).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Local API sharing')).not.toBeChecked()
+    expect(localSharing).not.toBeChecked()
+    expect(localSharing).toBeDisabled()
 
     fireEvent.change(within(dialog).getByLabelText('Remote API URL'), {
       target: { value: 'https://valedictorian.test' },
@@ -214,6 +228,35 @@ describe('compact navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close settings' }))
 
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
+  })
+
+  it('shows a delayed tooltip for close-settings on focus and dismisses it with Escape', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    const close = screen.getByRole('button', { name: 'Close settings' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    close.focus()
+    expect(close).toHaveFocus()
+    expect(await screen.findByRole('tooltip', {}, { timeout: 1500 })).toHaveTextContent(
+      'Close settings',
+    )
+
+    fireEvent.keyDown(close, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close settings' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
+
+    fireEvent.click(close)
     expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
   })
 
@@ -272,7 +315,30 @@ describe('compact navigation', () => {
     expect(within(chrome).getByText('Settings')).toBeInTheDocument()
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'settings')
     expect(screen.getByRole('complementary', { name: 'Settings navigation' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Back to app' })).toBeInTheDocument()
+    const backToApp = screen.getByRole('button', { name: 'Back to app' })
+    expect(backToApp).toBeInTheDocument()
+    expect(backToApp).toHaveClass('justify-start')
+    expect(backToApp).not.toHaveClass('justify-center')
+  })
+
+  it('left-anchors the capped settings content column beside the sidebar', async () => {
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    expect(navigation).toHaveClass('left-0', 'w-[280px]')
+    expect(navigation).not.toHaveClass('mx-auto')
+
+    const heading = screen.getByRole('heading', { name: 'Settings', level: 1 })
+    const contentColumn = heading.parentElement
+    expect(contentColumn).toHaveClass('max-w-4xl')
+    expect(contentColumn).not.toHaveClass('mx-auto')
   })
 
   it('renders grouped settings navigation and filters the sidebar search', async () => {
@@ -292,7 +358,22 @@ describe('compact navigation', () => {
     expect(within(navigation).getByText('Automation')).toBeInTheDocument()
     expect(within(navigation).getByText('Advanced')).toBeInTheDocument()
 
-    fireEvent.change(within(navigation).getByLabelText('Search settings'), {
+    const generalNav = within(navigation).getByRole('button', { name: 'General' })
+    expect(generalNav).toHaveClass('justify-start')
+    expect(generalNav).not.toHaveClass('justify-center')
+
+    const search = within(navigation).getByRole('textbox', { name: 'Search settings' })
+    expect(search).toHaveAttribute('id', 'settings-search')
+    expect(search).toHaveAttribute('data-slot', 'input-group-control')
+    expect(search).not.toHaveAttribute('aria-label')
+
+    const searchGroup = search.closest('[data-slot="input-group"]')
+    expect(searchGroup).toBeTruthy()
+    const searchAddon = searchGroup!.querySelector('[data-slot="input-group-addon"]')
+    expect(searchAddon).toHaveAttribute('data-align', 'inline-start')
+    expect(search.compareDocumentPosition(searchAddon!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.change(search, {
       target: { value: 'agent' },
     })
 

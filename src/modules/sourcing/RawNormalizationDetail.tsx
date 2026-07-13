@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ModalShell } from '@/components/ui/modal-shell'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { X } from 'lucide-react'
 import type {
   JsonObject,
   RawSourceNormalizationResult,
@@ -75,20 +83,43 @@ export function RawNormalizationDetail({
     return () => { cancelled = true }
   }, [api, summary])
 
+  const title = `Raw record ${sanitizeDisplayText(summary.id)}`
+
   return (
-    <ModalShell title={`Raw record ${sanitizeDisplayText(summary.id)}`} onClose={onClose}>
-      {!record && !error ? <p role="status">Loading raw record detail...</p> : null}
-      {error ? <p role="alert">Raw record detail could not be loaded.</p> : null}
-      {record ? <RawRecordDetail record={record} /> : null}
-      {record && projection && detailIssue ? <RawDetailConflict issue={detailIssue} /> : null}
-      {record && projection && !detailIssue ? (
-        <RawNormalizationOutcomes
-          normalization={normalization}
-          projection={projection}
-          onOpenFinding={onOpenFinding}
-        />
-      ) : null}
-    </ModalShell>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent
+        showCloseButton={false}
+        className="flex max-h-[88vh] w-full max-w-3xl translate-x-[-50%] translate-y-[-50%] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        aria-describedby={undefined}
+      >
+        <DialogHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b border-border px-5 py-4 text-left">
+          <DialogTitle>{title}</DialogTitle>
+          <Button type="button" variant="ghost" size="icon" aria-label={`Close ${title}`} onClick={onClose}>
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </DialogHeader>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-4 px-5 py-4">
+            {!record && !error ? <p role="status">Loading raw record detail...</p> : null}
+            {error ? <p role="alert">Raw record detail could not be loaded.</p> : null}
+            {record ? <RawRecordDetail record={record} /> : null}
+            {record && projection && detailIssue ? <RawDetailConflict issue={detailIssue} /> : null}
+            {record && projection && !detailIssue ? (
+              <RawNormalizationOutcomes
+                normalization={normalization}
+                projection={projection}
+                onOpenFinding={onOpenFinding}
+              />
+            ) : null}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   )
 }
 

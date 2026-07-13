@@ -1,4 +1,18 @@
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
+import { Field, FieldLabel } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import type {
   ConnectorScheduleSummary,
   ConnectorSchedulingCapability,
@@ -64,6 +78,25 @@ export function ConnectorScheduleControls({
   const dailyTimeId = useId()
   const weeklyDayId = useId()
   const weeklyTimeId = useId()
+  const [manualRemoveOpen, setManualRemoveOpen] = useState(false)
+  const [manualRemoveError, setManualRemoveError] = useState<string | null>(null)
+  const wouldRemovePersistedSchedule = draft.mode === 'manual' && canonical !== null
+
+  useEffect(() => {
+    if (!manualRemoveOpen || isSaving) {
+      return
+    }
+
+    if (statusTone === 'success' && !canonical) {
+      setManualRemoveOpen(false)
+      setManualRemoveError(null)
+      return
+    }
+
+    if (statusTone === 'error' && statusMessage) {
+      setManualRemoveError(statusMessage)
+    }
+  }, [manualRemoveOpen, isSaving, statusTone, statusMessage, canonical])
 
   if (capabilityLoadError) {
     return (
@@ -148,6 +181,7 @@ export function ConnectorScheduleControls({
 
   const presets = supportedSchedulePresets(capability)
   const timezones = listIanaTimeZones(draft.timezone)
+  const timezoneOptions = timezones.map((timezone) => ({ label: timezone, value: timezone }))
   const scheduleStateLabel = !connectorEnabled
     ? 'Connector disabled'
     : canonical?.state === 'paused'
@@ -166,10 +200,14 @@ export function ConnectorScheduleControls({
         <p className="text-xs font-medium text-muted-foreground">{scheduleStateLabel}</p>
       </div>
 
-      <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={modeId}>
-        Schedule mode
-        <select
-          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+      <Field
+        className="grid gap-1 text-xs font-medium text-muted-foreground"
+        data-disabled={isSaving ? true : undefined}
+      >
+        <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={modeId}>
+          Schedule mode
+        </FieldLabel>
+        <NativeSelect
           disabled={isSaving}
           id={modeId}
           value={draft.mode}
@@ -181,43 +219,50 @@ export function ConnectorScheduleControls({
             })
           }}
         >
-          <option value="manual">Manual only</option>
-          {presets.length > 0 ? <option value="preset">Common preset</option> : null}
+          <NativeSelectOption value="manual">Manual only</NativeSelectOption>
+          {presets.length > 0 ? <NativeSelectOption value="preset">Common preset</NativeSelectOption> : null}
           {capability.supportedCadences.includes('interval') ? (
-            <option value="custom-interval">Custom interval</option>
+            <NativeSelectOption value="custom-interval">Custom interval</NativeSelectOption>
           ) : null}
           {capability.supportedCadences.includes('daily') ? (
-            <option value="custom-daily">Custom daily</option>
+            <NativeSelectOption value="custom-daily">Custom daily</NativeSelectOption>
           ) : null}
           {capability.supportedCadences.includes('weekly') ? (
-            <option value="custom-weekly">Custom weekly</option>
+            <NativeSelectOption value="custom-weekly">Custom weekly</NativeSelectOption>
           ) : null}
-        </select>
-      </label>
+        </NativeSelect>
+      </Field>
 
       {draft.mode === 'preset' ? (
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={presetId}>
-          Preset
-          <select
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+        <Field
+          className="grid gap-1 text-xs font-medium text-muted-foreground"
+          data-disabled={isSaving ? true : undefined}
+        >
+          <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={presetId}>
+            Preset
+          </FieldLabel>
+          <NativeSelect
             disabled={isSaving}
             id={presetId}
             value={draft.presetId ?? ''}
             onChange={(event) => onDraftChange({ presetId: event.target.value || null })}
           >
             {presets.map((preset) => (
-              <option key={preset.id} value={preset.id}>{preset.label}</option>
+              <NativeSelectOption key={preset.id} value={preset.id}>{preset.label}</NativeSelectOption>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </Field>
       ) : null}
 
       {draft.mode === 'custom-interval' ? (
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={intervalId}>
-          Every minutes
-          <input
-            aria-label="Every minutes"
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+        <Field
+          className="grid gap-1 text-xs font-medium text-muted-foreground"
+          data-disabled={isSaving ? true : undefined}
+        >
+          <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={intervalId}>
+            Every minutes
+          </FieldLabel>
+          <Input
             disabled={isSaving}
             id={intervalId}
             inputMode="numeric"
@@ -227,15 +272,18 @@ export function ConnectorScheduleControls({
             value={draft.everyMinutes}
             onChange={(event) => onDraftChange({ everyMinutes: event.target.value })}
           />
-        </label>
+        </Field>
       ) : null}
 
       {draft.mode === 'custom-daily' ? (
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={dailyTimeId}>
-          Daily local time
-          <input
-            aria-label="Daily local time"
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+        <Field
+          className="grid gap-1 text-xs font-medium text-muted-foreground"
+          data-disabled={isSaving ? true : undefined}
+        >
+          <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={dailyTimeId}>
+            Daily local time
+          </FieldLabel>
+          <Input
             disabled={isSaving}
             id={dailyTimeId}
             pattern="[0-2][0-9]:[0-5][0-9]"
@@ -243,31 +291,37 @@ export function ConnectorScheduleControls({
             value={draft.localTime}
             onChange={(event) => onDraftChange({ localTime: event.target.value })}
           />
-        </label>
+        </Field>
       ) : null}
 
       {draft.mode === 'custom-weekly' ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyDayId}>
-            Weekday
-            <select
-              aria-label="Weekday"
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+          <Field
+            className="grid gap-1 text-xs font-medium text-muted-foreground"
+            data-disabled={isSaving ? true : undefined}
+          >
+            <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={weeklyDayId}>
+              Weekday
+            </FieldLabel>
+            <NativeSelect
               disabled={isSaving}
               id={weeklyDayId}
               value={draft.dayOfWeek}
               onChange={(event) => onDraftChange({ dayOfWeek: event.target.value })}
             >
               {WEEKDAY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <NativeSelectOption key={option.value} value={option.value}>{option.label}</NativeSelectOption>
               ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
-            Weekly local time
-            <input
-              aria-label="Weekly local time"
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+            </NativeSelect>
+          </Field>
+          <Field
+            className="grid gap-1 text-xs font-medium text-muted-foreground"
+            data-disabled={isSaving ? true : undefined}
+          >
+            <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
+              Weekly local time
+            </FieldLabel>
+            <Input
               disabled={isSaving}
               id={weeklyTimeId}
               pattern="[0-2][0-9]:[0-5][0-9]"
@@ -275,26 +329,29 @@ export function ConnectorScheduleControls({
               value={draft.localTime}
               onChange={(event) => onDraftChange({ localTime: event.target.value })}
             />
-          </label>
+          </Field>
         </div>
       ) : null}
 
       {draft.mode !== 'manual' ? (
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
-          Timezone
-          <select
-            aria-label="Timezone"
-            className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+        <Field
+          className="grid gap-1 text-xs font-medium text-muted-foreground"
+          data-disabled={isSaving ? true : undefined}
+        >
+          <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
+            Timezone
+          </FieldLabel>
+          <Combobox
             disabled={isSaving}
+            emptyText="No timezone found."
             id={timezoneId}
+            options={timezoneOptions}
+            placeholder="Select timezone"
+            searchPlaceholder="Search timezone..."
             value={draft.timezone}
-            onChange={(event) => onDraftChange({ timezone: event.target.value })}
-          >
-            {timezones.map((timezone) => (
-              <option key={timezone} value={timezone}>{timezone}</option>
-            ))}
-          </select>
-        </label>
+            onValueChange={(timezone) => onDraftChange({ timezone })}
+          />
+        </Field>
       ) : null}
 
       {canonical ? (
@@ -328,43 +385,95 @@ export function ConnectorScheduleControls({
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <button
-          className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-50"
+        <Button
+          variant="outline"
+          size="sm"
           disabled={isSaving || !isDirty}
           type="button"
-          onClick={onSave}
+          onClick={() => {
+            if (wouldRemovePersistedSchedule) {
+              setManualRemoveError(null)
+              setManualRemoveOpen(true)
+              return
+            }
+            onSave()
+          }}
         >
           {isSaving ? 'Saving...' : 'Save schedule'}
-        </button>
-        <button
-          className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-50"
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           disabled={isSaving || !isDirty}
           type="button"
           onClick={onDiscard}
         >
           Discard
-        </button>
+        </Button>
         {canonical?.state === 'enabled' ? (
-          <button
-            className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-50"
+          <Button
+            variant="outline"
+            size="sm"
             disabled={isSaving || isDirty}
             type="button"
             onClick={onPause}
           >
             Pause schedule
-          </button>
+          </Button>
         ) : null}
         {canonical?.state === 'paused' ? (
-          <button
-            className="inline-flex h-8 items-center rounded-md border border-border bg-background px-3 text-xs font-medium text-foreground disabled:opacity-50"
+          <Button
+            variant="outline"
+            size="sm"
             disabled={isSaving || isDirty}
             type="button"
             onClick={onResume}
           >
             Resume schedule
-          </button>
+          </Button>
         ) : null}
       </div>
+
+      <AlertDialog
+        open={manualRemoveOpen}
+        onOpenChange={(open) => {
+          if (isSaving) {
+            return
+          }
+          setManualRemoveOpen(open)
+          if (!open) {
+            setManualRemoveError(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove automatic schedule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Saving Manual only permanently removes the persisted ${connectorDisplayName} schedule.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {manualRemoveError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {manualRemoveError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSaving}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isSaving}
+              onClick={() => {
+                setManualRemoveError(null)
+                onSave()
+              }}
+            >
+              {isSaving ? 'Removing...' : 'Remove schedule'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div
         aria-atomic="true"
