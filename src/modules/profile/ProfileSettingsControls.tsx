@@ -6,6 +6,7 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { fieldControlId } from '@/lib/field-control-id'
 import {
   type ProfileAnswer,
@@ -334,37 +335,43 @@ export function BooleanPreferenceControl({
   value: boolean | null
   onChange: (value: boolean) => void
 }) {
+  const yesId = fieldControlId('boolean-preference', `${label} Yes`)
+  const noId = fieldControlId('boolean-preference', `${label} No`)
+  const groupLabelId = fieldControlId('boolean-preference', label)
+  const groupValue = value === true ? 'true' : value === false ? 'false' : ''
+
   return (
-    <div
-      aria-label={label}
-      className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center"
-      role="group"
-    >
-      <div className="font-medium">{label}</div>
-      <div className="flex flex-wrap gap-2">
-        <Label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3">
-          <input
+    <div className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
+      <div className="font-medium" id={groupLabelId}>{label}</div>
+      <RadioGroup
+        aria-labelledby={groupLabelId}
+        className="flex flex-wrap gap-2"
+        value={groupValue}
+        onValueChange={(next) => onChange(next === 'true')}
+      >
+        <Label
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3"
+          htmlFor={yesId}
+        >
+          <RadioGroupItem
             aria-label={`${label} Yes`}
-            checked={value === true}
-            className="h-4 w-4 accent-primary"
-            name={label}
-            type="radio"
-            onChange={() => onChange(true)}
+            id={yesId}
+            value="true"
           />
           <span>Yes</span>
         </Label>
-        <Label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3">
-          <input
+        <Label
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3"
+          htmlFor={noId}
+        >
+          <RadioGroupItem
             aria-label={`${label} No`}
-            checked={value === false}
-            className="h-4 w-4 accent-primary"
-            name={label}
-            type="radio"
-            onChange={() => onChange(false)}
+            id={noId}
+            value="false"
           />
           <span>No</span>
         </Label>
-      </div>
+      </RadioGroup>
     </div>
   )
 }

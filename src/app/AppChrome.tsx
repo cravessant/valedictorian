@@ -273,7 +273,7 @@ function AppSidebar({
 }
 
 function applicationNavClass(active: boolean) {
-  return `flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium ${
+  return `flex h-9 w-full items-center justify-start gap-2 rounded-md px-2 text-left text-sm font-medium ${
     active
       ? 'bg-accent text-accent-foreground'
       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'

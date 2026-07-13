@@ -272,7 +272,10 @@ describe('compact navigation', () => {
     expect(within(chrome).getByText('Settings')).toBeInTheDocument()
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'settings')
     expect(screen.getByRole('complementary', { name: 'Settings navigation' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Back to app' })).toBeInTheDocument()
+    const backToApp = screen.getByRole('button', { name: 'Back to app' })
+    expect(backToApp).toBeInTheDocument()
+    expect(backToApp).toHaveClass('justify-start')
+    expect(backToApp).not.toHaveClass('justify-center')
   })
 
   it('renders grouped settings navigation and filters the sidebar search', async () => {
@@ -291,6 +294,10 @@ describe('compact navigation', () => {
     expect(within(navigation).getByText('Integrations')).toBeInTheDocument()
     expect(within(navigation).getByText('Automation')).toBeInTheDocument()
     expect(within(navigation).getByText('Advanced')).toBeInTheDocument()
+
+    const generalNav = within(navigation).getByRole('button', { name: 'General' })
+    expect(generalNav).toHaveClass('justify-start')
+    expect(generalNav).not.toHaveClass('justify-center')
 
     fireEvent.change(within(navigation).getByLabelText('Search settings'), {
       target: { value: 'agent' },

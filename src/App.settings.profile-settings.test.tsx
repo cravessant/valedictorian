@@ -538,8 +538,12 @@ describe('profile settings', () => {
     expect(await screen.findByRole('heading', { name: 'Profile' })).toBeInTheDocument()
 
     const workAuthorization = screen.getByRole('region', { name: 'Work Authorization' })
-    const rows = Array.from(
-      workAuthorization.querySelectorAll(':scope > div > label, :scope > div > [role="group"]'),
+    const rowContainer = workAuthorization.querySelector(':scope > div')
+    expect(rowContainer).not.toBeNull()
+    const rows = Array.from(rowContainer?.children ?? []).filter(
+      (row) =>
+        row.matches('[data-slot="field"]') ||
+        row.querySelector('[role="radiogroup"]') !== null,
     )
     const expectedRowClasses = [
       'grid',
@@ -557,8 +561,8 @@ describe('profile settings', () => {
       expect(row).toHaveClass(...expectedRowClasses)
     }
     expect(workAuthorization.querySelector('fieldset')).not.toBeInTheDocument()
-    expect(within(workAuthorization).getByRole('group', { name: 'Willing to relocate' })).toBeInTheDocument()
-    expect(within(workAuthorization).getByRole('group', { name: 'Willing to travel' })).toBeInTheDocument()
+    expect(within(workAuthorization).getByRole('radiogroup', { name: 'Willing to relocate' })).toBeInTheDocument()
+    expect(within(workAuthorization).getByRole('radiogroup', { name: 'Willing to travel' })).toBeInTheDocument()
   })
 
 })

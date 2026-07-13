@@ -86,6 +86,10 @@ describe('navigation hierarchy', () => {
     expect(within(sidebar).getByRole('button', { name: 'Applications' })).toBeInTheDocument()
     expect(within(sidebar).getByRole('button', { name: 'Settings' })).toBeInTheDocument()
 
+    const applicationsNav = within(sidebar).getByRole('button', { name: 'Applications' })
+    expect(applicationsNav).toHaveClass('justify-start')
+    expect(applicationsNav).not.toHaveClass('justify-center')
+
     fireEvent.click(within(sidebar).getByRole('button', { name: 'Settings' }))
 
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
@@ -164,7 +168,10 @@ describe('navigation hierarchy', () => {
       within(screen.getByRole('banner', { name: 'App chrome' })).getByText('Connectors'),
     ).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Connectors' })).toBeInTheDocument()
-    expect(within(appNavigation).getByRole('button', { name: 'Overview' })).toHaveAttribute(
+    const overviewNav = within(appNavigation).getByRole('button', { name: 'Overview' })
+    expect(overviewNav).toHaveClass('justify-start')
+    expect(overviewNav).not.toHaveClass('justify-center')
+    expect(overviewNav).toHaveAttribute(
       'aria-current',
       'page',
     )

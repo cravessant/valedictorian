@@ -3,12 +3,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
-import type { AppSettings, AppSettingsPatch } from './app-settings'
+import type { AppSettings, AppSettingsPatch, RuntimePreference } from './app-settings'
 import { SETTINGS_PANELS, type SettingsPanelId } from '../app/types'
 import { SettingsToggleRow } from '../app/AppChrome'
 import { ProfileSettingsPanel } from '../modules/profile/ProfileSettingsPanel'
@@ -155,7 +156,7 @@ export function SettingsSidebar({
       role="complementary"
       onMouseLeave={onMouseLeave}
     >
-      <Button type="button" variant="ghost" className="mb-4 gap-2 px-2" onClick={onBack}>
+      <Button type="button" variant="ghost" className="mb-4 justify-start gap-2 px-2" onClick={onBack}>
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
         Back to app
       </Button>
@@ -182,7 +183,7 @@ export function SettingsSidebar({
                   key={item.id}
                   type="button"
                   variant="ghost"
-                  className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${
+                  className={`flex h-9 w-full items-center justify-start gap-2 rounded-md px-2 text-left text-sm ${
                     item.id === selectedPanel
                       ? 'bg-accent text-accent-foreground'
                       : 'text-muted-foreground hover:bg-accent/70 hover:text-foreground'
@@ -300,30 +301,36 @@ function GeneralSettingsPanel({
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-foreground">Backend mode</h3>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <h3 className="text-sm font-semibold text-foreground" id="backend-mode-heading">
+          Backend mode
+        </h3>
+        <RadioGroup
+          aria-labelledby="backend-mode-heading"
+          className="mt-3 grid gap-3 md:grid-cols-3"
+          value={settings.runtimeMode}
+          onValueChange={(value) =>
+            onSettingsPatch({ runtimeMode: value as RuntimePreference })
+          }
+        >
           <RuntimeModeOption
-            checked={settings.runtimeMode === 'local-desktop'}
             description="SQLite through Electron IPC, no local HTTP server."
             icon={<Monitor className="h-4 w-4" aria-hidden="true" />}
             label="Local desktop"
-            onChange={() => onSettingsPatch({ runtimeMode: 'local-desktop' })}
+            value="local-desktop"
           />
           <RuntimeModeOption
-            checked={settings.runtimeMode === 'local-shared'}
             description="SQLite plus the embedded HTTP API for Tailscale or CLI access."
             icon={<Server className="h-4 w-4" aria-hidden="true" />}
             label="Local shared"
-            onChange={() => onSettingsPatch({ runtimeMode: 'local-shared' })}
+            value="local-shared"
           />
           <RuntimeModeOption
-            checked={settings.runtimeMode === 'remote'}
             description="Use a hosted or remote HTTP API instead of local SQLite."
             icon={<Globe2 className="h-4 w-4" aria-hidden="true" />}
             label="Remote"
-            onChange={() => onSettingsPatch({ runtimeMode: 'remote' })}
+            value="remote"
           />
-        </div>
+        </RadioGroup>
       </div>
 
       <SettingsToggleRow
@@ -539,32 +546,33 @@ function ComingLaterSettingsPanel({ label }: { label: string }) {
 }
 
 function RuntimeModeOption({
-  checked,
   description,
   icon,
   label,
-  onChange,
+  value,
 }: {
-  checked: boolean
   description: string
   icon: ReactNode
   label: string
-  onChange: () => void
+  value: RuntimePreference
 }) {
+  const controlId = `runtime-mode-${value}`
+
   return (
-    <Label className="flex cursor-pointer gap-3 rounded-md border border-border bg-card p-3 text-sm text-foreground">
+    <Label
+      className="flex cursor-pointer gap-3 rounded-md border border-border bg-card p-3 text-sm text-foreground"
+      htmlFor={controlId}
+    >
       <span className="mt-0.5 text-muted-foreground">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block font-medium">{label}</span>
         <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
       </span>
-      <input
+      <RadioGroupItem
         aria-label={label}
-        checked={checked}
-        className="mt-1 h-4 w-4 accent-primary"
-        name="runtimeMode"
-        type="radio"
-        onChange={onChange}
+        className="mt-1"
+        id={controlId}
+        value={value}
       />
     </Label>
   )
