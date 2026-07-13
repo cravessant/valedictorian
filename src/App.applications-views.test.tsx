@@ -716,6 +716,67 @@ describe('App', () => {
     })
   })
 
+  it('pages through action queue results in a labeled button group', async () => {
+    const actionQueueQueries: ActionQueueListQuery[] = []
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        actionQueueLoader={(query) => {
+          actionQueueQueries.push(query)
+          return Promise.resolve({
+            ...createActionQueueResult([createActionQueueItem()]),
+            total: 80,
+            offset: query.offset ?? 0,
+            hasMore: (query.offset ?? 0) + 50 < 80,
+          })
+        }}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
+    await screen.findByRole('table', { name: 'Action Queue' })
+
+    const pagination = screen.getByRole('group', { name: 'Action Queue pagination' })
+    expect(pagination).toHaveAttribute('data-slot', 'button-group')
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous action queue page' }),
+    ).toBeDisabled()
+    expect(
+      within(pagination).getByRole('button', { name: 'Next action queue page' }),
+    ).toBeEnabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Next action queue page' }))
+
+    await waitFor(() => {
+      expect(actionQueueQueries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
+    })
+
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous action queue page' }),
+    ).toBeEnabled()
+    expect(
+      within(pagination).getByRole('button', { name: 'Next action queue page' }),
+    ).toBeDisabled()
+
+    fireEvent.click(
+      within(pagination).getByRole('button', { name: 'Previous action queue page' }),
+    )
+
+    await waitFor(() => {
+      expect(actionQueueQueries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
+    })
+
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous action queue page' }),
+    ).toBeDisabled()
+    expect(
+      within(pagination).getByRole('button', { name: 'Next action queue page' }),
+    ).toBeEnabled()
+  })
+
   it('renders connector status from the configured loader', async () => {
     const connectorStatusLoader = vi.fn(async () => createConnectorStatusResult())
 

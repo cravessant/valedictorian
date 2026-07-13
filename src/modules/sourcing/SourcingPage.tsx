@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -254,7 +255,7 @@ function SourcingPage({
               <p className="text-sm font-medium text-foreground">
                 {pageStart}-{pageEnd} of {result.total}
               </p>
-              <div className="flex items-center gap-2">
+              <ButtonGroup aria-label="Sourcing pagination">
                 <Button
                   type="button"
                   variant="outline"
@@ -275,7 +276,7 @@ function SourcingPage({
                 >
                   Next
                 </Button>
-              </div>
+              </ButtonGroup>
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <Table aria-label="Sourcing findings" className="min-w-[1100px]">

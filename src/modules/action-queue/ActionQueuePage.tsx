@@ -1,6 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AlertCircle, ExternalLink, Pencil } from 'lucide-react'
@@ -106,7 +107,7 @@ function ActionQueuePage({
               <p className="text-sm font-medium text-foreground">
                 {pageStart}-{pageEnd} of {result.total}
               </p>
-              <div className="flex items-center gap-2">
+              <ButtonGroup aria-label="Action Queue pagination">
                 <Button
                   type="button"
                   variant="outline"
@@ -127,7 +128,7 @@ function ActionQueuePage({
                 >
                   Next
                 </Button>
-              </div>
+              </ButtonGroup>
             </div>
             <Table aria-label="Action Queue" className="min-w-[960px] table-fixed">
               <TableHeader>

@@ -561,17 +561,83 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    const pagination = screen.getByRole('group', { name: 'Application pagination' })
+    expect(pagination).toHaveAttribute('data-slot', 'button-group')
+    expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeEnabled()
+    expect(within(pagination).queryByRole('button', { name: 'Columns' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Columns' })).toBeInTheDocument()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Next page' }))
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }))
+    expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeEnabled()
+    expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeDisabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous page' }))
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
     })
+
+    expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeEnabled()
+  })
+
+  it('pages through sourcing results in a labeled button group', async () => {
+    const queries: SourcingFindingsListInput[] = []
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        sourcingLoader={(query) => {
+          queries.push(query)
+          return Promise.resolve({
+            ...createSourcingResult([createSourcingFinding()]),
+            total: 80,
+            offset: query.offset ?? 0,
+            hasMore: (query.offset ?? 0) + 50 < 80,
+          })
+        }}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
+    await screen.findByRole('table', { name: 'Sourcing findings' })
+
+    const pagination = screen.getByRole('group', { name: 'Sourcing pagination' })
+    expect(pagination).toHaveAttribute('data-slot', 'button-group')
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+    ).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeEnabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Next sourcing page' }))
+
+    await waitFor(() => {
+      expect(queries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
+    })
+
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+    ).toBeEnabled()
+    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeDisabled()
+
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous sourcing page' }))
+
+    await waitFor(() => {
+      expect(queries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
+    })
+
+    expect(
+      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+    ).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeEnabled()
   })
 
   it('reloads rows when sortable table headers are clicked', async () => {

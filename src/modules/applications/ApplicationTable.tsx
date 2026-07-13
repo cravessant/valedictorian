@@ -12,6 +12,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ButtonGroup } from '@/components/ui/button-group'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import {
@@ -398,26 +399,28 @@ function ApplicationTable({
               </div>
             ) : null}
           </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Previous page"
-            disabled={result.offset === 0}
-            onClick={onPreviousPage}
-          >
-            Previous
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label="Next page"
-            disabled={!result.hasMore}
-            onClick={onNextPage}
-          >
-            Next
-          </Button>
+          <ButtonGroup aria-label="Application pagination">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label="Previous page"
+              disabled={result.offset === 0}
+              onClick={onPreviousPage}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-label="Next page"
+              disabled={!result.hasMore}
+              onClick={onNextPage}
+            >
+              Next
+            </Button>
+          </ButtonGroup>
         </div>
       </div>
 
