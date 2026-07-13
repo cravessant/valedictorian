@@ -1,4 +1,14 @@
+/* eslint-disable max-lines -- destructive profile workflows remain colocated with their existing state machine */
 import { useEffect, useState } from 'react'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/use-toast'
@@ -61,6 +71,13 @@ type ProfileSaveStatus = {
   message: string
   scope: ProfileSaveScope
 } | null
+type PendingDestructiveRemoval = {
+  confirmLabel: string
+  description: string
+  kind: 'education' | 'answer' | 'secret'
+  targetId: string
+  title: string
+} | null
 
 function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi }) {
   const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
@@ -78,7 +95,15 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   const [secretDraft, setSecretDraft] = useState(secretDraftDefaults)
   const [secretSummaries, setSecretSummaries] = useState<ProfileSecretSummary[]>([])
   const [saveStatus, setSaveStatus] = useState<ProfileSaveStatus>(null)
+  const [pendingRemoval, setPendingRemoval] = useState<PendingDestructiveRemoval>(null)
+  const [removalError, setRemovalError] = useState<string | null>(null)
   const { toast } = useToast()
+  const isRemoving =
+    saveStatus?.kind === 'saving' &&
+    pendingRemoval !== null &&
+    ((pendingRemoval.kind === 'education' && saveStatus.scope === 'education') ||
+      (pendingRemoval.kind === 'answer' && saveStatus.scope === 'answer') ||
+      (pendingRemoval.kind === 'secret' && saveStatus.scope === 'secret'))
 
   useEffect(() => {
     let active = true
@@ -240,18 +265,120 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     setShowEducationEditor(true)
   }
 
+  function requestRemoveEducation(id: string) {
+    const education = profile.education.find((item) => item.id === id)
+    if (!education) {
+      return
+    }
+
+    setRemovalError(null)
+    setPendingRemoval({
+      confirmLabel: 'Remove education',
+      description: `This permanently removes ${education.school} from your profile.`,
+      kind: 'education',
+      targetId: id,
+      title: `Remove education ${education.school}?`,
+    })
+  }
+
+  function requestRemoveAnswer(key: string) {
+    const answer = profile.answers.find((item) => item.key === key)
+    if (!answer) {
+      return
+    }
+
+    setRemovalError(null)
+    setPendingRemoval({
+      confirmLabel: 'Remove answer',
+      description: `This permanently removes “${answer.label}” from reusable answers.`,
+      kind: 'answer',
+      targetId: key,
+      title: `Remove answer ${answer.label}?`,
+    })
+  }
+
+  function requestRemoveSecret(key: string) {
+    const secret = secretSummaries.find((item) => item.key === key)
+    if (!secret) {
+      return
+    }
+
+    setRemovalError(null)
+    setPendingRemoval({
+      confirmLabel: 'Remove secure value',
+      description: `This permanently deletes “${secret.label}” from local secure storage.`,
+      kind: 'secret',
+      targetId: key,
+      title: `Remove secure value ${secret.label}?`,
+    })
+  }
+
   function removeEducation(id: string) {
     const nextEducation = profile.education.filter((item) => item.id !== id)
 
     setProfile((current) => ({ ...current, education: nextEducation }))
     runProfileAction({
       errorPrefix: 'Could not remove education',
-      onSuccess: setProfile,
+      onSuccess: (value) => {
+        setProfile(value)
+        setPendingRemoval(null)
+        setRemovalError(null)
+      },
       pendingMessage: 'Removing education...',
       scope: 'education',
       successMessage: 'Education removed.',
       task: () => profileApi.update(buildProfilePatch(profile.answers, nextEducation)),
     })
+  }
+
+  function removeAnswer(key: string) {
+    const nextAnswers = profile.answers.filter((answer) => answer.key !== key)
+
+    setProfile((current) => ({ ...current, answers: nextAnswers }))
+    runProfileAction({
+      errorPrefix: 'Could not remove answer',
+      onSuccess: (value) => {
+        setProfile(value)
+        setPendingRemoval(null)
+        setRemovalError(null)
+      },
+      pendingMessage: 'Removing answer...',
+      scope: 'answer',
+      successMessage: 'Answer removed.',
+      task: () => profileApi.update(buildProfilePatch(nextAnswers)),
+    })
+  }
+
+  function removeSecret(key: string) {
+    runProfileAction({
+      errorPrefix: 'Could not remove secure value',
+      onSuccess: () => {
+        setSecretSummaries((current) => current.filter((secret) => secret.key !== key))
+        setPendingRemoval(null)
+        setRemovalError(null)
+      },
+      pendingMessage: 'Removing secure value...',
+      scope: 'secret',
+      successMessage: 'Secure value removed.',
+      task: () => profileApi.secrets.delete(key),
+    })
+  }
+
+  function confirmPendingRemoval() {
+    if (!pendingRemoval) {
+      return
+    }
+
+    setRemovalError(null)
+    if (pendingRemoval.kind === 'education') {
+      removeEducation(pendingRemoval.targetId)
+      return
+    }
+    if (pendingRemoval.kind === 'answer') {
+      removeAnswer(pendingRemoval.targetId)
+      return
+    }
+    removeSecret(pendingRemoval.targetId)
   }
 
   function savePrivateIdentifiers() {
@@ -338,20 +465,6 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     setShowAnswerEditor(true)
   }
 
-  function removeAnswer(key: string) {
-    const nextAnswers = profile.answers.filter((answer) => answer.key !== key)
-
-    setProfile((current) => ({ ...current, answers: nextAnswers }))
-    runProfileAction({
-      errorPrefix: 'Could not remove answer',
-      onSuccess: setProfile,
-      pendingMessage: 'Removing answer...',
-      scope: 'answer',
-      successMessage: 'Answer removed.',
-      task: () => profileApi.update(buildProfilePatch(nextAnswers)),
-    })
-  }
-
   function saveSecret() {
     runProfileAction({
       errorPrefix: 'Could not save secure value',
@@ -390,19 +503,6 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     setShowSecretEditor(true)
   }
 
-  function removeSecret(key: string) {
-    runProfileAction({
-      errorPrefix: 'Could not remove secure value',
-      onSuccess: () => {
-        setSecretSummaries((current) => current.filter((secret) => secret.key !== key))
-      },
-      pendingMessage: 'Removing secure value...',
-      scope: 'secret',
-      successMessage: 'Secure value removed.',
-      task: () => profileApi.secrets.delete(key),
-    })
-  }
-
   function runProfileAction<T>({
     errorPrefix,
     onSuccess,
@@ -435,6 +535,9 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
           message,
           scope,
         })
+        if (pendingRemoval) {
+          setRemovalError(message)
+        }
         toast({
           description: message,
           title: 'Profile update failed',
@@ -561,7 +664,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                       key={education.id}
                       education={education}
                       onEdit={openEditEducation}
-                      onRemove={removeEducation}
+                      onRemove={requestRemoveEducation}
                     />
                   ))}
                   {profile.education.length === 0 && !showEducationEditor ? (
@@ -725,7 +828,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                       key={answer.key}
                       answer={answer}
                       onEdit={openEditAnswer}
-                      onRemove={removeAnswer}
+                      onRemove={requestRemoveAnswer}
                     />
                   ))}
                   {profile.answers.length === 0 && !showAnswerEditor ? (
@@ -776,7 +879,12 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                         >
                           Edit
                         </Button>
-                        <Button type="button" variant="ghost" onClick={() => removeSecret(secret.key)}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          aria-label={`Remove secure value ${secret.label}`}
+                          onClick={() => requestRemoveSecret(secret.key)}
+                        >
                           Remove
                         </Button>
                       </td>
@@ -1026,6 +1134,44 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
           ) : null}
         </>
       )}
+
+      <AlertDialog
+        open={pendingRemoval !== null}
+        onOpenChange={(open) => {
+          if (isRemoving) {
+            return
+          }
+          if (!open) {
+            setPendingRemoval(null)
+            setRemovalError(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingRemoval?.title ?? 'Remove item?'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingRemoval?.description ?? 'This permanently removes the selected item.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {removalError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {removalError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isRemoving}
+              onClick={confirmPendingRemoval}
+            >
+              {isRemoving ? 'Removing...' : (pendingRemoval?.confirmLabel ?? 'Remove')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }

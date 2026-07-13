@@ -192,7 +192,7 @@ describe('policy settings', () => {
     expect(manualReviewSaveButton).toBeDisabled()
   })
 
-  it('resets policy defaults and clears pending section saves', async () => {
+  it('resets policy defaults only after alert confirmation and clears pending section saves', async () => {
     const policyApi = createPolicyApi()
 
     render(
@@ -219,6 +219,22 @@ describe('policy settings', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset policy' }))
 
+    const cancelDialog = await screen.findByRole('alertdialog', { name: 'Reset policy?' })
+    expect(policyApi.config.reset).not.toHaveBeenCalled()
+    expect(cancelDialog).toHaveAccessibleDescription(
+      'This restores default policy buckets, gates, and sourcing windows.',
+    )
+    fireEvent.click(within(cancelDialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog', { name: 'Reset policy?' })).not.toBeInTheDocument()
+    })
+    expect(policyApi.config.reset).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Apply cutoff')).toHaveValue(9)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset policy' }))
+    const confirmDialog = await screen.findByRole('alertdialog', { name: 'Reset policy?' })
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Reset policy' }))
+
     await waitFor(() => {
       expect(policyApi.config.reset).toHaveBeenCalledTimes(1)
     })
@@ -229,6 +245,45 @@ describe('policy settings', () => {
       }),
     ).toBeDisabled()
     expect(await screen.findByText('Policy reset.')).toBeInTheDocument()
+  })
+
+  it('keeps the policy reset alert open with an error and disables confirm while pending', async () => {
+    const policyApi = createPolicyApi()
+    let rejectReset: ((reason?: unknown) => void) | undefined
+    policyApi.config.reset = vi.fn(
+      () =>
+        new Promise((_, reject) => {
+          rejectReset = reject
+        }),
+    )
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        policyApi={policyApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Policy' }))
+    expect(await screen.findByRole('heading', { name: 'Policy' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset policy' }))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Reset policy?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reset policy' }))
+
+    await waitFor(() => {
+      expect(policyApi.config.reset).toHaveBeenCalledTimes(1)
+    })
+    expect(within(dialog).getByRole('button', { name: 'Resetting...' })).toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+
+    rejectReset?.(new Error('Policy store unavailable.'))
+
+    expect(await within(dialog).findByText('Policy store unavailable.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Reset policy' })).toBeEnabled()
+    expect(screen.getByRole('alertdialog', { name: 'Reset policy?' })).toBeInTheDocument()
   })
 
 })

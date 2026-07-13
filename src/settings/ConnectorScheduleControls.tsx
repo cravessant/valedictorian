@@ -1,4 +1,13 @@
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { Field, FieldLabel } from '@/components/ui/field'
@@ -69,6 +78,25 @@ export function ConnectorScheduleControls({
   const dailyTimeId = useId()
   const weeklyDayId = useId()
   const weeklyTimeId = useId()
+  const [manualRemoveOpen, setManualRemoveOpen] = useState(false)
+  const [manualRemoveError, setManualRemoveError] = useState<string | null>(null)
+  const wouldRemovePersistedSchedule = draft.mode === 'manual' && canonical !== null
+
+  useEffect(() => {
+    if (!manualRemoveOpen || isSaving) {
+      return
+    }
+
+    if (statusTone === 'success' && !canonical) {
+      setManualRemoveOpen(false)
+      setManualRemoveError(null)
+      return
+    }
+
+    if (statusTone === 'error' && statusMessage) {
+      setManualRemoveError(statusMessage)
+    }
+  }, [manualRemoveOpen, isSaving, statusTone, statusMessage, canonical])
 
   if (capabilityLoadError) {
     return (
@@ -362,7 +390,14 @@ export function ConnectorScheduleControls({
           size="sm"
           disabled={isSaving || !isDirty}
           type="button"
-          onClick={onSave}
+          onClick={() => {
+            if (wouldRemovePersistedSchedule) {
+              setManualRemoveError(null)
+              setManualRemoveOpen(true)
+              return
+            }
+            onSave()
+          }}
         >
           {isSaving ? 'Saving...' : 'Save schedule'}
         </Button>
@@ -398,6 +433,47 @@ export function ConnectorScheduleControls({
           </Button>
         ) : null}
       </div>
+
+      <AlertDialog
+        open={manualRemoveOpen}
+        onOpenChange={(open) => {
+          if (isSaving) {
+            return
+          }
+          setManualRemoveOpen(open)
+          if (!open) {
+            setManualRemoveError(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove automatic schedule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Saving Manual only permanently removes the persisted ${connectorDisplayName} schedule.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {manualRemoveError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {manualRemoveError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSaving}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isSaving}
+              onClick={() => {
+                setManualRemoveError(null)
+                onSave()
+              }}
+            >
+              {isSaving ? 'Removing...' : 'Remove schedule'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div
         aria-atomic="true"

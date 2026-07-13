@@ -333,7 +333,12 @@ export function ProfileAnswerRow({
         >
           Edit
         </Button>
-        <Button type="button" variant="ghost" onClick={() => onRemove(answer.key)}>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={`Remove answer ${answer.label}`}
+          onClick={() => onRemove(answer.key)}
+        >
           Remove
         </Button>
       </td>
@@ -376,7 +381,12 @@ export function ProfileEducationRow({
         >
           Edit
         </Button>
-        <Button type="button" variant="ghost" onClick={() => onRemove(education.id)}>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={`Remove education ${education.school}`}
+          onClick={() => onRemove(education.id)}
+        >
           Remove
         </Button>
       </td>

@@ -1,5 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
@@ -24,7 +33,10 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [savingSection, setSavingSection] = useState<PolicySaveScope>(null)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [resetConfirmError, setResetConfirmError] = useState<string | null>(null)
   const { toast } = useToast()
+  const isResetting = savingSection === 'reset'
 
   useEffect(() => {
     let cancelled = false
@@ -105,14 +117,21 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
       .finally(() => setSavingSection(null))
   }
 
+  function openResetConfirm() {
+    setResetConfirmError(null)
+    setResetConfirmOpen(true)
+  }
+
   function resetPolicyConfig() {
     setSavingSection('reset')
+    setResetConfirmError(null)
     void policyApi.config
       .reset()
       .then((nextConfig) => {
         setDraftConfig(nextConfig)
         setSavedConfig(nextConfig)
         setError(null)
+        setResetConfirmOpen(false)
         toast({
           title: 'Policy reset.',
           variant: 'success',
@@ -121,6 +140,7 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
       .catch((resetError: unknown) => {
         const message = resetError instanceof Error ? resetError.message : 'Policy reset failed.'
         setError(message)
+        setResetConfirmError(message)
         toast({
           description: message,
           title: 'Policy update failed',
@@ -146,11 +166,49 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
           variant="outline"
           className="self-start"
           disabled={isLoading || savingSection !== null}
-          onClick={resetPolicyConfig}
+          onClick={openResetConfirm}
         >
-          {savingSection === 'reset' ? 'Resetting...' : 'Reset policy'}
+          {isResetting ? 'Resetting...' : 'Reset policy'}
         </Button>
       </div>
+
+      <AlertDialog
+        open={resetConfirmOpen}
+        onOpenChange={(open) => {
+          if (isResetting) {
+            return
+          }
+          setResetConfirmOpen(open)
+          if (!open) {
+            setResetConfirmError(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset policy?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This restores default policy buckets, gates, and sourcing windows.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {resetConfirmError ? (
+            <p className="text-sm text-destructive" role="alert">
+              {resetConfirmError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isResetting}
+              onClick={resetPolicyConfig}
+            >
+              {isResetting ? 'Resetting...' : 'Reset policy'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {error ? (
         <Alert variant="destructive">
