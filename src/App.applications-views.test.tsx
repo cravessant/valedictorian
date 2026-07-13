@@ -1052,11 +1052,11 @@ describe('App', () => {
     expect(within(table).getAllByText('Fall 2026').length).toBeGreaterThan(0)
     expect(within(table).getByText('Software Engineering Intern')).toBeInTheDocument()
     expect(within(table).getAllByText('LinkedIn')).toHaveLength(2)
-    expect(within(table).getAllByText('run-1')).toHaveLength(2)
+    expect(within(table).queryByText('run-1')).not.toBeInTheDocument()
     expect(within(table).getByText('new')).toBeInTheDocument()
     expect(within(table).getByText('Ready to review')).toBeInTheDocument()
     expect(within(table).getAllByText('7/10')).toHaveLength(2)
-    expect(within(table).getByText('application-versant-platform')).toBeInTheDocument()
+    expect(within(table).queryByText('application-versant-platform')).not.toBeInTheDocument()
     expect(
       within(table).getByText('Versant Media - Academic Year Internships: Platform Engineering'),
     ).toBeInTheDocument()
