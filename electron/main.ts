@@ -197,6 +197,7 @@ async function registerRuntimeServices(
   })
   if (config.mode !== 'remote') {
     backendSupervisor = createLocalBackendSupervisor({
+      liveness: { failureThreshold: 2, intervalMs: 5_000, timeoutMs: 2_000 },
       restart: { baseDelayMs: 100, maxAttempts: 5, maxDelayMs: 2_000 },
       async startListener() {
         const server = await runtime?.restartServer?.()
