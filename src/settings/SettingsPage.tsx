@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
@@ -158,7 +159,7 @@ export function SettingsSidebar({
         Back to app
       </Button>
 
-      <label className="relative block text-xs font-medium text-muted-foreground">
+      <Label className="relative block text-xs font-medium text-muted-foreground">
         <Search className="pointer-events-none absolute left-3 top-8 h-4 w-4 text-muted-foreground" />
         Search settings
         <input
@@ -168,7 +169,7 @@ export function SettingsSidebar({
           value={settingsSearch}
           onChange={(event) => setSettingsSearch(event.target.value)}
         />
-      </label>
+      </Label>
 
       <nav className="mt-5 space-y-5" aria-label="Settings sections">
         {visibleGroups.map((group) => (
@@ -550,7 +551,7 @@ function RuntimeModeOption({
   onChange: () => void
 }) {
   return (
-    <label className="flex cursor-pointer gap-3 rounded-md border border-border bg-card p-3 text-sm text-foreground">
+    <Label className="flex cursor-pointer gap-3 rounded-md border border-border bg-card p-3 text-sm text-foreground">
       <span className="mt-0.5 text-muted-foreground">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block font-medium">{label}</span>
@@ -564,7 +565,7 @@ function RuntimeModeOption({
         type="radio"
         onChange={onChange}
       />
-    </label>
+    </Label>
   )
 }
 

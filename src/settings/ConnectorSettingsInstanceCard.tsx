@@ -1,5 +1,5 @@
-
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import {
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_MAX_DISCOVERY_COUNT,
@@ -183,7 +183,7 @@ export function ConnectorSettingsInstanceCard({
                         className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
                         data-testid={`connector-credential-form-${instance.id}`}
                       >
-                        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                           Jobright email
                           <input
                             aria-label="Jobright email"
@@ -194,8 +194,8 @@ export function ConnectorSettingsInstanceCard({
                             onChange={(event) =>
                               onUpdateCredentialDraft(instance.id, { email: event.target.value })}
                           />
-                        </label>
-                        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        </Label>
+                        <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                           Jobright password
                           <input
                             aria-label="Jobright password"
@@ -206,7 +206,7 @@ export function ConnectorSettingsInstanceCard({
                             onChange={(event) =>
                               onUpdateCredentialDraft(instance.id, { password: event.target.value })}
                           />
-                        </label>
+                        </Label>
                         <Button
                           type="button"
                           disabled={authenticatingInstanceId === instance.id}
@@ -276,7 +276,7 @@ export function ConnectorSettingsInstanceCard({
                       <details className="xl:col-span-full">
                         <summary className="cursor-pointer text-xs font-medium text-foreground">Connector settings</summary>
                         <div className="mt-3 grid gap-3">
-                          <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                          <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                             Discovery page size
                             <input
                               aria-label="Discovery page size"
@@ -289,7 +289,7 @@ export function ConnectorSettingsInstanceCard({
                               onChange={(event) =>
                                 onUpdateDraft(instance.id, { discoveryCount: event.target.value })}
                             />
-                          </label>
+                          </Label>
                         </div>
                       </details>
                       <Button

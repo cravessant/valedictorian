@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
+import { Label } from '@/components/ui/label'
 import { manualSourcingDecisionStatuses, type ManualSourcingDecisionStatus, type SetSourcingFindingDecisionInput, type SourcingFinding } from 'sparxie'
 import { FindingInput, FindingSelect } from './SourcingFindingFormFields'
 
@@ -63,7 +64,7 @@ export function SourcingFindingDispositionModal({
           onChange={setDispositionReason}
         />
         <FindingInput label="Policy blocker" value={policyBlocker} onChange={setPolicyBlocker} />
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+        <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
           Disposition notes
           <textarea
             aria-label="Disposition notes"
@@ -71,7 +72,7 @@ export function SourcingFindingDispositionModal({
             value={mergeNotes}
             onChange={(event) => setMergeNotes(event.target.value)}
           />
-        </label>
+        </Label>
         <div className="flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel

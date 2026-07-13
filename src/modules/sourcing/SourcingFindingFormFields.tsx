@@ -1,6 +1,8 @@
 import type { CreateSourcingFindingInput, UpdateSourcingFindingInput } from 'sparxie'
 import { formatEnumLabel } from '../../app/labels'
 
+import { Label } from '@/components/ui/label'
+
 export function FindingInput({
   disabled,
   label,
@@ -13,7 +15,7 @@ export function FindingInput({
   value: string
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
       <input
         aria-label={label}
@@ -22,7 +24,7 @@ export function FindingInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 
@@ -36,7 +38,7 @@ export function FindingTextarea({
   value: string
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
       {label}
       <textarea
         aria-label={label}
@@ -44,7 +46,7 @@ export function FindingTextarea({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 
@@ -125,7 +127,7 @@ export function FindingSelect({
   value: string
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
       <select
         aria-label={label}
@@ -139,6 +141,6 @@ export function FindingSelect({
           </option>
         ))}
       </select>
-    </label>
+    </Label>
   )
 }

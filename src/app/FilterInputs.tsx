@@ -1,3 +1,4 @@
+import { Label } from '@/components/ui/label'
 const filterControlClassName = 'h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground'
 
 interface FilterInputProps {
@@ -8,7 +9,7 @@ interface FilterInputProps {
 
 export function FilterTextInput({ label, value, onChange }: FilterInputProps) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
       <input
         aria-label={label}
@@ -16,13 +17,13 @@ export function FilterTextInput({ label, value, onChange }: FilterInputProps) {
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 
 export function FilterDateInput({ label, value, onChange }: FilterInputProps) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
       <input
         aria-label={label}
@@ -31,6 +32,6 @@ export function FilterDateInput({ label, value, onChange }: FilterInputProps) {
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }

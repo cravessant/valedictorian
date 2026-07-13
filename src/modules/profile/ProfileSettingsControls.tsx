@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import type { ProfileSensitiveDetails } from './profile.repository'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
+import { Label } from '@/components/ui/label'
 import {
   type ProfileAnswer,
   type ProfileEducation,
@@ -162,7 +163,7 @@ export function SettingsSelectInput({
   onChange: (value: string) => void
 }) {
   return (
-    <label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
+    <Label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
       <span>
         <span className="block font-medium">{label}</span>
       </span>
@@ -179,7 +180,7 @@ export function SettingsSelectInput({
           </option>
         ))}
       </select>
-    </label>
+    </Label>
   )
 }
 
@@ -330,7 +331,7 @@ export function BooleanPreferenceControl({
     >
       <div className="font-medium">{label}</div>
       <div className="flex flex-wrap gap-2">
-        <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3">
+        <Label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3">
           <input
             aria-label={`${label} Yes`}
             checked={value === true}
@@ -340,8 +341,8 @@ export function BooleanPreferenceControl({
             onChange={() => onChange(true)}
           />
           <span>Yes</span>
-        </label>
-        <label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3">
+        </Label>
+        <Label className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3">
           <input
             aria-label={`${label} No`}
             checked={value === false}
@@ -351,7 +352,7 @@ export function BooleanPreferenceControl({
             onChange={() => onChange(false)}
           />
           <span>No</span>
-        </label>
+        </Label>
       </div>
     </div>
   )
@@ -369,7 +370,7 @@ export function CompactInput({
   onChange: (value: string) => void
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       <span>{label}</span>
       <input
         aria-label={label}
@@ -378,7 +379,7 @@ export function CompactInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 

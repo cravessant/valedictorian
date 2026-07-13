@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import type { CreateWorkspaceInput, WorkspaceLaunchState } from './workspace.service'
 
 interface WorkspaceLauncherPageProps {
@@ -177,12 +178,12 @@ function WorkspaceLauncherPage({
                 <div className="mt-4 rounded-lg border border-border bg-card px-5 py-4 shadow-lg">
                   <div className="grid grid-cols-[minmax(0,1fr)_180px] items-center gap-5">
                     <div className="min-w-0">
-                      <label
+                      <Label
                         className="text-sm font-semibold text-foreground"
                         htmlFor="workspace-name"
                       >
                         Workspace name
-                      </label>
+                      </Label>
                       <p className="mt-1 text-xs font-medium text-muted-foreground">
                         Name this workspace.
                       </p>
@@ -224,7 +225,7 @@ function WorkspaceLauncherPage({
                   {canSeedSampleData ? (
                     <>
                       <div className="my-5 h-px bg-border" />
-                      <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <Label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                         <input
                           checked={seedSampleData}
                           className="h-4 w-4 rounded border-border bg-background text-primary"
@@ -232,7 +233,7 @@ function WorkspaceLauncherPage({
                           type="checkbox"
                         />
                         Seed demo data
-                      </label>
+                      </Label>
                     </>
                   ) : null}
                 </div>

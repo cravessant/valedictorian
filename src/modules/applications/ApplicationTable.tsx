@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Label } from '@/components/ui/label'
 import { ExternalLink, Pencil } from 'lucide-react'
 import { formatEnumLabel } from '../../app/labels'
 import type {
@@ -373,7 +374,7 @@ function ApplicationTable({
                   .getAllLeafColumns()
                   .filter((column) => column.getCanHide())
                   .map((column) => (
-                    <label
+                    <Label
                       key={column.id}
                       className="flex items-center gap-2 text-xs text-foreground"
                     >
@@ -384,7 +385,7 @@ function ApplicationTable({
                         onChange={column.getToggleVisibilityHandler()}
                       />
                       {getColumnLabel(column.id)}
-                    </label>
+                    </Label>
                   ))}
               </div>
             ) : null}

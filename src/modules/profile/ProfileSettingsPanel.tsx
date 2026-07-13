@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/use-toast'
+import { Label } from '@/components/ui/label'
 import {
   defaultUserProfile,
   normalizeProfileEducationInput,
@@ -798,7 +799,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
               onClose={cancelEducation}
             >
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                   <span>Education type</span>
                   <select
                     aria-label="Education type"
@@ -817,7 +818,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                       </option>
                     ))}
                   </select>
-                </label>
+                </Label>
                 {educationDraft.educationType === 'Other' ? (
                   <CompactInput
                     label="Other education type"
@@ -928,7 +929,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     setAnswerDraft((current) => ({ ...current, answer: value }))
                   }
                 />
-                <label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
+                <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
                   <input
                     aria-label="Available to automation"
                     checked={answerDraft.includeInAgentContext}
@@ -942,7 +943,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     }
                   />
                   <span>Allowed</span>
-                </label>
+                </Label>
               </div>
               <InlineEditorActions
                 cancelLabel="Cancel answer"
@@ -972,7 +973,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     setSecretDraft((current) => ({ ...current, key: value }))
                   }
                 />
-                <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                   <span>Type</span>
                   <select
                     aria-label="Secure value type"
@@ -990,7 +991,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     <option value="identity">identity</option>
                     <option value="other">other</option>
                   </select>
-                </label>
+                </Label>
                 <CompactInput
                   label="Secure value"
                   type="password"

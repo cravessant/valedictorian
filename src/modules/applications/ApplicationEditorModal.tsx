@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ModalShell } from '@/components/ui/modal-shell'
+import { Label } from '@/components/ui/label'
 import { formatEnumLabel } from '../../app/labels'
 import {
   applicationStatuses,
@@ -226,7 +227,7 @@ function ApplicationEditorModal({
             </>
           ) : null}
           {mode === 'edit' ? (
-            <label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
+            <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
               <input
                 aria-label="Has applied"
                 checked={hasApplied}
@@ -235,7 +236,7 @@ function ApplicationEditorModal({
                 onChange={(event) => setHasApplied(event.target.checked)}
               />
               <span>Has applied</span>
-            </label>
+            </Label>
           ) : null}
           {mode === 'edit' ? (
             <>
@@ -401,7 +402,7 @@ function EditorOptionalSelect({
   value: string
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
       <select
         aria-label={label}
@@ -416,7 +417,7 @@ function EditorOptionalSelect({
           </option>
         ))}
       </select>
-    </label>
+    </Label>
   )
 }
 
@@ -430,7 +431,7 @@ function EditorTextarea({
   value: string
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
       {label}
       <textarea
         aria-label={label}
@@ -438,7 +439,7 @@ function EditorTextarea({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 
@@ -454,7 +455,7 @@ function EditorInput({
   value: string
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
       <input
         aria-label={label}
@@ -463,7 +464,7 @@ function EditorInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 
@@ -481,7 +482,7 @@ function EditorSelect({
   value: string
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
       <select
         aria-label={label}
@@ -496,7 +497,7 @@ function EditorSelect({
           </option>
         ))}
       </select>
-    </label>
+    </Label>
   )
 }
 

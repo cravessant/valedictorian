@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/use-toast'
+import { Label } from '@/components/ui/label'
 import { AlertCircle, ShieldCheck } from 'lucide-react'
 import {
   defaultPolicyConfig,
@@ -637,7 +638,7 @@ function PolicyTextArea({
   value: string
 }) {
   return (
-    <label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[220px_1fr]">
+    <Label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[220px_1fr]">
       <span className="pt-2">
         <span className="block font-medium">{label}</span>
       </span>
@@ -647,7 +648,7 @@ function PolicyTextArea({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 

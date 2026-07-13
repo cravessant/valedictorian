@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Label } from '@/components/ui/label'
 import { AlertCircle, Ban, Pencil } from 'lucide-react'
 import {
   sourcingMergeStatuses,
@@ -134,7 +135,7 @@ function SourcingPage({
                 </Button>
               </div>
             </div>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+            <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
               Source
               <select
                 aria-label="Source"
@@ -149,8 +150,8 @@ function SourcingPage({
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+            </Label>
+            <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
               Destination class
               <select
                 aria-label="Destination class"
@@ -167,8 +168,8 @@ function SourcingPage({
                   <option key={value} value={value}>{destinationClassLabel(value)}</option>
                 ))}
               </select>
-            </label>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+            </Label>
+            <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
               Usability
               <select
                 aria-label="Usability"
@@ -183,8 +184,8 @@ function SourcingPage({
                   <option key={value} value={value}>{usabilityLabel(value)}</option>
                 ))}
               </select>
-            </label>
-            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+            </Label>
+            <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
               Merge status
               <select
                 aria-label="Merge status"
@@ -203,7 +204,7 @@ function SourcingPage({
                   </option>
                 ))}
               </select>
-            </label>
+            </Label>
           </div>
         </section>
 

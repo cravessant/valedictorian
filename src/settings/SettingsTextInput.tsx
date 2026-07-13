@@ -1,3 +1,4 @@
+import { Label } from '@/components/ui/label'
 function SettingsTextInput({
   label,
   readOnly = false,
@@ -12,7 +13,7 @@ function SettingsTextInput({
   onChange?: (value: string) => void
 }) {
   return (
-    <label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
+    <Label className="grid gap-2 px-4 py-3 text-sm text-foreground md:grid-cols-[180px_1fr] md:items-center">
       <span>
         <span className="block font-medium">{label}</span>
       </span>
@@ -24,7 +25,7 @@ function SettingsTextInput({
         value={value}
         onChange={(event) => onChange?.(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 

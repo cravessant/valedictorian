@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -348,7 +349,7 @@ function SettingsPopover({
             />
           </div>
 
-          <label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
+          <Label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
             Remote API URL
             <input
               aria-label="Remote API URL"
@@ -361,7 +362,7 @@ function SettingsPopover({
                 })
               }
             />
-          </label>
+          </Label>
           <div className="mt-3 border-t border-border pt-3">
             <Button
               type="button"
@@ -410,7 +411,7 @@ function SettingsToggleRow({
   onChange,
 }: SettingsToggleRowProps) {
   return (
-    <label className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,22rem)_auto] items-center justify-start gap-3 px-3 py-3 text-sm text-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
+    <Label className="grid w-full cursor-pointer grid-cols-[auto_minmax(0,22rem)_auto] items-center justify-start gap-3 px-3 py-3 text-sm text-foreground has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
       <span className="text-muted-foreground">{icon}</span>
       <span className="min-w-0">
         <span className="block font-medium">{label}</span>
@@ -424,7 +425,7 @@ function SettingsToggleRow({
         type="checkbox"
         onChange={(event) => onChange(event.target.checked)}
       />
-    </label>
+    </Label>
   )
 }
 

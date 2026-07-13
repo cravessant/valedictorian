@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/toaster'
+import { Label } from '@/components/ui/label'
 import { AlertCircle, SlidersHorizontal } from 'lucide-react'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
@@ -404,7 +405,7 @@ export function AppShell({
                 {filtersExpanded ? (
                   <>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Status
                         <select
                           aria-label="Status"
@@ -419,8 +420,8 @@ export function AppShell({
                             </option>
                           ))}
                         </select>
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                      </Label>
+                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Sort
                         <select
                           aria-label="Sort"
@@ -434,8 +435,8 @@ export function AppShell({
                             </option>
                           ))}
                         </select>
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                      </Label>
+                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Score band
                         <select
                           aria-label="Score band"
@@ -448,8 +449,8 @@ export function AppShell({
                           <option value="medium">Medium</option>
                           <option value="skip">Skip</option>
                         </select>
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                      </Label>
+                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Min score
                         <input
                           aria-label="Min score"
@@ -460,8 +461,8 @@ export function AppShell({
                           value={filters.minScore}
                           onChange={(event) => updateFilter('minScore', event.target.value)}
                         />
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                      </Label>
+                      <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
                         Work mode
                         <select
                           aria-label="Work mode"
@@ -475,7 +476,7 @@ export function AppShell({
                           <option value="hybrid">Hybrid</option>
                           <option value="unclear">Unclear</option>
                         </select>
-                      </label>
+                      </Label>
                     </div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                       <FilterDateInput

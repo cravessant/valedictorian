@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ModalShell } from '@/components/ui/modal-shell'
+import { Label } from '@/components/ui/label'
 import { AlertCircle, X } from 'lucide-react'
 import type { ScoreInput, ScoreRecord, VerificationReceiptPayload } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
@@ -360,7 +361,7 @@ function ApplicationLinkEditorModal({
           <div className="sm:col-span-2">
             <CompactModalInput label="Link URL" value={url} onChange={setUrl} />
           </div>
-          <label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
+          <Label className="flex min-h-9 items-center gap-2 text-sm text-foreground">
             <input
               aria-label="Primary link"
               checked={isPrimary}
@@ -369,7 +370,7 @@ function ApplicationLinkEditorModal({
               onChange={(event) => setIsPrimary(event.target.checked)}
             />
             <span>Primary link</span>
-          </label>
+          </Label>
         </div>
         <div className="flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -457,7 +458,7 @@ function CompactModalInput({
   value: string
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+    <Label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
       <input
         aria-label={label}
@@ -466,7 +467,7 @@ function CompactModalInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
-    </label>
+    </Label>
   )
 }
 

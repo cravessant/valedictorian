@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import type {
   ConnectorScheduleSummary,
   ConnectorSchedulingCapability,
@@ -167,7 +168,7 @@ export function ConnectorScheduleControls({
         <p className="text-xs font-medium text-muted-foreground">{scheduleStateLabel}</p>
       </div>
 
-      <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={modeId}>
+      <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={modeId}>
         Schedule mode
         <select
           className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
@@ -194,10 +195,10 @@ export function ConnectorScheduleControls({
             <option value="custom-weekly">Custom weekly</option>
           ) : null}
         </select>
-      </label>
+      </Label>
 
       {draft.mode === 'preset' ? (
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={presetId}>
+        <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={presetId}>
           Preset
           <select
             className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
@@ -210,11 +211,11 @@ export function ConnectorScheduleControls({
               <option key={preset.id} value={preset.id}>{preset.label}</option>
             ))}
           </select>
-        </label>
+        </Label>
       ) : null}
 
       {draft.mode === 'custom-interval' ? (
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={intervalId}>
+        <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={intervalId}>
           Every minutes
           <input
             aria-label="Every minutes"
@@ -228,11 +229,11 @@ export function ConnectorScheduleControls({
             value={draft.everyMinutes}
             onChange={(event) => onDraftChange({ everyMinutes: event.target.value })}
           />
-        </label>
+        </Label>
       ) : null}
 
       {draft.mode === 'custom-daily' ? (
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={dailyTimeId}>
+        <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={dailyTimeId}>
           Daily local time
           <input
             aria-label="Daily local time"
@@ -244,12 +245,12 @@ export function ConnectorScheduleControls({
             value={draft.localTime}
             onChange={(event) => onDraftChange({ localTime: event.target.value })}
           />
-        </label>
+        </Label>
       ) : null}
 
       {draft.mode === 'custom-weekly' ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyDayId}>
+          <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyDayId}>
             Weekday
             <select
               aria-label="Weekday"
@@ -263,8 +264,8 @@ export function ConnectorScheduleControls({
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-          </label>
-          <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
+          </Label>
+          <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
             Weekly local time
             <input
               aria-label="Weekly local time"
@@ -276,12 +277,12 @@ export function ConnectorScheduleControls({
               value={draft.localTime}
               onChange={(event) => onDraftChange({ localTime: event.target.value })}
             />
-          </label>
+          </Label>
         </div>
       ) : null}
 
       {draft.mode !== 'manual' ? (
-        <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
+        <Label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
           Timezone
           <select
             aria-label="Timezone"
@@ -295,7 +296,7 @@ export function ConnectorScheduleControls({
               <option key={timezone} value={timezone}>{timezone}</option>
             ))}
           </select>
-        </label>
+        </Label>
       ) : null}
 
       {canonical ? (
