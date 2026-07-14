@@ -356,6 +356,78 @@ describe('connector status mapping', () => {
     expect(JSON.stringify(view)).not.toContain('sensitive fixture material')
   })
 
+  it('maps explicit Jobright discovery outcomes to app-owned sanitized guidance', () => {
+    const view = mapConnectorStatusSummary(
+      createStatusRecord({
+        connectorId: 'jobright.resolver',
+        displayName: 'Jobright internslist',
+        latestRun: createRunRecord({
+          observationCount: 1,
+          status: 'failed',
+          warningCount: 4,
+          warnings: [
+            {
+              code: 'jobright_discovery_forbidden',
+              label: 'raw upstream discovery forbidden label',
+              message: 'HTTP 403 body with cookie=secret and Authorization: Bearer tok',
+            },
+            {
+              code: 'jobright_discovery_http_client_error',
+              label: 'raw upstream client error label',
+              message: 'HTTP 400 https://jobright.ai/api with session=abc',
+            },
+            {
+              code: 'jobright_discovery_http_non_success',
+              label: 'raw upstream non-success label',
+              message: 'HTTP 502 response body leaked privately',
+            },
+            {
+              code: 'jobright_discovery_non_success',
+              label: 'raw upstream provider envelope label',
+              message: 'providerCode=PRIVATE_CODE message=do-not-show',
+            },
+          ],
+        }),
+      }),
+    )
+
+    expect(view).toMatchObject({
+      warnings: [
+        {
+          code: 'jobright_discovery_forbidden',
+          label: 'Jobright discovery forbidden',
+          message:
+            'Jobright denied discovery access. Review provider access policy, then retry this run.',
+          severity: 'warning',
+        },
+        {
+          code: 'jobright_discovery_http_client_error',
+          label: 'Jobright discovery request error',
+          message:
+            'Jobright rejected the discovery request. Check the request contract, then retry this run.',
+          severity: 'warning',
+        },
+        {
+          code: 'jobright_discovery_http_non_success',
+          label: 'Jobright discovery non-success',
+          message:
+            'Jobright discovery returned a non-success response. Check provider availability and the request contract, then retry this run.',
+          severity: 'warning',
+        },
+        {
+          code: 'jobright_discovery_non_success',
+          label: 'Jobright discovery rejected',
+          message:
+            'Jobright discovery returned a provider non-success result. Check provider availability and access policy, then retry this run.',
+          severity: 'warning',
+        },
+      ],
+    })
+    expect(JSON.stringify(view)).not.toMatch(
+      /raw upstream|cookie=secret|Bearer tok|https:\/\/jobright\.ai|session=abc|PRIVATE_CODE|do-not-show|response body leaked/i,
+    )
+  })
+
   it('shows caught-up synchronization independently of per-run intake', () => {
     expect(
       mapConnectorStatusSummary(

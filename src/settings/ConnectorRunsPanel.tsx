@@ -358,6 +358,10 @@ function safeRunWarningLabel(code: string): string {
     jobright_auth_retryable: 'Jobright authentication unavailable',
     jobright_challenge_blocked: 'Jobright API challenge',
     jobright_discovery_failed: 'Jobright discovery failed',
+    jobright_discovery_forbidden: 'Jobright discovery forbidden',
+    jobright_discovery_http_client_error: 'Jobright discovery request error',
+    jobright_discovery_http_non_success: 'Jobright discovery non-success',
+    jobright_discovery_non_success: 'Jobright discovery rejected',
     jobright_discovery_rate_limited: 'Jobright discovery rate limited',
     jobright_discovery_retryable: 'Jobright discovery unavailable',
     jobright_parser_changed: 'Jobright API changed',
@@ -380,6 +384,22 @@ function safeRunRetryGuidance(run: ConnectorSettingsRun, connectorId: string): s
 
   if (warningCodes.has('jobright_discovery_failed')) {
     return 'Jobright discovery failed. Review API availability and connector configuration, then run again.'
+  }
+
+  if (warningCodes.has('jobright_discovery_forbidden')) {
+    return 'Jobright denied discovery access. Review provider access policy and connector configuration, then run again.'
+  }
+
+  if (warningCodes.has('jobright_discovery_http_client_error')) {
+    return 'Jobright rejected the discovery request. Check the request contract and connector configuration, then run again.'
+  }
+
+  if (warningCodes.has('jobright_discovery_http_non_success')) {
+    return 'Jobright discovery returned a non-success response. Check provider availability and the request contract, then run again.'
+  }
+
+  if (warningCodes.has('jobright_discovery_non_success')) {
+    return 'Jobright discovery returned a provider non-success result. Check provider availability and access policy, then run again.'
   }
 
   if (warningCodes.has('auth.required') || warningCodes.has('jobright_auth_required')) {

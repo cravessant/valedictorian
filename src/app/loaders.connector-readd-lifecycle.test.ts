@@ -109,7 +109,7 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
       nextAttemptAt: '2026-07-13T16:01:00.000Z',
       horizonAt: '2026-07-14T16:00:00.000Z',
       state: 'scheduled',
-      ownerVersion: 'jobright.resolver@0.11.0',
+      ownerVersion: 'jobright.resolver@0.12.0',
       lineageJson: JSON.stringify({ connectorInstanceId: first.id }),
       filterSignature: 'filters:{}',
       checkpointSchemaVersion: 'jobright-checkpoint@1',
@@ -181,7 +181,7 @@ function jobrightCreateInput(id: string) {
   return {
     id,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.11.0',
+    connectorVersion: '0.12.0',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [{ id: 'jobright', label: 'Jobright credentials', mode: 'username_password' as const }],

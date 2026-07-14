@@ -121,7 +121,7 @@ describe('connector instance applicability', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.11.0',
+        version: '0.12.0',
         capabilities: { supportsFiltering: false },
         auth: {
           modes: ['username_password'],
@@ -196,7 +196,7 @@ describe('connector instance applicability', () => {
     fireEvent.click(runButton)
     expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
     await expect(client.connectors.list()).resolves.toMatchObject({
-      items: [expect.objectContaining({ connectorVersion: '0.11.0' })],
+      items: [expect.objectContaining({ connectorVersion: '0.12.0' })],
     })
   })
 
@@ -228,7 +228,7 @@ describe('connector instance applicability', () => {
         ],
         config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.11.0',
+        connectorVersion: '0.12.0',
         displayName: 'Jobright internslist',
         enabled: true,
         filters: {},

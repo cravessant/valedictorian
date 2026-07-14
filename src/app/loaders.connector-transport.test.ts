@@ -116,7 +116,7 @@ function jobrightCreateInput() {
   return {
     id: 'jobright-default',
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.11.0',
+    connectorVersion: '0.12.0',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [{ id: 'jobright', label: 'Jobright credentials', mode: 'username_password' as const }],

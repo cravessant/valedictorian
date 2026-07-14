@@ -313,7 +313,7 @@ describe('connector runner', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.11.0',
+        version: '0.12.0',
         capabilities: { supportsFiltering: false },
       },
       async refresh(input) {
@@ -334,7 +334,7 @@ describe('connector runner', () => {
     await repository.upsertInstance({
       id: 'jobright-seeded',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.11.0',
+      connectorVersion: '0.12.0',
       displayName: 'Jobright internslist',
       enabled: true,
       filters: {},
@@ -346,7 +346,7 @@ describe('connector runner', () => {
       completedAt: '2026-06-01T12:00:01.000Z',
       config: {},
       filters: {},
-      filterSignature: 'provider-state:jobright.resolver@0.11.0',
+      filterSignature: 'provider-state:jobright.resolver@0.12.0',
       result: {
         ...emptyConnectorRefreshResult({
           coverage: {
@@ -365,7 +365,7 @@ describe('connector runner', () => {
     })
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-seeded',
-      filterSignature: 'provider-state:jobright.resolver@0.11.0',
+      filterSignature: 'provider-state:jobright.resolver@0.12.0',
       checkpoint: {
         checkpoint: { attempted: 2, pendingDetailRetries: [], retryState: [] },
         schemaVersion: 'jobright-resolution-checkpoint@5',
@@ -391,7 +391,7 @@ describe('connector runner', () => {
         checkpoint: { attempted: 2, pendingDetailRetries: [], retryState: [] },
       }),
     ])
-    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.11.0')
+    expect(run.filterSignature).toBe('provider-state:jobright.resolver@0.12.0')
 
     await runner.refresh(connector, {
       connectorInstanceId: 'jobright-seeded',

@@ -505,6 +505,34 @@ function safeWarningForCode(code: string): ConnectorStatusWarningView {
       message: 'Jobright discovery failed. Review API availability and retry this run.',
       severity: 'warning',
     },
+    jobright_discovery_forbidden: {
+      code: 'jobright_discovery_forbidden',
+      label: 'Jobright discovery forbidden',
+      message:
+        'Jobright denied discovery access. Review provider access policy, then retry this run.',
+      severity: 'warning',
+    },
+    jobright_discovery_http_client_error: {
+      code: 'jobright_discovery_http_client_error',
+      label: 'Jobright discovery request error',
+      message:
+        'Jobright rejected the discovery request. Check the request contract, then retry this run.',
+      severity: 'warning',
+    },
+    jobright_discovery_http_non_success: {
+      code: 'jobright_discovery_http_non_success',
+      label: 'Jobright discovery non-success',
+      message:
+        'Jobright discovery returned a non-success response. Check provider availability and the request contract, then retry this run.',
+      severity: 'warning',
+    },
+    jobright_discovery_non_success: {
+      code: 'jobright_discovery_non_success',
+      label: 'Jobright discovery rejected',
+      message:
+        'Jobright discovery returned a provider non-success result. Check provider availability and access policy, then retry this run.',
+      severity: 'warning',
+    },
     jobright_discovery_retryable: {
       code: 'jobright_discovery_retryable',
       label: 'Jobright discovery unavailable',

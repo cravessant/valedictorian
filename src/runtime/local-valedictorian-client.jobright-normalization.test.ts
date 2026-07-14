@@ -170,7 +170,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
   await connectorRepository.upsertInstance({
     id: connectorInstanceId,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.11.0',
+    connectorVersion: '0.12.0',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [
@@ -464,7 +464,7 @@ describe('runtime local Valedictorian client', () => {
     await connectorRepository.upsertInstance({
       id: 'jobright-api',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.11.0',
+      connectorVersion: '0.12.0',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [
@@ -761,9 +761,10 @@ describe('runtime local Valedictorian client', () => {
       observationCount: 0,
       warnings: [
         {
-          code: 'jobright_discovery_failed',
-          label: 'Jobright discovery failed',
-          message: 'Jobright discovery failed. Review API availability and retry this run.',
+          code: 'jobright_discovery_http_client_error',
+          label: 'Jobright discovery request error',
+          message:
+            'Jobright rejected the discovery request. Check the request contract, then retry this run.',
           severity: 'warning',
         },
       ],

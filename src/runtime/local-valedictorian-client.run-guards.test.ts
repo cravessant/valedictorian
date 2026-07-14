@@ -761,7 +761,7 @@ describe('runtime local Valedictorian client', () => {
     const connector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.11.0',
+        version: '0.12.0',
         capabilities: { supportsFiltering: false },
       },
       refresh,
@@ -777,7 +777,7 @@ describe('runtime local Valedictorian client', () => {
     await repository.upsertInstance({
       id: 'jobright-capture-retry',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.11.0',
+      connectorVersion: '0.12.0',
       displayName: 'Jobright capture retry',
       enabled: true,
       filters: {},
@@ -790,7 +790,7 @@ describe('runtime local Valedictorian client', () => {
       completedAt: '2026-07-11T12:00:01.000Z',
       config: {},
       filters: {},
-      filterSignature: 'provider-state:jobright.resolver@0.11.0',
+      filterSignature: 'provider-state:jobright.resolver@0.12.0',
       result: {
         operationOutcome: null,
         status: 'completed',
@@ -827,7 +827,7 @@ describe('runtime local Valedictorian client', () => {
       mode: 'manual',
       scheduleOccurrence: null,
       status: 'skipped',
-      filterSignature: 'provider-state:jobright.resolver@0.11.0',
+      filterSignature: 'provider-state:jobright.resolver@0.12.0',
       retryHints: { state: 'not_due', reason: 'rate_limit' },
     })
     expect(repeated.id).toBe(direct.id)
