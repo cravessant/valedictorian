@@ -13,6 +13,22 @@ import {
   type SourceOperationOutcome,
   type TransientRetryReason,
 } from "sparxie"
+import type {
+  ConnectorDynamicOptionsDeclaration,
+  ConnectorOptionValue,
+} from "./dynamic-options.js"
+
+export {
+  parseConnectorDynamicOptionsDeclaration,
+  parseConnectorOptionValue,
+  type ConnectorDynamicOptionSource,
+  type ConnectorDynamicOptionsDeclaration,
+  type ConnectorOptionObjectSchema,
+  type ConnectorOptionScalar,
+  type ConnectorOptionScalarSchema,
+  type ConnectorOptionValue,
+  type ConnectorOptionValueSchema,
+} from "./dynamic-options.js"
 
 export type {
   CanonicalCompensation,
@@ -183,6 +199,7 @@ export type ConnectorDefinition = {
   auth?: ConnectorAuthDeclaration
   capabilities?: ConnectorCapabilityDeclaration
   checkpoint?: ConnectorCheckpointDeclaration
+  dynamicOptions?: ConnectorDynamicOptionsDeclaration
 }
 
 export const jobObservationSchemaVersion = "job-observation@1"
@@ -309,6 +326,55 @@ export type ConnectorCancellationRuntime = {
    * Connectors should preserve completed work in their returned checkpoint.
    */
   readonly signal: AbortSignal
+}
+
+export type ConnectorOption = {
+  key: string
+  label: string
+  value: ConnectorOptionValue
+}
+
+export type ConnectorOptionQueryInput = {
+  connectorInstanceId: string
+  workspaceId: string
+  executionScopeId: SourceExecutionScopeId
+  connectorVersion: string
+  filterSchemaVersion: string
+  catalogVersion: string
+  sourceVersion: string
+  sourceId: string
+  dependencies: Readonly<
+    Record<string, ConnectorOptionValue | readonly ConnectorOptionValue[]>
+  >
+  operation:
+    | { kind: "search"; search: string; limit?: number }
+    | { kind: "resolve"; values: readonly ConnectorOptionValue[] }
+}
+
+export type ConnectorOptionQueryResult =
+  | {
+      status: "search_ready"
+      options: readonly ConnectorOption[]
+      truncated: boolean
+    }
+  | { status: "search_empty" }
+  | {
+      status: "resolve_ready"
+      options: readonly ConnectorOption[]
+      unknownValues: readonly ConnectorOptionValue[]
+    }
+  | { status: "auth_required"; requirementIds: readonly string[] }
+  | {
+      status: "error"
+      code: string
+      retryable: boolean
+      retryAfterMs?: number
+    }
+  | { status: "cancelled" }
+
+export type ConnectorOptionRuntime = {
+  auth: ConnectorAuthRuntime
+  cancellation?: ConnectorCancellationRuntime
 }
 
 export type ConnectorProgressStage =
@@ -563,4 +629,8 @@ export type JobConnector = {
     input: ConnectorAuthValidationInput,
     runtime: ConnectorRuntime,
   ): Promise<ConnectorAuthValidationResult>
+  queryOptions?(
+    input: ConnectorOptionQueryInput,
+    runtime: ConnectorOptionRuntime,
+  ): Promise<ConnectorOptionQueryResult>
 }

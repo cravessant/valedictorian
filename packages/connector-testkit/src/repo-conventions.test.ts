@@ -56,22 +56,22 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("`@sparxie/valedictorian-connectors-core` is the app-to-adapter ABI")
     expect(readme).toContain("`sparxie` remains the owner and public HTTP/client contract")
     expect(readme).toContain("core reuses and re-exports Sparxie-owned raw-sourcing, resolver, retry, and source-execution identities")
-    expect(readme).toContain("InternList was reconnaissance")
+    expect(readme).toContain("InternList/Internslist was reconnaissance only")
     expect(readme).not.toContain("@sparxie/valedictorian-connectors-internlist")
     expect(readme).not.toContain("the first real public discovery source package")
     expect(readme).toContain("Hosts own scheduling, auth persistence, run state, and upsert")
     expect(readme).toContain("Source packages must not depend on valedictorian-app")
     expect(readme).toContain("## Jobright Architecture")
     expect(readme).toContain("authentication, discovery, and application-link normalization are API-only")
-    expect(readme).toContain("Discover `internslist` jobs through `POST /swan/recommend/visitor-list/jobs")
-    expect(readme).toContain("Resolve pending intermediary jobs with authenticated `GET /swan/share/job/{jobId}`")
+    expect(readme).toContain("Discover authenticated search results through `POST /swan/recommend/search")
+    expect(readme).toContain("only a remaining pending intermediary job uses authenticated `GET /swan/share/job/{jobId}`")
     expect(readme).toContain("`runtime.rawSourceIntake.capture(...)`")
     expect(readme).toContain("complete bounded provider batch")
     expect(readme).toContain("collect only acknowledged revision/occurrence receipts")
     expect(readme).toContain("Sparse, malformed, irrelevant, non-internship, source-duplicate, and later-unresolvable rows remain raw facts")
     expect(readme).toContain("Only after every row in the bounded batch is acknowledged")
     expect(readme).toContain("`runtime.normalization.run(...)`")
-    expect(readme).toContain("do not alter that request, reject returned rows")
+    expect(readme).toContain("No connector-owned fit, review, dedupe, cutoff, or queue state is inferred from filters or used to discard a provider row")
     expect(readme).toContain("do not report connector-owned sourcing-fit or result-goal fields")
     expect(readme).toContain("External hostname alone is never employer evidence")
     expect(readme).toContain("jobright_application_url_unclassified")
@@ -79,7 +79,7 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("calls only `POST /swan/auth/login/pwd` and `GET /swan/auth/newinfo`")
     expect(readme).toContain("returns sanitized status/reason metadata")
     expect(readme).toContain("the host single-flights, fences, and persists a ready session")
-    expect(readme).toContain("does not run sourcing refresh, visitor-list discovery, job-detail normalization, application calls")
+    expect(readme).toContain("does not run sourcing refresh, authenticated-search discovery, job-detail normalization, application calls")
     expect(readme).toContain("must not launch or control Electron `BrowserWindow`")
     expect(readme).toContain("must not scrape HTML, inspect the DOM, depend on Cheerio, accept browser-backed auth grants")
     expect(readme).toContain("visitor-list")
@@ -178,7 +178,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.12.0",
+      version: "0.13.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -194,7 +194,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.12.0",
+      version: "0.13.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -210,7 +210,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.12.0",
+      version: "0.13.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -234,11 +234,11 @@ describe("connector repository conventions", () => {
       sparxie: "^0.15.0",
     })
     expect(harnessPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.12.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.13.0",
       sparxie: "^0.15.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.12.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.13.0",
     })
     expect(Object.keys(jobrightPackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
@@ -252,7 +252,7 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(jobrightPackage.devDependencies).toMatchObject({
-      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.12.0",
+      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.13.0",
     })
   })
 
