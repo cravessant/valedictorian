@@ -36,6 +36,7 @@ import {
   validateSelectableEarliestBackfillDate,
 } from '../modules/connectors/connector.earliest-backfill'
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
+import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
 import { connectorDisabledExecutionError } from '../modules/connectors/connector-execution.errors'
 import { assertSupportedConnectorSettings } from '../modules/connectors/connector.settings-validation'
 import {
@@ -225,6 +226,7 @@ export function createLocalValedictorianClient({
       coverageEndedAt: input.coverageEndedAt,
       mode: input.mode,
       now,
+      replayConnectorUpgrade: (input) => normalizationReplayService.replayConnectorUpgrade(input),
       startedAt: input.startedAt,
     }),
     getRun: (connectorRunId) => connectorRepository.getRun(connectorRunId),
@@ -420,6 +422,7 @@ export function createLocalValedictorianClient({
             connectorRunner,
             input,
             normalizationOrchestrator,
+            normalizationReplayService,
             normalizationRegistry,
             normalizationRepository,
             now,
@@ -655,6 +658,7 @@ async function executeConnectorRunTrigger({
   connectorRunner,
   input,
   normalizationOrchestrator,
+  normalizationReplayService,
   normalizationRegistry,
   normalizationRepository,
   now,
@@ -664,6 +668,7 @@ async function executeConnectorRunTrigger({
   connectorRunner: ReturnType<typeof createConnectorRunner>
   input: LocalConnectorInternalRunTriggerInput
   normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
+  normalizationReplayService: ReturnType<typeof createNormalizationReplayService>
   normalizationRegistry: ReturnType<typeof createDefaultNormalizationResolverRegistry>
   normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
   now: () => Date
@@ -679,11 +684,6 @@ async function executeConnectorRunTrigger({
   const connector = connectorRegistry?.get(instance.connectorId) ?? null
   if (!connector) {
     throw new Error(`Unsupported connector id: ${instance.connectorId}`)
-  }
-  if (instance.connectorVersion !== connector.definition.version) {
-    throw new Error(
-      `Connector version mismatch for ${instance.connectorId}: expected ${connector.definition.version}`,
-    )
   }
   const executionIntent = input.executionIntent ?? 'ordinary'
   const mode = 'manual'
@@ -721,6 +721,25 @@ async function executeConnectorRunTrigger({
   if (!claim.claimed) {
     return claim.run
   }
+  try {
+    await reconcileConnectorPackageUpgrade({
+      connector,
+      connectorRepository,
+      instance,
+      replayConnectorUpgrade: (replayInput) => normalizationReplayService.replayConnectorUpgrade(replayInput),
+    })
+  } catch (error) {
+    await connectorRepository.markRunFailed({
+      connectorRunId: claim.run.id,
+      completedAt: now().toISOString(),
+      retryHints: null,
+      warning: {
+        code: 'connector.upgrade_replay_failed',
+        message: 'Connector upgrade replay failed.',
+      },
+    })
+    throw error
+  }
   if (acquiredWork?.kind === 'normalization') {
     return dispatchAcquiredNormalizationWork({
       acquiredWork,
@@ -746,6 +765,7 @@ async function executeConnectorRunTrigger({
     executionIntent,
     mode,
     now,
+    replayConnectorUpgrade: (replayInput) => normalizationReplayService.replayConnectorUpgrade(replayInput),
     startedAt,
   })
 }

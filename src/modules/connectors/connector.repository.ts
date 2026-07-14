@@ -17,7 +17,7 @@ import {
 } from './connector.earliest-backfill'
 import { freezeConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
 import { createConnectorInstance, mapConnectorInstance, normalizeConnectorAuthReferences } from './connector-instance.persistence'
-import { upsertConnectorCheckpoint, mapConnectorCheckpoint } from './connector-checkpoint.persistence'
+import { copyConnectorCheckpointIfAbsent, upsertConnectorCheckpoint, mapConnectorCheckpoint } from './connector-checkpoint.persistence'
 import {
   mapConnectorRun,
   persistFrozenConnectorRunLifecycleCounts,
@@ -305,6 +305,7 @@ export function createSqliteConnectorRepository(
       }
       return checkpoint
     },
+    copyCheckpointIfAbsent(input: Parameters<typeof copyConnectorCheckpointIfAbsent>[1]) { copyConnectorCheckpointIfAbsent(database, input, new Date().toISOString()) },
     async releaseAcquiredNormalizationWorkForRun(input: {
       connectorRunId: string
       completedAt: string
@@ -990,7 +991,6 @@ export function createSqliteConnectorRepository(
     },
   }
 }
-
 function genericTerminalSynchronizationOutcome(status: CompleteConnectorRunInput['status']) {
   if (status === 'failed') return { kind: 'failed' as const, reason: 'connector_run_failed' }
   if (status === 'cancelled') {

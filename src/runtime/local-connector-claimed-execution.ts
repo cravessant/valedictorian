@@ -3,6 +3,8 @@ import type { LocalConnectorRegistry } from '../modules/connectors/connector.reg
 import type { createSqliteConnectorRepository, ConnectorRunRecord } from '../modules/connectors/connector.repository'
 import type { createConnectorRunner, AppConnectorRefreshRecord } from '../modules/connectors/connector.runner'
 import { finalizeDeferredConnectorRefreshRecord } from './local-connector-retry-dispatch'
+import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
+import type { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 
 export async function executeClaimedConnectorRun({
   connectorRegistry,
@@ -13,6 +15,7 @@ export async function executeClaimedConnectorRun({
   executionIntent = 'ordinary',
   mode,
   now,
+  replayConnectorUpgrade,
   startedAt,
 }: {
   connectorRegistry: LocalConnectorRegistry
@@ -23,6 +26,7 @@ export async function executeClaimedConnectorRun({
   executionIntent?: 'ordinary' | 'deferred_refresh'
   mode: ConnectorRefreshMode
   now: () => Date
+  replayConnectorUpgrade: ReturnType<typeof createNormalizationReplayService>['replayConnectorUpgrade']
   startedAt: string
 }): Promise<ConnectorRunRecord> {
   try {
@@ -34,7 +38,7 @@ export async function executeClaimedConnectorRun({
       throw new Error(`Claimed connector run is not running: ${connectorRunId}`)
     }
 
-    const instance = await connectorRepository.getInstance(runRequest.connectorInstanceId)
+    let instance = await connectorRepository.getInstance(runRequest.connectorInstanceId)
     if (!instance) {
       throw new Error(`Connector instance not found: ${runRequest.connectorInstanceId}`)
     }
@@ -43,11 +47,12 @@ export async function executeClaimedConnectorRun({
     if (!connector) {
       throw new Error(`Unsupported connector id: ${instance.connectorId}`)
     }
-    if (instance.connectorVersion !== connector.definition.version) {
-      throw new Error(
-        `Connector version mismatch for ${instance.connectorId}: expected ${connector.definition.version}`,
-      )
-    }
+    instance = await reconcileConnectorPackageUpgrade({
+      connector,
+      connectorRepository,
+      instance,
+      replayConnectorUpgrade,
+    })
 
     const coverageStartedAt = persistedClaimedCoverageStart(
       connectorRepository,

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import type {
   CanonicalCandidateField,
   CompletedRawSourceReplayItem,
@@ -17,6 +17,7 @@ import {
   normalizationReplayItems,
   normalizationReplayRequests,
   normalizationRuns,
+  rawSourceOccurrences,
   rawSourceRevisions,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
@@ -37,114 +38,241 @@ export function createNormalizationReplayService(options: {
 }) {
   const now = options.now ?? (() => new Date())
 
-  return {
-    async replay(input: ReplayRawSourceRecordsInput): Promise<RawSourceReplayReceipt> {
-      validateReplayInput(input)
-      validateTargetVersions(input, options.registry)
-      const replayId = crypto.randomUUID()
-      const acceptedAt = now().toISOString()
-      const matches = selectMatches(options.database, input)
+  async function replayWithId(
+    input: ReplayRawSourceRecordsInput,
+    replayId: string,
+    validateInput: boolean,
+  ): Promise<RawSourceReplayReceipt> {
+    if (validateInput) validateReplayInput(input)
+    validateTargetVersions(input, options.registry)
+    const matches = selectMatches(options.database, input)
+    initializeReplay(options.database, { input, matches, replayId, acceptedAt: now().toISOString() })
+    const existing = options.database.select({ status: normalizationReplayRequests.status })
+      .from(normalizationReplayRequests)
+      .where(eq(normalizationReplayRequests.id, replayId)).get()
+    if (existing?.status === 'completed' || existing?.status === 'completed_with_failures') {
+      return readReplayReceipt(options.database, replayId)
+    }
+    options.database.update(normalizationReplayRequests).set({ status: 'in_progress' })
+      .where(eq(normalizationReplayRequests.id, replayId)).run()
 
-      options.database.transaction((transaction) => {
-        transaction.insert(normalizationReplayRequests).values({
-          id: replayId,
-          selectorJson: JSON.stringify(input.selector),
-          invalidationJson: JSON.stringify(input.invalidate),
-          targetVersionsJson: input.targetVersions ? JSON.stringify(input.targetVersions) : null,
-          fieldDirectivesJson: JSON.stringify(input.fieldDirectives ?? []),
-          status: matches.length ? 'in_progress' : 'accepted',
-          acceptedAt,
-          completedAt: null,
-        }).run()
-        matches.forEach((match, sequence) => {
-          transaction.insert(normalizationReplayItems).values({
-            id: crypto.randomUUID(), replayId, rawRecordId: match.rawRecordId,
-            rawRevisionId: match.rawRevisionId, inputHash: match.inputHash,
-            sequence, status: 'pending', normalizationRunId: null,
-            failureJson: null, completedAt: null,
-          }).run()
+    const pending = options.database.select().from(normalizationReplayItems)
+      .where(and(
+        eq(normalizationReplayItems.replayId, replayId),
+        eq(normalizationReplayItems.status, 'pending'),
+      ))
+      .orderBy(asc(normalizationReplayItems.sequence)).all()
+    for (const match of pending) {
+      if (settleReplayItemFromPersistedRun(options.database, replayId, match.id, match.rawRevisionId, now)) {
+        continue
+      }
+      try {
+        const effectiveDirectives = selectEffectiveDirectives(
+          options.database,
+          match.rawRevisionId,
+        )
+        const result = await options.orchestrator.normalize(match.rawRecordId, match.rawRevisionId, {
+          kind: 'replay', replayId, fieldDirectives: effectiveDirectives,
+          targetResolverVersions: input.targetVersions?.resolvers ?? [],
         })
-      })
-
-      let failed = false
-      const items: RawSourceReplayItem[] = []
-      for (const match of matches) {
-        try {
-          const effectiveDirectives = selectEffectiveDirectives(
-            options.database,
-            match.rawRevisionId,
-          )
-          const result = await options.orchestrator.normalize(match.rawRecordId, match.rawRevisionId, {
-            kind: 'replay', replayId, fieldDirectives: effectiveDirectives,
-            targetResolverVersions: input.targetVersions?.resolvers ?? [],
-          })
-          await options.onNormalized?.(result)
-          const run = options.database.select({ id: normalizationRuns.id }).from(normalizationRuns)
-            .where(and(
-              eq(normalizationRuns.rawRevisionId, match.rawRevisionId),
-              eq(normalizationRuns.triggerId, replayId),
-            )).get()
-          const resultFailed = result.status === 'failed'
-          const failure: RawSourceReplayFailure | null = resultFailed
-            ? { code: 'normalization_failed', retryable: false }
-            : null
-          if (failure) {
-            failed = true
-          }
-          const completedAt = now().toISOString()
-          options.database.update(normalizationReplayItems).set({
-            status: resultFailed ? 'failed' : 'completed', normalizationRunId: run?.id ?? null,
-            failureJson: failure ? JSON.stringify(failure) : null,
-            completedAt,
-          }).where(and(
-            eq(normalizationReplayItems.replayId, replayId),
-            eq(normalizationReplayItems.rawRevisionId, match.rawRevisionId),
-          )).run()
-          items.push(resultFailed ? {
-            status: 'failed', rawRecordId: match.rawRecordId,
-            rawRevisionId: match.rawRevisionId, ...(run ? { normalizationRunId: run.id } : {}),
-            failure: failure!,
-          } : {
-            status: 'completed', rawRecordId: match.rawRecordId,
-            rawRevisionId: match.rawRevisionId, ...(run ? { normalizationRunId: run.id } : {}),
-          })
-        } catch (error) {
-          failed = true
-          const failure = classifyReplayFailure(error)
-          const completedAt = now().toISOString()
-          options.database.update(normalizationReplayItems).set({
-            status: 'failed',
-            failureJson: JSON.stringify(failure),
-            completedAt,
-          }).where(and(
-            eq(normalizationReplayItems.replayId, replayId),
-            eq(normalizationReplayItems.rawRevisionId, match.rawRevisionId),
-          )).run()
-          items.push({
-            status: 'failed', rawRecordId: match.rawRecordId,
-            rawRevisionId: match.rawRevisionId, failure,
-          })
-        }
+        await options.onNormalized?.(result)
+        const run = options.database.select({ id: normalizationRuns.id }).from(normalizationRuns)
+          .where(and(
+            eq(normalizationRuns.rawRevisionId, match.rawRevisionId),
+            eq(normalizationRuns.triggerId, replayId),
+          )).get()
+        const resultFailed = result.status === 'failed'
+        const failure: RawSourceReplayFailure | null = resultFailed
+          ? { code: 'normalization_failed', retryable: false }
+          : null
+        const completedAt = now().toISOString()
+        options.database.update(normalizationReplayItems).set({
+          status: resultFailed ? 'failed' : 'completed', normalizationRunId: run?.id ?? null,
+          failureJson: failure ? JSON.stringify(failure) : null,
+          completedAt,
+        }).where(and(
+          eq(normalizationReplayItems.replayId, replayId),
+          eq(normalizationReplayItems.rawRevisionId, match.rawRevisionId),
+        )).run()
+      } catch (error) {
+        const failure = classifyReplayFailure(error)
+        const completedAt = now().toISOString()
+        options.database.update(normalizationReplayItems).set({
+          status: 'failed',
+          failureJson: JSON.stringify(failure),
+          completedAt,
+        }).where(and(
+          eq(normalizationReplayItems.replayId, replayId),
+          eq(normalizationReplayItems.rawRevisionId, match.rawRevisionId),
+        )).run()
       }
+    }
 
-      const completedAt = now().toISOString()
-      options.database.update(normalizationReplayRequests).set({
-        status: failed ? 'completed_with_failures' : 'completed', completedAt,
-      }).where(eq(normalizationReplayRequests.id, replayId)).run()
+    const failed = options.database.select({ id: normalizationReplayItems.id })
+      .from(normalizationReplayItems)
+      .where(and(
+        eq(normalizationReplayItems.replayId, replayId),
+        eq(normalizationReplayItems.status, 'failed'),
+      )).get()
+    options.database.update(normalizationReplayRequests).set({
+      status: failed ? 'completed_with_failures' : 'completed',
+      completedAt: now().toISOString(),
+    }).where(eq(normalizationReplayRequests.id, replayId)).run()
+    return readReplayReceipt(options.database, replayId)
+  }
 
-      const receipt = {
-        replayId,
-        acceptedAt,
-        matchedRawRevisionIds: matches.map(({ rawRevisionId }) => rawRevisionId),
-        completedAt,
-      }
-      return failed
-        ? { ...receipt, status: 'completed_with_failures', items }
-        : { ...receipt, status: 'completed', items: items.filter(
-          (item): item is CompletedRawSourceReplayItem => item.status === 'completed',
-        ) }
+  return {
+    replay(input: ReplayRawSourceRecordsInput) {
+      return replayWithId(input, crypto.randomUUID(), true)
+    },
+    replayConnectorUpgrade(input: {
+      connectorInstanceId: string
+      fromConnectorVersion: string
+      instanceUpdatedAt: string
+      toConnectorVersion: string
+    }) {
+      const rawRevisionIds = currentConnectorRawRevisionIds(
+        options.database,
+        input.connectorInstanceId,
+      )
+      const replayId = connectorUpgradeReplayId(input)
+      return replayWithId({
+        selector: { rawRevisionIds },
+        invalidate: {},
+      }, replayId, false)
     },
   }
+}
+
+function settleReplayItemFromPersistedRun(
+  database: DrizzleDatabase,
+  replayId: string,
+  replayItemId: string,
+  rawRevisionId: string,
+  now: () => Date,
+) {
+  const run = database.select({ id: normalizationRuns.id, status: normalizationRuns.status })
+    .from(normalizationRuns)
+    .where(and(
+      eq(normalizationRuns.triggerId, replayId),
+      eq(normalizationRuns.rawRevisionId, rawRevisionId),
+    ))
+    .orderBy(desc(normalizationRuns.createdAt), desc(normalizationRuns.id)).get()
+  if (!run || !['completed', 'blocked', 'failed'].includes(run.status)) return false
+  const failed = run.status === 'failed'
+  database.update(normalizationReplayItems).set({
+    status: failed ? 'failed' : 'completed',
+    normalizationRunId: run.id,
+    failureJson: failed
+      ? JSON.stringify({ code: 'normalization_failed', retryable: false })
+      : null,
+    completedAt: now().toISOString(),
+  }).where(eq(normalizationReplayItems.id, replayItemId)).run()
+  return true
+}
+
+function initializeReplay(
+  database: DrizzleDatabase,
+  input: {
+    acceptedAt: string
+    input: ReplayRawSourceRecordsInput
+    matches: ReturnType<typeof selectMatches>
+    replayId: string
+  },
+) {
+  database.transaction((transaction) => {
+    const inserted = transaction.insert(normalizationReplayRequests).values({
+      id: input.replayId,
+      selectorJson: JSON.stringify(input.input.selector),
+      invalidationJson: JSON.stringify(input.input.invalidate),
+      targetVersionsJson: input.input.targetVersions
+        ? JSON.stringify(input.input.targetVersions)
+        : null,
+      fieldDirectivesJson: JSON.stringify(input.input.fieldDirectives ?? []),
+      status: input.matches.length ? 'in_progress' : 'accepted',
+      acceptedAt: input.acceptedAt,
+      completedAt: null,
+    }).onConflictDoNothing().run()
+    if (inserted.changes === 0) return
+    input.matches.forEach((match, sequence) => {
+      transaction.insert(normalizationReplayItems).values({
+        id: crypto.randomUUID(), replayId: input.replayId, rawRecordId: match.rawRecordId,
+        rawRevisionId: match.rawRevisionId, inputHash: match.inputHash,
+        sequence, status: 'pending', normalizationRunId: null,
+        failureJson: null, completedAt: null,
+      }).run()
+    })
+  })
+}
+
+function readReplayReceipt(database: DrizzleDatabase, replayId: string): RawSourceReplayReceipt {
+  const request = database.select().from(normalizationReplayRequests)
+    .where(eq(normalizationReplayRequests.id, replayId)).get()
+  if (!request) throw new Error(`Normalization replay request not found: ${replayId}`)
+  const persistedItems = database.select().from(normalizationReplayItems)
+    .where(eq(normalizationReplayItems.replayId, replayId))
+    .orderBy(asc(normalizationReplayItems.sequence)).all()
+  const items = persistedItems.flatMap((item): RawSourceReplayItem[] => {
+    if (item.status === 'pending') return []
+    const run = item.normalizationRunId ? { normalizationRunId: item.normalizationRunId } : {}
+    if (item.status === 'completed') return [{
+      status: 'completed', rawRecordId: item.rawRecordId,
+      rawRevisionId: item.rawRevisionId, ...run,
+    }]
+    return [{
+      status: 'failed', rawRecordId: item.rawRecordId, rawRevisionId: item.rawRevisionId,
+      ...run,
+      failure: item.failureJson
+        ? JSON.parse(item.failureJson) as RawSourceReplayFailure
+        : { code: 'internal_error', retryable: false },
+    }]
+  })
+  if (!request.completedAt) throw new Error(`Normalization replay request is incomplete: ${replayId}`)
+  const receipt = {
+    replayId,
+    acceptedAt: request.acceptedAt,
+    completedAt: request.completedAt,
+    matchedRawRevisionIds: persistedItems.map(({ rawRevisionId }) => rawRevisionId),
+  }
+  if (request.status === 'completed_with_failures') {
+    return { ...receipt, status: 'completed_with_failures', items }
+  }
+  if (request.status === 'completed') {
+    return {
+      ...receipt,
+      status: 'completed',
+      items: items.filter((item): item is CompletedRawSourceReplayItem => item.status === 'completed'),
+    }
+  }
+  throw new Error(`Normalization replay request has invalid terminal status: ${request.status}`)
+}
+
+function currentConnectorRawRevisionIds(database: DrizzleDatabase, connectorInstanceId: string) {
+  const rawRecordIds = new Set(database.select({ id: rawSourceOccurrences.rawRecordId })
+    .from(rawSourceOccurrences)
+    .where(eq(rawSourceOccurrences.connectorInstanceId, connectorInstanceId))
+    .all().map(({ id }) => id))
+  const current = new Map<string, { id: string; revision: number }>()
+  for (const revision of database.select({
+    id: rawSourceRevisions.id,
+    rawRecordId: rawSourceRevisions.rawRecordId,
+    revision: rawSourceRevisions.revision,
+  }).from(rawSourceRevisions).orderBy(asc(rawSourceRevisions.createdAt), asc(rawSourceRevisions.id)).all()) {
+    if (!rawRecordIds.has(revision.rawRecordId)) continue
+    const prior = current.get(revision.rawRecordId)
+    if (!prior || revision.revision > prior.revision) current.set(revision.rawRecordId, revision)
+  }
+  return [...current.values()].map(({ id }) => id)
+}
+
+function connectorUpgradeReplayId(input: {
+  connectorInstanceId: string
+  fromConnectorVersion: string
+  instanceUpdatedAt: string
+  toConnectorVersion: string
+}) {
+  const digest = crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex')
+  return `connector-upgrade:${digest}`
 }
 
 function classifyReplayFailure(error: unknown): RawSourceReplayFailure {

@@ -3,6 +3,37 @@ import { connectorCheckpoints } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import type { ConnectorCheckpointRecord, RecordConnectorCheckpointInput } from './connector-checkpoint.persistence-types'
 
+export function copyConnectorCheckpointIfAbsent(
+  database: Pick<DrizzleDatabase, 'insert' | 'select'>,
+  input: {
+    connectorInstanceId: string
+    expectedSchemaVersion: string
+    sourceFilterSignature: string
+    targetFilterSignature: string
+  },
+  now: string,
+) {
+  const source = database
+    .select()
+    .from(connectorCheckpoints)
+    .where(and(
+      eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
+      eq(connectorCheckpoints.filterSignature, input.sourceFilterSignature),
+      eq(connectorCheckpoints.schemaVersion, input.expectedSchemaVersion),
+      isNull(connectorCheckpoints.deletedAt),
+    ))
+    .get()
+  if (!source || !source.coverageStartedAt || !source.coverageEndedAt) return
+
+  database.insert(connectorCheckpoints).values({
+    ...source,
+    filterSignature: input.targetFilterSignature,
+    savedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoNothing().run()
+}
+
 export function upsertConnectorCheckpoint(
   database: Pick<DrizzleDatabase, 'insert' | 'select' | 'update'>,
   input: RecordConnectorCheckpointInput,
