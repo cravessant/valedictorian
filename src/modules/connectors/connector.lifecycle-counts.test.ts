@@ -218,6 +218,45 @@ describe('connector run lifecycle counts', () => {
     })
   })
 
+  it('counts resolved destination with non-destination needs_enrichment as pending, not unclassified', async () => {
+    const fixture = await createRunFixture('resolved-needs-enrichment')
+    const receipt = (await fixture.rawSources.ingestBatch({ records: [{
+      adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.6.0' },
+      capture: {
+        connectorInstanceId: fixture.connectorInstanceId,
+        connectorRunId: fixture.run.id,
+        executionScopeId: fixture.run.executionScopeId,
+      },
+      observedAt: '2026-07-11T17:00:00.000Z',
+      providerRecordId: 'job-resolved-needs-enrichment',
+      providerSchema: 'jobright-visitor-list@1',
+      payload: { jobResult: { jobId: 'job-resolved-needs-enrichment' } },
+    }] })).receipts[0]
+    persistResolvedDestinationNeedsEnrichment(fixture.database, receipt, 60)
+
+    expect(reconcileConnectorRunLifecycleCounts(fixture.database, {
+      ...fixture.run,
+      stats: {
+        observations: 0,
+        providerReturned: 1,
+        providerValid: 1,
+        providerInvalid: 0,
+        sourceDuplicates: 0,
+      },
+    })).toMatchObject({
+      provider: { capturedRecords: 1, invariant: 'reconciled' },
+      destination: {
+        normalized: 0,
+        pending: 1,
+        unresolved: 0,
+        gateRejected: 0,
+        unclassified: 0,
+        invariant: 'reconciled',
+      },
+      sourcing: { added: 0, unclassified: 0, invariant: 'reconciled' },
+    })
+  })
+
   it('partitions normalized jobs into exhaustive sourcing dispositions and requires a concrete review question', async () => {
     const fixture = await createRunFixture('sourcing-partition')
     const dispositions = [
@@ -475,6 +514,79 @@ async function createRunFixture(id: string) {
     rawSources: createSqliteRawSourceRepository(database),
     run,
   }
+}
+
+function persistResolvedDestinationNeedsEnrichment(
+  database: ReturnType<typeof createDrizzleDatabase>,
+  receipt: Awaited<ReturnType<ReturnType<typeof createSqliteRawSourceRepository>['ingestBatch']>>['receipts'][number],
+  index: number,
+) {
+  const runId = `normalization-${index}`
+  const attemptId = `attempt-${index}`
+  const createdAt = `2026-07-11T17:01:${String(index).padStart(2, '0')}.000Z`
+  database.insert(normalizationRuns).values({
+    id: runId,
+    rawRecordId: receipt.rawRecordId,
+    rawRevisionId: receipt.revision.id,
+    triggerOccurrenceId: receipt.occurrence.id,
+    triggerConnectorInstanceId: receipt.occurrence.capture?.connectorInstanceId ?? null,
+    triggerConnectorRunId: receipt.occurrence.capture?.connectorRunId ?? null,
+    inputHash: `input-${index}`,
+    resolverSetHash: `resolvers-${index}`,
+    canonicalSchemaVersion: 'canonical-source-candidate/v1',
+    gatePolicyVersion: 'normalization-gate/v1',
+    triggerKind: 'intake',
+    triggerId: null,
+    status: 'completed',
+    createdAt,
+    updatedAt: createdAt,
+  }).run()
+  database.insert(normalizationAttempts).values({
+    id: attemptId,
+    runId,
+    rawRevisionId: receipt.revision.id,
+    sequence: 0,
+    resolverId: 'jobright.authenticated-destination',
+    resolverVersion: '1.0.0',
+    inputHash: `input-${index}`,
+    declarationJson: '{}',
+    applicabilityJson: '[]',
+    status: 'completed',
+    startedAt: createdAt,
+    completedAt: createdAt,
+  }).run()
+  database.insert(normalizationFieldOutcomes).values({
+    id: `outcome-${index}`,
+    runId,
+    attemptId,
+    sequence: 0,
+    attemptSequence: 0,
+    outcomeIndex: 0,
+    field: 'destinationUrl',
+    status: 'resolved',
+    resolverId: 'jobright.authenticated-destination',
+    resolverVersion: '1.0.0',
+    inputHash: `input-${index}`,
+    outcomeJson: JSON.stringify({
+      status: 'resolved',
+      class: 'employer_or_ats',
+      url: `https://example.test/${index}`,
+    }),
+  }).run()
+  database.insert(normalizationGates).values({
+    id: `gate-${index}`,
+    runId,
+    policyVersion: 'normalization-gate/v1',
+    status: 'needs_enrichment',
+    candidateId: null,
+    gateJson: JSON.stringify({
+      status: 'needs_enrichment',
+      conflictingFields: ['canonicalIdentity'],
+      missingFields: [],
+      reason: 'conflicting canonicalIdentity',
+    }),
+    evaluatedAt: createdAt,
+  }).run()
 }
 
 function persistNormalizationOutcome(

@@ -235,6 +235,10 @@ export function reconcileConnectorRunLifecycleCounts(
       || !connectorDestinationAttempted
       || [...destinationStatuses].every((status) =>
         status === 'suppressed' || status === 'not_applicable')
+      || (
+        normalization.gateStatus === 'needs_enrichment'
+        && destinationStatuses.has('resolved')
+      )
     ) {
       destination.pending += 1
     } else if (destinationStatuses.has('abstained') || destinationStatuses.has('failed')) {

@@ -123,6 +123,86 @@ describe('ConnectorRunSynchronizationDetails', () => {
         .toBeInTheDocument()
     },
   )
+
+  it('renders the installed reconciled destination shape without a false shortfall warning', () => {
+    render(<ConnectorRunLifecycleDetails
+      showDebugData
+      run={runFixture({
+        lifecycleCounts: installedReconciledLifecycleFixture(),
+      })}
+    />)
+
+    const counts = screen.getByLabelText('Run lifecycle counts')
+    expect(counts).toHaveTextContent('Normalized: 5')
+    expect(counts).toHaveTextContent('Pending: 13')
+    expect(counts).toHaveTextContent('Unresolved: 6')
+    expect(counts).toHaveTextContent('Gate rejected: 16')
+    expect(counts).toHaveTextContent('Captured records: 40')
+    expect(counts).not.toHaveTextContent('Unclassified:')
+    expect(screen.queryByText(/do not reconcile/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/explicitly unclassified/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'How these counts work' }))
+    expect(screen.getByText(
+      /Captured records equal normalized plus pending, unresolved, gate-rejected, and explicitly unclassified records/,
+    )).toBeInTheDocument()
+    expect(screen.getByText(
+      'Visible exceptions: capture shortfall 0; provider unclassified 0; destination unclassified 0; sourcing unclassified 0.',
+    )).toBeInTheDocument()
+  })
+
+  it('keeps lineage failure copy separate from explicit unclassified-state copy', () => {
+    render(<ConnectorRunLifecycleDetails
+      showDebugData
+      run={runFixture({
+        lifecycleCounts: {
+          ...installedReconciledLifecycleFixture(),
+          destination: {
+            normalized: 5,
+            resolvedEmployerOrAts: 4,
+            resolvedThirdParty: 1,
+            unresolved: 6,
+            pending: 11,
+            gateRejected: 16,
+            unclassified: 2,
+            invariant: 'reconciled',
+          },
+        },
+      })}
+    />)
+
+    expect(screen.getByLabelText('Run lifecycle counts')).toHaveTextContent('Unclassified: 2')
+    expect(screen.getByText(
+      /Some persisted rows are explicitly unclassified; they are included in the primary stage totals/,
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/do not reconcile/i)).not.toBeInTheDocument()
+  })
+
+  it('reserves reconcile wording for genuine invariant or capture shortfall failures', () => {
+    render(<ConnectorRunLifecycleDetails
+      showDebugData
+      run={runFixture({
+        lifecycleCounts: {
+          ...installedReconciledLifecycleFixture(),
+          provider: {
+            ...installedReconciledLifecycleFixture().provider,
+            captureShortfall: 2,
+            invariant: 'reconciled',
+            gaps: [],
+          },
+          destination: {
+            ...installedReconciledLifecycleFixture().destination,
+            invariant: 'lineage_incomplete',
+          },
+        },
+      })}
+    />)
+
+    expect(screen.getByText(
+      /Some persisted rows do not reconcile; shortfalls remain visible in the count explanation/,
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/explicitly unclassified/i)).not.toBeInTheDocument()
+  })
 })
 
 function lifecycleFixture(
@@ -165,6 +245,49 @@ function lifecycleFixture(
       notFit: 0,
       rejected: 0,
       actionableReview: 0,
+      unclassified: 0,
+      invariant: 'reconciled',
+    },
+  }
+}
+
+function installedReconciledLifecycleFixture(): NonNullable<ConnectorSettingsRun['lifecycleCounts']> {
+  return {
+    version: 'connector-run-lifecycle-counts/v1',
+    source: 'frozen_terminal',
+    scope: {
+      kind: 'connector_run',
+      connectorRunId: 'connector-run-sync-fixture',
+      executionScopeId: 'scope_fixture_run_details',
+    },
+    provider: {
+      returnedRows: 40,
+      validRecords: 40,
+      invalidRecords: 0,
+      sourceDuplicates: 0,
+      capturedRecords: 40,
+      occurrenceCount: 40,
+      captureShortfall: 0,
+      unclassifiedRows: 0,
+      invariant: 'reconciled',
+      gaps: [],
+    },
+    destination: {
+      normalized: 5,
+      resolvedEmployerOrAts: 4,
+      resolvedThirdParty: 1,
+      unresolved: 6,
+      pending: 13,
+      gateRejected: 16,
+      unclassified: 0,
+      invariant: 'reconciled',
+    },
+    sourcing: {
+      findingsAdded: 0,
+      canonicalDuplicates: 2,
+      notFit: 0,
+      rejected: 0,
+      actionableReview: 3,
       unclassified: 0,
       invariant: 'reconciled',
     },

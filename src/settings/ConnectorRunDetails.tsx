@@ -107,6 +107,9 @@ export function ConnectorRunLifecycleDetails({
   const showLifecycleDiagnostics = showDebugData && lifecycle !== null
   const showReconciliationWarning = showLifecycleDiagnostics
     && hasLifecycleReconciliationWarning(lifecycle)
+  const showUnclassifiedNotice = showLifecycleDiagnostics
+    && lifecycle !== null
+    && hasExplicitUnclassifiedRows(lifecycle)
 
   return (
     <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 text-xs">
@@ -133,6 +136,9 @@ export function ConnectorRunLifecycleDetails({
               ['Source duplicates', lifecycle.provider.sourceDuplicates],
               ['Captured records', lifecycle.provider.capturedRecords],
               ['Capture occurrences', lifecycle.provider.occurrenceCount],
+              ...(lifecycle.provider.unclassifiedRows > 0
+                ? [['Unclassified', lifecycle.provider.unclassifiedRows] as const]
+                : []),
             ]} />
             <RunCountStage title="Destination and normalization" values={[
               ['Normalized', lifecycle.destination.normalized],
@@ -141,6 +147,9 @@ export function ConnectorRunLifecycleDetails({
               ['Pending', lifecycle.destination.pending],
               ['Unresolved', lifecycle.destination.unresolved],
               ['Gate rejected', lifecycle.destination.gateRejected],
+              ...(lifecycle.destination.unclassified > 0
+                ? [['Unclassified', lifecycle.destination.unclassified] as const]
+                : []),
             ]} />
             <RunCountStage title="Sourcing" values={[
               ['Sourcing findings added', lifecycle.sourcing.findingsAdded],
@@ -148,11 +157,19 @@ export function ConnectorRunLifecycleDetails({
               ['Not fit', lifecycle.sourcing.notFit],
               ['Cutoff / rejected', lifecycle.sourcing.rejected],
               ['Actionable review', lifecycle.sourcing.actionableReview],
+              ...(lifecycle.sourcing.unclassified > 0
+                ? [['Unclassified', lifecycle.sourcing.unclassified] as const]
+                : []),
             ]} />
           </div>
           {showReconciliationWarning ? (
             <p className="font-medium text-warning">
-              Some persisted rows do not reconcile; shortfalls and unclassified records remain visible in the count explanation.
+              Some persisted rows do not reconcile; shortfalls remain visible in the count explanation.
+            </p>
+          ) : null}
+          {showUnclassifiedNotice ? (
+            <p className="font-medium text-warning">
+              Some persisted rows are explicitly unclassified; they are included in the primary stage totals and count explanation.
             </p>
           ) : null}
           {showDebugData && providerGaps.length > 0 ? (
@@ -239,7 +256,12 @@ function hasLifecycleReconciliationWarning(
     || lifecycle.destination.invariant !== 'reconciled'
     || lifecycle.sourcing.invariant !== 'reconciled'
     || lifecycle.provider.captureShortfall > 0
-    || lifecycle.provider.unclassifiedRows > 0
+}
+
+function hasExplicitUnclassifiedRows(
+  lifecycle: NonNullable<ConnectorSettingsRun['lifecycleCounts']>,
+) {
+  return lifecycle.provider.unclassifiedRows > 0
     || lifecycle.destination.unclassified > 0
     || lifecycle.sourcing.unclassified > 0
 }
