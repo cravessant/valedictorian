@@ -9,8 +9,15 @@ export const nativeMainExternals = ['better-sqlite3', 'undici']
 // https://vitejs.dev/config/
 export default defineConfig({
   test: {
-    environment: 'jsdom',
+    environment: 'node',
+    environmentMatchGlobs: [
+      ['**/*.test.tsx', 'jsdom'],
+      ['src/app/loaders*.test.ts', 'jsdom'],
+      ['src/theme/theme-applier.test.ts', 'jsdom'],
+    ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
+    maxWorkers: process.env.CI ? 2 : undefined,
+    minWorkers: process.env.CI ? 2 : undefined,
     setupFiles: './src/test/setup.ts',
   },
   plugins: [
