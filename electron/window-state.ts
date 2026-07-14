@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import type { ResolvedTheme } from '../src/theme/theme-registry'
 
 export interface WindowBounds {
   height: number
@@ -52,6 +53,13 @@ export const minimumMainWindowBounds = {
 export const mainWindowFirstPaintOptions = {
   backgroundColor: '#181825',
   show: false,
+}
+
+export function createMainWindowFirstPaintOptions(theme: Pick<ResolvedTheme, 'firstPaintBackground'>) {
+  return {
+    ...mainWindowFirstPaintOptions,
+    backgroundColor: theme.firstPaintBackground,
+  }
 }
 
 export interface MainWindowStateStore {

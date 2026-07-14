@@ -28,6 +28,7 @@ import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from './app-settings'
 import { SETTINGS_PANELS, type SettingsPanelId } from '../app/types'
 import { SettingsToggleRow } from '../app/AppChrome'
+import { AppearanceSettingsPanel } from './AppearanceSettingsPanel'
 import { ProfileSettingsPanel } from '../modules/profile/ProfileSettingsPanel'
 import { SettingsTextInput } from './SettingsTextInput'
 import type { WorkspaceSummary } from '../workspace/workspace.initializer'
@@ -533,35 +534,6 @@ function DataSettingsPanel({
           Reveal workspace
         </Button>
       </div>
-    </section>
-  )
-}
-
-function AppearanceSettingsPanel({
-  settings,
-  onSettingsPatch,
-}: {
-  settings: AppSettings
-  onSettingsPatch: (patch: AppSettingsPatch) => void
-}) {
-  return (
-    <section aria-labelledby="appearance-settings-title" className="space-y-7">
-      <div>
-        <h2 id="appearance-settings-title" className={typography.sectionTitle}>
-          Appearance
-        </h2>
-        <p className={typography.sectionDescription}>
-          Visual theming stays minimal for now; this section holds UI preferences.
-        </p>
-      </div>
-
-      <SettingsToggleRow
-        checked={settings.showAdvancedFilters}
-        description="Show the full application filter toolbar on the home view."
-        icon={<SlidersHorizontal className="h-4 w-4" aria-hidden="true" />}
-        label="Show advanced filters"
-        onChange={(checked) => onSettingsPatch({ showAdvancedFilters: checked })}
-      />
     </section>
   )
 }

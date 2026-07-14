@@ -23,6 +23,7 @@ declare namespace NodeJS {
 
 // Used in Renderer process, exposed in `preload.ts`.
 interface Window {
+  valedictorianTheme?: import('../src/theme/theme-registry').ResolvedTheme
   applications: import('../src/ipc/applications.preload').ApplicationsPreloadApi
   profile: import('../src/ipc/profile.preload').ProfilePreloadApi
   actionQueue: import('../src/ipc/action-queue.preload').ActionQueuePreloadApi

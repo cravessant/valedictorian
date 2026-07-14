@@ -25,3 +25,28 @@ describe('normalizeAppSettings showDebugData', () => {
     expect(normalizeAppSettings({ showDebugData: true }).showDebugData).toBe(true)
   })
 })
+
+describe('normalizeAppSettings theme', () => {
+  it('defaults legacy workspace settings to Catppuccin Blur Mocha', () => {
+    expect(defaultAppSettings.theme).toEqual({
+      presetId: 'catppuccin-blur-mocha',
+      overrides: {},
+    })
+    expect(normalizeAppSettings({}).theme).toEqual(defaultAppSettings.theme)
+  })
+
+  it('keeps valid theme overrides and drops invalid values', () => {
+    expect(normalizeAppSettings({
+      theme: {
+        presetId: 'graphite',
+        overrides: {
+          primary: '#12345678',
+          background: 'var(--background)',
+        },
+      },
+    }).theme).toEqual({
+      presetId: 'graphite',
+      overrides: { primary: '#12345678' },
+    })
+  })
+})

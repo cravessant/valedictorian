@@ -39,6 +39,9 @@ import {
   type SupervisedBackendListener,
 } from '../src/runtime/local-backend-supervisor'
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
+import { defaultAppSettings } from '../src/settings/app-settings'
+import { serializeResolvedTheme } from '../src/theme/theme-bootstrap'
+import { resolveTheme, type ResolvedTheme } from '../src/theme/theme-registry'
 import { type WorkspaceSummary } from '../src/workspace/workspace.initializer'
 import { createWorkspaceMenuTemplate } from '../src/workspace/workspace.menu'
 import { createWorkspaceWindowTitle } from '../src/workspace/workspace.window'
@@ -58,7 +61,7 @@ import { createElectronUpdateService } from '../src/updates/update.service'
 import {
   createFileMainWindowStateStore,
   createMainWindowStateSnapshot,
-  mainWindowFirstPaintOptions,
+  createMainWindowFirstPaintOptions,
   minimumMainWindowBounds,
   resolveMainWindowStateOptions,
   type MainWindowStateStore,
@@ -107,6 +110,7 @@ let rendererHttpBinding: {
 let currentWorkspace: WorkspaceSummary | null = null
 let workspaceManager: LocalWorkspaceManager | null = null
 let activeWorkspaceService: WorkspaceService<BrowserWindow> | null = null
+let activeResolvedTheme: ResolvedTheme = resolveTheme(defaultAppSettings.theme)
 let runtimeServicesRegistered = false
 let updatePollingScheduled = false
 const updatePollInitialDelayMs = 3000
@@ -178,8 +182,10 @@ async function registerRuntimeServices(
   options?: WorkspaceActivationOptions,
 ) {
   const settingsStore = createFileAppSettingsStore(workspace.appSettingsPath)
+  const settings = await settingsStore.get()
+  activeResolvedTheme = resolveTheme(settings.theme)
   const config = resolveValedictorianRuntimeConfig({
-    settings: await settingsStore.get(),
+    settings,
     userDataPath: app.getPath('userData'),
     workspaceDataPath: workspace.dataPath,
     workspaceId: workspace.id,
@@ -252,7 +258,12 @@ async function registerRuntimeServices(
   registerConnectorsIpc(runtime.connectors, ipcMain)
   registerScoresIpc(runtime.client, ipcMain)
   registerSourcingIpc(runtime.client, ipcMain)
-  registerSettingsIpc(settingsStore, ipcMain)
+  registerSettingsIpc(settingsStore, ipcMain, {
+    onSettingsUpdated: (nextSettings) => {
+      activeResolvedTheme = resolveTheme(nextSettings.theme)
+      applyNativeThemeToWindow(mainWindow, activeResolvedTheme)
+    },
+  })
   registerValedictorianHttpIpc(
     (config.mode === 'remote' || Boolean(config.apiToken))
       ? { request: (input) => createCurrentBoundTransport(workspace.id).request(input) }
@@ -268,12 +279,12 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     ...resolveMainWindowStateOptions(savedMainWindowState, screen.getAllDisplays()),
     ...minimumMainWindowBounds,
-    ...mainWindowFirstPaintOptions,
+    ...createMainWindowFirstPaintOptions(activeResolvedTheme),
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     title: createWorkspaceWindowTitle(currentWorkspace),
     titleBarOverlay: {
-      color: '#181825',
-      symbolColor: '#cdd6f4',
+      color: activeResolvedTheme.titleBarBackground,
+      symbolColor: activeResolvedTheme.titleBarSymbolColor,
     },
     titleBarStyle: 'hidden',
     trafficLightPosition: {
@@ -388,6 +399,20 @@ function sendWindowChromeState(window: BrowserWindow | null) {
   window.webContents.send('window-chrome:state-changed', getWindowChromeState(window))
 }
 
+function applyNativeThemeToWindow(window: BrowserWindow | null, theme: ResolvedTheme) {
+  if (!window || window.isDestroyed()) {
+    return
+  }
+
+  window.setBackgroundColor(theme.firstPaintBackground)
+  if (typeof window.setTitleBarOverlay === 'function') {
+    window.setTitleBarOverlay({
+      color: theme.titleBarBackground,
+      symbolColor: theme.titleBarSymbolColor,
+    })
+  }
+}
+
 function createWorkspaceLauncherWindow() {
   workspaceLauncherWindow = new BrowserWindow({
     autoHideMenuBar: true,
@@ -398,6 +423,7 @@ function createWorkspaceLauncherWindow() {
     minimizable: true,
     resizable: false,
     show: false,
+    backgroundColor: resolveTheme(defaultAppSettings.theme).firstPaintBackground,
     title: 'Valedictorian - Workspace Launcher',
     titleBarOverlay: {
       color: '#181825',
@@ -517,6 +543,7 @@ function createRendererHttpArguments() {
 
   const argumentsForRenderer = [
     `--valedictorian-workspace-id=${currentWorkspace.id}`,
+    `--valedictorian-theme=${serializeResolvedTheme(activeResolvedTheme)}`,
   ]
 
   if (!rendererHttpBinding || rendererBackendState.status !== 'available') {

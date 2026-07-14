@@ -3,6 +3,19 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('Electron sourcing wiring', () => {
+  it('passes the active workspace theme through first paint and preload bootstrap', () => {
+    const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
+    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
+    const envSource = fs.readFileSync(path.resolve('electron/electron-env.d.ts'), 'utf8')
+
+    expect(mainSource).toContain('activeResolvedTheme')
+    expect(mainSource).toContain('serializeResolvedTheme(activeResolvedTheme)')
+    expect(mainSource).toContain('createMainWindowFirstPaintOptions(activeResolvedTheme)')
+    expect(preloadSource).toContain('readRendererThemeConfig(process.argv)')
+    expect(preloadSource).toContain("'valedictorianTheme'")
+    expect(envSource).toContain('valedictorianTheme?')
+  })
+
   it('exposes profile preload APIs and registers profile IPC handlers', () => {
     const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')

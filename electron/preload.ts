@@ -12,10 +12,16 @@ import {
   createValedictorianHttpPreloadApi,
   readRendererHttpConfig,
 } from '../src/ipc/valedictorian-http.preload'
+import { readRendererThemeConfig } from '../src/theme/theme-bootstrap'
 import { createWindowChromePreloadApi } from '../src/ipc/window-chrome.preload'
 import { createWorkspacePreloadApi } from '../src/ipc/workspace.preload'
 
 const rendererHttpConfig = readRendererHttpConfig(process.argv)
+const rendererTheme = readRendererThemeConfig(process.argv)
+
+if (rendererTheme) {
+  contextBridge.exposeInMainWorld('valedictorianTheme', rendererTheme)
+}
 
 if (rendererHttpConfig) {
   contextBridge.exposeInMainWorld(

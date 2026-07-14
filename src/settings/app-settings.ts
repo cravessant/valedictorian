@@ -1,3 +1,9 @@
+import {
+  createDefaultThemeSettings,
+  normalizeThemeSettings,
+  type ThemeSettings,
+} from '../theme/theme-registry'
+
 export type RuntimePreference = 'local-desktop' | 'local-shared' | 'remote'
 
 export interface AppSettings {
@@ -9,6 +15,7 @@ export interface AppSettings {
   sidebarCollapsed: boolean
   showAdvancedFilters: boolean
   showDebugData: boolean
+  theme: ThemeSettings
 }
 
 export type AppSettingsPatch = Partial<AppSettings>
@@ -28,6 +35,7 @@ export const defaultAppSettings: AppSettings = {
   sidebarCollapsed: false,
   showAdvancedFilters: false,
   showDebugData: false,
+  theme: createDefaultThemeSettings(),
 }
 
 export function normalizeAppSettings(value: unknown): AppSettings {
@@ -67,6 +75,7 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       typeof candidate.showDebugData === 'boolean'
         ? candidate.showDebugData
         : defaultAppSettings.showDebugData,
+    theme: normalizeThemeSettings(candidate.theme),
   }
 }
 

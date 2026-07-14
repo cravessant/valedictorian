@@ -63,6 +63,8 @@ import {
   type AppSettings,
   type AppSettingsPatch
 } from './settings/app-settings'
+import { applyResolvedTheme } from './theme/theme-applier'
+import { resolveTheme } from './theme/theme-registry'
 import {
   defaultApplicationDetailLoader,
   defaultApplicationEventsLoader,
@@ -308,6 +310,10 @@ function App({
       isMounted = false
     }
   }, [settingsApi])
+
+  useEffect(() => {
+    applyResolvedTheme(resolveTheme(settings.theme))
+  }, [settings.theme])
 
   useEffect(() => {
     let isMounted = true

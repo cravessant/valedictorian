@@ -88,4 +88,27 @@ describe('file app settings store', () => {
     })
     expect(fs.existsSync(path.join(workspaceRoot, 'settings.json'))).toBe(false)
   })
+
+  it('keeps theme settings isolated between workspace roots', async () => {
+    const workspaceRootA = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-workspace-theme-a-'))
+    const workspaceRootB = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-workspace-theme-b-'))
+    const storeA = createWorkspaceAppSettingsStore(workspaceRootA)
+    const storeB = createWorkspaceAppSettingsStore(workspaceRootB)
+
+    await storeA.update({
+      theme: { presetId: 'graphite', overrides: { primary: '#123456' } },
+    })
+    await storeB.update({
+      theme: { presetId: 'catppuccin-latte', overrides: { background: '#abcdef' } },
+    })
+
+    await expect(storeA.get()).resolves.toMatchObject({
+      theme: { presetId: 'graphite', overrides: { primary: '#123456' } },
+    })
+    await expect(storeB.get()).resolves.toMatchObject({
+      theme: { presetId: 'catppuccin-latte', overrides: { background: '#abcdef' } },
+    })
+    expect(fs.readFileSync(resolveWorkspaceLayout(workspaceRootA).appSettingsPath, 'utf8')).toContain('graphite')
+    expect(fs.readFileSync(resolveWorkspaceLayout(workspaceRootB).appSettingsPath, 'utf8')).toContain('catppuccin-latte')
+  })
 })

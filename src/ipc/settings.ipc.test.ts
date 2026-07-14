@@ -30,4 +30,27 @@ describe('settings IPC registration', () => {
     expect(store.update).toHaveBeenCalledWith({ runtimeMode: 'remote' })
     expect(store.reset).toHaveBeenCalled()
   })
+
+  it('notifies the host when a theme update or reset is persisted', async () => {
+    const store: AppSettingsStore = {
+      get: vi.fn(async () => defaultAppSettings),
+      reset: vi.fn(async () => defaultAppSettings),
+      update: vi.fn(async (patch) => ({ ...defaultAppSettings, ...patch })),
+    }
+    const onSettingsUpdated = vi.fn()
+    const handlers = new Map<string, (_event: unknown, payload?: unknown) => Promise<unknown>>()
+
+    registerSettingsIpc(store, {
+      handle(channel, handler) {
+        handlers.set(channel, handler)
+      },
+    }, { onSettingsUpdated })
+
+    await handlers.get('settings:update')?.({}, {
+      theme: { presetId: 'graphite', overrides: {} },
+    })
+    await handlers.get('settings:reset')?.({})
+
+    expect(onSettingsUpdated).toHaveBeenCalledTimes(2)
+  })
 })

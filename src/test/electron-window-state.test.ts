@@ -4,10 +4,12 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   createFileMainWindowStateStore,
+  createMainWindowFirstPaintOptions,
   defaultMainWindowBounds,
   resolveMainWindowStateOptions,
   type MainWindowState,
 } from '../../electron/window-state'
+import { resolveTheme } from '../../src/theme/theme-registry'
 
 const primaryDisplay = {
   workArea: {
@@ -19,6 +21,13 @@ const primaryDisplay = {
 }
 
 describe('main window state resolution', () => {
+  it('uses the active theme for the first-paint background while keeping the hidden show state', () => {
+    expect(createMainWindowFirstPaintOptions(resolveTheme({ presetId: 'catppuccin-latte', overrides: {} }))).toEqual({
+      backgroundColor: '#e6e9ef',
+      show: false,
+    })
+  })
+
   it('uses intentional default bounds when no saved state exists', () => {
     expect(resolveMainWindowStateOptions(null, [primaryDisplay])).toEqual({
       center: true,

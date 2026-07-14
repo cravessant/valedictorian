@@ -29,6 +29,7 @@ import {
 
 import { FilterDateInput, FilterTextInput } from './app/FilterInputs'
 import type { AppShellProps } from './app/AppShell.types'
+import { resolveTheme } from './theme/theme-registry'
 import {
   APP_VIEWS,
   PAGE_LIMIT,
@@ -651,7 +652,7 @@ export function AppShell({
           onClose={() => setSelectedApplication(null)}
         />
       ) : null}
-      <Toaster />
+      <Toaster theme={resolveTheme(settings.theme).colorScheme} />
     </div>
   )
 }
