@@ -17,6 +17,7 @@ import {
   LEGACY_MIXED_LATEST_CONNECTOR_RECORD_ID,
   LEGACY_MIXED_LATEST_IMPORT_RECORD_ID,
   LEGACY_MIXED_RAW_RECORD_ID,
+  LEGACY_NESTED_JOBRIGHT_RAW_RECORD_ID,
   LEGACY_VALID_CONNECTOR_RECORD_ID,
 } from '../test-fixtures/legacy-raw-source.fixture'
 
@@ -109,6 +110,7 @@ describe('legacy connector raw-source lineage migration', () => {
     const sqlite = createFileDatabase(sqlitePath)
     const validIds = [
       LEGACY_VALID_CONNECTOR_RECORD_ID,
+      LEGACY_NESTED_JOBRIGHT_RAW_RECORD_ID,
       'legacy-manual-record',
       'legacy-cli-record',
       'legacy-import-record',

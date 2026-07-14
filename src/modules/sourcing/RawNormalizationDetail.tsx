@@ -24,6 +24,7 @@ import {
   sanitizeRawEvidence,
   sanitizeRawFacts,
 } from './raw-detail-sanitization'
+import { presentCapturedRawFacts } from './raw-captured-presentation'
 import { RawNormalizationOutcomes } from './RawNormalizationOutcomes'
 
 type RawDetailIssue =
@@ -191,6 +192,10 @@ function RawRecordDetail({ record }: { record: RawSourceRecord }) {
     () => sanitizeRawFacts(revision.payload ?? undefined) as JsonObject | undefined,
     [revision.payload],
   )
+  const captured = useMemo(
+    () => presentCapturedRawFacts(revision.payload),
+    [revision.payload],
+  )
   const evidence = useMemo(() => sanitizeRawEvidence(revision.evidence), [revision.evidence])
   return (
     <div className="space-y-6">
@@ -201,8 +206,8 @@ function RawRecordDetail({ record }: { record: RawSourceRecord }) {
           {sanitizeDisplayText(revision.adapter.id)}@{sanitizeDisplayText(revision.adapter.version)}
         </p>
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          <Fact label="Title" value={payload?.title} missing="Missing title" />
-          <Fact label="Company" value={payload?.company} missing="Missing company" />
+          <Fact label="Title" value={captured.title} missing="Missing title" />
+          <Fact label="Company" value={captured.company} missing="Missing company" />
           <Fact label="Location" value={payload?.location} missing="Missing location" />
           <Fact label="Description" value={payload?.description} missing="Missing description" />
         </dl>

@@ -2,11 +2,13 @@ import {
   compareIsoInstants,
   rawSourceRecordsListQuerySchema,
   rawSourceRecordsListResultSchema,
+  type JsonValue,
   type RawSourceRecordSummary,
   type RawSourceRecordsListQuery,
   type RawSourceRecordsListResult,
 } from 'sparxie'
 import type { DrizzleDatabase } from '../../db/sqlite'
+import { presentCapturedRawFacts } from './raw-captured-presentation'
 
 const DEFAULT_LIMIT = 50
 
@@ -42,8 +44,7 @@ interface RawSummaryRow {
   normalizationRawRevisionId: string | null
   gateStatus: string | null
   canonicalCandidateId: string | null
-  companyName: string | null
-  roleTitle: string | null
+  payloadJson: string | null
   projectionStatus: string
   findingId: string | null
 }
@@ -152,12 +153,7 @@ with latest_normalization as materialized (
     end as gate_status,
     case when normalization.status = 'completed' and gate.status = 'passed'
       then candidate.id else null end as canonical_candidate_id,
-    case when typeof(json_extract(candidate.candidate_json, '$.companyName')) = 'text'
-      and length(json_extract(candidate.candidate_json, '$.companyName')) > 0
-      then json_extract(candidate.candidate_json, '$.companyName') else null end as company_name,
-    case when typeof(json_extract(candidate.candidate_json, '$.roleTitle')) = 'text'
-      and length(json_extract(candidate.candidate_json, '$.roleTitle')) > 0
-      then json_extract(candidate.candidate_json, '$.roleTitle') else null end as role_title,
+    revision.payload_json as payload_json,
     case when normalization.status = 'completed' and gate.status = 'passed'
       then coalesce(projection.status, 'not_eligible') else 'not_eligible'
     end as projection_status,
@@ -223,8 +219,7 @@ select
   page.normalization_raw_revision_id as "normalizationRawRevisionId",
   page.gate_status as "gateStatus",
   page.canonical_candidate_id as "canonicalCandidateId",
-  page.company_name as "companyName",
-  page.role_title as "roleTitle",
+  page.payload_json as "payloadJson",
   page.projection_status as "projectionStatus",
   page.finding_id as "findingId"
 from page
@@ -244,6 +239,7 @@ function mapSummary(row: RawSummaryRow): RawSourceRecordSummary {
     compareIsoInstants(first, value) <= 0 ? first : value)
   const lastObservedAt = observedTimes.reduce((last, value) =>
     compareIsoInstants(last, value) >= 0 ? last : value)
+  const captured = presentCapturedRawFacts(parsePayloadJson(row.payloadJson))
   const base = {
     id: row.rawRecordId,
     sourceEntityId: row.sourceEntityId,
@@ -252,8 +248,8 @@ function mapSummary(row: RawSummaryRow): RawSourceRecordSummary {
       ? { kind: row.originKind, name: row.originName, providerId: row.originProviderId }
       : null,
     providerRecordId: row.providerRecordId,
-    companyName: row.companyName,
-    roleTitle: row.roleTitle,
+    companyName: captured.company,
+    roleTitle: captured.title,
     createdAt: row.recordCreatedAt,
     firstObservedAt,
     lastObservedAt,
@@ -290,6 +286,15 @@ function mapSummary(row: RawSummaryRow): RawSourceRecordSummary {
     connectorInstanceId: null,
     latestConnectorRunId: null,
   } as RawSourceRecordSummary
+}
+
+function parsePayloadJson(payloadJson: string | null): JsonValue | null {
+  if (payloadJson === null) return null
+  try {
+    return JSON.parse(payloadJson) as JsonValue
+  } catch {
+    return null
+  }
 }
 
 function receivedFromKey(value: string) {

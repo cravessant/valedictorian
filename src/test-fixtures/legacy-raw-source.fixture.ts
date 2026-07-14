@@ -8,6 +8,22 @@ export const LEGACY_INVALID_ONLY_RAW_RECORD_ID = 'legacy-invalid-only-record'
 export const LEGACY_MIXED_LATEST_CONNECTOR_RECORD_ID = 'legacy-mixed-latest-connector-record'
 export const LEGACY_MIXED_LATEST_IMPORT_RECORD_ID = 'legacy-mixed-latest-import-record'
 export const LEGACY_VALID_CONNECTOR_RECORD_ID = 'legacy-valid-connector-record'
+export const LEGACY_NESTED_JOBRIGHT_RAW_RECORD_ID = 'legacy-nested-jobright-record'
+
+export const LEGACY_NESTED_JOBRIGHT_PAYLOAD = {
+  decodingStatus: 'valid',
+  rawType: 'object',
+  providerJobId: 'consigli-coop-2027',
+  providerRow: {
+    jobResult: {
+      jobId: 'consigli-coop-2027',
+      jobTitle: 'IT Co-op (Spring 2027)',
+    },
+    companyResult: {
+      companyName: 'Consigli Construction Co., Inc.',
+    },
+  },
+} as const
 
 const AT = '2026-07-10T12:00:00.000Z'
 
@@ -20,6 +36,7 @@ export function createLegacyRawSourceFixture(
   seedConnectorOwner(database)
   seedConnectorRecord(database, LEGACY_MIXED_RAW_RECORD_ID, true)
   seedValidConnectorRecord(database, LEGACY_VALID_CONNECTOR_RECORD_ID)
+  seedNestedJobrightRecord(database, LEGACY_NESTED_JOBRIGHT_RAW_RECORD_ID)
   seedMixedAdapterRecord(database, LEGACY_MIXED_LATEST_CONNECTOR_RECORD_ID, 'connector')
   seedMixedAdapterRecord(database, LEGACY_MIXED_LATEST_IMPORT_RECORD_ID, 'import')
   if (options.includeInvalidOnly) {
@@ -71,6 +88,42 @@ function seedValidConnectorRecord(
       'legacy-connector-run', 'scope-legacy-connector', '${AT}', '${AT}'
     );
   `)
+}
+
+function seedNestedJobrightRecord(
+  database: ReturnType<typeof createFileDatabase>,
+  rawRecordId: string,
+) {
+  const revisionId = `${rawRecordId}-revision`
+  database.prepare(`
+    insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+    values (?, 'provider_job', 'jobright:jobright-visitor-list@1', ?, ?)
+  `).run(`${rawRecordId}-entity`, 'consigli-coop-2027', AT)
+  database.prepare(`
+    insert into raw_source_records (id, source_entity_id, created_at)
+    values (?, ?, ?)
+  `).run(rawRecordId, `${rawRecordId}-entity`, AT)
+  database.prepare(`
+    insert into raw_source_revisions (
+      id, raw_record_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
+      observed_at, provider_record_id, provider_schema, payload_json, evidence_json, created_at
+    ) values (?, ?, 1, ?, 'jobright', 'connector', '0.11.0', ?, 'consigli-coop-2027',
+      'jobright-visitor-list@1', ?, '[]', ?)
+  `).run(
+    revisionId,
+    rawRecordId,
+    `sha256:${rawRecordId}`,
+    AT,
+    JSON.stringify(LEGACY_NESTED_JOBRIGHT_PAYLOAD),
+    AT,
+  )
+  database.prepare(`
+    insert into raw_source_occurrences (
+      id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id,
+      execution_scope_id, observed_at, received_at
+    ) values (?, ?, ?, 'legacy-connector', 'legacy-connector-run',
+      'scope-legacy-connector', ?, ?)
+  `).run(`${rawRecordId}-occurrence`, rawRecordId, revisionId, AT, AT)
 }
 
 function seedMixedAdapterRecord(
