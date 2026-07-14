@@ -178,7 +178,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.11.0",
+      version: "0.12.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -194,7 +194,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.11.0",
+      version: "0.12.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -210,7 +210,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.11.0",
+      version: "0.12.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -234,11 +234,11 @@ describe("connector repository conventions", () => {
       sparxie: "^0.15.0",
     })
     expect(harnessPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.11.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.12.0",
       sparxie: "^0.15.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.11.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.12.0",
     })
     expect(Object.keys(jobrightPackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
@@ -252,7 +252,7 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(jobrightPackage.devDependencies).toMatchObject({
-      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.11.0",
+      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.12.0",
     })
   })
 
