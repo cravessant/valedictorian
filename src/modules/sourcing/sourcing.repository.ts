@@ -385,7 +385,9 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         finding.mergeStatus === 'blocked' &&
         finding.policyBlocker === 'third_party_destination' &&
         finding.destinationClass === 'third_party_job_posting' &&
-        Boolean(finding.destinationUrl)
+        Boolean(finding.destinationUrl) &&
+        hasText(finding.blocker) &&
+        !hasText(finding.dispositionReason)
 
       if (finding.mergeStatus !== 'new' && !approvesThirdPartyDestination) {
         return finding

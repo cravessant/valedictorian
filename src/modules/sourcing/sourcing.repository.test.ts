@@ -180,6 +180,137 @@ describe('SQLite sourcing repository', () => {
     expect(database.select().from(applications).all()).toHaveLength(applicationCount)
   })
 
+  it('rejects promoting a disposed third-party block without a concrete review question', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const runRepository = createSqliteWorkflowRunRepository(database)
+    const sourcingRepository = createSqliteSourcingRepository(database)
+    const run = await runRepository.startRun({
+      runType: 'sourcing',
+      actorType: 'agent',
+      sourceName: 'LinkedIn',
+      summary: 'Started LinkedIn sourcing.',
+    })
+    const finding = await sourcingRepository.createFinding({
+      workflowRunId: run.id,
+      sourceName: 'LinkedIn',
+      companyName: 'Disposed Third Party Co',
+      roleTitle: 'Software Engineering Intern',
+      roleKind: 'internship',
+      country: 'US',
+      workMode: 'remote',
+      sourceUrl: 'https://www.linkedin.com/jobs/view/999999',
+      priorityScore: 8,
+      priorityBand: 'high',
+    })
+
+    database
+      .update(sourcingFindings)
+      .set({
+        destinationClass: 'third_party_job_posting',
+        destinationUrl: 'https://www.linkedin.com/jobs/view/999999',
+      })
+      .where(eq(sourcingFindings.id, finding.id))
+      .run()
+
+    const decided = await sourcingRepository.decideFinding({
+      findingId: finding.id,
+      mergeStatus: 'blocked',
+      policyBlocker: 'third_party_destination',
+      dispositionReason: 'Do not promote this source.',
+    })
+
+    expect(decided).toMatchObject({
+      mergeStatus: 'blocked',
+      policyBlocker: 'third_party_destination',
+      blocker: null,
+      dispositionReason: 'Do not promote this source.',
+      destinationClass: 'third_party_job_posting',
+      destinationUrl: 'https://www.linkedin.com/jobs/view/999999',
+      mergedApplicationId: null,
+    })
+
+    const applicationCount = database.select().from(applications).all().length
+    const before = await sourcingRepository.getFinding(finding.id)
+
+    const result = await sourcingRepository.promoteFinding({ findingId: finding.id })
+
+    expect(result).toMatchObject({
+      mergeStatus: 'blocked',
+      policyBlocker: 'third_party_destination',
+      blocker: null,
+      dispositionReason: 'Do not promote this source.',
+      mergedApplicationId: null,
+      updatedAt: before.updatedAt,
+    })
+    expect(database.select().from(applications).all()).toHaveLength(applicationCount)
+    await expect(sourcingRepository.getFinding(finding.id)).resolves.toMatchObject({
+      mergeStatus: 'blocked',
+      dispositionReason: 'Do not promote this source.',
+      blocker: null,
+      mergedApplicationId: null,
+      updatedAt: before.updatedAt,
+    })
+  })
+
+  it('promotes a third-party block when a concrete review question remains and no disposition exists', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const runRepository = createSqliteWorkflowRunRepository(database)
+    const sourcingRepository = createSqliteSourcingRepository(database)
+    const run = await runRepository.startRun({
+      runType: 'sourcing',
+      actorType: 'agent',
+      sourceName: 'LinkedIn',
+      summary: 'Started LinkedIn sourcing.',
+    })
+    const finding = await sourcingRepository.createFinding({
+      workflowRunId: run.id,
+      sourceName: 'LinkedIn',
+      companyName: 'Actionable Third Party Co',
+      roleTitle: 'Software Engineering Intern',
+      roleKind: 'internship',
+      country: 'US',
+      workMode: 'remote',
+      sourceUrl: 'https://www.linkedin.com/jobs/view/123456',
+      priorityScore: 8,
+      priorityBand: 'high',
+    })
+    const reviewQuestion = 'Approve third-party LinkedIn destination before promotion?'
+
+    database
+      .update(sourcingFindings)
+      .set({
+        destinationClass: 'third_party_job_posting',
+        destinationUrl: 'https://www.linkedin.com/jobs/view/123456',
+        mergeStatus: 'blocked',
+        policyBlocker: 'third_party_destination',
+        blocker: reviewQuestion,
+        dispositionReason: null,
+        mergeNotes: reviewQuestion,
+      })
+      .where(eq(sourcingFindings.id, finding.id))
+      .run()
+
+    const before = await sourcingRepository.getFinding(finding.id)
+    expect(before).toMatchObject({
+      mergeStatus: 'blocked',
+      policyBlocker: 'third_party_destination',
+      blocker: reviewQuestion,
+      dispositionReason: null,
+    })
+
+    const promoted = await sourcingRepository.promoteFinding({ findingId: finding.id })
+
+    expect(promoted).toMatchObject({
+      mergeStatus: 'merged',
+      mergedApplicationId: expect.any(String),
+      dispositionReason: null,
+    })
+  })
+
   it('uses policy cutoff overrides and apply override evidence for promotion', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)

@@ -11,7 +11,7 @@ export function destinationClassLabel(value: SourcingDestinationClass | null | u
 }
 
 export function usabilityLabel(value: SourcingUsability): string {
-  return value === 'usable' ? 'Projected usable' : 'Retained for review'
+  return value === 'usable' ? 'Projected usable' : 'Not projected usable'
 }
 
 

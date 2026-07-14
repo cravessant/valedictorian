@@ -395,9 +395,14 @@ function SourcingFindingRow({
   useEffect(() => {
     if (focused) rowRef.current?.focus()
   }, [focused])
+  const hasConcreteThirdPartyQuestion = Boolean(item.blocker?.trim())
+  const hasDispositionReason = Boolean(item.dispositionReason?.trim())
   const canPromote =
     (item.mergeStatus === 'new' && item.usability !== 'review_only') ||
-    (item.mergeStatus === 'blocked' && item.policyBlocker === 'third_party_destination')
+    (item.mergeStatus === 'blocked' &&
+      item.policyBlocker === 'third_party_destination' &&
+      hasConcreteThirdPartyQuestion &&
+      !hasDispositionReason)
   const decision = getSourcingDecision(item)
   const mergedApplicationLabel = formatMergedApplicationLabel(item)
   const showMergedApplicationLink = Boolean(item.mergedApplicationId) && !canPromote
@@ -430,9 +435,7 @@ function SourcingFindingRow({
           <Badge className="w-fit" variant="secondary">{item.sourceName}</Badge>
           {item.usability ? (
             <Badge className="w-fit" variant="outline">
-              {item.usability === 'review_only'
-                ? 'Review only'
-                : destinationClassLabel(item.destinationClass)}
+              {destinationClassLabel(item.destinationClass)}
             </Badge>
           ) : null}
         </div>
@@ -465,11 +468,11 @@ function SourcingFindingRow({
         <div className="grid min-w-56 gap-1 text-muted-foreground">
           <span>
             {item.dispositionReason ??
-              item.policyBlocker ??
+              item.blocker ??
               item.mergeNotes ??
               item.fitNotes ??
               item.duplicateNotes ??
-              item.blocker ??
+              item.policyBlocker ??
               'None'}
           </span>
           {showRawMergedApplicationId ? (

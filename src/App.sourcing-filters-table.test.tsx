@@ -30,7 +30,7 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('distinguishes employer, third-party, and review-only sourcing destinations', async () => {
+  it('distinguishes employer, third-party, and unresolved sourcing destinations without a Review only badge', async () => {
     const queries: SourcingFindingsListInput[] = []
     const canonicalFullTime = {
       ...createSourcingFinding({ id: 'finding-canonical', companyName: 'Canonical Co' }),
@@ -74,6 +74,7 @@ describe('App', () => {
               usability: 'review_only',
               mergeStatus: 'blocked',
               policyBlocker: 'third_party_destination',
+              blocker: 'Approve or reject this third-party job destination before promotion: https://www.linkedin.com/jobs/view/123456',
             }),
             createSourcingFinding({
               id: 'finding-review',
@@ -99,7 +100,10 @@ describe('App', () => {
 
     expect(within(table).getByText('Employer / ATS')).toBeInTheDocument()
     expect(within(table).getByRole('link', { name: 'third-party' })).toBeInTheDocument()
-    expect(within(table).getAllByText('Review only')).toHaveLength(2)
+    expect(within(table).getByText('Third-party')).toBeInTheDocument()
+    expect(within(table).getByText('Unresolved')).toBeInTheDocument()
+    expect(within(table).queryByText('Review only')).not.toBeInTheDocument()
+    expect(screen.queryByText('Retained for review')).not.toBeInTheDocument()
     expect(within(table).getByText('Full Time')).toBeInTheDocument()
     expect(within(table).queryByRole('button', { name: 'Promote Review Co' })).not.toBeInTheDocument()
     expect(within(table).getByRole('button', { name: 'Promote Third Party Co' }))
