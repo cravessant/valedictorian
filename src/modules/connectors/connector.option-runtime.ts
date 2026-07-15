@@ -1,0 +1,37 @@
+import type {
+  ConnectorAuthReference,
+  ConnectorAuthRequirement,
+  ConnectorOptionRuntime,
+} from '@sparxie/valedictorian-connectors-core'
+import type { SourceExecutionScopeId } from 'sparxie'
+import { createRunRuntime, type AppConnectorAuthHost } from './connector.runner'
+
+export function createConnectorOptionRuntime({
+  authHost,
+  authReferences,
+  authRequirements,
+  executionScopeId,
+  signal,
+}: {
+  authHost?: AppConnectorAuthHost
+  authReferences: ConnectorAuthReference[]
+  authRequirements: ConnectorAuthRequirement[]
+  executionScopeId: SourceExecutionScopeId
+  signal?: AbortSignal
+}): ConnectorOptionRuntime {
+  const runtime = createRunRuntime(
+    {},
+    authReferences,
+    authRequirements,
+    authHost,
+    new Set<string>(),
+    executionScopeId,
+    null,
+    false,
+    undefined,
+  )
+  return {
+    auth: runtime.auth,
+    ...(signal ? { cancellation: { signal } } : {}),
+  }
+}

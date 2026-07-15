@@ -1,7 +1,8 @@
 import {
   JOBRIGHT_CONNECTOR_ID,
-  JOBRIGHT_CONNECTOR_VERSION,
 } from './jobright.constants'
+
+const JOBRIGHT_PROVIDER_STATE_CHECKPOINT_VERSION = '0.12.0'
 
 export function signatureForFilters(filters: Record<string, unknown>): string {
   return `filters:${stableJsonStringify(filters)}`
@@ -24,7 +25,7 @@ export function isJobrightProviderStateSignature(input: {
   supportsFiltering?: boolean
 }): boolean {
   return input.connectorId === JOBRIGHT_CONNECTOR_ID
-    && input.connectorVersion === JOBRIGHT_CONNECTOR_VERSION
+    && input.connectorVersion === JOBRIGHT_PROVIDER_STATE_CHECKPOINT_VERSION
     && input.supportsFiltering === false
 }
 

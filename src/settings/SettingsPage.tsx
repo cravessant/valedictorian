@@ -23,7 +23,7 @@ import { typography, typographyClass } from '@/components/ui/typography'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
-import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
+import type { ConnectorSettingsUiApi } from './connector-settings.types'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from './app-settings'
 import { SETTINGS_PANELS, type SettingsPanelId } from '../app/types'
@@ -38,7 +38,7 @@ import type { ConnectorScheduleUiApi } from './connector-schedule.types'
 import { PolicySettingsPanel } from './PolicySettingsPanel'
 
 interface SettingsPageProps {
-  connectorsApi: ConnectorsPreloadApi
+  connectorsApi: ConnectorSettingsUiApi
   connectorScheduleApi: ConnectorScheduleUiApi
   contentColumnClass: string
   policyApi: PolicyPreloadApi

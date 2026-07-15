@@ -12,13 +12,14 @@ import App from './App'
 import {
   createApplication,
   createConnectorStatusResult,
-  createConnectorsApi,
+  createConnectorsApiWithJobrightDescriptor as createConnectorsApi,
   createListResult,
   createProfileApi,
   createSettingsApi,
   createSourcingResult,
   lastCreatedConnectorInstanceId,
-  openSettingsPage
+  openSettingsPage,
+  selectSoftwareEngineeringTaxonomy,
 } from './App.test-helpers'
 
 beforeEach(() => {
@@ -63,6 +64,12 @@ async function authenticateJobrightInSettings({
   expect(connectorsApi.status.reconnect).toHaveBeenCalled()
   expect(screen.queryByDisplayValue(email)).not.toBeInTheDocument()
   expect(screen.queryByDisplayValue(password)).not.toBeInTheDocument()
+  await selectSoftwareEngineeringTaxonomy()
+  fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
+  fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
+  })
 }
 
 describe('Jobright execution', () => {

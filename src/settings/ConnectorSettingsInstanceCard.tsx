@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -14,6 +16,7 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { fieldControlId } from '@/lib/field-control-id'
+import { AlertTriangle } from 'lucide-react'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
   ConnectorRunLifecycleDetails,
@@ -26,6 +29,7 @@ import {
   connectorAuthStatusMessage,
   isConnectorAuthReady,
   isJobrightCredentialsConfigured,
+  isUnchangedConnectorDisable,
 } from './connector-settings.helpers'
 import {
   maximumSelectableEarliestBackfillDate,
@@ -39,11 +43,23 @@ import type {
   ConnectorSettingsRun,
 } from './connector-settings.types'
 import type { ConnectorSchedulingCapability, ConnectorScheduleSummary } from 'sparxie'
+import type { InstalledConnectorDescriptor } from 'sparxie'
 import { ConnectorScheduleControls } from './ConnectorScheduleControls'
 import type { ConnectorScheduleDraft } from './connector-schedule.types'
+import type { ConnectorSettingsUiApi } from './connector-settings.types'
+import {
+  ConnectorProviderFilters,
+  ConnectorSynchronizationConfiguration,
+} from './connector-filters/ConnectorProviderFilters'
+import {
+  validateConnectorConfigPersistenceValue,
+  validateConnectorSchemaValue,
+} from '../modules/connectors/connector.renderer-schema-validation'
 
 export function ConnectorSettingsInstanceCard({
   instance,
+  descriptor,
+  connectorsApi,
   authState,
   draft,
   credentialDraft,
@@ -82,6 +98,8 @@ export function ConnectorSettingsInstanceCard({
   onResumeSchedule,
 }: {
   instance: ConnectorSettingsInstance
+  descriptor: InstalledConnectorDescriptor | undefined
+  connectorsApi: ConnectorSettingsUiApi
   authState: ConnectorAuthUiState
   draft: ConnectorSettingsDraft
   credentialDraft: ConnectorAuthCredentialDraft
@@ -119,6 +137,7 @@ export function ConnectorSettingsInstanceCard({
   onPauseSchedule: (instance: ConnectorSettingsInstance) => void
   onResumeSchedule: (instance: ConnectorSettingsInstance) => void
 }) {
+  const [providerFiltersCompatible, setProviderFiltersCompatible] = useState(true)
   const authConfigured = isJobrightCredentialsConfigured(instance)
   const authReady = isConnectorAuthReady(authState)
   const authLabel = connectorAuthStatusLabel(authState, authConfigured)
@@ -130,6 +149,26 @@ export function ConnectorSettingsInstanceCard({
     createdAt: instance.createdAt,
     todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
   }).ok
+  const filterIssues = descriptor?.filterSchema
+    ? validateConnectorSchemaValue(descriptor.filterSchema.schema, draft.filters, {
+        allowMissingRootRequired: !draft.enabled,
+      })
+    : []
+  const configIssues = descriptor?.configSchema
+    ? validateConnectorConfigPersistenceValue(descriptor.configSchema.schema, draft.config, {
+        allowMissingRootRequired: !draft.enabled,
+      })
+    : []
+  const filtersValid = filterIssues.length === 0
+  const configValid = configIssues.length === 0
+  const descriptorRequired = connectorsApi.descriptors !== undefined
+  const descriptorCompatible = !descriptorRequired || descriptor !== undefined
+  const safeDisable = descriptorCompatible && isUnchangedConnectorDisable(instance, draft)
+  const settingsValid = descriptorCompatible
+    && filtersValid
+    && configValid
+    && (descriptor?.dynamicOptions ? providerFiltersCompatible : true)
+  const settingsSaveAllowed = settingsValid || safeDisable
   const runBlocked = !instance.enabled
     || !draft.enabled
     || !authReady
@@ -137,6 +176,7 @@ export function ConnectorSettingsInstanceCard({
     || isSavingSettings
     || isDraftDirty(instance)
     || !earliestValid
+    || !settingsValid
 
   return (
                   <div
@@ -258,6 +298,40 @@ export function ConnectorSettingsInstanceCard({
                       </p>
                     ) : null}
 
+                    {!descriptorCompatible ? (
+                      <Alert role="alert" variant="destructive">
+                        <AlertTriangle aria-hidden="true" />
+                        <AlertTitle>Connector descriptor is unavailable</AlertTitle>
+                        <AlertDescription>
+                          These saved settings cannot be checked for compatibility, so saving is blocked.
+                        </AlertDescription>
+                      </Alert>
+                    ) : null}
+
+                    {descriptor?.configSchema ? (
+                      <ConnectorSynchronizationConfiguration
+                        allowMissingRootRequired={!draft.enabled}
+                        config={draft.config}
+                        disabled={isSavingSettings}
+                        schema={descriptor.configSchema.schema}
+                        onChange={(config) => onUpdateDraft(instance.id, { config })}
+                      />
+                    ) : null}
+
+                    {descriptor?.filterSchema && connectorsApi.options ? (
+                      <ConnectorProviderFilters
+                        api={connectorsApi.options}
+                        allowMissingRootRequired={!draft.enabled}
+                        descriptor={descriptor}
+                        disabled={isSavingSettings}
+                        filters={draft.filters}
+                        instanceId={instance.id}
+                        onChange={(filters) => onUpdateDraft(instance.id, { filters })}
+                        compatibilityAlertRole={configIssues.length === 0 ? 'alert' : 'status'}
+                        onCompatibilityChange={setProviderFiltersCompatible}
+                      />
+                    ) : null}
+
                     <ConnectorScheduleControls
                       capability={schedulingCapability}
                       capabilityLoadError={capabilityLoadError}
@@ -287,9 +361,11 @@ export function ConnectorSettingsInstanceCard({
                       <Switch
                         aria-label={isJobrightInstance
                           ? 'Jobright connector enabled'
-                          : `${instance.displayName} connector enabled`}
+                          : !settingsValid
+                            ? 'Enabled'
+                            : `${instance.displayName} connector enabled`}
                         checked={draft.enabled}
-                        disabled={isSavingSettings}
+                        disabled={isSavingSettings || (!filtersValid && !draft.enabled)}
                         onCheckedChange={(enabled) => onUpdateDraft(instance.id, { enabled })}
                       />
                     </div>
@@ -314,7 +390,7 @@ export function ConnectorSettingsInstanceCard({
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={isSavingSettings}
+                        disabled={isSavingSettings || !settingsSaveAllowed}
                         onClick={() => onSaveSettings(instance)}
                       >
                         {isSavingSettings ? 'Saving...' : 'Save Jobright settings'}
@@ -376,7 +452,7 @@ export function ConnectorSettingsInstanceCard({
                         <Button
                           type="button"
                           variant="outline"
-                          disabled={isSavingSettings}
+                          disabled={isSavingSettings || !settingsSaveAllowed}
                           onClick={() => onSaveSettings(instance)}
                         >
                           {isSavingSettings ? 'Saving...' : `Save ${instance.displayName} settings`}

@@ -17,18 +17,47 @@ interface IpcMainLike {
 }
 
 export const VALEDICTORIAN_HTTP_REQUEST_CHANNEL = 'valedictorian-http:request'
+export const VALEDICTORIAN_HTTP_CANCEL_CHANNEL = 'valedictorian-http:cancel'
 
 export function registerValedictorianHttpIpc(
   transport: ValedictorianHttpTransport | null,
   ipcMain: IpcMainLike,
 ) {
+  const requests = new Map<string, AbortController>()
   ipcMain.handle(VALEDICTORIAN_HTTP_REQUEST_CHANNEL, async (_event, input) => {
     if (!transport) {
       throw new Error('Valedictorian HTTP transport is unavailable.')
     }
 
-    return transport.request(parseValedictorianHttpTransportRequest(input))
+    const requestId = parseOptionalRequestId(input)
+    const controller = new AbortController()
+    if (requestId) requests.set(requestId, controller)
+    try {
+      return await transport.request(
+        parseValedictorianHttpTransportRequest(input),
+        { signal: controller.signal },
+      )
+    } finally {
+      if (requestId) requests.delete(requestId)
+    }
   })
+  ipcMain.handle(VALEDICTORIAN_HTTP_CANCEL_CHANNEL, async (_event, input) => {
+    const requestId = parseRequestId(input)
+    requests.get(requestId)?.abort()
+  })
+}
+
+function parseOptionalRequestId(input: unknown) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const requestId = (input as Record<string, unknown>).requestId
+  return requestId === undefined ? undefined : parseRequestId(requestId)
+}
+
+function parseRequestId(input: unknown) {
+  if (typeof input !== 'string' || input.length === 0 || input.length > 128) {
+    throw new Error('Valedictorian HTTP transport request id is invalid.')
+  }
+  return input
 }
 
 export function createBoundValedictorianHttpTransport({

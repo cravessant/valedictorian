@@ -38,7 +38,15 @@ import {
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
 import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
 import { connectorDisabledExecutionError } from '../modules/connectors/connector-execution.errors'
-import { assertSupportedConnectorSettings } from '../modules/connectors/connector.settings-validation'
+import {
+  assertSupportedConnectorSettings,
+  validateCompleteConnectorSettings,
+} from '../modules/connectors/connector.settings-validation'
+import {
+  listInstalledConnectorDescriptors,
+  projectInstalledConnectorDescriptor,
+} from '../modules/connectors/connector.capabilities'
+import { createConnectorOptionQueryService } from '../modules/connectors/connector.option-query'
 import {
   createConnectorRunner,
   type AppConnectorAuthGrant,
@@ -198,6 +206,12 @@ export function createLocalValedictorianClient({
     now,
   })
   const trustedConnectorAuth = composeTrustedConnectorAuth(profileRepository)
+  const connectorOptionQueries = createConnectorOptionQueryService({
+    authHost: trustedConnectorAuth,
+    connectorRegistry,
+    connectorRepository,
+    workspaceId,
+  })
   const connectorRunner = createConnectorRunner({
     auth: trustedConnectorAuth,
     normalization: connectorNormalization,
@@ -292,6 +306,21 @@ export function createLocalValedictorianClient({
       list: async () => ({
         items: (await connectorRepository.listInstances()).map(mapConnectorInstanceSummary),
       }),
+      descriptors: {
+        list: async () => listInstalledConnectorDescriptors(connectorRegistry),
+        get: async (connectorId, connectorVersion) => {
+          const exactConnector = connectorRegistry.getVersion(connectorId, connectorVersion)
+          const sameIdConnectors = connectorRegistry.list().filter((candidate) =>
+            candidate.definition.id === connectorId)
+          const connector = exactConnector
+            ?? (sameIdConnectors.length === 1 ? connectorRegistry.get(connectorId) : null)
+          if (!connector) {
+            throw new Error(`Unsupported connector descriptor: ${connectorId}@${connectorVersion}`)
+          }
+          return projectInstalledConnectorDescriptor(connector)
+        },
+      },
+      options: connectorOptionQueries,
       create: async (input) => {
         const connector = connectorRegistry.get(input.connectorId)
         if (!connector) {
@@ -303,6 +332,7 @@ export function createLocalValedictorianClient({
           )
         }
         assertSupportedConnectorSettings(connector, input.config, input.filters)
+        if (input.enabled) validateCompleteConnectorSettings(connector, input.config, input.filters)
         const createdAt = now().toISOString()
         const earliestBackfillDate = input.earliestBackfillDate === undefined
           ? undefined
@@ -338,21 +368,20 @@ export function createLocalValedictorianClient({
             `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
           )
         }
-        if (connector && existing.connectorVersion !== connector.definition.version) {
-          throw new Error(
-            `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
-          )
-        }
-        if (connector) {
+        const maintenanceOnly = isConnectorMaintenanceOnlyUpdate(input)
+        const config = input.config ?? toConnectorJsonRecord(existing.config, 'config')
+        const filters = input.filters ?? toConnectorJsonRecord(existing.filters, 'filters')
+        const enabled = input.enabled ?? existing.enabled
+        if (connector && !maintenanceOnly) {
           assertSupportedConnectorSettings(
             connector,
-            input.config ?? existing.config,
-            input.filters ?? existing.filters,
+            config,
+            filters,
           )
+          if (enabled) {
+            validateCompleteConnectorSettings(connector, config, filters)
+          }
         }
-        const connectorVersion = input.connectorVersion
-          ?? connector?.definition.version
-          ?? existing.connectorVersion
         const updateNow = now().toISOString()
         const earliestBackfillDate = input.earliestBackfillDate === undefined
           ? existing.earliestBackfillDate
@@ -361,17 +390,41 @@ export function createLocalValedictorianClient({
             existing.createdAt,
             updateNow,
           )
-        return mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
+        const proposedInstance = {
           id: existing.id,
           connectorId: existing.connectorId,
-          connectorVersion,
+          connectorVersion: existing.connectorVersion,
           displayName: input.displayName ?? existing.displayName,
-          enabled: input.enabled ?? existing.enabled,
+          enabled,
           auth: mapConnectorAuthReferenceInputs(input.auth) ?? existing.auth,
-          config: input.config ?? toConnectorJsonRecord(existing.config, 'config'),
-          filters: input.filters ?? toConnectorJsonRecord(existing.filters, 'filters'),
+          config,
+          filters,
           earliestBackfillDate,
           createdAt: existing.createdAt,
+        }
+        if (
+          connector
+          && !maintenanceOnly
+          && existing.connectorVersion !== connector.definition.version
+        ) {
+          if (input.connectorVersion !== connector.definition.version) {
+            throw new Error(
+              `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
+            )
+          }
+          return mapConnectorInstanceSummary(await reconcileConnectorPackageUpgrade({
+            connector,
+            connectorRepository,
+            instance: { ...existing, ...proposedInstance },
+            replayConnectorUpgrade: (replayInput) =>
+              normalizationReplayService.replayConnectorUpgrade(replayInput),
+          }))
+        }
+        return mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
+          ...proposedInstance,
+          connectorVersion: maintenanceOnly
+            ? existing.connectorVersion
+            : input.connectorVersion ?? connector?.definition.version ?? existing.connectorVersion,
         }))
       },
       remove: async ({ connectorInstanceId }) => retireConnectorInstance(
@@ -416,6 +469,11 @@ export function createLocalValedictorianClient({
           }
         },
         trigger: async (input) => {
+          const instance = await connectorRepository.getInstance(input.connectorInstanceId)
+          const connector = instance ? connectorRegistry.get(instance.connectorId) : null
+          if (instance && connector) {
+            validateCompleteConnectorSettings(connector, instance.config, instance.filters)
+          }
           const run = await executeConnectorRunTrigger({
             connectorRegistry,
             connectorRepository,
@@ -835,6 +893,14 @@ function mapConnectorAuthReferenceInputs(
       ...(reference.secretKey === undefined ? {} : { secretKey: reference.secretKey }),
     }
   })
+}
+
+function isConnectorMaintenanceOnlyUpdate(input: object & { auth?: unknown; enabled?: boolean }) {
+  const keys = Object.keys(input)
+  return (input.enabled === false && keys.every((key) =>
+    key === 'connectorInstanceId' || key === 'enabled'))
+    || (input.auth !== undefined && keys.every((key) =>
+      key === 'connectorInstanceId' || key === 'auth'))
 }
 const localConnectorAuthModes = new Set<ConnectorAuthReference['mode']>([
   'none', 'api_key', 'bearer_token', 'oauth', 'cookie_jar', 'username_password',

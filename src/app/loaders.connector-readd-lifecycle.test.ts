@@ -3,6 +3,7 @@ import { createHttpValedictorianClient } from 'sparxie'
 import { retryWork } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
+import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/jobright.constants'
 import { deriveSourceExecutionScopeId } from '../modules/source-execution/source-execution-governor'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import type { RendererBackendState } from '../ipc/valedictorian-http.preload'
@@ -181,11 +182,13 @@ function jobrightCreateInput(id: string) {
   return {
     id,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.12.0',
+    connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [{ id: 'jobright', label: 'Jobright credentials', mode: 'username_password' as const }],
     config: {},
-    filters: {},
+    filters: {
+      jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
+    },
   }
 }

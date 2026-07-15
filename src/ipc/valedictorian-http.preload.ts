@@ -1,5 +1,8 @@
 import type { ValedictorianHttpTransportRequest, ValedictorianHttpTransportResponse } from './valedictorian-http.transport'
-import { VALEDICTORIAN_HTTP_REQUEST_CHANNEL } from './valedictorian-http.ipc'
+import {
+  VALEDICTORIAN_HTTP_CANCEL_CHANNEL,
+  VALEDICTORIAN_HTTP_REQUEST_CHANNEL,
+} from './valedictorian-http.ipc'
 
 interface IpcRendererLike {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>
@@ -90,26 +93,40 @@ function parseRendererBackendState(value: unknown): RendererBackendState | null 
 }
 
 function createPreloadValedictorianFetch(ipcRenderer: IpcRendererLike): typeof fetch {
+  let nextRequestId = 0
   return (async (input, init) => {
     const request = new Request(input, init)
+    if (request.signal.aborted) throw abortError()
+    const requestId = `renderer-${Date.now().toString(36)}-${(++nextRequestId).toString(36)}`
+    let dispatched = false
+    const cancel = () => {
+      if (!dispatched) return
+      void ipcRenderer.invoke(VALEDICTORIAN_HTTP_CANCEL_CHANNEL, requestId).catch(() => undefined)
+    }
+    request.signal.addEventListener('abort', cancel, { once: true })
     const headers: Record<string, string> = {}
     request.headers.forEach((value, key) => {
       headers[key] = value
     })
-
-    const payload: ValedictorianHttpTransportRequest = {
-      body: request.method === 'GET' || request.method === 'HEAD'
-        ? null
-        : await request.text(),
-      headers,
-      method: request.method,
-      url: request.url,
+    let response: ValedictorianHttpTransportResponse
+    try {
+      const payload: ValedictorianHttpTransportRequest = {
+        body: request.method === 'GET' || request.method === 'HEAD'
+          ? null
+          : await request.text(),
+        headers,
+        method: request.method,
+        url: request.url,
+      }
+      if (request.signal.aborted) throw abortError()
+      dispatched = true
+      response = await ipcRenderer.invoke(
+        VALEDICTORIAN_HTTP_REQUEST_CHANNEL,
+        { ...payload, requestId },
+      ) as ValedictorianHttpTransportResponse
+    } finally {
+      request.signal.removeEventListener('abort', cancel)
     }
-
-    const response = await ipcRenderer.invoke(
-      VALEDICTORIAN_HTTP_REQUEST_CHANNEL,
-      payload,
-    ) as ValedictorianHttpTransportResponse
 
     return new Response(response.body, {
       headers: response.headers,
@@ -117,6 +134,10 @@ function createPreloadValedictorianFetch(ipcRenderer: IpcRendererLike): typeof f
       statusText: response.statusText,
     })
   }) as typeof fetch
+}
+
+function abortError() {
+  return new DOMException('The operation was aborted.', 'AbortError')
 }
 
 export function readRendererHttpConfig(argv: string[]) {

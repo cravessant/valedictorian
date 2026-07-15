@@ -18,6 +18,7 @@ import { createSqliteConnectorRepository } from '../modules/connectors/connector
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
+import { signatureForFilters } from '../modules/connectors/connector.checkpoint-signature'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 import {
   publicConnectorRunsListResult,
@@ -26,6 +27,10 @@ import {
 
 function createTempSqlitePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
+}
+
+const JOBRIGHT_TEST_FILTERS = {
+  jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
 }
 
 function jobrightDetailResponse(jobId: string) {
@@ -59,7 +64,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       if (url.includes('/swan/auth/newinfo')) return new Response(JSON.stringify({ success: true, result: { logined: true } }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
-      if (url.includes('/swan/recommend/visitor-list/jobs')) return new Response(JSON.stringify({
+      if (url.includes('/swan/recommend/search')) return new Response(JSON.stringify({
         success: true,
         result: {
           jobNum: 1,
@@ -89,10 +94,10 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'prep-credentials', kind: 'password', label: 'Prep', value: JSON.stringify({ username: 'prep@example.test', password: 'prep-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-prep', connectorId: 'jobright.resolver', connectorVersion: '0.12.0',
+      id: 'jobright-prep', connectorId: 'jobright.resolver', connectorVersion: '0.13.0',
       displayName: 'Jobright prep', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'prep-credentials' }],
-      config: { discoveryCount: 1 }, filters: {},
+      config: { discoveryCount: 1 }, filters: JOBRIGHT_TEST_FILTERS,
       createdAt: clock,
     })
 
@@ -102,7 +107,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
-    const filterSignature = 'provider-state:jobright.resolver@0.12.0'
+    const filterSignature = signatureForFilters(JOBRIGHT_TEST_FILTERS)
     const checkpoint = await repository.getCheckpoint({ connectorInstanceId: 'jobright-prep', filterSignature })
     expect(checkpoint).toBeTruthy()
     await repository.recordCheckpoint({
@@ -152,7 +157,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       if (url.includes('/swan/auth/newinfo')) return new Response(JSON.stringify({ success: true, result: { logined: true } }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
-      if (url.includes('/swan/recommend/visitor-list/jobs')) return new Response(JSON.stringify({
+      if (url.includes('/swan/recommend/search')) return new Response(JSON.stringify({
         success: true,
         result: {
           jobNum: 1,
@@ -184,10 +189,10 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'final-credentials', kind: 'password', label: 'Final', value: JSON.stringify({ username: 'final@example.test', password: 'final-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-final', connectorId: 'jobright.resolver', connectorVersion: '0.12.0',
+      id: 'jobright-final', connectorId: 'jobright.resolver', connectorVersion: '0.13.0',
       displayName: 'Jobright final', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'final-credentials' }],
-      config: { discoveryCount: 1 }, filters: {},
+      config: { discoveryCount: 1 }, filters: JOBRIGHT_TEST_FILTERS,
       createdAt: clock,
     })
 
@@ -197,7 +202,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
-    const filterSignature = 'provider-state:jobright.resolver@0.12.0'
+    const filterSignature = signatureForFilters(JOBRIGHT_TEST_FILTERS)
     const checkpointBefore = await repository.getCheckpoint({ connectorInstanceId: 'jobright-final', filterSignature })
     expect((checkpointBefore!.checkpoint as { retryState: unknown[] }).retryState).toEqual([
       expect.objectContaining({ sourceId: 'jobright.public:job-final' }),
@@ -259,7 +264,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       if (url.includes('/swan/auth/newinfo')) return new Response(JSON.stringify({ success: true, result: { logined: true } }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
-      if (url.includes('/swan/recommend/visitor-list/jobs')) return new Response(JSON.stringify({
+      if (url.includes('/swan/recommend/search')) return new Response(JSON.stringify({
         success: true,
         result: {
           jobNum: 1,
@@ -291,10 +296,10 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'recover-credentials', kind: 'password', label: 'Recover', value: JSON.stringify({ username: 'recover@example.test', password: 'recover-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-recover', connectorId: 'jobright.resolver', connectorVersion: '0.12.0',
+      id: 'jobright-recover', connectorId: 'jobright.resolver', connectorVersion: '0.13.0',
       displayName: 'Jobright recover', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'recover-credentials' }],
-      config: { discoveryCount: 1 }, filters: {},
+      config: { discoveryCount: 1 }, filters: JOBRIGHT_TEST_FILTERS,
       createdAt: clock,
     })
 
@@ -304,7 +309,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
-    const filterSignature = 'provider-state:jobright.resolver@0.12.0'
+    const filterSignature = signatureForFilters(JOBRIGHT_TEST_FILTERS)
     sqlite.exec(`
       create trigger inject_checkpoint_recovery_failure
       before update on connector_checkpoints
@@ -383,7 +388,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     ])
     const checkpointAfter = await verifyRepository.getCheckpoint({ connectorInstanceId: 'jobright-recover', filterSignature })
     expect((checkpointAfter!.checkpoint as { retryState: unknown[] }).retryState).toEqual([])
-    expect(verifyDb.select().from(rawSourceOccurrences).all()).toHaveLength(1)
+    expect(verifyDb.select().from(rawSourceOccurrences).all()).toHaveLength(2)
     verifySqlite.close()
   })
 
@@ -399,7 +404,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
       if (url.includes('/swan/auth/newinfo')) return new Response(JSON.stringify({ success: true, result: { logined: true } }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
-      if (url.includes('/swan/recommend/visitor-list/jobs')) return new Response(JSON.stringify({
+      if (url.includes('/swan/recommend/search')) return new Response(JSON.stringify({
         success: true,
         result: {
           jobNum: 1,
@@ -429,10 +434,10 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'reopen-credentials', kind: 'password', label: 'Reopen', value: JSON.stringify({ username: 'reopen@example.test', password: 'reopen-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-reopen', connectorId: 'jobright.resolver', connectorVersion: '0.12.0',
+      id: 'jobright-reopen', connectorId: 'jobright.resolver', connectorVersion: '0.13.0',
       displayName: 'Jobright reopen', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'reopen-credentials' }],
-      config: { discoveryCount: 1 }, filters: {},
+      config: { discoveryCount: 1 }, filters: JOBRIGHT_TEST_FILTERS,
       createdAt: clock,
     })
 
@@ -443,7 +448,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
     expect(detailCalls).toBe(1)
-    const filterSignature = 'provider-state:jobright.resolver@0.12.0'
+    const filterSignature = signatureForFilters(JOBRIGHT_TEST_FILTERS)
     sqlite.close()
 
     const midSqlite = createFileDatabase(sqlitePath)

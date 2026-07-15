@@ -10,11 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
   createApplication,
-  createConnectorsApi,
+  createConnectorsApiWithJobrightDescriptor as createConnectorsApi,
   createListResult,
   createProfileApi,
   createSettingsApi,
-  lastCreatedConnectorInstanceId
+  lastCreatedConnectorInstanceId,
+  selectSoftwareEngineeringTaxonomy,
 } from './App.test-helpers'
 
 beforeEach(() => {
@@ -68,6 +69,12 @@ async function authenticateJobrightInSettings({
   expect(connectorsApi.status.reconnect).toHaveBeenCalled()
   expect(screen.queryByDisplayValue(email)).not.toBeInTheDocument()
   expect(screen.queryByDisplayValue(password)).not.toBeInTheDocument()
+  await selectSoftwareEngineeringTaxonomy()
+  fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
+  fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
+  })
 }
 
 function continuousSynchronization(status: 'completed' | 'running') {

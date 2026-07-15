@@ -4,14 +4,13 @@ import {
   fireEvent,
   render,
   screen,
-  waitFor,
   within
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
   createApplication,
-  createConnectorsApi,
+  createConnectorsApiWithJobrightDescriptor as createConnectorsApi,
   createListResult,
   createProfileApi,
   createSettingsApi,
@@ -43,40 +42,29 @@ function openConnectorRuns() {
   return appNavigation
 }
 
-
-async function authenticateJobrightInSettings({
-  connectorsApi,
-  profileApi,
-  email = 'demo@example.com',
-  password = ' pass with spaces ',
-}: {
-  connectorsApi: ReturnType<typeof createConnectorsApi>
-  profileApi: ReturnType<typeof createProfileApi>
-  email?: string
-  password?: string
-}) {
-  const editButton = await screen.findByRole('button', {
-    name: /^(Add credentials|Update credentials)$/,
-  })
-  fireEvent.click(editButton)
-  fireEvent.change(await screen.findByLabelText('Jobright email'), {
-    target: { value: email },
-  })
-  fireEvent.change(screen.getByLabelText('Jobright password'), {
-    target: { value: password },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
-  await screen.findByText('Auth verified')
-  expect(profileApi.secrets.upsert).toHaveBeenCalled()
-  expect(connectorsApi.status.reconnect).toHaveBeenCalled()
-  expect(screen.queryByDisplayValue(email)).not.toBeInTheDocument()
-  expect(screen.queryByDisplayValue(password)).not.toBeInTheDocument()
+const JOBRIGHT_TEST_FILTERS = {
+  jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
 }
+
+async function seedRunnableJobright(connectorsApi: ReturnType<typeof createConnectorsApi>) {
+  await connectorsApi.create({
+    id: 'jobright-default',
+    connectorId: 'jobright.resolver',
+    connectorVersion: '0.13.0',
+    displayName: 'Jobright internslist',
+    enabled: true,
+    auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'jobright-fixture' }],
+    config: {},
+    filters: JOBRIGHT_TEST_FILTERS,
+  })
+}
+
 
 describe('connector-run progress and history', () => {
   it('keeps persisted active progress visible after navigating to Connector Runs', async () => {
     const connectorsApi = createConnectorsApi()
     const profileApi = createProfileApi()
+    await seedRunnableJobright(connectorsApi)
     vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(new Promise(() => {}))
     const activeRun = {
       id: 'connector-run-navigation',
@@ -119,11 +107,8 @@ describe('connector-run progress and history', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
     const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
-    await authenticateJobrightInSettings({ connectorsApi, profileApi })
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByRole('status', { name: 'Jobright internslist run progress' }))
       .toHaveTextContent('Checking newest')
@@ -144,6 +129,7 @@ describe('connector-run progress and history', () => {
   it('stops polling when persisted run state is terminal while trigger transport remains pending', async () => {
     const connectorsApi = createConnectorsApi()
     const profileApi = createProfileApi()
+    await seedRunnableJobright(connectorsApi)
     vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(new Promise(() => {}))
     vi.mocked(connectorsApi.runs.list).mockResolvedValue({
       items: [{
@@ -188,9 +174,7 @@ describe('connector-run progress and history', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    await authenticateJobrightInSettings({ connectorsApi, profileApi })
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Running...' })).toBeDisabled()
@@ -204,6 +188,7 @@ describe('connector-run progress and history', () => {
   it('renders a sanitized error when a settings connector run rejects', async () => {
     const connectorsApi = createConnectorsApi()
     const profileApi = createProfileApi()
+    await seedRunnableJobright(connectorsApi)
     vi.mocked(connectorsApi.runs.trigger).mockRejectedValueOnce(
       new Error('sensitive session handle from connector failure'),
     )
@@ -220,9 +205,7 @@ describe('connector-run progress and history', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    await authenticateJobrightInSettings({ connectorsApi, profileApi })
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByText('Jobright run could not be completed.')).toBeInTheDocument()
     expect(screen.queryByText(/sensitive session handle/i)).not.toBeInTheDocument()
@@ -386,6 +369,7 @@ describe('connector-run progress and history', () => {
   it('keeps Card composition inside articles while preserving focus and live-region ownership', async () => {
     const connectorsApi = createConnectorsApi()
     const profileApi = createProfileApi()
+    await seedRunnableJobright(connectorsApi)
     const runningRun = {
       id: 'connector-run-card-focus',
       connectorInstanceId: 'jobright-default',
@@ -446,9 +430,7 @@ describe('connector-run progress and history', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    await authenticateJobrightInSettings({ connectorsApi, profileApi })
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByText('Latest synchronization: Checking newest')).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', {

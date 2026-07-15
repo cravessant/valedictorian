@@ -13,7 +13,10 @@ export type ValedictorianHttpTransportResponse = {
 }
 
 export type ValedictorianHttpTransport = {
-  request(input: ValedictorianHttpTransportRequest): Promise<ValedictorianHttpTransportResponse>
+  request(
+    input: ValedictorianHttpTransportRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<ValedictorianHttpTransportResponse>
 }
 
 export class ValedictorianHttpTransportError extends Error {
@@ -57,7 +60,7 @@ export function createValedictorianHttpTransport({
   const encodedWorkspaceId = encodeURIComponent(workspaceId)
 
   return {
-    async request(input) {
+    async request(input, options = {}) {
       const method = normalizeAllowedMethod(input.method)
       const url = parseAllowedValedictorianHttpUrl(
         input.url,
@@ -75,6 +78,7 @@ export function createValedictorianHttpTransport({
         headers,
         method,
         redirect: 'error',
+        ...(options.signal ? { signal: options.signal } : {}),
       }
 
       if (input.body !== undefined && input.body !== null) {
@@ -250,7 +254,7 @@ export function createPrivilegedValedictorianFetch(
       headers: headerRecord,
       method: request.method,
       url: request.url,
-    })
+    }, { signal: request.signal })
 
     return new Response(response.body, {
       headers: response.headers,

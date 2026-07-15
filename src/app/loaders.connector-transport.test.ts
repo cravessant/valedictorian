@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { RendererBackendState } from '../ipc/valedictorian-http.preload'
+import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/jobright.constants'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from '../server/local-server'
 import { createTempSqlitePath } from '../server/local-server.http-test-harness'
@@ -116,12 +117,14 @@ function jobrightCreateInput() {
   return {
     id: 'jobright-default',
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.12.0',
+    connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [{ id: 'jobright', label: 'Jobright credentials', mode: 'username_password' as const }],
     config: {},
-    filters: {},
+    filters: {
+      jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
+    },
   }
 }
 function createConnectorClient() {

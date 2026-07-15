@@ -12,12 +12,17 @@ import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
+import { signatureForFilters } from '../modules/connectors/connector.checkpoint-signature'
 
 function createTempSqlitePath() {
   return path.join(
     fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-v5-boundary-')),
     'valedictorian.sqlite',
   )
+}
+
+const JOBRIGHT_TEST_FILTERS = {
+  jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
 }
 
 function jobrightDetailResponse(jobId: string) {
@@ -58,7 +63,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
           headers: { 'content-type': 'application/json' },
         })
       }
-      if (url.includes('/swan/recommend/visitor-list/jobs')) {
+      if (url.includes('/swan/recommend/search')) {
         discoveryCalls += 1
         return new Response(JSON.stringify({
           success: true,
@@ -119,12 +124,12 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     await repository.upsertInstance({
       id: 'jobright-boundary',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.12.0',
+      connectorVersion: '0.13.0',
       displayName: 'Jobright boundary',
       enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'boundary-credentials' }],
       config: { discoveryCount: 1 },
-      filters: {},
+      filters: JOBRIGHT_TEST_FILTERS,
       earliestBackfillDate: '2026-07-01',
       createdAt: clock,
     })
@@ -139,7 +144,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     expect(detailCalls).toBe(1)
     expect(discoveryCalls).toBe(1)
 
-    const filterSignature = 'provider-state:jobright.resolver@0.12.0'
+    const filterSignature = signatureForFilters(JOBRIGHT_TEST_FILTERS)
     const checkpointAfterFirst = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-boundary',
       filterSignature,
@@ -182,7 +187,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     })
     expect(afterNarrow.status).not.toBe('skipped')
     expect(detailCalls).toBe(1)
-    expect(discoveryCalls).toBe(3)
+    expect(discoveryCalls).toBe(4)
 
     const checkpointAfterNarrow = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-boundary',
@@ -260,7 +265,7 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
     })
     expect(afterWiden.status).not.toMatch(/skipped/)
     expect(detailCalls).toBe(2)
-    expect(discoveryCalls).toBe(4)
+    expect(discoveryCalls).toBe(8)
 
     const checkpointAfterWiden = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-boundary',

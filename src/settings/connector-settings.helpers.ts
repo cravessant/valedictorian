@@ -132,9 +132,23 @@ export function defaultConnectorSettingsDraft(
   instance: ConnectorSettingsInstance | undefined,
 ): ConnectorSettingsDraft {
   return {
+    config: { ...recordFromUnknown(instance?.config) },
     enabled: instance?.enabled ?? true,
     earliestBackfillDate: instance?.earliestBackfillDate ?? '',
+    filters: { ...recordFromUnknown(instance?.filters) },
   }
+}
+
+export function isUnchangedConnectorDisable(
+  instance: ConnectorSettingsInstance,
+  draft: ConnectorSettingsDraft,
+): boolean {
+  const saved = defaultConnectorSettingsDraft(instance)
+  return instance.enabled
+    && !draft.enabled
+    && JSON.stringify(draft.config) === JSON.stringify(saved.config)
+    && draft.earliestBackfillDate === saved.earliestBackfillDate
+    && JSON.stringify(draft.filters) === JSON.stringify(saved.filters)
 }
 
 export function recordFromUnknown(value: unknown): Record<string, unknown> {

@@ -7,6 +7,8 @@ import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ConnectorStatusListResult, ConnectorStatusView } from './modules/connectors/connector.status'
+import { projectInstalledConnectorDescriptor } from './modules/connectors/connector.capabilities'
+import { createDefaultLocalConnectorRegistry } from './modules/connectors/connector.registry'
 import { defaultEarliestBackfillDate } from './modules/connectors/connector.earliest-backfill'
 import type {
   LocalConnectorReconnectActionResult,
@@ -35,6 +37,7 @@ import {
   type PolicyDecision,
   type PolicyEvidenceRecord,
   type PolicyRunWindowDecision,
+  type ConnectorOptionQueryResult,
   type SourcingFinding,
   type SourcingFindingsListResult,
 } from 'sparxie'
@@ -453,6 +456,77 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
       skip: vi.fn(),
     },
   }
+}
+
+export function createConnectorsApiWithJobrightDescriptor() {
+  const api = createConnectorsApi()
+  const descriptor = projectInstalledConnectorDescriptor(
+    createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
+  )
+  return Object.assign(api, {
+    descriptors: {
+      list: vi.fn(async () => ({ items: [descriptor] })),
+      get: vi.fn(async () => descriptor),
+    },
+    options: {
+      query: vi.fn(async (input: {
+        connectorInstanceId: string
+        body: {
+          sourceId: string
+          operation: { kind: 'search'; search: string; limit?: number }
+            | { kind: 'resolve'; values: unknown[] }
+        }
+        expectedIdentity: {
+          connectorId: string
+          connectorVersion: string
+          filterSchemaVersion: string
+          catalogVersion: string
+          sourceVersion: string
+        }
+      }): Promise<ConnectorOptionQueryResult> => {
+        const identity = {
+          connectorInstanceId: input.connectorInstanceId,
+          ...input.expectedIdentity,
+          sourceId: input.body.sourceId,
+        }
+        if (input.body.operation.kind === 'resolve') {
+          return {
+            ...identity,
+            status: 'resolve_ready',
+            options: input.body.operation.values.map((value, index) => ({
+              key: `resolved-${index}`,
+              label: optionFixtureLabel(value),
+              value: value as never,
+            })),
+            unknownValues: [],
+          }
+        }
+        const value = input.body.sourceId === 'jobright.taxonomy'
+          ? { taxonomyId: 'software-engineering', title: 'Software Engineering' }
+          : input.body.operation.search
+        return {
+          ...identity,
+          status: 'search_ready',
+          options: [{ key: 'software-engineering', label: 'Software Engineering', value }],
+          truncated: false,
+        }
+      }),
+    },
+  })
+}
+
+export async function selectSoftwareEngineeringTaxonomy() {
+  const taxonomy = await screen.findByRole('combobox', { name: 'Include job taxonomy list' })
+  fireEvent.change(taxonomy, { target: { value: 'software' } })
+  fireEvent.click(await screen.findByRole('option', { name: 'Software Engineering' }))
+}
+
+function optionFixtureLabel(value: unknown) {
+  if (value && typeof value === 'object' && 'title' in value
+    && typeof (value as { title?: unknown }).title === 'string') {
+    return (value as { title: string }).title
+  }
+  return typeof value === 'string' ? value : JSON.stringify(value)
 }
 
 export function lastCreatedConnectorInstanceId(connectorsApi: ConnectorsPreloadApi): string {

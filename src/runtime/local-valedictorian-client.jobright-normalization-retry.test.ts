@@ -15,14 +15,19 @@ import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
+import { signatureForFilters } from '../modules/connectors/connector.checkpoint-signature'
 
 function createTempSqlitePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
 }
 
+const JOBRIGHT_TEST_FILTERS = {
+  jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
+}
+
 describe('runtime local Valedictorian client Jobright normalization retry', () => {
 
-  it('replays only due Jobright v5 detail work without rediscovery or successful-detail duplication', async () => {
+  it('replays only due Jobright v5 detail work without successful-detail duplication', async () => {
     const sqlitePath = createTempSqlitePath()
     let clock = '2026-07-11T12:00:00.000Z'
     let retryDetailCalls = 0
@@ -34,7 +39,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       if (url.includes('/swan/auth/newinfo')) return new Response(JSON.stringify({ success: true, result: { logined: true } }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
-      if (url.includes('/swan/recommend/visitor-list/jobs')) return new Response(JSON.stringify({
+      if (url.includes('/swan/recommend/search')) return new Response(JSON.stringify({
         success: true,
         result: { jobNum: 2, jobList: [
           { jobResult: { jobId: 'job-success', jobTitle: 'Success Intern', companyName: 'Success Co' }, companyResult: { companyName: 'Success Co' } },
@@ -65,10 +70,10 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'retry-credentials', kind: 'password', label: 'Retry credentials', value: JSON.stringify({ username: 'retry@example.test', password: 'retry-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-retry', connectorId: 'jobright.resolver', connectorVersion: '0.12.0',
+      id: 'jobright-retry', connectorId: 'jobright.resolver', connectorVersion: '0.13.0',
       displayName: 'Jobright retry', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'retry-credentials' }],
-      config: { discoveryCount: 2 }, filters: {},
+      config: { discoveryCount: 2 }, filters: JOBRIGHT_TEST_FILTERS,
       createdAt: clock,
     })
 
@@ -93,7 +98,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       connectorInstanceId: 'jobright-retry', mode: 'manual', executionIntent: 'deferred_refresh', coverageEndedAt: clock,
     })
     const urls = fetchImpl.mock.calls.map(([request]) => typeof request === 'string' ? request : request instanceof URL ? request.href : request.url)
-    expect(urls.filter((url) => url.includes('/swan/recommend/visitor-list/jobs'))).toHaveLength(1)
+    expect(urls.filter((url) => url.includes('/swan/recommend/search'))).toHaveLength(2)
     expect(urls.filter((url) => url.endsWith('/swan/share/job/job-success'))).toHaveLength(1)
     expect(urls.filter((url) => url.endsWith('/swan/share/job/job-retry'))).toHaveLength(2)
     const revisions = database.select().from(rawSourceRevisions).all()
@@ -122,7 +127,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
         acquisitionRunId: null,
       }),
     ])
-    expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(2)
+    expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(4)
     sqlite.close()
   })
 
@@ -138,7 +143,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       if (url.includes('/swan/auth/newinfo')) return new Response(JSON.stringify({ success: true, result: { logined: true } }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
-      if (url.includes('/swan/recommend/visitor-list/jobs')) return new Response(JSON.stringify({
+      if (url.includes('/swan/recommend/search')) return new Response(JSON.stringify({
         success: true,
         result: { jobNum: 2, jobList: [
           { jobResult: { jobId: 'job-a', jobTitle: 'Intern A', companyName: 'Alpha Co' }, companyResult: { companyName: 'Alpha Co' } },
@@ -171,10 +176,10 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'multi-credentials', kind: 'password', label: 'Multi credentials', value: JSON.stringify({ username: 'multi@example.test', password: 'multi-password' }) })
     const instance = await repository.upsertInstance({
-      id: 'jobright-multi', connectorId: 'jobright.resolver', connectorVersion: '0.12.0',
+      id: 'jobright-multi', connectorId: 'jobright.resolver', connectorVersion: '0.13.0',
       displayName: 'Jobright multi', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'multi-credentials' }],
-      config: { discoveryCount: 2 }, filters: {},
+      config: { discoveryCount: 2 }, filters: JOBRIGHT_TEST_FILTERS,
       createdAt: clock,
     })
 
@@ -200,7 +205,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       resolverId: 'jobright.authenticated-destination',
       state: 'scheduled',
     })
-    const filterSignature = 'provider-state:jobright.resolver@0.12.0'
+    const filterSignature = signatureForFilters(JOBRIGHT_TEST_FILTERS)
     const checkpointAfterFirst = await repository.getCheckpoint({
       connectorInstanceId: 'jobright-multi',
       filterSignature,
@@ -372,7 +377,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       if (url.includes('/swan/auth/newinfo')) return new Response(JSON.stringify({ success: true, result: { logined: true } }), {
         status: 200, headers: { 'content-type': 'application/json' },
       })
-      if (url.includes('/swan/recommend/visitor-list/jobs')) return new Response(JSON.stringify({
+      if (url.includes('/swan/recommend/search')) return new Response(JSON.stringify({
         success: true,
         result: {
           jobNum: 1,
@@ -405,10 +410,10 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const profiles = createSqliteProfileRepository(database, secretCodec)
     await profiles.upsertSecret({ key: 'fail-credentials', kind: 'password', label: 'Fail credentials', value: JSON.stringify({ username: 'fail@example.test', password: 'fail-password' }) })
     await repository.upsertInstance({
-      id: 'jobright-fail', connectorId: 'jobright.resolver', connectorVersion: '0.12.0',
+      id: 'jobright-fail', connectorId: 'jobright.resolver', connectorVersion: '0.13.0',
       displayName: 'Jobright fail', enabled: true,
       auth: [{ id: 'jobright', mode: 'username_password', secretKey: 'fail-credentials' }],
-      config: { discoveryCount: 1 }, filters: {},
+      config: { discoveryCount: 1 }, filters: JOBRIGHT_TEST_FILTERS,
       createdAt: clock,
     })
 

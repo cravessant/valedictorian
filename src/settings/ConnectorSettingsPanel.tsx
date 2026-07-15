@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/empty'
 import { AlertCircle, Cable } from 'lucide-react'
 import { typography, typographyClass } from '@/components/ui/typography'
-import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
+import type { InstalledConnectorDescriptor } from 'sparxie'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
   JOBRIGHT_CONNECTOR_ID,
@@ -22,6 +22,7 @@ import {
 } from '../modules/connectors/connector.earliest-backfill'
 import {
   defaultConnectorSettingsDraft,
+  isUnchangedConnectorDisable,
   jobrightSecretKeyForInstance,
   sanitizedConnectorAuthErrorMessage,
   sanitizedConnectorCreateErrorMessage,
@@ -33,6 +34,7 @@ import type {
   ConnectorSettingsDraft,
   ConnectorSettingsInstance,
   ConnectorSettingsRun,
+  ConnectorSettingsUiApi,
 } from './connector-settings.types'
 import { ConnectorSettingsInstanceCard } from './ConnectorSettingsInstanceCard'
 import type { ConnectorScheduleUiApi } from './connector-schedule.types'
@@ -45,6 +47,16 @@ type RendererBackendBinding = {
   onBackendStateChanged?(listener: (state: { status: string }) => void): () => void
   retryBackend?(): Promise<void>
 }
+
+function selectInstalledConnectorDescriptor(
+  descriptors: InstalledConnectorDescriptor[],
+  connectorId: string,
+  connectorVersion: string,
+) {
+  const sameConnector = descriptors.filter((descriptor) => descriptor.connectorId === connectorId)
+  return sameConnector.find((descriptor) => descriptor.connectorVersion === connectorVersion)
+    ?? (sameConnector.length === 1 ? sameConnector[0] : undefined)
+}
 export function ConnectorSettingsPanel({
   connectorsApi,
   connectorScheduleApi,
@@ -55,7 +67,7 @@ export function ConnectorSettingsPanel({
   profileApi,
   workspaceId,
 }: {
-  connectorsApi: ConnectorsPreloadApi
+  connectorsApi: ConnectorSettingsUiApi
   connectorScheduleApi: ConnectorScheduleUiApi
   displayMode?: 'main' | 'settings'
   onConnectorChanged?: () => void
@@ -68,6 +80,7 @@ export function ConnectorSettingsPanel({
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'unavailable'>('loading')
   const [loadGeneration, setLoadGeneration] = useState(0)
   const [drafts, setDrafts] = useState<Record<string, ConnectorSettingsDraft>>({})
+  const [descriptors, setDescriptors] = useState<Record<string, InstalledConnectorDescriptor>>({})
   const [credentialDrafts, setCredentialDrafts] = useState<Record<string, ConnectorAuthCredentialDraft>>({})
   const [editingAuthInstanceId, setEditingAuthInstanceId] = useState<string | null>(null)
   const [isAdding, setIsAdding] = useState(false)
@@ -187,13 +200,20 @@ export function ConnectorSettingsPanel({
 
     setLoadState('loading')
 
-    connectorsApi.list()
-      .then(async (result) => {
+    Promise.all([
+      connectorsApi.list(),
+      connectorsApi.descriptors?.list() ?? Promise.resolve({ items: [] }),
+    ])
+      .then(async ([result, descriptorResult]) => {
         if (cancelled || requestGeneration !== backendGeneration.current) {
           return
         }
 
         setInstances(result.items)
+        setDescriptors(Object.fromEntries(descriptorResult.items.map((descriptor) => [
+          `${descriptor.connectorId}\u0000${descriptor.connectorVersion}`,
+          descriptor,
+        ])))
         setLoadState('loaded')
 
         const autoValidateInstances = result.items.filter(shouldAutoValidateJobrightAuth)
@@ -287,7 +307,7 @@ export function ConnectorSettingsPanel({
       connectorId: JOBRIGHT_CONNECTOR_ID,
       connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
       displayName: 'Jobright internslist',
-      enabled: true,
+      enabled: false,
       auth: [
         {
           id: 'jobright',
@@ -543,6 +563,11 @@ export function ConnectorSettingsPanel({
 
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
     const savedDraft = defaultConnectorSettingsDraft(instance)
+    const descriptor = selectInstalledConnectorDescriptor(
+      Object.values(descriptors),
+      instance.connectorId,
+      instance.connectorVersion,
+    )
     const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
     const earliestValidation = isJobrightInstance
       ? validateSelectableEarliestBackfillDate({
@@ -561,14 +586,24 @@ export function ConnectorSettingsPanel({
       nextIds.add(instance.id)
       return nextIds
     })
-    void connectorsApi.update({
-      connectorInstanceId: instance.id,
-      enabled: draft.enabled,
-      ...(earliestValidation?.ok
-        && draft.earliestBackfillDate !== savedDraft.earliestBackfillDate
-        ? { earliestBackfillDate: earliestValidation.value }
-        : {}),
-    })
+    const update = isUnchangedConnectorDisable(instance, draft)
+      ? { connectorInstanceId: instance.id, enabled: false as const }
+      : {
+          connectorInstanceId: instance.id,
+          enabled: draft.enabled,
+          ...(descriptor && descriptor.connectorVersion !== instance.connectorVersion
+            ? { connectorVersion: descriptor.connectorVersion }
+            : {}),
+          ...(JSON.stringify(draft.config) !== JSON.stringify(savedDraft.config)
+            ? { config: draft.config }
+            : {}),
+          ...(descriptor ? { filters: draft.filters } : {}),
+          ...(earliestValidation?.ok
+            && draft.earliestBackfillDate !== savedDraft.earliestBackfillDate
+            ? { earliestBackfillDate: earliestValidation.value }
+            : {}),
+        }
+    void connectorsApi.update(update)
       .then((updated) => {
         setInstances((currentInstances) => currentInstances.map((currentInstance) =>
           currentInstance.id === updated.id ? updated : currentInstance,
@@ -650,6 +685,8 @@ export function ConnectorSettingsPanel({
     const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
     const saved = defaultConnectorSettingsDraft(instance)
     return draft.enabled !== saved.enabled
+      || JSON.stringify(draft.config) !== JSON.stringify(saved.config)
+      || JSON.stringify(draft.filters) !== JSON.stringify(saved.filters)
       || (instance.connectorId === JOBRIGHT_CONNECTOR_ID
         && draft.earliestBackfillDate !== saved.earliestBackfillDate)
   }
@@ -833,12 +870,19 @@ export function ConnectorSettingsPanel({
           <div className="divide-y divide-border rounded-md border border-border">
             {instances.map((instance) => {
               const scheduleState = scheduleStates[instance.id] ?? createInitialInstanceScheduleState()
+              const descriptor = selectInstalledConnectorDescriptor(
+                Object.values(descriptors),
+                instance.connectorId,
+                instance.connectorVersion,
+              )
               return (
               <ConnectorSettingsInstanceCard
                 key={instance.id}
                 instance={instance}
                 authState={authStates[instance.id] ?? { kind: 'idle' as const }}
                 draft={drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)}
+                descriptor={descriptor}
+                connectorsApi={connectorsApi}
                 credentialDraft={credentialDrafts[instance.id] ?? { email: '', password: '' }}
                 isEditingAuth={editingAuthInstanceId === instance.id}
                 latestRun={latestRuns[instance.id]}

@@ -107,7 +107,7 @@ function walk(directory: string, files: string[]) {
       continue
     }
 
-    if (entry.name.endsWith('.test.ts') || entry.name.endsWith('.test.tsx')) {
+    if (entry.name.includes('.test.')) {
       continue
     }
 

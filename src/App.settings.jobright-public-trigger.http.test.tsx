@@ -11,8 +11,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import { createApplication, createListResult, createSettingsApi } from './App.test-helpers'
-import { createStaticConnectorRegistry } from './modules/connectors/connector.registry'
+import {
+  createApplication,
+  createListResult,
+  createSettingsApi,
+} from './App.test-helpers'
+import {
+  createDefaultLocalConnectorRegistry,
+  createStaticConnectorRegistry,
+} from './modules/connectors/connector.registry'
 import type { AppJobConnector } from './modules/connectors/connector.runner'
 import { JOBRIGHT_CONNECTOR_ID, JOBRIGHT_CONNECTOR_VERSION } from './modules/connectors/jobright.constants'
 import { createLocalValedictorianClient } from './runtime/local-valedictorian-client'
@@ -59,7 +66,6 @@ describe('Jobright public trigger through default HTTP client', () => {
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(screen.getByLabelText('Jobright email'), {
       target: { value: 'public-trigger@example.test' },
@@ -119,7 +125,6 @@ describe('Jobright public trigger through default HTTP client', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(screen.getByLabelText('Jobright email'), {
       target: { value: 'reject@example.test' },
@@ -129,6 +134,9 @@ describe('Jobright public trigger through default HTTP client', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
+    })
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
@@ -154,6 +162,25 @@ async function startFixtureServer() {
     sqlitePath,
     workspaceId: WORKSPACE_ID,
   })
+  await client.connectors.create({
+    id: 'jobright-default',
+    connectorId: JOBRIGHT_CONNECTOR_ID,
+    connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
+    displayName: 'Jobright internslist',
+    enabled: true,
+    auth: [{
+      id: 'jobright',
+      label: 'Jobright username and password',
+      mode: 'username_password',
+    }],
+    config: {},
+    filters: {
+      jobTaxonomyList: [{
+        taxonomyId: 'software-engineering',
+        title: 'Software Engineering',
+      }],
+    },
+  })
   activeServer = await createValedictorianHttpServer({
     client,
     host: '127.0.0.1',
@@ -176,21 +203,11 @@ async function startFixtureServer() {
 }
 
 function createJobrightFixtureConnector(): AppJobConnector {
+  const released = createDefaultLocalConnectorRegistry().get(JOBRIGHT_CONNECTOR_ID)!
+  const { dynamicOptions: _dynamicOptions, ...releasedDefinition } = released.definition
+  void _dynamicOptions
   return {
-    definition: {
-      id: JOBRIGHT_CONNECTOR_ID,
-      version: JOBRIGHT_CONNECTOR_VERSION,
-      capabilities: { supportsFiltering: false },
-      auth: {
-        modes: ['username_password'],
-        requirements: [{
-          id: 'jobright',
-          label: 'Jobright username and password',
-          mode: 'username_password',
-          required: true,
-        }],
-      },
-    },
+    definition: releasedDefinition,
     async validateAuth(input, runtime) {
       const result = await runtime.auth.refresh({
         id: 'jobright',

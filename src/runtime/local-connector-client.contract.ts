@@ -115,6 +115,8 @@ export interface LocalConnectorClient {
   create(input: CreateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
   update(input: UpdateConnectorInstanceInput): Promise<LocalConnectorInstanceSummary>
   remove: ValedictorianWorkspaceClient['connectors']['remove']
+  descriptors: ValedictorianWorkspaceClient['connectors']['descriptors']
+  options: ValedictorianWorkspaceClient['connectors']['options']
   inspect(connectorInstanceId: string): Promise<LocalConnectorStatusSummary>
   overview: ValedictorianWorkspaceClient['connectors']['overview']
   runs: {

@@ -1,9 +1,8 @@
 import http from 'node:http'
 import {
   connectorScheduleErrorCodes,
+  connectorOptionQueryErrorCodes,
   connectorRetirementActiveWorkConflictSchema,
-  connectorRetirementResultSchema,
-  connectorOverviewListResultSchema,
   connectorOverviewErrorCodes,
   defaultLocalCapabilities,
   invalidPersistedRawDetailErrorBody,
@@ -32,13 +31,6 @@ import {
   parseAttemptCompleteInput,
   parseAttemptStartInput,
   parseAttemptStepInput,
-  parseConnectorCheckpointsListQuery,
-  parseConnectorObservationsListQuery,
-  parseConnectorRunsListQuery,
-  parseConnectorOverviewListQuery,
-  parseConnectorRunTriggerInput,
-  parseCreateConnectorInstanceInput,
-  parseUpdateConnectorInstanceInput,
   parseCreateApplicationInput,
   parseEvaluateApplicationPolicyInput,
   parseEvaluateRunWindowPolicyInput,
@@ -63,12 +55,7 @@ import {
 } from './local-server.parsers'
 import type { WorkspaceClientResolver } from './local-server'
 import type { LocalWorkspaceManager } from './local-workspaces'
-import { handleConnectorScheduleRoutes } from './local-server.routes.connector-schedules'
-import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
-import {
-  publicConnectorRunsListResult,
-  publicConnectorRunSummary,
-} from '../runtime/local-connector-public-run'
+import { handleConnectorRoutes } from './local-server.routes.connectors'
 
 function buildLocalCapabilities(connectorScheduling: ConnectorSchedulingCapability) {
   return {
@@ -197,6 +184,10 @@ export async function handleRequest({
       return
     }
 
+    if (await handleConnectorRoutes({ client, request, requestUrl, response })) {
+      return
+    }
+
     if (request.method === 'GET' && requestUrl.pathname === '/v1/applications') {
       writeJson(response, 200, await client.applications.list(parseApplicationListQuery(requestUrl)))
       return
@@ -204,22 +195,6 @@ export async function handleRequest({
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/action-queue') {
       writeJson(response, 200, await client.actionQueue.list(parseActionQueueListQuery(requestUrl)))
-      return
-    }
-
-    if (request.method === 'GET' && requestUrl.pathname === '/v1/connectors') {
-      writeJson(response, 200, await connectorExtensions(client).list())
-      return
-    }
-
-    if (request.method === 'POST' && requestUrl.pathname === '/v1/connectors') {
-      writeJson(
-        response,
-        200,
-        await connectorExtensions(client).create(
-          parseCreateConnectorInstanceInput(await readJsonBody(request)),
-        ),
-      )
       return
     }
 
@@ -340,128 +315,6 @@ export async function handleRequest({
     if (request.method === 'DELETE' && secretMatch) {
       await profileExtensions(client).secrets.delete(decodeURIComponent(secretMatch[1]))
       writeJson(response, 200, { ok: true })
-      return
-    }
-
-    if (request.method === 'GET' && requestUrl.pathname === '/v1/connectors/overview') {
-      writeJson(
-        response,
-        200,
-        connectorOverviewListResultSchema.parse(
-          await connectorExtensions(client).overview.list(
-            parseConnectorOverviewListQuery(requestUrl),
-          ),
-        ),
-      )
-      return
-    }
-
-    const connectorStatusMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)\/status$/)
-
-    const connectorInstanceMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)$/)
-
-    if (request.method === 'PATCH' && connectorInstanceMatch) {
-      writeJson(
-        response,
-        200,
-        await connectorExtensions(client).update(
-          parseUpdateConnectorInstanceInput(
-            decodeURIComponent(connectorInstanceMatch[1]),
-            await readJsonBody(request),
-          ),
-        ),
-      )
-      return
-    }
-
-    if (request.method === 'DELETE' && connectorInstanceMatch) {
-      writeJson(
-        response,
-        200,
-        connectorRetirementResultSchema.parse(
-          await connectorExtensions(client).remove({
-            connectorInstanceId: decodeURIComponent(connectorInstanceMatch[1]),
-          }),
-        ),
-      )
-      return
-    }
-
-    if (request.method === 'GET' && connectorStatusMatch) {
-      writeJson(
-        response,
-        200,
-        publicConnectorStatusSummary(
-          await connectorExtensions(client).inspect(decodeURIComponent(connectorStatusMatch[1])),
-        ),
-      )
-      return
-    }
-
-    const connectorRunsMatch = requestUrl.pathname.match(/^\/v1\/connectors\/([^/]+)\/runs$/)
-
-    if (request.method === 'GET' && connectorRunsMatch) {
-      writeJson(
-        response,
-        200,
-        publicConnectorRunsListResult(await connectorExtensions(client).runs.list(
-          parseConnectorRunsListQuery(decodeURIComponent(connectorRunsMatch[1]), requestUrl),
-        )),
-      )
-      return
-    }
-
-    if (request.method === 'POST' && connectorRunsMatch) {
-      writeJson(
-        response,
-        200,
-        publicConnectorRunSummary(await connectorExtensions(client).runs.trigger(
-          parseConnectorRunTriggerInput(
-            decodeURIComponent(connectorRunsMatch[1]),
-            await readJsonBody(request),
-          ),
-        )),
-      )
-      return
-    }
-
-    const connectorCheckpointsMatch = requestUrl.pathname.match(
-      /^\/v1\/connectors\/([^/]+)\/checkpoints$/,
-    )
-
-    if (request.method === 'GET' && connectorCheckpointsMatch) {
-      writeJson(
-        response,
-        200,
-        await connectorExtensions(client).checkpoints.list(
-          parseConnectorCheckpointsListQuery(
-            decodeURIComponent(connectorCheckpointsMatch[1]),
-            requestUrl,
-          ),
-        ),
-      )
-      return
-    }
-
-    const connectorObservationsMatch = requestUrl.pathname.match(
-      /^\/v1\/connectors\/([^/]+)\/observations$/,
-    )
-
-    if (request.method === 'GET' && connectorObservationsMatch) {
-      writeJson(
-        response,
-        200,
-        await connectorExtensions(client).observations.list(
-          parseConnectorObservationsListQuery(
-            decodeURIComponent(connectorObservationsMatch[1]),
-            requestUrl,
-          ),
-        ),
-      )
-      return
-    }
-
-    if (await handleConnectorScheduleRoutes({ client, request, requestUrl, response })) {
       return
     }
 
@@ -929,6 +782,7 @@ export async function handleRequest({
       (error.code === invalidPersistedRawDetailErrorBody.code
         || error.code === 'already_configured'
         || error.code === 'capability_unavailable'
+        || (connectorOptionQueryErrorCodes as readonly string[]).includes(error.code)
         || (connectorScheduleErrorCodes as readonly string[]).includes(error.code)
         || (connectorOverviewErrorCodes as readonly string[]).includes(error.code))
     ) {
@@ -953,35 +807,9 @@ function readErrorStatusCode(error: unknown) {
 }
 
 function isDomainRoute(pathname: string) {
-  return /^\/v1\/(applications|action-queue|connectors|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
+  return /^\/v1\/(applications|action-queue|connector-descriptors|connectors|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
     pathname,
   )
-}
-
-type ConnectorExtensionsClient = ValedictorianWorkspaceClient & {
-  connectors: {
-    list(): Promise<unknown>
-    create(input: unknown): Promise<unknown>
-    update(input: unknown): Promise<unknown>
-    remove(input: { connectorInstanceId: string }): Promise<unknown>
-    inspect(connectorInstanceId: string): Promise<unknown>
-    overview: ValedictorianWorkspaceClient['connectors']['overview']
-    runs: {
-      list(input: unknown): Promise<unknown>
-      trigger(input: unknown): Promise<unknown>
-    }
-    schedules: ValedictorianWorkspaceClient['connectors']['schedules']
-    checkpoints: {
-      list(input: unknown): Promise<unknown>
-    }
-    observations: {
-      list(input: unknown): Promise<unknown>
-    }
-  }
-}
-
-function connectorExtensions(client: ValedictorianWorkspaceClient) {
-  return (client as ConnectorExtensionsClient).connectors
 }
 
 type ProfileExtensionsClient = ValedictorianWorkspaceClient & {

@@ -1,5 +1,5 @@
 export const JOBRIGHT_CONNECTOR_ID = 'jobright.resolver'
-export const JOBRIGHT_CONNECTOR_VERSION = '0.12.0'
+export const JOBRIGHT_CONNECTOR_VERSION = '0.13.0'
 export const JOBRIGHT_CHECKPOINT_SCHEMA_V5 = 'jobright-resolution-checkpoint@5'
 export const JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID = 'jobright.authenticated-destination'
 export const JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION = 'jobright-authenticated-destination@1'

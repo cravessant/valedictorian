@@ -24,6 +24,7 @@ import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import { createStaticConnectorRegistry } from './modules/connectors/connector.registry'
 import type { AppJobConnector } from './modules/connectors/connector.runner'
+import { JOBRIGHT_CONNECTOR_VERSION } from './modules/connectors/jobright.constants'
 import { createLocalValedictorianClient } from './runtime/local-valedictorian-client'
 
 beforeEach(() => {
@@ -98,6 +99,10 @@ describe('connector instance applicability', () => {
     expect(screen.queryByDisplayValue('main-page@example.test')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('main-page-fixture-password')).not.toBeInTheDocument()
 
+    fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled())
+
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
     await waitFor(() => {
@@ -121,7 +126,7 @@ describe('connector instance applicability', () => {
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
-        version: '0.12.0',
+        version: JOBRIGHT_CONNECTOR_VERSION,
         capabilities: { supportsFiltering: false },
         auth: {
           modes: ['username_password'],
@@ -191,12 +196,14 @@ describe('connector instance applicability', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
 
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
     const runButton = screen.getByRole('button', { name: 'Run Jobright now' })
     await waitFor(() => expect(runButton).toBeEnabled())
     fireEvent.click(runButton)
     expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
     await expect(client.connectors.list()).resolves.toMatchObject({
-      items: [expect.objectContaining({ connectorVersion: '0.12.0' })],
+      items: [expect.objectContaining({ connectorVersion: JOBRIGHT_CONNECTOR_VERSION })],
     })
   })
 
@@ -228,9 +235,9 @@ describe('connector instance applicability', () => {
         ],
         config: {},
         connectorId: 'jobright.resolver',
-        connectorVersion: '0.12.0',
+        connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
         displayName: 'Jobright internslist',
-        enabled: true,
+        enabled: false,
         filters: {},
       }))
     })

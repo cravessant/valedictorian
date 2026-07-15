@@ -45,19 +45,24 @@ import type {
   SourcingFindingsListInput,
   SourcingFindingsListResult,
   UpdateSourcingFindingInput,
-  ValedictorianClient,
-  ValedictorianWorkspaceClient,
 } from 'sparxie'
 import {
-  createHttpValedictorianClient,
   defaultUserProfile,
   defaultPolicyConfig,
   unavailableConnectorSchedulingCapability,
 } from 'sparxie'
 import { defaultAppSettings, normalizeAppSettings } from '../settings/app-settings'
 import type { ConnectorScheduleUiApi } from '../settings/connector-schedule.types'
+import type { ConnectorSettingsUiApi } from '../settings/connector-settings.types'
 import { PAGE_LIMIT } from './types'
 import type { RawRecordsReadApi } from '../modules/sourcing/raw-normalization.types'
+import {
+  backendUnavailableError,
+  getRendererHttpRootClient,
+  getRendererHttpWorkspaceClient,
+  rendererBackendUnavailable,
+  requireRendererHttpWorkspaceClient,
+} from './renderer-http-client'
 
 export const emptyApplicationResult: ApplicationListResult = {
   items: [],
@@ -376,7 +381,7 @@ export const defaultConnectorStatusSkipper = (
   return connectorsWindow.connectors.status.skip(input)
 }
 
-export const defaultConnectorsApi: ConnectorsPreloadApi = {
+export const defaultConnectorsApi: ConnectorSettingsUiApi = {
   list() {
     const connectorsWindow = window as Window & { connectors?: ConnectorsPreloadApi }
     const httpClient = getRendererHttpWorkspaceClient()
@@ -440,6 +445,25 @@ export const defaultConnectorsApi: ConnectorsPreloadApi = {
   status: {
     reconnect: defaultConnectorStatusReconnector,
     skip: defaultConnectorStatusSkipper,
+  },
+  descriptors: {
+    list() {
+      return getRendererHttpWorkspaceClient()?.connectors.descriptors.list()
+        ?? Promise.resolve({ items: [] })
+    },
+    get(connectorId, connectorVersion) {
+      const client = getRendererHttpWorkspaceClient()
+      if (!client) return Promise.reject(new Error('Workspace HTTP client is unavailable.'))
+      return client.connectors.descriptors.get(
+        connectorId,
+        connectorVersion,
+      )
+    },
+  },
+  options: {
+    query(input, options) {
+      return requireRendererHttpWorkspaceClient().connectors.options.query(input, options)
+    },
   },
 }
 
@@ -544,72 +568,6 @@ export const defaultScoreRecorder = (input: ScoreInput) => {
   }
 
   return scoresWindow.scores?.record(input) ?? Promise.reject(new Error('Scores API is unavailable.'))
-}
-
-interface RendererHttpConfig {
-  apiBaseUrl: string
-  getBackendState?: () =>
-    | { status: 'starting' | 'unavailable' | 'stopped' }
-    | { status: 'available'; origin: string }
-  onBackendStateChanged?: (listener: (state: { status: string }) => void) => () => void
-  token?: string
-  workspaceId: string
-  request?: typeof fetch
-}
-
-function getRendererHttpConfig(): RendererHttpConfig | null {
-  return (window as Window & { valedictorianHttp?: RendererHttpConfig }).valedictorianHttp ?? null
-}
-
-function getRendererHttpRootClient(): ValedictorianClient | null {
-  const config = getRendererHttpConfig()
-
-  if (!config) {
-    return null
-  }
-
-  const backendState = config.getBackendState?.()
-  if (backendState && backendState.status !== 'available') {
-    return null
-  }
-
-  return createHttpValedictorianClient({
-    baseUrl: backendState?.status === 'available'
-      ? backendState.origin
-      : config.apiBaseUrl,
-    fetch: config.request ?? globalThis.fetch.bind(globalThis),
-    token: config.token,
-  })
-}
-
-function rendererBackendUnavailable() {
-  const state = getRendererHttpConfig()?.getBackendState?.()
-  return Boolean(state && state.status !== 'available')
-}
-
-function backendUnavailableError() {
-  return new Error('Workspace backend unavailable.')
-}
-
-function getRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient | null {
-  const config = getRendererHttpConfig()
-  const rootClient = getRendererHttpRootClient()
-
-  if (!config || !rootClient) {
-    return null
-  }
-
-  return rootClient.forWorkspace(config.workspaceId)
-}
-
-function requireRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient {
-  const workspaceClient = getRendererHttpWorkspaceClient()
-
-  if (!workspaceClient) {
-    throw new Error('Workspace HTTP client is unavailable.')
-  }
-
-  return workspaceClient
 }
 
 function getWindowSettingsApi() {

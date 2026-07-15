@@ -17,6 +17,10 @@ import { createStaticConnectorRegistry } from '../modules/connectors/connector.r
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
 
+const JOBRIGHT_TEST_FILTERS = {
+  jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
+}
+
 function createTempSqlitePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
 }
@@ -70,7 +74,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
       })
     }
 
-    if (url.includes('/swan/recommend/visitor-list/jobs')) {
+    if (url.includes('/swan/recommend/search')) {
       expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
 
       if (kind === 'discovery_failed') {
@@ -170,7 +174,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
   await connectorRepository.upsertInstance({
     id: connectorInstanceId,
     connectorId: 'jobright.resolver',
-    connectorVersion: '0.12.0',
+    connectorVersion: '0.13.0',
     displayName: 'Jobright internslist',
     enabled: true,
     auth: [
@@ -184,7 +188,7 @@ async function runJobrightFailureFixture(kind: JobrightFailureFixtureKind) {
     config: {
       discoveryCount: 1,
     },
-    filters: {},
+    filters: JOBRIGHT_TEST_FILTERS,
     createdAt: '2026-07-09T15:00:00.000Z',
   })
 
@@ -289,10 +293,10 @@ describe('runtime local Valedictorian client', () => {
         })
       }
 
-      if (url.includes('/swan/recommend/visitor-list/jobs')) {
+      if (url.includes('/swan/recommend/search')) {
         expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
         expect(init?.method).toBe('POST')
-        expect(body).toContain('Internslist')
+        expect(body).toContain('Software Engineering')
         return new Response(JSON.stringify({
           success: true,
           result: {
@@ -464,7 +468,7 @@ describe('runtime local Valedictorian client', () => {
     await connectorRepository.upsertInstance({
       id: 'jobright-api',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.12.0',
+      connectorVersion: '0.13.0',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [
@@ -478,7 +482,7 @@ describe('runtime local Valedictorian client', () => {
       config: {
         discoveryCount: 20,
       },
-      filters: {},
+      filters: JOBRIGHT_TEST_FILTERS,
       createdAt: '2026-07-09T15:00:00.000Z',
     })
 
@@ -515,7 +519,7 @@ describe('runtime local Valedictorian client', () => {
         lifecycleCounts: {
           source: 'frozen_terminal',
           scope: { kind: 'connector_run', connectorRunId: run.id },
-          provider: { returnedRows: 40, capturedRecords: 20 },
+          provider: { returnedRows: 60, capturedRecords: 20 },
           destination: {
             normalized: 1,
             resolvedEmployerOrAts: 1,
@@ -532,7 +536,7 @@ describe('runtime local Valedictorian client', () => {
       expect.objectContaining({ code: 'jobright_normalization_unavailable' }),
     ]))
     expect(runs.total).toBe(1)
-    expect(occurrences).toHaveLength(40)
+    expect(occurrences).toHaveLength(60)
     expect(revisions).toHaveLength(20)
     expect(occurrences).toEqual(expect.arrayContaining([
       expect.objectContaining({ connectorInstanceId: 'jobright-api', connectorRunId: run.id }),
@@ -603,7 +607,7 @@ describe('runtime local Valedictorian client', () => {
     })
     expect(fetchUrls.filter((url) => url.includes('/swan/auth/login/pwd'))).toHaveLength(1)
     expect(fetchUrls.filter((url) => url.includes('/swan/auth/newinfo'))).toHaveLength(1)
-    expect(fetchUrls.filter((url) => url.includes('/swan/recommend/visitor-list/jobs'))).toHaveLength(2)
+    expect(fetchUrls.filter((url) => url.includes('/swan/recommend/search'))).toHaveLength(3)
     expect(fetchUrls.filter((url) => url.includes('/swan/share/job/'))).toHaveLength(20)
 
     const restartConnector = createJobrightConnector({
@@ -666,7 +670,7 @@ describe('runtime local Valedictorian client', () => {
           : request.url).filter((url) => url.includes('/swan/share/job/'))
 
     expect(afterRestartRevisions).toHaveLength(20)
-    expect(afterRestartOccurrences).toHaveLength(60)
+    expect(afterRestartOccurrences).toHaveLength(80)
     expect(afterRestartOccurrences.filter(({ connectorRunId }) =>
       connectorRunId === resumedRun.id)).toHaveLength(20)
     expect(resumedRun.warnings).toEqual(expect.arrayContaining([
@@ -704,7 +708,7 @@ describe('runtime local Valedictorian client', () => {
         : request instanceof URL
           ? request.href
           : request.url).filter((url) => url.includes('/swan/share/job/'))
-    expect(recoveredOccurrences).toHaveLength(100)
+    expect(recoveredOccurrences).toHaveLength(120)
     expect(recoveredOccurrences.filter(({ connectorRunId }) =>
       connectorRunId === recoveredRun.id)).toHaveLength(40)
     expect(detailUrls.filter((url) => url.endsWith('/job-resolved-1'))).toHaveLength(1)
@@ -811,8 +815,8 @@ describe('runtime local Valedictorian client', () => {
     const zeroUsefulResults = await runJobrightFailureFixture('zero_useful_results')
 
     expect(zeroUsefulResults.run).toMatchObject({
-      status: 'completed',
-      outcome: { kind: 'source_exhausted' },
+      status: 'failed',
+      outcome: { kind: 'failed' },
       observationCount: 1,
       stats: {
         attempted: 1,
@@ -827,6 +831,12 @@ describe('runtime local Valedictorian client', () => {
           message: 'Review unresolved Jobright results before retrying this run.',
           severity: 'warning',
         },
+        {
+          code: 'connector.warning',
+          label: 'Connector warning',
+          message: 'Connector reported a warning.',
+          severity: 'warning',
+        },
       ],
       retryHints: null,
     })
@@ -836,10 +846,10 @@ describe('runtime local Valedictorian client', () => {
       retryHints: zeroUsefulResults.run.retryHints,
     })
     expect(zeroUsefulResults.status).toMatchObject({
-      status: 'source_exhausted',
+      status: 'failed',
       warnings: zeroUsefulResults.run.warnings,
     })
-    expect(zeroUsefulResults.fetchUrls).toHaveLength(5)
+    expect(zeroUsefulResults.fetchUrls).toHaveLength(6)
 
     for (const fixture of [authFailed, discoveryFailed, parserChanged, zeroUsefulResults]) {
       expect(fixture.findings.items).toEqual([])

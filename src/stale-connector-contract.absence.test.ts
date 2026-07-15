@@ -49,6 +49,6 @@ function sourceFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const target = path.join(directory, entry.name)
     if (entry.isDirectory()) return sourceFiles(target)
-    return /\.tsx?$/.test(entry.name) && entry.name !== path.basename(import.meta.filename) ? [target] : []
+    return /\.tsx?$/.test(entry.name) ? [target] : []
   })
 }

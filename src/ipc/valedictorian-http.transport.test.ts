@@ -1,3 +1,4 @@
+import { transferableAbortController } from 'node:util'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createPrivilegedValedictorianFetch,
@@ -8,6 +9,7 @@ import {
   createBoundValedictorianHttpTransport,
   parseValedictorianHttpTransportRequest,
   registerValedictorianHttpIpc,
+  VALEDICTORIAN_HTTP_CANCEL_CHANNEL,
   VALEDICTORIAN_HTTP_REQUEST_CHANNEL,
 } from './valedictorian-http.ipc'
 import {
@@ -402,5 +404,122 @@ describe('Valedictorian HTTP transport boundary', () => {
     const fetchResponse = await privilegedFetch('https://api.valedictorian.test/v1/capabilities')
     expect(fetchResponse.status).toBe(200)
     await expect(fetchResponse.json()).resolves.toEqual({ available: false })
+  })
+
+  it('propagates preload cancellation through IPC to fetch and cleans up without cross-request aborts', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>()
+    const fetchSignals: AbortSignal[] = []
+    const fetchSettlers: Array<(response: Response) => void> = []
+    const fetchImplementation = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal
+      expect(signal).toBeDefined()
+      fetchSignals.push(signal!)
+      return new Promise<Response>((resolve, reject) => {
+        fetchSettlers.push(resolve)
+        signal!.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'))
+        }, { once: true })
+      })
+    }) as unknown as typeof fetch
+    const transport = createBoundValedictorianHttpTransport({
+      apiBaseUrl: 'https://api.valedictorian.test',
+      apiToken: 'remote-token',
+      workspaceId: 'ws-1',
+      fetchImplementation,
+    })
+    registerValedictorianHttpIpc(transport, {
+      handle(channel, handler) {
+        handlers.set(channel, handler as (...args: unknown[]) => Promise<unknown>)
+      },
+    })
+    const invoke = vi.fn((channel: string, ...args: unknown[]) => {
+      const handler = handlers.get(channel)
+      if (!handler) throw new Error(`Missing IPC handler: ${channel}`)
+      return handler({}, ...args)
+    })
+    const preload = createValedictorianHttpPreloadApi(
+      { invoke },
+      {
+        apiBaseUrl: 'https://api.valedictorian.test',
+        usePrivilegedTransport: true,
+        workspaceId: 'ws-1',
+      },
+    )
+
+    const firstAbort = transferableAbortController()
+    const first = preload.request!(
+      'https://api.valedictorian.test/v1/workspaces/ws-1/connectors',
+      { method: 'GET', signal: firstAbort.signal },
+    )
+    await vi.waitFor(() => expect(fetchSignals).toHaveLength(1))
+    const firstRequestPayload = vi.mocked(invoke).mock.calls.find(
+      ([channel]) => channel === VALEDICTORIAN_HTTP_REQUEST_CHANNEL,
+    )?.[1] as { requestId: string } | undefined
+    firstAbort.abort()
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetchSignals[0].aborted).toBe(true)
+
+    const second = preload.request!(
+      'https://api.valedictorian.test/v1/workspaces/ws-1/connectors',
+      { method: 'GET' },
+    )
+    await vi.waitFor(() => expect(fetchSignals).toHaveLength(2))
+    await handlers.get(VALEDICTORIAN_HTTP_CANCEL_CHANNEL)?.({}, firstRequestPayload?.requestId)
+    expect(fetchSignals[1].aborted).toBe(false)
+    fetchSettlers[1](new Response('{}', {
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+    }))
+    await expect(second).resolves.toMatchObject({ status: 200 })
+  })
+
+  it('aborts while request-body serialization is pending without sending IPC and removes its abort listener', async () => {
+    let bodyController!: ReadableStreamDefaultController<Uint8Array>
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        bodyController = controller
+      },
+    })
+    const invoke = vi.fn(async () => ({
+      body: '{}',
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+      statusText: 'OK',
+    }))
+    const preload = createValedictorianHttpPreloadApi(
+      { invoke },
+      {
+        apiBaseUrl: 'https://api.valedictorian.test',
+        usePrivilegedTransport: true,
+        workspaceId: 'ws-1',
+      },
+    )
+    const abort = transferableAbortController()
+    const request = new Request(
+      'https://api.valedictorian.test/v1/workspaces/ws-1/connectors',
+      {
+        body,
+        duplex: 'half',
+        method: 'POST',
+        signal: abort.signal,
+      } as RequestInit,
+    )
+    const response = preload.request!(request)
+    const removeAbortListener = vi.spyOn(AbortSignal.prototype, 'removeEventListener')
+    await Promise.resolve()
+    abort.abort()
+    bodyController.close()
+
+    await expect(response).rejects.toMatchObject({ name: 'AbortError' })
+    expect(invoke).not.toHaveBeenCalledWith(
+      VALEDICTORIAN_HTTP_REQUEST_CHANNEL,
+      expect.anything(),
+    )
+    expect(invoke).not.toHaveBeenCalledWith(
+      VALEDICTORIAN_HTTP_CANCEL_CHANNEL,
+      expect.anything(),
+    )
+    const abortRemoves = removeAbortListener.mock.calls.filter(([type]) => type === 'abort').length
+    expect(abortRemoves).toBeGreaterThan(0)
   })
 })

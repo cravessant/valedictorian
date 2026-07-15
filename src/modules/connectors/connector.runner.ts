@@ -166,6 +166,7 @@ export interface CreateConnectorRunnerOptions {
   workspaceId: string
   now?: () => Date
 }
+
 const REDACTED_SECRET_VALUE = '[redacted-secret]'
 export function createConnectorRunner({
   auth,
@@ -726,7 +727,7 @@ function withRunProgressStats(
     },
   }
 }
-function createRunRuntime(
+export function createRunRuntime(
   runtime: AppConnectorRuntimePorts,
   authReferences: ConnectorAuthReference[],
   authRequirements: ConnectorAuthRequirement[],
