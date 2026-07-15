@@ -4,8 +4,8 @@ import {
   normalizationAttempts,
   normalizationFieldOutcomes,
   normalizationRuns,
-  rawSourceRecords,
-  rawSourceRevisions,
+  captureLineages,
+  captureEvidenceVersions,
   retryWork,
 } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
@@ -31,8 +31,8 @@ describe('exact acquired normalization retry finalization success gate', () => {
       const repository = createSqliteConnectorRepository(database)
       const now = '2026-07-11T12:00:00.000Z'
       const nextAttemptAt = '2026-07-11T12:00:30.000Z'
-      const rawRecordId = 'raw-record-finalize-gate'
-      const rawRevisionId = 'raw-revision-finalize-gate'
+      const captureLineageId = 'raw-record-finalize-gate'
+      const captureEvidenceVersionId = 'raw-revision-finalize-gate'
       const retryWorkId = 'retry-work-finalize-gate'
 
       const instance = await repository.upsertInstance({
@@ -54,13 +54,13 @@ describe('exact acquired normalization retry finalization success gate', () => {
       // Use the real acquired run id from the repository.
       const connectorRunId = acquisition.run.id
 
-      database.insert(rawSourceRecords).values({
-        id: rawRecordId,
+      database.insert(captureLineages).values({
+        id: captureLineageId,
         createdAt: now,
       }).run()
-      database.insert(rawSourceRevisions).values({
-        id: rawRevisionId,
-        rawRecordId,
+      database.insert(captureEvidenceVersions).values({
+        id: captureEvidenceVersionId,
+        captureLineageId,
         revision: 1,
         contentHash: 'sha256:content',
         adapterId: 'jobright.resolver',
@@ -74,9 +74,9 @@ describe('exact acquired normalization retry finalization success gate', () => {
       }).run()
       database.insert(normalizationRuns).values({
         id: 'normalization-run-finalize-gate',
-        rawRecordId,
-        rawRevisionId,
-        triggerOccurrenceId: null,
+        captureLineageId,
+        captureEvidenceVersionId,
+        triggerCaptureId: null,
         triggerConnectorInstanceId: null,
         triggerConnectorRunId: null,
         inputHash: 'sha256:run-input',
@@ -92,7 +92,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
       database.insert(normalizationAttempts).values({
         id: 'attempt-finalize-gate',
         runId: 'normalization-run-finalize-gate',
-        rawRevisionId,
+        captureEvidenceVersionId,
         sequence: 0,
         resolverId: RESOLVER_ID,
         resolverVersion: RESOLVER_VERSION,
@@ -179,7 +179,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
         filterSignature: null,
         checkpointSchemaVersion: null,
         checkpointGeneration: null,
-        rawRevisionId,
+        captureEvidenceVersionId,
         resolverId: RESOLVER_ID,
         resolverVersion: RESOLVER_VERSION,
         inputHash: INPUT_HASH,
@@ -206,7 +206,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
       const acquiredRetryWork = {
         retryWorkId,
         acquisitionRunId: connectorRunId,
-        rawRevisionId,
+        rawRevisionId: captureEvidenceVersionId,
         resolverId: RESOLVER_ID,
         resolverVersion: RESOLVER_VERSION,
         inputHash: INPUT_HASH,

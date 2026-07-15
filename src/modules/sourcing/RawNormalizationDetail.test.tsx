@@ -36,7 +36,7 @@ describe('RawNormalizationDetail', () => {
     )
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Raw record detail is invalid and cannot be displayed.')
+    expect(alert).toHaveTextContent('Capture lineage detail is invalid and cannot be displayed.')
     expect(alert).not.toHaveTextContent('capture lineage')
   })
 
@@ -63,7 +63,7 @@ describe('RawNormalizationDetail', () => {
     )
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Raw record detail could not be loaded.')
+    expect(alert).toHaveTextContent('Capture lineage detail could not be loaded.')
     expect(alert).not.toHaveTextContent('invalid and cannot be displayed')
     expect(alert).not.toHaveTextContent('capture lineage')
   })
@@ -88,7 +88,7 @@ describe('RawNormalizationDetail', () => {
     )
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Raw record detail could not be loaded.')
+    expect(alert).toHaveTextContent('Capture lineage detail could not be loaded.')
     expect(alert).not.toHaveTextContent('Private parser detail')
     expect(alert).not.toHaveTextContent('invalid and cannot be displayed')
     expect(alert).not.toHaveTextContent('backend could not be reached')
@@ -110,7 +110,7 @@ describe('RawNormalizationDetail', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(
-      'Raw record detail is unavailable because the backend could not be reached.',
+      'Capture lineage detail is unavailable because the backend could not be reached.',
     )
     expect(alert).not.toHaveTextContent('private origin')
   })
@@ -175,7 +175,7 @@ describe('RawNormalizationDetail', () => {
       />,
     )
 
-    const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-safe' })
+    const dialog = await screen.findByRole('dialog', { name: 'Capture lineage raw-record-safe' })
     expect(dialog).toHaveTextContent('Platform Engineer')
     expect(dialog).toHaveTextContent('Safe fact')
     expect(dialog).toHaveTextContent('Safe evidence')
@@ -202,7 +202,7 @@ describe('RawNormalizationDetail', () => {
     expect(dialog).not.toHaveTextContent('compound-sig-evidence-value')
     expect(dialog).not.toHaveTextContent('private normalization read detail')
     expect(dialog).toHaveTextContent('Sensitive detail omitted')
-    expect(dialog).toHaveTextContent('No normalization or projection recorded for this revision')
+    expect(dialog).toHaveTextContent('No Job normalization or Opportunity projection recorded for this evidence version')
     expect(getNormalization).toHaveBeenCalledWith('raw-record-safe')
   })
 
@@ -260,8 +260,8 @@ describe('RawNormalizationDetail', () => {
       />,
     )
 
-    const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-1' })
-    await screen.findByText(`Candidate ${candidateId}`)
+    const dialog = await screen.findByRole('dialog', { name: 'Capture lineage raw-record-1' })
+    await screen.findByText(`Job fact version ${candidateId}`)
     expect(getNormalization).toHaveBeenCalledWith('raw-record-1')
     expect(getProjection).toHaveBeenCalledWith('raw-revision-1')
     expect(dialog).toHaveTextContent('Example Co')
@@ -271,12 +271,12 @@ describe('RawNormalizationDetail', () => {
     expect(dialog).toHaveTextContent('Remote')
     expect(dialog).toHaveTextContent('Boston, MA, US')
     expect(dialog).toHaveTextContent('USD 120,000–160,000 per year')
-    expect(dialog).toHaveTextContent('Source entity source-entity-1')
-    expect(dialog).toHaveTextContent('Projection receipt for revision raw-revision-1')
+    expect(dialog).toHaveTextContent('Job source-entity-1')
+    expect(dialog).toHaveTextContent('Opportunity projection receipt for evidence version raw-revision-1')
     expect(dialog).toHaveTextContent('Duplicate')
-    expect(dialog).toHaveTextContent('Merged application application-1')
-    expect(dialog).toHaveTextContent(`Projected to finding ${findingId}`)
-    fireEvent.click(screen.getByRole('button', { name: `Open finding ${findingId}` }))
+    expect(dialog).toHaveTextContent('Application application-1')
+    expect(dialog).toHaveTextContent(`Projected to Opportunity ${findingId}`)
+    fireEvent.click(screen.getByRole('button', { name: `Open Opportunity ${findingId}` }))
     expect(onOpenFinding).toHaveBeenCalledWith(findingId)
     expect(screen.getByRole('link', { name: 'Open canonical destination' }))
       .toHaveAttribute('href', 'https://jobs.example.test/platform?design=platform')
@@ -325,9 +325,9 @@ describe('RawNormalizationDetail', () => {
     )
 
     const conflict = await screen.findByRole('alert', {
-      name: 'Raw normalization detail conflict',
+      name: 'Capture-to-Job detail conflict',
     })
-    expect(conflict).toHaveTextContent('returned normalization does not match the fetched raw revision')
+    expect(conflict).toHaveTextContent('returned normalization does not match the fetched evidence version')
     expect(document.body).not.toHaveTextContent('Stale Company')
     expect(document.body).not.toHaveTextContent('finding-current')
     expect(document.body).not.toHaveTextContent('private-stale-revision')
@@ -365,9 +365,9 @@ describe('RawNormalizationDetail', () => {
     )
 
     const conflict = await screen.findByRole('alert', {
-      name: 'Raw normalization detail conflict',
+      name: 'Capture-to-Job detail conflict',
     })
-    expect(conflict).toHaveTextContent('normalization and projection candidate identities conflict')
+    expect(conflict).toHaveTextContent('normalization and Opportunity projection Job identities conflict')
     expect(document.body).not.toHaveTextContent('Example Co')
     expect(document.body).not.toHaveTextContent('finding-other-candidate')
     expect(document.body).not.toHaveTextContent('private-projection-candidate')
@@ -436,8 +436,8 @@ describe('RawNormalizationDetail', () => {
     })
 
     expect(screen.getByText('Current Company')).toBeInTheDocument()
-    expect(screen.getByText('Projected to finding finding-current')).toBeInTheDocument()
+    expect(screen.getByText('Projected to Opportunity finding-current')).toBeInTheDocument()
     expect(screen.queryByText('Stale Company')).not.toBeInTheDocument()
-    expect(screen.queryByText('Projected to finding finding-stale')).not.toBeInTheDocument()
+    expect(screen.queryByText('Projected to Opportunity finding-stale')).not.toBeInTheDocument()
   })
 })

@@ -34,7 +34,6 @@ const DRIZZLE_MIGRATIONS_TABLE = '__drizzle_migrations'
 const LEGACY_PARTIAL_RUN_STATUS = ['partial', 'success'].join('_')
 /** Static legacy schema matches bundled migrations through 0017; 0018+ run via Drizzle. */
 const LEGACY_STATIC_SCHEMA_BASELINE_WHEN = 1783785250659
-
 export function createInMemoryDatabase() {
   return new Database(':memory:')
 }
@@ -75,6 +74,7 @@ export function migrateDatabase(database: SqliteDatabase, options: DatabaseMigra
 
     preparePendingDrizzleMigrations(database, drizzleMigrations)
     migratePendingDrizzleMigrations(database, drizzleMigrations)
+    canonicalizeLifecyclePhysicalObjects(database)
   })()
 
   runDataMigrations(database)
@@ -101,6 +101,121 @@ function migratePendingDrizzleMigrations(
     for (const statement of migration.sql) database.exec(statement)
     insert.run(migration.hash, migration.when)
   }
+}
+
+/**
+ * SQLite updates table/column references when an object is renamed, but it
+ * deliberately keeps index and trigger names unchanged.  Keep those physical
+ * names aligned with the lifecycle vocabulary as part of the same transaction
+ * as the forward migration.  This also makes the operation idempotent for a
+ * workspace reopened after a partially completed migration.
+ */
+function canonicalizeLifecyclePhysicalObjects(database: SqliteDatabase) {
+  if (!tableExists(database, 'jobs') || !tableExists(database, 'captures') || !tableExists(database, 'opportunities')) {
+    return
+  }
+
+  const replacements: Array<[string, string]> = [
+    ['idx_raw_source_occurrences_connector_lineage', 'idx_captures_connector_lineage'],
+    ['idx_raw_source_occurrences_record_chronology', 'idx_captures_lineage_chronology'],
+    ['idx_raw_source_occurrences_connector_run', 'idx_captures_connector_run'],
+    ['idx_raw_source_occurrences_revision', 'idx_captures_evidence_version'],
+    ['idx_raw_source_occurrences_lineage', 'idx_captures_lineage'],
+    ['idx_raw_source_revisions_provider_current', 'idx_capture_evidence_versions_provider_current'],
+    ['idx_raw_source_revisions_record_revision', 'idx_capture_evidence_versions_lineage_revision'],
+    ['idx_raw_source_revisions_record_hash', 'idx_capture_evidence_versions_lineage_hash'],
+    ['idx_raw_source_revisions_id_record', 'idx_capture_evidence_versions_id_lineage'],
+    ['idx_raw_source_records_source_entity', 'idx_capture_lineages_job'],
+    ['idx_source_entity_identities_entity_chronology', 'idx_job_identities_job_chronology'],
+    ['idx_source_entity_identities_identity', 'idx_job_identities_identity'],
+    ['idx_source_identity_conflicts_occurrence', 'idx_job_identity_conflicts_capture'],
+    ['idx_canonical_source_candidates_revision_schema', 'idx_job_fact_versions_evidence_version_schema'],
+    ['idx_canonical_source_candidates_lineage', 'idx_job_fact_versions_lineage'],
+    ['idx_canonical_source_candidates_run', 'idx_job_fact_versions_run'],
+    ['idx_sourcing_findings_source_status_discovered', 'idx_opportunities_source_status_discovered'],
+    ['idx_sourcing_findings_projection_identity', 'idx_opportunities_projection_identity'],
+    ['idx_sourcing_findings_source_entity', 'idx_opportunities_job'],
+    ['idx_sourcing_findings_canonical_candidate', 'idx_opportunities_job_fact_version'],
+    ['idx_sourcing_findings_source_id', 'idx_opportunities_source_id'],
+    ['idx_sourcing_projection_outcomes_candidate', 'idx_sourcing_projection_outcomes_job_fact_version'],
+    ['idx_sourcing_projection_outcomes_revision', 'idx_sourcing_projection_outcomes_evidence_version'],
+    ['idx_normalization_runs_raw_record', 'idx_normalization_runs_capture_lineage'],
+    ['idx_normalization_replay_items_revision', 'idx_normalization_replay_items_evidence_version'],
+    ['trg_raw_source_occurrences_normalization_lineage_update', 'trg_captures_normalization_lineage_update'],
+    ['trg_raw_source_occurrences_normalization_lineage_delete', 'trg_captures_normalization_lineage_delete'],
+    ['raw_source_occurrences_scope_owner_insert', 'captures_scope_owner_insert'],
+    ['raw_source_occurrences_scope_owner_update', 'captures_scope_owner_update'],
+    ['trg_source_entity_identities_', 'trg_job_identities_'],
+    ['trg_source_identity_conflicts_', 'trg_job_identity_conflicts_'],
+    ['trg_sourcing_findings_', 'trg_opportunities_'],
+    ['raw_source_occurrences', 'captures'],
+    ['raw_source_revisions', 'capture_evidence_versions'],
+    ['raw_source_records', 'capture_lineages'],
+    ['source_entity_identities', 'job_identities'],
+    ['source_identity_conflicts', 'job_identity_conflicts'],
+    ['source_entities', 'jobs'],
+    ['canonical_source_candidates', 'job_fact_versions'],
+    ['sourcing_findings', 'opportunities'],
+    ['conflicting_source_entity_id', 'conflicting_job_id'],
+    ['source_entity_id', 'job_id'],
+    ['raw_record_id', 'capture_lineage_id'],
+    ['raw_revision_id', 'capture_evidence_version_id'],
+    ['trigger_occurrence_id', 'trigger_capture_id'],
+    ['canonical_candidate_id', 'job_fact_version_id'],
+    ['candidate_json', 'job_fact_version_json'],
+    ['candidate_id', 'job_fact_version_id'],
+    ['fk_sourcing_projection_outcomes_candidate_lineage', 'fk_sourcing_projection_outcomes_job_fact_version_lineage'],
+    ['chk_normalization_gates_candidate', 'chk_normalization_gates_job_fact_version'],
+    ['finding_id', 'opportunity_id'],
+    ['merged_application_id', 'application_id'],
+    ['idx_raw_source', 'idx_capture'],
+    ['chk_raw_source', 'chk_capture'],
+    ['fk_raw_source', 'fk_capture'],
+    ['idx_source_entity', 'idx_job'],
+    ['chk_source_entity', 'chk_job'],
+    ['idx_source_identity', 'idx_job_identity'],
+    ['chk_source_identity', 'chk_job_identity'],
+    ['idx_canonical_source', 'idx_job_fact'],
+    ['chk_canonical_source', 'chk_job_fact'],
+    ['idx_sourcing_finding', 'idx_opportunity'],
+    ['chk_sourcing_finding', 'chk_opportunity'],
+    ['trg_source_entity', 'trg_job'],
+    ['trg_source_identity', 'trg_job_identity'],
+    ['trg_sourcing_finding', 'trg_opportunity'],
+  ]
+
+  const objects = database
+    .prepare(
+      `select type, name, sql
+       from sqlite_master
+       where type in ('index', 'trigger')
+         and sql is not null
+         and name not like 'sqlite_autoindex_%'`,
+    )
+    .all() as Array<{ type: 'index' | 'trigger'; name: string; sql: string }>
+
+  for (const object of objects) {
+    const canonicalName = replaceLifecycleTerms(object.name, replacements)
+    if (canonicalName === object.name || !canonicalName) continue
+    if (database
+      .prepare("select 1 from sqlite_master where name = ? and type = ?")
+      .get(canonicalName, object.type)) {
+      database.exec(`drop ${object.type} if exists ${quoteIdentifier(object.name)}`)
+      continue
+    }
+
+    const canonicalSql = replaceLifecycleTerms(object.sql, replacements)
+    database.exec(canonicalSql)
+    database.exec(`drop ${object.type} if exists ${quoteIdentifier(object.name)}`)
+  }
+}
+
+function replaceLifecycleTerms(value: string, replacements: Array<[string, string]>) {
+  return replacements.reduce((result, [legacy, canonical]) => result.split(legacy).join(canonical), value)
+}
+
+function quoteIdentifier(value: string) {
+  return `"${value.split('"').join('""')}"`
 }
 
 function preparePendingDrizzleMigrations(
@@ -242,6 +357,14 @@ function hasApplicationTables(database: SqliteDatabase) {
     'profile_sensitive_details',
     'sources',
     'sourcing_findings',
+    'opportunities',
+    'captures',
+    'capture_lineages',
+    'capture_evidence_versions',
+    'jobs',
+    'job_identities',
+    'job_identity_conflicts',
+    'job_fact_versions',
     'user_profile',
     'workflow_run_steps',
     'workflow_runs',

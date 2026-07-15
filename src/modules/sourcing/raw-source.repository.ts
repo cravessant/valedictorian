@@ -22,11 +22,11 @@ import {
   type SourceAdapterProvenance,
 } from 'sparxie'
 import {
-  rawSourceOccurrences,
-  rawSourceRecords,
-  rawSourceRevisions,
-  sourceEntities,
-  sourceEntityIdentities,
+  captures,
+  captureLineages,
+  captureEvidenceVersions,
+  jobs,
+  jobIdentities,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import { listRawSourceRecords } from './raw-source-list.repository'
@@ -86,8 +86,8 @@ export function createSqliteRawSourceRepository(
     async get(rawRecordId) {
       const rawRecord = database
         .select()
-        .from(rawSourceRecords)
-        .where(eq(rawSourceRecords.id, rawRecordId))
+        .from(captureLineages)
+        .where(eq(captureLineages.id, rawRecordId))
         .get()
 
       if (!rawRecord) {
@@ -96,9 +96,9 @@ export function createSqliteRawSourceRepository(
 
       const latestRevision = database
         .select()
-        .from(rawSourceRevisions)
-        .where(eq(rawSourceRevisions.rawRecordId, rawRecordId))
-        .orderBy(desc(rawSourceRevisions.revision))
+        .from(captureEvidenceVersions)
+        .where(eq(captureEvidenceVersions.captureLineageId, rawRecordId))
+        .orderBy(desc(captureEvidenceVersions.revision))
         .get()
 
       if (!latestRevision) {
@@ -107,12 +107,12 @@ export function createSqliteRawSourceRepository(
 
       const occurrences = database
         .select()
-        .from(rawSourceOccurrences)
-        .where(eq(rawSourceOccurrences.rawRecordId, rawRecordId))
+        .from(captures)
+        .where(eq(captures.captureLineageId, rawRecordId))
         .orderBy(
-          asc(rawSourceOccurrences.observedAt),
-          asc(rawSourceOccurrences.receivedAt),
-          asc(rawSourceOccurrences.id),
+          asc(captures.observedAt),
+          asc(captures.receivedAt),
+          asc(captures.id),
         )
         .all()
 
@@ -120,7 +120,7 @@ export function createSqliteRawSourceRepository(
 
       return {
         id: rawRecord.id,
-        sourceEntityId: rawRecord.sourceEntityId,
+        sourceEntityId: rawRecord.jobId,
         adapter: revision.adapter,
         reportedOrigin: revision.reportedOrigin,
         createdAt: rawRecord.createdAt,
@@ -152,12 +152,12 @@ function ingestRecord(
     )
     const existingEntity = database
       .select()
-      .from(sourceEntities)
+      .from(jobs)
       .where(
         and(
-          eq(sourceEntities.identityKind, PROVIDER_JOB_IDENTITY_KIND),
-          eq(sourceEntities.identityNamespace, identityNamespace),
-          eq(sourceEntities.identityValue, identityValue),
+          eq(jobs.identityKind, PROVIDER_JOB_IDENTITY_KIND),
+          eq(jobs.identityNamespace, identityNamespace),
+          eq(jobs.identityValue, identityValue),
         ),
       )
       .get()
@@ -166,7 +166,7 @@ function ingestRecord(
       sourceEntityId = existingEntity.id
     } else {
       sourceEntityId = crypto.randomUUID()
-      database.insert(sourceEntities).values({
+      database.insert(jobs).values({
         id: sourceEntityId,
         identityKind: PROVIDER_JOB_IDENTITY_KIND,
         identityNamespace,
@@ -177,17 +177,17 @@ function ingestRecord(
     }
 
     rawRecordId = database
-      .select({ id: rawSourceRecords.id })
-      .from(rawSourceRecords)
-      .where(eq(rawSourceRecords.sourceEntityId, sourceEntityId))
+      .select({ id: captureLineages.id })
+      .from(captureLineages)
+      .where(eq(captureLineages.jobId, sourceEntityId))
       .get()?.id ?? null
   }
 
   if (!rawRecordId) {
     rawRecordId = crypto.randomUUID()
-    database.insert(rawSourceRecords).values({
+    database.insert(captureLineages).values({
       id: rawRecordId,
-      sourceEntityId,
+      jobId: sourceEntityId,
       createdAt: receivedAt,
     }).run()
   }
@@ -195,11 +195,11 @@ function ingestRecord(
   const contentHash = hashRawSourceContent(record)
   const existingRevision = database
     .select()
-    .from(rawSourceRevisions)
+    .from(captureEvidenceVersions)
     .where(
       and(
-        eq(rawSourceRevisions.rawRecordId, rawRecordId),
-        eq(rawSourceRevisions.contentHash, contentHash),
+        eq(captureEvidenceVersions.captureLineageId, rawRecordId),
+        eq(captureEvidenceVersions.contentHash, contentHash),
       ),
     )
     .get()
@@ -207,18 +207,18 @@ function ingestRecord(
 
   if (!revision) {
     const latest = database
-      .select({ revision: rawSourceRevisions.revision })
-      .from(rawSourceRevisions)
-      .where(eq(rawSourceRevisions.rawRecordId, rawRecordId))
-      .orderBy(desc(rawSourceRevisions.revision))
+      .select({ revision: captureEvidenceVersions.revision })
+      .from(captureEvidenceVersions)
+      .where(eq(captureEvidenceVersions.captureLineageId, rawRecordId))
+      .orderBy(desc(captureEvidenceVersions.revision))
       .get()
     const revisionNumber = (latest?.revision ?? 0) + 1
     const revisionId = crypto.randomUUID()
     const origin = record.reportedOrigin ?? null
 
-    database.insert(rawSourceRevisions).values({
+    database.insert(captureEvidenceVersions).values({
       id: revisionId,
-      rawRecordId,
+      captureLineageId: rawRecordId,
       revision: revisionNumber,
       contentHash,
       adapterId: record.adapter.id,
@@ -239,8 +239,8 @@ function ingestRecord(
     }).run()
     revision = database
       .select()
-      .from(rawSourceRevisions)
-      .where(eq(rawSourceRevisions.id, revisionId))
+      .from(captureEvidenceVersions)
+      .where(eq(captureEvidenceVersions.id, revisionId))
       .get()
   }
 
@@ -249,9 +249,9 @@ function ingestRecord(
   }
 
   if (sourceEntityId && capturedIdentity) {
-    database.insert(sourceEntityIdentities).values({
+    database.insert(jobIdentities).values({
       id: crypto.randomUUID(),
-      sourceEntityId,
+      jobId: sourceEntityId,
       identityKind: PROVIDER_JOB_IDENTITY_KIND,
       identityNamespace: capturedIdentity.namespace,
       identityValue: capturedIdentity.value,
@@ -262,22 +262,22 @@ function ingestRecord(
         adapterVersion: record.adapter.version,
         providerSchema: record.providerSchema ?? null,
       }),
-      rawRevisionId: revision.id,
+      captureEvidenceVersionId: revision.id,
       createdAt: receivedAt,
     }).run()
   }
 
   const occurrence = {
     id: crypto.randomUUID(),
-    rawRecordId,
-    rawRevisionId: revision.id,
+    captureLineageId: rawRecordId,
+    captureEvidenceVersionId: revision.id,
     connectorInstanceId: record.capture?.connectorInstanceId ?? null,
     connectorRunId: record.capture?.connectorRunId ?? null,
     executionScopeId: record.capture?.executionScopeId ?? null,
     observedAt: record.observedAt,
     receivedAt,
   }
-  database.insert(rawSourceOccurrences).values(occurrence).run()
+  database.insert(captures).values(occurrence).run()
 
   return {
     intakeItemId: record.intakeItemId ?? crypto.randomUUID(),
@@ -454,11 +454,11 @@ function validateCapture(
   )
 }
 
-function mapOccurrence(row: typeof rawSourceOccurrences.$inferSelect) {
+function mapOccurrence(row: typeof captures.$inferSelect) {
   return {
     id: row.id,
-    rawRecordId: row.rawRecordId,
-    rawRevisionId: row.rawRevisionId,
+    rawRecordId: row.captureLineageId,
+    rawRevisionId: row.captureEvidenceVersionId,
     capture: row.connectorInstanceId && row.connectorRunId
       ? {
           connectorInstanceId: row.connectorInstanceId,
@@ -688,10 +688,10 @@ function providerIdentityNamespace(adapterId: string, providerSchema: string | n
   return `${adapterNamespace}|${schemaNamespace}`
 }
 
-function mapRevision(row: typeof rawSourceRevisions.$inferSelect): RawSourceRevision {
+function mapRevision(row: typeof captureEvidenceVersions.$inferSelect): RawSourceRevision {
   return {
     id: row.id,
-    rawRecordId: row.rawRecordId,
+    rawRecordId: row.captureLineageId,
     revision: row.revision,
     contentHash: row.contentHash,
     adapter: {

@@ -86,7 +86,7 @@ export function getSourcingDecision(item: SourcingFinding): {
       return {
         actionLabel: 'Promote',
         description: 'Ready to review',
-        label: 'New finding',
+        label: 'New Opportunity',
         variant: 'secondary',
       }
   }

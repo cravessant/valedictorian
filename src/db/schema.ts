@@ -333,8 +333,8 @@ export const policyEvidence = sqliteTable(
   }),
 )
 
-export const sourceEntities = sqliteTable(
-  'source_entities',
+export const jobs = sqliteTable(
+  'jobs',
   {
     id: text('id').primaryKey(),
     identityKind: text('identity_kind').notNull(),
@@ -343,67 +343,67 @@ export const sourceEntities = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
-    identityIdx: uniqueIndex('idx_source_entities_identity').on(
+    identityIdx: uniqueIndex('idx_jobs_identity').on(
       table.identityKind,
       table.identityNamespace,
       table.identityValue,
     ),
     identityKindLength: check(
-      'chk_source_entities_identity_kind_length',
+      'chk_jobs_identity_kind_length',
       sql`length(${table.identityKind}) between 1 and 64`,
     ),
     identityNamespaceLength: check(
-      'chk_source_entities_identity_namespace_length',
+      'chk_jobs_identity_namespace_length',
       sql`length(${table.identityNamespace}) between 1 and 4096`,
     ),
     identityValueLength: check(
-      'chk_source_entities_identity_value_length',
+      'chk_jobs_identity_value_length',
       sql`length(${table.identityValue}) between 1 and 2048`,
     ),
   }),
 )
 
-export const sourceEntityIdentities = sqliteTable(
-  'source_entity_identities',
+export const jobIdentities = sqliteTable(
+  'job_identities',
   {
     id: text('id').primaryKey(),
-    sourceEntityId: text('source_entity_id').notNull().references(() => sourceEntities.id),
+    jobId: text('job_id').notNull().references(() => jobs.id),
     identityKind: text('identity_kind').notNull(),
     identityNamespace: text('identity_namespace').notNull(),
     identityValue: text('identity_value').notNull(),
     provenanceKind: text('provenance_kind').notNull(),
     provenanceVersion: text('provenance_version').notNull(),
     evidenceJson: text('evidence_json').notNull(),
-    rawRevisionId: text('raw_revision_id').references(() => rawSourceRevisions.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').references(() => captureEvidenceVersions.id),
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
-    identityIdx: uniqueIndex('idx_source_entity_identities_identity').on(
+    identityIdx: uniqueIndex('idx_job_identities_identity').on(
       table.identityKind,
       table.identityNamespace,
       table.identityValue,
     ),
-    entityChronologyIdx: index('idx_source_entity_identities_entity_chronology').on(
-      table.sourceEntityId,
+    entityChronologyIdx: index('idx_job_identities_job_chronology').on(
+      table.jobId,
       table.createdAt,
       table.id,
     ),
-    kindCheck: check('chk_source_entity_identities_kind', sql`${table.identityKind} in ('provider_job','canonical_destination','intermediary_alias','destination_alias')`),
-    namespaceLength: check('chk_source_entity_identities_namespace_length', sql`length(${table.identityNamespace}) between 1 and 512`),
-    valueLength: check('chk_source_entity_identities_value_length', sql`length(${table.identityValue}) between 1 and 2048`),
-    provenanceKindCheck: check('chk_source_entity_identities_provenance_kind', sql`${table.provenanceKind} in ('primary_backfill','capture','normalization')`),
-    provenanceVersionLength: check('chk_source_entity_identities_provenance_version_length', sql`length(${table.provenanceVersion}) between 1 and 128`),
-    evidenceLength: check('chk_source_entity_identities_evidence_length', sql`length(${table.evidenceJson}) between 2 and 16384`),
+    kindCheck: check('chk_job_identities_kind', sql`${table.identityKind} in ('provider_job','canonical_destination','intermediary_alias','destination_alias')`),
+    namespaceLength: check('chk_job_identities_namespace_length', sql`length(${table.identityNamespace}) between 1 and 512`),
+    valueLength: check('chk_job_identities_value_length', sql`length(${table.identityValue}) between 1 and 2048`),
+    provenanceKindCheck: check('chk_job_identities_provenance_kind', sql`${table.provenanceKind} in ('primary_backfill','capture','normalization')`),
+    provenanceVersionLength: check('chk_job_identities_provenance_version_length', sql`length(${table.provenanceVersion}) between 1 and 128`),
+    evidenceLength: check('chk_job_identities_evidence_length', sql`length(${table.evidenceJson}) between 2 and 16384`),
   }),
 )
 
-export const sourceIdentityConflicts = sqliteTable(
-  'source_identity_conflicts',
+export const jobIdentityConflicts = sqliteTable(
+  'job_identity_conflicts',
   {
     id: text('id').primaryKey(),
-    sourceEntityId: text('source_entity_id').notNull().references(() => sourceEntities.id),
-    conflictingSourceEntityId: text('conflicting_source_entity_id').references(() => sourceEntities.id),
-    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    jobId: text('job_id').notNull().references(() => jobs.id),
+    conflictingJobId: text('conflicting_job_id').references(() => jobs.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').notNull().references(() => captureEvidenceVersions.id),
     identityKind: text('identity_kind').notNull(),
     identityNamespace: text('identity_namespace').notNull(),
     identityValue: text('identity_value').notNull(),
@@ -413,33 +413,33 @@ export const sourceIdentityConflicts = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
-    occurrenceIdx: uniqueIndex('idx_source_identity_conflicts_occurrence').on(
-      table.sourceEntityId,
-      table.rawRevisionId,
+    captureIdx: uniqueIndex('idx_job_identity_conflicts_capture').on(
+      table.jobId,
+      table.captureEvidenceVersionId,
       table.identityKind,
       table.identityNamespace,
       table.identityValue,
       table.reason,
     ),
-    chronologyIdx: index('idx_source_identity_conflicts_chronology').on(table.createdAt, table.id),
-    kindCheck: check('chk_source_identity_conflicts_kind', sql`${table.identityKind} in ('provider_job','canonical_destination','intermediary_alias','destination_alias')`),
-    namespaceLength: check('chk_source_identity_conflicts_namespace_length', sql`length(${table.identityNamespace}) between 1 and 512`),
-    valueLength: check('chk_source_identity_conflicts_value_length', sql`length(${table.identityValue}) between 1 and 2048`),
-    reasonLength: check('chk_source_identity_conflicts_reason_length', sql`length(${table.reason}) between 1 and 512`),
-    provenanceVersionLength: check('chk_source_identity_conflicts_provenance_version_length', sql`length(${table.provenanceVersion}) between 1 and 128`),
-    evidenceLength: check('chk_source_identity_conflicts_evidence_length', sql`length(${table.evidenceJson}) between 2 and 16384`),
+    chronologyIdx: index('idx_job_identity_conflicts_chronology').on(table.createdAt, table.id),
+    kindCheck: check('chk_job_identity_conflicts_kind', sql`${table.identityKind} in ('provider_job','canonical_destination','intermediary_alias','destination_alias')`),
+    namespaceLength: check('chk_job_identity_conflicts_namespace_length', sql`length(${table.identityNamespace}) between 1 and 512`),
+    valueLength: check('chk_job_identity_conflicts_value_length', sql`length(${table.identityValue}) between 1 and 2048`),
+    reasonLength: check('chk_job_identity_conflicts_reason_length', sql`length(${table.reason}) between 1 and 512`),
+    provenanceVersionLength: check('chk_job_identity_conflicts_provenance_version_length', sql`length(${table.provenanceVersion}) between 1 and 128`),
+    evidenceLength: check('chk_job_identity_conflicts_evidence_length', sql`length(${table.evidenceJson}) between 2 and 16384`),
   }),
 )
 
-export const rawSourceRecords = sqliteTable(
-  'raw_source_records',
+export const captureLineages = sqliteTable(
+  'capture_lineages',
   {
     id: text('id').primaryKey(),
-    sourceEntityId: text('source_entity_id').references(() => sourceEntities.id),
+    jobId: text('job_id').references(() => jobs.id),
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
-    sourceEntityIdx: uniqueIndex('idx_raw_source_records_source_entity').on(table.sourceEntityId),
+    jobIdx: uniqueIndex('idx_capture_lineages_job').on(table.jobId),
   }),
 )
 
@@ -492,13 +492,13 @@ export const sourceExecutionSessions = sqliteTable(
   }),
 )
 
-export const rawSourceRevisions = sqliteTable(
-  'raw_source_revisions',
+export const captureEvidenceVersions = sqliteTable(
+  'capture_evidence_versions',
   {
     id: text('id').primaryKey(),
-    rawRecordId: text('raw_record_id')
+    captureLineageId: text('capture_lineage_id')
       .notNull()
-      .references(() => rawSourceRecords.id),
+      .references(() => captureLineages.id),
     revision: integer('revision').notNull(),
     contentHash: text('content_hash').notNull(),
     adapterId: text('adapter_id').notNull(),
@@ -516,20 +516,20 @@ export const rawSourceRevisions = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
-    recordIdIdx: uniqueIndex('idx_raw_source_revisions_id_record').on(
+    recordIdIdx: uniqueIndex('idx_capture_evidence_versions_id_lineage').on(
       table.id,
-      table.rawRecordId,
+      table.captureLineageId,
     ),
-    recordRevisionIdx: uniqueIndex('idx_raw_source_revisions_record_revision').on(
-      table.rawRecordId,
+    recordRevisionIdx: uniqueIndex('idx_capture_evidence_versions_lineage_revision').on(
+      table.captureLineageId,
       table.revision,
     ),
-    recordHashIdx: uniqueIndex('idx_raw_source_revisions_record_hash').on(
-      table.rawRecordId,
+    recordHashIdx: uniqueIndex('idx_capture_evidence_versions_lineage_hash').on(
+      table.captureLineageId,
       table.contentHash,
     ),
-    providerCurrentIdx: index('idx_raw_source_revisions_provider_current').on(
-      table.providerRecordId, table.id, table.rawRecordId, table.revision,
+    providerCurrentIdx: index('idx_capture_evidence_versions_provider_current').on(
+      table.providerRecordId, table.id, table.captureLineageId, table.revision,
     ),
   }),
 )
@@ -544,7 +544,7 @@ export const retryWork = sqliteTable(
     filterSignature: text('filter_signature'),
     checkpointSchemaVersion: text('checkpoint_schema_version'),
     checkpointGeneration: text('checkpoint_generation'),
-    rawRevisionId: text('raw_revision_id').references(() => rawSourceRevisions.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').references(() => captureEvidenceVersions.id),
     resolverId: text('resolver_id'),
     resolverVersion: text('resolver_version'),
     inputHash: text('input_hash'),
@@ -573,7 +573,7 @@ export const retryWork = sqliteTable(
       table.checkpointGeneration,
     ).where(sql`${table.kind} = 'connector_capture' and ${table.deletedAt} is null`),
     normalizationIdentityIdx: uniqueIndex('idx_retry_work_normalization_identity').on(
-      table.rawRevisionId,
+      table.captureEvidenceVersionId,
       table.resolverId,
       table.resolverVersion,
       table.inputHash,
@@ -585,7 +585,7 @@ export const retryWork = sqliteTable(
     ).where(sql`${table.deletedAt} is null`),
     normalizationPendingIdx: index('idx_retry_work_normalization_pending').on(
       table.kind, table.executionScopeId, table.state,
-      table.nextAttemptAt, table.createdAt, table.rawRevisionId,
+      table.nextAttemptAt, table.createdAt, table.captureEvidenceVersionId,
     ).where(sql`${table.deletedAt} is null`),
     kindCheck: check('chk_retry_work_kind', sql`${table.kind} in ('connector_capture','normalization')`),
     reasonCheck: check('chk_retry_work_reason', sql`${table.reason} in ('rate_limit','server_failure','network_interruption','operation_timeout')`),
@@ -598,7 +598,7 @@ export const retryWork = sqliteTable(
       and ${table.filterSignature} is not null
       and ${table.checkpointSchemaVersion} is not null
       and ${table.checkpointGeneration} is not null
-      and ${table.rawRevisionId} is null
+      and ${table.captureEvidenceVersionId} is null
       and ${table.resolverId} is null
       and ${table.resolverVersion} is null
       and ${table.inputHash} is null
@@ -608,7 +608,7 @@ export const retryWork = sqliteTable(
       and ${table.filterSignature} is null
       and ${table.checkpointSchemaVersion} is null
       and ${table.checkpointGeneration} is null
-      and ${table.rawRevisionId} is not null
+      and ${table.captureEvidenceVersionId} is not null
       and ${table.resolverId} is not null
       and ${table.resolverVersion} is not null
       and ${table.inputHash} is not null
@@ -625,16 +625,16 @@ export const retryWork = sqliteTable(
   }),
 )
 
-export const rawSourceOccurrences = sqliteTable(
-  'raw_source_occurrences',
+export const captures = sqliteTable(
+  'captures',
   {
     id: text('id').primaryKey(),
-    rawRecordId: text('raw_record_id')
+    captureLineageId: text('capture_lineage_id')
       .notNull()
-      .references(() => rawSourceRecords.id),
-    rawRevisionId: text('raw_revision_id')
+      .references(() => captureLineages.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id')
       .notNull()
-      .references(() => rawSourceRevisions.id),
+      .references(() => captureEvidenceVersions.id),
     connectorInstanceId: text('connector_instance_id').references(() => connectorInstances.id),
     connectorRunId: text('connector_run_id').references(() => connectorRuns.id),
     executionScopeId: text('execution_scope_id').references(() => sourceExecutionScopes.id),
@@ -642,39 +642,39 @@ export const rawSourceOccurrences = sqliteTable(
     receivedAt: text('received_at').notNull(),
   },
   (table) => ({
-    lineageIdx: uniqueIndex('idx_raw_source_occurrences_lineage').on(
+    lineageIdx: uniqueIndex('idx_captures_lineage').on(
       table.id,
-      table.rawRevisionId,
-      table.rawRecordId,
+      table.captureEvidenceVersionId,
+      table.captureLineageId,
     ),
-    connectorLineageIdx: uniqueIndex('idx_raw_source_occurrences_connector_lineage').on(
+    connectorLineageIdx: uniqueIndex('idx_captures_connector_lineage').on(
       table.id,
-      table.rawRevisionId,
-      table.rawRecordId,
+      table.captureEvidenceVersionId,
+      table.captureLineageId,
       table.connectorInstanceId,
       table.connectorRunId,
     ),
-    recordChronologyIdx: index('idx_raw_source_occurrences_record_chronology').on(
-      table.rawRecordId,
+    recordChronologyIdx: index('idx_captures_lineage_chronology').on(
+      table.captureLineageId,
       table.observedAt,
       table.receivedAt,
       table.id,
     ),
-    revisionIdx: index('idx_raw_source_occurrences_revision').on(table.rawRevisionId),
-    connectorRunIdx: index('idx_raw_source_occurrences_connector_run').on(table.connectorRunId),
+    revisionIdx: index('idx_captures_evidence_version').on(table.captureEvidenceVersionId),
+    connectorRunIdx: index('idx_captures_connector_run').on(table.connectorRunId),
     connectorCaptureCheck: check(
-      'chk_raw_source_occurrences_connector_capture',
+      'chk_captures_connector_capture',
       sql`(${table.connectorInstanceId} is null and ${table.connectorRunId} is null and ${table.executionScopeId} is null) or (${table.connectorInstanceId} is not null and ${table.connectorRunId} is not null and ${table.executionScopeId} is not null)`,
     ),
     rawOwnerFk: foreignKey({
-      columns: [table.rawRevisionId, table.rawRecordId],
-      foreignColumns: [rawSourceRevisions.id, rawSourceRevisions.rawRecordId],
-      name: 'fk_raw_source_occurrences_revision_record',
+      columns: [table.captureEvidenceVersionId, table.captureLineageId],
+      foreignColumns: [captureEvidenceVersions.id, captureEvidenceVersions.captureLineageId],
+      name: 'fk_captures_evidence_version_lineage',
     }),
     connectorOwnerFk: foreignKey({
       columns: [table.connectorRunId, table.connectorInstanceId],
       foreignColumns: [connectorRuns.id, connectorRuns.connectorInstanceId],
-      name: 'fk_raw_source_occurrences_run_instance',
+      name: 'fk_captures_run_instance',
     }),
   }),
 )
@@ -683,9 +683,9 @@ export const normalizationRuns = sqliteTable(
   'normalization_runs',
   {
     id: text('id').primaryKey(),
-    rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
-    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
-    triggerOccurrenceId: text('trigger_occurrence_id'),
+    captureLineageId: text('capture_lineage_id').notNull().references(() => captureLineages.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').notNull().references(() => captureEvidenceVersions.id),
+    triggerCaptureId: text('trigger_capture_id'),
     triggerConnectorInstanceId: text('trigger_connector_instance_id'),
     triggerConnectorRunId: text('trigger_connector_run_id'),
     inputHash: text('input_hash').notNull(),
@@ -700,13 +700,13 @@ export const normalizationRuns = sqliteTable(
   },
   (table) => ({
     cacheIdx: uniqueIndex('idx_normalization_runs_cache').on(
-      table.rawRevisionId,
+      table.captureEvidenceVersionId,
       table.inputHash,
       table.resolverSetHash,
       table.canonicalSchemaVersion,
       table.gatePolicyVersion,
     ).where(sql`${table.triggerId} is null`),
-    rawRecordIdx: index('idx_normalization_runs_raw_record').on(table.rawRecordId, table.createdAt),
+    captureLineageIdx: index('idx_normalization_runs_capture_lineage').on(table.captureLineageId, table.createdAt),
     statusCheck: check('chk_normalization_runs_status', sql`${table.status} in ('pending','in_progress','completed','blocked','failed')`),
     triggerCheck: check('chk_normalization_runs_trigger_kind', sql`${table.triggerKind} in ('intake')`),
   }),
@@ -735,8 +735,8 @@ export const normalizationReplayItems = sqliteTable(
   {
     id: text('id').primaryKey(),
     replayId: text('replay_id').notNull().references(() => normalizationReplayRequests.id),
-    rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
-    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    captureLineageId: text('capture_lineage_id').notNull().references(() => captureLineages.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').notNull().references(() => captureEvidenceVersions.id),
     inputHash: text('input_hash').notNull(),
     sequence: integer('sequence').notNull(),
     status: text('status').notNull(),
@@ -746,7 +746,7 @@ export const normalizationReplayItems = sqliteTable(
   },
   (table) => ({
     sequenceIdx: uniqueIndex('idx_normalization_replay_items_sequence').on(table.replayId, table.sequence),
-    revisionIdx: uniqueIndex('idx_normalization_replay_items_revision').on(table.replayId, table.rawRevisionId),
+    revisionIdx: uniqueIndex('idx_normalization_replay_items_evidence_version').on(table.replayId, table.captureEvidenceVersionId),
     statusCheck: check('chk_normalization_replay_items_status', sql`${table.status} in ('pending','completed','failed')`),
   }),
 )
@@ -756,7 +756,7 @@ export const normalizationAttempts = sqliteTable(
   {
     id: text('id').primaryKey(),
     runId: text('run_id').notNull().references(() => normalizationRuns.id),
-    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').notNull().references(() => captureEvidenceVersions.id),
     sequence: integer('sequence').notNull(),
     resolverId: text('resolver_id').notNull(),
     resolverVersion: text('resolver_version').notNull(),
@@ -796,26 +796,26 @@ export const normalizationFieldOutcomes = sqliteTable(
   }),
 )
 
-export const canonicalSourceCandidates = sqliteTable(
-  'canonical_source_candidates',
+export const jobFactVersions = sqliteTable(
+  'job_fact_versions',
   {
     id: text('id').primaryKey(),
     runId: text('run_id').notNull().references(() => normalizationRuns.id),
-    sourceEntityId: text('source_entity_id').notNull().references(() => sourceEntities.id),
-    rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
-    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
+    jobId: text('job_id').notNull().references(() => jobs.id),
+    captureLineageId: text('capture_lineage_id').notNull().references(() => captureLineages.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').notNull().references(() => captureEvidenceVersions.id),
     schemaVersion: text('schema_version').notNull(),
-    candidateJson: text('candidate_json').notNull(),
+    jobFactVersionJson: text('job_fact_version_json').notNull(),
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
-    runIdx: uniqueIndex('idx_canonical_source_candidates_run').on(table.runId),
-    lineageIdx: uniqueIndex('idx_canonical_source_candidates_lineage').on(
+    runIdx: uniqueIndex('idx_job_fact_versions_run').on(table.runId),
+    lineageIdx: uniqueIndex('idx_job_fact_versions_lineage').on(
       table.id,
-      table.rawRecordId,
-      table.rawRevisionId,
+      table.captureLineageId,
+      table.captureEvidenceVersionId,
     ),
-    revisionSchemaIdx: index('idx_canonical_source_candidates_revision_schema').on(table.rawRevisionId, table.schemaVersion),
+    revisionSchemaIdx: index('idx_job_fact_versions_evidence_version_schema').on(table.captureEvidenceVersionId, table.schemaVersion),
   }),
 )
 
@@ -823,11 +823,11 @@ export const sourcingProjectionOutcomes = sqliteTable(
   'sourcing_projection_outcomes',
   {
     id: text('id').primaryKey(),
-    rawRecordId: text('raw_record_id').notNull().references(() => rawSourceRecords.id),
-    rawRevisionId: text('raw_revision_id').notNull().references(() => rawSourceRevisions.id),
-    canonicalCandidateId: text('canonical_candidate_id').notNull().references(() => canonicalSourceCandidates.id),
+    captureLineageId: text('capture_lineage_id').notNull().references(() => captureLineages.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').notNull().references(() => captureEvidenceVersions.id),
+    jobFactVersionId: text('job_fact_version_id').notNull().references(() => jobFactVersions.id),
     status: text('status').notNull(),
-    findingId: text('finding_id').references(() => sourcingFindings.id),
+    opportunityId: text('opportunity_id').references(() => opportunities.id),
     failureCode: text('failure_code'),
     failureRetryable: integer('failure_retryable', { mode: 'boolean' }),
     createdAt: text('created_at').notNull(),
@@ -836,23 +836,23 @@ export const sourcingProjectionOutcomes = sqliteTable(
     failedAt: text('failed_at'),
   },
   (table) => ({
-    revisionIdx: index('idx_sourcing_projection_outcomes_revision').on(table.rawRevisionId, table.createdAt),
-    candidateIdx: uniqueIndex('idx_sourcing_projection_outcomes_candidate').on(table.canonicalCandidateId),
+    revisionIdx: index('idx_sourcing_projection_outcomes_evidence_version').on(table.captureEvidenceVersionId, table.createdAt),
+    jobFactVersionIdx: uniqueIndex('idx_sourcing_projection_outcomes_job_fact_version').on(table.jobFactVersionId),
     revisionLineageFk: foreignKey({
-      columns: [table.rawRevisionId, table.rawRecordId],
-      foreignColumns: [rawSourceRevisions.id, rawSourceRevisions.rawRecordId],
+      columns: [table.captureEvidenceVersionId, table.captureLineageId],
+      foreignColumns: [captureEvidenceVersions.id, captureEvidenceVersions.captureLineageId],
       name: 'fk_sourcing_projection_outcomes_revision_lineage',
     }),
-    candidateLineageFk: foreignKey({
-      columns: [table.canonicalCandidateId, table.rawRecordId, table.rawRevisionId],
-      foreignColumns: [canonicalSourceCandidates.id, canonicalSourceCandidates.rawRecordId, canonicalSourceCandidates.rawRevisionId],
-      name: 'fk_sourcing_projection_outcomes_candidate_lineage',
+    jobFactVersionLineageFk: foreignKey({
+      columns: [table.jobFactVersionId, table.captureLineageId, table.captureEvidenceVersionId],
+      foreignColumns: [jobFactVersions.id, jobFactVersions.captureLineageId, jobFactVersions.captureEvidenceVersionId],
+      name: 'fk_sourcing_projection_outcomes_job_fact_version_lineage',
     }),
     statusCheck: check('chk_sourcing_projection_outcomes_status', sql`${table.status} in ('pending','projected','failed')`),
     fieldsCheck: check('chk_sourcing_projection_outcomes_fields', sql`
-      (${table.status} = 'pending' and ${table.findingId} is null and ${table.failureCode} is null and ${table.failureRetryable} is null and ${table.projectedAt} is null and ${table.failedAt} is null)
-      or (${table.status} = 'projected' and ${table.findingId} is not null and ${table.failureCode} is null and ${table.failureRetryable} is null and ${table.projectedAt} is not null and ${table.failedAt} is null)
-      or (${table.status} = 'failed' and ${table.findingId} is null and ${table.failureCode} in ('projection_failed','persistence_failed','internal_error') and ${table.failureRetryable} in (0, 1) and ${table.projectedAt} is null and ${table.failedAt} is not null)
+      (${table.status} = 'pending' and ${table.opportunityId} is null and ${table.failureCode} is null and ${table.failureRetryable} is null and ${table.projectedAt} is null and ${table.failedAt} is null)
+      or (${table.status} = 'projected' and ${table.opportunityId} is not null and ${table.failureCode} is null and ${table.failureRetryable} is null and ${table.projectedAt} is not null and ${table.failedAt} is null)
+      or (${table.status} = 'failed' and ${table.opportunityId} is null and ${table.failureCode} in ('projection_failed','persistence_failed','internal_error') and ${table.failureRetryable} in (0, 1) and ${table.projectedAt} is null and ${table.failedAt} is not null)
     `),
   }),
 )
@@ -864,7 +864,7 @@ export const normalizationGates = sqliteTable(
     runId: text('run_id').notNull().references(() => normalizationRuns.id),
     policyVersion: text('policy_version').notNull(),
     status: text('status').notNull(),
-    candidateId: text('candidate_id').references(() => canonicalSourceCandidates.id),
+    jobFactVersionId: text('job_fact_version_id').references(() => jobFactVersions.id),
     gateJson: text('gate_json').notNull(),
     evaluatedAt: text('evaluated_at').notNull(),
   },
@@ -872,19 +872,19 @@ export const normalizationGates = sqliteTable(
     runIdx: uniqueIndex('idx_normalization_gates_run').on(table.runId),
     policyIdx: index('idx_normalization_gates_policy').on(table.policyVersion, table.status),
     statusCheck: check('chk_normalization_gates_status', sql`${table.status} in ('passed','needs_enrichment','rejected','failed')`),
-    candidateCheck: check('chk_normalization_gates_candidate', sql`(${table.status} = 'passed' and ${table.candidateId} is not null) or (${table.status} <> 'passed' and ${table.candidateId} is null)`),
+    jobFactVersionCheck: check('chk_normalization_gates_job_fact_version', sql`(${table.status} = 'passed' and ${table.jobFactVersionId} is not null) or (${table.status} <> 'passed' and ${table.jobFactVersionId} is null)`),
   }),
 )
 
-export const sourcingFindings = sqliteTable(
-  'sourcing_findings',
+export const opportunities = sqliteTable(
+  'opportunities',
   {
     id: text('id').primaryKey(),
     projectionIdentityKey: text('projection_identity_key'),
     projectionAliasesJson: text('projection_aliases_json').notNull().default('[]'),
-    sourceEntityId: text('source_entity_id').references(() => sourceEntities.id),
-    canonicalCandidateId: text('canonical_candidate_id').references(() => canonicalSourceCandidates.id),
-    rawRevisionId: text('raw_revision_id').references(() => rawSourceRevisions.id),
+    jobId: text('job_id').references(() => jobs.id),
+    jobFactVersionId: text('job_fact_version_id').references(() => jobFactVersions.id),
+    captureEvidenceVersionId: text('capture_evidence_version_id').references(() => captureEvidenceVersions.id),
     adapterId: text('adapter_id'),
     adapterKind: text('adapter_kind'),
     adapterVersion: text('adapter_version'),
@@ -927,17 +927,17 @@ export const sourcingFindings = sqliteTable(
     policyBlocker: text('policy_blocker'),
     dispositionReason: text('disposition_reason'),
     mergeStatus: text('merge_status').notNull(),
-    mergedApplicationId: text('merged_application_id').references(() => applications.id),
+    applicationId: text('application_id').references(() => applications.id),
     mergeNotes: text('merge_notes'),
     discoveredAt: text('discovered_at').notNull(),
     ...timestamps,
   },
   (table) => ({
-    projectionIdentityIdx: uniqueIndex('idx_sourcing_findings_projection_identity').on(table.projectionIdentityKey),
-    sourceEntityIdx: index('idx_sourcing_findings_source_entity').on(table.sourceEntityId),
-    candidateIdx: uniqueIndex('idx_sourcing_findings_canonical_candidate').on(table.canonicalCandidateId),
-    sourceIdx: index('idx_sourcing_findings_source_id').on(table.sourceId),
-    sourceStatusDiscoveredIdx: index('idx_sourcing_findings_source_status_discovered').on(
+    projectionIdentityIdx: uniqueIndex('idx_opportunities_projection_identity').on(table.projectionIdentityKey),
+    jobIdx: index('idx_opportunities_job').on(table.jobId),
+    jobFactVersionIdx: uniqueIndex('idx_opportunities_job_fact_version').on(table.jobFactVersionId),
+    sourceIdx: index('idx_opportunities_source_id').on(table.sourceId),
+    sourceStatusDiscoveredIdx: index('idx_opportunities_source_status_discovered').on(
       table.sourceId,
       table.mergeStatus,
       table.discoveredAt,
@@ -962,7 +962,7 @@ export const schema = {
   connectorScheduleOccurrences,
   connectorScheduleRevisions,
   connectorSchedules,
-  canonicalSourceCandidates,
+  jobFactVersions,
   normalizationAttempts,
   normalizationFieldOutcomes,
   normalizationGates,
@@ -975,17 +975,17 @@ export const schema = {
   profileEducation,
   profileSensitiveDetails,
   profileSecrets,
-  rawSourceOccurrences,
-  rawSourceRecords,
-  rawSourceRevisions,
+  captures,
+  captureLineages,
+  captureEvidenceVersions,
   retryWork,
   connectorRunSynchronizations,
   sourceExecutionScopes,
   sourceExecutionSessions,
-  sourceEntities,
-  sourceEntityIdentities,
-  sourceIdentityConflicts,
-  sourcingFindings,
+  jobs,
+  jobIdentities,
+  jobIdentityConflicts,
+  opportunities,
   sourcingProjectionOutcomes,
   sources,
   userProfile,

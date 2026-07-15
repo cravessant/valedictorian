@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { connectorRuns, sourceExecutionScopes, sourcingFindings } from '../../db/schema'
+import { connectorRuns, sourceExecutionScopes, opportunities } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteConnectorRepository } from './connector.repository'
 
@@ -245,7 +245,7 @@ describe('SQLite connector repository', () => {
         ],
       }),
     ])
-    expect(database.select().from(sourcingFindings).all()).toHaveLength(0)
+    expect(database.select().from(opportunities).all()).toHaveLength(0)
   })
 
   it('keeps checkpoint scopes separate when filters change on the same connector instance', async () => {

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import {
-  canonicalSourceCandidates,
+  jobFactVersions,
   connectorRuns,
   normalizationAttempts,
   normalizationFieldOutcomes,
   normalizationGates,
   normalizationRuns,
-  sourcingFindings,
+  opportunities,
   sources,
   workflowRuns,
 } from '../../db/schema'
@@ -328,10 +328,10 @@ describe('connector run lifecycle counts', () => {
       completedAt: '2026-07-11T17:04:01.000Z',
       status: 'completed',
     })
-    fixture.database.update(sourcingFindings).set({
+    fixture.database.update(opportunities).set({
       mergeStatus: 'not_fit',
       dispositionReason: 'Changed after the connector run completed.',
-    }).where(eq(sourcingFindings.id, 'finding-30')).run()
+    }).where(eq(opportunities.id, 'finding-30')).run()
 
     const reloaded = await createSqliteConnectorRepository(fixture.database).listRuns({
       connectorInstanceId: fixture.connectorInstanceId,
@@ -526,9 +526,9 @@ function persistResolvedDestinationNeedsEnrichment(
   const createdAt = `2026-07-11T17:01:${String(index).padStart(2, '0')}.000Z`
   database.insert(normalizationRuns).values({
     id: runId,
-    rawRecordId: receipt.rawRecordId,
-    rawRevisionId: receipt.revision.id,
-    triggerOccurrenceId: receipt.occurrence.id,
+    captureLineageId: receipt.rawRecordId,
+    captureEvidenceVersionId: receipt.revision.id,
+    triggerCaptureId: receipt.occurrence.id,
     triggerConnectorInstanceId: receipt.occurrence.capture?.connectorInstanceId ?? null,
     triggerConnectorRunId: receipt.occurrence.capture?.connectorRunId ?? null,
     inputHash: `input-${index}`,
@@ -544,7 +544,7 @@ function persistResolvedDestinationNeedsEnrichment(
   database.insert(normalizationAttempts).values({
     id: attemptId,
     runId,
-    rawRevisionId: receipt.revision.id,
+    captureEvidenceVersionId: receipt.revision.id,
     sequence: 0,
     resolverId: 'jobright.authenticated-destination',
     resolverVersion: '1.0.0',
@@ -578,7 +578,7 @@ function persistResolvedDestinationNeedsEnrichment(
     runId,
     policyVersion: 'normalization-gate/v1',
     status: 'needs_enrichment',
-    candidateId: null,
+    jobFactVersionId: null,
     gateJson: JSON.stringify({
       status: 'needs_enrichment',
       conflictingFields: ['canonicalIdentity'],
@@ -602,9 +602,9 @@ function persistNormalizationOutcome(
     : null
   database.insert(normalizationRuns).values({
     id: runId,
-    rawRecordId: receipt.rawRecordId,
-    rawRevisionId: receipt.revision.id,
-    triggerOccurrenceId: receipt.occurrence.id,
+    captureLineageId: receipt.rawRecordId,
+    captureEvidenceVersionId: receipt.revision.id,
+    triggerCaptureId: receipt.occurrence.id,
     triggerConnectorInstanceId: receipt.occurrence.capture?.connectorInstanceId ?? null,
     triggerConnectorRunId: receipt.occurrence.capture?.connectorRunId ?? null,
     inputHash: `input-${index}`,
@@ -620,7 +620,7 @@ function persistNormalizationOutcome(
   database.insert(normalizationAttempts).values({
     id: attemptId,
     runId,
-    rawRevisionId: receipt.revision.id,
+    captureEvidenceVersionId: receipt.revision.id,
     sequence: 0,
     resolverId: 'jobright.authenticated-destination',
     resolverVersion: '1.0.0',
@@ -652,14 +652,14 @@ function persistNormalizationOutcome(
     outcomeJson: JSON.stringify({ status: outcome }),
   }).run()
   if (candidateId && receipt.sourceEntityId) {
-    database.insert(canonicalSourceCandidates).values({
+    database.insert(jobFactVersions).values({
       id: candidateId,
       runId,
-      sourceEntityId: receipt.sourceEntityId,
-      rawRecordId: receipt.rawRecordId,
-      rawRevisionId: receipt.revision.id,
+      jobId: receipt.sourceEntityId,
+      captureLineageId: receipt.rawRecordId,
+      captureEvidenceVersionId: receipt.revision.id,
       schemaVersion: 'canonical-source-candidate/v1',
-      candidateJson: JSON.stringify({
+      jobFactVersionJson: JSON.stringify({
         destination: {
           class: outcome,
           url: `https://example.test/${index}`,
@@ -678,7 +678,7 @@ function persistNormalizationOutcome(
     runId,
     policyVersion: 'normalization-gate/v1',
     status: gateStatus,
-    candidateId,
+    jobFactVersionId: candidateId,
     gateJson: JSON.stringify({ status: gateStatus }),
     evaluatedAt: `2026-07-11T17:01:0${index}.000Z`,
   }).run()
@@ -725,13 +725,13 @@ function persistFinding(
     updatedAt: timestamp,
     deletedAt: null,
   }).run()
-  database.insert(sourcingFindings).values({
+  database.insert(opportunities).values({
     id: `finding-${index}`,
     projectionIdentityKey: `source_entity:${sourceEntityId}`,
     projectionAliasesJson: '[]',
-    sourceEntityId,
-    canonicalCandidateId: `candidate-${index}`,
-    rawRevisionId: null,
+    jobId: sourceEntityId,
+    jobFactVersionId: `candidate-${index}`,
+    captureEvidenceVersionId: null,
     adapterId: 'jobright.resolver',
     adapterKind: 'connector',
     adapterVersion: '0.6.0',
@@ -770,7 +770,7 @@ function persistFinding(
     policyBlocker: disposition.blocker ? 'fixture_question' : null,
     dispositionReason: disposition.dispositionReason ?? null,
     mergeStatus: disposition.status,
-    mergedApplicationId: null,
+    applicationId: null,
     mergeNotes: null,
     discoveredAt: timestamp,
     createdAt: timestamp,

@@ -292,9 +292,9 @@ describe('navigation hierarchy', () => {
 
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'sourcing')
     expect(
-      within(screen.getByRole('banner', { name: 'App chrome' })).getByText('Sourcing'),
+      within(screen.getByRole('banner', { name: 'App chrome' })).getByText('Opportunities'),
     ).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'Sourcing' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Opportunities' })).toBeInTheDocument()
   })
 
   it('keeps Settings free of connector run history ownership', async () => {

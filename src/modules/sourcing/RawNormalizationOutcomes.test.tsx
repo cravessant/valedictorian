@@ -19,10 +19,10 @@ describe('RawNormalizationOutcomes', () => {
 
     render(<RawNormalizationOutcomes normalization={null} projection={projection} />)
 
-    expect(screen.getByText('Normalization has not started for this revision.'))
+    expect(screen.getByText('Job normalization has not started for this evidence version.'))
       .toBeInTheDocument()
-    expect(screen.getByText('No canonical candidate')).toBeInTheDocument()
-    expect(screen.getByText('No normalization or projection recorded for this revision'))
+    expect(screen.getByText('No Job fact version')).toBeInTheDocument()
+    expect(screen.getByText('No Job normalization or Opportunity projection recorded for this evidence version'))
       .toBeInTheDocument()
   })
 
@@ -68,16 +68,16 @@ describe('RawNormalizationOutcomes', () => {
     expect(screen.getByText('Projection pending')).toBeInTheDocument()
 
     for (const [status, label] of [
-      ['new', 'Finding outcome New'],
-      ['duplicate', 'Finding outcome Duplicate'],
-      ['merged', 'Finding outcome Merged'],
+      ['new', 'Opportunity outcome New'],
+      ['duplicate', 'Opportunity outcome Duplicate'],
+      ['merged', 'Opportunity outcome Merged'],
     ] as const) {
       rerender(
         <RawNormalizationOutcomes normalization={normalization} projection={projected(status)} />,
       )
       expect(screen.getByText(label)).toBeInTheDocument()
     }
-    expect(screen.getByText('Merged application application-1')).toBeInTheDocument()
+    expect(screen.getByText('Application application-1')).toBeInTheDocument()
   })
 
   it('does not expose sensitive resolver, gate, candidate, or finding strings in visible or accessible content', () => {

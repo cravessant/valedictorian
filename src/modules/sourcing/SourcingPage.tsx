@@ -120,20 +120,20 @@ function SourcingPage({
               Job automation
             </p>
             <h1 className={typographyClass('pageTitle', 'mt-1')}>
-              Sourcing
+              Opportunities
             </h1>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="w-fit border border-border bg-card">
-              {result.total} findings
+              {result.total} opportunities
             </Badge>
             <Button type="button" onClick={() => setAddingFinding(true)}>
-              Add finding
+              Add opportunity
             </Button>
           </div>
         </header>
 
-        <section aria-label="Sourcing filters" className="rounded-md border border-border bg-card p-4">
+        <section aria-label="Opportunity filters" className="rounded-md border border-border bg-card p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="grid gap-1 text-xs font-medium text-muted-foreground">
               Review
@@ -251,11 +251,11 @@ function SourcingPage({
         {isLoading ? (
           <div
             role="status"
-            aria-label="Sourcing findings loading"
+            aria-label="Opportunities loading"
             className="rounded-md border border-border bg-card p-4"
           >
             <div className="mb-4 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-foreground">Loading findings...</p>
+              <p className="text-sm font-medium text-foreground">Loading opportunities...</p>
               <Skeleton className="h-2 w-24" />
             </div>
             <Skeleton className="h-9 w-full" />
@@ -276,17 +276,17 @@ function SourcingPage({
               <p className="text-sm font-medium text-foreground">
                 {pageStart}-{pageEnd} of {result.total}
               </p>
-              <Pagination aria-label="Sourcing pagination" className="mx-0 w-auto">
+              <Pagination aria-label="Opportunity pagination" className="mx-0 w-auto">
                 <ButtonGroup>
                   <PaginationPrevious
-                    aria-label="Previous sourcing page"
+                    aria-label="Previous Opportunity page"
                     disabled={result.offset === 0}
                     onClick={onPreviousPage}
                   >
                     Previous
                   </PaginationPrevious>
                   <PaginationNext
-                    aria-label="Next sourcing page"
+                    aria-label="Next Opportunity page"
                     disabled={!result.hasMore}
                     onClick={onNextPage}
                   >
@@ -296,7 +296,7 @@ function SourcingPage({
               </Pagination>
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
-              <Table aria-label="Sourcing findings" className="min-w-[1100px]">
+              <Table aria-label="Opportunities" className="min-w-[1100px]">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>Company</TableHead>
@@ -331,7 +331,7 @@ function SourcingPage({
           </section>
         ) : !isLoading && !error ? (
           <Empty
-            aria-label="Empty sourcing findings"
+            aria-label="Empty Opportunities"
             className="min-h-[11.25rem] flex-none gap-4 rounded-md border border-solid border-border bg-card p-6 md:min-h-[13.5rem] md:max-h-60 md:p-8"
           >
             <EmptyHeader>
@@ -339,9 +339,9 @@ function SourcingPage({
                 <Search aria-hidden="true" />
               </EmptyMedia>
               <EmptyTitle>
-                <h2>No sourcing findings</h2>
+                <h2>No opportunities</h2>
               </EmptyTitle>
-              <EmptyDescription>No findings match the current filters.</EmptyDescription>
+              <EmptyDescription>No opportunities match the current filters.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : null}
@@ -413,7 +413,7 @@ function SourcingFindingRow({
   return (
     <TableRow
       ref={rowRef}
-      aria-label={focused ? `Focused sourcing finding ${item.id}` : undefined}
+      aria-label={focused ? `Focused Opportunity ${item.id}` : undefined}
       aria-current={focused ? 'true' : undefined}
       data-state={focused ? 'selected' : undefined}
       tabIndex={focused ? 0 : -1}
@@ -508,7 +508,7 @@ function SourcingFindingRow({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={`Edit finding ${item.companyName}`}
+            aria-label={`Edit opportunity ${item.companyName}`}
             onClick={() => onEditFinding(item)}
           >
             <Pencil className="h-4 w-4" aria-hidden="true" />

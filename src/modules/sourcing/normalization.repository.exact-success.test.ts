@@ -3,8 +3,8 @@ import {
   normalizationAttempts,
   normalizationFieldOutcomes,
   normalizationRuns,
-  rawSourceRecords,
-  rawSourceRevisions,
+  captureLineages,
+  captureEvidenceVersions,
 } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteNormalizationRepository } from './normalization.repository'
@@ -29,13 +29,13 @@ function seedExactDestinationAttempt(input: {
   const runId = 'normalization-run-exact-success'
   const attemptId = 'attempt-exact-success'
 
-  database.insert(rawSourceRecords).values({
+  database.insert(captureLineages).values({
     id: rawRecordId,
     createdAt: now,
   }).run()
-  database.insert(rawSourceRevisions).values({
+  database.insert(captureEvidenceVersions).values({
     id: rawRevisionId,
-    rawRecordId,
+    captureLineageId: rawRecordId,
     revision: 1,
     contentHash: 'sha256:content',
     adapterId: 'jobright.resolver',
@@ -49,9 +49,9 @@ function seedExactDestinationAttempt(input: {
   }).run()
   database.insert(normalizationRuns).values({
     id: runId,
-    rawRecordId,
-    rawRevisionId,
-    triggerOccurrenceId: null,
+    captureLineageId: rawRecordId,
+    captureEvidenceVersionId: rawRevisionId,
+    triggerCaptureId: null,
     triggerConnectorInstanceId: null,
     triggerConnectorRunId: null,
     inputHash: 'sha256:run-input',
@@ -67,7 +67,7 @@ function seedExactDestinationAttempt(input: {
   database.insert(normalizationAttempts).values({
     id: attemptId,
     runId,
-    rawRevisionId,
+    captureEvidenceVersionId: rawRevisionId,
     sequence: 0,
     resolverId: RESOLVER_ID,
     resolverVersion: RESOLVER_VERSION,

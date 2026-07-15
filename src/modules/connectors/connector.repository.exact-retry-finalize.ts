@@ -93,7 +93,7 @@ export function finalizeExactAcquiredNormalizationRetry(
     const work = transaction.select().from(retryWork).where(and(
       eq(retryWork.id, input.acquiredRetryWork.retryWorkId),
       eq(retryWork.kind, 'normalization'),
-      eq(retryWork.rawRevisionId, input.acquiredRetryWork.rawRevisionId),
+      eq(retryWork.captureEvidenceVersionId, input.acquiredRetryWork.rawRevisionId),
       eq(retryWork.resolverId, input.acquiredRetryWork.resolverId),
       eq(retryWork.resolverVersion, input.acquiredRetryWork.resolverVersion),
       eq(retryWork.inputHash, input.acquiredRetryWork.inputHash),

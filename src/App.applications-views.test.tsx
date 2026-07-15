@@ -1045,9 +1045,9 @@ describe('App', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
 
-    const table = await screen.findByRole('table', { name: 'Sourcing findings' })
+    const table = await screen.findByRole('table', { name: 'Opportunities' })
 
-    expect(screen.getByRole('heading', { name: 'Sourcing' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Opportunities' })).toBeInTheDocument()
     expect(within(table).getByText('Delta Labs')).toBeInTheDocument()
     expect(within(table).getAllByText('Fall 2026').length).toBeGreaterThan(0)
     expect(within(table).getByText('Software Engineering Intern')).toBeInTheDocument()

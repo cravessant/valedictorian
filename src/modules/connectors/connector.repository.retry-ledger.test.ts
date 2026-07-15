@@ -482,9 +482,9 @@ describe('SQLite connector repository retry ledger', () => {
   it('does not replay an old retry when a newer revision of the same provider record exists', async () => {
     const { sqlite, database, repository } = await currentRevisionFixture(['current-one'])
     seedSharedProviderRevisionHistory(sqlite)
-    const insertRecord = sqlite.prepare('insert into raw_source_records (id,created_at) values (?,?)')
-    const insertRevision = sqlite.prepare(`insert into raw_source_revisions
-      (id,raw_record_id,revision,content_hash,adapter_id,adapter_kind,adapter_version,observed_at,provider_record_id,evidence_json,created_at)
+    const insertRecord = sqlite.prepare('insert into capture_lineages (id,created_at) values (?,?)')
+    const insertRevision = sqlite.prepare(`insert into capture_evidence_versions
+      (id,capture_lineage_id,revision,content_hash,adapter_id,adapter_kind,adapter_version,observed_at,provider_record_id,evidence_json,created_at)
       values (?,?,?,?,?,?,?,?,?,?,?)`)
     sqlite.transaction(() => {
       for (let index = 0; index < 2000; index += 1) {
@@ -494,13 +494,13 @@ describe('SQLite connector repository retry ledger', () => {
           `history-provider-${index}`, '[]', '2026-07-10T00:00:00.000Z')
       }
     })()
-    const plan = sqlite.prepare(`explain query plan select 1 from raw_source_revisions current indexed by idx_raw_source_revisions_provider_current
+    const plan = sqlite.prepare(`explain query plan select 1 from capture_evidence_versions current indexed by idx_capture_evidence_versions_provider_current
       where current.id=? and current.provider_record_id in (?) and current.id=(
-        select latest.id from raw_source_revisions latest where latest.raw_record_id=current.raw_record_id
+        select latest.id from capture_evidence_versions latest where latest.capture_lineage_id=current.capture_lineage_id
         order by latest.revision desc limit 1)` ).all('shared-revision-1', 'shared-provider') as Array<{ detail: string }>
     expect(plan.map(({ detail }) => detail)).toEqual(expect.arrayContaining([
-      expect.stringContaining('idx_raw_source_revisions_provider_current'),
-      expect.stringContaining('idx_raw_source_revisions_record_revision'),
+      expect.stringContaining('idx_capture_evidence_versions_provider_current'),
+      expect.stringContaining('idx_capture_evidence_versions_lineage_revision'),
     ]))
     expect(plan.some(({ detail }) => detail.includes('SCAN raw_source_revisions') || detail.includes('TEMP B-TREE'))).toBe(false)
     seedExactNormalizationRetry(database, 'current-one', 'old-retry', 'shared-revision-1')
@@ -766,9 +766,9 @@ function seedNormalizationRetry(
   providerRecordId?: string,
 ) {
   sqlite.exec(`
-    insert into raw_source_records (id, created_at) values ('record-${id}', '2026-07-11T12:00:00.000Z');
-    insert into raw_source_revisions (
-      id, raw_record_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
+    insert into capture_lineages (id, created_at) values ('record-${id}', '2026-07-11T12:00:00.000Z');
+    insert into capture_evidence_versions (
+      id, capture_lineage_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
       observed_at, provider_record_id, evidence_json, created_at
     ) values (
       'revision-${id}', 'record-${id}', 1, 'sha256:${id}', 'fixture.jobs', 'connector', '1.0.0',
@@ -781,7 +781,7 @@ function seedNormalizationRetry(
       .where(eq(connectorInstances.id, connectorInstanceId)).get()?.id ?? null,
     kind: 'normalization', connectorInstanceId: null, filterSignature: null,
     checkpointSchemaVersion: null, checkpointGeneration: null,
-    rawRevisionId: `revision-${id}`, resolverId: 'fixture.network', resolverVersion: '1.0.0',
+    captureEvidenceVersionId: `revision-${id}`, resolverId: 'fixture.network', resolverVersion: '1.0.0',
     inputHash: `sha256:${id}`, reason: 'server_failure', attempt: 1, maxAttempts: 3,
     lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 60_000,
     serverMinimumDelayMs: null, nextAttemptAt, horizonAt: '2026-07-11T13:00:00.000Z',
@@ -803,8 +803,8 @@ async function currentRevisionFixture(instanceIds: string[]) {
 
 function seedSharedProviderRevisionHistory(sqlite: ReturnType<typeof createInMemoryDatabase>) {
   sqlite.exec(`
-    insert into raw_source_records (id,created_at) values ('shared-record','2026-07-11T12:00:00.000Z');
-    insert into raw_source_revisions (id,raw_record_id,revision,content_hash,adapter_id,adapter_kind,adapter_version,observed_at,provider_record_id,evidence_json,created_at) values
+    insert into capture_lineages (id,created_at) values ('shared-record','2026-07-11T12:00:00.000Z');
+    insert into capture_evidence_versions (id,capture_lineage_id,revision,content_hash,adapter_id,adapter_kind,adapter_version,observed_at,provider_record_id,evidence_json,created_at) values
       ('shared-revision-1','shared-record',1,'shared-hash-1','jobright.resolver','connector','0.11.0','2026-07-11T12:00:00.000Z','shared-provider','[]','2026-07-11T12:00:00.000Z'),
       ('shared-revision-2','shared-record',2,'shared-hash-2','jobright.resolver','connector','0.11.0','2026-07-11T12:00:01.000Z','shared-provider','[]','2026-07-11T12:00:01.000Z');
   `)
@@ -813,7 +813,7 @@ function seedSharedProviderRevisionHistory(sqlite: ReturnType<typeof createInMem
 function seedExactNormalizationRetry(database: ReturnType<typeof createDrizzleDatabase>, instanceId: string, id: string, rawRevisionId: string) {
   const executionScopeId = database.select({ id: connectorInstances.executionScopeId }).from(connectorInstances)
     .where(eq(connectorInstances.id, instanceId)).get()!.id
-  database.insert(retryWork).values({ id, executionScopeId, kind: 'normalization', rawRevisionId,
+  database.insert(retryWork).values({ id, executionScopeId, kind: 'normalization', captureEvidenceVersionId: rawRevisionId,
     resolverId: 'jobright.authenticated-destination', resolverVersion: 'jobright-authenticated-destination@1', inputHash: `hash-${id}`,
     reason: 'server_failure', attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 1000,
     nextAttemptAt: '2026-07-11T12:00:01.000Z', horizonAt: '2026-07-11T13:00:00.000Z', state: 'scheduled', ownerVersion: '1',

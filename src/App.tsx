@@ -476,7 +476,7 @@ function App({
       .then((nextResult) => {
         if (isMounted) {
           if (!nextResult) {
-            setSourcingError(`Sourcing finding ${pendingSourcingFindingId} could not be located.`)
+            setSourcingError(`Opportunity ${pendingSourcingFindingId} could not be located.`)
             return
           }
           setSourcingResult(nextResult)
@@ -490,7 +490,7 @@ function App({
       })
       .catch(() => {
         if (isMounted) {
-          setSourcingError('Sourcing findings could not be loaded.')
+          setSourcingError('Opportunities could not be loaded.')
         }
       })
       .finally(() => {
@@ -783,7 +783,7 @@ function App({
         setSourcingError(null)
       })
       .catch(() => {
-        setSourcingError('Sourcing findings could not be loaded.')
+        setSourcingError('Opportunities could not be loaded.')
       })
   }
 
@@ -813,7 +813,7 @@ function App({
         reloadActionQueueIfLoaded()
       })
       .catch(() => {
-        setSourcingError('Sourcing finding could not be promoted.')
+        setSourcingError('Opportunity could not be promoted.')
       })
       .finally(() => {
         setPromotingFindingId(null)
@@ -906,7 +906,7 @@ function App({
               : appView === APP_VIEWS.SOURCING_NORMALIZATION
                 ? 'Sourcing · Normalization'
               : appView === APP_VIEWS.SOURCING
-                ? 'Sourcing'
+                ? 'Opportunities'
                 : 'Applications'
   const contentColumnClass = settings.sidebarCollapsed ? 'md:col-start-2' : ''
   const sidebarToggleCollapsed = isNarrowViewport ? !narrowSidebarOpen : settings.sidebarCollapsed

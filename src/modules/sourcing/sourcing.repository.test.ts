@@ -5,7 +5,7 @@ import {
   applicationLinks,
   applicationScores,
   applications,
-  sourcingFindings,
+  opportunities,
 } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { seedSampleApplications } from '../applications/application.fixtures'
@@ -206,12 +206,12 @@ describe('SQLite sourcing repository', () => {
     })
 
     database
-      .update(sourcingFindings)
+      .update(opportunities)
       .set({
         destinationClass: 'third_party_job_posting',
         destinationUrl: 'https://www.linkedin.com/jobs/view/999999',
       })
-      .where(eq(sourcingFindings.id, finding.id))
+      .where(eq(opportunities.id, finding.id))
       .run()
 
     const decided = await sourcingRepository.decideFinding({
@@ -281,7 +281,7 @@ describe('SQLite sourcing repository', () => {
     const reviewQuestion = 'Approve third-party LinkedIn destination before promotion?'
 
     database
-      .update(sourcingFindings)
+      .update(opportunities)
       .set({
         destinationClass: 'third_party_job_posting',
         destinationUrl: 'https://www.linkedin.com/jobs/view/123456',
@@ -291,7 +291,7 @@ describe('SQLite sourcing repository', () => {
         dispositionReason: null,
         mergeNotes: reviewQuestion,
       })
-      .where(eq(sourcingFindings.id, finding.id))
+      .where(eq(opportunities.id, finding.id))
       .run()
 
     const before = await sourcingRepository.getFinding(finding.id)
@@ -517,10 +517,10 @@ describe('SQLite sourcing repository', () => {
     ).rejects.toThrow('Sourcing findings can only be marked merged by promotion.')
 
     expect(
-      database.select().from(sourcingFindings).where(eq(sourcingFindings.id, finding.id)).get(),
+      database.select().from(opportunities).where(eq(opportunities.id, finding.id)).get(),
     ).toMatchObject({
       mergeStatus: 'new',
-      mergedApplicationId: null,
+      applicationId: null,
     })
   })
 
@@ -778,12 +778,12 @@ describe('SQLite sourcing repository', () => {
     expect(
       database
         .select()
-        .from(sourcingFindings)
-        .where(eq(sourcingFindings.id, finding.id))
+        .from(opportunities)
+        .where(eq(opportunities.id, finding.id))
         .get(),
     ).toMatchObject({
       mergeStatus: 'duplicate',
-      mergedApplicationId: 'application-versant-platform',
+      applicationId: 'application-versant-platform',
     })
   })
 })

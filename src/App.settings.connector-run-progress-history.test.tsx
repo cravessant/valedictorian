@@ -357,8 +357,8 @@ describe('connector-run progress and history', () => {
       within(runArticle).getByText('Update and validate Jobright credentials, then run again.'),
     ).toBeInTheDocument()
     expect(within(runArticle).getByText('Provider returned rows: 12')).toBeInTheDocument()
-    expect(within(runArticle).getByText('Captured records: 8')).toBeInTheDocument()
-    expect(within(runArticle).getByText('Sourcing findings added: 1')).toBeInTheDocument()
+    expect(within(runArticle).getByText('Capture lineages: 8')).toBeInTheDocument()
+    expect(within(runArticle).getByText('Opportunities added: 1')).toBeInTheDocument()
     expect(within(runArticle).getByText('Canonical duplicates: 1')).toBeInTheDocument()
     expect(within(runArticle).queryByText('Detail attempts: 3')).not.toBeInTheDocument()
     expect(screen.queryByText('Projected usable: 2')).not.toBeInTheDocument()
@@ -562,9 +562,9 @@ describe('connector-run progress and history', () => {
 
     expect(await screen.findByText('Stage-specific synchronization counts')).toBeInTheDocument()
     expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
-    expect(screen.getByText('Captured records: 0')).toBeInTheDocument()
+    expect(screen.getByText('Capture lineages: 0')).toBeInTheDocument()
     expect(screen.getByText('Canonical duplicates: 0')).toBeInTheDocument()
-    expect(screen.getByText('Sourcing findings added: 0')).toBeInTheDocument()
+    expect(screen.getByText('Opportunities added: 0')).toBeInTheDocument()
     expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
     expect(screen.queryByText('Discovered jobs: 50')).not.toBeInTheDocument()
     expect(screen.queryByText('Discovery page requests: 3')).not.toBeInTheDocument()
@@ -578,7 +578,7 @@ describe('connector-run progress and history', () => {
     fireEvent.click(explanation)
     expect(explanation).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText(/Provider returned rows are response rows, not a unique-job total/)).toBeInTheDocument()
-    expect(screen.getByText(/Capture occurrences are intake events; captured records are unique persisted raw records/)).toBeInTheDocument()
+    expect(screen.getByText(/Captures are intake events; Capture lineages are unique persisted provider-record histories/)).toBeInTheDocument()
   })
 
   it('omits stale request-budget metrics while preserving provider progress', async () => {
@@ -670,7 +670,7 @@ describe('connector-run progress and history', () => {
     openConnectorRuns()
 
     expect(await screen.findByText('Provider returned rows: 0')).toBeInTheDocument()
-    expect(screen.getByText('Captured records: 0')).toBeInTheDocument()
+    expect(screen.getByText('Capture lineages: 0')).toBeInTheDocument()
     expect(screen.getByText('Pending: 4')).toBeInTheDocument()
     expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
     expect(screen.queryByText('Discovered jobs: 50')).not.toBeInTheDocument()

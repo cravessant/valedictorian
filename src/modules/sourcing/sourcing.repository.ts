@@ -26,7 +26,7 @@ import {
   applications,
   companies,
   sources,
-  sourcingFindings,
+  opportunities,
   workflowRuns,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
@@ -46,52 +46,52 @@ import { createSqliteScoringRepository } from '../scoring/scoring.repository'
 const DEFAULT_FINDINGS_LIST_LIMIT = 50
 
 const sourcingFindingSelection = {
-  id: sourcingFindings.id,
-  rawRevisionId: sourcingFindings.rawRevisionId,
-  canonicalCandidateId: sourcingFindings.canonicalCandidateId,
-  workflowRunId: sourcingFindings.workflowRunId,
-  sourceId: sourcingFindings.sourceId,
+  id: opportunities.id,
+  rawRevisionId: opportunities.captureEvidenceVersionId,
+  canonicalCandidateId: opportunities.jobFactVersionId,
+  workflowRunId: opportunities.workflowRunId,
+  sourceId: opportunities.sourceId,
   sourceName: sources.name,
-  companyName: sourcingFindings.companyName,
-  roleTitle: sourcingFindings.roleTitle,
-  roleKind: sourcingFindings.roleKind,
-  term: sourcingFindings.term,
-  timingMode: sourcingFindings.timingMode,
-  termsJson: sourcingFindings.termsJson,
-  startDate: sourcingFindings.startDate,
-  endDate: sourcingFindings.endDate,
-  city: sourcingFindings.city,
-  region: sourcingFindings.region,
-  country: sourcingFindings.country,
-  workMode: sourcingFindings.workMode,
-  locationRaw: sourcingFindings.locationRaw,
-  employmentType: sourcingFindings.employmentType,
-  seniority: sourcingFindings.seniority,
-  locationJson: sourcingFindings.locationJson,
-  compensationJson: sourcingFindings.compensationJson,
-  postedAtJson: sourcingFindings.postedAtJson,
-  officialUrl: sourcingFindings.officialUrl,
-  sourceUrl: sourcingFindings.sourceUrl,
-  destinationClass: sourcingFindings.destinationClass,
-  destinationUrl: sourcingFindings.destinationUrl,
-  intermediaryUrl: sourcingFindings.intermediaryUrl,
-  usability: sourcingFindings.usability,
-  postedAge: sourcingFindings.postedAge,
-  priorityScore: sourcingFindings.priorityScore,
-  priorityBand: sourcingFindings.priorityBand,
-  fitNotes: sourcingFindings.fitNotes,
-  duplicateNotes: sourcingFindings.duplicateNotes,
-  blocker: sourcingFindings.blocker,
-  policyBlocker: sourcingFindings.policyBlocker,
-  dispositionReason: sourcingFindings.dispositionReason,
-  mergeStatus: sourcingFindings.mergeStatus,
-  mergedApplicationId: sourcingFindings.mergedApplicationId,
+  companyName: opportunities.companyName,
+  roleTitle: opportunities.roleTitle,
+  roleKind: opportunities.roleKind,
+  term: opportunities.term,
+  timingMode: opportunities.timingMode,
+  termsJson: opportunities.termsJson,
+  startDate: opportunities.startDate,
+  endDate: opportunities.endDate,
+  city: opportunities.city,
+  region: opportunities.region,
+  country: opportunities.country,
+  workMode: opportunities.workMode,
+  locationRaw: opportunities.locationRaw,
+  employmentType: opportunities.employmentType,
+  seniority: opportunities.seniority,
+  locationJson: opportunities.locationJson,
+  compensationJson: opportunities.compensationJson,
+  postedAtJson: opportunities.postedAtJson,
+  officialUrl: opportunities.officialUrl,
+  sourceUrl: opportunities.sourceUrl,
+  destinationClass: opportunities.destinationClass,
+  destinationUrl: opportunities.destinationUrl,
+  intermediaryUrl: opportunities.intermediaryUrl,
+  usability: opportunities.usability,
+  postedAge: opportunities.postedAge,
+  priorityScore: opportunities.priorityScore,
+  priorityBand: opportunities.priorityBand,
+  fitNotes: opportunities.fitNotes,
+  duplicateNotes: opportunities.duplicateNotes,
+  blocker: opportunities.blocker,
+  policyBlocker: opportunities.policyBlocker,
+  dispositionReason: opportunities.dispositionReason,
+  mergeStatus: opportunities.mergeStatus,
+  mergedApplicationId: opportunities.applicationId,
   mergedApplicationCompanyName: companies.name,
   mergedApplicationRoleTitle: applications.roleTitle,
-  mergeNotes: sourcingFindings.mergeNotes,
-  discoveredAt: sourcingFindings.discoveredAt,
-  createdAt: sourcingFindings.createdAt,
-  updatedAt: sourcingFindings.updatedAt,
+  mergeNotes: opportunities.mergeNotes,
+  discoveredAt: opportunities.discoveredAt,
+  createdAt: opportunities.createdAt,
+  updatedAt: opportunities.updatedAt,
 }
 
 export function createSqliteSourcingRepository(database: DrizzleDatabase) {
@@ -121,7 +121,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         const findingId = randomUUID()
 
         transaction
-          .insert(sourcingFindings)
+          .insert(opportunities)
           .values({
             id: findingId,
             workflowRunId: normalizedInput.workflowRunId,
@@ -150,7 +150,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
             policyBlocker: normalizedInput.policyBlocker ?? null,
             dispositionReason: normalizedInput.dispositionReason ?? null,
             mergeStatus: normalizedInput.mergeStatus,
-            mergedApplicationId: null,
+            applicationId: null,
             mergeNotes: null,
             discoveredAt: normalizedInput.discoveredAt,
             createdAt: now,
@@ -173,18 +173,18 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
       const where = buildFindingsWhere(input)
       const totalRow = database
         .select({ value: count() })
-        .from(sourcingFindings)
-        .innerJoin(sources, eq(sourcingFindings.sourceId, sources.id))
+        .from(opportunities)
+        .innerJoin(sources, eq(opportunities.sourceId, sources.id))
         .where(where)
         .get()
       const rows = database
         .select(sourcingFindingSelection)
-        .from(sourcingFindings)
-        .innerJoin(sources, eq(sourcingFindings.sourceId, sources.id))
-        .leftJoin(applications, eq(sourcingFindings.mergedApplicationId, applications.id))
+        .from(opportunities)
+        .innerJoin(sources, eq(opportunities.sourceId, sources.id))
+        .leftJoin(applications, eq(opportunities.applicationId, applications.id))
         .leftJoin(companies, eq(applications.companyId, companies.id))
         .where(where)
-        .orderBy(desc(sourcingFindings.discoveredAt))
+        .orderBy(desc(opportunities.discoveredAt))
         .limit(limit)
         .offset(offset)
         .all()
@@ -202,7 +202,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
     async updateFinding(input: UpdateSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
       assertCompatibleSourcingDispositionInput(input)
-      const patch: Partial<typeof sourcingFindings.$inferInsert> = {
+      const patch: Partial<typeof opportunities.$inferInsert> = {
         updatedAt: now,
       }
 
@@ -341,9 +341,9 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
       return database.transaction((transaction) => {
         transaction
-          .update(sourcingFindings)
+          .update(opportunities)
           .set(patch)
-          .where(eq(sourcingFindings.id, input.findingId))
+          .where(eq(opportunities.id, input.findingId))
           .run()
 
         return reclassifySourcingFinding(transaction, input.findingId, now)
@@ -357,7 +357,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
       const now = new Date().toISOString()
 
       database
-        .update(sourcingFindings)
+        .update(opportunities)
         .set({
           blocker: null,
           duplicateNotes: null,
@@ -369,11 +369,11 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
                 : nullableTrimmedText(input.mergeNotes)
               : nullableTrimmedText(input.dispositionReason),
           mergeStatus: input.mergeStatus,
-          mergedApplicationId: null,
+          applicationId: null,
           mergeNotes: input.mergeNotes === undefined ? null : nullableTrimmedText(input.mergeNotes),
           updatedAt: now,
         })
-        .where(eq(sourcingFindings.id, input.findingId))
+        .where(eq(opportunities.id, input.findingId))
         .run()
 
       return selectSourcingFindingById(database, input.findingId)
@@ -400,15 +400,15 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
       if (duplicate) {
         database
-          .update(sourcingFindings)
+          .update(opportunities)
           .set({
             mergeStatus: 'duplicate',
-            mergedApplicationId: duplicate.applicationId,
+            applicationId: duplicate.applicationId,
             duplicateNotes: duplicate.note,
             mergeNotes: duplicate.note,
             updatedAt: now,
           })
-          .where(eq(sourcingFindings.id, finding.id))
+          .where(eq(opportunities.id, finding.id))
           .run()
 
         return selectSourcingFindingById(database, finding.id)
@@ -472,14 +472,14 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         .run()
 
       database
-        .update(sourcingFindings)
+        .update(opportunities)
         .set({
           mergeStatus: 'merged',
-          mergedApplicationId: application.id,
+          applicationId: application.id,
           mergeNotes: 'Merged into applications.',
           updatedAt: now,
         })
-        .where(eq(sourcingFindings.id, finding.id))
+        .where(eq(opportunities.id, finding.id))
         .run()
 
       return selectSourcingFindingById(database, finding.id)
@@ -525,17 +525,17 @@ function reclassifySourcingFinding(
   const classification = classifySourcingFinding(database as DrizzleDatabase, finding)
 
   database
-    .update(sourcingFindings)
+    .update(opportunities)
     .set({
       blocker: classification.blocker,
       duplicateNotes: classification.duplicateNotes,
       policyBlocker: classification.policyBlocker,
       mergeStatus: classification.mergeStatus,
-      mergedApplicationId: classification.mergedApplicationId,
+      applicationId: classification.applicationId,
       mergeNotes: classification.mergeNotes,
       updatedAt: now,
     })
-    .where(eq(sourcingFindings.id, findingId))
+    .where(eq(opportunities.id, findingId))
     .run()
 
   return selectSourcingFindingById(database, findingId)
@@ -545,12 +545,12 @@ function classifySourcingFinding(
   database: DrizzleDatabase,
   finding: SourcingFinding,
 ): Pick<
-  typeof sourcingFindings.$inferInsert,
+  typeof opportunities.$inferInsert,
   | 'blocker'
   | 'duplicateNotes'
   | 'policyBlocker'
   | 'mergeStatus'
-  | 'mergedApplicationId'
+  | 'applicationId'
   | 'mergeNotes'
 > {
   if (!finding.officialUrl && !finding.sourceUrl) {
@@ -561,7 +561,7 @@ function classifySourcingFinding(
       duplicateNotes: null,
       policyBlocker: null,
       mergeStatus: 'blocked',
-      mergedApplicationId: null,
+      applicationId: null,
       mergeNotes: note,
     }
   }
@@ -574,7 +574,7 @@ function classifySourcingFinding(
       duplicateNotes: duplicate.note,
       policyBlocker: null,
       mergeStatus: 'duplicate',
-      mergedApplicationId: duplicate.applicationId,
+      applicationId: duplicate.applicationId,
       mergeNotes: duplicate.note,
     }
   }
@@ -587,7 +587,7 @@ function classifySourcingFinding(
       duplicateNotes: null,
       policyBlocker: 'missing_country',
       mergeStatus: 'blocked',
-      mergedApplicationId: null,
+      applicationId: null,
       mergeNotes: note,
     }
   }
@@ -607,7 +607,7 @@ function classifySourcingFinding(
       duplicateNotes: null,
       policyBlocker: null,
       mergeStatus: 'below_cutoff',
-      mergedApplicationId: null,
+      applicationId: null,
       mergeNotes: policyDecision.reasons[0]?.message ?? 'Priority score is below policy cutoff.',
     }
   }
@@ -620,7 +620,7 @@ function classifySourcingFinding(
       duplicateNotes: null,
       policyBlocker: note,
       mergeStatus: 'blocked',
-      mergedApplicationId: null,
+      applicationId: null,
       mergeNotes: note,
     }
   }
@@ -633,7 +633,7 @@ function classifySourcingFinding(
       duplicateNotes: null,
       policyBlocker: 'third_party_destination',
       mergeStatus: 'blocked',
-      mergedApplicationId: null,
+      applicationId: null,
       mergeNotes: note,
     }
   }
@@ -643,7 +643,7 @@ function classifySourcingFinding(
     duplicateNotes: null,
     policyBlocker: null,
     mergeStatus: 'new',
-    mergedApplicationId: null,
+    applicationId: null,
     mergeNotes: null,
   }
 }
@@ -736,28 +736,28 @@ function assertPromotionOnlyMergeStatus(mergeStatus: SourcingMergeStatus) {
 }
 
 function buildFindingsWhere(input: SourcingFindingsListInput) {
-  const filters: SQL[] = [isNull(sourcingFindings.deletedAt)]
+  const filters: SQL[] = [isNull(opportunities.deletedAt)]
 
   if (input.workflowRunId) {
-    filters.push(eq(sourcingFindings.workflowRunId, input.workflowRunId))
+    filters.push(eq(opportunities.workflowRunId, input.workflowRunId))
   }
 
   if (input.mergeStatus) {
-    filters.push(eq(sourcingFindings.mergeStatus, input.mergeStatus))
+    filters.push(eq(opportunities.mergeStatus, input.mergeStatus))
   }
 
   if (input.sourceId) {
-    filters.push(eq(sourcingFindings.sourceId, input.sourceId))
+    filters.push(eq(opportunities.sourceId, input.sourceId))
   } else if (input.source) {
     filters.push(like(sources.name, `%${input.source}%`))
   }
 
   if (input.destinationClass) {
-    filters.push(eq(sourcingFindings.destinationClass, input.destinationClass))
+    filters.push(eq(opportunities.destinationClass, input.destinationClass))
   }
 
   if (input.usability) {
-    filters.push(eq(sourcingFindings.usability, input.usability))
+    filters.push(eq(opportunities.usability, input.usability))
   }
 
   return and(...filters)
@@ -769,11 +769,11 @@ function selectSourcingFindingById(
 ) {
   const row = database
     .select(sourcingFindingSelection)
-    .from(sourcingFindings)
-    .innerJoin(sources, eq(sourcingFindings.sourceId, sources.id))
-    .leftJoin(applications, eq(sourcingFindings.mergedApplicationId, applications.id))
+    .from(opportunities)
+    .innerJoin(sources, eq(opportunities.sourceId, sources.id))
+    .leftJoin(applications, eq(opportunities.applicationId, applications.id))
     .leftJoin(companies, eq(applications.companyId, companies.id))
-    .where(eq(sourcingFindings.id, findingId))
+    .where(eq(opportunities.id, findingId))
     .get()
 
   if (!row) {

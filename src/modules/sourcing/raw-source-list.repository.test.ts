@@ -85,7 +85,7 @@ describe('raw source repository list', () => {
     })
     const insertNormalization = sqlite.prepare(`
       insert into normalization_runs (
-        id, raw_record_id, raw_revision_id, input_hash, resolver_set_hash,
+        id, capture_lineage_id, capture_evidence_version_id, input_hash, resolver_set_hash,
         canonical_schema_version, gate_policy_version, trigger_kind, status,
         created_at, updated_at
       ) values (?, ?, ?, ?, 'sha256:resolver-set', 'candidate/v1', 'gate/v1',
@@ -170,17 +170,17 @@ describe('raw source repository list', () => {
     const ids = [`raw-\u{10000}`, `raw-\u{E000}`]
     const receivedAt = '2026-07-10T14:00:00.000Z'
     const insertRecord = sqlite.prepare(
-      'insert into raw_source_records (id, created_at) values (?, ?)',
+      'insert into capture_lineages (id, created_at) values (?, ?)',
     )
     const insertRevision = sqlite.prepare(`
-      insert into raw_source_revisions (
-        id, raw_record_id, revision, content_hash, adapter_id, adapter_kind,
+      insert into capture_evidence_versions (
+        id, capture_lineage_id, revision, content_hash, adapter_id, adapter_kind,
         adapter_version, observed_at, evidence_json, created_at
       ) values (?, ?, 1, ?, 'fixture.cli', 'cli', '1.0.0', ?, '[]', ?)
     `)
     const insertOccurrence = sqlite.prepare(`
-      insert into raw_source_occurrences (
-        id, raw_record_id, raw_revision_id, observed_at, received_at
+      insert into captures (
+        id, capture_lineage_id, capture_evidence_version_id, observed_at, received_at
       ) values (?, ?, ?, ?, ?)
     `)
     ids.forEach((id, index) => {
@@ -364,7 +364,7 @@ describe('raw source repository list', () => {
       })
       sqlite.prepare(`
         insert into normalization_runs (
-          id, raw_record_id, raw_revision_id, input_hash, resolver_set_hash,
+          id, capture_lineage_id, capture_evidence_version_id, input_hash, resolver_set_hash,
           canonical_schema_version, gate_policy_version, trigger_kind, status,
           created_at, updated_at
         ) values (?, ?, ?, ?, 'sha256:resolver-set', 'candidate/v1', 'gate/v1',
@@ -406,7 +406,7 @@ describe('raw source repository list', () => {
     )] })
     const insertRun = sqlite.prepare(`
       insert into normalization_runs (
-        id, raw_record_id, raw_revision_id, input_hash, resolver_set_hash,
+        id, capture_lineage_id, capture_evidence_version_id, input_hash, resolver_set_hash,
         canonical_schema_version, gate_policy_version, trigger_kind, status,
         created_at, updated_at
       ) values (?, ?, ?, ?, 'sha256:resolver-set', 'candidate/v1', 'gate/v1',

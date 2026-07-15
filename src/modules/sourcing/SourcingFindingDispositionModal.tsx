@@ -62,12 +62,12 @@ export function SourcingFindingDispositionModal({
         aria-describedby={undefined}
       >
         <DialogHeader className="flex flex-row items-start justify-between gap-4 space-y-0 border-b border-border px-5 py-4 text-left">
-          <DialogTitle>Set sourcing disposition</DialogTitle>
+          <DialogTitle>Set Opportunity disposition</DialogTitle>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Close Set sourcing disposition"
+            aria-label="Close Set Opportunity disposition"
             onClick={onClose}
           >
             <X className="h-4 w-4" aria-hidden="true" />

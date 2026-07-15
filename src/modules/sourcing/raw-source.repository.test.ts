@@ -178,8 +178,8 @@ describe('raw source repository', () => {
       payload: { suffix },
     })) })
     const insert = sqlite.prepare(`
-      insert into raw_source_occurrences (
-        id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id,
+      insert into captures (
+        id, capture_lineage_id, capture_evidence_version_id, connector_instance_id, connector_run_id,
         observed_at, received_at
       ) values (?, ?, ?, ?, ?, '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z')
     `)
@@ -212,7 +212,7 @@ describe('raw source repository', () => {
     }] })
     const insertNormalization = sqlite.prepare(`
       insert into normalization_runs (
-        id, raw_record_id, raw_revision_id, trigger_occurrence_id,
+        id, capture_lineage_id, capture_evidence_version_id, trigger_capture_id,
         trigger_connector_instance_id, trigger_connector_run_id, input_hash, resolver_set_hash,
         canonical_schema_version, gate_policy_version, trigger_kind, status, created_at, updated_at
       ) values (?, ?, ?, ?, ?, ?, ?, 'sha256:resolvers', 'candidate/v1', 'gate/v1',

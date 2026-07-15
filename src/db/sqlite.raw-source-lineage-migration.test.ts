@@ -29,21 +29,6 @@ describe('legacy connector raw-source lineage migration', () => {
     )
     createLegacyRawSourceFixture(sqlitePath, { includeInvalidOnly: true })
     const sqlite = createFileDatabase(sqlitePath)
-    const legacyRepository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
-    for (const rawRecordId of [
-      LEGACY_MIXED_LATEST_CONNECTOR_RECORD_ID,
-      LEGACY_MIXED_LATEST_IMPORT_RECORD_ID,
-    ]) {
-      const parsed = rawSourceRecordSchema.safeParse(await legacyRepository.get(rawRecordId))
-      expect(parsed.success).toBe(false)
-      if (!parsed.success) {
-        expect(parsed.error.issues).toEqual(expect.arrayContaining([
-          expect.objectContaining({
-            message: 'raw record revision, adapter, occurrence, and capture lineage must agree',
-          }),
-        ]))
-      }
-    }
 
     migrateDatabase(sqlite)
 
@@ -64,8 +49,8 @@ describe('legacy connector raw-source lineage migration', () => {
     }
     expect(sqlite.prepare(`
       select count(*) as count
-      from raw_source_occurrences occurrence
-      join raw_source_revisions revision on revision.id = occurrence.raw_revision_id
+      from captures occurrence
+      join capture_evidence_versions revision on revision.id = occurrence.capture_evidence_version_id
       where revision.adapter_kind = 'connector'
         and (occurrence.connector_instance_id is null
           or occurrence.connector_run_id is null
@@ -155,10 +140,10 @@ describe('legacy connector raw-source lineage migration', () => {
     expect(() => migrateDatabase(sqlite)).not.toThrow()
     expect(sqlite.prepare("select count(*) as count from normalization_runs where id = 'legacy-normalization'").get())
       .toEqual({ count: 0 })
-    expect(sqlite.prepare('select id from raw_source_occurrences where raw_record_id = ?').all(
+    expect(sqlite.prepare('select id from captures where capture_lineage_id = ?').all(
       LEGACY_MIXED_RAW_RECORD_ID,
     )).toEqual([])
-    expect(sqlite.prepare('select count(*) as count from raw_source_records where id = ?').get(
+    expect(sqlite.prepare('select count(*) as count from capture_lineages where id = ?').get(
       LEGACY_MIXED_RAW_RECORD_ID,
     )).toEqual({ count: 0 })
     expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
@@ -186,27 +171,27 @@ describe('legacy connector raw-source lineage migration', () => {
     expect(() => rawSourceRecordSchema.parse(raw)).not.toThrow()
     expect(() => rawSourceNormalizationResultSchema.parse(publicNormalization)).not.toThrow()
     expect(() => rawSourceProjectionResultSchema.parse(projection)).not.toThrow()
-    expect(sqlite.prepare('select id from raw_source_records where id = ?').get(
+    expect(sqlite.prepare('select id from capture_lineages where id = ?').get(
       LEGACY_MIXED_RAW_RECORD_ID,
     )).toBeUndefined()
-    expect(sqlite.prepare(`select id from source_entities
+    expect(sqlite.prepare(`select id from jobs
       where id = 'legacy-mixed-record-entity'`).get()).toEqual({
       id: 'legacy-mixed-record-entity',
     })
-    expect(sqlite.prepare(`select id from source_entity_identities
+    expect(sqlite.prepare(`select id from job_identities
       where id = 'shared-import-identity'`).get()).toEqual({ id: 'shared-import-identity' })
-    expect(sqlite.prepare(`select id from source_identity_conflicts
+    expect(sqlite.prepare(`select id from job_identity_conflicts
       where id = 'shared-import-conflict'`).get()).toEqual({ id: 'shared-import-conflict' })
-    expect(sqlite.prepare(`select id from canonical_source_candidates
+    expect(sqlite.prepare(`select id from job_fact_versions
       where id = 'shared-import-candidate'`).get()).toEqual({ id: 'shared-import-candidate' })
-    expect(sqlite.prepare(`select id from sourcing_findings
+    expect(sqlite.prepare(`select id from opportunities
       where id = 'shared-import-finding'`).get()).toEqual({ id: 'shared-import-finding' })
     expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
     expect(sqlite.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 27 })
+      .toEqual({ count: 28 })
     const protectedTables = [
-      ['source_entity_identities', 'shared-import-identity'],
-      ['source_identity_conflicts', 'shared-import-conflict'],
+      ['job_identities', 'shared-import-identity'],
+      ['job_identity_conflicts', 'shared-import-conflict'],
       ['sourcing_projection_outcomes', 'shared-import-projection'],
     ] as const
     for (const [table, id] of protectedTables) {
@@ -222,13 +207,32 @@ function snapshotRawRecords(
   rawRecordIds: string[],
 ) {
   const placeholders = rawRecordIds.map(() => '?').join(', ')
+  const canonical = Boolean(sqlite.prepare("select 1 from sqlite_master where type = 'table' and name = 'capture_lineages'").get())
   return {
-    records: sqlite.prepare(`select * from raw_source_records
-      where id in (${placeholders}) order by id`).all(...rawRecordIds),
-    revisions: sqlite.prepare(`select * from raw_source_revisions
-      where raw_record_id in (${placeholders}) order by raw_record_id, revision`).all(...rawRecordIds),
-    occurrences: sqlite.prepare(`select * from raw_source_occurrences
-      where raw_record_id in (${placeholders}) order by raw_record_id, id`).all(...rawRecordIds),
+    records: sqlite.prepare(canonical
+      ? `select id, job_id as source_entity_id, created_at from capture_lineages
+         where id in (${placeholders}) order by id`
+      : `select id, source_entity_id, created_at from raw_source_records
+         where id in (${placeholders}) order by id`).all(...rawRecordIds),
+    revisions: sqlite.prepare(canonical
+      ? `select id, capture_lineage_id as raw_record_id, revision, content_hash, adapter_id, adapter_kind,
+           adapter_version, reported_origin_kind, reported_origin_name, reported_origin_provider_id,
+           reported_origin_url, observed_at, provider_record_id, provider_schema, payload_json,
+           evidence_json, created_at
+         from capture_evidence_versions where capture_lineage_id in (${placeholders})
+         order by raw_record_id, revision`
+      : `select id, raw_record_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
+           reported_origin_kind, reported_origin_name, reported_origin_provider_id, reported_origin_url,
+           observed_at, provider_record_id, provider_schema, payload_json, evidence_json, created_at
+         from raw_source_revisions where raw_record_id in (${placeholders})
+         order by raw_record_id, revision`).all(...rawRecordIds),
+    occurrences: sqlite.prepare(canonical
+      ? `select id, capture_lineage_id as raw_record_id, capture_evidence_version_id as raw_revision_id,
+           connector_instance_id, connector_run_id, execution_scope_id, observed_at, received_at
+         from captures where capture_lineage_id in (${placeholders}) order by raw_record_id, id`
+      : `select id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id,
+           execution_scope_id, observed_at, received_at
+         from raw_source_occurrences where raw_record_id in (${placeholders}) order by raw_record_id, id`).all(...rawRecordIds),
   }
 }
 

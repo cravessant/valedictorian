@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobright'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 import {
-  rawSourceRevisions,
+  captureEvidenceVersions,
   retryWork,
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
@@ -287,14 +287,14 @@ describe('runtime Jobright v5 earliest-boundary retry ownership', () => {
       }),
     ])
 
-    const revisions = database.select().from(rawSourceRevisions).all()
+    const revisions = database.select().from(captureEvidenceVersions).all()
       .filter(({ providerRecordId }) => providerRecordId === 'job-boundary')
     expect(revisions).toHaveLength(1)
     const residualRetry = database.select().from(retryWork).all()
       .filter(({ kind }) => kind === 'normalization')
     expect(residualRetry).toEqual([
       expect.objectContaining({
-        rawRevisionId: revisions[0]!.id,
+        captureEvidenceVersionId: revisions[0]!.id,
         resolverId: 'jobright.authenticated-destination',
         resolverVersion: 'jobright-authenticated-destination@1',
         state: 'scheduled',

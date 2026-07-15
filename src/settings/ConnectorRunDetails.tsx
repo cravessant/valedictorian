@@ -134,8 +134,8 @@ export function ConnectorRunLifecycleDetails({
               ['Valid unique records', lifecycle.provider.validRecords],
               ['Invalid records', lifecycle.provider.invalidRecords],
               ['Source duplicates', lifecycle.provider.sourceDuplicates],
-              ['Captured records', lifecycle.provider.capturedRecords],
-              ['Capture occurrences', lifecycle.provider.occurrenceCount],
+              ['Capture lineages', lifecycle.provider.capturedRecords],
+              ['Captures', lifecycle.provider.occurrenceCount],
               ...(lifecycle.provider.unclassifiedRows > 0
                 ? [['Unclassified', lifecycle.provider.unclassifiedRows] as const]
                 : []),
@@ -151,8 +151,8 @@ export function ConnectorRunLifecycleDetails({
                 ? [['Unclassified', lifecycle.destination.unclassified] as const]
                 : []),
             ]} />
-            <RunCountStage title="Sourcing" values={[
-              ['Sourcing findings added', lifecycle.sourcing.findingsAdded],
+            <RunCountStage title="Opportunities" values={[
+              ['Opportunities added', lifecycle.sourcing.findingsAdded],
               ['Canonical duplicates', lifecycle.sourcing.canonicalDuplicates],
               ['Not fit', lifecycle.sourcing.notFit],
               ['Cutoff / rejected', lifecycle.sourcing.rejected],
@@ -213,13 +213,13 @@ export function ConnectorRunLifecycleDetails({
         <div className="grid gap-1 text-muted-foreground">
           <p>Provider returned rows are response rows, not a unique-job total.</p>
           <p>Valid records and invalid rows classify provider rows; source duplicates repeat a provider identity.</p>
-          <p>Capture occurrences are intake events; captured records are unique persisted raw records for this run.</p>
-          <p>Captured records equal normalized plus pending, unresolved, gate-rejected, and explicitly unclassified records.</p>
+          <p>Captures are intake events; Capture lineages are unique persisted provider-record histories for this run.</p>
+          <p>Capture lineages equal normalized plus pending, unresolved, gate-rejected, and explicitly unclassified records.</p>
           <p>Normalized equals resolved employer / ATS plus resolved third-party jobs.</p>
-          <p>Sourcing outcomes partition normalized jobs; only a persisted concrete question counts as actionable review.</p>
+          <p>Opportunity outcomes partition normalized Jobs; only a persisted concrete question counts as actionable review.</p>
           {lifecycle ? (
             <p>
-              Visible exceptions: capture shortfall {lifecycle.provider.captureShortfall}; provider unclassified {lifecycle.provider.unclassifiedRows}; destination unclassified {lifecycle.destination.unclassified}; sourcing unclassified {lifecycle.sourcing.unclassified}.
+              Visible exceptions: capture shortfall {lifecycle.provider.captureShortfall}; provider unclassified {lifecycle.provider.unclassifiedRows}; destination unclassified {lifecycle.destination.unclassified}; Opportunity unclassified {lifecycle.sourcing.unclassified}.
             </p>
           ) : null}
         </div>

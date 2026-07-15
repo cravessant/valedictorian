@@ -7,8 +7,8 @@ import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobri
 import {
   normalizationAttempts,
   normalizationRuns,
-  rawSourceOccurrences,
-  rawSourceRevisions,
+  captures,
+  captureEvidenceVersions,
   retryWork,
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
@@ -341,7 +341,7 @@ describe('runtime local Valedictorian client', () => {
       }
 
       if (url.includes('/swan/share/job/job-resolved-1')) {
-        expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(20)
+        expect(database.select().from(captures).all()).toHaveLength(20)
         expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
         return new Response(JSON.stringify({
           success: true,
@@ -363,7 +363,7 @@ describe('runtime local Valedictorian client', () => {
       }
 
       if (url.includes('/swan/share/job/job-intermediary-only')) {
-        expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(20)
+        expect(database.select().from(captures).all()).toHaveLength(20)
         expect(cookie).toContain(`SESSION_ID=${sessionCookie}`)
         return new Response(JSON.stringify({
           success: true,
@@ -385,7 +385,7 @@ describe('runtime local Valedictorian client', () => {
       }
 
       if (url.includes('/swan/share/job/job-pending-')) {
-        expect(database.select().from(rawSourceOccurrences).all().length).toBeGreaterThanOrEqual(20)
+        expect(database.select().from(captures).all().length).toBeGreaterThanOrEqual(20)
         const jobId = url.split('/').at(-1)
         return new Response(JSON.stringify({
           success: true,
@@ -427,7 +427,7 @@ describe('runtime local Valedictorian client', () => {
                       && normalizationInput.resolver.id === 'jobright.provider-fields'
                     ) {
                       firstProviderNormalization = false
-                      expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(20)
+                      expect(database.select().from(captures).all()).toHaveLength(20)
                     }
                     return normalization.run(normalizationInput)
                   },
@@ -505,12 +505,12 @@ describe('runtime local Valedictorian client', () => {
       connectorInstanceId: 'jobright-api',
     })
     const findings = await client.sourcing.findings.list()
-    const occurrences = database.select().from(rawSourceOccurrences).all()
-    const revisions = database.select().from(rawSourceRevisions).all()
+    const occurrences = database.select().from(captures).all()
+    const revisions = database.select().from(captureEvidenceVersions).all()
     const attempts = database.select().from(normalizationAttempts).all()
     const resolvedRevision = revisions.find(({ providerRecordId }) => providerRecordId === 'job-resolved-1')!
     const resolvedNormalization = await client.sourcing.rawRecords.normalization.get(
-      resolvedRevision.rawRecordId,
+      resolvedRevision.captureLineageId,
     )
 
     expect(run).toMatchObject({
@@ -545,22 +545,22 @@ describe('runtime local Valedictorian client', () => {
       expect.objectContaining({ resolverId: 'jobright.provider-fields', resolverVersion: 'jobright-provider-fields@1' }),
       expect.objectContaining({ resolverId: 'jobright.authenticated-destination', resolverVersion: 'jobright-authenticated-destination@1' }),
     ]))
-    expect(attempts.filter(({ rawRevisionId, resolverId }) =>
-      rawRevisionId === resolvedRevision.id && resolverId === 'jobright.provider-fields')).toHaveLength(1)
-    expect(attempts.filter(({ rawRevisionId, resolverId }) =>
-      rawRevisionId === resolvedRevision.id && resolverId === 'deterministic.provider-identity')).toHaveLength(1)
-    expect(attempts.filter(({ rawRevisionId, resolverId }) =>
-      rawRevisionId === resolvedRevision.id && resolverId === 'jobright.authenticated-destination')).toHaveLength(1)
+    expect(attempts.filter(({ captureEvidenceVersionId, resolverId }) =>
+      captureEvidenceVersionId === resolvedRevision.id && resolverId === 'jobright.provider-fields')).toHaveLength(1)
+    expect(attempts.filter(({ captureEvidenceVersionId, resolverId }) =>
+      captureEvidenceVersionId === resolvedRevision.id && resolverId === 'deterministic.provider-identity')).toHaveLength(1)
+    expect(attempts.filter(({ captureEvidenceVersionId, resolverId }) =>
+      captureEvidenceVersionId === resolvedRevision.id && resolverId === 'jobright.authenticated-destination')).toHaveLength(1)
     const resolvedRuns = database.select().from(normalizationRuns).all()
-      .filter(({ rawRevisionId }) => rawRevisionId === resolvedRevision.id)
+      .filter(({ captureEvidenceVersionId }) => captureEvidenceVersionId === resolvedRevision.id)
     expect(resolvedRuns).toHaveLength(2)
-    expect(resolvedRuns.every(({ triggerOccurrenceId }) =>
-      triggerOccurrenceId === occurrences.find(({ rawRevisionId }) =>
-        rawRevisionId === resolvedRevision.id)?.id)).toBe(true)
+    expect(resolvedRuns.every(({ triggerCaptureId }) =>
+      triggerCaptureId === occurrences.find(({ captureEvidenceVersionId }) =>
+        captureEvidenceVersionId === resolvedRevision.id)?.id)).toBe(true)
     expect(resolvedNormalization).toMatchObject({
       gate: { status: 'passed' },
       canonicalCandidate: {
-        rawRecordId: resolvedRevision.rawRecordId,
+        rawRecordId: resolvedRevision.captureLineageId,
         rawRevisionId: resolvedRevision.id,
         destination: {
           class: 'employer_or_ats',
@@ -630,7 +630,7 @@ describe('runtime local Valedictorian client', () => {
                       && normalizationInput.resolver.id === 'jobright.provider-fields'
                     ) {
                       injectedNormalizationFailure = true
-                      expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(40)
+                      expect(database.select().from(captures).all()).toHaveLength(40)
                       throw new Error('Injected provider normalization persistence failure')
                     }
                     return normalization.run(normalizationInput)
@@ -660,8 +660,8 @@ describe('runtime local Valedictorian client', () => {
       coverageStartedAt: '2026-07-09T17:00:00.000Z',
       coverageEndedAt: '2026-07-09T18:01:00.000Z',
     })
-    const afterRestartOccurrences = database.select().from(rawSourceOccurrences).all()
-    const afterRestartRevisions = database.select().from(rawSourceRevisions).all()
+    const afterRestartOccurrences = database.select().from(captures).all()
+    const afterRestartRevisions = database.select().from(captureEvidenceVersions).all()
     const detailUrlsAfterFailure = fetchImpl.mock.calls.map(([request]) =>
       typeof request === 'string'
         ? request
@@ -701,7 +701,7 @@ describe('runtime local Valedictorian client', () => {
       coverageStartedAt: '2026-07-09T17:00:00.000Z',
       coverageEndedAt: '2026-07-09T18:02:00.000Z',
     })
-    const recoveredOccurrences = database.select().from(rawSourceOccurrences).all()
+    const recoveredOccurrences = database.select().from(captures).all()
     const detailUrls = fetchImpl.mock.calls.map(([request]) =>
       typeof request === 'string'
         ? request
@@ -715,7 +715,7 @@ describe('runtime local Valedictorian client', () => {
     expect(detailUrls.filter((url) => url.endsWith('/job-intermediary-only'))).toHaveLength(1)
     expect(detailUrls.filter((url) => url.includes('/job-pending-'))).toHaveLength(18)
     await expect(restartedClient.sourcing.rawRecords.normalization.get(
-      resolvedRevision.rawRecordId,
+      resolvedRevision.captureLineageId,
     )).resolves.toMatchObject({
       gate: { status: 'passed' },
       canonicalCandidate: { destination: { url: officialApplyUrl } },

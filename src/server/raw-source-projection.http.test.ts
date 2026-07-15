@@ -44,7 +44,7 @@ describe('raw source projection receipt HTTP API', () => {
     expect(JSON.stringify(projection)).not.toContain(secret)
     const sqlite = new Database(sqlitePath)
     expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'pending', failed_at = null, failure_code = null, failure_retryable = null").run()).toThrow(/terminal transition is immutable/i)
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'projected', finding_id = 'missing', failed_at = null, failure_code = null, failure_retryable = null, projected_at = '2026-07-10T14:00:00.000Z'").run()).toThrow(/terminal transition is immutable/i)
+    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'projected', opportunity_id = 'missing', failed_at = null, failure_code = null, failure_retryable = null, projected_at = '2026-07-10T14:00:00.000Z'").run()).toThrow(/terminal transition is immutable/i)
     expect(() => sqlite.prepare("update sourcing_projection_outcomes set updated_at = '2026-07-10T15:00:00.000Z'").run()).toThrow(/terminal transition is immutable/i)
     sqlite.close()
   })
@@ -73,14 +73,14 @@ describe('raw source projection receipt HTTP API', () => {
     const sqlite = new Database(sqlitePath)
     sqlite.pragma('foreign_keys = ON')
     expect(() => sqlite.prepare(`update sourcing_projection_outcomes
-      set status = 'projected', finding_id = null, projected_at = null`).run()).toThrow(/terminal transition is immutable/i)
+      set status = 'projected', opportunity_id = null, projected_at = null`).run()).toThrow(/terminal transition is immutable/i)
     expect(() => sqlite.prepare(`update sourcing_projection_outcomes
-      set raw_record_id = 'wrong-lineage'`).run()).toThrow(/lineage is immutable/i)
+      set capture_lineage_id = 'wrong-lineage'`).run()).toThrow(/lineage is immutable/i)
     expect(() => sqlite.prepare(`insert into sourcing_projection_outcomes
-      (id, raw_record_id, raw_revision_id, canonical_candidate_id, status, created_at, updated_at)
+      (id, capture_lineage_id, capture_evidence_version_id, job_fact_version_id, status, created_at, updated_at)
       values ('terminal-direct', 'missing', 'missing', 'missing', 'failed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z')`).run()).toThrow(/must begin pending/i)
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'pending', finding_id = null, projected_at = null").run()).toThrow(/terminal transition is immutable/i)
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'failed', finding_id = null, projected_at = null, failed_at = '2026-07-10T14:00:00.000Z', failure_code = 'internal_error', failure_retryable = 0").run()).toThrow(/terminal transition is immutable/i)
+    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'pending', opportunity_id = null, projected_at = null").run()).toThrow(/terminal transition is immutable/i)
+    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'failed', opportunity_id = null, projected_at = null, failed_at = '2026-07-10T14:00:00.000Z', failure_code = 'internal_error', failure_retryable = 0").run()).toThrow(/terminal transition is immutable/i)
     expect(() => sqlite.prepare("update sourcing_projection_outcomes set created_at = '2026-07-09T12:00:00.000Z'").run()).toThrow(/immutable/i)
     expect(() => sqlite.prepare('delete from sourcing_projection_outcomes').run()).toThrow(/append-only/i)
     sqlite.close()
@@ -100,7 +100,7 @@ describe('raw source projection receipt HTTP API', () => {
     const sqlitePath = tempPath(), sourcing = await start({}, sqlitePath)
     installTransitionFailure(sqlitePath, 'failed')
     const sqlite = new Database(sqlitePath)
-    sqlite.exec(`create trigger reject_finding before insert on sourcing_findings
+    sqlite.exec(`create trigger reject_finding before insert on opportunities
       begin select raise(abort, 'finding failure'); end`)
     sqlite.close()
     const intake = await sourcing.rawRecords.ingestBatch({ records: [passedRecord('failed-transition')] })
@@ -125,7 +125,7 @@ describe('raw source projection receipt HTTP API', () => {
     expect(latest).toMatchObject({ status: 'projected', rawRevisionId: revisionId })
     expect(latest.canonicalCandidateId).not.toBe(first.canonicalCandidateId)
     const sqlite = new Database(sqlitePath)
-    expect(sqlite.prepare('select count(*) as count from sourcing_projection_outcomes where raw_revision_id = ?').get(revisionId)).toEqual({ count: 2 })
+    expect(sqlite.prepare('select count(*) as count from sourcing_projection_outcomes where capture_evidence_version_id = ?').get(revisionId)).toEqual({ count: 2 })
     sqlite.close()
   })
 

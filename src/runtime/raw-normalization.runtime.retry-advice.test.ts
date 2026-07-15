@@ -53,7 +53,7 @@ describe('local deterministic raw normalization', () => {
     })
     const rows = database.select().from(retryWork).all()
     expect(rows).toEqual([expect.objectContaining({
-      kind: 'normalization', rawRevisionId: intake.receipts[0].revision.id,
+      kind: 'normalization', captureEvidenceVersionId: intake.receipts[0].revision.id,
       resolverId: 'fixture.exhausted-company', resolverVersion: '1.0.0',
       state: 'exhausted', reason: 'server_failure', attempt: 3, maxAttempts: 3,
       computedDelayMs: null, nextAttemptAt: null,
@@ -96,7 +96,7 @@ describe('local deterministic raw normalization', () => {
       ]),
     })
     expect(database.select().from(retryWork).all()).toEqual([expect.objectContaining({
-      kind: 'normalization', rawRevisionId: intake.receipts[0].revision.id,
+      kind: 'normalization', captureEvidenceVersionId: intake.receipts[0].revision.id,
       resolverId: 'fixture.cancelled-fields', resolverVersion: '2.0.0',
       state: 'cancelled', reason: 'operation_timeout', attempt: 2, maxAttempts: 4,
       computedDelayMs: null, nextAttemptAt: null,

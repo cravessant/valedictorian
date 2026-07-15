@@ -12,19 +12,19 @@ import type {
 } from 'sparxie'
 import { retryAdviceSchema } from 'sparxie'
 import {
-  canonicalSourceCandidates,
+  jobFactVersions,
   normalizationAttempts,
   normalizationFieldOutcomes,
   normalizationGates,
   normalizationRuns,
-  rawSourceOccurrences,
-  rawSourceRecords,
-  rawSourceRevisions,
+  captures,
+  captureLineages,
+  captureEvidenceVersions,
   retryWork,
   sourceExecutionScopes,
-  sourceEntities,
-  sourceEntityIdentities,
-  sourceIdentityConflicts,
+  jobs,
+  jobIdentities,
+  jobIdentityConflicts,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import { classifyExplicitIntermediaryAlias, DESTINATION_TAXONOMY_VERSION } from './destination-classifier'
@@ -107,16 +107,16 @@ export function createSqliteNormalizationRepository(
   }
   return {
     getRawContext(rawRevisionId: string): NormalizationRawContext | null {
-      const revision = database.select().from(rawSourceRevisions).where(eq(rawSourceRevisions.id, rawRevisionId)).get()
+      const revision = database.select().from(captureEvidenceVersions).where(eq(captureEvidenceVersions.id, rawRevisionId)).get()
       if (!revision) return null
-      const record = database.select().from(rawSourceRecords).where(eq(rawSourceRecords.id, revision.rawRecordId)).get()
+      const record = database.select().from(captureLineages).where(eq(captureLineages.id, revision.captureLineageId)).get()
       if (!record) return null
-      const entity = record.sourceEntityId ? database.select().from(sourceEntities).where(eq(sourceEntities.id, record.sourceEntityId)).get() : null
+      const entity = record.jobId ? database.select().from(jobs).where(eq(jobs.id, record.jobId)).get() : null
       return { revision: mapRevision(revision), sourceEntity: entity ?? null }
     },
     findCached(rawRevisionId: string, inputHash: string, resolverSetHash: string, canonicalSchemaVersion: string, gatePolicyVersion: string) {
       const run = database.select().from(normalizationRuns).where(and(
-        eq(normalizationRuns.rawRevisionId, rawRevisionId), eq(normalizationRuns.inputHash, inputHash),
+        eq(normalizationRuns.captureEvidenceVersionId, rawRevisionId), eq(normalizationRuns.inputHash, inputHash),
         eq(normalizationRuns.resolverSetHash, resolverSetHash), eq(normalizationRuns.canonicalSchemaVersion, canonicalSchemaVersion),
         eq(normalizationRuns.gatePolicyVersion, gatePolicyVersion),
         eq(normalizationRuns.triggerKind, 'intake'),
@@ -143,39 +143,39 @@ export function createSqliteNormalizationRepository(
           namespace: DESTINATION_TAXONOMY_VERSION,
           value: input.destination.url,
         }
-        const targetIdentity = transaction.select().from(sourceEntityIdentities).where(and(
-          eq(sourceEntityIdentities.identityKind, canonical.kind),
-          eq(sourceEntityIdentities.identityNamespace, canonical.namespace),
-          eq(sourceEntityIdentities.identityValue, canonical.value),
+        const targetIdentity = transaction.select().from(jobIdentities).where(and(
+          eq(jobIdentities.identityKind, canonical.kind),
+          eq(jobIdentities.identityNamespace, canonical.namespace),
+          eq(jobIdentities.identityValue, canonical.value),
         )).get()
-        const destinationOwner = targetIdentity ? null : transaction.select().from(sourceEntities).where(and(
-          eq(sourceEntities.identityKind, 'destination_url'),
-          eq(sourceEntities.identityNamespace, canonical.namespace),
-          eq(sourceEntities.identityValue, canonical.value),
+        const destinationOwner = targetIdentity ? null : transaction.select().from(jobs).where(and(
+          eq(jobs.identityKind, 'destination_url'),
+          eq(jobs.identityNamespace, canonical.namespace),
+          eq(jobs.identityValue, canonical.value),
         )).get()
         const priorOwners = input.sourceEntity
-          ? transaction.selectDistinct({ sourceEntityId: canonicalSourceCandidates.sourceEntityId })
-              .from(canonicalSourceCandidates)
-              .innerJoin(rawSourceRecords, eq(rawSourceRecords.id, canonicalSourceCandidates.rawRecordId))
-              .where(eq(rawSourceRecords.sourceEntityId, input.sourceEntity.id)).all()
+          ? transaction.selectDistinct({ sourceEntityId: jobFactVersions.jobId })
+              .from(jobFactVersions)
+              .innerJoin(captureLineages, eq(captureLineages.id, jobFactVersions.captureLineageId))
+              .where(eq(captureLineages.jobId, input.sourceEntity.id)).all()
               .map(({ sourceEntityId }) => sourceEntityId)
           : []
         const currentCanonical = input.sourceEntity
-          ? transaction.select().from(sourceEntityIdentities).where(and(
-              eq(sourceEntityIdentities.sourceEntityId, input.sourceEntity.id),
-              eq(sourceEntityIdentities.identityKind, canonical.kind),
+          ? transaction.select().from(jobIdentities).where(and(
+              eq(jobIdentities.jobId, input.sourceEntity.id),
+              eq(jobIdentities.identityKind, canonical.kind),
             )).all()
           : []
-        const targetOwnerId = targetIdentity?.sourceEntityId ?? destinationOwner?.id ?? input.sourceEntity?.id ?? crypto.randomUUID()
+        const targetOwnerId = targetIdentity?.jobId ?? destinationOwner?.id ?? input.sourceEntity?.id ?? crypto.randomUUID()
         const conflictingOwner = priorOwners.find((ownerId) => ownerId !== targetOwnerId)
         const conflictingIdentity = currentCanonical.find(({ identityNamespace, identityValue }) =>
           identityNamespace !== canonical.namespace || identityValue !== canonical.value)
 
         if (input.sourceEntity && (conflictingOwner || conflictingIdentity)) {
           recordIdentityConflict(transaction, {
-            sourceEntityId: input.sourceEntity.id,
-            conflictingSourceEntityId: targetIdentity?.sourceEntityId ?? conflictingOwner ?? null,
-            rawRevisionId: input.rawRevisionId,
+            jobId: input.sourceEntity.id,
+            conflictingJobId: targetIdentity?.jobId ?? conflictingOwner ?? null,
+            captureEvidenceVersionId: input.rawRevisionId,
             identityKind: canonical.kind,
             identityNamespace: canonical.namespace,
             identityValue: canonical.value,
@@ -186,7 +186,7 @@ export function createSqliteNormalizationRepository(
           return persistReconciliation({ sourceEntity: input.sourceEntity, conflict: true })
         }
 
-        let owner = transaction.select().from(sourceEntities).where(eq(sourceEntities.id, targetOwnerId)).get()
+        let owner = transaction.select().from(jobs).where(eq(jobs.id, targetOwnerId)).get()
         if (!owner) {
           owner = {
             id: targetOwnerId,
@@ -195,7 +195,7 @@ export function createSqliteNormalizationRepository(
             identityValue: canonical.value,
             createdAt: input.createdAt,
           }
-          transaction.insert(sourceEntities).values(owner).run()
+          transaction.insert(jobs).values(owner).run()
         }
         const proposedIdentities: Array<{
           kind: 'canonical_destination' | 'destination_alias' | 'intermediary_alias'
@@ -217,20 +217,20 @@ export function createSqliteNormalizationRepository(
         ])).values()]
         const preflight = identities.map((identity) => ({
           identity,
-          existing: transaction.select().from(sourceEntityIdentities).where(and(
-            eq(sourceEntityIdentities.identityKind, identity.kind),
-            eq(sourceEntityIdentities.identityNamespace, identity.namespace),
-            eq(sourceEntityIdentities.identityValue, identity.value),
+          existing: transaction.select().from(jobIdentities).where(and(
+            eq(jobIdentities.identityKind, identity.kind),
+            eq(jobIdentities.identityNamespace, identity.namespace),
+            eq(jobIdentities.identityValue, identity.value),
           )).get(),
         }))
         const ownershipCollisions = preflight.filter(({ existing }) =>
-          existing && existing.sourceEntityId !== targetOwnerId)
+          existing && existing.jobId !== targetOwnerId)
         if (ownershipCollisions.length > 0) {
           for (const { identity, existing } of ownershipCollisions) {
             recordIdentityConflict(transaction, {
-              sourceEntityId: input.sourceEntity?.id ?? owner.id,
-              conflictingSourceEntityId: existing!.sourceEntityId,
-              rawRevisionId: input.rawRevisionId,
+              jobId: input.sourceEntity?.id ?? owner.id,
+              conflictingJobId: existing!.jobId,
+              captureEvidenceVersionId: input.rawRevisionId,
               identityKind: identity.kind,
               identityNamespace: identity.namespace,
               identityValue: identity.value,
@@ -242,14 +242,14 @@ export function createSqliteNormalizationRepository(
           return persistReconciliation({ sourceEntity: input.sourceEntity ?? owner, conflict: true })
         }
         const newIdentities = preflight.filter(({ existing }) => !existing)
-        const currentCount = transaction.select({ count: sql<number>`count(*)` }).from(sourceEntityIdentities)
-          .where(eq(sourceEntityIdentities.sourceEntityId, targetOwnerId)).get()?.count ?? 0
+        const currentCount = transaction.select({ count: sql<number>`count(*)` }).from(jobIdentities)
+          .where(eq(jobIdentities.jobId, targetOwnerId)).get()?.count ?? 0
         if (currentCount + newIdentities.length > MAX_IDENTITIES_PER_SOURCE_ENTITY) {
           const overflowIdentity = newIdentities[0]?.identity ?? canonical
           recordIdentityConflict(transaction, {
-            sourceEntityId: input.sourceEntity?.id ?? owner.id,
-            conflictingSourceEntityId: targetOwnerId,
-            rawRevisionId: input.rawRevisionId,
+            jobId: input.sourceEntity?.id ?? owner.id,
+            conflictingJobId: targetOwnerId,
+            captureEvidenceVersionId: input.rawRevisionId,
             identityKind: overflowIdentity.kind,
             identityNamespace: overflowIdentity.namespace,
             identityValue: overflowIdentity.value,
@@ -265,12 +265,12 @@ export function createSqliteNormalizationRepository(
         }
 
         for (const { identity } of newIdentities) {
-          transaction.insert(sourceEntityIdentities).values({
-            id: crypto.randomUUID(), sourceEntityId: owner.id,
+          transaction.insert(jobIdentities).values({
+            id: crypto.randomUUID(), jobId: owner.id,
             identityKind: identity.kind, identityNamespace: identity.namespace, identityValue: identity.value,
             provenanceKind: 'normalization', provenanceVersion: SOURCE_IDENTITY_RECONCILIATION_VERSION,
             evidenceJson: identityEvidence(input),
-            rawRevisionId: input.rawRevisionId, createdAt: input.createdAt,
+            captureEvidenceVersionId: input.rawRevisionId, createdAt: input.createdAt,
           }).run()
         }
         return persistReconciliation({ sourceEntity: owner, conflict: false })
@@ -285,10 +285,10 @@ export function createSqliteNormalizationRepository(
     },
     getLatest(rawRecordId: string) {
       const run = database.select({ run: normalizationRuns }).from(normalizationRuns)
-        .innerJoin(rawSourceRevisions, eq(rawSourceRevisions.id, normalizationRuns.rawRevisionId))
-        .where(eq(normalizationRuns.rawRecordId, rawRecordId))
+        .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, normalizationRuns.captureEvidenceVersionId))
+        .where(eq(normalizationRuns.captureLineageId, rawRecordId))
         .orderBy(
-          desc(rawSourceRevisions.revision),
+          desc(captureEvidenceVersions.revision),
           desc(normalizationRuns.createdAt),
           sql`${normalizationRuns}.rowid desc`,
         ).get()?.run
@@ -296,10 +296,10 @@ export function createSqliteNormalizationRepository(
     },
     listHistory(rawRecordId: string) {
       return database.select({ run: normalizationRuns }).from(normalizationRuns)
-        .innerJoin(rawSourceRevisions, eq(rawSourceRevisions.id, normalizationRuns.rawRevisionId))
-        .where(eq(normalizationRuns.rawRecordId, rawRecordId))
+        .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, normalizationRuns.captureEvidenceVersionId))
+        .where(eq(normalizationRuns.captureLineageId, rawRecordId))
         .orderBy(
-          desc(rawSourceRevisions.revision),
+          desc(captureEvidenceVersions.revision),
           desc(normalizationRuns.createdAt),
           sql`${normalizationRuns}.rowid desc`,
         ).all().map(({ run }) => mapResult(database, run))
@@ -327,7 +327,7 @@ export function hasPersistedExactSuccessfulNormalizationAttempt(
   },
 ): boolean {
   const attempts = database.select().from(normalizationAttempts).where(and(
-    eq(normalizationAttempts.rawRevisionId, input.rawRevisionId),
+    eq(normalizationAttempts.captureEvidenceVersionId, input.rawRevisionId),
     eq(normalizationAttempts.resolverId, input.resolverId),
     eq(normalizationAttempts.resolverVersion, input.resolverVersion),
     eq(normalizationAttempts.inputHash, input.inputHash),
@@ -350,8 +350,8 @@ function persistNormalization(
   input: PersistNormalizationWithTriggerInput,
 ) {
   transaction.insert(normalizationRuns).values({
-    id: input.runId, rawRecordId: input.rawRecordId, rawRevisionId: input.rawRevisionId,
-    triggerOccurrenceId: input.triggerOccurrence?.id ?? null,
+    id: input.runId, captureLineageId: input.rawRecordId, captureEvidenceVersionId: input.rawRevisionId,
+    triggerCaptureId: input.triggerOccurrence?.id ?? null,
     triggerConnectorInstanceId: input.triggerOccurrence?.capture?.connectorInstanceId ?? null,
     triggerConnectorRunId: input.triggerOccurrence?.capture?.connectorRunId ?? null,
     inputHash: input.inputHash, resolverSetHash: input.resolverSetHash,
@@ -362,7 +362,7 @@ function persistNormalization(
   let outcomeSequence = 0
   input.attempts.forEach((attempt, attemptSequence) => {
     transaction.insert(normalizationAttempts).values({
-      id: attempt.id, runId: input.runId, rawRevisionId: input.rawRevisionId, sequence: attemptSequence,
+      id: attempt.id, runId: input.runId, captureEvidenceVersionId: input.rawRevisionId, sequence: attemptSequence,
       resolverId: attempt.resolver.id, resolverVersion: attempt.resolver.version, inputHash: attempt.inputHash,
       declarationJson: JSON.stringify(attempt.resolver), applicabilityJson: JSON.stringify(attempt.applicability ?? []),
       status: attempt.status, startedAt: attempt.startedAt, completedAt: attempt.completedAt,
@@ -375,14 +375,14 @@ function persistNormalization(
     }).run())
     synchronizeNormalizationRetryWork(transaction, input, attempt)
   })
-  if (input.candidate) transaction.insert(canonicalSourceCandidates).values({
-    id: input.candidate.id, runId: input.runId, sourceEntityId: input.candidate.sourceEntityId,
-    rawRecordId: input.rawRecordId, rawRevisionId: input.rawRevisionId, schemaVersion: input.canonicalSchemaVersion,
-    candidateJson: JSON.stringify(input.candidate), createdAt: input.now,
+  if (input.candidate) transaction.insert(jobFactVersions).values({
+    id: input.candidate.id, runId: input.runId, jobId: input.candidate.sourceEntityId,
+    captureLineageId: input.rawRecordId, captureEvidenceVersionId: input.rawRevisionId, schemaVersion: input.canonicalSchemaVersion,
+    jobFactVersionJson: JSON.stringify(input.candidate), createdAt: input.now,
   }).run()
   transaction.insert(normalizationGates).values({
     id: crypto.randomUUID(), runId: input.runId, policyVersion: input.gatePolicyVersion, status: input.gate.status,
-    candidateId: input.candidate?.id ?? null, gateJson: JSON.stringify(input.gate), evaluatedAt: input.gate.evaluatedAt,
+    jobFactVersionId: input.candidate?.id ?? null, gateJson: JSON.stringify(input.gate), evaluatedAt: input.gate.evaluatedAt,
   }).run()
 }
 
@@ -413,7 +413,7 @@ function synchronizeNormalizationRetryWork(
     : null
   const existing = transaction.select().from(retryWork).where(and(
     eq(retryWork.kind, 'normalization'),
-    eq(retryWork.rawRevisionId, input.rawRevisionId),
+    eq(retryWork.captureEvidenceVersionId, input.rawRevisionId),
     eq(retryWork.resolverId, attempt.resolver.id),
     eq(retryWork.resolverVersion, attempt.resolver.version),
     eq(retryWork.inputHash, attempt.inputHash),
@@ -471,10 +471,10 @@ function synchronizeNormalizationRetryWork(
   const priorLineage = existing ? JSON.parse(existing.lineageJson) as Record<string, unknown> : {}
   let executionScopeId = attempt.executionScopeId
   if (executionScopeId === null) {
-    const revision = transaction.select().from(rawSourceRevisions)
-      .where(eq(rawSourceRevisions.id, input.rawRevisionId)).get()
+    const revision = transaction.select().from(captureEvidenceVersions)
+      .where(eq(captureEvidenceVersions.id, input.rawRevisionId)).get()
     if (!revision) throw new Error('Raw source revision not found for normalization retry scope')
-    executionScopeId = deriveSourceExecutionScopeId(revision.rawRecordId)
+    executionScopeId = deriveSourceExecutionScopeId(revision.captureLineageId)
     transaction.insert(sourceExecutionScopes).values({
       id: executionScopeId, status: 'available', blockedUntil: null,
       backoffAttempt: 0, authGeneration: 0, refreshLeaseToken: null,
@@ -516,7 +516,7 @@ function synchronizeNormalizationRetryWork(
   transaction.insert(retryWork).values({
     id: crypto.randomUUID(), kind: 'normalization', connectorInstanceId: null,
     filterSignature: null, checkpointSchemaVersion: null, checkpointGeneration: null,
-    rawRevisionId: input.rawRevisionId,
+    captureEvidenceVersionId: input.rawRevisionId,
     resolverId: attempt.resolver.id,
     resolverVersion: attempt.resolver.version,
     inputHash: attempt.inputHash,
@@ -546,9 +546,9 @@ function identityEvidence(input: {
 
 function recordIdentityConflict(
   database: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
-  input: Omit<typeof sourceIdentityConflicts.$inferInsert, 'id' | 'provenanceVersion'>,
+  input: Omit<typeof jobIdentityConflicts.$inferInsert, 'id' | 'provenanceVersion'>,
 ) {
-  database.insert(sourceIdentityConflicts).values({
+  database.insert(jobIdentityConflicts).values({
     id: crypto.randomUUID(),
     ...input,
     provenanceVersion: SOURCE_IDENTITY_RECONCILIATION_VERSION,
@@ -563,29 +563,29 @@ function mapResult(
   const outcomes = database.select().from(normalizationFieldOutcomes).where(eq(normalizationFieldOutcomes.runId, run.id)).orderBy(asc(normalizationFieldOutcomes.sequence)).all().map((row) => JSON.parse(row.outcomeJson) as FieldResolutionOutcome)
   const attempts = attemptRows.map((row) => {
     const resolver = JSON.parse(row.declarationJson) as NormalizationAttempt['resolver']
-    return { id: row.id, rawRevisionId: row.rawRevisionId, resolver, executionScopeId: resolver.scopeRequirement === 'source' ? runScopeId(database, run) : null, operationOutcome: null, inputHash: row.inputHash, status: row.status, applicability: JSON.parse(row.applicabilityJson), startedAt: row.startedAt, completedAt: row.completedAt, outcomes: outcomes.filter((outcome) => outcome.resolverId === row.resolverId && outcome.resolverVersion === row.resolverVersion) }
+    return { id: row.id, rawRevisionId: row.captureEvidenceVersionId, resolver, executionScopeId: resolver.scopeRequirement === 'source' ? runScopeId(database, run) : null, operationOutcome: null, inputHash: row.inputHash, status: row.status, applicability: JSON.parse(row.applicabilityJson), startedAt: row.startedAt, completedAt: row.completedAt, outcomes: outcomes.filter((outcome) => outcome.resolverId === row.resolverId && outcome.resolverVersion === row.resolverVersion) }
   }) as NormalizationAttempt[]
   const gateRow = database.select().from(normalizationGates).where(eq(normalizationGates.runId, run.id)).get()
-  const candidateRow = database.select().from(canonicalSourceCandidates).where(eq(canonicalSourceCandidates.runId, run.id)).get()
-  const triggerOccurrence = run.triggerOccurrenceId
-    ? database.select().from(rawSourceOccurrences)
-        .where(eq(rawSourceOccurrences.id, run.triggerOccurrenceId)).get()
+  const candidateRow = database.select().from(jobFactVersions).where(eq(jobFactVersions.runId, run.id)).get()
+  const triggerOccurrence = run.triggerCaptureId
+    ? database.select().from(captures)
+        .where(eq(captures.id, run.triggerCaptureId)).get()
     : null
   return {
-    rawRecordId: run.rawRecordId,
-    rawRevisionId: run.rawRevisionId,
+    rawRecordId: run.captureLineageId,
+    rawRevisionId: run.captureEvidenceVersionId,
     canonicalSchemaVersion: run.canonicalSchemaVersion,
     status: run.status,
     attempts,
     fieldOutcomes: outcomes,
     updatedAt: run.updatedAt,
     gate: gateRow ? JSON.parse(gateRow.gateJson) : null,
-    canonicalCandidate: candidateRow ? JSON.parse(candidateRow.candidateJson) : null,
+    canonicalCandidate: candidateRow ? JSON.parse(candidateRow.jobFactVersionJson) : null,
     triggerOccurrence: triggerOccurrence
       ? {
           id: triggerOccurrence.id,
-          rawRecordId: triggerOccurrence.rawRecordId,
-          rawRevisionId: triggerOccurrence.rawRevisionId,
+          rawRecordId: triggerOccurrence.captureLineageId,
+          rawRevisionId: triggerOccurrence.captureEvidenceVersionId,
           capture: triggerOccurrence.connectorInstanceId && triggerOccurrence.connectorRunId
             ? {
                 connectorInstanceId: triggerOccurrence.connectorInstanceId,
@@ -601,14 +601,14 @@ function mapResult(
 }
 
 function runScopeId(database: DrizzleDatabase, run: typeof normalizationRuns.$inferSelect) {
-  if (!run.triggerOccurrenceId) return null
-  return database.select({ id: rawSourceOccurrences.executionScopeId }).from(rawSourceOccurrences)
-    .where(eq(rawSourceOccurrences.id, run.triggerOccurrenceId)).get()?.id ?? null
+  if (!run.triggerCaptureId) return null
+  return database.select({ id: captures.executionScopeId }).from(captures)
+    .where(eq(captures.id, run.triggerCaptureId)).get()?.id ?? null
 }
 
-function mapRevision(row: typeof rawSourceRevisions.$inferSelect): RawSourceRevision {
+function mapRevision(row: typeof captureEvidenceVersions.$inferSelect): RawSourceRevision {
   return {
-    id: row.id, rawRecordId: row.rawRecordId, revision: row.revision, contentHash: row.contentHash,
+    id: row.id, rawRecordId: row.captureLineageId, revision: row.revision, contentHash: row.contentHash,
     adapter: { id: row.adapterId, kind: row.adapterKind as RawSourceRevision['adapter']['kind'], version: row.adapterVersion },
     reportedOrigin: row.reportedOriginKind && row.reportedOriginName ? { kind: row.reportedOriginKind as NonNullable<RawSourceRevision['reportedOrigin']>['kind'], name: row.reportedOriginName, providerId: row.reportedOriginProviderId, url: row.reportedOriginUrl } : null,
     observedAt: row.observedAt, providerRecordId: row.providerRecordId, providerSchema: row.providerSchema,

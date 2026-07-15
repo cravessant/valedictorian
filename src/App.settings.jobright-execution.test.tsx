@@ -255,7 +255,7 @@ describe('Jobright execution', () => {
     expect(
       screen.queryByText('Live counts derived from current persisted lineage.'),
     ).not.toBeInTheDocument()
-    expect(screen.getByText('Captured records: 20')).toBeInTheDocument()
+    expect(screen.getByText('Capture lineages: 20')).toBeInTheDocument()
     expect(screen.getByText('Resolved employer / ATS: 1')).toBeInTheDocument()
     expect(screen.getByText('Resolved third-party: 1')).toBeInTheDocument()
     expect(screen.getByText('Pending: 6')).toBeInTheDocument()
@@ -314,8 +314,8 @@ describe('Jobright execution', () => {
 
     expect(await screen.findByText('Latest synchronization: Provider history exhausted')).toBeInTheDocument()
     expect(screen.queryByText('Frozen at terminal completion.')).not.toBeInTheDocument()
-    expect(screen.getByText('Captured records: 8')).toBeInTheDocument()
-    expect(screen.getByText('Sourcing findings added: 2')).toBeInTheDocument()
+    expect(screen.getByText('Capture lineages: 8')).toBeInTheDocument()
+    expect(screen.getByText('Opportunities added: 2')).toBeInTheDocument()
     expect(screen.getByText('Canonical duplicates: 1')).toBeInTheDocument()
     expect(screen.queryByText('Detail attempts: 3')).not.toBeInTheDocument()
     expect(screen.queryByText('Auth-required requests: 1')).not.toBeInTheDocument()

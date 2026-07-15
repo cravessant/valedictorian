@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { rawSourceRecords, sourceEntities } from '../db/schema'
+import { captureLineages, jobs } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase, createInMemoryDatabase, migrateDatabase } from '../db/sqlite'
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
@@ -87,11 +87,11 @@ describe('local deterministic raw normalization', () => {
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-1' },
     }] })
     const sourceEntityId = `fixture-${identityKind}`
-    database.insert(sourceEntities).values({
+    database.insert(jobs).values({
       id: sourceEntityId, identityKind, identityNamespace: 'fixture/v1', identityValue,
       createdAt: '2026-07-10T12:00:00.000Z',
     }).run()
-    database.update(rawSourceRecords).set({ sourceEntityId }).where(eq(rawSourceRecords.id, intake.receipts[0].rawRecordId)).run()
+    database.update(captureLineages).set({ jobId: sourceEntityId }).where(eq(captureLineages.id, intake.receipts[0].rawRecordId)).run()
     const orchestrator = createNormalizationOrchestrator({
       repository: createSqliteNormalizationRepository(database),
       registry: createDefaultNormalizationResolverRegistry(),
@@ -156,7 +156,7 @@ describe('local deterministic raw normalization', () => {
     const sqlite = createFileDatabase(sqlitePath)
     expect(sqlite.prepare(`
       select identity_kind, identity_namespace, identity_value, provenance_kind, provenance_version
-      from source_entity_identities order by identity_kind, identity_namespace
+      from job_identities order by identity_kind, identity_namespace
     `).all()).toEqual(expect.arrayContaining([
       expect.objectContaining({ identity_kind: 'provider_job', identity_value: 'alpha-1', provenance_kind: 'capture' }),
       expect.objectContaining({ identity_kind: 'provider_job', identity_value: 'beta-9', provenance_kind: 'capture' }),
@@ -165,10 +165,10 @@ describe('local deterministic raw normalization', () => {
         identity_value: destination, provenance_kind: 'normalization', provenance_version: 'source-identity-reconciliation/v1',
       }),
     ]))
-    expect(sqlite.prepare('select raw_record_id, count(*) as revisions from raw_source_revisions group by raw_record_id order by raw_record_id').all()).toEqual([
-      { raw_record_id: first.receipts[0].rawRecordId, revisions: 1 },
-      { raw_record_id: second.receipts[0].rawRecordId, revisions: 1 },
-    ].sort((left, right) => left.raw_record_id.localeCompare(right.raw_record_id)))
+    expect(sqlite.prepare('select capture_lineage_id, count(*) as revisions from capture_evidence_versions group by capture_lineage_id order by capture_lineage_id').all()).toEqual([
+      { capture_lineage_id: first.receipts[0].rawRecordId, revisions: 1 },
+      { capture_lineage_id: second.receipts[0].rawRecordId, revisions: 1 },
+    ].sort((left, right) => left.capture_lineage_id.localeCompare(right.capture_lineage_id)))
     expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
     sqlite.close()
   })
@@ -206,17 +206,17 @@ describe('local deterministic raw normalization', () => {
     })
     const sqlite = createFileDatabase(sqlitePath)
     expect(sqlite.prepare(`
-      select source_entity_id, raw_revision_id, identity_kind, identity_value, reason, provenance_version
-      from source_identity_conflicts
+      select job_id, capture_evidence_version_id, identity_kind, identity_value, reason, provenance_version
+      from job_identity_conflicts
     `).all()).toEqual([expect.objectContaining({
-      source_entity_id: first.receipts[0].sourceEntityId,
-      raw_revision_id: conflicting.receipts[0].revision.id,
+      job_id: first.receipts[0].sourceEntityId,
+      capture_evidence_version_id: conflicting.receipts[0].revision.id,
       identity_kind: 'canonical_destination',
       identity_value: 'https://jobs.lever.co/acme/role-two',
       reason: 'Source entity already has a different strong destination association',
       provenance_version: 'source-identity-reconciliation/v1',
     })])
-    expect(sqlite.prepare('select count(*) as count from raw_source_revisions where raw_record_id = ?').get(first.receipts[0].rawRecordId)).toEqual({ count: 2 })
+    expect(sqlite.prepare('select count(*) as count from capture_evidence_versions where capture_lineage_id = ?').get(first.receipts[0].rawRecordId)).toEqual({ count: 2 })
     expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
     sqlite.close()
   })
@@ -269,7 +269,7 @@ describe('local deterministic raw normalization', () => {
     }] })
     const sqlite = createFileDatabase(sqlitePath)
     expect(sqlite.prepare(`
-      select identity_kind, identity_value from source_entity_identities
+      select identity_kind, identity_value from job_identities
       where identity_kind in ('canonical_destination','destination_alias','intermediary_alias')
       order by identity_kind
     `).all()).toEqual([
@@ -277,7 +277,7 @@ describe('local deterministic raw normalization', () => {
       { identity_kind: 'destination_alias', identity_value: 'https://jobs.lever.co/acme/job-1' },
       { identity_kind: 'intermediary_alias', identity_value: 'https://jobright.ai/jobs/info/jobright-1' },
     ])
-    expect(sqlite.prepare("select count(*) as count from source_entity_identities where identity_value = 'https://jobright.ai/companies/acme'").get()).toEqual({ count: 0 })
+    expect(sqlite.prepare("select count(*) as count from job_identities where identity_value = 'https://jobright.ai/companies/acme'").get()).toEqual({ count: 0 })
     sqlite.close()
   })
 
@@ -298,8 +298,8 @@ describe('local deterministic raw normalization', () => {
       gate: { status: 'needs_enrichment' }, canonicalCandidate: null,
     })
     const sqlite = createFileDatabase(sqlitePath)
-    expect(sqlite.prepare('select count(*) as count from source_entity_identities').get()).toEqual({ count: 0 })
-    expect(sqlite.prepare('select count(*) as count from source_identity_conflicts').get()).toEqual({ count: 0 })
+    expect(sqlite.prepare('select count(*) as count from job_identities').get()).toEqual({ count: 0 })
+    expect(sqlite.prepare('select count(*) as count from job_identity_conflicts').get()).toEqual({ count: 0 })
     sqlite.close()
   })
 
@@ -308,10 +308,10 @@ describe('local deterministic raw normalization', () => {
     const setup = createFileDatabase(sqlitePath)
     migrateDatabase(setup)
     setup.exec(`
-      insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+      insert into jobs (id, identity_kind, identity_namespace, identity_value, created_at)
       values ('preowner', 'provider_job', 'fixture', 'preowner-job', '2026-07-10T11:00:00.000Z');
-      insert into source_entity_identities (
-        id, source_entity_id, identity_kind, identity_namespace, identity_value,
+      insert into job_identities (
+        id, job_id, identity_kind, identity_namespace, identity_value,
         provenance_kind, provenance_version, evidence_json, created_at
       ) values (
         'preowned-intermediary', 'preowner', 'intermediary_alias', 'job-intermediary/v1',
@@ -342,16 +342,16 @@ describe('local deterministic raw normalization', () => {
     })
     const sqlite = createFileDatabase(sqlitePath)
     expect(sqlite.prepare(`
-      select identity_kind from source_entity_identities
-      where source_entity_id = ? and identity_kind in ('canonical_destination','destination_alias')
+      select identity_kind from job_identities
+      where job_id = ? and identity_kind in ('canonical_destination','destination_alias')
     `).all(intake.receipts[0].sourceEntityId)).toEqual([])
     expect(sqlite.prepare(`
-      select identity_kind, identity_value, conflicting_source_entity_id
-      from source_identity_conflicts where source_entity_id = ?
+      select identity_kind, identity_value, conflicting_job_id
+      from job_identity_conflicts where job_id = ?
     `).all(intake.receipts[0].sourceEntityId)).toEqual([{
       identity_kind: 'intermediary_alias',
       identity_value: 'https://jobright.ai/jobs/info/shared-job',
-      conflicting_source_entity_id: 'preowner',
+      conflicting_job_id: 'preowner',
     }])
     expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
     sqlite.close()
@@ -372,10 +372,10 @@ describe('local deterministic raw normalization', () => {
     const setup = createFileDatabase(sqlitePath)
     migrateDatabase(setup)
     setup.exec(`
-      insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+      insert into jobs (id, identity_kind, identity_namespace, identity_value, created_at)
       values ('preowner', 'provider_job', 'fixture', 'preowner-job', '2026-07-10T11:00:00.000Z');
-      insert into source_entity_identities (
-        id, source_entity_id, identity_kind, identity_namespace, identity_value,
+      insert into job_identities (
+        id, job_id, identity_kind, identity_namespace, identity_value,
         provenance_kind, provenance_version, evidence_json, created_at
       ) values (
         'preowned-intermediary', 'preowner', 'intermediary_alias', 'job-intermediary/v1',
@@ -401,20 +401,20 @@ describe('local deterministic raw normalization', () => {
     })
     const sqlite = createFileDatabase(sqlitePath)
     const owner = sqlite.prepare(`
-      select id from source_entities
+      select id from jobs
       where identity_kind = 'destination_url' and identity_value = 'https://jobs.lever.co/acme/target-role'
     `).get() as { id: string }
     expect(sqlite.prepare(`
-      select identity_kind from source_entity_identities
-      where source_entity_id = ? and identity_kind in ('canonical_destination','destination_alias','intermediary_alias')
+      select identity_kind from job_identities
+      where job_id = ? and identity_kind in ('canonical_destination','destination_alias','intermediary_alias')
     `).all(owner.id)).toEqual([])
     expect(sqlite.prepare(`
-      select source_entity_id, conflicting_source_entity_id, raw_revision_id, identity_kind, identity_value
-      from source_identity_conflicts
+      select job_id, conflicting_job_id, capture_evidence_version_id, identity_kind, identity_value
+      from job_identity_conflicts
     `).all()).toEqual([{
-      source_entity_id: owner.id,
-      conflicting_source_entity_id: 'preowner',
-      raw_revision_id: intake.receipts[0].revision.id,
+      job_id: owner.id,
+      conflicting_job_id: 'preowner',
+      capture_evidence_version_id: intake.receipts[0].revision.id,
       identity_kind: 'intermediary_alias',
       identity_value: 'https://jobright.ai/jobs/info/shared-job',
     }])
@@ -430,10 +430,10 @@ describe('local deterministic raw normalization', () => {
     })).resolves.toMatchObject({ status: 'completed' })
     const replayed = createFileDatabase(sqlitePath)
     expect(replayed.prepare(`
-      select count(*) as count from source_entities
+      select count(*) as count from jobs
       where identity_kind = 'destination_url' and identity_value = 'https://jobs.lever.co/acme/target-role'
     `).get()).toEqual({ count: 1 })
-    expect(replayed.prepare('select count(*) as count from source_identity_conflicts').get()).toEqual({ count: 1 })
+    expect(replayed.prepare('select count(*) as count from job_identity_conflicts').get()).toEqual({ count: 1 })
     expect(replayed.prepare('pragma foreign_key_check').all()).toEqual([])
     replayed.close()
   })
@@ -452,8 +452,8 @@ describe('local deterministic raw normalization', () => {
     if (!sourceEntityId) throw new Error('Fixture provider entity is missing')
     const sqlite = createFileDatabase(sqlitePath)
     const insert = sqlite.prepare(`
-      insert into source_entity_identities (
-        id, source_entity_id, identity_kind, identity_namespace, identity_value,
+      insert into job_identities (
+        id, job_id, identity_kind, identity_namespace, identity_value,
         provenance_kind, provenance_version, evidence_json, created_at
       ) values (?, ?, 'destination_alias', 'fixture-bound/v1', ?, 'normalization',
         'source-identity-reconciliation/v1', '{}', '2026-07-10T12:01:00.000Z')
@@ -474,13 +474,13 @@ describe('local deterministic raw normalization', () => {
     })
     const inspected = createFileDatabase(sqlitePath)
     expect(inspected.prepare(`
-      select identity_kind from source_entity_identities
-      where source_entity_id = ? and identity_value = 'https://jobs.lever.co/acme/overflow-role'
+      select identity_kind from job_identities
+      where job_id = ? and identity_value = 'https://jobs.lever.co/acme/overflow-role'
     `).all(sourceEntityId)).toEqual([])
     expect(inspected.prepare(`
-      select reason from source_identity_conflicts where source_entity_id = ?
+      select reason from job_identity_conflicts where job_id = ?
     `).all(sourceEntityId)).toEqual([{ reason: 'Source entity identity bound is exhausted' }])
-    expect(inspected.prepare('select count(*) as count from source_entity_identities where source_entity_id = ?').get(sourceEntityId)).toEqual({ count: 31 })
+    expect(inspected.prepare('select count(*) as count from job_identities where job_id = ?').get(sourceEntityId)).toEqual({ count: 31 })
     expect(inspected.prepare('pragma foreign_key_check').all()).toEqual([])
     inspected.close()
   })
@@ -504,7 +504,7 @@ describe('local deterministic raw normalization', () => {
     }] })).resolves.toMatchObject({ receipts: [expect.objectContaining({ sourceEntityId: null })] })
     const sqlite = createFileDatabase(sqlitePath)
     expect(normalizationPersistenceState(sqlite)).toEqual({
-      sourceEntities: 0,
+      jobs: 0,
       identities: 0,
       conflicts: 0,
       runs: 0,
@@ -559,10 +559,10 @@ describe('local deterministic raw normalization', () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     sqlite.exec(`
-      insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+      insert into jobs (id, identity_kind, identity_namespace, identity_value, created_at)
       values ('preowner', 'provider_job', 'fixture', 'preowner-job', '2026-07-10T11:00:00.000Z');
-      insert into source_entity_identities (
-        id, source_entity_id, identity_kind, identity_namespace, identity_value,
+      insert into job_identities (
+        id, job_id, identity_kind, identity_namespace, identity_value,
         provenance_kind, provenance_version, evidence_json, created_at
       ) values (
         'preowned-intermediary', 'preowner', 'intermediary_alias', 'job-intermediary/v1',
@@ -596,7 +596,7 @@ describe('local deterministic raw normalization', () => {
       intake.receipts[0].revision.id,
     )).rejects.toThrow('fixture conflict gate failure')
     expect(normalizationPersistenceState(sqlite)).toEqual(before)
-    expect(sqlite.prepare('select count(*) as count from source_identity_conflicts').get()).toEqual({ count: 0 })
+    expect(sqlite.prepare('select count(*) as count from job_identity_conflicts').get()).toEqual({ count: 0 })
     expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
     sqlite.close()
   })
@@ -623,22 +623,22 @@ function fixedDestinationResolver(intermediaryUrl: string): NormalizationResolve
 function normalizationPersistenceState(sqlite: ReturnType<typeof createInMemoryDatabase>) {
   const count = (table: string) => (sqlite.prepare(`select count(*) as count from ${table}`).get() as { count: number }).count
   return {
-    sourceEntities: count('source_entities'),
-    identities: count('source_entity_identities'),
-    conflicts: count('source_identity_conflicts'),
+    jobs: count('jobs'),
+    identities: count('job_identities'),
+    conflicts: count('job_identity_conflicts'),
     runs: count('normalization_runs'),
     attempts: count('normalization_attempts'),
     outcomes: count('normalization_field_outcomes'),
-    candidates: count('canonical_source_candidates'),
+    candidates: count('job_fact_versions'),
     gates: count('normalization_gates'),
   }
 }
 function rawLedgerState(sqlite: ReturnType<typeof createInMemoryDatabase>) {
   const count = (table: string) => (sqlite.prepare(`select count(*) as count from ${table}`).get() as { count: number }).count
   return {
-    records: count('raw_source_records'),
-    revisions: count('raw_source_revisions'),
-    occurrences: count('raw_source_occurrences'),
+    records: count('capture_lineages'),
+    revisions: count('capture_evidence_versions'),
+    occurrences: count('captures'),
   }
 }
 function tempDatabasePath() { return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'normalization-runtime-')), 'db.sqlite') }

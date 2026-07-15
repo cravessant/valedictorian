@@ -1,12 +1,12 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 import {
-  canonicalSourceCandidates,
+  jobFactVersions,
   normalizationFieldOutcomes,
   normalizationGates,
   normalizationRuns,
-  rawSourceOccurrences,
-  rawSourceRevisions,
-  sourcingFindings,
+  captures,
+  captureEvidenceVersions,
+  opportunities,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import type { ConnectorRunRecord } from './connector-run.persistence-types'
@@ -77,14 +77,14 @@ export function reconcileConnectorRunLifecycleCounts(
   const stats = recordFromUnknown(run.stats)
   const occurrences = database
     .select({
-      rawRecordId: rawSourceOccurrences.rawRecordId,
-      rawRevisionId: rawSourceOccurrences.rawRevisionId,
-      revision: rawSourceRevisions.revision,
-      providerRecordId: rawSourceRevisions.providerRecordId,
+      rawRecordId: captures.captureLineageId,
+      rawRevisionId: captures.captureEvidenceVersionId,
+      revision: captureEvidenceVersions.revision,
+      providerRecordId: captureEvidenceVersions.providerRecordId,
     })
-    .from(rawSourceOccurrences)
-    .innerJoin(rawSourceRevisions, eq(rawSourceRevisions.id, rawSourceOccurrences.rawRevisionId))
-    .where(eq(rawSourceOccurrences.connectorRunId, run.id))
+    .from(captures)
+    .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, captures.captureEvidenceVersionId))
+    .where(eq(captures.connectorRunId, run.id))
     .all()
   const capturedRecords = new Set(occurrences.map(({ rawRecordId }) => rawRecordId)).size
   const capturedValidRecords = new Set(
@@ -165,18 +165,18 @@ export function reconcileConnectorRunLifecycleCounts(
         runId: normalizationRuns.id,
         ownerConnectorRunId: normalizationRuns.triggerConnectorRunId,
         gateStatus: normalizationGates.status,
-        candidateId: canonicalSourceCandidates.id,
-        sourceEntityId: canonicalSourceCandidates.sourceEntityId,
-        candidateJson: canonicalSourceCandidates.candidateJson,
+        candidateId: jobFactVersions.id,
+        sourceEntityId: jobFactVersions.jobId,
+        candidateJson: jobFactVersions.jobFactVersionJson,
       })
       .from(normalizationRuns)
       .innerJoin(normalizationGates, eq(normalizationGates.runId, normalizationRuns.id))
       .leftJoin(
-        canonicalSourceCandidates,
-        eq(canonicalSourceCandidates.runId, normalizationRuns.id),
+        jobFactVersions,
+        eq(jobFactVersions.runId, normalizationRuns.id),
       )
       .where(and(
-        eq(normalizationRuns.rawRevisionId, revision.id),
+        eq(normalizationRuns.captureEvidenceVersionId, revision.id),
         eq(normalizationRuns.triggerKind, 'intake'),
       ))
       .orderBy(
@@ -264,14 +264,14 @@ export function reconcileConnectorRunLifecycleCounts(
   for (const job of normalizedJobs) {
     const finding = database
       .select({
-        id: sourcingFindings.id,
-        blocker: sourcingFindings.blocker,
-        createdAt: sourcingFindings.createdAt,
-        dispositionReason: sourcingFindings.dispositionReason,
-        mergeStatus: sourcingFindings.mergeStatus,
+        id: opportunities.id,
+        blocker: opportunities.blocker,
+        createdAt: opportunities.createdAt,
+        dispositionReason: opportunities.dispositionReason,
+        mergeStatus: opportunities.mergeStatus,
       })
-      .from(sourcingFindings)
-      .where(eq(sourcingFindings.sourceEntityId, job.sourceEntityId))
+      .from(opportunities)
+      .where(eq(opportunities.jobId, job.sourceEntityId))
       .get()
     if (!finding) {
       sourcing.unclassified += 1

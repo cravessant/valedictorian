@@ -7,8 +7,8 @@ import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobri
 import {
   normalizationAttempts,
   normalizationFieldOutcomes,
-  rawSourceOccurrences,
-  rawSourceRevisions,
+  captures,
+  captureEvidenceVersions,
   retryWork,
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
@@ -101,15 +101,15 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     expect(urls.filter((url) => url.includes('/swan/recommend/search'))).toHaveLength(2)
     expect(urls.filter((url) => url.endsWith('/swan/share/job/job-success'))).toHaveLength(1)
     expect(urls.filter((url) => url.endsWith('/swan/share/job/job-retry'))).toHaveLength(2)
-    const revisions = database.select().from(rawSourceRevisions).all()
+    const revisions = database.select().from(captureEvidenceVersions).all()
     const attempts = database.select().from(normalizationAttempts).all()
     const outcomes = database.select().from(normalizationFieldOutcomes).all()
     const successfulRevisionIds = revisions.filter(({ providerRecordId }) => providerRecordId === 'job-success').map(({ id }) => id)
     const retriedRevisionIds = revisions.filter(({ providerRecordId }) => providerRecordId === 'job-retry').map(({ id }) => id)
     expect(retriedRevisionIds).toHaveLength(1)
-    const retriedAuthAttempts = attempts.filter(({ rawRevisionId, resolverId }) =>
-      retriedRevisionIds.includes(rawRevisionId) && resolverId === 'jobright.authenticated-destination')
-    expect(attempts.filter(({ rawRevisionId, resolverId }) => successfulRevisionIds.includes(rawRevisionId) && resolverId === 'jobright.authenticated-destination')).toHaveLength(1)
+    const retriedAuthAttempts = attempts.filter(({ captureEvidenceVersionId, resolverId }) =>
+      retriedRevisionIds.includes(captureEvidenceVersionId) && resolverId === 'jobright.authenticated-destination')
+    expect(attempts.filter(({ captureEvidenceVersionId, resolverId }) => successfulRevisionIds.includes(captureEvidenceVersionId) && resolverId === 'jobright.authenticated-destination')).toHaveLength(1)
     expect(retriedAuthAttempts).toHaveLength(2)
     const retriedAttemptIds = new Set(retriedAuthAttempts.map(({ id }) => id))
     expect(outcomes.filter(({ attemptId, field, status }) =>
@@ -119,7 +119,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     expect(database.select().from(retryWork).all().filter(({ kind }) => kind === 'normalization')).toEqual([
       expect.objectContaining({
         kind: 'normalization',
-        rawRevisionId: retriedRevisionIds[0],
+        captureEvidenceVersionId: retriedRevisionIds[0],
         resolverId: 'jobright.authenticated-destination',
         state: 'completed',
         acquiredAt: null,
@@ -127,7 +127,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
         acquisitionRunId: null,
       }),
     ])
-    expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(4)
+    expect(database.select().from(captures).all()).toHaveLength(4)
     sqlite.close()
   })
 
@@ -194,14 +194,14 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
     expect(detailCalls.get('job-a')).toBe(1)
     expect(detailCalls.get('job-b') ?? 0).toBe(0)
-    const revisions = database.select().from(rawSourceRevisions).all()
+    const revisions = database.select().from(captureEvidenceVersions).all()
     const jobARevision = revisions.find(({ providerRecordId }) => providerRecordId === 'job-a')
     const jobBRevision = revisions.find(({ providerRecordId }) => providerRecordId === 'job-b')
     expect(jobARevision).toBeTruthy()
     expect(jobBRevision).toBeTruthy()
     const [jobARetry] = database.select().from(retryWork).all().filter(({ kind }) => kind === 'normalization')
     expect(jobARetry).toMatchObject({
-      rawRevisionId: jobARevision!.id,
+      captureEvidenceVersionId: jobARevision!.id,
       resolverId: 'jobright.authenticated-destination',
       state: 'scheduled',
     })
@@ -230,7 +230,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       filterSignature: null,
       checkpointSchemaVersion: null,
       checkpointGeneration: null,
-      rawRevisionId: jobBRevision!.id,
+      captureEvidenceVersionId: jobBRevision!.id,
       resolverId: 'jobright.authenticated-destination',
       resolverVersion: 'jobright-authenticated-destination@1',
       inputHash: 'sha256:seeded-job-b-authenticated-destination',
@@ -325,22 +325,22 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     expect(detailCalls.get('job-a')).toBe(2)
     expect(detailCalls.get('job-b') ?? 0).toBe(0)
     const attempts = database.select().from(normalizationAttempts).all()
-    expect(attempts.filter(({ rawRevisionId, resolverId }) =>
-      rawRevisionId === jobARevision!.id && resolverId === 'jobright.authenticated-destination')).toHaveLength(2)
-    expect(attempts.filter(({ rawRevisionId, resolverId }) =>
-      rawRevisionId === jobBRevision!.id && resolverId === 'jobright.authenticated-destination')).toHaveLength(0)
+    expect(attempts.filter(({ captureEvidenceVersionId, resolverId }) =>
+      captureEvidenceVersionId === jobARevision!.id && resolverId === 'jobright.authenticated-destination')).toHaveLength(2)
+    expect(attempts.filter(({ captureEvidenceVersionId, resolverId }) =>
+      captureEvidenceVersionId === jobBRevision!.id && resolverId === 'jobright.authenticated-destination')).toHaveLength(0)
 
     const retryRows = database.select().from(retryWork).all().filter(({ kind }) => kind === 'normalization')
     expect(retryRows).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        rawRevisionId: jobARevision!.id,
+        captureEvidenceVersionId: jobARevision!.id,
         state: 'completed',
         acquisitionRunId: null,
         acquiredAt: null,
         acquisitionToken: null,
       }),
       expect.objectContaining({
-        rawRevisionId: jobBRevision!.id,
+        captureEvidenceVersionId: jobBRevision!.id,
         state: 'scheduled',
         nextAttemptAt: jobBNextAttemptAt,
         acquisitionRunId: null,
@@ -361,7 +361,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     const untouchedBefore = retryStateBefore.find(({ sourceId }) => sourceId === 'jobright.public:job-b')
     const untouchedAfter = retryStateAfter.find(({ sourceId }) => sourceId === 'jobright.public:job-b')
     expect(untouchedAfter).toEqual(untouchedBefore)
-    expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(4)
+    expect(database.select().from(captures).all()).toHaveLength(4)
     sqlite.close()
   })
 
@@ -423,12 +423,12 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       coverageStartedAt: '2026-07-11T11:00:00.000Z', coverageEndedAt: clock,
     })
     expect(first.retryHints).toMatchObject({ state: 'scheduled', reason: 'server_failure' })
-    const revisionIds = database.select().from(rawSourceRevisions).all()
+    const revisionIds = database.select().from(captureEvidenceVersions).all()
       .filter(({ providerRecordId }) => providerRecordId === 'job-fail')
       .map(({ id }) => id)
     expect(revisionIds).toHaveLength(1)
-    expect(database.select().from(normalizationAttempts).all().filter(({ rawRevisionId, resolverId }) =>
-      revisionIds.includes(rawRevisionId) && resolverId === 'jobright.authenticated-destination')).toHaveLength(1)
+    expect(database.select().from(normalizationAttempts).all().filter(({ captureEvidenceVersionId, resolverId }) =>
+      revisionIds.includes(captureEvidenceVersionId) && resolverId === 'jobright.authenticated-destination')).toHaveLength(1)
 
     clock = first.retryHints!.nextAttemptAt!
     const second = await client.connectors.runs.trigger({
@@ -441,15 +441,15 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
     expect(second).toMatchObject({ status: 'completed', outcome: { kind: 'yielded' } })
     expect(database.select().from(normalizationFieldOutcomes).all().filter(({ field, status, attemptId }) => {
       const attempt = database.select().from(normalizationAttempts).all()
-        .find(({ id, rawRevisionId, resolverId }) =>
+        .find(({ id, captureEvidenceVersionId, resolverId }) =>
           id === attemptId
-          && revisionIds.includes(rawRevisionId)
+          && revisionIds.includes(captureEvidenceVersionId)
           && resolverId === 'jobright.authenticated-destination')
       return Boolean(attempt) && field === 'destinationUrl' && status === 'resolved'
     })).toHaveLength(0)
     expect(database.select().from(retryWork).all().filter(({ kind }) => kind === 'normalization')).toEqual([
       expect.objectContaining({
-        rawRevisionId: revisionIds[0],
+        captureEvidenceVersionId: revisionIds[0],
         resolverId: 'jobright.authenticated-destination',
         state: 'scheduled',
         acquisitionRunId: null,
@@ -458,7 +458,7 @@ describe('runtime local Valedictorian client Jobright normalization retry', () =
       }),
     ])
     expect(database.select().from(retryWork).all().some(({ state }) => state === 'completed')).toBe(false)
-    expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(1)
+    expect(database.select().from(captures).all()).toHaveLength(1)
     sqlite.close()
   })
 

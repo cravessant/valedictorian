@@ -4,7 +4,7 @@ import {
   applicationLinks,
   applicationScores,
   applications,
-  sourcingFindings,
+  opportunities,
   workflowRuns,
   workflowRunSteps,
 } from '../../db/schema'
@@ -55,7 +55,7 @@ describe('sample applications seed', () => {
         .where(eq(workflowRunSteps.workflowRunId, 'workflow-run-sourcing-sample-linkedin'))
         .all(),
     ).toHaveLength(3)
-    expect(database.select().from(sourcingFindings).all()).toMatchObject([
+    expect(database.select().from(opportunities).all()).toMatchObject([
       {
         companyName: 'Delta Labs',
         mergeStatus: 'new',

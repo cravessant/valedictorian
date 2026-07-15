@@ -4,7 +4,7 @@ import {
   applicationEvents,
   applicationScores,
   applications,
-  sourcingFindings,
+  opportunities,
   workflowRunSteps,
 } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
@@ -214,7 +214,7 @@ describe('SQLite sourcing processor', () => {
     })
     expect(database.select().from(applications).all()).toHaveLength(applicationCount)
     expect(
-      database.select().from(sourcingFindings).where(eq(sourcingFindings.id, finding.id)).get(),
+      database.select().from(opportunities).where(eq(opportunities.id, finding.id)).get(),
     ).toMatchObject({ mergeStatus: 'blocked' })
   })
 

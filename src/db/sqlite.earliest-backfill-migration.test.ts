@@ -66,7 +66,7 @@ describe('earliest backfill date migration', () => {
       select count(*) as count from retry_work where id = 'keep-normalization-retry'
     `).get()).toEqual({ count: 1 })
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 27 })
+      .toEqual({ count: 28 })
 
     migrateDatabase(database)
     expect(
@@ -84,7 +84,7 @@ describe('earliest backfill date migration', () => {
       expect.arrayContaining(['earliest_backfill_date']),
     )
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 27 })
+      .toEqual({ count: 28 })
     database.close()
   })
 })
@@ -207,6 +207,7 @@ function seedObsoleteJobrightV4State(database: ReturnType<typeof createInMemoryD
 }
 
 function snapshotProtectedHistory(database: ReturnType<typeof createInMemoryDatabase>) {
+  const canonical = Boolean(database.prepare("select 1 from sqlite_master where type = 'table' and name = 'capture_lineages'").get())
   return {
     connector_instances: database.prepare(`
       select id, connector_id, display_name, enabled, config_json, auth_json, filters_json,
@@ -214,9 +215,15 @@ function snapshotProtectedHistory(database: ReturnType<typeof createInMemoryData
     `).all(),
     connector_runs: database.prepare('select id from connector_runs order by id').all(),
     connector_observations: database.prepare('select id from connector_observations order by id').all(),
-    raw_source_records: database.prepare('select id from raw_source_records order by id').all(),
-    raw_source_revisions: database.prepare('select id from raw_source_revisions order by id').all(),
-    raw_source_occurrences: database.prepare('select id from raw_source_occurrences order by id').all(),
+    raw_source_records: database.prepare(canonical
+      ? 'select id from capture_lineages order by id'
+      : 'select id from raw_source_records order by id').all(),
+    raw_source_revisions: database.prepare(canonical
+      ? 'select id from capture_evidence_versions order by id'
+      : 'select id from raw_source_revisions order by id').all(),
+    raw_source_occurrences: database.prepare(canonical
+      ? 'select id from captures order by id'
+      : 'select id from raw_source_occurrences order by id').all(),
     normalization_retry: database.prepare(`
       select id from retry_work where id = 'keep-normalization-retry'
     `).all(),

@@ -147,7 +147,7 @@ function renderApp(rawRecordsApi = {
   return rawRecordsApi
 }
 describe('sourcing normalization inspection', () => {
-  it('exposes Normalization beside Findings and keeps sparse raw captures visible', async () => {
+  it('exposes Normalization beside Opportunities and keeps sparse Captures visible', async () => {
     renderApp()
     await screen.findByRole('table', { name: 'Applications' })
     const navigation = within(
@@ -156,9 +156,9 @@ describe('sourcing normalization inspection', () => {
     fireEvent.click(navigation.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(navigation.getByRole('button', { name: 'Normalization' }))
 
-    expect(navigation.getByRole('button', { name: 'Findings' })).toBeInTheDocument()
-    const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
-    const row = within(table).getByRole('button', { name: 'Inspect raw record' }).closest('tr')!
+    expect(navigation.getByRole('button', { name: 'Opportunities' })).toBeInTheDocument()
+    const table = await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
+    const row = within(table).getByRole('button', { name: 'Inspect Capture lineage' }).closest('tr')!
     expect(row).toHaveTextContent('Jobright')
     expect(row).toHaveTextContent('Missing title')
     expect(row).toHaveTextContent('Missing company')
@@ -172,7 +172,7 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    await screen.findByRole('table', { name: 'Raw sourcing normalization' })
+    await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
 
     fireEvent.change(screen.getByLabelText('Source adapter'), {
       target: { value: 'jobright' },
@@ -189,13 +189,13 @@ describe('sourcing normalization inspection', () => {
     fireEvent.change(screen.getByLabelText('Received to'), {
       target: { value: '2026-07-10' },
     })
-    fireEvent.change(screen.getByLabelText('Normalization status'), {
+    fireEvent.change(screen.getByLabelText('Job normalization status'), {
       target: { value: 'completed' },
     })
-    fireEvent.change(screen.getByLabelText('Admission gate status'), {
+    fireEvent.change(screen.getByLabelText('Opportunity admission status'), {
       target: { value: 'needs_enrichment' },
     })
-    fireEvent.change(screen.getByLabelText('Projection status'), {
+    fireEvent.change(screen.getByLabelText('Opportunity projection status'), {
       target: { value: 'not_eligible' },
     })
 
@@ -220,14 +220,14 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    await screen.findByRole('button', { name: 'Inspect raw record' })
+    await screen.findByRole('button', { name: 'Inspect Capture lineage' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
-    expect(await screen.findByRole('button', { name: 'Inspect raw record' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' })).toBeInTheDocument()
     expect(list).toHaveBeenLastCalledWith({ cursor: 'next-page', limit: 50 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Previous page' }))
-    expect(await screen.findByRole('button', { name: 'Inspect raw record' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' })).toBeInTheDocument()
     expect(list).toHaveBeenLastCalledWith({ limit: 50 })
   })
 
@@ -243,10 +243,10 @@ describe('sourcing normalization inspection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
 
     expect(await screen.findByRole('status', {
-      name: 'No raw sourcing records match the current filters',
+      name: 'No Capture lineages match the current filters',
     })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Raw sourcing filters' })).toBeInTheDocument()
-    expect(screen.queryByRole('table', { name: 'Raw sourcing normalization' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Capture normalization filters' })).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Capture-to-Job normalization' })).not.toBeInTheDocument()
   })
 
   it('announces list failures and retries through the same public query', async () => {
@@ -258,12 +258,12 @@ describe('sourcing normalization inspection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
 
-    const alert = await screen.findByRole('alert', { name: 'Raw sourcing records unavailable' })
-    expect(alert).toHaveTextContent('Raw sourcing records could not be loaded.')
+    const alert = await screen.findByRole('alert', { name: 'Capture lineages unavailable' })
+    expect(alert).toHaveTextContent('Capture lineages could not be loaded.')
     expect(alert).not.toHaveTextContent('unsafe upstream details')
     fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByRole('button', { name: 'Inspect raw record' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' })).toBeInTheDocument()
     expect(list).toHaveBeenCalledTimes(2)
   })
 
@@ -288,23 +288,23 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
+    const table = await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
     expect(within(table).getByRole('columnheader', { name: 'Source' })).toBeInTheDocument()
     expect(within(table).queryByRole('columnheader', { name: 'Connector capture' }))
       .not.toBeInTheDocument()
     const row = within(table).getAllByRole('row')[1]
     expect(row).toHaveTextContent('LinkedIn')
     expect(row).not.toHaveTextContent('jobright')
-    fireEvent.click(within(row).getByRole('button', { name: 'Inspect raw record' }))
+    fireEvent.click(within(row).getByRole('button', { name: 'Inspect Capture lineage' }))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-1' })
-    expect(within(dialog).getByRole('heading', { name: 'Latest revision facts' })).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'Capture lineage raw-record-1' })
+    expect(within(dialog).getByRole('heading', { name: 'Latest evidence version facts' })).toBeInTheDocument()
     expect(dialog).toHaveTextContent('Platform Engineer')
     expect(dialog).toHaveTextContent('Example Co')
     expect(dialog).toHaveTextContent('Missing location')
     expect(dialog).toHaveTextContent('Missing description')
     expect(dialog).toHaveTextContent('https://jobs.example.test/platform')
-    expect(within(dialog).getByRole('table', { name: 'Occurrence and revision lineage' }))
+    expect(within(dialog).getByRole('table', { name: 'Captures and evidence versions' }))
       .toHaveTextContent('occurrence-1')
     const provenance = within(dialog).getByRole('region', { name: 'Capture provenance' })
     expect(provenance).toHaveTextContent('jobright · connector · 0.11.0')
@@ -345,10 +345,10 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Inspect raw record' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Inspect Capture lineage' }))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-1' })
-    const outcomes = within(dialog).getByRole('region', { name: 'Normalization resolver outcomes' })
+    const dialog = await screen.findByRole('dialog', { name: 'Capture lineage raw-record-1' })
+    const outcomes = within(dialog).getByRole('region', { name: 'Job normalization resolver outcomes' })
     expect(outcomes).toHaveTextContent('jobright.raw@2.1.0')
     expect(outcomes).toHaveTextContent('Role title')
     expect(outcomes).toHaveTextContent('Resolved')
@@ -358,14 +358,14 @@ describe('sourcing normalization inspection', () => {
     expect(outcomes).toHaveTextContent('Compensation')
     expect(outcomes).toHaveTextContent('Abstained')
 
-    const gate = within(dialog).getByRole('region', { name: 'Sourcing admission gate' })
+    const gate = within(dialog).getByRole('region', { name: 'Opportunity admission gate' })
     expect(gate).toHaveTextContent('Needs enrichment')
     expect(gate).toHaveTextContent('Company is missing and destination conflicts.')
     expect(gate).toHaveTextContent('Missing: Company name')
     expect(gate).toHaveTextContent('Conflicting: Destination URL')
     expect(gate).toHaveTextContent('normalization-gate@1')
-    expect(dialog).toHaveTextContent('No canonical candidate')
-    expect(dialog).toHaveTextContent('Not eligible for projection')
+    expect(dialog).toHaveTextContent('No Job fact version')
+    expect(dialog).toHaveTextContent('Not eligible for Opportunity projection')
     expect(getNormalization).toHaveBeenCalledWith('raw-record-1')
   })
 
@@ -392,17 +392,17 @@ describe('sourcing normalization inspection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
 
-    const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
-    expect(within(table).getByRole('columnheader', { name: 'Canonical candidate' }))
+    const table = await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
+    expect(within(table).getByRole('columnheader', { name: 'Job fact version' }))
       .toBeInTheDocument()
     const projectedRow = within(table).getByText('Projected').closest('tr')!
     expect(projectedRow).toHaveTextContent('Completed')
     expect(projectedRow).toHaveTextContent('Passed')
-    expect(projectedRow).toHaveTextContent('Candidate created')
+    expect(projectedRow).toHaveTextContent('Job facts persisted')
     expect(projectedRow).toHaveTextContent('Projected')
     const rejectedRow = within(table).getByText('Rejected').closest('tr')!
     expect(rejectedRow).toHaveTextContent('Rejected')
-    expect(rejectedRow).toHaveTextContent('No candidate')
+    expect(rejectedRow).toHaveTextContent('No Job facts')
     expect(rejectedRow).toHaveTextContent('Not projected')
     expect(table).not.toHaveTextContent(candidateId)
     expect(table).not.toHaveTextContent(findingId)
@@ -456,7 +456,7 @@ describe('sourcing normalization inspection', () => {
       name: `Inspect normalization rows from ${run.id}`,
     }))
 
-    expect(await screen.findByRole('button', { name: 'Inspect raw record' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' })).toBeInTheDocument()
     expect(screen.queryByText('raw-from-other-run')).not.toBeInTheDocument()
     expect(rawList).toHaveBeenCalledOnce()
     expect(rawList).toHaveBeenCalledWith({
@@ -497,18 +497,18 @@ describe('sourcing normalization inspection', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Inspect raw record' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Inspect Capture lineage' }))
 
-    const dialog = await screen.findByRole('dialog', { name: 'Raw record raw-record-1' })
+    const dialog = await screen.findByRole('dialog', { name: 'Capture lineage raw-record-1' })
     const destination = within(dialog).getByRole('link', { name: 'Open canonical destination' })
     expect(destination).toHaveAttribute('href', 'https://jobs.example.test/platform')
     expect(dialog).not.toHaveTextContent('javascript:')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Open finding finding-51' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Open Opportunity finding-51' }))
 
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'sourcing')
-    expect(screen.queryByRole('dialog', { name: 'Raw record raw-record-1' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Capture lineage raw-record-1' })).not.toBeInTheDocument()
     const focusedRow = await screen.findByRole('row', {
-      name: 'Focused sourcing finding finding-51',
+      name: 'Focused Opportunity finding-51',
     })
     expect(focusedRow).toHaveTextContent('Located Target Co')
     expect(focusedRow).toHaveFocus()

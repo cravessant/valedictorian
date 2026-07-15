@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { ProcessSourcingCandidateInput, SourcingFinding } from 'sparxie'
-import { applicationEvents, applications, sourcingFindings } from '../../db/schema'
+import { applicationEvents, applications, opportunities } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import { createSqliteApplicationRepository } from '../applications/application.repository'
 import { createSqliteScoringRepository } from '../scoring/scoring.repository'
@@ -123,16 +123,16 @@ async function updateFindingDecision(
   const now = new Date().toISOString()
 
   database
-    .update(sourcingFindings)
+    .update(opportunities)
     .set({
       blocker: patch.blocker ?? null,
       duplicateNotes: patch.duplicateNotes ?? null,
       mergeStatus: patch.mergeStatus,
-      mergedApplicationId: patch.mergedApplicationId ?? null,
+      applicationId: patch.mergedApplicationId ?? null,
       mergeNotes: patch.mergeNotes,
       updatedAt: now,
     })
-    .where(eq(sourcingFindings.id, findingId))
+    .where(eq(opportunities.id, findingId))
     .run()
 
   return selectProcessedFinding(database, findingId)

@@ -9,8 +9,8 @@ import {
   normalizationAttempts,
   normalizationFieldOutcomes,
   normalizationRuns,
-  rawSourceOccurrences,
-  rawSourceRevisions,
+  captures,
+  captureEvidenceVersions,
   retryWork,
 } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
@@ -226,17 +226,17 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const verifySqlite = createFileDatabase(sqlitePath)
     const verifyDb = createDrizzleDatabase(verifySqlite)
     const verifyRepository = createSqliteConnectorRepository(verifyDb)
-    const revisionId = verifyDb.select().from(rawSourceRevisions).all()
+    const revisionId = verifyDb.select().from(captureEvidenceVersions).all()
       .find(({ providerRecordId }) => providerRecordId === 'job-final')!.id
-    expect(verifyDb.select().from(normalizationAttempts).all().filter(({ rawRevisionId, resolverId }) =>
-      rawRevisionId === revisionId && resolverId === 'jobright.authenticated-destination').length).toBeGreaterThanOrEqual(2)
+    expect(verifyDb.select().from(normalizationAttempts).all().filter(({ captureEvidenceVersionId, resolverId }) =>
+      captureEvidenceVersionId === revisionId && resolverId === 'jobright.authenticated-destination').length).toBeGreaterThanOrEqual(2)
     expect(verifyDb.select().from(normalizationFieldOutcomes).all().some(({ field, status }) =>
       field === 'destinationUrl' && status === 'resolved')).toBe(true)
 
     const retryRows = verifyDb.select().from(retryWork).all().filter(({ kind }) => kind === 'normalization')
     expect(retryRows).toEqual([
       expect.objectContaining({
-        rawRevisionId: revisionId,
+        captureEvidenceVersionId: revisionId,
         state: 'scheduled',
         acquisitionRunId: null,
         acquiredAt: null,
@@ -331,13 +331,13 @@ describe('runtime Jobright normalization retry atomicity', () => {
 
     midSqlite.exec('drop trigger inject_checkpoint_recovery_failure')
     const detailCallsBeforeRecovery = detailCalls
-    const revisionId = midDb.select().from(rawSourceRevisions).all()
+    const revisionId = midDb.select().from(captureEvidenceVersions).all()
       .find(({ providerRecordId }) => providerRecordId === 'job-recover')!.id
     const retryBeforeRecovery = midDb.select().from(retryWork).all()
-      .find(({ rawRevisionId }) => rawRevisionId === revisionId)!
+      .find(({ captureEvidenceVersionId }) => captureEvidenceVersionId === revisionId)!
     const authAttempts = midDb.select().from(normalizationAttempts).all()
-      .filter(({ rawRevisionId, resolverId }) =>
-        rawRevisionId === revisionId && resolverId === 'jobright.authenticated-destination')
+      .filter(({ captureEvidenceVersionId, resolverId }) =>
+        captureEvidenceVersionId === revisionId && resolverId === 'jobright.authenticated-destination')
     const authAttemptsBefore = authAttempts.length
     const currentWindowSuccess = authAttempts.find(({ status, completedAt }) =>
       status === 'completed'
@@ -375,11 +375,11 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const verifySqlite = createFileDatabase(sqlitePath)
     const verifyDb = createDrizzleDatabase(verifySqlite)
     const verifyRepository = createSqliteConnectorRepository(verifyDb)
-    expect(verifyDb.select().from(normalizationAttempts).all().filter(({ rawRevisionId, resolverId }) =>
-      rawRevisionId === revisionId && resolverId === 'jobright.authenticated-destination')).toHaveLength(authAttemptsBefore)
+    expect(verifyDb.select().from(normalizationAttempts).all().filter(({ captureEvidenceVersionId, resolverId }) =>
+      captureEvidenceVersionId === revisionId && resolverId === 'jobright.authenticated-destination')).toHaveLength(authAttemptsBefore)
     expect(verifyDb.select().from(retryWork).all()).toEqual([
       expect.objectContaining({
-        rawRevisionId: revisionId,
+        captureEvidenceVersionId: revisionId,
         state: 'completed',
         acquisitionRunId: null,
         acquiredAt: null,
@@ -388,7 +388,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     ])
     const checkpointAfter = await verifyRepository.getCheckpoint({ connectorInstanceId: 'jobright-recover', filterSignature })
     expect((checkpointAfter!.checkpoint as { retryState: unknown[] }).retryState).toEqual([])
-    expect(verifyDb.select().from(rawSourceOccurrences).all()).toHaveLength(2)
+    expect(verifyDb.select().from(captures).all()).toHaveLength(2)
     verifySqlite.close()
   })
 
@@ -453,9 +453,9 @@ describe('runtime Jobright normalization retry atomicity', () => {
 
     const midSqlite = createFileDatabase(sqlitePath)
     const midDb = createDrizzleDatabase(midSqlite)
-    const revisionId = midDb.select().from(rawSourceRevisions).all()
+    const revisionId = midDb.select().from(captureEvidenceVersions).all()
       .find(({ providerRecordId }) => providerRecordId === 'job-reopen')!.id
-    const retryRow = midDb.select().from(retryWork).all().find(({ rawRevisionId }) => rawRevisionId === revisionId)!
+    const retryRow = midDb.select().from(retryWork).all().find(({ captureEvidenceVersionId }) => captureEvidenceVersionId === revisionId)!
     expect(retryRow).toMatchObject({
       state: 'scheduled',
       resolverId: 'jobright.authenticated-destination',
@@ -466,13 +466,13 @@ describe('runtime Jobright normalization retry atomicity', () => {
     // Prior-window success for the same identity cardinality key must not satisfy
     // recovery for the currently outstanding retry window (lastAttemptAt).
     const priorSuccessAt = new Date(Date.parse(retryRow.lastAttemptAt) - 60_000).toISOString()
-    const rawRecordId = midDb.select().from(rawSourceRevisions).all()
-      .find(({ id }) => id === revisionId)!.rawRecordId
+    const captureLineageId = midDb.select().from(captureEvidenceVersions).all()
+      .find(({ id }) => id === revisionId)!.captureLineageId
     midDb.insert(normalizationRuns).values({
       id: 'normalization-run-prior-success',
-      rawRecordId,
-      rawRevisionId: revisionId,
-      triggerOccurrenceId: null,
+      captureLineageId,
+      captureEvidenceVersionId: revisionId,
+      triggerCaptureId: null,
       triggerConnectorInstanceId: null,
       triggerConnectorRunId: null,
       inputHash: 'sha256:prior-success-run',
@@ -488,7 +488,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     midDb.insert(normalizationAttempts).values({
       id: 'attempt-prior-success',
       runId: 'normalization-run-prior-success',
-      rawRevisionId: revisionId,
+      captureEvidenceVersionId: revisionId,
       sequence: 0,
       resolverId: retryRow.resolverId!,
       resolverVersion: retryRow.resolverVersion!,
@@ -528,7 +528,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
 
     const probeNormalization = createSqliteNormalizationRepository(midDb)
     expect(probeNormalization.hasExactSuccessfulNormalizationAttempt({
-      rawRevisionId: revisionId,
+      captureEvidenceVersionId: revisionId,
       resolverId: retryRow.resolverId!,
       resolverVersion: retryRow.resolverVersion!,
       inputHash: retryRow.inputHash!,
@@ -548,7 +548,7 @@ describe('runtime Jobright normalization retry atomicity', () => {
     const verifyRepository = createSqliteConnectorRepository(verifyDb)
     expect(verifyDb.select().from(retryWork).all().filter(({ kind }) => kind === 'normalization')).toEqual([
       expect.objectContaining({
-        rawRevisionId: revisionId,
+        captureEvidenceVersionId: revisionId,
         state: 'scheduled',
         acquisitionRunId: null,
       }),

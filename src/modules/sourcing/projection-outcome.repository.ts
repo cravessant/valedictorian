@@ -2,11 +2,11 @@ import crypto from 'node:crypto'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { RawSourceProjectionResult, SourcingProjectionFindingReference } from 'sparxie'
 import {
-  canonicalSourceCandidates,
+  jobFactVersions,
   normalizationGates,
   normalizationRuns,
-  rawSourceRevisions,
-  sourcingFindings,
+  captureEvidenceVersions,
+  opportunities,
   sourcingProjectionOutcomes,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
@@ -23,22 +23,24 @@ export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabas
     }) {
       transaction.insert(sourcingProjectionOutcomes).values({
         id: crypto.randomUUID(),
-        ...input,
+        captureLineageId: input.rawRecordId,
+        captureEvidenceVersionId: input.rawRevisionId,
+        jobFactVersionId: input.canonicalCandidateId,
         status: 'pending',
-        findingId: null,
+        opportunityId: null,
         failureCode: null,
         failureRetryable: null,
         projectedAt: null,
         failedAt: null,
         createdAt: input.now,
         updatedAt: input.now,
-      }).onConflictDoNothing({ target: sourcingProjectionOutcomes.canonicalCandidateId }).run()
+      }).onConflictDoNothing({ target: sourcingProjectionOutcomes.jobFactVersionId }).run()
     },
     markProjected(transaction: Transaction, canonicalCandidateId: string, findingId: string, projectedAt: string) {
       const result = transaction.update(sourcingProjectionOutcomes).set({
-        status: 'projected', findingId, projectedAt, updatedAt: projectedAt,
+        status: 'projected', opportunityId: findingId, projectedAt, updatedAt: projectedAt,
       }).where(and(
-        eq(sourcingProjectionOutcomes.canonicalCandidateId, canonicalCandidateId),
+        eq(sourcingProjectionOutcomes.jobFactVersionId, canonicalCandidateId),
         eq(sourcingProjectionOutcomes.status, 'pending'),
       )).run()
       if (result.changes !== 1) throw new Error('Pending projection outcome was not found')
@@ -48,25 +50,25 @@ export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabas
         status: 'failed', failureCode: 'projection_failed', failureRetryable: false,
         failedAt, updatedAt: failedAt,
       }).where(and(
-        eq(sourcingProjectionOutcomes.canonicalCandidateId, canonicalCandidateId),
+        eq(sourcingProjectionOutcomes.jobFactVersionId, canonicalCandidateId),
         eq(sourcingProjectionOutcomes.status, 'pending'),
       )).run()
       if (result.changes !== 1) throw new Error('Pending projection outcome was not found')
     },
     get(rawRevisionId: string): RawSourceProjectionResult | null {
-      const revision = database.select().from(rawSourceRevisions)
-        .where(eq(rawSourceRevisions.id, rawRevisionId)).get()
+      const revision = database.select().from(captureEvidenceVersions)
+        .where(eq(captureEvidenceVersions.id, rawRevisionId)).get()
       if (!revision) return null
       const outcome = database.select().from(sourcingProjectionOutcomes)
-        .where(eq(sourcingProjectionOutcomes.rawRevisionId, rawRevisionId))
+        .where(eq(sourcingProjectionOutcomes.captureEvidenceVersionId, rawRevisionId))
         .orderBy(desc(sourcingProjectionOutcomes.createdAt), sql`${sourcingProjectionOutcomes}.rowid desc`).get()
       if (outcome) {
         const base = {
-          rawRecordId: outcome.rawRecordId,
-          rawRevisionId: outcome.rawRevisionId,
+          rawRecordId: outcome.captureLineageId,
+          rawRevisionId: outcome.captureEvidenceVersionId,
           normalizationStatus: 'completed' as const,
           gateStatus: 'passed' as const,
-          canonicalCandidateId: outcome.canonicalCandidateId,
+          canonicalCandidateId: outcome.jobFactVersionId,
           updatedAt: outcome.updatedAt,
         }
         if (outcome.status === 'pending') return { ...base, status: 'pending' }
@@ -75,10 +77,10 @@ export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabas
           failure: { code: outcome.failureCode as 'projection_failed', retryable: outcome.failureRetryable! },
         }
         const finding = database.select({
-          id: sourcingFindings.id,
-          mergeStatus: sourcingFindings.mergeStatus,
-          mergedApplicationId: sourcingFindings.mergedApplicationId,
-        }).from(sourcingFindings).where(eq(sourcingFindings.id, outcome.findingId!)).get()
+          id: opportunities.id,
+          mergeStatus: opportunities.mergeStatus,
+          mergedApplicationId: opportunities.applicationId,
+        }).from(opportunities).where(eq(opportunities.id, outcome.opportunityId!)).get()
         if (!finding) throw new Error('Projected finding reference is missing')
         return {
           ...base, status: 'projected', projectedAt: outcome.projectedAt!,
@@ -89,21 +91,21 @@ export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabas
       const latest = database.select({
         status: normalizationRuns.status,
         updatedAt: normalizationRuns.updatedAt,
-        candidateId: canonicalSourceCandidates.id,
+        candidateId: jobFactVersions.id,
         gateStatus: normalizationGates.status,
       }).from(normalizationRuns)
-        .leftJoin(canonicalSourceCandidates, eq(canonicalSourceCandidates.runId, normalizationRuns.id))
+        .leftJoin(jobFactVersions, eq(jobFactVersions.runId, normalizationRuns.id))
         .leftJoin(normalizationGates, eq(normalizationGates.runId, normalizationRuns.id))
-        .where(eq(normalizationRuns.rawRevisionId, rawRevisionId))
+        .where(eq(normalizationRuns.captureEvidenceVersionId, rawRevisionId))
         .orderBy(desc(normalizationRuns.updatedAt), sql`${normalizationRuns}.rowid desc`).get()
       if (!latest) return {
-        status: 'not_eligible', rawRecordId: revision.rawRecordId, rawRevisionId,
+        status: 'not_eligible', rawRecordId: revision.captureLineageId, rawRevisionId,
         normalizationStatus: null, canonicalCandidateId: null, gateStatus: null,
         updatedAt: revision.createdAt,
       }
       const normalizationStatus = latest.status as RawSourceProjectionResult['normalizationStatus']
       return {
-        status: 'not_eligible', rawRecordId: revision.rawRecordId, rawRevisionId,
+        status: 'not_eligible', rawRecordId: revision.captureLineageId, rawRevisionId,
         normalizationStatus,
         canonicalCandidateId: null,
         gateStatus: normalizationStatus === 'completed' ? latest.gateStatus as 'needs_enrichment' | 'rejected' : null,

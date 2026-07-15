@@ -57,8 +57,8 @@ describe('RawNormalizationPage connector-run inspection', () => {
       />,
     )
 
-    expect(screen.getByRole('status', { name: 'Loading raw sourcing records' }))
-      .toHaveTextContent('Loading raw sourcing records')
+    expect(screen.getByRole('status', { name: 'Loading Capture lineages' }))
+      .toHaveTextContent('Loading Capture lineages')
   })
 
   it('hides stale actions during query changes and ignores an older response that finishes last', async () => {
@@ -86,14 +86,14 @@ describe('RawNormalizationPage connector-run inspection', () => {
       />,
     )
 
-    expect(await screen.findByRole('button', { name: 'Inspect raw record' }))
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' }))
       .toBeInTheDocument()
     fireEvent.change(screen.getByRole('textbox', { name: 'Source adapter' }), {
       target: { value: 'first-filter' },
     })
-    expect(screen.getByRole('status', { name: 'Loading raw sourcing records' }))
+    expect(screen.getByRole('status', { name: 'Loading Capture lineages' }))
       .toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Inspect raw record' }))
+    expect(screen.queryByRole('button', { name: 'Inspect Capture lineage' }))
       .not.toBeInTheDocument()
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Source adapter' }), {
@@ -103,14 +103,14 @@ describe('RawNormalizationPage connector-run inspection', () => {
       currentRequest.resolve({ items: [summary('current-row')], nextCursor: null })
       await currentRequest.promise
     })
-    expect(await screen.findByRole('button', { name: 'Inspect raw record' }))
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' }))
       .toBeInTheDocument()
 
     await act(async () => {
       staleRequest.resolve({ items: [summary('stale-row')], nextCursor: null })
       await staleRequest.promise
     })
-    expect(screen.getByRole('button', { name: 'Inspect raw record' }))
+    expect(screen.getByRole('button', { name: 'Inspect Capture lineage' }))
       .toBeInTheDocument()
     expect(screen.queryByText('stale-row')).not.toBeInTheDocument()
   })
@@ -140,10 +140,10 @@ describe('RawNormalizationPage connector-run inspection', () => {
       />,
     )
 
-    const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
+    const table = await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
     expect(table).toHaveTextContent('Apply at https://jobs.example.test/platform today')
     expect(table).not.toHaveTextContent('private-value')
-    expect(screen.getByRole('button', { name: 'Inspect raw record' }))
+    expect(screen.getByRole('button', { name: 'Inspect Capture lineage' }))
       .toBeInTheDocument()
   })
 
@@ -184,7 +184,7 @@ describe('RawNormalizationPage connector-run inspection', () => {
       />,
     )
 
-    const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
+    const table = await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
     expect(table).toHaveTextContent('Jobright')
     expect(table).toHaveTextContent('Manual import')
     expect(table).toHaveTextContent('Unknown source')
@@ -217,7 +217,7 @@ describe('RawNormalizationPage connector-run inspection', () => {
       />,
     )
 
-    const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
+    const table = await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
     const row = within(table).getAllByRole('row')[1]
     expect(row).toHaveTextContent('LinkedIn')
     expect(row).not.toHaveTextContent('jobright')
@@ -248,11 +248,11 @@ describe('RawNormalizationPage connector-run inspection', () => {
       />,
     )
 
-    const table = await screen.findByRole('table', { name: 'Raw sourcing normalization' })
+    const table = await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
     const dataRow = within(table).getAllByRole('row')[1]
     expect(within(dataRow).getAllByRole('cell')).toHaveLength(8)
-    const inspect = within(dataRow).getByRole('button', { name: 'Inspect raw record' })
-    expect(inspect).toHaveAccessibleName('Inspect raw record')
+    const inspect = within(dataRow).getByRole('button', { name: 'Inspect Capture lineage' })
+    expect(inspect).toHaveAccessibleName('Inspect Capture lineage')
   })
 })
 

@@ -146,18 +146,18 @@ describe('continuous connector contract migration', () => {
     })
     expect(database.prepare("select count(*) as count from connector_checkpoints where connector_instance_id = 'jobright-contract'").get())
       .toEqual({ count: 1 })
-    expect(database.prepare("select count(*) as count from raw_source_revisions where id = 'contract-revision'").get())
+    expect(database.prepare("select count(*) as count from capture_evidence_versions where id = 'contract-revision'").get())
       .toEqual({ count: 1 })
     for (const [table, id] of [
       ['normalization_runs', 'contract-normalization'],
-      ['canonical_source_candidates', 'contract-candidate'],
-      ['sourcing_findings', 'contract-finding'],
+      ['job_fact_versions', 'contract-candidate'],
+      ['opportunities', 'contract-finding'],
       ['source_execution_scopes', 'scope_contract_fixture'],
     ]) {
       expect(database.prepare(`select count(*) as count from ${table} where id = ?`).get(id), table)
         .toEqual({ count: 1 })
     }
-    expect(database.prepare("select connector_run_id, execution_scope_id from raw_source_occurrences where id = 'contract-occurrence'").get())
+    expect(database.prepare("select connector_run_id, execution_scope_id from captures where id = 'contract-occurrence'").get())
       .toEqual({ connector_run_id: 'contract-run', execution_scope_id: 'scope_contract_fixture' })
     expect(database.prepare("select count(*) as count from retry_work where id = 'contract-capture-retry'").get())
       .toEqual({ count: 0 })
@@ -173,16 +173,16 @@ describe('continuous connector contract migration', () => {
     migrateDatabase(database, { migrationsFolder: migrationFolderThrough(23) })
     seedDoomedConnectorRunFixture(database)
     expect(() => migrateDatabase(database)).not.toThrow()
-    for (const table of ['canonical_source_candidates', 'connector_observations', 'connector_run_synchronizations',
+    for (const table of ['job_fact_versions', 'connector_observations', 'connector_run_synchronizations',
       'connector_runs', 'connector_schedule_occurrences', 'normalization_attempts', 'normalization_field_outcomes',
       'normalization_gates', 'normalization_replay_items', 'normalization_runs', 'retry_work', 'sourcing_projection_outcomes']) {
       expect(database.prepare(`select count(*) as count from ${table}`).get(), table).toEqual({ count: 0 })
     }
     for (const [table, id] of [
-      ['raw_source_occurrences', 'preserved-occurrence'],
-      ['raw_source_revisions', 'doomed-revision'],
-      ['raw_source_records', 'doomed-record'],
-      ['source_entities', 'doomed-entity'],
+      ['captures', 'preserved-occurrence'],
+      ['capture_evidence_versions', 'doomed-revision'],
+      ['capture_lineages', 'doomed-record'],
+      ['jobs', 'doomed-entity'],
     ] as const) {
       expect(database.prepare(`select count(*) as count from ${table} where id = ?`).get(id), table)
         .toEqual({ count: 0 })
@@ -208,11 +208,11 @@ describe('continuous connector contract migration', () => {
       .toEqual({ count: 0 })
     for (const [table, id] of [['normalization_runs', 'doomed-normalization'],
       ['normalization_attempts', 'doomed-attempt'], ['normalization_field_outcomes', 'doomed-field'],
-      ['normalization_gates', 'doomed-gate'], ['canonical_source_candidates', 'doomed-candidate'],
-      ['sourcing_projection_outcomes', 'doomed-projection'], ['sourcing_findings', 'protected-finding'],
+      ['normalization_gates', 'doomed-gate'], ['job_fact_versions', 'doomed-candidate'],
+      ['sourcing_projection_outcomes', 'doomed-projection'], ['opportunities', 'protected-finding'],
       ['normalization_replay_items', 'doomed-replay-item'],
-      ['raw_source_records', 'doomed-record'], ['raw_source_revisions', 'doomed-revision'],
-      ['source_entities', 'doomed-entity']] as const) {
+      ['capture_lineages', 'doomed-record'], ['capture_evidence_versions', 'doomed-revision'],
+      ['jobs', 'doomed-entity']] as const) {
       expect(database.prepare(`select count(*) as count from ${table} where id = ?`).get(id), table).toEqual({ count: 0 })
     }
     expect(database.prepare("select count(*) as count from normalization_replay_requests where id = 'doomed-replay'").get())
@@ -321,8 +321,19 @@ function protectedDoomedHistory(database: ReturnType<typeof createInMemoryDataba
 }
 
 function connectorLineageTriggers(database: ReturnType<typeof createInMemoryDatabase>) {
-  return database.prepare(`select name, sql from sqlite_master where type = 'trigger' and name in (
+  const canonical = Boolean(database.prepare("select 1 from sqlite_master where type = 'table' and name = 'captures'").get())
+  const captureUpdate = canonical
+    ? 'trg_captures_normalization_lineage_update'
+    : 'trg_raw_source_occurrences_normalization_lineage_update'
+  const captureDelete = canonical
+    ? 'trg_captures_normalization_lineage_delete'
+    : 'trg_raw_source_occurrences_normalization_lineage_delete'
+  const rows = database.prepare(`select name from sqlite_master where type = 'trigger' and name in (
     'trg_normalization_runs_trigger_lineage_insert', 'trg_normalization_runs_trigger_lineage_update',
-    'trg_raw_source_occurrences_normalization_lineage_update', 'trg_raw_source_occurrences_normalization_lineage_delete'
-  ) order by name`).all()
+    '${captureUpdate}', '${captureDelete}'
+  ) order by name`).all() as Array<{ name: string }>
+  return rows.map(({ name }) => ({
+    name: name
+      .replace('trg_raw_source_occurrences_normalization_lineage_', 'trg_captures_normalization_lineage_'),
+  })).sort((left, right) => left.name.localeCompare(right.name))
 }

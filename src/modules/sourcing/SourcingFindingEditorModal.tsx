@@ -52,7 +52,7 @@ export function SourcingFindingEditorModal({
   const [blocker, setBlocker] = useState(finding?.blocker ?? '')
   const [mergeNotes, setMergeNotes] = useState(finding?.mergeNotes ?? '')
   const [error, setError] = useState<string | null>(null)
-  const title = mode === 'add' ? 'Add sourcing finding' : 'Edit sourcing finding'
+  const title = mode === 'add' ? 'Add opportunity' : 'Edit opportunity'
 
   async function saveFinding() {
     setError(null)
@@ -195,7 +195,7 @@ export function SourcingFindingEditorModal({
                   Cancel
                 </Button>
                 <Button type="button" onClick={saveFinding}>
-                  Save finding
+                  Save opportunity
                 </Button>
               </div>
             </div>

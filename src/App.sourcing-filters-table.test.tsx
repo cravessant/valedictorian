@@ -96,7 +96,7 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
-    const table = await screen.findByRole('table', { name: 'Sourcing findings' })
+    const table = await screen.findByRole('table', { name: 'Opportunities' })
 
     expect(within(table).getByText('Employer / ATS')).toBeInTheDocument()
     expect(within(table).getByRole('link', { name: 'third-party' })).toBeInTheDocument()
@@ -141,10 +141,10 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
-    await screen.findByRole('table', { name: 'Sourcing findings' })
+    await screen.findByRole('table', { name: 'Opportunities' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add finding' }))
-    const addDialog = await screen.findByRole('dialog', { name: 'Add sourcing finding' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add opportunity' }))
+    const addDialog = await screen.findByRole('dialog', { name: 'Add opportunity' })
     fireEvent.change(within(addDialog).getByLabelText('Workflow run'), {
       target: { value: 'run-human' },
     })
@@ -181,7 +181,7 @@ describe('App', () => {
     fireEvent.change(fitNotes, {
       target: { value: 'Strong frontend internship fit.' },
     })
-    fireEvent.click(within(addDialog).getByRole('button', { name: 'Save finding' }))
+    fireEvent.click(within(addDialog).getByRole('button', { name: 'Save opportunity' }))
 
     await waitFor(() => {
       expect(createFinding).toHaveBeenCalledWith({
@@ -201,8 +201,8 @@ describe('App', () => {
       })
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit finding Delta Labs' }))
-    const editDialog = await screen.findByRole('dialog', { name: 'Edit sourcing finding' })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit opportunity Delta Labs' }))
+    const editDialog = await screen.findByRole('dialog', { name: 'Edit opportunity' })
     expect(within(editDialog).queryByLabelText('Merge status')).not.toBeInTheDocument()
     fireEvent.change(within(editDialog).getByLabelText('Official URL'), {
       target: { value: 'https://jobs.example.com/delta-updated' },
@@ -231,7 +231,7 @@ describe('App', () => {
     fireEvent.change(within(editDialog).getByLabelText('End date'), {
       target: { value: '2027-08-15' },
     })
-    fireEvent.click(within(editDialog).getByRole('button', { name: 'Save finding' }))
+    fireEvent.click(within(editDialog).getByRole('button', { name: 'Save opportunity' }))
 
     await waitFor(() => {
       const updatePayload = updateFinding.mock.calls[0][0]
@@ -275,10 +275,10 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
-    await screen.findByRole('table', { name: 'Sourcing findings' })
+    await screen.findByRole('table', { name: 'Opportunities' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Set disposition Delta Labs' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Set sourcing disposition' })
+    const dialog = await screen.findByRole('dialog', { name: 'Set Opportunity disposition' })
     fireEvent.change(within(dialog).getByLabelText('Disposition'), {
       target: { value: 'blocked' },
     })
@@ -343,7 +343,7 @@ describe('App', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
 
-    const table = await screen.findByRole('table', { name: 'Sourcing findings' })
+    const table = await screen.findByRole('table', { name: 'Opportunities' })
 
     expect(within(table).getByText('Promoted')).toBeInTheDocument()
     expect(within(table).getByText('In applications')).toBeInTheDocument()
@@ -614,37 +614,37 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
-    await screen.findByRole('table', { name: 'Sourcing findings' })
+    await screen.findByRole('table', { name: 'Opportunities' })
 
-    const pagination = screen.getByRole('navigation', { name: 'Sourcing pagination' })
+    const pagination = screen.getByRole('navigation', { name: 'Opportunity pagination' })
     expect(pagination).toHaveAttribute('data-slot', 'pagination')
     expect(within(pagination).getByRole('group')).toHaveAttribute('data-slot', 'button-group')
     expect(
-      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+      within(pagination).getByRole('button', { name: 'Previous Opportunity page' }),
     ).toBeDisabled()
-    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeEnabled()
+    expect(within(pagination).getByRole('button', { name: 'Next Opportunity page' })).toBeEnabled()
 
-    fireEvent.click(within(pagination).getByRole('button', { name: 'Next sourcing page' }))
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Next Opportunity page' }))
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
     })
 
     expect(
-      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+      within(pagination).getByRole('button', { name: 'Previous Opportunity page' }),
     ).toBeEnabled()
-    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next Opportunity page' })).toBeDisabled()
 
-    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous sourcing page' }))
+    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous Opportunity page' }))
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
     })
 
     expect(
-      within(pagination).getByRole('button', { name: 'Previous sourcing page' }),
+      within(pagination).getByRole('button', { name: 'Previous Opportunity page' }),
     ).toBeDisabled()
-    expect(within(pagination).getByRole('button', { name: 'Next sourcing page' })).toBeEnabled()
+    expect(within(pagination).getByRole('button', { name: 'Next Opportunity page' })).toBeEnabled()
   })
 
   it('reloads rows when sortable table headers are clicked', async () => {

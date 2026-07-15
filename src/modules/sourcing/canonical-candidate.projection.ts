@@ -3,12 +3,12 @@ import { and, eq, isNull } from 'drizzle-orm'
 import type { CanonicalSourceCandidate, RoleKind } from 'sparxie'
 import {
   applicationLinks,
-  canonicalSourceCandidates,
+  jobFactVersions,
   normalizationGates,
   normalizationRuns,
-  rawSourceRevisions,
+  captureEvidenceVersions,
   sources,
-  sourcingFindings,
+  opportunities,
   workflowRuns,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
@@ -25,27 +25,27 @@ export function createCanonicalCandidateProjectionService(
   ) => {
         const persisted = transaction
           .select({
-            candidateJson: canonicalSourceCandidates.candidateJson,
-            candidateId: canonicalSourceCandidates.id,
-            gateCandidateId: normalizationGates.candidateId,
+            candidateJson: jobFactVersions.jobFactVersionJson,
+            candidateId: jobFactVersions.id,
+            gateCandidateId: normalizationGates.jobFactVersionId,
             gateStatus: normalizationGates.status,
-            adapterId: rawSourceRevisions.adapterId,
-            adapterKind: rawSourceRevisions.adapterKind,
-            adapterVersion: rawSourceRevisions.adapterVersion,
-            reportedOriginName: rawSourceRevisions.reportedOriginName,
-            rawRevisionId: rawSourceRevisions.id,
-            rawRecordId: rawSourceRevisions.rawRecordId,
-            revision: rawSourceRevisions.revision,
-            observedAt: rawSourceRevisions.observedAt,
+            adapterId: captureEvidenceVersions.adapterId,
+            adapterKind: captureEvidenceVersions.adapterKind,
+            adapterVersion: captureEvidenceVersions.adapterVersion,
+            reportedOriginName: captureEvidenceVersions.reportedOriginName,
+            rawRevisionId: captureEvidenceVersions.id,
+            rawRecordId: captureEvidenceVersions.captureLineageId,
+            revision: captureEvidenceVersions.revision,
+            observedAt: captureEvidenceVersions.observedAt,
             runStatus: normalizationRuns.status,
           })
-          .from(canonicalSourceCandidates)
-          .innerJoin(normalizationRuns, eq(canonicalSourceCandidates.runId, normalizationRuns.id))
+          .from(jobFactVersions)
+          .innerJoin(normalizationRuns, eq(jobFactVersions.runId, normalizationRuns.id))
           .innerJoin(normalizationGates, eq(normalizationGates.runId, normalizationRuns.id))
-          .innerJoin(rawSourceRevisions, eq(rawSourceRevisions.id, canonicalSourceCandidates.rawRevisionId))
+          .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, jobFactVersions.captureEvidenceVersionId))
           .where(and(
-            eq(canonicalSourceCandidates.id, candidateId),
-            eq(canonicalSourceCandidates.rawRevisionId, rawRevisionId),
+            eq(jobFactVersions.id, candidateId),
+            eq(jobFactVersions.captureEvidenceVersionId, rawRevisionId),
           ))
           .get()
 
@@ -64,7 +64,7 @@ export function createCanonicalCandidateProjectionService(
         const identityKeys = sourcingProjectionIdentityKeys(candidate)
         const identityKey = identityKeys[0]
         const sourceName = persisted.reportedOriginName?.trim() || persisted.adapterId
-        const identityMatches = transaction.select().from(sourcingFindings).all().filter((finding) => {
+        const identityMatches = transaction.select().from(opportunities).all().filter((finding) => {
           const aliases = parseProjectionAliases(finding.projectionAliasesJson)
           return identityKeys.some((key) => finding.projectionIdentityKey === key || aliases.includes(key))
         })
@@ -80,16 +80,16 @@ export function createCanonicalCandidateProjectionService(
             ...identityKeys,
           ]),
         ].sort())
-        if (existing?.rawRevisionId) {
+        if (existing?.captureEvidenceVersionId) {
           const currentRevision = transaction.select({
-            id: rawSourceRevisions.id,
-            rawRecordId: rawSourceRevisions.rawRecordId,
-            revision: rawSourceRevisions.revision,
-            observedAt: rawSourceRevisions.observedAt,
-          }).from(rawSourceRevisions).where(eq(rawSourceRevisions.id, existing.rawRevisionId)).get()
+            id: captureEvidenceVersions.id,
+            rawRecordId: captureEvidenceVersions.captureLineageId,
+            revision: captureEvidenceVersions.revision,
+            observedAt: captureEvidenceVersions.observedAt,
+          }).from(captureEvidenceVersions).where(eq(captureEvidenceVersions.id, existing.captureEvidenceVersionId)).get()
           if (currentRevision && !isNewerSourceRevision(persisted, currentRevision)) {
-            transaction.update(sourcingFindings).set({ projectionAliasesJson })
-              .where(eq(sourcingFindings.id, existing.id)).run()
+            transaction.update(opportunities).set({ projectionAliasesJson })
+              .where(eq(opportunities.id, existing.id)).run()
             return existing.id
           }
         }
@@ -153,14 +153,14 @@ export function createCanonicalCandidateProjectionService(
           : candidate.sourceUrl
         const possibleMatch = !roleFit || strongApplicationDuplicate ? null : transaction
           .select({
-            id: sourcingFindings.id,
-            companyName: sourcingFindings.companyName,
-            roleTitle: sourcingFindings.roleTitle,
-            locationRaw: sourcingFindings.locationRaw,
-            postedAtJson: sourcingFindings.postedAtJson,
+            id: opportunities.id,
+            companyName: opportunities.companyName,
+            roleTitle: opportunities.roleTitle,
+            locationRaw: opportunities.locationRaw,
+            postedAtJson: opportunities.postedAtJson,
           })
-          .from(sourcingFindings)
-          .where(isNull(sourcingFindings.deletedAt))
+          .from(opportunities)
+          .where(isNull(opportunities.deletedAt))
           .all()
           .find((finding) => finding.id !== existing?.id && weakCandidateFactsMatch(finding, candidate))
         const possibleMatchQuestion = possibleMatch
@@ -202,9 +202,9 @@ export function createCanonicalCandidateProjectionService(
         const values = {
           projectionIdentityKey: existing?.projectionIdentityKey ?? identityKey,
           projectionAliasesJson,
-          sourceEntityId: candidate.sourceEntityId,
-          canonicalCandidateId: candidate.id,
-          rawRevisionId: persisted.rawRevisionId,
+          jobId: candidate.sourceEntityId,
+          jobFactVersionId: candidate.id,
+          captureEvidenceVersionId: persisted.rawRevisionId,
           adapterId: persisted.adapterId,
           adapterKind: persisted.adapterKind,
           adapterVersion: persisted.adapterVersion,
@@ -255,8 +255,8 @@ export function createCanonicalCandidateProjectionService(
                     : null,
           dispositionReason: preservesSourcingDecision ? existing.dispositionReason : notFitReason,
           mergeStatus: preservesSourcingDecision ? existing.mergeStatus : policyMergeStatus,
-          mergedApplicationId: preservesSourcingDecision
-            ? existing.mergedApplicationId
+          applicationId: preservesSourcingDecision
+            ? existing.applicationId
             : strongApplicationDuplicate?.applicationId ?? null,
           mergeNotes: preservesSourcingDecision
             ? existing.mergeNotes
@@ -269,13 +269,13 @@ export function createCanonicalCandidateProjectionService(
         } as const
 
         if (existing) {
-          transaction.update(sourcingFindings).set(values)
-            .where(eq(sourcingFindings.id, existing.id)).run()
+          transaction.update(opportunities).set(values)
+            .where(eq(opportunities.id, existing.id)).run()
           return existing.id
         }
 
         const findingId = randomUUID()
-        transaction.insert(sourcingFindings).values({
+        transaction.insert(opportunities).values({
           id: findingId,
           ...values,
           createdAt: timestamp,

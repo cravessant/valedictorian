@@ -12,9 +12,9 @@ describe('installed SQLite migration repair', () => {
 
     migrateDatabase(database)
 
-    for (const table of ['normalization_runs', 'canonical_source_candidates', 'normalization_gates',
-      'sourcing_projection_outcomes', 'sourcing_findings', 'raw_source_occurrences', 'raw_source_revisions',
-      'raw_source_records', 'source_entities']) {
+    for (const table of ['normalization_runs', 'job_fact_versions', 'normalization_gates',
+      'sourcing_projection_outcomes', 'opportunities', 'captures', 'capture_evidence_versions',
+      'capture_lineages', 'jobs']) {
       expect(database.prepare(`select count(*) as count from ${table}`).get(), table).toEqual({ count: 0 })
     }
     expect(database.prepare(`select count(*) as count from connector_runs where id = 'run-partial'`).get())
@@ -33,10 +33,10 @@ describe('installed SQLite migration repair', () => {
     migrateDatabase(database)
 
     expect(database.prepare(`
-      select trigger_occurrence_id, trigger_connector_instance_id, trigger_connector_run_id
+      select trigger_capture_id, trigger_connector_instance_id, trigger_connector_run_id
       from normalization_runs where id = 'normalization-partial'
     `).get()).toEqual({
-      trigger_occurrence_id: 'occurrence-partial',
+      trigger_capture_id: 'occurrence-partial',
       trigger_connector_instance_id: 'instance-partial',
       trigger_connector_run_id: 'run-partial',
     })

@@ -118,7 +118,7 @@ describe('ConnectorRunSynchronizationDetails', () => {
 
       expect(screen.getByText('Provider returned rows: Unknown')).toBeInTheDocument()
       expect(screen.queryByText('Provider returned rows: 5')).not.toBeInTheDocument()
-      expect(screen.getByText('Capture occurrences: 5')).toBeInTheDocument()
+      expect(screen.getByText('Captures: 5')).toBeInTheDocument()
       expect(screen.getByText('Provider did not report a valid returned-row count.'))
         .toBeInTheDocument()
     },
@@ -137,17 +137,17 @@ describe('ConnectorRunSynchronizationDetails', () => {
     expect(counts).toHaveTextContent('Pending: 13')
     expect(counts).toHaveTextContent('Unresolved: 6')
     expect(counts).toHaveTextContent('Gate rejected: 16')
-    expect(counts).toHaveTextContent('Captured records: 40')
+    expect(counts).toHaveTextContent('Capture lineages: 40')
     expect(counts).not.toHaveTextContent('Unclassified:')
     expect(screen.queryByText(/do not reconcile/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/explicitly unclassified/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'How these counts work' }))
     expect(screen.getByText(
-      /Captured records equal normalized plus pending, unresolved, gate-rejected, and explicitly unclassified records/,
+      /Capture lineages equal normalized plus pending, unresolved, gate-rejected, and explicitly unclassified records/,
     )).toBeInTheDocument()
     expect(screen.getByText(
-      'Visible exceptions: capture shortfall 0; provider unclassified 0; destination unclassified 0; sourcing unclassified 0.',
+      'Visible exceptions: capture shortfall 0; provider unclassified 0; destination unclassified 0; Opportunity unclassified 0.',
     )).toBeInTheDocument()
   })
 

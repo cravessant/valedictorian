@@ -146,7 +146,7 @@ export function synchronizeConnectorRetryWork(
     filterSignature: input.filterSignature,
     checkpointSchemaVersion: input.checkpointSchemaVersion,
     checkpointGeneration: generation,
-    rawRevisionId: null,
+    captureEvidenceVersionId: null,
     resolverId: null,
     resolverVersion: null,
     inputHash: null,
@@ -208,7 +208,7 @@ export function mapAcquiredRetryWork(work: RetryWorkRow): AcquiredRetryWork {
     }
   }
   if (
-    work.rawRevisionId === null
+    work.captureEvidenceVersionId === null
     || work.resolverId === null
     || work.resolverVersion === null
     || work.inputHash === null
@@ -219,7 +219,7 @@ export function mapAcquiredRetryWork(work: RetryWorkRow): AcquiredRetryWork {
     kind: 'normalization',
     executionScopeId: work.executionScopeId,
     retryWorkId: work.id,
-    rawRevisionId: work.rawRevisionId,
+    rawRevisionId: work.captureEvidenceVersionId,
     resolverId: work.resolverId,
     resolverVersion: work.resolverVersion,
     inputHash: work.inputHash,
@@ -395,12 +395,12 @@ function selectActiveJobrightProviderIds(
 function currentJobrightRevision(providerRecordIds: string[]) {
   const values = sql.join(providerRecordIds.map((id) => sql`${id}`), sql`, `)
   return sql`exists (
-    select 1 from raw_source_revisions current indexed by idx_raw_source_revisions_provider_current
-    where current.id = ${retryWork.rawRevisionId}
+    select 1 from capture_evidence_versions current indexed by idx_capture_evidence_versions_provider_current
+    where current.id = ${retryWork.captureEvidenceVersionId}
       and current.provider_record_id in (${values})
       and current.id = (
-        select latest.id from raw_source_revisions latest
-        where latest.raw_record_id = current.raw_record_id
+        select latest.id from capture_evidence_versions latest
+        where latest.capture_lineage_id = current.capture_lineage_id
         order by latest.revision desc limit 1
       )
   )`

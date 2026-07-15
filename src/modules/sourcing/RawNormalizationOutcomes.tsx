@@ -25,9 +25,9 @@ export function RawNormalizationOutcomes({
     <div className="mt-6 space-y-6">
       {normalization ? (
         <>
-          <section aria-label="Normalization resolver outcomes" className="space-y-3">
+          <section aria-label="Job normalization resolver outcomes" className="space-y-3">
             <div>
-              <h3 className="font-semibold">Normalization resolver outcomes</h3>
+              <h3 className="font-semibold">Job normalization resolver outcomes</h3>
               <p className="text-xs text-muted-foreground">
                 Owned by normalization resolvers · canonical schema {safeText(normalization.canonicalSchemaVersion)}
               </p>
@@ -51,9 +51,9 @@ export function RawNormalizationOutcomes({
           <GateOutcome normalization={normalization} />
         </>
       ) : (
-        <section aria-label="Normalization resolver outcomes" className="rounded-md border border-border p-3">
-          <h3 className="font-semibold">Normalization resolver outcomes</h3>
-          <p className="text-sm text-muted-foreground">Normalization has not started for this revision.</p>
+        <section aria-label="Job normalization resolver outcomes" className="rounded-md border border-border p-3">
+          <h3 className="font-semibold">Job normalization resolver outcomes</h3>
+          <p className="text-sm text-muted-foreground">Job normalization has not started for this evidence version.</p>
         </section>
       )}
       <ProjectionOutcome
@@ -85,10 +85,10 @@ function FieldOutcome({ outcome }: { outcome: FieldResolutionOutcome }) {
 function GateOutcome({ normalization }: { normalization: RawSourceNormalizationResult }) {
   const gate = normalization.gate
   return (
-    <section aria-label="Sourcing admission gate" className="space-y-2 rounded-md border border-border p-3">
+    <section aria-label="Opportunity admission gate" className="space-y-2 rounded-md border border-border p-3">
       <div>
-        <h3 className="font-semibold">Sourcing admission gate</h3>
-        <p className="text-xs text-muted-foreground">Owned by the sourcing admission gate</p>
+        <h3 className="font-semibold">Opportunity admission gate</h3>
+        <p className="text-xs text-muted-foreground">Owned by the Opportunity admission gate</p>
       </div>
       {gate ? (
         <>
@@ -113,10 +113,10 @@ function ProjectionOutcome({
   projection: RawSourceProjectionResult
 }) {
   return (
-    <section aria-label="Canonical candidate and sourcing projection" className="space-y-2 rounded-md border border-border p-3">
-      <h3 className="font-semibold">Canonical candidate and sourcing projection</h3>
-      <p className="text-xs text-muted-foreground">Owned by sourcing projection</p>
-      {candidate ? <CanonicalCandidateDetail candidate={candidate} /> : <p>No canonical candidate</p>}
+    <section aria-label="Job fact version and Opportunity projection" className="space-y-2 rounded-md border border-border p-3">
+      <h3 className="font-semibold">Job fact version and Opportunity projection</h3>
+      <p className="text-xs text-muted-foreground">Owned by Opportunity projection</p>
+      {candidate ? <CanonicalCandidateDetail candidate={candidate} /> : <p>No Job fact version</p>}
       <ProjectionReceipt projection={projection} />
       {projection.status === 'projected' && isSafeDisplayString(projection.finding.id)
         && onOpenFinding ? (
@@ -125,7 +125,7 @@ function ProjectionOutcome({
           onClick={() => onOpenFinding(projection.finding.id)}
           type="button"
         >
-          Open finding {projection.finding.id}
+          Open Opportunity {projection.finding.id}
         </button>
       ) : null}
     </section>
@@ -135,7 +135,7 @@ function ProjectionOutcome({
 function CanonicalCandidateDetail({ candidate }: { candidate: CanonicalSourceCandidate }) {
   return (
     <div className="space-y-2">
-      <p>Candidate {safeText(candidate.id)}</p>
+      <p>Job fact version {safeText(candidate.id)}</p>
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <CandidateFact label="Company" value={safeText(candidate.companyName)} />
         <CandidateFact label="Role" value={safeText(candidate.roleTitle)} />
@@ -153,8 +153,8 @@ function CanonicalCandidateDetail({ candidate }: { candidate: CanonicalSourceCan
           label="Canonical identity"
           value={`${formatStatus(candidate.canonicalIdentity.kind)} · ${safeText(candidate.canonicalIdentity.value)}`}
         />
-        <CandidateFact label="Source entity" value={safeText(candidate.sourceEntityId)} />
-        <CandidateFact label="Raw revision" value={safeText(candidate.rawRevisionId)} />
+        <CandidateFact label="Job" value={safeText(candidate.sourceEntityId)} />
+        <CandidateFact label="Capture evidence version" value={safeText(candidate.rawRevisionId)} />
         <CandidateFact label="Schema" value={safeText(candidate.schemaVersion)} />
         <CandidateFact label="Observed" value={formatTimestamp(candidate.observedAt)} />
         <CandidateFact
@@ -227,7 +227,7 @@ function ProjectionReceipt({ projection }: { projection: RawSourceProjectionResu
   return (
     <div className="space-y-1">
       <p className="text-xs text-muted-foreground">
-        Projection receipt for revision {safeText(projection.rawRevisionId)}
+        Opportunity projection receipt for evidence version {safeText(projection.rawRevisionId)}
       </p>
       <ProjectionReceiptStatus projection={projection} />
     </div>
@@ -238,10 +238,10 @@ function ProjectionReceiptStatus({ projection }: { projection: RawSourceProjecti
   if (projection.status === 'projected') {
     return (
       <div className="text-sm">
-        <p>Projected to finding {safeText(projection.finding.id)}</p>
-        <p>Finding outcome {formatStatus(projection.finding.mergeStatus)}</p>
+        <p>Projected to Opportunity {safeText(projection.finding.id)}</p>
+        <p>Opportunity outcome {formatStatus(projection.finding.mergeStatus)}</p>
         {projection.finding.mergedApplicationId ? (
-          <p>Merged application {safeText(projection.finding.mergedApplicationId)}</p>
+          <p>Application {safeText(projection.finding.mergedApplicationId)}</p>
         ) : null}
       </div>
     )
@@ -256,11 +256,11 @@ function ProjectionReceiptStatus({ projection }: { projection: RawSourceProjecti
   }
   if (projection.status === 'pending') return <p>Projection pending</p>
   if (projection.normalizationStatus === null) {
-    return <p>No normalization or projection recorded for this revision</p>
+    return <p>No Job normalization or Opportunity projection recorded for this evidence version</p>
   }
   return (
     <p>
-      Not eligible for projection · Normalization {formatStatus(projection.normalizationStatus)}
+      Not eligible for Opportunity projection · Job normalization {formatStatus(projection.normalizationStatus)}
       {projection.gateStatus ? ` · Gate ${formatStatus(projection.gateStatus)}` : ''}
     </p>
   )

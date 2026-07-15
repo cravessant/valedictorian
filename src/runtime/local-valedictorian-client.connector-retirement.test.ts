@@ -277,7 +277,7 @@ describe('local connector instance retirement', () => {
       executionScopeId: instance.executionScopeId,
       kind: 'normalization',
       connectorInstanceId: null,
-      rawRevisionId,
+      captureEvidenceVersionId: rawRevisionId,
       resolverId: 'removed.authenticated-resolver',
       resolverVersion: '1.0.0',
       inputHash: 'sha256:historical',

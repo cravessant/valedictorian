@@ -53,7 +53,7 @@ describe('normalization repository acquired retry identity', () => {
       expect(database.select().from(retryWork).get()).toMatchObject({ state: 'scheduled', executionScopeId: instance.executionScopeId, attempt: minute + 1 })
       await connectors.completeRun({ connectorRunId: acquired.run.id, completedAt: `2026-07-11T12:0${minute}:30.000Z`, status: 'completed' })
     }
-    expect(sqlite.prepare('select count(*) as count from raw_source_occurrences').get()).toEqual({ count: 1 })
+    expect(sqlite.prepare('select count(*) as count from captures').get()).toEqual({ count: 1 })
     sqlite.close()
   })
   it('rejects exact acquired replay when persisted attempt input hash does not match acquired work', async () => {
@@ -105,7 +105,7 @@ describe('normalization repository acquired retry identity', () => {
       filterSignature: null,
       checkpointSchemaVersion: null,
       checkpointGeneration: null,
-      rawRevisionId: receipt.revision.id,
+      captureEvidenceVersionId: receipt.revision.id,
       resolverId: 'fixture.network-details',
       resolverVersion: '2.0.0',
       inputHash: acquiredInputHash,

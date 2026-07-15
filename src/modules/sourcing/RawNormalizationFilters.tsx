@@ -51,15 +51,15 @@ export function RawNormalizationFilters({
     onChange({ ...filters, [field]: value })
   }
   return (
-    <section aria-label="Raw sourcing filters" className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
+    <section aria-label="Capture normalization filters" className="grid gap-3 rounded-md border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4">
       <FilterInput label="Source adapter" value={filters.adapterId} onChange={(value) => update('adapterId', value)} />
       <FilterSelect label="Capture kind" value={filters.adapterKind} options={sourceAdapterKinds} onChange={(value) => update('adapterKind', value)} />
       <FilterInput label="Connector instance" value={filters.connectorInstanceId} onChange={(value) => update('connectorInstanceId', value)} />
       <FilterInput label="Received from" type="date" value={filters.receivedFrom} onChange={(value) => update('receivedFrom', value)} />
       <FilterInput label="Received to" type="date" value={filters.receivedTo} onChange={(value) => update('receivedTo', value)} />
-      <FilterSelect label="Normalization status" value={filters.normalizationStatus} options={rawSourceListNormalizationStatuses} onChange={(value) => update('normalizationStatus', value)} />
-      <FilterSelect label="Admission gate status" value={filters.gateStatus} options={normalizationGateStatuses} onChange={(value) => update('gateStatus', value)} />
-      <FilterSelect label="Projection status" value={filters.projectionStatus} options={rawSourceListProjectionStatuses} onChange={(value) => update('projectionStatus', value)} />
+      <FilterSelect label="Job normalization status" value={filters.normalizationStatus} options={rawSourceListNormalizationStatuses} onChange={(value) => update('normalizationStatus', value)} />
+      <FilterSelect label="Opportunity admission status" value={filters.gateStatus} options={normalizationGateStatuses} onChange={(value) => update('gateStatus', value)} />
+      <FilterSelect label="Opportunity projection status" value={filters.projectionStatus} options={rawSourceListProjectionStatuses} onChange={(value) => update('projectionStatus', value)} />
     </section>
   )
 }

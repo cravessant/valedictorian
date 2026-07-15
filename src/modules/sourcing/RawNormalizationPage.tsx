@@ -71,7 +71,7 @@ export function RawNormalizationPage({
           <p className="text-xs font-medium uppercase text-muted-foreground">Sourcing</p>
           <h1 className="mt-1 text-2xl font-semibold text-foreground">Normalization</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Follow connector capture through normalization, admission, and sourcing projection.
+            Follow Captures through Job normalization, Opportunity admission, and projection.
           </p>
         </header>
         <RawNormalizationFilters
@@ -88,26 +88,26 @@ export function RawNormalizationPage({
             className="rounded-md border border-primary/40 bg-primary/10 p-3 text-sm"
             role="status"
           >
-            Showing records with captured occurrence lineage from connector run {runFilter.connectorRunId}.
+            Showing Capture lineages with Captures from connector run {runFilter.connectorRunId}.
           </p>
         ) : null}
         {loading ? (
-          <p aria-label="Loading raw sourcing records" role="status">
-            Loading raw sourcing records...
+          <p aria-label="Loading Capture lineages" role="status">
+            Loading Capture lineages...
           </p>
         ) : null}
         {error ? (
           <div
             aria-label={runFilter
-              ? 'Connector run records could not be verified'
-              : 'Raw sourcing records unavailable'}
+              ? 'Connector run Capture lineages could not be verified'
+              : 'Capture lineages unavailable'}
             className="rounded-md border border-destructive/50 bg-destructive/10 p-4"
             role="alert"
           >
             <p className="text-sm text-destructive">
               {runFilter
-                ? 'Occurrence lineage could not be verified, so no connector-run results are shown.'
-                : 'Raw sourcing records could not be loaded.'}
+                ? 'Capture lineage could not be verified, so no connector-run results are shown.'
+                : 'Capture lineages could not be loaded.'}
             </p>
             <button
               type="button"
@@ -120,18 +120,18 @@ export function RawNormalizationPage({
         ) : null}
         {!loading && !error && items.length === 0 ? (
           <p
-            aria-label="No raw sourcing records match the current filters"
+            aria-label="No Capture lineages match the current filters"
             className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground"
             role="status"
           >
-            No raw sourcing records match the current filters.
+            No Capture lineages match the current filters.
           </p>
         ) : null}
         {!loading && !error && items.length > 0 ? (
           <RawRecordsTable items={items} onSelect={setSelectedSummary} />
         ) : null}
         {!error && !loading && !runFilter ? (
-          <nav aria-label="Raw sourcing pagination" className="flex items-center justify-end gap-2">
+          <nav aria-label="Capture lineage pagination" className="flex items-center justify-end gap-2">
             <button
               type="button"
               className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-50"
@@ -188,17 +188,17 @@ function RawRecordsTable({
   onSelect: (item: RawSourceRecordSummary) => void
 }) {
   return (
-    <Table aria-label="Raw sourcing normalization">
+    <Table aria-label="Capture-to-Job normalization">
       <TableHeader>
         <TableRow>
           <TableHead>Source</TableHead>
-          <TableHead>Captured facts</TableHead>
+          <TableHead>Provider facts</TableHead>
           <TableHead>Seen</TableHead>
-          <TableHead>Lineage</TableHead>
-          <TableHead>Normalization resolver</TableHead>
-          <TableHead>Sourcing admission gate</TableHead>
-          <TableHead>Canonical candidate</TableHead>
-          <TableHead>Sourcing projection</TableHead>
+          <TableHead>Capture history</TableHead>
+          <TableHead>Job normalization</TableHead>
+          <TableHead>Opportunity admission</TableHead>
+          <TableHead>Job fact version</TableHead>
+          <TableHead>Opportunity projection</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -208,7 +208,7 @@ function RawRecordsTable({
               <SourceLabel item={item} />
               <button
                 type="button"
-                aria-label="Inspect raw record"
+                aria-label="Inspect Capture lineage"
                 className="mt-2 rounded-md border border-border px-2 py-1 text-xs"
                 onClick={() => onSelect(item)}
               >
@@ -227,7 +227,7 @@ function RawRecordsTable({
               {formatTimestamp(item.firstObservedAt)} – {formatTimestamp(item.lastObservedAt)}
             </TableCell>
             <TableCell className="text-xs">
-              {item.occurrenceCount} occurrences · {item.revisionCount} revisions
+              {item.occurrenceCount} Captures · {item.revisionCount} evidence versions
             </TableCell>
             <TableCell>{statusLabel(item.normalizationStatus)}</TableCell>
             <TableCell>
@@ -235,8 +235,8 @@ function RawRecordsTable({
             </TableCell>
             <TableCell>
               {item.canonicalCandidateId
-                ? 'Candidate created'
-                : 'No candidate'}
+                ? 'Job facts persisted'
+                : 'No Job facts'}
             </TableCell>
             <TableCell>{projectionLabel(item)}</TableCell>
           </TableRow>

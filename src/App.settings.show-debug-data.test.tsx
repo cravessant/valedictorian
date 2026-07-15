@@ -100,7 +100,7 @@ describe('show debug data setting', () => {
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
 
-    const table = await screen.findByRole('table', { name: 'Sourcing findings' })
+    const table = await screen.findByRole('table', { name: 'Opportunities' })
     expect(within(table).getByText('Merged Co - Software Engineering Intern')).toBeInTheDocument()
     expect(within(table).getByRole('button', { name: 'Open app Merged Co' })).toBeInTheDocument()
     expect(within(table).queryByText('workflow-run-debug-1')).not.toBeInTheDocument()
@@ -114,7 +114,7 @@ describe('show debug data setting', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back to app' }))
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
 
-    const debugTable = await screen.findByRole('table', { name: 'Sourcing findings' })
+    const debugTable = await screen.findByRole('table', { name: 'Opportunities' })
     expect(within(debugTable).getByText('workflow-run-debug-1')).toBeInTheDocument()
     expect(within(debugTable).getByText('application-merged-debug')).toBeInTheDocument()
     expect(within(debugTable).getByText('Merged Co - Software Engineering Intern')).toBeInTheDocument()
@@ -343,7 +343,7 @@ describe('show debug data setting', () => {
     expect(screen.queryByText(secretPassword)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
-    expect(await screen.findByRole('table', { name: 'Sourcing findings' })).toBeInTheDocument()
+    expect(await screen.findByRole('table', { name: 'Opportunities' })).toBeInTheDocument()
     expect(screen.queryByText(secretApiToken)).not.toBeInTheDocument()
     expect(screen.queryByText(secretPassword)).not.toBeInTheDocument()
 

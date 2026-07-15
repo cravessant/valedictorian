@@ -41,7 +41,7 @@ function renderSourcingPage(
 }
 
 function sourceCellFor(companyName: string) {
-  const table = screen.getByRole('table', { name: 'Sourcing findings' })
+  const table = screen.getByRole('table', { name: 'Opportunities' })
   const row = within(table).getByText(companyName).closest('tr')
   if (!row) {
     throw new Error(`Missing sourcing finding row for ${companyName}`)
@@ -50,15 +50,15 @@ function sourceCellFor(companyName: string) {
 }
 
 describe('SourcingPage', () => {
-  it('renders Empty for zero findings while preserving the header Add finding action', () => {
+  it('renders Empty for zero findings while preserving the header Add opportunity action', () => {
     renderSourcingPage()
 
-    const empty = screen.getByLabelText('Empty sourcing findings')
+    const empty = screen.getByLabelText('Empty Opportunities')
     expect(empty).toHaveAttribute('data-slot', 'empty')
-    expect(within(empty).getByRole('heading', { name: 'No sourcing findings' })).toBeInTheDocument()
-    expect(within(empty).getByText('No findings match the current filters.')).toBeInTheDocument()
-    expect(within(empty).queryByRole('button', { name: 'Add finding' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add finding' })).toBeInTheDocument()
+    expect(within(empty).getByRole('heading', { name: 'No opportunities' })).toBeInTheDocument()
+    expect(within(empty).getByText('No opportunities match the current filters.')).toBeInTheDocument()
+    expect(within(empty).queryByRole('button', { name: 'Add opportunity' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add opportunity' })).toBeInTheDocument()
     expect(screen.queryByText('No sourcing findings match the current filters.')).not.toBeInTheDocument()
   })
 
@@ -106,7 +106,7 @@ describe('SourcingPage', () => {
       ]),
     })
 
-    const table = screen.getByRole('table', { name: 'Sourcing findings' })
+    const table = screen.getByRole('table', { name: 'Opportunities' })
     expect(within(table).getByText('not_fit')).toBeInTheDocument()
     expect(within(table).getAllByText('Not fit').length).toBeGreaterThanOrEqual(2)
     expect(within(table).getByText('Not promoted by fit review')).toBeInTheDocument()
@@ -146,7 +146,7 @@ describe('SourcingPage', () => {
       ]),
     })
 
-    const table = screen.getByRole('table', { name: 'Sourcing findings' })
+    const table = screen.getByRole('table', { name: 'Opportunities' })
     expect(within(sourceCellFor('Third Party Co')).getByText('Third-party')).toBeInTheDocument()
     expect(within(sourceCellFor('Review Co')).getByText('Unresolved')).toBeInTheDocument()
     expect(screen.queryByText('Review only')).not.toBeInTheDocument()
@@ -182,7 +182,7 @@ describe('SourcingPage', () => {
       ]),
     })
 
-    const table = screen.getByRole('table', { name: 'Sourcing findings' })
+    const table = screen.getByRole('table', { name: 'Opportunities' })
     expect(within(table).getByText(dispositionReason)).toBeInTheDocument()
     expect(within(table).queryByText('Approve third-party')).not.toBeInTheDocument()
     expect(within(table).queryByRole('button', {
@@ -236,7 +236,7 @@ describe('SourcingPage', () => {
       ]),
     })
 
-    const table = screen.getByRole('table', { name: 'Sourcing findings' })
+    const table = screen.getByRole('table', { name: 'Opportunities' })
     expect(within(table).getByText('duplicate')).toBeInTheDocument()
     expect(within(table).getByText('Duplicate')).toBeInTheDocument()
     expect(within(table).getByText('Linked to existing application')).toBeInTheDocument()
@@ -250,7 +250,7 @@ describe('SourcingPage', () => {
     expect(within(table).getAllByText('Fix source data').length).toBeGreaterThanOrEqual(1)
 
     expect(within(table).getByText('new')).toBeInTheDocument()
-    expect(within(table).getByText('New finding')).toBeInTheDocument()
+    expect(within(table).getByText('New Opportunity')).toBeInTheDocument()
     expect(within(table).getByText('Ready to review')).toBeInTheDocument()
     expect(within(table).getByRole('button', { name: 'Promote Projected Co' }))
       .toHaveTextContent('Promote')

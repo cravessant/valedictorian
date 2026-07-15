@@ -37,7 +37,7 @@ const dataMigrations: SyncDataMigration[] = [
   {
     name: '20260711000000_source_identity_backfill',
     up({ context }) {
-      backfillSourceEntityIdentities(context.database)
+      backfillJobIdentities(context.database)
     },
   },
 ]
@@ -180,16 +180,25 @@ function migratePolicyConfigJson(database: SqliteDatabase) {
 
 function migrateJobTimingTerms(database: SqliteDatabase) {
   backfillTimingTerms(database, 'applications')
-  backfillTimingTerms(database, 'sourcing_findings')
+  const opportunitiesTable = lifecycleTable(database, 'opportunities', 'sourcing_findings')
+  if (opportunitiesTable) {
+    backfillTimingTerms(database, opportunitiesTable as 'opportunities' | 'sourcing_findings')
+  }
 }
 
-function backfillSourceEntityIdentities(database: SqliteDatabase) {
-  if (!tableExists(database, 'source_entities') || !tableExists(database, 'source_entity_identities')) {
+function backfillJobIdentities(database: SqliteDatabase) {
+  const jobsTable = lifecycleTable(database, 'jobs', 'source_entities')
+  const identitiesTable = lifecycleTable(database, 'job_identities', 'source_entity_identities')
+  if (!jobsTable || !identitiesTable) {
     return
   }
-  const entities = database.prepare(`
+  const jobIdColumn = identitiesTable === 'job_identities' ? 'job_id' : 'source_entity_id'
+  const evidenceVersionIdColumn = identitiesTable === 'job_identities'
+    ? 'capture_evidence_version_id'
+    : 'raw_revision_id'
+  const jobs = database.prepare(`
     select id, identity_kind, identity_namespace, identity_value, created_at
-    from source_entities order by created_at, id
+    from ${jobsTable} order by created_at, id
   `).all() as Array<{
     id: string
     identity_kind: string
@@ -198,40 +207,40 @@ function backfillSourceEntityIdentities(database: SqliteDatabase) {
     created_at: string
   }>
   const insert = database.prepare(`
-    insert or ignore into source_entity_identities (
-      id, source_entity_id, identity_kind, identity_namespace, identity_value,
-      provenance_kind, provenance_version, evidence_json, raw_revision_id, created_at
+    insert or ignore into ${identitiesTable} (
+      id, ${jobIdColumn}, identity_kind, identity_namespace, identity_value,
+      provenance_kind, provenance_version, evidence_json, ${evidenceVersionIdColumn}, created_at
     ) values (?, ?, ?, ?, ?, 'primary_backfill', 'source-identity-backfill/v1', ?, null, ?)
   `)
   database.transaction(() => {
-    for (const entity of entities) {
-      const identityKind = entity.identity_kind === 'destination_url'
+    for (const job of jobs) {
+      const identityKind = job.identity_kind === 'destination_url'
         ? 'canonical_destination'
-        : entity.identity_kind
+        : job.identity_kind
       if (!['provider_job', 'canonical_destination', 'intermediary_alias', 'destination_alias'].includes(identityKind)) {
-        throw new Error(`Unsupported legacy source identity kind: ${entity.identity_kind}`)
+        throw new Error(`Unsupported legacy source identity kind: ${job.identity_kind}`)
       }
       insert.run(
-        `primary:${entity.id}`,
-        entity.id,
+        `primary:${job.id}`,
+        job.id,
         identityKind,
-        entity.identity_namespace,
-        entity.identity_value,
-        JSON.stringify({ legacyIdentityKind: entity.identity_kind }),
-        entity.created_at,
+        job.identity_namespace,
+        job.identity_value,
+        JSON.stringify({ legacyIdentityKind: job.identity_kind }),
+        job.created_at,
       )
       const persisted = database.prepare(`
-        select source_entity_id from source_entity_identities
+        select ${jobIdColumn} as job_id from ${identitiesTable}
         where identity_kind = ? and identity_namespace = ? and identity_value = ?
-      `).get(identityKind, entity.identity_namespace, entity.identity_value) as { source_entity_id: string } | undefined
-      if (persisted?.source_entity_id !== entity.id) {
-        throw new Error(`Legacy source identity is already owned by another source entity: ${entity.id}`)
+      `).get(identityKind, job.identity_namespace, job.identity_value) as { job_id: string } | undefined
+      if (persisted?.job_id !== job.id) {
+        throw new Error(`Legacy source identity is already owned by another source entity: ${job.id}`)
       }
     }
   })()
 }
 
-function backfillTimingTerms(database: SqliteDatabase, tableName: 'applications' | 'sourcing_findings') {
+function backfillTimingTerms(database: SqliteDatabase, tableName: 'applications' | 'opportunities' | 'sourcing_findings') {
   if (!tableExists(database, tableName)) {
     return
   }
@@ -260,6 +269,16 @@ function backfillTimingTerms(database: SqliteDatabase, tableName: 'applications'
 
     update.run(timing.timingMode, stringifyJobTerms(timing.terms), row.id)
   }
+}
+
+function lifecycleTable(
+  database: SqliteDatabase,
+  canonicalName: 'jobs' | 'job_identities' | 'opportunities',
+  legacyName: 'source_entities' | 'source_entity_identities' | 'sourcing_findings',
+) : 'jobs' | 'job_identities' | 'opportunities' | 'source_entities' | 'source_entity_identities' | 'sourcing_findings' | null {
+  if (tableExists(database, canonicalName)) return canonicalName
+  if (tableExists(database, legacyName)) return legacyName
+  return null
 }
 
 function readSupportedPolicyConfig(value: unknown) {

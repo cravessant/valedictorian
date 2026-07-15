@@ -143,7 +143,7 @@ describe('connector normalization host', () => {
 
     expect(database.select().from(retryWork).all()).toEqual([
       expect.objectContaining({
-        kind: 'normalization', rawRevisionId: receipt.revision.id,
+        kind: 'normalization', captureEvidenceVersionId: receipt.revision.id,
         resolverId: 'fixture.network-details', resolverVersion: '2.0.0',
         reason: 'operation_timeout', attempt: 1, maxAttempts: 3,
         nextAttemptAt: '2026-07-11T12:00:30.000Z', state: 'scheduled',

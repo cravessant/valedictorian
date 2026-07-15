@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { JsonValue } from 'sparxie'
-import { sourcingFindings } from '../db/schema'
+import { opportunities } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import type { NormalizationResolver } from '../modules/sourcing/normalization.registry'
 import {
@@ -265,7 +265,7 @@ describe('local deterministic raw normalization', () => {
     }
     const persistedDatabase = createFileDatabase(sqlitePath)
     const persisted = persistedDatabase.prepare(
-      'select projection_aliases_json as aliases from sourcing_findings',
+      'select projection_aliases_json as aliases from opportunities',
     ).get() as { aliases: string }
     persistedDatabase.close()
     expect(persisted.aliases).toContain('alpha-123')
@@ -295,7 +295,7 @@ describe('local deterministic raw normalization', () => {
     const sqlite = createFileDatabase(sqlitePath)
     sqlite.exec(`
       create trigger reject_sourcing_projection
-      before insert on sourcing_findings
+      before insert on opportunities
       begin
         select raise(abort, 'injected projection policy failure');
       end
@@ -469,9 +469,9 @@ describe('local deterministic raw normalization', () => {
     const sqlite = createFileDatabase(sqlitePath)
     const database = createDrizzleDatabase(sqlite)
     expect(database.select({
-      adapterId: sourcingFindings.adapterId,
-      adapterKind: sourcingFindings.adapterKind,
-    }).from(sourcingFindings).all()).toEqual(expect.arrayContaining(
+      adapterId: opportunities.adapterId,
+      adapterKind: opportunities.adapterKind,
+    }).from(opportunities).all()).toEqual(expect.arrayContaining(
       adapterKinds.map((kind) => ({ adapterId: `fixture.${kind}`, adapterKind: kind })),
     ))
     sqlite.close()

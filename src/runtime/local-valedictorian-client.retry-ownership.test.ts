@@ -62,7 +62,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
     } as AppJobConnector
     const { createNormalizationResolverRegistry, hashJson } = await import('../modules/sourcing/normalization.registry')
     const {
-      retryWork, rawSourceRecords, rawSourceRevisions, rawSourceOccurrences,
+      retryWork, captureLineages, captureEvidenceVersions, captures,
       normalizationRuns, normalizationAttempts, normalizationFieldOutcomes, connectorRuns, connectorInstances,
     } = await import('../db/schema')
     const client = createRuntimeLocalValedictorianClient({
@@ -104,18 +104,18 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
       updatedAt: '2026-07-11T11:00:00.000Z',
       deletedAt: null,
     }).run()
-    database.insert(rawSourceRecords).values({ id: 'owned-record', createdAt: '2026-07-11T11:00:00.000Z' }).run()
-    database.insert(rawSourceRevisions).values({
-      id: 'owned-revision', rawRecordId: 'owned-record', revision: 1, contentHash: 'sha256:owned',
+    database.insert(captureLineages).values({ id: 'owned-record', createdAt: '2026-07-11T11:00:00.000Z' }).run()
+    database.insert(captureEvidenceVersions).values({
+      id: 'owned-revision', captureLineageId: 'owned-record', revision: 1, contentHash: 'sha256:owned',
       adapterId: 'manual.fixture', adapterKind: 'manual', adapterVersion: '1.0.0',
       payloadJson: JSON.stringify({ company: 'Owned Co', title: 'Intern', url: 'https://jobs.lever.co/acme/owned-1' }),
       observedAt: '2026-07-11T11:00:00.000Z', evidenceJson: JSON.stringify([]),
       createdAt: '2026-07-11T11:00:00.000Z',
     }).run()
-    database.insert(rawSourceOccurrences).values({
+    database.insert(captures).values({
       id: 'intake-occurrence',
-      rawRecordId: 'owned-record',
-      rawRevisionId: 'owned-revision',
+      captureLineageId: 'owned-record',
+      captureEvidenceVersionId: 'owned-revision',
       connectorInstanceId: 'norm-owner',
       connectorRunId: 'intake-run',
       executionScopeId,
@@ -123,8 +123,8 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
       receivedAt: '2026-07-11T11:00:00.000Z',
     }).run()
     database.insert(normalizationRuns).values({
-      id: 'prior-run', rawRecordId: 'owned-record', rawRevisionId: 'owned-revision',
-      triggerOccurrenceId: 'intake-occurrence',
+      id: 'prior-run', captureLineageId: 'owned-record', captureEvidenceVersionId: 'owned-revision',
+      triggerCaptureId: 'intake-occurrence',
       triggerConnectorInstanceId: 'norm-owner',
       triggerConnectorRunId: 'intake-run',
       inputHash: 'sha256:prior', resolverSetHash: 'sha256:prior-set',
@@ -133,7 +133,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
       createdAt: '2026-07-11T11:00:00.000Z', updatedAt: '2026-07-11T11:00:00.000Z',
     }).run()
     database.insert(normalizationAttempts).values({
-      id: 'prior-attempt', runId: 'prior-run', rawRevisionId: 'owned-revision', sequence: 0,
+      id: 'prior-attempt', runId: 'prior-run', captureEvidenceVersionId: 'owned-revision', sequence: 0,
       resolverId: 'fixture.unaffected-role', resolverVersion: '1.0.0', inputHash: 'sha256:prior-role',
       declarationJson: JSON.stringify(unaffectedResolver.declaration),
       applicabilityJson: JSON.stringify([]), status: 'completed',
@@ -151,7 +151,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
     const inputHash = hashJson({ raw: 'sha256:owned', resolver: resolver.declaration })
     database.insert(retryWork).values({
       id: 'owned-retry', executionScopeId, kind: 'normalization', connectorInstanceId: null, filterSignature: null,
-      checkpointSchemaVersion: null, checkpointGeneration: null, rawRevisionId: 'owned-revision',
+      checkpointSchemaVersion: null, checkpointGeneration: null, captureEvidenceVersionId: 'owned-revision',
       resolverId: 'fixture.owned-company', resolverVersion: '1.0.0', inputHash,
       reason: 'rate_limit', attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z',
       computedDelayMs: 60_000, serverMinimumDelayMs: null, nextAttemptAt: '2026-07-11T12:00:30.000Z',
@@ -160,7 +160,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
       acquiredAt: null, acquisitionToken: null, acquisitionRunId: null, skippedRunId: null,
       createdAt: '2026-07-11T12:00:00.000Z', updatedAt: '2026-07-11T12:00:00.000Z', deletedAt: null,
     }).run()
-    const occurrenceCountBefore = database.select().from(rawSourceOccurrences).all().length
+    const occurrenceCountBefore = database.select().from(captures).all().length
 
     const replayed = await client.connectors.runs.trigger({
       connectorInstanceId: 'norm-owner', mode: 'manual',
@@ -170,10 +170,10 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
     expect(refresh).not.toHaveBeenCalled()
     expect(resolveOwnedCompany).toHaveBeenCalledTimes(1)
     expect(resolveUnaffectedRole).not.toHaveBeenCalled()
-    expect(database.select().from(rawSourceOccurrences).all()).toEqual([
+    expect(database.select().from(captures).all()).toEqual([
       expect.objectContaining({ id: 'intake-occurrence' }),
     ])
-    expect(database.select().from(rawSourceOccurrences).all()).toHaveLength(occurrenceCountBefore)
+    expect(database.select().from(captures).all()).toHaveLength(occurrenceCountBefore)
     expect(database.select().from(normalizationFieldOutcomes).all()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'prior-role-outcome', field: 'roleTitle', resolverId: 'fixture.unaffected-role' }),
@@ -184,7 +184,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
         expect.objectContaining({
           resolverId: 'fixture.owned-company',
           resolverVersion: '1.0.0',
-          rawRevisionId: 'owned-revision',
+          captureEvidenceVersionId: 'owned-revision',
         }),
         expect.objectContaining({ id: 'prior-attempt', resolverId: 'fixture.unaffected-role' }),
       ]),
@@ -193,12 +193,12 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
     expect(database.select().from(normalizationRuns).all()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          rawRevisionId: 'owned-revision',
-          triggerOccurrenceId: null,
+          captureEvidenceVersionId: 'owned-revision',
+          triggerCaptureId: null,
           triggerConnectorInstanceId: null,
           triggerConnectorRunId: null,
         }),
-        expect.objectContaining({ id: 'prior-run', triggerOccurrenceId: 'intake-occurrence' }),
+        expect.objectContaining({ id: 'prior-run', triggerCaptureId: 'intake-occurrence' }),
       ]),
     )
     expect(database.select().from(retryWork).all()).toEqual([
@@ -213,7 +213,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
 
     database.insert(retryWork).values({
       id: 'missing-owner-retry', executionScopeId, kind: 'normalization', connectorInstanceId: null, filterSignature: null,
-      checkpointSchemaVersion: null, checkpointGeneration: null, rawRevisionId: 'owned-revision',
+      checkpointSchemaVersion: null, checkpointGeneration: null, captureEvidenceVersionId: 'owned-revision',
       resolverId: 'fixture.missing-owner', resolverVersion: '9.9.9', inputHash: 'sha256:' + 'b'.repeat(64),
       reason: 'rate_limit', attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z',
       computedDelayMs: 60_000, serverMinimumDelayMs: null, nextAttemptAt: '2026-07-11T12:00:30.000Z',

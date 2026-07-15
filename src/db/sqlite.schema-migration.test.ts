@@ -8,13 +8,8 @@ import { completedConnectorRefreshContract } from '../modules/connectors/connect
 import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from './sqlite'
 import { indexDefinition, tableDefinition } from './sqlite.schema-test-helpers'
-const expectedIdentityTriggers = [
-  'trg_source_entity_identities_bound',
-  'trg_source_entity_identities_no_delete',
-  'trg_source_entity_identities_no_update',
-  'trg_source_identity_conflicts_no_delete',
-  'trg_source_identity_conflicts_no_update',
-]
+const expectedIdentityTriggers = ['trg_job_identities_bound', 'trg_job_identities_no_delete', 'trg_job_identities_no_update', 'trg_job_identity_conflicts_no_delete', 'trg_job_identity_conflicts_no_update']
+const expectedLegacyIdentityTriggers = ['trg_source_entity_identities_bound', 'trg_source_entity_identities_no_delete', 'trg_source_entity_identities_no_update', 'trg_source_identity_conflicts_no_delete', 'trg_source_identity_conflicts_no_update']
 describe('SQLite database', () => {
   it('migrates the core tracker tables', () => {
     const database = createInMemoryDatabase()
@@ -32,28 +27,28 @@ describe('SQLite database', () => {
     expect(tables).toContain('application_attempt_steps')
     expect(tables).toContain('workflow_runs')
     expect(tables).toContain('workflow_run_steps')
-    expect(tables).toContain('sourcing_findings')
+    expect(tables).toContain('opportunities')
     expect(tables).toContain('connector_instances')
     expect(tables).toContain('connector_runs')
     expect(tables).toContain('connector_checkpoints')
     expect(tables).toContain('connector_observations')
     expect(tables).not.toContain('connector_projection_keys')
-    expect(tables).toContain('source_entities')
-    expect(tables).toContain('raw_source_records')
-    expect(tables).toContain('raw_source_revisions')
-    expect(tables).toContain('raw_source_occurrences')
+    expect(tables).toContain('jobs')
+    expect(tables).toContain('capture_lineages')
+    expect(tables).toContain('capture_evidence_versions')
+    expect(tables).toContain('captures')
     expect(tableColumns(database, 'applications')).toEqual(
       expect.arrayContaining(['timing_mode', 'terms_json', 'start_date', 'end_date']),
     )
-    expect(tableColumns(database, 'sourcing_findings')).toEqual(
+    expect(tableColumns(database, 'opportunities')).toEqual(
       expect.arrayContaining([
-        'projection_identity_key', 'source_entity_id', 'canonical_candidate_id',
-        'raw_revision_id', 'adapter_id', 'adapter_kind', 'adapter_version',
+        'projection_identity_key', 'job_id', 'job_fact_version_id',
+        'capture_evidence_version_id', 'adapter_id', 'adapter_kind', 'adapter_version',
         'employment_type', 'seniority', 'location_json', 'compensation_json',
         'posted_at_json', 'timing_mode', 'terms_json', 'start_date', 'end_date',
       ]),
     )
-    expect(database.prepare("select \"notnull\" as is_not_null from pragma_table_info('sourcing_findings') where name = 'country'").get())
+    expect(database.prepare("select \"notnull\" as is_not_null from pragma_table_info('opportunities') where name = 'country'").get())
       .toEqual({ is_not_null: 0 })
     expect(tableColumns(database, 'connector_instances')).toEqual(
       expect.arrayContaining(['config_json', 'auth_json', 'filters_json']),
@@ -76,7 +71,7 @@ describe('SQLite database', () => {
       .all()
       .map((row) => (row as { name: string }).name)
     const sourcingFindingIndexes = database
-      .prepare("pragma index_list('sourcing_findings')")
+      .prepare("pragma index_list('opportunities')")
       .all()
       .map((row) => (row as { name: string }).name)
     const sourceIndexes = database
@@ -97,11 +92,11 @@ describe('SQLite database', () => {
       .map((row) => (row as { name: string }).name)
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_id')
     expect(workflowRunIndexes).toContain('idx_workflow_runs_source_type_status_started')
-    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_id')
-    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_status_discovered')
-    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_projection_identity')
-    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_source_entity')
-    expect(sourcingFindingIndexes).toContain('idx_sourcing_findings_canonical_candidate')
+    expect(sourcingFindingIndexes).toContain('idx_opportunities_source_id')
+    expect(sourcingFindingIndexes).toContain('idx_opportunities_source_status_discovered')
+    expect(sourcingFindingIndexes).toContain('idx_opportunities_projection_identity')
+    expect(sourcingFindingIndexes).toContain('idx_opportunities_job')
+    expect(sourcingFindingIndexes).toContain('idx_opportunities_job_fact_version')
     expect(sourceIndexes).toContain('idx_sources_name')
     expect(connectorRunIndexes).toContain('idx_connector_runs_instance')
     expect(connectorRunIndexes).toContain('idx_connector_runs_instance_latest')
@@ -133,7 +128,7 @@ describe('SQLite database', () => {
     const connectorTables = database
       .prepare("select name from sqlite_master where type = 'table' and name = 'connector_observations'")
       .all()
-    expect(migrationRows).toHaveLength(27)
+    expect(migrationRows).toHaveLength(28)
     expect(applicationTables).toHaveLength(1)
     expect(connectorTables).toHaveLength(1)
   })
@@ -154,7 +149,7 @@ describe('SQLite database', () => {
     expect(database.prepare("select name from sqlite_master where type = 'table' and name = 'retry_work'").get())
       .toEqual({ name: 'retry_work' })
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 27 })
+    expect(database.prepare('select count(*) as count from __drizzle_migrations').get()).toEqual({ count: 28 })
     const stampedTags = database
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -211,34 +206,34 @@ describe('SQLite database', () => {
     migrateDatabase(database)
     const tables = database
       .prepare(
-        "select name from sqlite_master where type = 'table' and (name like '%raw_source%' or name = 'source_entities') order by name",
+        "select name from sqlite_master where type = 'table' and (name in ('captures', 'capture_lineages', 'capture_evidence_versions', 'jobs')) order by name",
       )
       .all()
       .map((row) => (row as { name: string }).name)
     const indexes = database
-      .prepare("select name from sqlite_master where type = 'index' and (name like 'idx_raw_source_%' or name = 'idx_source_entities_identity') order by name")
+      .prepare("select name from sqlite_master where type = 'index' and (name like 'idx_captures_%' or name like 'idx_capture_evidence_versions_%' or name = 'idx_capture_lineages_job' or name = 'idx_job_identities_identity') order by name")
       .all()
       .map((row) => (row as { name: string }).name)
     expect(tables).toEqual([
-      'raw_source_occurrences',
-      'raw_source_records',
-      'raw_source_revisions',
-      'source_entities',
+      'capture_evidence_versions',
+      'capture_lineages',
+      'captures',
+      'jobs',
     ])
     expect(indexes).toEqual([
-      'idx_raw_source_occurrences_connector_lineage',
-      'idx_raw_source_occurrences_connector_run',
-      'idx_raw_source_occurrences_lineage',
-      'idx_raw_source_occurrences_record_chronology',
-      'idx_raw_source_occurrences_revision',
-      'idx_raw_source_records_source_entity',
-      'idx_raw_source_revisions_id_record',
-      'idx_raw_source_revisions_provider_current',
-      'idx_raw_source_revisions_record_hash',
-      'idx_raw_source_revisions_record_revision',
-      'idx_source_entities_identity',
+      'idx_capture_evidence_versions_id_lineage',
+      'idx_capture_evidence_versions_lineage_hash',
+      'idx_capture_evidence_versions_lineage_revision',
+      'idx_capture_evidence_versions_provider_current',
+      'idx_capture_lineages_job',
+      'idx_captures_connector_lineage',
+      'idx_captures_connector_run',
+      'idx_captures_evidence_version',
+      'idx_captures_lineage',
+      'idx_captures_lineage_chronology',
+      'idx_job_identities_identity',
     ])
-    expect(tableColumns(database, 'source_entities')).toEqual([
+    expect(tableColumns(database, 'jobs')).toEqual([
       'id',
       'identity_kind',
       'identity_namespace',
@@ -247,7 +242,7 @@ describe('SQLite database', () => {
     ])
     expect(
       database.prepare('select count(*) as count from __drizzle_migrations').get(),
-    ).toEqual({ count: 27 })
+    ).toEqual({ count: 28 })
     const freshlyMigrated = createInMemoryDatabase()
     migrateDatabase(freshlyMigrated)
     for (const table of tables) {
@@ -286,29 +281,29 @@ describe('SQLite database', () => {
         filters_json: '{}',
       })),
     })
-    for (const table of disposableResetTables) {
+    for (const table of canonicalDisposableResetTables) {
       expect(database.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 })
     }
     expect(tableColumns(database, 'normalization_runs')).toEqual(expect.arrayContaining([
-      'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
+      'trigger_capture_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare(`
       select name from sqlite_master
       where type = 'index' and name in (
-        'idx_raw_source_occurrences_lineage',
-        'idx_raw_source_occurrences_connector_lineage',
-        'idx_raw_source_occurrences_connector_run'
+        'idx_captures_lineage',
+        'idx_captures_connector_lineage',
+        'idx_captures_connector_run'
       ) order by name
     `).all()).toEqual([
-      { name: 'idx_raw_source_occurrences_connector_lineage' },
-      { name: 'idx_raw_source_occurrences_connector_run' },
-      { name: 'idx_raw_source_occurrences_lineage' },
+      { name: 'idx_captures_connector_lineage' },
+      { name: 'idx_captures_connector_run' },
+      { name: 'idx_captures_lineage' },
     ])
     expect(normalizationLineageTriggerNames(database)).toEqual([
+      'trg_captures_normalization_lineage_delete',
+      'trg_captures_normalization_lineage_update',
       'trg_normalization_runs_trigger_lineage_insert',
       'trg_normalization_runs_trigger_lineage_update',
-      'trg_raw_source_occurrences_normalization_lineage_delete',
-      'trg_raw_source_occurrences_normalization_lineage_update',
     ])
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
@@ -317,7 +312,8 @@ describe('SQLite database', () => {
     const database = createInMemoryDatabase(); migrateDatabase(database, { migrationsFolder: migrationFolderThrough(21) })
     seedResetMigrationFixture(database)
     database.prepare("update raw_source_revisions set created_at = '2026-07-10T12:00:00.000Z'").run()
-    const protectedBefore = snapshotProtectedTables(database), occurrencesBefore = database.prepare('select * from raw_source_occurrences order by rowid').all()
+    const protectedBefore = snapshotProtectedTables(database)
+    const occurrencesBefore = database.prepare('select id, connector_instance_id, connector_run_id from raw_source_occurrences order by rowid').all()
     const revision = database.prepare('select id from raw_source_revisions limit 1').get() as { id: string }
     migrateDatabase(database)
     expect(snapshotProtectedTables(database)).toEqual({
@@ -328,13 +324,13 @@ describe('SQLite database', () => {
       })),
     })
     expect(database.prepare('select * from connector_runs order by rowid').all()).toEqual([])
-    expect(database.prepare('select * from raw_source_occurrences order by rowid').all()).toEqual(occurrencesBefore.map((row) => ({
+    expect(database.prepare('select id, connector_instance_id, connector_run_id, execution_scope_id from captures order by rowid').all()).toEqual(occurrencesBefore.map((row) => ({
       ...row as object,
       execution_scope_id: (row as { connector_instance_id: string | null }).connector_instance_id === null
         ? null
         : `scope_${Buffer.from((row as { connector_instance_id: string }).connector_instance_id).toString('hex')}`,
     })))
-    const cleared = ['sourcing_findings', 'normalization_field_outcomes', 'normalization_gates', 'canonical_source_candidates', 'normalization_replay_items', 'normalization_attempts', 'normalization_runs', 'normalization_replay_requests']
+    const cleared = ['opportunities', 'normalization_field_outcomes', 'normalization_gates', 'job_fact_versions', 'normalization_replay_items', 'normalization_attempts', 'normalization_runs', 'normalization_replay_requests']
     for (const table of cleared) {
       expect(database.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 })
     }
@@ -380,17 +376,17 @@ describe('SQLite database', () => {
         filters_json: '{}',
       })),
     })
-    for (const table of disposableResetTables) {
+    for (const table of canonicalDisposableResetTables) {
       expect(database.prepare(`select count(*) as count from ${table}`).get()).toEqual({ count: 0 })
     }
-    expect(tableColumns(database, 'raw_source_occurrences')).toEqual(expect.arrayContaining([
+    expect(tableColumns(database, 'captures')).toEqual(expect.arrayContaining([
       'connector_instance_id', 'connector_run_id',
     ]))
     expect(tableColumns(database, 'normalization_runs')).toEqual(expect.arrayContaining([
-      'trigger_occurrence_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
+      'trigger_capture_id', 'trigger_connector_instance_id', 'trigger_connector_run_id',
     ]))
     expect(database.prepare('select count(*) as count from __drizzle_migrations').get())
-      .toEqual({ count: 27 })
+      .toEqual({ count: 28 })
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
     database.close()
   })
@@ -423,9 +419,9 @@ describe('SQLite database', () => {
     database.prepare("update connector_instances set connector_id = 'jobright.resolver', connector_version = '0.6.0' where id = 'instance-one'").run()
     migrateDatabase(database)
     expect(database.prepare('select count(*) as count from retry_work').get()).toEqual({ count: 0 })
-    expect(database.prepare('select count(*) as count from raw_source_records').get()).toEqual({ count: 1 })
-    expect(database.prepare('select count(*) as count from raw_source_revisions').get()).toEqual({ count: 2 })
-    expect(database.prepare('select count(*) as count from raw_source_occurrences').get()).toEqual({ count: 0 })
+    expect(database.prepare('select count(*) as count from capture_lineages').get()).toEqual({ count: 1 })
+    expect(database.prepare('select count(*) as count from capture_evidence_versions').get()).toEqual({ count: 2 })
+    expect(database.prepare('select count(*) as count from captures').get()).toEqual({ count: 0 })
     expect(database.prepare('select count(*) as count from connector_runs').get()).toEqual({ count: 0 })
     expect(database.prepare("select connector_version from connector_instances where connector_id = 'jobright.resolver'").get())
       .toEqual({ connector_version: '0.11.0' })
@@ -472,7 +468,7 @@ describe('SQLite database', () => {
       seedReferencedOccurrenceFixture(database)
       expect(() => database.prepare(`
         insert into normalization_runs (
-          id, raw_record_id, raw_revision_id, trigger_occurrence_id,
+          id, capture_lineage_id, capture_evidence_version_id, trigger_capture_id,
           trigger_connector_instance_id, trigger_connector_run_id, input_hash,
           resolver_set_hash, canonical_schema_version, gate_policy_version, trigger_kind,
           status, created_at, updated_at
@@ -484,36 +480,36 @@ describe('SQLite database', () => {
         )
       `).run()).toThrow(/normalization trigger lineage mismatch/i)
       expect(() => database.prepare(`
-        update raw_source_occurrences
+        update captures
         set connector_instance_id = 'instance-two', connector_run_id = 'connector-run-two'
         where id = 'occurrence-one'
       `).run()).toThrow(/normalization trigger occurrence is immutable|raw source occurrence scope owner mismatch/i)
       expect(() => database.prepare(`
-        update raw_source_occurrences
-        set raw_revision_id = 'revision-two'
+        update captures
+        set capture_evidence_version_id = 'revision-two'
         where id = 'occurrence-one'
       `).run()).toThrow(/normalization trigger occurrence is immutable/i)
       expect(() => database.prepare(`
-        update raw_source_occurrences set id = 'occurrence-renamed'
+        update captures set id = 'occurrence-renamed'
         where id = 'occurrence-one'
       `).run()).toThrow(/normalization trigger occurrence is immutable/i)
       expect(() => database.prepare(`
-        delete from raw_source_occurrences where id = 'occurrence-one'
+        delete from captures where id = 'occurrence-one'
       `).run()).toThrow(/normalization trigger occurrence is immutable/i)
       expect(() => database.prepare(`
-        update raw_source_occurrences set observed_at = '2026-07-10T12:05:00.000Z'
+        update captures set observed_at = '2026-07-10T12:05:00.000Z'
         where id = 'occurrence-one'
       `).run()).not.toThrow()
       expect(database.prepare(`
-        select connector_instance_id, connector_run_id, raw_revision_id
-        from raw_source_occurrences where id = 'occurrence-one'
+        select connector_instance_id, connector_run_id, capture_evidence_version_id
+        from captures where id = 'occurrence-one'
       `).get()).toEqual({
         connector_instance_id: 'instance-one',
         connector_run_id: 'connector-run-one',
-        raw_revision_id: 'revision-one',
+        capture_evidence_version_id: 'revision-one',
       })
       expect(() => database.prepare(`
-        delete from raw_source_occurrences where id = 'occurrence-two'
+        delete from captures where id = 'occurrence-two'
       `).run()).not.toThrow()
       expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
       database.close()
@@ -536,22 +532,22 @@ describe('SQLite database', () => {
     const fresh = createInMemoryDatabase()
     migrateDatabase(fresh)
     const tables = [
-      'source_entity_identities', 'source_identity_conflicts',
+      'job_identities', 'job_identity_conflicts',
       'normalization_runs', 'normalization_attempts', 'normalization_field_outcomes',
-      'canonical_source_candidates', 'normalization_gates',
+      'job_fact_versions', 'normalization_gates',
       'normalization_replay_requests', 'normalization_replay_items',
     ]
     const indexes = [
-      'idx_source_entity_identities_identity', 'idx_source_entity_identities_entity_chronology',
-      'idx_source_identity_conflicts_occurrence', 'idx_source_identity_conflicts_chronology',
-      'idx_normalization_runs_cache', 'idx_normalization_runs_raw_record',
+      'idx_job_identities_identity', 'idx_job_identities_job_chronology',
+      'idx_job_identity_conflicts_capture', 'idx_job_identity_conflicts_chronology',
+      'idx_normalization_runs_cache', 'idx_normalization_runs_capture_lineage',
       'idx_normalization_attempts_run_sequence', 'idx_normalization_attempts_resolver',
       'idx_normalization_field_outcomes_run_sequence', 'idx_normalization_field_outcomes_selector',
-      'idx_normalization_field_outcomes_resolver', 'idx_canonical_source_candidates_run',
-      'idx_canonical_source_candidates_revision_schema', 'idx_normalization_gates_run',
+      'idx_normalization_field_outcomes_resolver', 'idx_job_fact_versions_run',
+      'idx_job_fact_versions_evidence_version_schema', 'idx_normalization_gates_run',
       'idx_normalization_gates_policy',
       'idx_normalization_replay_requests_chronology',
-      'idx_normalization_replay_items_sequence', 'idx_normalization_replay_items_revision',
+      'idx_normalization_replay_items_sequence', 'idx_normalization_replay_items_evidence_version',
     ]
     for (const table of tables) expect(tableDefinition(legacy, table)).toEqual(tableDefinition(fresh, table))
     for (const index of indexes) expect(indexDefinition(legacy, index)).toEqual(indexDefinition(fresh, index))
@@ -562,7 +558,8 @@ describe('SQLite database', () => {
       predicate: expect.stringMatching(/trigger_id.*is null/i),
     })
     expect(tableDefinition(fresh, 'normalization_gates').checks).toEqual([
-      'chk_normalization_gates_status', 'chk_normalization_gates_candidate',
+      'chk_normalization_gates_status',
+      expect.stringMatching(/^chk_normalization_gates_(candidate|job_fact_version)$/),
     ])
     expect(tableDefinition(fresh, 'normalization_replay_requests').checks).toEqual([
       'chk_normalization_replay_requests_status',
@@ -570,13 +567,13 @@ describe('SQLite database', () => {
     expect(tableDefinition(fresh, 'normalization_replay_items').checks).toEqual([
       'chk_normalization_replay_items_status',
     ])
-    expect(tableDefinition(fresh, 'source_entity_identities').checks).toEqual([
-      'chk_source_entity_identities_kind',
-      'chk_source_entity_identities_namespace_length',
-      'chk_source_entity_identities_value_length',
-      'chk_source_entity_identities_provenance_kind',
-      'chk_source_entity_identities_provenance_version_length',
-      'chk_source_entity_identities_evidence_length',
+    expect(tableDefinition(fresh, 'job_identities').checks).toEqual([
+      expect.stringMatching(/^chk_(source_entity_|job_)identities_kind$/),
+      expect.stringMatching(/^chk_(source_entity_|job_)identities_namespace_length$/),
+      expect.stringMatching(/^chk_(source_entity_|job_)identities_value_length$/),
+      expect.stringMatching(/^chk_(source_entity_|job_)identities_provenance_kind$/),
+      expect.stringMatching(/^chk_(source_entity_|job_)identities_provenance_version_length$/),
+      expect.stringMatching(/^chk_(source_entity_|job_)identities_evidence_length$/),
     ])
     expect(fresh.prepare('pragma foreign_key_check').all()).toEqual([])
     fresh.close()
@@ -655,7 +652,7 @@ describe('SQLite database', () => {
     }
     expect(() => insertManagedIdentity.run('managed-bound-overflow', 'https://jobs.lever.co/acme/managed-overflow')).toThrow(/identity bound/i)
     expect(database.prepare('pragma foreign_key_check').all()).toEqual([])
-    expect(identityTriggerNames(database)).toEqual(expectedIdentityTriggers)
+    expect(identityTriggerNames(database)).toEqual(expectedLegacyIdentityTriggers)
     database.close()
   })
   it('enforces append-only identity and conflict provenance in SQLite', () => {
@@ -837,21 +834,9 @@ describe('SQLite database', () => {
     ).toHaveLength(0)
   })
 })
-const protectedResetTables = [
-  'companies', 'sources', 'applications', 'application_links', 'application_scores',
-  'application_workflow_states', 'application_events', 'application_attempts',
-  'application_attempt_steps', 'workflow_runs', 'workflow_run_steps', 'user_profile',
-  'profile_education', 'profile_answers', 'profile_secrets', 'profile_sensitive_details',
-  'policy_config', 'policy_evidence', 'connector_instances',
-] as const
-const disposableResetTables = [
-  'connector_runs', 'connector_checkpoints', 'connector_observations', 'source_entities',
-  'source_entity_identities', 'source_identity_conflicts', 'raw_source_records',
-  'raw_source_revisions', 'raw_source_occurrences', 'normalization_runs',
-  'normalization_replay_requests', 'normalization_replay_items', 'normalization_attempts',
-  'normalization_field_outcomes', 'canonical_source_candidates', 'normalization_gates',
-  'sourcing_findings',
-] as const
+const protectedResetTables = ['companies', 'sources', 'applications', 'application_links', 'application_scores', 'application_workflow_states', 'application_events', 'application_attempts', 'application_attempt_steps', 'workflow_runs', 'workflow_run_steps', 'user_profile', 'profile_education', 'profile_answers', 'profile_secrets', 'profile_sensitive_details', 'policy_config', 'policy_evidence', 'connector_instances'] as const
+const disposableResetTables = ['connector_runs', 'connector_checkpoints', 'connector_observations', 'source_entities', 'source_entity_identities', 'source_identity_conflicts', 'raw_source_records', 'raw_source_revisions', 'raw_source_occurrences', 'normalization_runs', 'normalization_replay_requests', 'normalization_replay_items', 'normalization_attempts', 'normalization_field_outcomes', 'canonical_source_candidates', 'normalization_gates', 'sourcing_findings'] as const
+const canonicalDisposableResetTables = ['connector_runs', 'connector_checkpoints', 'connector_observations', 'jobs', 'job_identities', 'job_identity_conflicts', 'capture_lineages', 'capture_evidence_versions', 'captures', 'normalization_runs', 'normalization_replay_requests', 'normalization_replay_items', 'normalization_attempts', 'normalization_field_outcomes', 'job_fact_versions', 'normalization_gates', 'opportunities'] as const
 function seedResetMigrationFixture(database: ReturnType<typeof createInMemoryDatabase>) {
   database.exec(`
     insert into connector_instances (
@@ -882,6 +867,15 @@ function seedResetMigrationFixture(database: ReturnType<typeof createInMemoryDat
 function seedReferencedOccurrenceFixture(database: ReturnType<typeof createInMemoryDatabase>) {
   const scoped = (database.prepare("pragma table_info('connector_instances')").all() as Array<{ name: string }>)
     .some(({ name }) => name === 'execution_scope_id')
+  const canonical = Boolean(database.prepare("select 1 from sqlite_master where type = 'table' and name = 'jobs'").get())
+  const jobsTable = canonical ? 'jobs' : 'source_entities'
+  const lineagesTable = canonical ? 'capture_lineages' : 'raw_source_records'
+  const evidenceVersionsTable = canonical ? 'capture_evidence_versions' : 'raw_source_revisions'
+  const capturesTable = canonical ? 'captures' : 'raw_source_occurrences'
+  const jobIdColumn = canonical ? 'job_id' : 'source_entity_id'
+  const lineageIdColumn = canonical ? 'capture_lineage_id' : 'raw_record_id'
+  const evidenceVersionIdColumn = canonical ? 'capture_evidence_version_id' : 'raw_revision_id'
+  const triggerCaptureIdColumn = canonical ? 'trigger_capture_id' : 'trigger_occurrence_id'
   database.exec(`
     ${scoped ? `insert into source_execution_scopes (id, created_at, updated_at) values
       ('scope-instance-one', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
@@ -899,24 +893,24 @@ function seedReferencedOccurrenceFixture(database: ReturnType<typeof createInMem
     ) values
       ('connector-run-one', ${scoped ? "'scope-instance-one'," : ''} 'instance-one', 'manual', 'completed', '2026-07-10T12:00:00.000Z', '{}', '{}', 'filters:{}', 0, 0, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z'),
       ('connector-run-two', ${scoped ? "'scope-instance-two'," : ''} 'instance-two', 'manual', 'completed', '2026-07-10T12:00:00.000Z', '{}', '{}', 'filters:{}', 0, 0, '{}', '[]', '{}', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z');
-    insert into source_entities (id, identity_kind, identity_namespace, identity_value, created_at)
+    insert into ${jobsTable} (id, identity_kind, identity_namespace, identity_value, created_at)
     values ('entity-one', 'provider_job', 'fixture', 'job-one', '2026-07-10T12:00:00.000Z');
-    insert into raw_source_records (id, source_entity_id, created_at)
+    insert into ${lineagesTable} (id, ${jobIdColumn}, created_at)
     values ('record-one', 'entity-one', '2026-07-10T12:00:00.000Z');
-    insert into raw_source_revisions (
-      id, raw_record_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
+    insert into ${evidenceVersionsTable} (
+      id, ${lineageIdColumn}, revision, content_hash, adapter_id, adapter_kind, adapter_version,
       observed_at, payload_json, evidence_json, created_at
     ) values
       ('revision-one', 'record-one', 1, 'sha256:one', 'fixture', 'connector', '1.0.0', '2026-07-10T12:00:00.000Z', '{}', '[]', '2026-07-10T12:00:00.000Z'),
       ('revision-two', 'record-one', 2, 'sha256:two', 'fixture', 'connector', '1.0.0', '2026-07-10T12:01:00.000Z', '{}', '[]', '2026-07-10T12:01:00.000Z');
-    insert into raw_source_occurrences (
-      id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id, ${scoped ? 'execution_scope_id,' : ''}
+    insert into ${capturesTable} (
+      id, ${lineageIdColumn}, ${evidenceVersionIdColumn}, connector_instance_id, connector_run_id, ${scoped ? 'execution_scope_id,' : ''}
       observed_at, received_at
     ) values
       ('occurrence-one', 'record-one', 'revision-one', 'instance-one', 'connector-run-one', ${scoped ? "'scope-instance-one'," : ''} '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z'),
       ('occurrence-two', 'record-one', 'revision-one', 'instance-two', 'connector-run-two', ${scoped ? "'scope-instance-two'," : ''} '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z');
     insert into normalization_runs (
-      id, raw_record_id, raw_revision_id, trigger_occurrence_id,
+      id, ${canonical ? 'capture_lineage_id' : 'raw_record_id'}, ${canonical ? 'capture_evidence_version_id' : 'raw_revision_id'}, ${triggerCaptureIdColumn},
       trigger_connector_instance_id, trigger_connector_run_id, input_hash, resolver_set_hash,
       canonical_schema_version, gate_policy_version, trigger_kind, status, created_at, updated_at
     ) values
@@ -980,10 +974,16 @@ function tableColumns(database: ReturnType<typeof createInMemoryDatabase>, table
     .map((row) => (row as { name: string }).name)
 }
 function identityTriggerNames(database: ReturnType<typeof createInMemoryDatabase>) {
+  const identityPrefix = database
+    .prepare("select 1 from sqlite_master where type = 'table' and name = 'job_identities'")
+    .get()
+    ? 'trg_job%'
+    : 'trg_source_entity%'
+  const conflictPrefix = identityPrefix === 'trg_job%' ? 'trg_job_identity%' : 'trg_source_identity%'
   return database.prepare(`
     select name from sqlite_master
     where type = 'trigger'
-      and (name like 'trg_source_entity%' or name like 'trg_source_identity%')
+      and (name like '${identityPrefix}' or name like '${conflictPrefix}')
     order by name
   `).all().map((row) => (row as { name: string }).name)
 }
@@ -992,7 +992,7 @@ function normalizationLineageTriggerNames(database: ReturnType<typeof createInMe
     select name from sqlite_master
     where type = 'trigger'
       and (name like 'trg_normalization_runs_trigger_lineage_%'
-        or name like 'trg_raw_source_occurrences_normalization_lineage_%')
+        or name like 'trg_captures_normalization_lineage_%')
     order by name
   `).all().map((row) => (row as { name: string }).name)
 }

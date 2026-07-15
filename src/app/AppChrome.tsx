@@ -302,7 +302,7 @@ function AppSidebar({
                             }
                             onClick={() => onViewChange(APP_VIEWS.SOURCING)}
                           >
-                            Findings
+                            Opportunities
                           </button>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>

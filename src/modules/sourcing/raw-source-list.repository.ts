@@ -79,16 +79,16 @@ function buildWhere(query: RawSourceRecordsListQuery, cursor: CursorValue | null
   if (query.adapterKind !== undefined) add('adapter_kind = ?', query.adapterKind)
   if (query.connectorInstanceId !== undefined) {
     add(`exists (
-      select 1 from raw_source_occurrences filtered_occurrence
-      where filtered_occurrence.raw_record_id = eligible.raw_record_id
-        and filtered_occurrence.connector_instance_id = ?
+      select 1 from captures filtered_capture
+      where filtered_capture.capture_lineage_id = eligible.capture_lineage_id
+        and filtered_capture.connector_instance_id = ?
     )`, query.connectorInstanceId)
   }
   if (query.connectorRunId !== undefined) {
     add(`exists (
-      select 1 from raw_source_occurrences filtered_occurrence
-      where filtered_occurrence.raw_record_id = eligible.raw_record_id
-        and filtered_occurrence.connector_run_id = ?
+      select 1 from captures filtered_capture
+      where filtered_capture.capture_lineage_id = eligible.capture_lineage_id
+        and filtered_capture.connector_run_id = ?
     )`, query.connectorRunId)
   }
   if (query.receivedFrom !== undefined) add('last_received_at >= ?', receivedFromKey(query.receivedFrom))
@@ -100,7 +100,7 @@ function buildWhere(query: RawSourceRecordsListQuery, cursor: CursorValue | null
   if (query.projectionStatus !== undefined) add('projection_status = ?', query.projectionStatus)
   if (cursor) {
     add(
-      '(last_received_at < ? or (last_received_at = ? and raw_record_id collate binary < ?))',
+      '(last_received_at < ? or (last_received_at = ? and capture_lineage_id collate binary < ?))',
       cursor.lastReceivedAt,
       cursor.lastReceivedAt,
       cursor.id,
@@ -118,14 +118,14 @@ with latest_normalization as materialized (
   select
     normalization.*,
     row_number() over (
-      partition by normalization.raw_revision_id
+      partition by normalization.capture_evidence_version_id
       order by normalization.created_at desc, normalization.rowid desc
     ) as normalization_rank
   from normalization_runs normalization
 ), eligible as (
   select
-    record.id as raw_record_id,
-    record.source_entity_id,
+    record.id as capture_lineage_id,
+    record.job_id,
     record.created_at as record_created_at,
     revision.adapter_id,
     revision.adapter_kind,
@@ -140,47 +140,47 @@ with latest_normalization as materialized (
     revision.created_at as revision_created_at,
     (
       select max(received.received_at)
-      from raw_source_occurrences received
-      where received.raw_record_id = record.id
+      from captures received
+      where received.capture_lineage_id = record.id
     ) as last_received_at,
     coalesce(normalization.status, 'raw_only') as normalization_status,
     normalization.updated_at as normalization_updated_at,
-    normalization.raw_revision_id as normalization_raw_revision_id,
+    normalization.capture_evidence_version_id as normalization_capture_evidence_version_id,
     case
       when normalization.status in ('pending', 'in_progress', 'blocked') then null
       when normalization.status = 'failed' and gate.status <> 'failed' then null
       else gate.status
     end as gate_status,
     case when normalization.status = 'completed' and gate.status = 'passed'
-      then candidate.id else null end as canonical_candidate_id,
+      then candidate.id else null end as job_fact_version_id,
     revision.payload_json as payload_json,
     case when normalization.status = 'completed' and gate.status = 'passed'
       then coalesce(projection.status, 'not_eligible') else 'not_eligible'
     end as projection_status,
-    case when projection.status = 'projected' then projection.finding_id else null end as finding_id
-  from raw_source_records record
-  join raw_source_revisions revision on revision.raw_record_id = record.id
+    case when projection.status = 'projected' then projection.opportunity_id else null end as opportunity_id
+  from capture_lineages record
+  join capture_evidence_versions revision on revision.capture_lineage_id = record.id
     and not exists (
-      select 1 from raw_source_revisions newer_revision
-      where newer_revision.raw_record_id = record.id
+      select 1 from capture_evidence_versions newer_revision
+      where newer_revision.capture_lineage_id = record.id
         and newer_revision.revision > revision.revision
     )
   left join latest_normalization normalization
-    on normalization.raw_revision_id = revision.id and normalization.normalization_rank = 1
+    on normalization.capture_evidence_version_id = revision.id and normalization.normalization_rank = 1
   left join normalization_gates gate on gate.run_id = normalization.id
-  left join canonical_source_candidates candidate on candidate.run_id = normalization.id
+  left join job_fact_versions candidate on candidate.run_id = normalization.id
   left join sourcing_projection_outcomes projection
-    on projection.canonical_candidate_id = candidate.id
+    on projection.job_fact_version_id = candidate.id
 ), page as (
 select * from eligible`
 
 const PAGE_QUERY = `
-order by last_received_at desc, raw_record_id collate binary desc
+order by last_received_at desc, capture_lineage_id collate binary desc
 limit ?
 )
 select
-  page.raw_record_id as "rawRecordId",
-  page.source_entity_id as "sourceEntityId",
+  page.capture_lineage_id as "rawRecordId",
+  page.job_id as "sourceEntityId",
   page.record_created_at as "recordCreatedAt",
   page.adapter_id as "adapterId",
   page.adapter_kind as "adapterKind",
@@ -194,43 +194,43 @@ select
   page.revision_observed_at as "revisionObservedAt",
   page.revision_created_at as "revisionCreatedAt",
   (
-    select count(*) from raw_source_revisions counted_revision
-    where counted_revision.raw_record_id = page.raw_record_id
+    select count(*) from capture_evidence_versions counted_revision
+    where counted_revision.capture_lineage_id = page.capture_lineage_id
   ) as "revisionCount",
   (
     select json_group_array(observed.observed_at)
-    from raw_source_occurrences observed
-    where observed.raw_record_id = page.raw_record_id
+    from captures observed
+    where observed.capture_lineage_id = page.capture_lineage_id
   ) as "observedTimesJson",
   (
     select min(received.received_at)
-    from raw_source_occurrences received
-    where received.raw_record_id = page.raw_record_id
+    from captures received
+    where received.capture_lineage_id = page.capture_lineage_id
   ) as "firstReceivedAt",
   page.last_received_at as "lastReceivedAt",
   (
-    select count(*) from raw_source_occurrences counted_occurrence
-    where counted_occurrence.raw_record_id = page.raw_record_id
+    select count(*) from captures counted_capture
+    where counted_capture.capture_lineage_id = page.capture_lineage_id
   ) as "occurrenceCount",
   latest_occurrence.connector_instance_id as "connectorInstanceId",
   latest_occurrence.connector_run_id as "latestConnectorRunId",
   page.normalization_status as "normalizationStatus",
   page.normalization_updated_at as "normalizationUpdatedAt",
-  page.normalization_raw_revision_id as "normalizationRawRevisionId",
+  page.normalization_capture_evidence_version_id as "normalizationRawRevisionId",
   page.gate_status as "gateStatus",
-  page.canonical_candidate_id as "canonicalCandidateId",
+  page.job_fact_version_id as "canonicalCandidateId",
   page.payload_json as "payloadJson",
   page.projection_status as "projectionStatus",
-  page.finding_id as "findingId"
+  page.opportunity_id as "findingId"
 from page
-left join raw_source_occurrences latest_occurrence on latest_occurrence.id = (
+left join captures latest_occurrence on latest_occurrence.id = (
   select selected_occurrence.id
-  from raw_source_occurrences selected_occurrence
-  where selected_occurrence.raw_record_id = page.raw_record_id
+  from captures selected_occurrence
+  where selected_occurrence.capture_lineage_id = page.capture_lineage_id
   order by selected_occurrence.received_at desc, selected_occurrence.id collate binary desc
   limit 1
 )
-order by page.last_received_at desc, page.raw_record_id collate binary desc`
+order by page.last_received_at desc, page.capture_lineage_id collate binary desc`
 
 function mapSummary(row: RawSummaryRow): RawSourceRecordSummary {
   const observedTimes = JSON.parse(row.observedTimesJson) as string[]

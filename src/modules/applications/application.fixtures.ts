@@ -4,7 +4,7 @@ import {
   applicationScores,
   applications,
   companies,
-  sourcingFindings,
+  opportunities,
   sources,
   workflowRuns,
   workflowRunSteps,
@@ -407,7 +407,7 @@ export function seedReferenceTrackerApplications(
 }
 
 export function seedSampleSourcingFindings(database: DrizzleDatabase) {
-  if (database.select().from(sourcingFindings).limit(1).get()) {
+  if (database.select().from(opportunities).limit(1).get()) {
     return
   }
 
@@ -484,7 +484,7 @@ export function seedSampleSourcingFindings(database: DrizzleDatabase) {
   }
 
   database
-    .insert(sourcingFindings)
+    .insert(opportunities)
     .values([
       {
         id: 'sourcing-finding-delta-labs',
@@ -508,7 +508,7 @@ export function seedSampleSourcingFindings(database: DrizzleDatabase) {
         duplicateNotes: null,
         blocker: null,
         mergeStatus: 'new',
-        mergedApplicationId: null,
+        applicationId: null,
         mergeNotes: null,
         discoveredAt: '2026-06-05T14:08:00.000Z',
         createdAt: referenceSeedCreatedAt,
@@ -537,7 +537,7 @@ export function seedSampleSourcingFindings(database: DrizzleDatabase) {
         duplicateNotes: null,
         blocker: null,
         mergeStatus: 'below_cutoff',
-        mergedApplicationId: null,
+        applicationId: null,
         mergeNotes: 'Below current sourcing cutoff.',
         discoveredAt: '2026-06-05T14:14:00.000Z',
         createdAt: referenceSeedCreatedAt,
@@ -566,7 +566,7 @@ export function seedSampleSourcingFindings(database: DrizzleDatabase) {
         duplicateNotes: null,
         blocker: 'Official application URL not found.',
         mergeStatus: 'blocked',
-        mergedApplicationId: null,
+        applicationId: null,
         mergeNotes: 'Needs official URL before promotion.',
         discoveredAt: '2026-06-05T14:19:00.000Z',
         createdAt: referenceSeedCreatedAt,

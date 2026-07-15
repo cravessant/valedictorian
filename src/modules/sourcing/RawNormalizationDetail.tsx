@@ -86,7 +86,7 @@ export function RawNormalizationDetail({
     return () => { cancelled = true }
   }, [api, summary])
 
-  const title = `Raw record ${sanitizeDisplayText(summary.id)}`
+  const title = `Capture lineage ${sanitizeDisplayText(summary.id)}`
 
   return (
     <Dialog
@@ -108,7 +108,7 @@ export function RawNormalizationDetail({
         </DialogHeader>
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-4 px-5 py-4">
-            {!record && !error ? <p role="status">Loading raw record detail...</p> : null}
+            {!record && !error ? <p role="status">Loading Capture lineage detail...</p> : null}
             {error ? <RawDetailLoadFailure error={error} /> : null}
             {record ? <RawRecordDetail record={record} /> : null}
             {record && projection && detailIssue ? <RawDetailConflict issue={detailIssue} /> : null}
@@ -130,10 +130,10 @@ function RawDetailLoadFailure({ error }: { error: RawDetailLoadError }) {
   return (
     <p role="alert">
       {error === 'invalid_detail'
-        ? 'Raw record detail is invalid and cannot be displayed.'
+        ? 'Capture lineage detail is invalid and cannot be displayed.'
         : error === 'backend_unavailable'
-          ? 'Raw record detail is unavailable because the backend could not be reached.'
-          : 'Raw record detail could not be loaded.'}
+          ? 'Capture lineage detail is unavailable because the backend could not be reached.'
+          : 'Capture lineage detail could not be loaded.'}
     </p>
   )
 }
@@ -146,17 +146,17 @@ function classifyRawDetailLoadError(error: unknown): RawDetailLoadError {
 function RawDetailConflict({ issue }: { issue: RawDetailIssue }) {
   return (
     <section
-      aria-label="Raw normalization detail conflict"
+      aria-label="Capture-to-Job detail conflict"
       className="mt-6 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm"
       role="alert"
     >
       {issue === 'normalization_revision'
-        ? 'Exact normalization detail unavailable because the returned normalization does not match the fetched raw revision.'
+        ? 'Exact Job normalization detail unavailable because the returned normalization does not match the fetched evidence version.'
         : issue === 'candidate_identity'
-          ? 'Exact candidate detail unavailable because normalization and projection candidate identities conflict.'
+          ? 'Exact Job fact detail unavailable because normalization and Opportunity projection Job identities conflict.'
           : issue === 'projection_revision'
-            ? 'Exact projection detail unavailable because the returned projection does not match the fetched raw revision.'
-            : 'Exact normalization detail unavailable for the fetched raw revision.'}
+            ? 'Exact Opportunity projection detail unavailable because the returned projection does not match the fetched evidence version.'
+            : 'Exact Job normalization detail unavailable for the fetched evidence version.'}
     </section>
   )
 }
@@ -200,9 +200,9 @@ function RawRecordDetail({ record }: { record: RawSourceRecord }) {
   return (
     <div className="space-y-6">
       <section className="space-y-2" aria-labelledby="latest-revision-facts">
-        <h3 id="latest-revision-facts" className="font-semibold">Latest revision facts</h3>
+        <h3 id="latest-revision-facts" className="font-semibold">Latest evidence version facts</h3>
         <p className="text-xs text-muted-foreground">
-          Revision {revision.revision} · {sanitizeDisplayText(revision.id)} · captured by{' '}
+          Evidence version {revision.revision} · {sanitizeDisplayText(revision.id)} · captured by{' '}
           {sanitizeDisplayText(revision.adapter.id)}@{sanitizeDisplayText(revision.adapter.version)}
         </p>
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
@@ -215,9 +215,9 @@ function RawRecordDetail({ record }: { record: RawSourceRecord }) {
           <pre className="overflow-auto rounded-md border border-border bg-background p-3 text-xs">
             {JSON.stringify(payload, null, 2)}
           </pre>
-        ) : <p className="text-sm text-muted-foreground">No safe raw payload facts.</p>}
+        ) : <p className="text-sm text-muted-foreground">No safe provider payload facts.</p>}
         {evidence.length > 0 ? (
-          <ul aria-label="Sanitized raw evidence" className="space-y-1 text-sm">
+          <ul aria-label="Sanitized Capture evidence" className="space-y-1 text-sm">
             {evidence.map((item, index) => (
               <li key={`${item.kind}-${item.label}-${index}`}>
                 {item.label}: {formatValue(item.value)}
@@ -227,7 +227,7 @@ function RawRecordDetail({ record }: { record: RawSourceRecord }) {
         ) : null}
       </section>
       <CaptureProvenance record={record} />
-      <OccurrenceLineage record={record} />
+      <CaptureHistory record={record} />
     </div>
   )
 }
@@ -298,16 +298,16 @@ function Fact({ label, missing, value }: { label: string; missing: string; value
   )
 }
 
-function OccurrenceLineage({ record }: { record: RawSourceRecord }) {
+function CaptureHistory({ record }: { record: RawSourceRecord }) {
   return (
     <section className="space-y-2">
-      <h3 className="font-semibold">Occurrence and revision lineage</h3>
+      <h3 className="font-semibold">Captures and evidence versions</h3>
       <p className="text-xs text-muted-foreground">
-        Historical payloads are not returned by this read; occurrence rows preserve their immutable revision identifiers.
+        Historical payloads are not returned by this read; Capture rows preserve their immutable evidence-version identifiers.
       </p>
-      <Table aria-label="Occurrence and revision lineage">
+      <Table aria-label="Captures and evidence versions">
         <TableHeader><TableRow>
-          <TableHead>Occurrence</TableHead><TableHead>Revision</TableHead>
+          <TableHead>Capture</TableHead><TableHead>Evidence version</TableHead>
           <TableHead>Received</TableHead><TableHead>Connector run</TableHead>
         </TableRow></TableHeader>
         <TableBody>{record.occurrences.map((occurrence) => (

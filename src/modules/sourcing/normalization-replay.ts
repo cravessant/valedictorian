@@ -17,8 +17,8 @@ import {
   normalizationReplayItems,
   normalizationReplayRequests,
   normalizationRuns,
-  rawSourceOccurrences,
-  rawSourceRevisions,
+  captures,
+  captureEvidenceVersions,
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import {
@@ -63,22 +63,22 @@ export function createNormalizationReplayService(options: {
       ))
       .orderBy(asc(normalizationReplayItems.sequence)).all()
     for (const match of pending) {
-      if (settleReplayItemFromPersistedRun(options.database, replayId, match.id, match.rawRevisionId, now)) {
+      if (settleReplayItemFromPersistedRun(options.database, replayId, match.id, match.captureEvidenceVersionId, now)) {
         continue
       }
       try {
         const effectiveDirectives = selectEffectiveDirectives(
           options.database,
-          match.rawRevisionId,
+          match.captureEvidenceVersionId,
         )
-        const result = await options.orchestrator.normalize(match.rawRecordId, match.rawRevisionId, {
+        const result = await options.orchestrator.normalize(match.captureLineageId, match.captureEvidenceVersionId, {
           kind: 'replay', replayId, fieldDirectives: effectiveDirectives,
           targetResolverVersions: input.targetVersions?.resolvers ?? [],
         })
         await options.onNormalized?.(result)
         const run = options.database.select({ id: normalizationRuns.id }).from(normalizationRuns)
           .where(and(
-            eq(normalizationRuns.rawRevisionId, match.rawRevisionId),
+            eq(normalizationRuns.captureEvidenceVersionId, match.captureEvidenceVersionId),
             eq(normalizationRuns.triggerId, replayId),
           )).get()
         const resultFailed = result.status === 'failed'
@@ -92,7 +92,7 @@ export function createNormalizationReplayService(options: {
           completedAt,
         }).where(and(
           eq(normalizationReplayItems.replayId, replayId),
-          eq(normalizationReplayItems.rawRevisionId, match.rawRevisionId),
+          eq(normalizationReplayItems.captureEvidenceVersionId, match.captureEvidenceVersionId),
         )).run()
       } catch (error) {
         const failure = classifyReplayFailure(error)
@@ -103,7 +103,7 @@ export function createNormalizationReplayService(options: {
           completedAt,
         }).where(and(
           eq(normalizationReplayItems.replayId, replayId),
-          eq(normalizationReplayItems.rawRevisionId, match.rawRevisionId),
+          eq(normalizationReplayItems.captureEvidenceVersionId, match.captureEvidenceVersionId),
         )).run()
       }
     }
@@ -155,7 +155,7 @@ function settleReplayItemFromPersistedRun(
     .from(normalizationRuns)
     .where(and(
       eq(normalizationRuns.triggerId, replayId),
-      eq(normalizationRuns.rawRevisionId, rawRevisionId),
+      eq(normalizationRuns.captureEvidenceVersionId, rawRevisionId),
     ))
     .orderBy(desc(normalizationRuns.createdAt), desc(normalizationRuns.id)).get()
   if (!run || !['completed', 'blocked', 'failed'].includes(run.status)) return false
@@ -196,8 +196,8 @@ function initializeReplay(
     if (inserted.changes === 0) return
     input.matches.forEach((match, sequence) => {
       transaction.insert(normalizationReplayItems).values({
-        id: crypto.randomUUID(), replayId: input.replayId, rawRecordId: match.rawRecordId,
-        rawRevisionId: match.rawRevisionId, inputHash: match.inputHash,
+        id: crypto.randomUUID(), replayId: input.replayId, captureLineageId: match.rawRecordId,
+        captureEvidenceVersionId: match.rawRevisionId, inputHash: match.inputHash,
         sequence, status: 'pending', normalizationRunId: null,
         failureJson: null, completedAt: null,
       }).run()
@@ -216,11 +216,11 @@ function readReplayReceipt(database: DrizzleDatabase, replayId: string): RawSour
     if (item.status === 'pending') return []
     const run = item.normalizationRunId ? { normalizationRunId: item.normalizationRunId } : {}
     if (item.status === 'completed') return [{
-      status: 'completed', rawRecordId: item.rawRecordId,
-      rawRevisionId: item.rawRevisionId, ...run,
+      status: 'completed', rawRecordId: item.captureLineageId,
+      rawRevisionId: item.captureEvidenceVersionId, ...run,
     }]
     return [{
-      status: 'failed', rawRecordId: item.rawRecordId, rawRevisionId: item.rawRevisionId,
+      status: 'failed', rawRecordId: item.captureLineageId, rawRevisionId: item.captureEvidenceVersionId,
       ...run,
       failure: item.failureJson
         ? JSON.parse(item.failureJson) as RawSourceReplayFailure
@@ -232,7 +232,7 @@ function readReplayReceipt(database: DrizzleDatabase, replayId: string): RawSour
     replayId,
     acceptedAt: request.acceptedAt,
     completedAt: request.completedAt,
-    matchedRawRevisionIds: persistedItems.map(({ rawRevisionId }) => rawRevisionId),
+    matchedRawRevisionIds: persistedItems.map(({ captureEvidenceVersionId }) => captureEvidenceVersionId),
   }
   if (request.status === 'completed_with_failures') {
     return { ...receipt, status: 'completed_with_failures', items }
@@ -248,16 +248,16 @@ function readReplayReceipt(database: DrizzleDatabase, replayId: string): RawSour
 }
 
 function currentConnectorRawRevisionIds(database: DrizzleDatabase, connectorInstanceId: string) {
-  const rawRecordIds = new Set(database.select({ id: rawSourceOccurrences.rawRecordId })
-    .from(rawSourceOccurrences)
-    .where(eq(rawSourceOccurrences.connectorInstanceId, connectorInstanceId))
-    .all().map(({ id }) => id))
+  const rawRecordIds = new Set(database.select({ rawRecordId: captures.captureLineageId })
+    .from(captures)
+    .where(eq(captures.connectorInstanceId, connectorInstanceId))
+    .all().map(({ rawRecordId }) => rawRecordId))
   const current = new Map<string, { id: string; revision: number }>()
   for (const revision of database.select({
-    id: rawSourceRevisions.id,
-    rawRecordId: rawSourceRevisions.rawRecordId,
-    revision: rawSourceRevisions.revision,
-  }).from(rawSourceRevisions).orderBy(asc(rawSourceRevisions.createdAt), asc(rawSourceRevisions.id)).all()) {
+    id: captureEvidenceVersions.id,
+    rawRecordId: captureEvidenceVersions.captureLineageId,
+    revision: captureEvidenceVersions.revision,
+  }).from(captureEvidenceVersions).orderBy(asc(captureEvidenceVersions.createdAt), asc(captureEvidenceVersions.id)).all()) {
     if (!rawRecordIds.has(revision.rawRecordId)) continue
     const prior = current.get(revision.rawRecordId)
     if (!prior || revision.revision > prior.revision) current.set(revision.rawRecordId, revision)
@@ -370,7 +370,7 @@ function selectEffectiveDirectives(database: DrizzleDatabase, rawRevisionId: str
     directivesJson: normalizationReplayRequests.fieldDirectivesJson,
   }).from(normalizationReplayItems)
     .innerJoin(normalizationReplayRequests, eq(normalizationReplayRequests.id, normalizationReplayItems.replayId))
-    .where(eq(normalizationReplayItems.rawRevisionId, rawRevisionId))
+    .where(eq(normalizationReplayItems.captureEvidenceVersionId, rawRevisionId))
     .orderBy(
       asc(normalizationReplayRequests.acceptedAt),
       sql`${normalizationReplayRequests}.rowid asc`,
@@ -386,10 +386,10 @@ function selectEffectiveDirectives(database: DrizzleDatabase, rawRevisionId: str
 
 function selectMatches(database: DrizzleDatabase, input: ReplayRawSourceRecordsInput) {
   const revisions = database.select({
-    rawRecordId: rawSourceRevisions.rawRecordId,
-    rawRevisionId: rawSourceRevisions.id,
-    contentHash: rawSourceRevisions.contentHash,
-  }).from(rawSourceRevisions).orderBy(asc(rawSourceRevisions.createdAt), asc(rawSourceRevisions.id)).all()
+    rawRecordId: captureEvidenceVersions.captureLineageId,
+    rawRevisionId: captureEvidenceVersions.id,
+    contentHash: captureEvidenceVersions.contentHash,
+  }).from(captureEvidenceVersions).orderBy(asc(captureEvidenceVersions.createdAt), asc(captureEvidenceVersions.id)).all()
   const rawRecordIds = input.selector.rawRecordIds ? new Set(input.selector.rawRecordIds) : null
   const rawRevisionIds = input.selector.rawRevisionIds ? new Set(input.selector.rawRevisionIds) : null
   const inputHashes = input.selector.inputHashes ? new Set(input.selector.inputHashes) : null
@@ -398,7 +398,7 @@ function selectMatches(database: DrizzleDatabase, input: ReplayRawSourceRecordsI
     if (rawRecordIds && !rawRecordIds.has(revision.rawRecordId)) return []
     if (rawRevisionIds && !rawRevisionIds.has(revision.rawRevisionId)) return []
     const runs = database.select().from(normalizationRuns)
-      .where(eq(normalizationRuns.rawRevisionId, revision.rawRevisionId)).all()
+      .where(eq(normalizationRuns.captureEvidenceVersionId, revision.rawRevisionId)).all()
     if (inputHashes && !matchesInputHash(database, runs, inputHashes)) return []
     if (!matchesInvalidation(database, runs, input.invalidate)) return []
     return [{
