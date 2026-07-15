@@ -12,12 +12,12 @@ import {
 } from './App.test-helpers'
 import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
 
-export function openConnectorsOverview() {
+export async function openConnectorsOverview() {
   const appNavigation = within(
     screen.getByRole('complementary', { name: 'Application navigation' }),
   ).getByRole('navigation', { name: 'Application views' })
   fireEvent.click(within(appNavigation).getByRole('button', { name: 'Connectors' }))
-  fireEvent.click(within(appNavigation).getByRole('button', { name: 'Overview' }))
+  fireEvent.click(await within(appNavigation).findByRole('button', { name: 'Overview' }))
   return appNavigation
 }
 
