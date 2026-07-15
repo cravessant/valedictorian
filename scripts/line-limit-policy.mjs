@@ -3,32 +3,38 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
-export type PolicyFile = {
-  path: string
-  source: string
-}
-
 const commentPattern = /\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g
-const maxLinesDisablePattern = /\b(?:eslint|oxlint)-disable(?:-line|-next-line)?\b[^\r\n]*\bmax-lines\b/
+const maxLinesDisablePattern = /\b(?:eslint|oxlint)-disable(?:-line|-next-line)?\b[^\r\n]*\b(?:eslint\/)?max-lines\b/
 const rootConfigPath = '.oxlintrc.json'
 const lintConfigPathPattern =
   /(?:^|\/)(?:\.oxlintrc(?:\.(?:json|jsonc|js|cjs|mjs|ts|cts|mts))?|eslint\.config\.(?:js|cjs|mjs|ts|cts|mts))$/
 const maintainedCodePathPattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 
-// Add only exact paths for artifacts that a machine regenerates. Maintained code has no exemptions.
-export const generatedCodePaths: ReadonlySet<string> = new Set()
+/** @typedef {{ path: string, source: string }} PolicyFile */
 
-function listGitFiles(args: string[]): string[] {
+/** @type {ReadonlySet<string>} */
+export const generatedCodePaths = new Set()
+
+/**
+ * @param {string[]} args
+ * @returns {string[]}
+ */
+function listGitFiles(args) {
   return execFileSync('git', args, { encoding: 'utf8' })
     .split('\0')
     .filter(Boolean)
 }
 
-function isPolicyFile(filePath: string): boolean {
+/**
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isPolicyFile(filePath) {
   return maintainedCodePathPattern.test(filePath) || lintConfigPathPattern.test(filePath)
 }
 
-export function readWorkingTreePolicyFiles(): PolicyFile[] {
+/** @returns {PolicyFile[]} */
+export function readWorkingTreePolicyFiles() {
   return listGitFiles(['ls-files', '--cached', '--others', '--exclude-standard', '-z'])
     .filter(isPolicyFile)
     .flatMap((filePath) => {
@@ -38,7 +44,8 @@ export function readWorkingTreePolicyFiles(): PolicyFile[] {
     })
 }
 
-export function readStagedPolicyFiles(): PolicyFile[] {
+/** @returns {PolicyFile[]} */
+export function readStagedPolicyFiles() {
   return listGitFiles(['ls-files', '--cached', '-z'])
     .filter(isPolicyFile)
     .map((filePath) => ({
@@ -47,7 +54,12 @@ export function readStagedPolicyFiles(): PolicyFile[] {
     }))
 }
 
-function countKeys(value: unknown, key: string): number {
+/**
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {number}
+ */
+function countKeys(value, key) {
   if (Array.isArray(value)) {
     return value.reduce((count, entry) => count + countKeys(entry, key), 0)
   }
@@ -60,11 +72,13 @@ function countKeys(value: unknown, key: string): number {
   )
 }
 
-function hasRequiredGlobalRule(source: string): boolean {
+/**
+ * @param {string} source
+ * @returns {boolean}
+ */
+function hasRequiredGlobalRule(source) {
   try {
-    const config = JSON.parse(source) as {
-      rules?: Record<string, unknown>
-    }
+    const config = JSON.parse(source)
     const rule = config.rules?.['max-lines']
 
     return (
@@ -74,19 +88,21 @@ function hasRequiredGlobalRule(source: string): boolean {
       rule[0] === 'error' &&
       typeof rule[1] === 'object' &&
       rule[1] !== null &&
-      (rule[1] as Record<string, unknown>).max === 1000 &&
-      (rule[1] as Record<string, unknown>).skipBlankLines === true &&
-      (rule[1] as Record<string, unknown>).skipComments === true
+      rule[1].max === 1000 &&
+      rule[1].skipBlankLines === true &&
+      rule[1].skipComments === true
     )
   } catch {
     return false
   }
 }
 
-export function findLineLimitPolicyViolations(
-  files: PolicyFile[],
-  generatedPaths: ReadonlySet<string> = generatedCodePaths,
-): string[] {
+/**
+ * @param {PolicyFile[]} files
+ * @param {ReadonlySet<string>} generatedPaths
+ * @returns {string[]}
+ */
+export function findLineLimitPolicyViolations(files, generatedPaths = generatedCodePaths) {
   return files.flatMap((file) => {
     if (generatedPaths.has(file.path)) return []
 
@@ -99,7 +115,7 @@ export function findLineLimitPolicyViolations(
     if (
       file.path !== rootConfigPath &&
       lintConfigPathPattern.test(file.path) &&
-      file.source.includes('max-lines')
+      /(?:eslint\/)?max-lines/.test(file.source)
     ) {
       return [`${file.path}: nested max-lines configuration is forbidden`]
     }
@@ -111,8 +127,13 @@ export function findLineLimitPolicyViolations(
   })
 }
 
-export function findRepositoryLineLimitPolicyViolations(files: PolicyFile[]): string[] {
-  const violations = findLineLimitPolicyViolations(files)
+/**
+ * @param {PolicyFile[]} files
+ * @param {ReadonlySet<string>} generatedPaths
+ * @returns {string[]}
+ */
+export function findRepositoryLineLimitPolicyViolations(files, generatedPaths = generatedCodePaths) {
+  const violations = findLineLimitPolicyViolations(files, generatedPaths)
   if (files.some((file) => file.path === rootConfigPath)) return violations
 
   return [
@@ -121,7 +142,8 @@ export function findRepositoryLineLimitPolicyViolations(files: PolicyFile[]): st
   ]
 }
 
-function run(): void {
+/** @returns {void} */
+function run() {
   const files = process.argv.includes('--staged')
     ? readStagedPolicyFiles()
     : readWorkingTreePolicyFiles()

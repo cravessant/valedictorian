@@ -4,7 +4,7 @@ import {
   findLineLimitPolicyViolations,
   findRepositoryLineLimitPolicyViolations,
   readWorkingTreePolicyFiles,
-} from './line-limit-policy'
+} from './line-limit-policy.mjs'
 
 describe('line-limit policy', () => {
   it('rejects a max-lines disable in maintained source', () => {
@@ -27,12 +27,7 @@ describe('line-limit policy', () => {
       rules: {
         'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
       },
-      overrides: [
-        {
-          files: ['src/legacy.ts'],
-          rules: { 'max-lines': 'off' },
-        },
-      ],
+      overrides: [{ files: ['src/legacy.ts'], rules: { 'max-lines': 'off' } }],
     }
 
     expect(
@@ -83,16 +78,17 @@ describe('line-limit policy', () => {
     expect(findRepositoryLineLimitPolicyViolations(readWorkingTreePolicyFiles())).toEqual([])
   })
 
-  it('guards normal lint and the staged pre-commit index', () => {
-    const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8')) as {
-      scripts: Record<string, string>
-    }
+  it('guards full lint, CI, and the staged pre-commit index', () => {
+    const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
     const lefthook = fs.readFileSync('lefthook.yml', 'utf8')
+    const ciWorkflow = fs.readFileSync('.github/workflows/ci.yml', 'utf8')
 
     expect(packageJson.scripts['lint:line-limit-policy']).toBe(
-      'tsx scripts/line-limit-policy.ts',
+      'node scripts/line-limit-policy.mjs',
     )
     expect(packageJson.scripts.lint).toContain('pnpm run lint:line-limit-policy')
     expect(lefthook).toContain('pnpm run lint:line-limit-policy -- --staged')
+    expect(lefthook).toContain('*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}')
+    expect(ciWorkflow).toContain('run: pnpm lint')
   })
 })
