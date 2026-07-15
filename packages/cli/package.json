@@ -36,7 +36,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "oxlint . && tsc -p tsconfig.json --noEmit",
+    "lint": "pnpm run lint:line-limit-policy && oxlint . && tsc -p tsconfig.json --noEmit",
+    "lint:line-limit-policy": "node scripts/line-limit-policy.mjs",
     "prepare": "pnpm build",
     "prepublishOnly": "pnpm lint && pnpm test && pnpm build",
     "prepack": "pnpm build",
