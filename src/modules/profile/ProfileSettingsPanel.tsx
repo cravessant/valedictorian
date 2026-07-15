@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- destructive profile workflows remain colocated with their existing state machine */
 import { useEffect, useState } from 'react'
 import {
   AlertDialog,
@@ -13,11 +12,8 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/use-toast'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { typography } from '@/components/ui/typography'
-import { fieldControlId } from '@/lib/field-control-id'
 import {
   defaultUserProfile,
   normalizeProfileEducationInput,
@@ -25,7 +21,6 @@ import {
   profileEducationTypeOptions,
   type ProfileAnswer,
   type ProfileEducation,
-  type ProfileSecretKind,
   type ProfileUpdateInput,
   type UserProfile,
 } from 'sparxie'
@@ -43,7 +38,6 @@ import {
   InlineEditorActions,
   nullableInput,
   ProfileAnswerRow,
-  ProfileEducationRow,
   ProfileRowModal,
   ProfileSection,
   SectionHeader,
@@ -57,6 +51,8 @@ import {
   secretDraftDefaults,
   defaultSensitiveDetails,
 } from './ProfileSettingsControls'
+import { ProfileEducationSection } from './ProfileEducationSection'
+import { ProfileSecureValuesSection } from './ProfileSecureValuesSection'
 
 type ProfileField = keyof Omit<UserProfile, 'answers' | 'education'>
 type ProfileSaveScope =
@@ -645,46 +641,18 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             </div>
           </ProfileSection>
 
-          <section className="space-y-3" aria-labelledby="education-title">
-            <SectionHeader title="Education" id="education-title" />
-            <div className="overflow-x-auto rounded-md border border-border bg-card">
-              <table aria-label="Education" className="w-full min-w-[820px] text-left text-sm">
-                <thead className="border-b border-border text-xs uppercase tracking-normal text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Type</th>
-                    <th className="px-4 py-3 font-medium">School</th>
-                    <th className="px-4 py-3 font-medium">Details</th>
-                    <th className="px-4 py-3 font-medium">Notes</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {profile.education.map((education) => (
-                    <ProfileEducationRow
-                      key={education.id}
-                      education={education}
-                      onEdit={openEditEducation}
-                      onRemove={requestRemoveEducation}
-                    />
-                  ))}
-                  {profile.education.length === 0 && !showEducationEditor ? (
-                    <tr>
-                      <td className="px-4 py-4 text-muted-foreground" colSpan={5}>
-                        No education records yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {!showEducationEditor ? (
-                <Button type="button" onClick={openAddEducation}>
-                  Add education
-                </Button>
-              ) : null}
-            </div>
-          </section>
+          <ProfileEducationSection
+            draft={educationDraft}
+            editorMode={educationEditorMode}
+            education={profile.education}
+            isEditorOpen={showEducationEditor}
+            onAdd={openAddEducation}
+            onCancel={cancelEducation}
+            onDraftChange={setEducationDraft}
+            onEdit={openEditEducation}
+            onRemove={requestRemoveEducation}
+            onSave={saveEducation}
+          />
 
           <ProfileSection title="Work Authorization">
             <SettingsTextInput
@@ -850,178 +818,18 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             </div>
           </section>
 
-          <section className="space-y-3" aria-labelledby="secure-values-title">
-            <SectionHeader title="Secure Values" id="secure-values-title" />
-            <div className="overflow-x-auto rounded-md border border-border bg-card">
-              <table aria-label="Secure Values" className="w-full min-w-[760px] text-left text-sm">
-                <thead className="border-b border-border text-xs uppercase tracking-normal text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Key</th>
-                    <th className="px-4 py-3 font-medium">Type</th>
-                    <th className="px-4 py-3 font-medium">Value</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {secretSummaries.map((secret) => (
-                    <tr key={secret.key}>
-                      <td className="px-4 py-3 font-medium text-foreground">{secret.label}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{secret.key}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{secret.kind}</td>
-                      <td className="px-4 py-3 text-muted-foreground">••••••••</td>
-                      <td className="flex flex-wrap gap-2 px-4 py-3">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          aria-label={`Edit secure value ${secret.label}`}
-                          onClick={() => openEditSecret(secret)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          aria-label={`Remove secure value ${secret.label}`}
-                          onClick={() => requestRemoveSecret(secret.key)}
-                        >
-                          Remove
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                  {secretSummaries.length === 0 && !showSecretEditor ? (
-                    <tr>
-                      <td className="px-4 py-4 text-muted-foreground" colSpan={5}>
-                        No secure values yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {!showSecretEditor ? (
-                <Button type="button" onClick={openAddSecret}>
-                  Add secure value
-                </Button>
-              ) : null}
-            </div>
-          </section>
-          {showEducationEditor ? (
-            <ProfileRowModal
-              title={educationEditorMode === 'add' ? 'Add education' : 'Edit education'}
-              onClose={cancelEducation}
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  <FieldLabel
-                    className="text-xs font-medium text-muted-foreground"
-                    htmlFor={fieldControlId('profile', 'Education type')}
-                  >
-                    Education type
-                  </FieldLabel>
-                  <NativeSelect
-                    className="px-2"
-                    id={fieldControlId('profile', 'Education type')}
-                    value={educationDraft.educationType}
-                    onChange={(event) =>
-                      setEducationDraft((current) => ({
-                        ...current,
-                        educationType: event.target.value,
-                      }))
-                    }
-                  >
-                    {profileEducationTypeOptions.map((option) => (
-                      <NativeSelectOption key={option} value={option}>
-                        {option}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                </Field>
-                {educationDraft.educationType === 'Other' ? (
-                  <CompactInput
-                    label="Other education type"
-                    value={educationDraft.otherEducationType}
-                    onChange={(value) =>
-                      setEducationDraft((current) => ({
-                        ...current,
-                        otherEducationType: value,
-                      }))
-                    }
-                  />
-                ) : null}
-                <CompactInput
-                  label="School name"
-                  value={educationDraft.school}
-                  onChange={(value) =>
-                    setEducationDraft((current) => ({ ...current, school: value }))
-                  }
-                />
-                {educationDraft.educationType !== 'High school' ? (
-                  <>
-                    <CompactInput
-                      label="Degree"
-                      value={educationDraft.degree}
-                      onChange={(value) =>
-                        setEducationDraft((current) => ({ ...current, degree: value }))
-                      }
-                    />
-                    <CompactInput
-                      label="Major"
-                      value={educationDraft.major}
-                      onChange={(value) =>
-                        setEducationDraft((current) => ({ ...current, major: value }))
-                      }
-                    />
-                  </>
-                ) : null}
-                <CompactInput
-                  label="Graduation date"
-                  value={educationDraft.graduationDate}
-                  onChange={(value) =>
-                    setEducationDraft((current) => ({ ...current, graduationDate: value }))
-                  }
-                />
-                <CompactInput
-                  label="Class standing"
-                  value={educationDraft.classStanding}
-                  onChange={(value) =>
-                    setEducationDraft((current) => ({ ...current, classStanding: value }))
-                  }
-                />
-                {educationDraft.educationType === 'High school' ? (
-                  <CompactInput
-                    label="SAT"
-                    value={educationDraft.satScore}
-                    onChange={(value) =>
-                      setEducationDraft((current) => ({ ...current, satScore: value }))
-                    }
-                  />
-                ) : null}
-                <CompactInput
-                  label="Transcript path"
-                  value={educationDraft.transcriptPath}
-                  onChange={(value) =>
-                    setEducationDraft((current) => ({ ...current, transcriptPath: value }))
-                  }
-                />
-                <CompactInput
-                  label="Education notes"
-                  value={educationDraft.notes}
-                  onChange={(value) =>
-                    setEducationDraft((current) => ({ ...current, notes: value }))
-                  }
-                />
-              </div>
-              <InlineEditorActions
-                cancelLabel="Cancel education"
-                saveLabel="Save education"
-                onCancel={cancelEducation}
-                onSave={saveEducation}
-              />
-            </ProfileRowModal>
-          ) : null}
+          <ProfileSecureValuesSection
+            draft={secretDraft}
+            editorMode={secretEditorMode}
+            isEditorOpen={showSecretEditor}
+            onAdd={openAddSecret}
+            onCancel={cancelSecret}
+            onDraftChange={setSecretDraft}
+            onEdit={openEditSecret}
+            onRemove={requestRemoveSecret}
+            onSave={saveSecret}
+            secrets={secretSummaries}
+          />
           {showAnswerEditor ? (
             <ProfileRowModal
               title={answerEditorMode === 'add' ? 'Add answer' : 'Edit answer'}
@@ -1069,66 +877,6 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                 saveLabel="Save answer"
                 onCancel={cancelAnswer}
                 onSave={saveAnswer}
-              />
-            </ProfileRowModal>
-          ) : null}
-          {showSecretEditor ? (
-            <ProfileRowModal
-              title={secretEditorMode === 'add' ? 'Add secure value' : 'Edit secure value'}
-              onClose={cancelSecret}
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CompactInput
-                  label="Secure value name"
-                  value={secretDraft.label}
-                  onChange={(value) =>
-                    setSecretDraft((current) => ({ ...current, label: value }))
-                  }
-                />
-                <CompactInput
-                  label="Secure value key"
-                  value={secretDraft.key}
-                  onChange={(value) =>
-                    setSecretDraft((current) => ({ ...current, key: value }))
-                  }
-                />
-                <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
-                  <FieldLabel
-                    className="text-xs font-medium text-muted-foreground"
-                    htmlFor={fieldControlId('profile', 'Secure value type')}
-                  >
-                    Type
-                  </FieldLabel>
-                  <NativeSelect
-                    aria-label="Secure value type"
-                    className="px-2"
-                    id={fieldControlId('profile', 'Secure value type')}
-                    value={secretDraft.kind}
-                    onChange={(event) =>
-                      setSecretDraft((current) => ({
-                        ...current,
-                        kind: event.target.value as ProfileSecretKind,
-                      }))
-                    }
-                  >
-                    <NativeSelectOption value="password">password</NativeSelectOption>
-                    <NativeSelectOption value="token">token</NativeSelectOption>
-                    <NativeSelectOption value="identity">identity</NativeSelectOption>
-                    <NativeSelectOption value="other">other</NativeSelectOption>
-                  </NativeSelect>
-                </Field>
-                <CompactInput
-                  label="Secure value"
-                  type="password"
-                  value={secretDraft.value}
-                  onChange={(value) => setSecretDraft((current) => ({ ...current, value }))}
-                />
-              </div>
-              <InlineEditorActions
-                cancelLabel="Cancel secure value"
-                saveLabel="Save secure value"
-                onCancel={cancelSecret}
-                onSave={saveSecret}
               />
             </ProfileRowModal>
           ) : null}
