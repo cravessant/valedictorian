@@ -4,6 +4,7 @@ import {
   type ConnectorHistoricalBackfillState,
   type ConnectorNewestFrontierState,
   type ConnectorSynchronizationOutcome,
+  type JsonValue,
   type RawSourceIntakeReceipt,
   type RawSourceRecordInput,
   type RawSourceRevisionReceipt,
@@ -455,6 +456,64 @@ export type ConnectorNormalizationRuntime = {
   run(input: ConnectorNormalizationInput): Promise<FieldResolutionOutcome[]>
 }
 
+/**
+ * Captured provider identity supplied to a provider URL resolver.
+ *
+ * The identity is deliberately narrower than a raw provider record.  A
+ * resolver may retrieve provider evidence for this identity, but it cannot
+ * receive or persist connector-owned retry/scheduling state.
+ */
+export type ConnectorProviderUrlResolverInput = {
+  providerRecordId: string
+  connectorInstanceId: string
+  workspaceId: string
+  executionScopeId: SourceExecutionScopeId
+}
+
+export type ConnectorProviderUrlResolverEvidence = {
+  kind: string
+  value?: JsonValue
+}
+
+export type ConnectorProviderUrlResolverResult =
+  | {
+      status: "resolved"
+      url: string
+      method: string
+      evidence?: readonly ConnectorProviderUrlResolverEvidence[]
+    }
+  | {
+      status: "interrupted"
+      reason: "cancelled" | "runtime_limit"
+    }
+  | {
+      status: "retryable"
+      reason: string
+      retryReason: TransientRetryReason
+      serverMinimumDelayMs?: number
+    }
+  | {
+      status: "terminal"
+      reason: string
+      action?: "authenticate"
+      parserChanged?: boolean
+      evidence?: readonly ConnectorProviderUrlResolverEvidence[]
+    }
+
+export type ConnectorProviderUrlResolverRuntime = {
+  auth: ConnectorAuthRuntime
+  cancellation?: ConnectorCancellationRuntime
+}
+
+export type ConnectorProviderUrlResolver = {
+  id: string
+  version: string
+  resolve(
+    input: ConnectorProviderUrlResolverInput,
+    runtime: ConnectorProviderUrlResolverRuntime,
+  ): Promise<ConnectorProviderUrlResolverResult>
+}
+
 export type ConnectorCapabilityDeclaration = {
   fetchesPublicPages?: boolean
   resolvesIntermediaryLinks?: boolean
@@ -621,6 +680,7 @@ export type ConnectorAuthValidationResult = {
 
 export type JobConnector = {
   definition: ConnectorDefinition
+  providerUrlResolver?: ConnectorProviderUrlResolver
   refresh(
     input: ConnectorRefreshInput,
     runtime: ConnectorRuntime,
