@@ -44,6 +44,7 @@ export interface RecordConnectorRunRequestInput {
   filterSignature?: string | null
   reason?: string | null
   dryRun?: boolean
+  retryKind?: 'connector_capture'
 }
 
 export interface RecordConnectorRunRequestResult {

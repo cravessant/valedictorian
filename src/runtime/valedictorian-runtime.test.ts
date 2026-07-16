@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ValedictorianClient, ValedictorianWorkspaceClient } from 'sparxie'
 import { createConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import { createValedictorianRuntime, resolveValedictorianRuntimeConfig } from './valedictorian-runtime'
+import type { LocalScheduler } from './local-scheduler'
 
 function createWorkspaceClient(name: string): ValedictorianWorkspaceClient {
   return {
@@ -202,6 +203,35 @@ describe('Valedictorian runtime config', () => {
 })
 
 describe('Valedictorian runtime creation', () => {
+  it('starts the local scheduler for desktop runtimes and stops it before closing the server', async () => {
+    const localClient = createWorkspaceClient('local')
+    const events: string[] = []
+    const scheduler: LocalScheduler = {
+      register: vi.fn(),
+      signal: vi.fn(),
+      start: vi.fn(() => events.push('scheduler.start')),
+      stop: vi.fn(async () => events.push('scheduler.stop')),
+      whenIdle: vi.fn(async () => undefined),
+    }
+    const server = {
+      close: vi.fn(async () => events.push('server.close')),
+      url: 'http://127.0.0.1:4317',
+    }
+
+    const runtime = await createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({
+        env: {},
+        userDataPath: '/tmp/valedictorian-user-data',
+      }),
+      createLocalClient: vi.fn(() => localClient),
+      createScheduler: vi.fn(() => scheduler),
+      startServer: vi.fn(async () => server),
+    })
+
+    await runtime.close()
+    expect(events).toEqual(['scheduler.start', 'scheduler.stop', 'server.close'])
+  })
+
   it('starts a local HTTP server without scheduling connector catch-up', async () => {
     const localClient = createWorkspaceClient('local')
     const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:4317' }
@@ -220,7 +250,7 @@ describe('Valedictorian runtime creation', () => {
     })
 
     expect(runtime.client).toBe(localClient)
-    expect(createLocalClient).toHaveBeenCalledWith({
+    expect(createLocalClient).toHaveBeenCalledWith(expect.objectContaining({
       connectorRuntime: {
         delay: {
           wait: expect.any(Function),
@@ -229,7 +259,7 @@ describe('Valedictorian runtime creation', () => {
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
       sqlitePath: '/tmp/valedictorian-user-data/valedictorian.sqlite',
-    })
+    }))
     expect(createHttpClient).not.toHaveBeenCalled()
     expect(runtime.server).toBe(server)
     expect(startServer).toHaveBeenCalledWith({

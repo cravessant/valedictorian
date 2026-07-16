@@ -30,6 +30,8 @@ import {
 } from '../modules/connectors/connector-schedule.capability'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import { createConnectorScheduleService } from '../modules/connectors/connector-schedule.service'
+import { createConnectorScheduleWorkSource } from '../modules/connectors/connector-schedule.source'
+import { createConnectorCaptureRetryWorkSource } from '../modules/connectors/connector-capture-retry.source'
 import {
   inclusiveCoverageStartFromEarliestBackfillDate,
   maximumSelectableEarliestBackfillDate,
@@ -59,7 +61,7 @@ import {
 import type {
   ConnectorAuthReference,
   ConnectorInstanceRecord,
-  ConnectorRunRecord
+  ConnectorRunRecord,
 } from '../modules/connectors/connector.repository'
 import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
 import { createSqliteProfileRepository, type ProfileSecretCodec } from '../modules/profile/profile.repository'
@@ -136,7 +138,9 @@ export function createLocalValedictorianClient({
   connectorScheduling: connectorSchedulingOption,
   now = () => new Date(),
   normalizationRegistry = createDefaultNormalizationResolverRegistry(),
+  onScheduledWorkChanged,
   projectCanonicalCandidate,
+  registerScheduledWorkSource,
   referenceTrackerPath,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
@@ -241,12 +245,19 @@ export function createLocalValedictorianClient({
       mode: input.mode,
       now,
       replayConnectorUpgrade: (input) => normalizationReplayService.replayConnectorUpgrade(input),
+      ...(input.signal ? { signal: input.signal } : {}),
       startedAt: input.startedAt,
     }),
     getRun: (connectorRunId) => connectorRepository.getRun(connectorRunId),
     now,
+    onScheduleChanged: onScheduledWorkChanged,
     repository: scheduleRepository,
   })
+  registerScheduledWorkSource?.(createConnectorScheduleWorkSource({
+    dispatchDue: (input, signal) => schedules.dispatchDueWithSignal(input, signal),
+    listSchedules: () => scheduleRepository.listEnabled(),
+    now,
+  }))
   const mapRun = (record: ConnectorRunRecord): LocalConnectorRunSummary => {
     const synchronizedRecord = {
       ...record,
@@ -341,7 +352,7 @@ export function createLocalValedictorianClient({
             createdAt,
             createdAt,
           )
-        return mapConnectorInstanceSummary(await connectorRunner.registerInstanceIfAbsent({
+        const created = mapConnectorInstanceSummary(await connectorRunner.registerInstanceIfAbsent({
           id: input.id,
           connector,
           displayName: input.displayName,
@@ -352,6 +363,8 @@ export function createLocalValedictorianClient({
           earliestBackfillDate,
           createdAt,
         }))
+        onScheduledWorkChanged?.()
+        return created
       },
       update: async (input) => {
         const existing = await connectorRepository.getInstance(input.connectorInstanceId)
@@ -412,26 +425,34 @@ export function createLocalValedictorianClient({
               `Connector version mismatch for ${existing.connectorId}: expected ${connector.definition.version}`,
             )
           }
-          return mapConnectorInstanceSummary(await reconcileConnectorPackageUpgrade({
+          const reconciled = mapConnectorInstanceSummary(await reconcileConnectorPackageUpgrade({
             connector,
             connectorRepository,
             instance: { ...existing, ...proposedInstance },
             replayConnectorUpgrade: (replayInput) =>
               normalizationReplayService.replayConnectorUpgrade(replayInput),
           }))
+          onScheduledWorkChanged?.()
+          return reconciled
         }
-        return mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
+        const updated = mapConnectorInstanceSummary(await connectorRepository.upsertInstance({
           ...proposedInstance,
           connectorVersion: maintenanceOnly
             ? existing.connectorVersion
             : input.connectorVersion ?? connector?.definition.version ?? existing.connectorVersion,
         }))
+        onScheduledWorkChanged?.()
+        return updated
       },
-      remove: async ({ connectorInstanceId }) => retireConnectorInstance(
-        database,
-        connectorInstanceId,
-        now().toISOString(),
-      ),
+      remove: async ({ connectorInstanceId }) => {
+        const result = retireConnectorInstance(
+          database,
+          connectorInstanceId,
+          now().toISOString(),
+        )
+        onScheduledWorkChanged?.()
+        return result
+      },
       inspect: async (connectorInstanceId) => {
         const record = await connectorRepository.getStatusSummary(connectorInstanceId)
         if (!record) {
@@ -469,23 +490,27 @@ export function createLocalValedictorianClient({
           }
         },
         trigger: async (input) => {
-          const instance = await connectorRepository.getInstance(input.connectorInstanceId)
-          const connector = instance ? connectorRegistry.get(instance.connectorId) : null
-          if (instance && connector) {
-            validateCompleteConnectorSettings(connector, instance.config, instance.filters)
+          try {
+            const instance = await connectorRepository.getInstance(input.connectorInstanceId)
+            const connector = instance ? connectorRegistry.get(instance.connectorId) : null
+            if (instance && connector) {
+              validateCompleteConnectorSettings(connector, instance.config, instance.filters)
+            }
+            const run = await executeConnectorRunTrigger({
+              connectorRegistry,
+              connectorRepository,
+              connectorRunner,
+              input,
+              normalizationOrchestrator,
+              normalizationReplayService,
+              normalizationRegistry,
+              normalizationRepository,
+              now,
+            })
+            return mapRun(run)
+          } finally {
+            onScheduledWorkChanged?.()
           }
-          const run = await executeConnectorRunTrigger({
-            connectorRegistry,
-            connectorRepository,
-            connectorRunner,
-            input,
-            normalizationOrchestrator,
-            normalizationReplayService,
-            normalizationRegistry,
-            normalizationRepository,
-            now,
-          })
-          return mapRun(run)
         },
       },
       checkpoints: {
@@ -642,6 +667,16 @@ export function createLocalValedictorianClient({
       },
     },
   }
+  registerScheduledWorkSource?.(createConnectorCaptureRetryWorkSource({
+    listRetries: () => scheduleRepository.listScheduledCaptureRetries(), now,
+    runRetry: async (connectorInstanceId, signal) => mapRun(await executeConnectorRunTrigger({
+      connectorRegistry, connectorRepository, connectorRunner,
+      input: { connectorInstanceId, reason: 'scheduled_capture_retry' }, mode: 'scheduled',
+      normalizationOrchestrator, normalizationReplayService, normalizationRegistry,
+      normalizationRepository, now,
+      retryKind: 'connector_capture', ...(signal ? { signal } : {}),
+    })),
+  }))
   return client
 }
 function composeTrustedConnectorAuth(
@@ -715,21 +750,27 @@ async function executeConnectorRunTrigger({
   connectorRepository,
   connectorRunner,
   input,
+  mode = 'manual',
   normalizationOrchestrator,
   normalizationReplayService,
   normalizationRegistry,
   normalizationRepository,
   now,
+  retryKind,
+  signal,
 }: {
   connectorRegistry: LocalConnectorRegistry
   connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   input: LocalConnectorInternalRunTriggerInput
+  mode?: 'manual' | 'scheduled'
   normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
   normalizationReplayService: ReturnType<typeof createNormalizationReplayService>
   normalizationRegistry: ReturnType<typeof createDefaultNormalizationResolverRegistry>
   normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
   now: () => Date
+  retryKind?: 'connector_capture'
+  signal?: AbortSignal
 }): Promise<ConnectorRunRecord> {
   const startedAt = now().toISOString()
   const instance = await connectorRepository.getInstance(input.connectorInstanceId)
@@ -744,7 +785,6 @@ async function executeConnectorRunTrigger({
     throw new Error(`Unsupported connector id: ${instance.connectorId}`)
   }
   const executionIntent = input.executionIntent ?? 'ordinary'
-  const mode = 'manual'
   assertExecutableConnectorTrigger(input, executionIntent)
   const filters = toJsonRecord(instance.filters)
   const filterSignature = connectorCheckpointSignature({
@@ -766,6 +806,7 @@ async function executeConnectorRunTrigger({
     filterSignature,
     filters,
     reason: input.reason,
+    ...(retryKind === undefined ? {} : { retryKind }),
   })
   if (!runRequestResult.acquired) {
     return runRequestResult.run
@@ -824,6 +865,7 @@ async function executeConnectorRunTrigger({
     mode,
     now,
     replayConnectorUpgrade: (replayInput) => normalizationReplayService.replayConnectorUpgrade(replayInput),
+    ...(signal ? { signal } : {}),
     startedAt,
   })
 }

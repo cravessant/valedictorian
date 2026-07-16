@@ -404,7 +404,7 @@ export function createSqliteConnectorRepository(
           executionScopeId: instance.executionScopeId,
           coverageStartedAt,
           filterSignature,
-          now,
+          now, ...(input.retryKind === undefined ? {} : { retryKind: input.retryKind }),
         }
         const pendingRetry = selectPendingRetryWork(transaction, retrySelection)
         if (pendingRetry?.acquisitionRunId) {

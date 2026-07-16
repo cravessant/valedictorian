@@ -16,6 +16,7 @@ export async function executeClaimedConnectorRun({
   mode,
   now,
   replayConnectorUpgrade,
+  signal,
   startedAt,
 }: {
   connectorRegistry: LocalConnectorRegistry
@@ -27,6 +28,7 @@ export async function executeClaimedConnectorRun({
   mode: ConnectorRefreshMode
   now: () => Date
   replayConnectorUpgrade: ReturnType<typeof createNormalizationReplayService>['replayConnectorUpgrade']
+  signal?: AbortSignal
   startedAt: string
 }): Promise<ConnectorRunRecord> {
   try {
@@ -66,6 +68,7 @@ export async function executeClaimedConnectorRun({
           connectorInstanceId: runRequest.connectorInstanceId,
           coverageStartedAt,
           now: coverageEndedAt,
+          ...(signal ? { signal } : {}),
           startedAt,
         })
         : await connectorRunner.refreshWithDeferredCheckpoint(
@@ -74,6 +77,7 @@ export async function executeClaimedConnectorRun({
             connectorRunId: runRequest.id,
             connectorInstanceId: runRequest.connectorInstanceId,
             mode,
+            ...(signal ? { signal } : {}),
             coverage: {
               start: coverageStartedAt,
               end: coverageEndedAt,

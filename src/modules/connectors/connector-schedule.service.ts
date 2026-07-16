@@ -21,6 +21,12 @@ import type { createConnectorScheduleRepository } from './connector-schedule.rep
 import type { ConnectorRunRecord } from './connector.repository'
 
 export type ConnectorScheduleClient = ValedictorianWorkspaceClient['connectors']['schedules']
+export type ConnectorScheduleService = ConnectorScheduleClient & {
+  dispatchDueWithSignal(
+    input: DispatchConnectorScheduleDueInput,
+    signal?: AbortSignal,
+  ): Promise<DispatchConnectorScheduleDueResult>
+}
 
 export function createConnectorScheduleService({
   claimQueuedRunToRunning,
@@ -29,6 +35,7 @@ export function createConnectorScheduleService({
   executeClaimedRun,
   getRun,
   now,
+  onScheduleChanged,
   repository,
 }: {
   claimQueuedRunToRunning: (input: {
@@ -41,13 +48,43 @@ export function createConnectorScheduleService({
     connectorRunId: string
     mode: 'scheduled' | 'catch_up'
     coverageEndedAt: string
+    signal?: AbortSignal
     startedAt: string
   }) => Promise<ConnectorRunRecord>
   getRun: (connectorRunId: string) => Promise<ConnectorRunRecord | null>
   now: () => Date
+  onScheduleChanged?: () => void
   repository: ReturnType<typeof createConnectorScheduleRepository>
-}): ConnectorScheduleClient {
+}): ConnectorScheduleService {
   const requireAvailable = () => requireAvailableConnectorScheduling(connectorScheduling)
+  const dispatchDue = async (
+    input: DispatchConnectorScheduleDueInput,
+    signal?: AbortSignal,
+  ): Promise<DispatchConnectorScheduleDueResult> => {
+    const capability = requireAvailable()
+    const admitted = admitConnectorScheduleDue({
+      database,
+      now,
+      maximumCatchUpAgeMinutes: capability.maximumCatchUpAgeMinutes,
+      input,
+    })
+
+    if (admitted.status !== 'admitted') {
+      return admitted
+    }
+
+    return resolveAdmittedScheduleDispatch({
+      admitted,
+      claimQueuedRunToRunning,
+      executeClaimedRun: (input) => executeClaimedRun({
+        ...input,
+        ...(signal ? { signal } : {}),
+      }),
+      getRun,
+      markOccurrenceOutcome: (input) => repository.markOccurrenceOutcome(input),
+      now,
+    })
+  }
 
   return {
     async get(connectorInstanceId) {
@@ -78,33 +115,42 @@ export function createConnectorScheduleService({
       }
 
       if (input.expectedRevision === null) {
-        return repository.create({
+        const created = repository.create({
           connectorInstanceId: input.connectorInstanceId,
           state: input.state,
           cadence: input.cadence,
           timezone: input.timezone,
         })
+        onScheduleChanged?.()
+        return created
       }
 
-      return repository.update({
+      const updated = repository.update({
         connectorInstanceId: input.connectorInstanceId,
         expectedRevision: input.expectedRevision,
         state: input.state,
         cadence: input.cadence,
         timezone: input.timezone,
       })
+      onScheduleChanged?.()
+      return updated
     },
     async pause(input: PauseConnectorScheduleInput): Promise<ConnectorScheduleSummary> {
       requireAvailable()
-      return repository.pause(input)
+      const paused = repository.pause(input)
+      onScheduleChanged?.()
+      return paused
     },
     async resume(input: ResumeConnectorScheduleInput): Promise<ConnectorScheduleSummary> {
       requireAvailable()
-      return repository.resume(input)
+      const resumed = repository.resume(input)
+      onScheduleChanged?.()
+      return resumed
     },
     async delete(input: DeleteConnectorScheduleInput): Promise<void> {
       requireAvailable()
       repository.delete(input)
+      onScheduleChanged?.()
     },
     async listAudit(
       input: ConnectorScheduleHistoryListInput,
@@ -121,26 +167,10 @@ export function createConnectorScheduleService({
     async dispatchDue(
       input: DispatchConnectorScheduleDueInput,
     ): Promise<DispatchConnectorScheduleDueResult> {
-      const capability = requireAvailable()
-      const admitted = admitConnectorScheduleDue({
-        database,
-        now,
-        maximumCatchUpAgeMinutes: capability.maximumCatchUpAgeMinutes,
-        input,
-      })
-
-      if (admitted.status !== 'admitted') {
-        return admitted
-      }
-
-      return resolveAdmittedScheduleDispatch({
-        admitted,
-        claimQueuedRunToRunning,
-        executeClaimedRun,
-        getRun,
-        markOccurrenceOutcome: (input) => repository.markOccurrenceOutcome(input),
-        now,
-      })
+      return dispatchDue(input)
+    },
+    async dispatchDueWithSignal(input, signal) {
+      return dispatchDue(input, signal)
     },
   }
 }

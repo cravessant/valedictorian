@@ -6,6 +6,7 @@ import path from 'node:path'
 import { runLegacyJobrightBrowserPartitionCleanup } from './legacy-jobright-partition-cleanup'
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
+import { createRuntimeQuitBarrier, stopRuntimeLifecycle } from './runtime-lifecycle'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
 import { registerApplicationIpc } from '../src/ipc/applications.ipc'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
@@ -563,17 +564,21 @@ function createRendererHttpArguments() {
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
+const runtimeQuitBarrier = createRuntimeQuitBarrier({
+  closeRuntime,
+  quit: () => app.quit(),
+})
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    void closeRuntime()
     app.quit()
     mainWindow = null
     workspaceLauncherWindow = null
   }
 })
 
-app.on('before-quit', () => {
-  void closeRuntime()
+app.on('before-quit', (event) => {
+  runtimeQuitBarrier.requestQuit(event)
 })
 
 app.on('activate', () => {
@@ -681,11 +686,10 @@ async function pollForUpdates() {
 }
 
 async function closeRuntime() {
-  if (backendSupervisor) {
-    await backendSupervisor.stop()
-  } else {
-    await runtime?.close()
-  }
+  await stopRuntimeLifecycle({
+    backendSupervisor,
+    runtime,
+  })
   backendSupervisor = null
   runtime = null
   rendererHttpBinding = null

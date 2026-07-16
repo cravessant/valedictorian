@@ -127,7 +127,7 @@ export interface RunConnectorRefreshInput {
     acquiredProviderRecordId: string
     originalCheckpoint: unknown
   }
-  acquiredNormalizationReplay?: AcquiredNormalizationReplayIdentity
+  acquiredNormalizationReplay?: AcquiredNormalizationReplayIdentity; signal?: AbortSignal
 }
 export interface RunConnectorCatchUpInput {
   connectorRunId?: string
@@ -142,7 +142,7 @@ export interface RunConnectorCatchUpInput {
     acquiredProviderRecordId: string
     originalCheckpoint: unknown
   }
-  acquiredNormalizationReplay?: AcquiredNormalizationReplayIdentity
+  acquiredNormalizationReplay?: AcquiredNormalizationReplayIdentity; signal?: AbortSignal
 }
 export interface AppConnectorPendingCheckpoint {
   connectorInstanceId: string
@@ -204,7 +204,7 @@ export function createConnectorRunner({
     const sensitiveValues = new Set<string>()
     const authRequirements = connector.definition.auth?.requirements ?? []
     const runRuntime = createRunRuntime(
-      runtime,
+      input.signal ? { ...runtime, cancellation: { signal: input.signal } } : runtime,
       connectorInstance.auth,
       authRequirements,
       auth,
@@ -338,6 +338,7 @@ export function createConnectorRunner({
         ...(input.acquiredNormalizationReplay
           ? { acquiredNormalizationReplay: input.acquiredNormalizationReplay }
           : {}),
+        ...(input.signal ? { signal: input.signal } : {}),
       },
     }
   }

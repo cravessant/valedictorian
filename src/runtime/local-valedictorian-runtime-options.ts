@@ -5,6 +5,7 @@ import type { AppConnectorRuntimePorts } from '../modules/connectors/connector.r
 import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
 import type { NormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
 import type { DrizzleDatabase } from '../db/sqlite'
+import type { LocalScheduledWorkSource } from './local-scheduler'
 
 export interface LocalValedictorianClientOptions {
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
@@ -13,6 +14,8 @@ export interface LocalValedictorianClientOptions {
   /** Explicit scheduling capability; shared with server capability reporting when injected. */
   connectorScheduling?: ConnectorSchedulingCapability
   now?: () => Date
+  onScheduledWorkChanged?: () => void
+  registerScheduledWorkSource?: (source: LocalScheduledWorkSource) => void
   normalizationRegistry?: NormalizationResolverRegistry
   projectCanonicalCandidate?: (
     transaction: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],

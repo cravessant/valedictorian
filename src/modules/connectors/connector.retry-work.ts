@@ -236,6 +236,7 @@ export function selectPendingRetryWork(
     coverageStartedAt: string
     filterSignature: string
     now: string
+    retryKind?: 'connector_capture'
   },
 ) {
   const activeJobrightProviderIds = input.connectorId === JOBRIGHT_CONNECTOR_ID
@@ -272,15 +273,19 @@ export function selectPendingRetryWork(
     scopeAvailableAt(input.now),
     isNull(retryWork.deletedAt),
   )
-  const normalizationAcquired = database.select().from(retryWork)
-    .where(normalizationPredicate('acquired')).limit(1).all()
-  const normalizationScheduled = database
-    .select()
-    .from(retryWork)
-    .where(normalizationPredicate('scheduled'))
-    .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt))
-    .limit(1)
-    .all()
+  const normalizationAcquired = input.retryKind === 'connector_capture'
+    ? []
+    : database.select().from(retryWork)
+      .where(normalizationPredicate('acquired')).limit(1).all()
+  const normalizationScheduled = input.retryKind === 'connector_capture'
+    ? []
+    : database
+      .select()
+      .from(retryWork)
+      .where(normalizationPredicate('scheduled'))
+      .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt))
+      .limit(1)
+      .all()
   const retryCandidates = [
     ...captureAcquired, ...normalizationAcquired,
     ...captureScheduled, ...normalizationScheduled,

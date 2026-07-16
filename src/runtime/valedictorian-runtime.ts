@@ -15,6 +15,7 @@ import {
   createDefaultLocalConnectorPorts,
   type DefaultLocalConnectorPorts,
 } from '../modules/connectors/connector.runtime-ports'
+import { localDesktopConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
 import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
@@ -25,6 +26,11 @@ import {
   type ValedictorianSeedDataMode,
   type LocalValedictorianClientOptions,
 } from './local-valedictorian-client'
+import {
+  createLocalScheduler,
+  type LocalScheduler,
+  type LocalSchedulerOptions,
+} from './local-scheduler'
 
 export type ValedictorianRuntimeMode = 'local-desktop' | 'local-shared' | 'remote'
 
@@ -52,6 +58,7 @@ export interface ValedictorianRuntime {
   client: ValedictorianWorkspaceClient
   connectors: LocalValedictorianClient['connectors'] | null
   close: () => Promise<void>
+  stopScheduler: () => Promise<void>
   server: Pick<StartedValedictorianHttpServer, 'close' | 'url'> | null
   restartServer: (() => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>) | null
 }
@@ -61,9 +68,11 @@ export interface CreateValedictorianRuntimeOptions {
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
   createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
+  createScheduler?: (options?: LocalSchedulerOptions) => LocalScheduler
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   deferServerStart?: boolean
   secretCodec?: ProfileSecretCodec
+  schedulerOptions?: LocalSchedulerOptions
   startServer?: (
     options: CreateValedictorianHttpServerOptions,
   ) => Promise<Pick<StartedValedictorianHttpServer, 'close' | 'url'>>
@@ -103,9 +112,11 @@ export async function createValedictorianRuntime({
   createConnectorPorts = () => createDefaultLocalConnectorPorts(),
   createHttpClient = createHttpValedictorianClient,
   createLocalClient = createLocalValedictorianClient,
+  createScheduler = createLocalScheduler,
   connectorRunRecovery,
   deferServerStart = false,
   secretCodec,
+  schedulerOptions,
   startServer = createValedictorianHttpServer,
   workspaceManager,
 }: CreateValedictorianRuntimeOptions): Promise<ValedictorianRuntime> {
@@ -121,22 +132,29 @@ export async function createValedictorianRuntime({
       }).forWorkspace(config.workspaceId),
       connectors: null,
       close: async () => undefined,
+      stopScheduler: async () => undefined,
       restartServer: null,
       server: null,
     }
   }
 
   const connectorPorts = createConnectorPorts(config.workspaceId)
+  const scheduler = createScheduler(schedulerOptions)
   const effectiveConnectorRunRecovery = connectorRunRecovery ?? workspaceManager?.connectorRunRecovery
   const client = createLocalClient({
     ...(effectiveConnectorRunRecovery === undefined
       ? {}
       : { connectorRunRecovery: effectiveConnectorRunRecovery }),
     connectorRuntime: connectorPorts.connectorRuntime,
+    connectorScheduling: config.mode === 'local-desktop'
+      ? localDesktopConnectorSchedulingCapability
+      : undefined,
+    onScheduledWorkChanged: () => scheduler.signal(),
     referenceTrackerPath: config.referenceTrackerPath,
     seedDataMode: config.seedDataMode,
     ...(secretCodec === undefined ? {} : { secretCodec }),
     sqlitePath: config.sqlitePath,
+    registerScheduledWorkSource: (source) => scheduler.register(source),
     ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
   })
 
@@ -160,10 +178,18 @@ export async function createValedictorianRuntime({
 
   let server = deferServerStart ? null : await startServer(serverOptions)
 
+  if (config.mode === 'local-desktop') {
+    scheduler.start()
+  }
+
   return {
     client,
     connectors: client.connectors,
-    close: async () => server?.close(),
+    close: async () => {
+      await scheduler.stop()
+      await server?.close()
+    },
+    stopScheduler: () => scheduler.stop(),
     get server() {
       return server
     },

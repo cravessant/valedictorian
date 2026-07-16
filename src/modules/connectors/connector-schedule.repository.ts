@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import type {
   ConnectorScheduleAuditEvent,
@@ -18,6 +18,7 @@ import {
   connectorScheduleRevisions,
   connectorSchedules,
 } from '../../db/schema.connectors'
+import { retryWork, sourceExecutionScopes } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import { computeNextEligibleAt } from './connector-schedule.eligibility'
 import { createConnectorScheduleError } from './connector-schedule.errors'
@@ -27,6 +28,63 @@ export function createConnectorScheduleRepository(
   now: () => Date = () => new Date(),
 ) {
   return {
+    listEnabled(): ConnectorScheduleSummary[] {
+      return database
+        .select()
+        .from(connectorSchedules)
+        .where(and(
+          eq(connectorSchedules.state, 'enabled'),
+          isNull(connectorSchedules.deletedAt),
+        ))
+        .orderBy(asc(connectorSchedules.nextEligibleAt), asc(connectorSchedules.connectorInstanceId))
+        .all()
+        .map((row) => mapScheduleSummary(database, row))
+    },
+
+    listScheduledCaptureRetries(): Array<{
+      connectorInstanceId: string
+      nextAttemptAt: string
+    }> {
+      return database
+        .select({
+          connectorInstanceId: retryWork.connectorInstanceId,
+          nextAttemptAt: retryWork.nextAttemptAt,
+          scopeBlockedUntil: sourceExecutionScopes.blockedUntil,
+        })
+        .from(retryWork)
+        .innerJoin(
+          connectorSchedules,
+          eq(connectorSchedules.connectorInstanceId, retryWork.connectorInstanceId),
+        )
+        .innerJoin(
+          connectorInstances,
+          eq(connectorInstances.id, retryWork.connectorInstanceId),
+        )
+        .innerJoin(
+          sourceExecutionScopes,
+          eq(sourceExecutionScopes.id, connectorInstances.executionScopeId),
+        )
+        .where(and(
+          eq(retryWork.kind, 'connector_capture'),
+          eq(retryWork.state, 'scheduled'),
+          isNotNull(retryWork.nextAttemptAt),
+          isNull(retryWork.deletedAt),
+          eq(connectorSchedules.state, 'enabled'),
+          isNull(connectorSchedules.deletedAt),
+          eq(connectorInstances.enabled, true),
+          isNull(connectorInstances.deletedAt),
+          inArray(sourceExecutionScopes.status, ['available', 'cooldown']),
+        ))
+        .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.connectorInstanceId))
+        .all()
+        .flatMap((row) => row.connectorInstanceId && row.nextAttemptAt ? [{
+          connectorInstanceId: row.connectorInstanceId,
+          nextAttemptAt: row.scopeBlockedUntil && row.scopeBlockedUntil > row.nextAttemptAt
+            ? row.scopeBlockedUntil
+            : row.nextAttemptAt,
+        }] : [])
+    },
+
     getByConnectorInstanceId(connectorInstanceId: string): ConnectorScheduleSummary | null {
       const row = database
         .select()
