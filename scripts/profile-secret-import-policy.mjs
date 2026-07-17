@@ -7,19 +7,23 @@ const maintainedCodePathPattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 
 /** @typedef {{ path: string, source: string }} PolicyFile */
 
-const concreteAdapterModuleSpecifier =
-  '[^\'"]*(?:profile\\.sqlite\\.(?:sensitive-)?store|secret\\.sqlite\\.store)'
+const concreteAdapterBasenamePattern =
+  /(?:^|\/)(profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store|profile\.json\.(?:store|document|atomic|lock|watch|paths))(?:\.[cm]?[jt]sx?)?$/
 
-const concreteAdapterModuleImportPattern = new RegExp(
-  [
-    String.raw`(?:^|[;\n])\s*import\s+(?:type\s+)?(?:[^'"\n]+from\s+)?['"]${concreteAdapterModuleSpecifier}['"]`,
-    String.raw`(?:^|[;\n])\s*export\s+(?:type\s+)?(?:\*|\{\s*[^}]*\})\s+from\s+['"]${concreteAdapterModuleSpecifier}['"]`,
-    String.raw`(?:^|[;\n=(\s])import\s*\(\s*['"]${concreteAdapterModuleSpecifier}['"]\s*\)`,
-  ].join('|'),
-)
+const sqliteOrSecretBasenamePattern =
+  /(?:^|\/)(profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store)(?:\.[cm]?[jt]sx?)?$/
 
 const concreteAdapterFactoryImportPattern =
-  /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\bcreateSqlite(?:Profile|SensitiveProfile|Secret)Store\b[^}]*\}\s+from\s+['"][^'"]+['"]/
+  /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\b(?:createSqlite(?:Profile|SensitiveProfile|Secret)Store|createJsonProfileStore)\b[^}]*\}\s+from\s+['"][^'"]+['"]/s
+
+const sqliteSubjectPattern =
+  /(?:^|\/)((?:profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store))\.test\.(?:[cm]?[jt]s|[jt]sx)$/
+
+const jsonSubjectPattern =
+  /(?:^|\/)((?:profile\.json\.(?:store|document|atomic|lock|watch|paths)))\.test\.(?:[cm]?[jt]s|[jt]sx)$/
+
+const jsonConcreteModulePattern =
+  /(?:^|\/)profile\.json\.(?:store|document|atomic|lock|watch|paths)\.(?:[cm]?[jt]s|[jt]sx)$/
 
 /**
  * @param {string} filePath
@@ -27,10 +31,57 @@ const concreteAdapterFactoryImportPattern =
  */
 function subjectAdapterModuleBasename(filePath) {
   const normalized = filePath.replaceAll('\\', '/')
-  const match = normalized.match(
-    /(?:^|\/)((?:profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store))\.test\.(?:[cm]?[jt]s|[jt]sx)$/,
-  )
-  return match?.[1] ?? null
+  const sqliteMatch = normalized.match(sqliteSubjectPattern)
+  if (sqliteMatch?.[1]) return sqliteMatch[1]
+  const jsonMatch = normalized.match(jsonSubjectPattern)
+  return jsonMatch?.[1] ?? null
+}
+
+/**
+ * Extract static/dynamic import and re-export module specifiers, including
+ * Prettier-style multiline import forms and optional .js extensions.
+ * @param {string} source
+ * @returns {string[]}
+ */
+function extractModuleSpecifiers(source) {
+  /** @type {string[]} */
+  const specifiers = []
+  const patterns = [
+    /\bimport\s+(?:type\s+)?(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g,
+    /\bexport\s+(?:type\s+)?(?:\*|\{\s*[^}]*\})\s+from\s+['"]([^'"]+)['"]/g,
+    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+  ]
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      if (match[1]) specifiers.push(match[1])
+    }
+  }
+  return specifiers
+}
+
+/**
+ * @param {string} specifier
+ * @returns {string}
+ */
+function moduleBasename(specifier) {
+  const withoutQuery = specifier.split('?')[0] ?? specifier
+  return withoutQuery.split('/').pop() ?? ''
+}
+
+/**
+ * @param {string} specifier
+ * @returns {boolean}
+ */
+function isConcreteAdapterSpecifier(specifier) {
+  return concreteAdapterBasenamePattern.test(moduleBasename(specifier))
+}
+
+/**
+ * @param {string} specifier
+ * @returns {boolean}
+ */
+function isSqliteOrSecretSpecifier(specifier) {
+  return sqliteOrSecretBasenamePattern.test(moduleBasename(specifier))
 }
 
 /**
@@ -42,22 +93,43 @@ function importsOnlySubjectAdapter(filePath, source) {
   const subject = subjectAdapterModuleBasename(filePath)
   if (!subject) return false
 
-  const importSpecifierPattern = new RegExp(
-    String.raw`['"]([^'"]*(?:profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store))['"]`,
-    'g',
-  )
-  /** @type {string[]} */
-  const importedModules = []
-  for (const match of source.matchAll(importSpecifierPattern)) {
-    const specifier = match[1] ?? ''
-    importedModules.push(specifier.split('/').pop() ?? '')
-  }
+  const importedModules = extractModuleSpecifiers(source)
+    .filter(isConcreteAdapterSpecifier)
+    .map(moduleBasename)
+    .map((name) => name.replace(/\.[cm]?[jt]sx?$/, ''))
 
   if (importedModules.length === 0) {
     return !concreteAdapterFactoryImportPattern.test(source)
   }
 
+  if (subject.startsWith('profile.json.')) {
+    return importedModules.every(
+      (moduleName) =>
+        moduleName === subject || moduleName.startsWith('profile.json.'),
+    )
+  }
+
   return importedModules.every((moduleName) => moduleName === subject)
+}
+
+/**
+ * @param {string} source
+ * @returns {boolean}
+ */
+function importsSqliteOrSecretConcrete(source) {
+  if (extractModuleSpecifiers(source).some(isSqliteOrSecretSpecifier)) return true
+  return /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\bcreateSqlite(?:Profile|SensitiveProfile|Secret)Store\b[^}]*\}\s+from\s+['"][^'"]+['"]/s.test(
+    source,
+  )
+}
+
+/**
+ * JSON concrete modules may import sibling JSON helpers/ports, but never SQLite/secret adapters.
+ * @param {string} source
+ * @returns {boolean}
+ */
+function jsonConcreteModuleImportsAreAllowed(source) {
+  return !importsSqliteOrSecretConcrete(source)
 }
 
 /**
@@ -74,11 +146,24 @@ function isApprovedImporter(filePath, source) {
     return true
   }
 
+  if (jsonConcreteModulePattern.test(normalized)) {
+    return jsonConcreteModuleImportsAreAllowed(source)
+  }
+
   if (subjectAdapterModuleBasename(normalized)) {
     return importsOnlySubjectAdapter(normalized, source)
   }
 
   return false
+}
+
+/**
+ * @param {string} source
+ * @returns {boolean}
+ */
+function importsConcreteAdapter(source) {
+  if (extractModuleSpecifiers(source).some(isConcreteAdapterSpecifier)) return true
+  return concreteAdapterFactoryImportPattern.test(source)
 }
 
 /**
@@ -129,14 +214,9 @@ export function findProfileSecretImportPolicyViolations(files) {
     const normalized = file.path.replaceAll('\\', '/')
     if (!normalized.startsWith('src/') && !normalized.startsWith('electron/')) return []
     if (isApprovedImporter(normalized, file.source)) return []
-    if (
-      !concreteAdapterModuleImportPattern.test(file.source) &&
-      !concreteAdapterFactoryImportPattern.test(file.source)
-    ) {
-      return []
-    }
+    if (!importsConcreteAdapter(file.source)) return []
     return [
-      `${file.path}: concrete profile/secret SQLite adapters may only be imported from approved composition modules`,
+      `${file.path}: concrete profile/secret adapters may only be imported from approved composition modules`,
     ]
   })
 }

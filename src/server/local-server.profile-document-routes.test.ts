@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import {
   createDrizzleDatabase,
   createFileDatabase,
 } from '../db/sqlite'
 import { createMemoryProfileStores } from '../modules/profile/profile.memory.store'
+import { createJsonProfileService } from '../modules/profile/profile.composition'
 import { createProfileService } from '../modules/profile/profile.service'
 import { createWorkspaceProfileMethods } from '../runtime/local-profile-secret-client'
 import { createConnectorSecretResolver } from '../modules/secrets/connector-secret-resolver'
@@ -296,5 +300,56 @@ describe('local server profile document routes', () => {
       message: 'The profile document schema version is unsupported.',
     })
     expect(updateCalls).toBe(0)
+  })
+
+  it('propagates JSON adapter format and restore through HTTP without exposing local filePath', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-profile-http-'))
+    const profilePath = path.join(directory, 'profile.json')
+    const service = createJsonProfileService(profilePath)
+    const client = createBoundaryWorkspaceClient(() => {}, {
+      profile: createWorkspaceProfileMethods(service),
+    })
+    const server = await fixture.start({
+      client,
+      host: '127.0.0.1',
+      port: 0,
+      resolveWorkspaceClient: async () => client,
+    })
+    const base = `${server.url}/v1/workspaces/workspace-profile`
+
+    const created = await fetch(`${base}/profile/document`, {
+      body: JSON.stringify({
+        expectedRevision: (await service.getDocument()).revision,
+        profile: { email: 'kenny@example.com' },
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'PUT',
+    })
+    expect(created.status).toBe(200)
+    const document = (await readJson(created)) as { revision: string; profile: { email: string } }
+    expect(document.profile.email).toBe('kenny@example.com')
+
+    const formatted = await fetch(`${base}/profile/document/format`, {
+      body: JSON.stringify({ expectedRevision: document.revision }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+    expect(formatted.status).toBe(200)
+    await expect(readJson(formatted)).resolves.toMatchObject({
+      revision: document.revision,
+      profile: { email: 'kenny@example.com' },
+    })
+
+    const restored = await fetch(`${base}/profile/document/restore`, {
+      body: JSON.stringify({ expectedRevision: document.revision }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    })
+    expect(restored.status).toBe(200)
+    const restoredBody = await readJson(restored)
+    expect(restoredBody).toMatchObject({
+      profile: { email: null },
+    })
+    expect(JSON.stringify(restoredBody)).not.toContain(profilePath)
   })
 })

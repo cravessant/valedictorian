@@ -16,6 +16,11 @@ import {
   type ProfileUpdateInput,
   type UserProfile,
 } from 'sparxie'
+import type {
+  ProfileDocumentCapability,
+  ProfileDocumentChangeEvent,
+  ProfileLastKnownGoodPreview,
+} from './profile.document.capability'
 import {
   invalidProfileDocumentError,
   issuePath,
@@ -26,12 +31,15 @@ import type { SensitiveProfileStore } from './profile.sensitive-store'
 import type { ProfileStore } from './profile.store'
 
 export interface ProfileService {
+  dispose(): void
   formatDocument(input: ProfileDocumentFormatInput): Promise<ProfileDocument>
   get(): Promise<UserProfile>
   getAgentContext(): Promise<ProfileAgentContext>
   getDocument(): Promise<ProfileDocument>
+  getLastKnownGoodPreview(): ProfileLastKnownGoodPreview | null
   getSensitiveDetails(): Promise<ProfileSensitiveDetails>
   restoreDocument(input: ProfileDocumentRestoreInput): Promise<ProfileDocument>
+  subscribe(listener: (event: ProfileDocumentChangeEvent) => void): () => void
   update(input: ProfileUpdateInput): Promise<UserProfile>
   updateDocument(input: ProfileDocumentUpdateInput): Promise<ProfileDocument>
   updateSensitiveDetails(input: ProfileSensitiveDetailsInput): Promise<ProfileSensitiveDetails>
@@ -41,14 +49,18 @@ export interface ProfileService {
 export function createProfileService(options: {
   profileStore: ProfileStore
   sensitiveStore: SensitiveProfileStore
+  documentCapability?: ProfileDocumentCapability
 }): ProfileService {
-  const { profileStore, sensitiveStore } = options
+  const { profileStore, sensitiveStore, documentCapability } = options
+  let disposed = false
 
   return {
     async get() {
+      assertNotDisposed()
       return (await readCurrentDocument()).profile
     },
     async update(input) {
+      assertNotDisposed()
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const current = await readCurrentDocument()
         const patch = normalizeProfilePatch(input)
@@ -66,12 +78,15 @@ export function createProfileService(options: {
       throw profileDocumentError('profile_revision_conflict')
     },
     async getAgentContext() {
+      assertNotDisposed()
       return toProfileAgentContext(await this.get())
     },
     async getDocument() {
+      assertNotDisposed()
       return readCurrentDocument()
     },
     async updateDocument(input) {
+      assertNotDisposed()
       const parsed = profileDocumentUpdateInputSchema.safeParse(input)
       if (!parsed.success) {
         const issue = parsed.error.issues[0]
@@ -97,6 +112,7 @@ export function createProfileService(options: {
       return parseDocument(result.document)
     },
     async validateDocument() {
+      assertNotDisposed()
       const document = await readCurrentDocument()
       return {
         revision: document.revision,
@@ -104,10 +120,15 @@ export function createProfileService(options: {
       }
     },
     async formatDocument(input) {
+      assertNotDisposed()
       const parsed = profileDocumentFormatInputSchema.safeParse(input)
       if (!parsed.success) {
         const issue = parsed.error.issues[0]
         throw invalidProfileDocumentError(issuePath(issue?.path))
+      }
+
+      if (documentCapability) {
+        return parseDocument(await documentCapability.format(parsed.data))
       }
 
       const document = await readCurrentDocument()
@@ -117,21 +138,49 @@ export function createProfileService(options: {
       return document
     },
     async restoreDocument(input) {
+      assertNotDisposed()
       const parsed = profileDocumentRestoreInputSchema.safeParse(input)
       if (!parsed.success) {
         const issue = parsed.error.issues[0]
         throw invalidProfileDocumentError(issuePath(issue?.path))
       }
+
+      if (documentCapability) {
+        return parseDocument(await documentCapability.restore(parsed.data))
+      }
+
       throw profileDocumentError('profile_backup_unavailable')
     },
+    subscribe(listener) {
+      assertNotDisposed()
+      if (!documentCapability) return () => {}
+      return documentCapability.subscribe(listener)
+    },
+    getLastKnownGoodPreview() {
+      if (disposed) return null
+      return documentCapability?.getLastKnownGoodPreview() ?? null
+    },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      documentCapability?.dispose()
+    },
     async getSensitiveDetails() {
+      assertNotDisposed()
       return sensitiveStore.get()
     },
     async updateSensitiveDetails(input) {
+      assertNotDisposed()
       const current = await sensitiveStore.get()
       const normalized = normalizeSensitiveDetailsUpdate(current, input)
       return sensitiveStore.update(normalized)
     },
+  }
+
+  function assertNotDisposed() {
+    if (disposed) {
+      throw profileDocumentError('profile_document_unavailable')
+    }
   }
 
   async function readCurrentDocument(): Promise<ProfileDocument> {

@@ -43,6 +43,7 @@ describe('workspace initializer', () => {
     expect(fs.existsSync(layout.promptsPath)).toBe(true)
     expect(fs.existsSync(layout.templatesPath)).toBe(true)
     expect(fs.existsSync(layout.notesPath)).toBe(true)
+    expect(fs.existsSync(layout.profilePath)).toBe(false)
   })
 
   it('uses discovered project config when naming a new workspace manifest', () => {

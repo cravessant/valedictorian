@@ -305,6 +305,60 @@ describe('ProfileService', () => {
     expect(updateCalls).toBe(0)
   })
 
+  it('delegates format and restore to an optional document capability while retaining SQLite fallbacks', async () => {
+    const stores = createMemoryProfileStores()
+    const formatted = {
+      ...(await stores.profileStore.get()),
+      profile: { ...(await stores.profileStore.get()).profile, email: 'formatted@example.com' },
+    }
+    const restored = {
+      ...(await stores.profileStore.get()),
+      profile: { ...(await stores.profileStore.get()).profile, email: 'restored@example.com' },
+    }
+    const calls: string[] = []
+    const service = createProfileService({
+      profileStore: stores.profileStore,
+      sensitiveStore: stores.sensitiveStore,
+      documentCapability: {
+        dispose() {},
+        getLastKnownGoodPreview: () => null,
+        subscribe: () => () => {},
+        async format(input) {
+          calls.push(`format:${input.expectedRevision}`)
+          return formatted
+        },
+        async restore(input) {
+          calls.push(`restore:${String(input.expectedRevision)}`)
+          return restored
+        },
+      },
+    })
+
+    const document = await service.getDocument()
+    await expect(service.formatDocument({ expectedRevision: document.revision })).resolves.toEqual(
+      formatted,
+    )
+    await expect(service.restoreDocument({ expectedRevision: null })).resolves.toEqual(restored)
+    expect(calls).toEqual([`format:${document.revision}`, 'restore:null'])
+    expect(service.getLastKnownGoodPreview()).toBeNull()
+    expect(service.subscribe(() => {})).toEqual(expect.any(Function))
+    service.dispose()
+
+    const fallback = createProfileService(stores)
+    await expect(
+      fallback.formatDocument({ expectedRevision: (await fallback.getDocument()).revision }),
+    ).resolves.toMatchObject({ schemaVersion: 1 })
+    await expect(fallback.restoreDocument({ expectedRevision: null })).rejects.toMatchObject({
+      code: 'profile_backup_unavailable',
+    })
+    expect(fallback.getLastKnownGoodPreview()).toBeNull()
+    const unsubscribe = fallback.subscribe(() => {
+      throw new Error('memory fallback must not emit')
+    })
+    unsubscribe()
+    fallback.dispose()
+  })
+
   it('passes only explicitly changed moved sensitive fields to the profile store', async () => {
     const stores = createMemoryProfileStores()
     const seen: Array<unknown> = []

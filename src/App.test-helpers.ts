@@ -685,6 +685,7 @@ export function createWorkspaceSummary(
     dataPath: '/Users/keni/Job Search/.valedictorian',
     manifestPath: '/Users/keni/Job Search/.valedictorian/manifest.json',
     appSettingsPath: '/Users/keni/Job Search/.valedictorian/app.json',
+    profilePath: '/Users/keni/Job Search/.valedictorian/profile.json',
     sqlitePath: '/Users/keni/Job Search/.valedictorian/valedictorian.sqlite',
     automationsPath: '/Users/keni/Job Search/.valedictorian/automations',
     promptsPath: '/Users/keni/Job Search/.valedictorian/prompts',

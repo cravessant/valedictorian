@@ -5,6 +5,7 @@ export const workspaceDataDirectoryName = '.valedictorian'
 export const workspaceManifestFileName = 'manifest.json'
 export const workspaceAppSettingsFileName = 'app.json'
 export const workspaceAppSecretsFileName = 'secrets.json'
+export const workspaceProfileFileName = 'profile.json'
 export const workspaceSqliteFileName = 'valedictorian.sqlite'
 
 export interface WorkspaceLayout {
@@ -12,6 +13,7 @@ export interface WorkspaceLayout {
   dataPath: string
   manifestPath: string
   appSettingsPath: string
+  profilePath: string
   sqlitePath: string
   automationsPath: string
   promptsPath: string
@@ -27,6 +29,7 @@ export function resolveWorkspaceLayout(rootPath: string): WorkspaceLayout {
     dataPath,
     manifestPath: join(dataPath, workspaceManifestFileName),
     appSettingsPath: join(dataPath, workspaceAppSettingsFileName),
+    profilePath: join(dataPath, workspaceProfileFileName),
     sqlitePath: join(dataPath, workspaceSqliteFileName),
     automationsPath: join(dataPath, 'automations'),
     promptsPath: join(dataPath, 'prompts'),
