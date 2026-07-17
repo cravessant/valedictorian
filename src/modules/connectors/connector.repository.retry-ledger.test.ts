@@ -41,6 +41,92 @@ describe('SQLite connector repository retry ledger', () => {
     sqlite.close()
   })
 
+  it('admits Jobright capture runs while provider URL work remains scheduled', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    await repository.upsertInstance({
+      id: 'jobright-capture', connectorId: 'jobright.resolver', connectorVersion: '0.14.1',
+      displayName: 'Jobright capture', enabled: true, filters: {},
+      earliestBackfillDate: '2026-07-01', createdAt: '2026-07-11T12:00:00.000Z',
+    })
+    seedNormalizationRetry(
+      sqlite, database, 'jobright-capture', 'provider-url-work',
+      '2026-07-11T12:00:00.000Z', 'provider-one',
+    )
+    database.update(retryWork).set({
+      resolverId: 'jobright.authenticated-destination',
+      resolverVersion: 'jobright-authenticated-destination@1',
+      lineageJson: JSON.stringify({
+        connectorInstanceId: 'jobright-capture',
+        intermediaryUrl: 'https://jobright.ai/jobs/info/provider-one',
+        providerRecordId: 'jobright.public:provider-one',
+        workKind: 'provider_url_resolution',
+      }),
+    }).where(eq(retryWork.id, 'provider-url-work')).run()
+    await repository.recordCheckpoint({
+      connectorInstanceId: 'jobright-capture', filterSignature: 'filters:{}',
+      savedAt: '2026-07-11T12:00:00.000Z',
+      coverage: { start: '2026-07-01T00:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
+      checkpoint: {
+        schemaVersion: 'jobright-capture-checkpoint@1',
+        checkpoint: { cursor: 'capture-complete' },
+      },
+    })
+
+    const request = await repository.recordRunRequest({
+      connectorInstanceId: 'jobright-capture', mode: 'manual',
+      startedAt: '2026-07-11T12:01:00.000Z',
+    })
+
+    expect(request).toMatchObject({ acquired: true, acquiredWork: null })
+    expect(database.select().from(retryWork).get()).toMatchObject({
+      id: 'provider-url-work', state: 'scheduled', acquisitionRunId: null,
+    })
+    sqlite.close()
+  })
+
+  it('admits Jobright capture runs without acquiring legacy v5 exact retry work', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    await repository.upsertInstance({
+      id: 'jobright-upgraded-capture', connectorId: 'jobright.resolver', connectorVersion: '0.14.1',
+      displayName: 'Upgraded Jobright capture', enabled: true, filters: {},
+      earliestBackfillDate: '2026-07-01', createdAt: '2026-07-11T12:00:00.000Z',
+    })
+    seedNormalizationRetry(
+      sqlite, database, 'jobright-upgraded-capture', 'legacy-v5-work',
+      '2026-07-11T12:00:00.000Z', 'legacy-provider',
+    )
+    database.update(retryWork).set({
+      resolverId: 'jobright.authenticated-destination',
+      resolverVersion: 'jobright-authenticated-destination@1',
+    }).where(eq(retryWork.id, 'legacy-v5-work')).run()
+    await repository.recordCheckpoint({
+      connectorInstanceId: 'jobright-upgraded-capture', filterSignature: 'filters:{}',
+      savedAt: '2026-07-11T12:00:00.000Z',
+      coverage: { start: '2026-07-01T00:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
+      checkpoint: {
+        schemaVersion: 'jobright-capture-checkpoint@1',
+        checkpoint: { cursor: 'capture-complete' },
+      },
+    })
+
+    const request = await repository.recordRunRequest({
+      connectorInstanceId: 'jobright-upgraded-capture', mode: 'manual',
+      startedAt: '2026-07-11T12:01:00.000Z',
+    })
+
+    expect(request).toMatchObject({ acquired: true, acquiredWork: null })
+    expect(database.select().from(retryWork).get()).toMatchObject({
+      id: 'legacy-v5-work', state: 'scheduled', acquisitionRunId: null,
+    })
+    sqlite.close()
+  })
+
   it('selects due work independently of large terminal retry history', async () => {
     const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite); const repository = createSqliteConnectorRepository(database)
@@ -677,13 +763,33 @@ describe('SQLite connector repository retry ledger', () => {
     sqlite.close()
   })
 
-  it('rejects malformed current Jobright v5 retry state instead of inferring completion', async () => {
+  it('rejects malformed persisted and refreshed Jobright v5 retry state', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
     await repository.upsertInstance({ id: 'jobright-malformed', connectorId: 'jobright.resolver', connectorVersion: '0.11.0', displayName: 'Jobright malformed', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
     seedNormalizationRetry(sqlite, database, 'jobright-malformed', 'normalization-jobright-malformed', '2026-07-11T12:01:00.000Z', 'job-retry')
+    database.update(retryWork).set({
+      resolverId: 'jobright.authenticated-destination',
+      resolverVersion: 'jobright-authenticated-destination@1',
+    }).where(eq(retryWork.id, 'normalization-jobright-malformed')).run()
+    await repository.recordCheckpoint({
+      connectorInstanceId: 'jobright-malformed', filterSignature: 'filters:{}',
+      savedAt: '2026-07-11T11:59:00.000Z',
+      coverage: { start: '2026-07-04T00:00:00.000Z', end: '2026-07-11T11:59:00.000Z' },
+      checkpoint: {
+        schemaVersion: 'jobright-resolution-checkpoint@5',
+        checkpoint: { generationId: 'gen-malformed', effectiveCoverageStart: '2026-07-04T00:00:00.000Z' },
+      },
+    })
+    await expect(repository.recordRunRequest({
+      connectorInstanceId: 'jobright-malformed', mode: 'catch_up',
+      coverageStartedAt: '2026-07-04T00:00:00.000Z', startedAt: '2026-07-11T12:00:00.000Z',
+    })).rejects.toThrow('Jobright v5 checkpoint pending retry ledger is malformed')
+    expect(database.select().from(retryWork).get()).toMatchObject({
+      id: 'normalization-jobright-malformed', state: 'scheduled', acquisitionRunId: null,
+    })
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-malformed',
       filterSignature: 'filters:{}',
@@ -719,7 +825,8 @@ describe('SQLite connector repository retry ledger', () => {
         },
       },
     })
-    const acquisition = await repository.recordRunRequest({ connectorInstanceId: 'jobright-malformed', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z' })
+    const acquisition = await repository.recordRunRequest({ connectorInstanceId: 'jobright-malformed', mode: 'catch_up',
+      coverageStartedAt: '2026-07-04T00:00:00.000Z', startedAt: '2026-07-11T12:01:00.000Z' })
     expect(acquisition).toMatchObject({ acquired: true, acquiredWork: { kind: 'normalization' } })
     await repository.markRunRunning({ connectorRunId: acquisition.run.id, startedAt: '2026-07-11T12:01:00.000Z' })
 

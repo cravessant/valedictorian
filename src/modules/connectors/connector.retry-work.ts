@@ -11,6 +11,7 @@ import type { ConnectorCheckpointPayload } from './connector-checkpoint.persiste
 import {
   JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID,
   JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION,
+  JOBRIGHT_CAPTURE_CHECKPOINT_SCHEMA_V1,
   JOBRIGHT_CHECKPOINT_SCHEMA_V5,
   JOBRIGHT_CONNECTOR_ID,
 } from './jobright.constants'
@@ -331,6 +332,7 @@ function selectActiveJobrightProviderIds(
     eq(retryWork.resolverId, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID),
     eq(retryWork.resolverVersion, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION),
     inArray(retryWork.state, ['scheduled', 'acquired']),
+    notProviderUrlWork(),
     isNull(retryWork.deletedAt),
   )).limit(1).get()
   if (!authenticatedRetry) return null
@@ -345,6 +347,9 @@ function selectActiveJobrightProviderIds(
     .get()
 
   if (!checkpointRow) {
+    return []
+  }
+  if (checkpointRow.schemaVersion === JOBRIGHT_CAPTURE_CHECKPOINT_SCHEMA_V1) {
     return []
   }
   if (checkpointRow.schemaVersion !== JOBRIGHT_CHECKPOINT_SCHEMA_V5) {
