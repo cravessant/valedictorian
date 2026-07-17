@@ -5,8 +5,8 @@ import {
   type ValedictorianWorkspaceClient,
 } from 'sparxie'
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
-import { writeEmpty } from './local-server.http'
-import { handleRequest } from './local-server.routes'
+import { writeEmpty, writeNoStoreEmpty } from './local-server.http'
+import { handleRequest, isLocalSecretResolvePath } from './local-server.routes'
 import type { LocalWorkspaceManager } from './local-workspaces'
 
 export type WorkspaceClientResolver = (
@@ -16,6 +16,7 @@ export type WorkspaceClientResolver = (
 export interface CreateValedictorianHttpServerOptions {
   client: ValedictorianWorkspaceClient
   host?: string
+  localSecretResolutionEnabled?: boolean
   port?: number
   resolveWorkspaceClient?: WorkspaceClientResolver
   token?: string
@@ -51,6 +52,7 @@ export function readClientConnectorScheduling(
 export async function createValedictorianHttpServer({
   client,
   host = '127.0.0.1',
+  localSecretResolutionEnabled = false,
   port = 4317,
   resolveWorkspaceClient,
   token,
@@ -60,13 +62,19 @@ export async function createValedictorianHttpServer({
   const errorListeners = new Set<() => void>()
   const server = http.createServer((request, response) => {
     if (request.method === 'OPTIONS') {
-      writeEmpty(response, 204)
+      const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+      if (isLocalSecretResolvePath(pathname)) {
+        writeNoStoreEmpty(response, 204)
+      } else {
+        writeEmpty(response, 204)
+      }
       return
     }
 
     void handleRequest({
       client,
       connectorScheduling,
+      localSecretResolutionEnabled,
       request,
       resolveWorkspaceClient,
       response,

@@ -7,6 +7,7 @@ import {
   defaultLocalCapabilities,
   invalidPersistedRawDetailErrorBody,
   isApplicationStatus,
+  localSecretResolutionErrorBodies,
   localSecretResolutionErrorCodes,
   profileDocumentErrorCodes,
   rawSourceRecordSchema,
@@ -18,6 +19,7 @@ import {
   type ProfileUpdateInput,
 } from 'sparxie'
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
+import { toLocalSecretResolutionHttpFailure } from '../modules/secrets/local-secret-resolution'
 import {
   readJsonBody,
   readOptionalBooleanField,
@@ -25,6 +27,7 @@ import {
   readRequiredOpaqueStringField,
   readStringField,
   writeJson,
+  writeNoStoreJson,
 } from './local-server.http'
 import {
   parseApplicationAttemptsQuery,
@@ -61,7 +64,10 @@ import type { WorkspaceClientResolver } from './local-server'
 import type { LocalWorkspaceManager } from './local-workspaces'
 import { handleConnectorRoutes } from './local-server.routes.connectors'
 
-function buildLocalCapabilities(connectorScheduling: ConnectorSchedulingCapability) {
+function buildLocalCapabilities(
+  connectorScheduling: ConnectorSchedulingCapability,
+  localSecretResolutionEnabled: boolean,
+) {
   return {
     ...defaultLocalCapabilities,
     workflowRuns: true,
@@ -69,6 +75,7 @@ function buildLocalCapabilities(connectorScheduling: ConnectorSchedulingCapabili
     sourcing: true,
     connectors: true,
     connectorScheduling: resolveConnectorSchedulingCapability(connectorScheduling),
+    localSecretResolution: localSecretResolutionEnabled,
   }
 }
 
@@ -78,6 +85,7 @@ const MAX_RAW_SOURCE_REPLAY_BODY_BYTES = 1024 * 1024
 export async function handleRequest({
   client,
   connectorScheduling = defaultLocalCapabilities.connectorScheduling,
+  localSecretResolutionEnabled = false,
   request,
   resolveWorkspaceClient,
   response,
@@ -87,6 +95,7 @@ export async function handleRequest({
 }: {
   client: ValedictorianWorkspaceClient
   connectorScheduling?: ConnectorSchedulingCapability
+  localSecretResolutionEnabled?: boolean
   request: http.IncomingMessage
   resolveWorkspaceClient?: WorkspaceClientResolver
   response: http.ServerResponse
@@ -96,6 +105,7 @@ export async function handleRequest({
 }) {
   try {
     const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
+    const isLocalSecretResolveRoute = isLocalSecretResolvePath(requestUrl.pathname)
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/health') {
       writeJson(response, 200, { ok: true })
@@ -103,11 +113,30 @@ export async function handleRequest({
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/capabilities') {
-      writeJson(response, 200, buildLocalCapabilities(connectorScheduling))
+      writeJson(
+        response,
+        200,
+        buildLocalCapabilities(connectorScheduling, localSecretResolutionEnabled),
+      )
       return
     }
 
-    if (token && request.headers.authorization !== `Bearer ${token}`) {
+    if (isLocalSecretResolveRoute) {
+      // Unscoped root never resolves a workspace; keep it canonical 404/no-store.
+      if (requestUrl.pathname === '/v1/secrets/local/resolve' && !workspaceScoped) {
+        writeNoStoreJson(response, 404, { message: 'Not found' })
+        return
+      }
+
+      if (!token || request.headers.authorization !== `Bearer ${token}`) {
+        writeNoStoreJson(
+          response,
+          403,
+          localSecretResolutionErrorBodies.local_secret_resolution_unauthorized,
+        )
+        return
+      }
+    } else if (token && request.headers.authorization !== `Bearer ${token}`) {
       writeJson(response, 401, { message: 'Unauthorized' })
       return
     }
@@ -164,7 +193,16 @@ export async function handleRequest({
       const workspaceClientResolver =
         resolveWorkspaceClient ?? workspaceManager?.resolveClient.bind(workspaceManager) ?? (() => client)
 
-      const workspaceClient = await workspaceClientResolver(decodeURIComponent(workspaceMatch[1]))
+      let workspaceClient: ValedictorianWorkspaceClient
+      try {
+        workspaceClient = await workspaceClientResolver(decodeURIComponent(workspaceMatch[1]))
+      } catch (error) {
+        if (isLocalSecretResolvePath(requestUrl.pathname)) {
+          writeNoStoreJson(response, 404, { message: 'Not found' })
+          return
+        }
+        throw error
+      }
       const originalUrl = request.url
       request.url = `/v1${workspaceMatch[2]}${requestUrl.search}`
 
@@ -172,8 +210,10 @@ export async function handleRequest({
         await handleRequest({
           client: workspaceClient,
           connectorScheduling,
+          localSecretResolutionEnabled,
           request,
           response,
+          token,
           workspaceScoped: true,
         })
       } finally {
@@ -184,6 +224,10 @@ export async function handleRequest({
     }
 
     if (!workspaceScoped && isDomainRoute(requestUrl.pathname)) {
+      if (isLocalSecretResolvePath(requestUrl.pathname)) {
+        writeNoStoreJson(response, 404, { message: 'Not found' })
+        return
+      }
       writeJson(response, 404, { message: 'Not found' })
       return
     }
@@ -329,6 +373,31 @@ export async function handleRequest({
         200,
         await client.profile.document.restore(await readJsonBody(request) as never),
       )
+      return
+    }
+
+    if (requestUrl.pathname === '/v1/secrets/local/resolve') {
+      if (request.method !== 'POST') {
+        writeNoStoreJson(response, 404, { message: 'Not found' })
+        return
+      }
+
+      if (!localSecretResolutionEnabled) {
+        writeNoStoreJson(
+          response,
+          409,
+          localSecretResolutionErrorBodies.local_secret_resolution_unsupported,
+        )
+        return
+      }
+
+      try {
+        const result = await client.secrets.local.resolve(await readJsonBody(request) as never)
+        writeNoStoreJson(response, 200, result)
+      } catch (error) {
+        const failure = toLocalSecretResolutionHttpFailure(error)
+        writeNoStoreJson(response, failure.statusCode, failure.body)
+      }
       return
     }
 
@@ -822,12 +891,26 @@ export async function handleRequest({
       typeof error.body === 'object' &&
       'code' in error.body &&
       typeof (error.body as { code?: unknown }).code === 'string' &&
-      ((profileDocumentErrorCodes as readonly string[]).includes(
+      (localSecretResolutionErrorCodes as readonly string[]).includes(
         (error.body as { code: string }).code,
       )
-        || (localSecretResolutionErrorCodes as readonly string[]).includes(
-          (error.body as { code: string }).code,
-        ))
+    ) {
+      const failure = toLocalSecretResolutionHttpFailure(error)
+      writeNoStoreJson(response, failure.statusCode, failure.body)
+      return
+    }
+
+    if (
+      error &&
+      typeof error === 'object' &&
+      'body' in error &&
+      error.body &&
+      typeof error.body === 'object' &&
+      'code' in error.body &&
+      typeof (error.body as { code?: unknown }).code === 'string' &&
+      (profileDocumentErrorCodes as readonly string[]).includes(
+        (error.body as { code: string }).code,
+      )
     ) {
       writeJson(response, readErrorStatusCode(error), error.body)
       return
@@ -873,4 +956,9 @@ function isDomainRoute(pathname: string) {
   return /^\/v1\/(applications|action-queue|connector-descriptors|connectors|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
     pathname,
   )
+}
+
+export function isLocalSecretResolvePath(pathname: string) {
+  return pathname === '/v1/secrets/local/resolve'
+    || /^\/v1\/workspaces\/[^/]+\/secrets\/local\/resolve$/.test(pathname)
 }

@@ -12,6 +12,7 @@ import { createProfileService } from '../modules/profile/profile.service'
 import { createWorkspaceProfileMethods } from '../runtime/local-profile-secret-client'
 import { createConnectorSecretResolver } from '../modules/secrets/connector-secret-resolver'
 import { createSqliteSecretService } from '../modules/secrets/secret.composition'
+import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
 import {
   createBoundaryWorkspaceClient,
   createSeededLocalClient as createLocalValedictorianClient,
@@ -35,7 +36,7 @@ describe('local server profile document routes', () => {
   beforeEach(() => fixture.setup())
   afterEach(() => fixture.teardown())
 
-  async function startWorkspaceServer() {
+  async function startWorkspaceServer(options: { token?: string } = {}) {
     const sqlitePath = createTempSqlitePath()
     const client = createLocalValedictorianClient({
       secretCodec: testCodec,
@@ -47,13 +48,14 @@ describe('local server profile document routes', () => {
       host: '127.0.0.1',
       port: 0,
       resolveWorkspaceClient: async () => client,
+      ...(options.token === undefined ? {} : { token: options.token }),
     })
     return { client, server, sqlitePath }
   }
 
   function trustedReveal(sqlitePath: string) {
     const database = createDrizzleDatabase(createFileDatabase(sqlitePath))
-    return createConnectorSecretResolver(createSqliteSecretService(database, testCodec))
+    return createConnectorSecretResolver(createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('workspace-profile')))
   }
 
   it('serves workspace-scoped document verbs and keeps unscoped/domain resolve closed', async () => {
@@ -128,8 +130,78 @@ describe('local server profile document routes', () => {
     })
 
     expect((await fetch(`${server.url}/v1/profile/document`)).status).toBe(404)
-    expect((await fetch(`${base}/secrets/local/resolve`, { method: 'POST' })).status).toBe(404)
-    expect((await fetch(`${server.url}/v1/secrets/local/resolve`, { method: 'POST' })).status).toBe(404)
+    const unauthorizedResolve = await fetch(`${base}/secrets/local/resolve`, { method: 'POST' })
+    expect(unauthorizedResolve.status).toBe(403)
+    expect(unauthorizedResolve.headers.get('cache-control')).toContain('no-store')
+    await expect(readJson(unauthorizedResolve)).resolves.toEqual({
+      code: 'local_secret_resolution_unauthorized',
+      message: 'Local secret resolution is unauthorized.',
+    })
+    const unscopedResolve = await fetch(`${server.url}/v1/secrets/local/resolve`, { method: 'POST' })
+    expect(unscopedResolve.status).toBe(404)
+    expect(unscopedResolve.headers.get('cache-control')).toContain('no-store')
+  })
+
+  it('returns unsupported only after authentication when local resolution is disabled', async () => {
+    const { server } = await startWorkspaceServer({ token: 'server-token' })
+    const base = `${server.url}/v1/workspaces/workspace-profile`
+
+    const unsupportedResolve = await fetch(`${base}/secrets/local/resolve`, {
+      headers: { authorization: 'Bearer server-token' },
+      method: 'POST',
+    })
+    expect(unsupportedResolve.status).toBe(409)
+    expect(unsupportedResolve.headers.get('cache-control')).toContain('no-store')
+    await expect(readJson(unsupportedResolve)).resolves.toEqual({
+      code: 'local_secret_resolution_unsupported',
+      message: 'Local secret resolution is unsupported.',
+    })
+  })
+
+  it('rejects ordinary HTTP administration of the reserved identity secret', async () => {
+    const { server, sqlitePath } = await startWorkspaceServer()
+    const base = `${server.url}/v1/workspaces/workspace-profile`
+    const identityCanary = 'identity-http-canary-5125'
+
+    const secretService = createSqliteSecretService(
+      createDrizzleDatabase(createFileDatabase(sqlitePath)),
+      testCodec,
+      createWorkspaceSecretScope('workspace-profile'),
+    )
+    await secretService.upsertTrustedIdentitySsnLast4('5125')
+
+    const list = await fetch(`${base}/secrets`).then(readJson) as { items: Array<{ key: string }> }
+    expect(list.items.every((item) => item.key !== 'identity_ssn_last4')).toBe(true)
+    expect(JSON.stringify(list)).not.toContain('identity_ssn_last4')
+    expect(JSON.stringify(list)).not.toContain(identityCanary)
+
+    const upsert = await fetch(`${base}/secrets/identity_ssn_last4`, {
+      body: JSON.stringify({
+        kind: 'password',
+        label: 'SSN last four',
+        value: identityCanary,
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'PUT',
+    })
+    expect(upsert.status).toBe(400)
+    const upsertBody = await readJson(upsert)
+    expect(upsertBody).toEqual({
+      message: 'Identity secrets cannot be managed through ordinary secret administration',
+    })
+    expect(JSON.stringify(upsertBody)).not.toContain(identityCanary)
+
+    const remove = await fetch(`${base}/secrets/identity_ssn_last4`, { method: 'DELETE' })
+    expect(remove.status).toBe(400)
+    const removeBody = await readJson(remove)
+    expect(removeBody).toEqual({
+      message: 'Identity secrets cannot be managed through ordinary secret administration',
+    })
+    expect(JSON.stringify(removeBody)).not.toContain(identityCanary)
+
+    await expect(secretService.resolve('identity_ssn_last4')).resolves.toMatchObject({
+      value: '5125',
+    })
   })
 
   it('round-trips opaque secret values including whitespace and empty string through HTTP upsert', async () => {

@@ -332,7 +332,7 @@ describe('show debug data setting', () => {
             ]),
           )
         }
-        settingsApi={createSettingsApi({ apiToken: secretApiToken })}
+        settingsApi={createSettingsApi({ apiTokenConfigured: true })}
       />,
     )
 

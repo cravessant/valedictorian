@@ -130,7 +130,7 @@ describe('Valedictorian runtime config', () => {
         apiToken: 'saved-token',
         env: {},
         settings: {
-          apiToken: '',
+          apiTokenConfigured: false,
           localApiHost: '0.0.0.0',
           localApiPort: 7777,
           remoteApiUrl: 'https://saved.valedictorian.test',
@@ -156,7 +156,7 @@ describe('Valedictorian runtime config', () => {
         apiToken: 'remote-token',
         env: {},
         settings: {
-          apiToken: '',
+          apiTokenConfigured: false,
           localApiHost: '127.0.0.1',
           localApiPort: 4317,
           remoteApiUrl: 'https://remote.valedictorian.test',
@@ -185,7 +185,7 @@ describe('Valedictorian runtime config', () => {
           VALEDICTORIAN_MODE: 'remote',
         },
         settings: {
-          apiToken: '',
+          apiTokenConfigured: false,
           localApiHost: '0.0.0.0',
           localApiPort: 7777,
           remoteApiUrl: 'https://saved.valedictorian.test',
@@ -265,11 +265,12 @@ describe('Valedictorian runtime creation', () => {
     }))
     expect(createHttpClient).not.toHaveBeenCalled()
     expect(runtime.server).toBe(server)
-    expect(startServer).toHaveBeenCalledWith({
+    expect(startServer).toHaveBeenCalledWith(expect.objectContaining({
       client: localClient,
       host: '127.0.0.1',
+      localSecretResolutionEnabled: false,
       port: 0,
-    })
+    }))
     await runtime.close()
     expect(server.close).toHaveBeenCalled()
   })
@@ -346,11 +347,12 @@ describe('Valedictorian runtime creation', () => {
     expect(
       (startServer.mock.calls[0]?.[0].client as typeof localClient),
     ).toBe(localClient)
-    expect(startServer).toHaveBeenCalledWith({
+    expect(startServer).toHaveBeenCalledWith(expect.objectContaining({
       client: localClient,
       host: '127.0.0.1',
+      localSecretResolutionEnabled: false,
       port: 9999,
-    })
+    }))
 
     await runtime.close()
     expect(server.close).toHaveBeenCalled()
@@ -380,13 +382,14 @@ describe('Valedictorian runtime creation', () => {
       workspaceManager,
     })
 
-    expect(startServer).toHaveBeenCalledWith({
+    expect(startServer).toHaveBeenCalledWith(expect.objectContaining({
       client: localClient,
       host: '127.0.0.1',
+      localSecretResolutionEnabled: false,
       port: 0,
       resolveWorkspaceClient: expect.any(Function),
       workspaceManager,
-    })
+    }))
     const resolveWorkspaceClient = startServer.mock.calls[0]?.[0].resolveWorkspaceClient
 
     expect(await resolveWorkspaceClient?.('workspace-local')).toBe(localClient)

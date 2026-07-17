@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteSecretService } from '../secrets/secret.composition'
+import { createWorkspaceSecretScope } from '../secrets/secret.scope'
 import { createConnectorSecretResolver } from '../secrets/connector-secret-resolver'
 import type { SecretCodec } from '../secrets/secret.codec'
 import {
@@ -415,7 +416,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const secretService = createSqliteSecretService(database, testCodec)
+    const secretService = createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
@@ -564,7 +565,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const secretService = createSqliteSecretService(database, testCodec)
+    const secretService = createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
@@ -695,7 +696,7 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const secretService = createSqliteSecretService(database, testCodec)
+    const secretService = createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',

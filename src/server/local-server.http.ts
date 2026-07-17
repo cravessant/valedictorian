@@ -246,8 +246,25 @@ export function writeJson(response: http.ServerResponse, statusCode: number, bod
   response.end(JSON.stringify(body))
 }
 
+export function writeNoStoreJson(response: http.ServerResponse, statusCode: number, body: unknown) {
+  response.writeHead(statusCode, {
+    ...localCorsHeaders,
+    'cache-control': 'no-store',
+    'content-type': 'application/json',
+  })
+  response.end(JSON.stringify(body))
+}
+
 export function writeEmpty(response: http.ServerResponse, statusCode: number) {
   response.writeHead(statusCode, localCorsHeaders)
+  response.end()
+}
+
+export function writeNoStoreEmpty(response: http.ServerResponse, statusCode: number) {
+  response.writeHead(statusCode, {
+    ...localCorsHeaders,
+    'cache-control': 'no-store',
+  })
   response.end()
 }
 

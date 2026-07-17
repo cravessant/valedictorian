@@ -8,16 +8,16 @@ const maintainedCodePathPattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 /** @typedef {{ path: string, source: string }} PolicyFile */
 
 const concreteAdapterBasenamePattern =
-  /(?:^|\/)(profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store|profile\.json\.(?:store|document|atomic|lock|watch|paths))(?:\.[cm]?[jt]sx?)?$/
+  /(?:^|\/)(profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store|app-secret\.store|profile\.json\.(?:store|document|atomic|lock|watch|paths))(?:\.[cm]?[jt]sx?)?$/
 
 const sqliteOrSecretBasenamePattern =
-  /(?:^|\/)(profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store)(?:\.[cm]?[jt]sx?)?$/
+  /(?:^|\/)(profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store|app-secret\.store)(?:\.[cm]?[jt]sx?)?$/
 
 const concreteAdapterFactoryImportPattern =
-  /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\b(?:createSqlite(?:Profile|SensitiveProfile|Secret)Store|createJsonProfileStore)\b[^}]*\}\s+from\s+['"][^'"]+['"]/s
+  /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\b(?:createSqlite(?:Profile|SensitiveProfile|Secret)Store|createFileAppSecretStore|createJsonProfileStore)\b[^}]*\}\s+from\s+['"][^'"]+['"]/s
 
 const sqliteSubjectPattern =
-  /(?:^|\/)((?:profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store))\.test\.(?:[cm]?[jt]s|[jt]sx)$/
+  /(?:^|\/)((?:profile\.sqlite\.(?:sensitive-)?store|secret\.sqlite\.store|app-secret\.store))\.test\.(?:[cm]?[jt]s|[jt]sx)$/
 
 const jsonSubjectPattern =
   /(?:^|\/)((?:profile\.json\.(?:store|document|atomic|lock|watch|paths)))\.test\.(?:[cm]?[jt]s|[jt]sx)$/
@@ -118,7 +118,7 @@ function importsOnlySubjectAdapter(filePath, source) {
  */
 function importsSqliteOrSecretConcrete(source) {
   if (extractModuleSpecifiers(source).some(isSqliteOrSecretSpecifier)) return true
-  return /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\bcreateSqlite(?:Profile|SensitiveProfile|Secret)Store\b[^}]*\}\s+from\s+['"][^'"]+['"]/s.test(
+  return /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\b(?:createSqlite(?:Profile|SensitiveProfile|Secret)Store|createFileAppSecretStore)\b[^}]*\}\s+from\s+['"][^'"]+['"]/s.test(
     source,
   )
 }
@@ -141,7 +141,8 @@ function isApprovedImporter(filePath, source) {
   const normalized = filePath.replaceAll('\\', '/')
   if (
     normalized === 'src/modules/profile/profile.composition.ts' ||
-    normalized === 'src/modules/secrets/secret.composition.ts'
+    normalized === 'src/modules/secrets/secret.composition.ts' ||
+    normalized === 'src/settings/app-secret.composition.ts'
   ) {
     return true
   }

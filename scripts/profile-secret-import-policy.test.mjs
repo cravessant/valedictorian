@@ -14,6 +14,10 @@ describe('profile/secret import policy', () => {
           source: "import { createSqliteProfileStore } from '../modules/profile/profile.sqlite.store'\n",
         },
         {
+          path: 'src/settings/SettingsPage.forbidden.ts',
+          source: "import { createFileAppSecretStore } from './app-secret.store'\n",
+        },
+        {
           path: 'src/modules/connectors/forbidden.ts',
           source: "import { createSqliteSecretStore } from '../secrets/secret.sqlite.store'\n",
         },
@@ -89,6 +93,7 @@ describe('profile/secret import policy', () => {
       ]),
     ).toEqual([
       'src/ipc/forbidden.ts: concrete profile/secret adapters may only be imported from approved composition modules',
+      'src/settings/SettingsPage.forbidden.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/modules/connectors/forbidden.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/app/forbidden.tsx: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/ipc/forbidden-reexport.ts: concrete profile/secret adapters may only be imported from approved composition modules',
@@ -173,6 +178,14 @@ describe('profile/secret import policy', () => {
         {
           path: 'src/modules/secrets/secret.composition.ts',
           source: "import { createSqliteSecretStore } from './secret.sqlite.store'\n",
+        },
+        {
+          path: 'src/settings/app-secret.composition.ts',
+          source: "import { createFileAppSecretStore } from './app-secret.store'\n",
+        },
+        {
+          path: 'src/settings/app-secret.store.test.ts',
+          source: "import { createFileAppSecretStore } from './app-secret.store'\n",
         },
         {
           path: 'src/modules/profile/profile.sqlite.store.test.ts',

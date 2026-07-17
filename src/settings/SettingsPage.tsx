@@ -31,6 +31,7 @@ import { SettingsToggleRow } from '../app/AppChrome'
 import { AppearanceSettingsPanel } from './AppearanceSettingsPanel'
 import { ProfileSettingsPanel } from '../modules/profile/ProfileSettingsPanel'
 import { SettingsTextInput } from './SettingsTextInput'
+import { ApiTokenSettingsControls } from './ApiTokenSettingsControls'
 import type { WorkspaceSummary } from '../workspace/workspace.initializer'
 import { ConnectorRunsPanel } from './ConnectorRunsPanel'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
@@ -50,7 +51,7 @@ interface SettingsPageProps {
   workspaceApi: WorkspacePreloadApi
   onConnectorRunSettled: () => void
   onOpenSourcingRuns: (runId?: string) => void
-  onSettingsPatch: (patch: AppSettingsPatch) => void
+  onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
 }
 
 interface SettingsSidebarProps {
@@ -322,7 +323,7 @@ function GeneralSettingsPanel({
   onSettingsPatch,
 }: {
   settings: AppSettings
-  onSettingsPatch: (patch: AppSettingsPatch) => void
+  onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
 }) {
   return (
     <section aria-labelledby="general-settings-title" className="space-y-7">
@@ -385,7 +386,7 @@ function ConfigurationSettingsPanel({
   onSettingsPatch,
 }: {
   settings: AppSettings
-  onSettingsPatch: (patch: AppSettingsPatch) => void
+  onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
 }) {
   return (
     <section aria-labelledby="configuration-settings-title" className="space-y-7">
@@ -415,11 +416,9 @@ function ConfigurationSettingsPanel({
           value={String(settings.localApiPort)}
           onChange={(value) => onSettingsPatch({ localApiPort: Number(value) })}
         />
-        <SettingsTextInput
-          label="API token"
-          type="password"
-          value={settings.apiToken}
-          onChange={(value) => onSettingsPatch({ apiToken: value })}
+        <ApiTokenSettingsControls
+          apiTokenConfigured={settings.apiTokenConfigured}
+          onSettingsPatch={onSettingsPatch}
         />
         <SettingsTextInput label="SQLite path" readOnly value="Managed by Electron userData" />
       </div>
@@ -543,7 +542,7 @@ function DeveloperSettingsPanel({
   onSettingsPatch,
 }: {
   settings: AppSettings
-  onSettingsPatch: (patch: AppSettingsPatch) => void
+  onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
 }) {
   return (
     <section aria-labelledby="developer-settings-title" className="space-y-7">

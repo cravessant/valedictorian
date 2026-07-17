@@ -170,6 +170,57 @@ describe('Valedictorian HTTP transport boundary', () => {
     expect(fetchMock).toHaveBeenCalledTimes(allowed.length)
   })
 
+  it('rejects local secret-resolution routes before fetch, including query and path-confusion variants', async () => {
+    const PLAINTEXT_CANARY = 'plaintext-secret-canary-4e8a'
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      value: PLAINTEXT_CANARY,
+    }), {
+      headers: { 'content-type': 'application/json' },
+      status: 200,
+    }))
+    const transport = createValedictorianHttpTransport({
+      apiBaseUrl: 'https://api.valedictorian.test',
+      apiToken: 'remote-token',
+      fetchImplementation: fetchMock as typeof fetch,
+      workspaceId: 'ws-1',
+    })
+
+    const forbidden = [
+      'https://api.valedictorian.test/v1/workspaces/ws-1/secrets/local/resolve',
+      'https://api.valedictorian.test/v1/workspaces/ws-1/secrets/local/resolve?probe=1',
+      'https://api.valedictorian.test/v1/workspaces/ws-1/secrets/local/resolve/',
+      'https://api.valedictorian.test/v1/workspaces/ws-1/secrets/local/resolve/extra',
+      'https://api.valedictorian.test/v1/workspaces/ws-1/applications/../secrets/local/resolve',
+      'https://api.valedictorian.test/v1/workspaces/ws-1/secrets/local/./resolve',
+      'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/../../secrets/local/resolve',
+    ] as const
+
+    for (const url of forbidden) {
+      await expect(transport.request({
+        body: '{}',
+        method: 'POST',
+        url,
+      })).rejects.toSatisfy((error: unknown) => {
+        expect(error).toBeInstanceOf(ValedictorianHttpTransportError)
+        expect(String(error)).not.toContain(PLAINTEXT_CANARY)
+        expect(JSON.stringify(error)).not.toContain(PLAINTEXT_CANARY)
+        return true
+      })
+    }
+
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await expect(transport.request({
+      method: 'GET',
+      url: 'https://api.valedictorian.test/v1/workspaces/ws-1/applications',
+    })).resolves.toMatchObject({ status: 200 })
+    await expect(transport.request({
+      method: 'GET',
+      url: 'https://api.valedictorian.test/v1/workspaces/ws-1/connectors/c-1/schedule',
+    })).resolves.toMatchObject({ status: 200 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('rejects every nested path under a connector schedule prefix before fetch', async () => {
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))
     const transport = createValedictorianHttpTransport({

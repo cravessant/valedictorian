@@ -29,11 +29,13 @@ import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
 import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '../src/server/local-workspaces'
 import { createSqliteProfileService } from '../src/modules/profile/profile.composition'
 import { createSqliteSecretService } from '../src/modules/secrets/secret.composition'
+import { createWorkspaceSecretScope } from '../src/modules/secrets/secret.scope'
 import {
   createValedictorianRuntime,
   resolveValedictorianRuntimeConfig,
   type ValedictorianRuntime,
 } from '../src/runtime/valedictorian-runtime'
+import { resolveStartupSettingsAndApiToken } from '../src/runtime/startup-settings-resolution'
 import {
   createLocalBackendSupervisor,
   type LocalBackendState,
@@ -41,7 +43,7 @@ import {
   type SupervisedBackendListener,
 } from '../src/runtime/local-backend-supervisor'
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
-import { createFileAppSecretStore } from '../src/settings/app-secret.store'
+import { createApplicationFileSecretStore } from '../src/settings/app-secret.composition'
 import { defaultAppSettings } from '../src/settings/app-settings'
 import { serializeResolvedTheme } from '../src/theme/theme-bootstrap'
 import { resolveTheme, type ResolvedTheme } from '../src/theme/theme-registry'
@@ -188,16 +190,24 @@ async function registerRuntimeServices(
   options?: WorkspaceActivationOptions,
 ) {
   const secretCodec = createElectronSecretCodec(safeStorage)
+  // Secret-backed store remains for IPC/UI; startup may bypass it when env token wins.
   const settingsStore = createFileAppSettingsStore(workspace.appSettingsPath, {
-    secretStore: createFileAppSecretStore(
+    secretStore: createApplicationFileSecretStore(
       path.join(workspace.dataPath, workspaceAppSecretsFileName),
       secretCodec,
     ),
   })
-  const settings = await settingsStore.get()
+  const { settings, apiToken } = await resolveStartupSettingsAndApiToken({
+    env: process.env,
+    readPublicSettings: () => createFileAppSettingsStore(workspace.appSettingsPath).get(),
+    readSecretBackedSettingsAndToken: async () => ({
+      settings: await settingsStore.get(),
+      apiToken: await settingsStore.resolveApiToken(),
+    }),
+  })
   activeResolvedTheme = resolveTheme(settings.theme)
   const config = resolveValedictorianRuntimeConfig({
-    apiToken: settings.apiToken,
+    apiToken,
     settings,
     userDataPath: app.getPath('userData'),
     workspaceDataPath: workspace.dataPath,
@@ -260,7 +270,7 @@ async function registerRuntimeServices(
   migrateDatabase(profileSqlite)
   const profileDatabase = createDrizzleDatabase(profileSqlite)
   const profileService = createSqliteProfileService(profileDatabase, secretCodec)
-  const secretService = createSqliteSecretService(profileDatabase, secretCodec)
+  const secretService = createSqliteSecretService(profileDatabase, secretCodec, createWorkspaceSecretScope(workspace.id))
 
   registerApplicationIpc(runtime.client, ipcMain)
   registerPolicyIpc(runtime.client, ipcMain)

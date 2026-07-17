@@ -25,6 +25,8 @@ export interface LocalValedictorianClientOptions {
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: SecretCodec
+  /** Explicit local secret-resolution capability policy for this workspace client. */
+  localSecretResolutionEnabled?: boolean
   sqlitePath: string
   workspaceId?: string
 }

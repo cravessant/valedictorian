@@ -8,8 +8,11 @@ import {
 import { profileSecrets } from '../../db/schema'
 import { createSqliteSecretService } from './secret.composition'
 import type { SecretCodec } from './secret.codec'
+import { createWorkspaceSecretScope } from './secret.scope'
 import { createSecretService } from './secret.service'
 import type { SecretStore } from './secret.store'
+
+const testWorkspaceScope = createWorkspaceSecretScope('test-workspace')
 
 const testCodec: SecretCodec = {
   decrypt(value) {
@@ -36,7 +39,7 @@ function createService() {
   const database = createDrizzleDatabase(sqlite)
   return {
     database,
-    service: createSqliteSecretService(database, testCodec),
+    service: createSqliteSecretService(database, testCodec, testWorkspaceScope),
   }
 }
 
@@ -143,6 +146,7 @@ describe('SecretService', () => {
   it('passes branded normalized key/kind/label and byte-exact value to the store port', async () => {
     const seen: Array<unknown> = []
     const fakeStore: SecretStore = {
+      scope: testWorkspaceScope,
       async delete(key) {
         seen.push({ op: 'delete', key })
       },

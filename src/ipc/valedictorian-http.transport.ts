@@ -152,6 +152,8 @@ function assertAllowedValedictorianHttpRoute(
     ? ''
     : pathname.slice(workspacePrefix.length + 1)
 
+  assertDeniedLocalSecretResolveRoute(relativePath)
+
   if (relativePath.startsWith('connectors/')) {
     const afterConnectors = relativePath.slice('connectors/'.length)
     const connectorSeparator = afterConnectors.indexOf('/')
@@ -165,6 +167,17 @@ function assertAllowedValedictorianHttpRoute(
         return
       }
     }
+  }
+}
+
+function assertDeniedLocalSecretResolveRoute(relativePath: string) {
+  if (
+    relativePath === 'secrets/local/resolve'
+    || relativePath.startsWith('secrets/local/resolve/')
+  ) {
+    throw new ValedictorianHttpTransportError(
+      'Valedictorian HTTP transport local secret resolution is not allowed.',
+    )
   }
 }
 

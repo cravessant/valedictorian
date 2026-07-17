@@ -6,6 +6,7 @@ import type {
 import { profileSecrets } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import type { SecretCodec } from './secret.codec'
+import type { WorkspaceSecretScope } from './secret.scope'
 import type { SecretStore, SecretValue, ValidatedUpsertSecretInput } from './secret.store'
 
 export type { SecretCodec }
@@ -13,8 +14,10 @@ export type { SecretCodec }
 export function createSqliteSecretStore(
   database: DrizzleDatabase,
   secretCodec: SecretCodec,
+  scope: WorkspaceSecretScope,
 ): SecretStore {
   return {
+    scope,
     async delete(key) {
       database.delete(profileSecrets).where(eq(profileSecrets.key, key)).run()
     },

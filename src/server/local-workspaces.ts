@@ -10,6 +10,7 @@ import {
   type DefaultLocalConnectorPorts,
 } from '../modules/connectors/connector.runtime-ports'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
+import { isSecretCodecAvailable } from '../modules/secrets/secret.codec'
 import {
   createConnectorRunRecoveryLifecycle,
   type ConnectorRunRecoveryLifecycle,
@@ -129,6 +130,7 @@ export function createLocalWorkspaceManager({
         const client = createClient({
           connectorRunRecovery,
           connectorRuntime: connectorPorts.connectorRuntime,
+          localSecretResolutionEnabled: isSecretCodecAvailable(secretCodec),
           referenceTrackerPath,
           seedDataMode,
           secretCodec,

@@ -38,13 +38,20 @@ export function createWorkspaceProfileMethods(
 
 export function createWorkspaceSecretMethods(
   secretService: SecretService,
+  localResolution: { resolve: (input: unknown) => Promise<unknown> } = {
+    resolve: (input) => rejectUnsupportedLocalSecretResolution(
+      input as Parameters<typeof rejectUnsupportedLocalSecretResolution>[0],
+    ),
+  },
 ): ValedictorianWorkspaceClient['secrets'] {
   return {
     delete: (key) => secretService.delete(key),
     list: () => secretService.listResult(),
     upsert: (input) => secretService.upsert(input),
     local: {
-      resolve: (input) => rejectUnsupportedLocalSecretResolution(input),
+      resolve: (input) => localResolution.resolve(input) as ReturnType<
+        ValedictorianWorkspaceClient['secrets']['local']['resolve']
+      >,
     },
   }
 }

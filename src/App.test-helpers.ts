@@ -636,9 +636,13 @@ export function createSettingsApi(overrides: Partial<AppSettings> = {}): Setting
       return currentSettings
     }),
     update: vi.fn(async (patch: AppSettingsPatch) => {
+      const { apiToken, ...rest } = patch
       currentSettings = {
         ...currentSettings,
-        ...patch,
+        ...rest,
+        ...(apiToken === undefined
+          ? {}
+          : { apiTokenConfigured: apiToken.length > 0 }),
       }
 
       return currentSettings

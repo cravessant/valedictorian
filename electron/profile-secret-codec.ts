@@ -27,6 +27,9 @@ export class ElectronSecretCodecError extends Error {
 
 export function createElectronSecretCodec(safeStorage: ElectronSafeStorage): SecretCodec {
   return {
+    isAvailable() {
+      return safeStorage.isEncryptionAvailable()
+    },
     decrypt(value) {
       if (!safeStorage.isEncryptionAvailable()) {
         throw secureStorageUnavailableError()

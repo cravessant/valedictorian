@@ -2,6 +2,7 @@ import type {
   ProfileSecretKind,
   ProfileSecretSummary,
 } from 'sparxie'
+import type { WorkspaceSecretScope } from './secret.scope'
 
 declare const normalizedSecretKeyBrand: unique symbol
 
@@ -23,6 +24,7 @@ export interface SecretValue extends ProfileSecretSummary {
 }
 
 export interface SecretStore {
+  readonly scope: WorkspaceSecretScope
   delete(key: NormalizedSecretKey): Promise<void>
   list(): Promise<ProfileSecretSummary[]>
   resolve(key: NormalizedSecretKey): Promise<SecretValue | null>

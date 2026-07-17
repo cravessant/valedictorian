@@ -19,6 +19,7 @@ import { localDesktopConnectorSchedulingCapability } from '../modules/connectors
 import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
+import { isSecretCodecAvailable } from '../modules/secrets/secret.codec'
 import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import {
   createLocalValedictorianClient,
@@ -31,6 +32,7 @@ import {
   type LocalScheduler,
   type LocalSchedulerOptions,
 } from './local-scheduler'
+import { readNonEmptyEnvironmentApiToken } from './api-token-resolution'
 
 export type ValedictorianRuntimeMode = 'local-desktop' | 'local-shared' | 'remote'
 
@@ -96,7 +98,7 @@ export function resolveValedictorianRuntimeConfig({
   return {
     apiHost,
     apiPort,
-    apiToken: (env.VALEDICTORIAN_API_TOKEN ?? apiToken) || undefined,
+    apiToken: readNonEmptyEnvironmentApiToken(env) ?? (apiToken || undefined),
     apiUrl:
       env.VALEDICTORIAN_API_URL ??
       (mode === 'remote' ? settings.remoteApiUrl || defaultValedictorianApiBaseUrl : defaultApiUrl),
@@ -143,6 +145,11 @@ export async function createValedictorianRuntime({
   const connectorPorts = createConnectorPorts(config.workspaceId)
   const scheduler = createScheduler(schedulerOptions)
   const effectiveConnectorRunRecovery = connectorRunRecovery ?? workspaceManager?.connectorRunRecovery
+  const localSecretResolutionEnabled =
+    config.mode === 'local-shared'
+    && Boolean(config.apiToken)
+    && isSecretCodecAvailable(secretCodec)
+
   const client = createLocalClient({
     ...(effectiveConnectorRunRecovery === undefined
       ? {}
@@ -151,6 +158,7 @@ export async function createValedictorianRuntime({
     connectorScheduling: config.mode === 'local-desktop'
       ? localDesktopConnectorSchedulingCapability
       : undefined,
+    localSecretResolutionEnabled,
     onScheduledWorkChanged: () => scheduler.signal(),
     referenceTrackerPath: config.referenceTrackerPath,
     seedDataMode: config.seedDataMode,
@@ -163,7 +171,9 @@ export async function createValedictorianRuntime({
   const serverOptions: CreateValedictorianHttpServerOptions = {
     client,
     host: config.apiHost,
+    localSecretResolutionEnabled,
     port: config.mode === 'local-desktop' ? 0 : config.apiPort,
+    ...(config.apiToken === undefined ? {} : { token: config.apiToken }),
   }
 
   if (workspaceManager) {

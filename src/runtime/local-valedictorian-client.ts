@@ -64,7 +64,10 @@ import type {
 import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
 import { createSqliteProfileService } from '../modules/profile/profile.composition'
 import { createSqliteSecretService } from '../modules/secrets/secret.composition'
+import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
+import { isSecretCodecAvailable } from '../modules/secrets/secret.codec'
+import { createLocalSecretResolutionService } from '../modules/secrets/local-secret-resolution'
 import {
   composeTrustedConnectorAuth,
   createWorkspaceProfileMethods,
@@ -150,6 +153,7 @@ export function createLocalValedictorianClient({
   referenceTrackerPath,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
+  localSecretResolutionEnabled = false,
   sqlitePath,
   workspaceId = 'local-workspace',
 }: LocalValedictorianClientOptions): LocalValedictorianClient {
@@ -164,7 +168,18 @@ export function createLocalValedictorianClient({
   })
   const scoringRepository = createSqliteScoringRepository(database)
   const profileService = createSqliteProfileService(database, secretCodec)
-  const secretService = createSqliteSecretService(database, secretCodec)
+  const secretService = createSqliteSecretService(
+    database,
+    secretCodec,
+    createWorkspaceSecretScope(workspaceId),
+  )
+  const localSecretResolution = createLocalSecretResolutionService({
+    policy: {
+      enabled: localSecretResolutionEnabled,
+      isSecureStorageAvailable: () => isSecretCodecAvailable(secretCodec),
+    },
+    resolveSecret: (key) => secretService.resolve(key),
+  })
   const actionQueueRepository = createSqliteActionQueueRepository(database)
   const connectorRepository = createSqliteConnectorRepository(database)
   const recoverInterruptedRuns = () => {
@@ -591,7 +606,7 @@ export function createLocalValedictorianClient({
       },
     },
     profile: createWorkspaceProfileMethods(profileService),
-    secrets: createWorkspaceSecretMethods(secretService),
+    secrets: createWorkspaceSecretMethods(secretService, localSecretResolution),
     runs: {
       list: (query) => workflowRunRepository.listRuns(query),
       start: (input) => workflowRunRepository.startRun(input),

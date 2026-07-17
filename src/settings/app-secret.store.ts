@@ -1,15 +1,16 @@
 import fs from 'node:fs'
-import path from 'node:path'
+import type { ApplicationSecretScope } from '../modules/secrets/secret.scope'
+import type { AppSecretCodec, AppSecretStore } from './app-secret'
+import {
+  defaultAtomicDocumentFileOperations,
+  writeAtomicDocument,
+  type AtomicDocumentFileOperations,
+} from './atomic-document'
 
-export interface AppSecretCodec {
-  decrypt: (value: string) => string
-  encrypt: (value: string) => string
-}
+export type { AppSecretCodec, AppSecretStore }
 
-export interface AppSecretStore {
-  delete: (reference: string) => Promise<void>
-  get: (reference: string) => Promise<string | null>
-  set: (reference: string, value: string) => Promise<void>
+export interface FileAppSecretStoreOptions {
+  fileOps?: AtomicDocumentFileOperations
 }
 
 interface AppSecretDocument {
@@ -20,8 +21,12 @@ interface AppSecretDocument {
 export function createFileAppSecretStore(
   secretsPath: string,
   codec: AppSecretCodec,
+  scope: ApplicationSecretScope,
+  options: FileAppSecretStoreOptions = {},
 ): AppSecretStore {
+  const fileOps = options.fileOps ?? defaultAtomicDocumentFileOperations
   return {
+    scope,
     async delete(reference) {
       const document = readSecretDocument(secretsPath)
 
@@ -30,16 +35,19 @@ export function createFileAppSecretStore(
       }
 
       delete document.secrets[reference]
-      writeSecretDocument(secretsPath, document)
+      writeSecretDocument(secretsPath, document, fileOps)
     },
     async get(reference) {
       const encryptedValue = readSecretDocument(secretsPath).secrets[reference]
       return encryptedValue === undefined ? null : codec.decrypt(encryptedValue)
     },
+    async has(reference) {
+      return reference in readSecretDocument(secretsPath).secrets
+    },
     async set(reference, value) {
       const document = readSecretDocument(secretsPath)
       document.secrets[reference] = codec.encrypt(value)
-      writeSecretDocument(secretsPath, document)
+      writeSecretDocument(secretsPath, document, fileOps)
     },
   }
 }
@@ -71,13 +79,14 @@ function isSecretDocument(value: unknown): value is AppSecretDocument {
       .every((secret) => typeof secret === 'string')
 }
 
-function writeSecretDocument(secretsPath: string, document: AppSecretDocument) {
-  fs.mkdirSync(path.dirname(secretsPath), { recursive: true })
-  const temporaryPath = `${secretsPath}.tmp`
-  fs.writeFileSync(temporaryPath, `${JSON.stringify(document, null, 2)}\n`, {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
-  fs.renameSync(temporaryPath, secretsPath)
-  fs.chmodSync(secretsPath, 0o600)
+function writeSecretDocument(
+  secretsPath: string,
+  document: AppSecretDocument,
+  fileOps: AtomicDocumentFileOperations,
+) {
+  writeAtomicDocument(
+    secretsPath,
+    `${JSON.stringify(document, null, 2)}\n`,
+    fileOps,
+  )
 }

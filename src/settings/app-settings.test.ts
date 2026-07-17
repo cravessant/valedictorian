@@ -10,7 +10,7 @@ describe('normalizeAppSettings showDebugData', () => {
   it('normalizes legacy settings without showDebugData to false', () => {
     expect(
       normalizeAppSettings({
-        apiToken: '',
+        apiTokenConfigured: false,
         localApiHost: '127.0.0.1',
         localApiPort: 4317,
         remoteApiUrl: 'http://127.0.0.1:4317',

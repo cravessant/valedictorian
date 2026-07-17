@@ -154,7 +154,7 @@ export interface AppShellProps {
   togglePinnedSidebar: () => void
   updateActionQueueBucket: (bucket: ActionQueueBucket | undefined) => void
   updateFilter: (key: keyof FilterState, value: string) => void
-  updateSettings: (patch: AppSettingsPatch) => void
+  updateSettings: (patch: AppSettingsPatch) => void | Promise<void>
   updateSourcingFinding: (input: UpdateSourcingFindingInput) => Promise<SourcingFinding>
   updateSourcingMergeStatus: (mergeStatus: SourcingMergeStatus | undefined) => void
   updateSourcingSource: (sourceId: string) => void

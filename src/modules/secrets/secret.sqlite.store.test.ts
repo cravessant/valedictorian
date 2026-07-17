@@ -5,9 +5,12 @@ import {
   migrateDatabase,
 } from '../../db/sqlite'
 import type { SecretCodec } from './secret.codec'
+import { createWorkspaceSecretScope } from './secret.scope'
 import { defineSecretStoreContract } from './secret.store.contract'
 import type { NormalizedSecretKey, ValidatedUpsertSecretInput } from './secret.store'
 import { createSqliteSecretStore } from './secret.sqlite.store'
+
+const testWorkspaceScope = createWorkspaceSecretScope('test-workspace')
 
 const testCodec: SecretCodec = {
   decrypt(value) {
@@ -27,7 +30,7 @@ defineSecretStoreContract(() => {
   const sqlite = createInMemoryDatabase()
   migrateDatabase(sqlite)
   const database = createDrizzleDatabase(sqlite)
-  const store = createSqliteSecretStore(database, testCodec)
+  const store = createSqliteSecretStore(database, testCodec, testWorkspaceScope)
 
   return {
     store,
@@ -48,7 +51,7 @@ describe('SQLite SecretStore adapter', () => {
   it('keeps ciphertext out of summaries', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
-    const store = createSqliteSecretStore(createDrizzleDatabase(sqlite), testCodec)
+    const store = createSqliteSecretStore(createDrizzleDatabase(sqlite), testCodec, testWorkspaceScope)
 
     const summary = await store.upsert({
       key: 'password' as NormalizedSecretKey,
@@ -64,7 +67,7 @@ describe('SQLite SecretStore adapter', () => {
   it('persists noncanonical values when cast across the validated boundary (no adapter normalization)', async () => {
     const sqlite = createInMemoryDatabase()
     migrateDatabase(sqlite)
-    const store = createSqliteSecretStore(createDrizzleDatabase(sqlite), testCodec)
+    const store = createSqliteSecretStore(createDrizzleDatabase(sqlite), testCodec, testWorkspaceScope)
 
     // Hostile escape hatch: prove the adapter does not normalize; do not bless this as valid input.
     const noncanonical = {

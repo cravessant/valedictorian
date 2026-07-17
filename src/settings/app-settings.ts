@@ -6,9 +6,9 @@ import {
 
 export type RuntimePreference = 'local-desktop' | 'local-shared' | 'remote'
 
+/** Public settings DTO: never contains token plaintext or storage references. */
 export interface AppSettings {
-  apiToken: string
-  apiTokenSecretRef?: string
+  apiTokenConfigured: boolean
   localApiHost: string
   localApiPort: number
   remoteApiUrl: string
@@ -19,16 +19,21 @@ export interface AppSettings {
   theme: ThemeSettings
 }
 
-export type AppSettingsPatch = Partial<Omit<AppSettings, 'apiTokenSecretRef'>>
+/** Write-only apiToken is accepted by update but never returned. */
+export type AppSettingsPatch = Partial<Omit<AppSettings, 'apiTokenConfigured'>> & {
+  apiToken?: string
+}
 
 export interface AppSettingsStore {
   get: () => Promise<AppSettings>
   reset: () => Promise<AppSettings>
+  /** Privileged main-process only: resolves saved token plaintext. */
+  resolveApiToken: () => Promise<string | null>
   update: (patch: AppSettingsPatch) => Promise<AppSettings>
 }
 
 export const defaultAppSettings: AppSettings = {
-  apiToken: '',
+  apiTokenConfigured: false,
   localApiHost: '127.0.0.1',
   localApiPort: 4317,
   remoteApiUrl: 'http://127.0.0.1:4317',
@@ -47,12 +52,10 @@ export function normalizeAppSettings(value: unknown): AppSettings {
   const candidate = value as Record<string, unknown>
 
   return {
-    apiToken:
-      typeof candidate.apiToken === 'string' ? candidate.apiToken : defaultAppSettings.apiToken,
-    apiTokenSecretRef:
-      typeof candidate.apiTokenSecretRef === 'string' && candidate.apiTokenSecretRef
-        ? candidate.apiTokenSecretRef
-        : undefined,
+    apiTokenConfigured:
+      typeof candidate.apiTokenConfigured === 'boolean'
+        ? candidate.apiTokenConfigured
+        : defaultAppSettings.apiTokenConfigured,
     localApiHost:
       typeof candidate.localApiHost === 'string'
         ? candidate.localApiHost

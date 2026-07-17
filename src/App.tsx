@@ -820,7 +820,7 @@ function App({
       })
   }
 
-  function updateSettings(patch: AppSettingsPatch) {
+  function updateSettings(patch: AppSettingsPatch): Promise<void> {
     const nextSettings = normalizeAppSettings({
       ...settings,
       ...patch,
@@ -832,15 +832,15 @@ function App({
       setFiltersExpanded(patch.showAdvancedFilters)
     }
 
-    if (requiresRestart(patch)) {
-      setSettingsRestartRequired(true)
-    }
-
-    void settingsApi.update(patch).then((savedSettings) => {
+    return settingsApi.update(patch).then((savedSettings) => {
       setSettings(savedSettings)
 
       if (typeof patch.showAdvancedFilters === 'boolean') {
         setFiltersExpanded(savedSettings.showAdvancedFilters)
+      }
+
+      if (requiresRestart(patch)) {
+        setSettingsRestartRequired(true)
       }
     })
   }
@@ -929,7 +929,7 @@ function App({
       setSidebarHoverExpanded(false)
     }
 
-    updateSettings({ sidebarCollapsed: nextCollapsed })
+    void updateSettings({ sidebarCollapsed: nextCollapsed })
   }
 
   return (

@@ -182,7 +182,7 @@ interface AppSidebarProps {
     view: Exclude<MainAppView, typeof APP_VIEWS.PROFILE>,
   ) => void
   onSettingsOpenChange: (open: boolean) => void
-  onSettingsPatch: (patch: AppSettingsPatch) => void
+  onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
 }
 
 function AppSidebar({
@@ -405,7 +405,7 @@ interface SettingsPopoverProps {
   onClose: () => void
   onOpenChange: (open: boolean) => void
   onOpenSettingsPage: () => void
-  onSettingsPatch: (patch: AppSettingsPatch) => void
+  onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
 }
 
 function SettingsPopover({
@@ -420,7 +420,7 @@ function SettingsPopover({
   const sharingEnabled = settings.runtimeMode === 'local-shared'
 
   function updateRuntimeMode(runtimeMode: RuntimePreference) {
-    onSettingsPatch({ runtimeMode })
+    void onSettingsPatch({ runtimeMode })
   }
 
   return (
