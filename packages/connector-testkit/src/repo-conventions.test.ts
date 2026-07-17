@@ -246,11 +246,11 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(corePackage.dependencies).toEqual({
-      sparxie: "^0.15.0",
+      sparxie: "^0.24.0",
     })
     expect(harnessPackage.dependencies).toEqual({
       "@sparxie/valedictorian-connectors-core": "workspace:^0.14.1",
-      sparxie: "^0.15.0",
+      sparxie: "^0.24.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
       "@sparxie/valedictorian-connectors-core": "workspace:^0.14.1",

@@ -4,6 +4,7 @@ import {
   type ConnectorHistoricalBackfillState,
   type ConnectorNewestFrontierState,
   type ConnectorSynchronizationOutcome,
+  type ConnectorVersionedRendererSchema,
   type JsonValue,
   type RawSourceIntakeReceipt,
   type RawSourceRecordInput,
@@ -53,8 +54,13 @@ export type {
   ConnectorHistoricalBackfillState,
   ConnectorNewestFrontierState,
   ConnectorSynchronizationOutcome,
+  ConnectorVersionedRendererSchema,
 } from "sparxie"
-export { retryAdviceSchema, sourceExecutionScopeIdSchema } from "sparxie"
+export {
+  installedConnectorDescriptorSchema,
+  retryAdviceSchema,
+  sourceExecutionScopeIdSchema,
+} from "sparxie"
 
 export type RetryPolicyInput = {
   attempt: number
@@ -205,10 +211,7 @@ export type ConnectorDefinition = {
 
 export const jobObservationSchemaVersion = "job-observation@1"
 
-export type ConnectorSchemaDeclaration = {
-  version: string
-  schema: Record<string, unknown>
-}
+export type ConnectorSchemaDeclaration = ConnectorVersionedRendererSchema
 
 export type ConnectorObservationDeclaration = {
   schemaVersion: string

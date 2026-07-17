@@ -52,9 +52,18 @@ export function createFixtureConnector(
         properties: {
           listUrl: {
             type: "string",
+            maxLength: 2_048,
           },
         },
         additionalProperties: true,
+      },
+      presentation: {
+        fields: {
+          "/listUrl": {
+            label: "List URL",
+            description: "Fixture list address used by the in-memory host.",
+          },
+        },
       },
     },
     filterSchema: {
@@ -64,12 +73,22 @@ export function createFixtureConnector(
         properties: {
           roleKeywords: {
             type: "array",
+            maxItems: 50,
             items: {
               type: "string",
+              maxLength: 256,
             },
           },
         },
         additionalProperties: true,
+      },
+      presentation: {
+        fields: {
+          "/roleKeywords": {
+            label: "Role keywords",
+            description: "Fixture keywords used to exercise filter presentation.",
+          },
+        },
       },
     },
     auth: {

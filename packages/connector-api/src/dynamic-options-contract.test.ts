@@ -339,7 +339,11 @@ describe("connector dynamic-option query ABI", () => {
       },
       filterSchema: {
         version: "fixture-filters@4",
-        schema: { type: "object", additionalProperties: false },
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {},
+        },
       },
       dynamicOptions: catalog,
     },
