@@ -20,6 +20,16 @@ import {
   evaluateVersionedPresentationCompatibility,
   presentationFieldForPointer,
 } from './connector-presentation'
+import {
+  accountResolveSelectedValues,
+  dependencyTransitionClearDecision,
+  displayValue,
+  formatDependencyClearFeedback,
+  knownDynamicValueKey,
+  selectionValueKeys,
+  selectionValueKeysEqual,
+  valueKey,
+} from './connector-dynamic-clear'
 import { StaticFilterControl } from './ConnectorStaticControls'
 
 type OptionsApi = ValedictorianWorkspaceClient['connectors']['options']
@@ -190,6 +200,7 @@ export function ConnectorProviderFilters({
             if (!fieldPresentation) return null
             const binding = bindingsByPointer.get(pointer)
             const descriptionId = `${instanceId}-filter-${encodeURIComponent(pointer)}-description`
+            const required = filterObjectSchema.required?.includes(property) === true
             if (binding && dynamicOptions) {
               const source = dynamicOptions.sources.find((candidate) => candidate.id === binding.sourceId)
               if (!source) return null
@@ -220,6 +231,7 @@ export function ConnectorProviderFilters({
                 disabled={disabled}
                 label={fieldPresentation.label}
                 presentation={fieldPresentation}
+                required={required}
                 schema={schema}
                 value={filters[property]}
                 onChange={(value) => onChange(withProperty(filters, property, value))}
@@ -301,6 +313,7 @@ export function ConnectorSynchronizationConfiguration({
                 disabled={disabled}
                 label={fieldPresentation.label}
                 presentation={fieldPresentation}
+                required={schema.required?.includes(property) === true}
                 schema={propertySchema}
                 value={config[property]}
                 onChange={(value) => onChange(withProperty(config, property, value))}
@@ -349,6 +362,8 @@ function DynamicFilterControl({
     ? (Array.isArray(value) ? value : [])
     : (value === undefined ? [] : [value]), [binding.cardinality, value])
   const [labels, setLabels] = useState<Record<string, string>>({})
+  const labelsRef = useRef(labels)
+  labelsRef.current = labels
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<ConnectorOption[]>([])
   const [queryState, setQueryState] = useState<
@@ -356,6 +371,7 @@ function DynamicFilterControl({
   >('idle')
   const [queryError, setQueryError] = useState<Extract<ConnectorOptionQueryResult, { status: 'error' }> | null>(null)
   const [resolveCompatibility, setResolveCompatibility] = useState<DynamicCompatibilityState | null>(null)
+  const [dependencyClearFeedback, setDependencyClearFeedback] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(-1)
   const [resolveAttempt, setResolveAttempt] = useState(0)
   const generation = useRef(0)
@@ -363,18 +379,44 @@ function DynamicFilterControl({
   const activeOption = useRef<ConnectorOption | null>(null)
   const searchController = useRef<AbortController | null>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previousDependencySnapshot = useRef<{
+    filterValues: Record<string, string>
+    resolutionContextKey: string
+    stableAuthorizationScopeKey: string
+    selectedValueKeys: string[]
+  } | null>(null)
+  const authorizedClearSelectionKeys = useRef<string[] | null>(null)
+  const selectedValuesRef = useRef(selectedValues)
+  selectedValuesRef.current = selectedValues
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
   const dependencies = useMemo(() => readDependencies(source, filters), [filters, source])
+  const dependencyFilterValues = useMemo(
+    () => dependencyFilterValueSnapshot(source, filters),
+    [filters, source],
+  )
+  const dependencyDeclarationFingerprint = useMemo(
+    () => dependencyDeclarationScopeFingerprint(source),
+    [source],
+  )
   const dependenciesReady = dependencies !== null
   const identity = useMemo(
     () => expectedIdentity(descriptor, source.version),
     [descriptor, source.version],
   )
+  const stableAuthorizationScopeKey = useMemo(() => JSON.stringify({
+    instanceId,
+    sourceId: source.id,
+    ...identity,
+    dependencyDeclarations: dependencyDeclarationFingerprint,
+  }), [dependencyDeclarationFingerprint, identity, instanceId, source.id])
   const resolutionContextKey = useMemo(() => dynamicResolutionContextKey({
     dependencies,
+    dependencyDeclarations: dependencyDeclarationFingerprint,
     identity,
     instanceId,
     sourceId: source.id,
-  }), [dependencies, identity, instanceId, source.id])
+  }), [dependencies, dependencyDeclarationFingerprint, identity, instanceId, source.id])
   const reportResolveCompatibility = useCallback((state: DynamicCompatibilityState | null) => {
     setResolveCompatibility(state)
     onCompatibilityChange(binding.filterPointer, state)
@@ -397,25 +439,78 @@ function DynamicFilterControl({
   }, [resolutionContextKey])
 
   useEffect(() => {
+    const previous = previousDependencySnapshot.current
+    const valuesChanged = dependencyFilterValuesChanged(
+      previous?.filterValues ?? null,
+      dependencyFilterValues,
+    )
+    const stableScopeChanged = previous !== null
+      && previous.stableAuthorizationScopeKey !== stableAuthorizationScopeKey
+    const selected = selectedValuesRef.current
+    const currentSelectedKeys = selectionValueKeys(selected)
+    if (stableScopeChanged) {
+      authorizedClearSelectionKeys.current = null
+      if (valuesChanged) setDependencyClearFeedback(null)
+    } else if (valuesChanged && previous) {
+      const previousKeys = previous.selectedValueKeys
+      authorizedClearSelectionKeys.current = currentSelectedKeys.length > 0
+        && selectionValueKeysEqual(currentSelectedKeys, previousKeys)
+        && selected.every((value) => knownSelectedValues.current.has(
+          knownDynamicValueKey(previous.resolutionContextKey, value),
+        ))
+        ? currentSelectedKeys
+        : null
+      setDependencyClearFeedback(null)
+    }
+    previousDependencySnapshot.current = {
+      filterValues: dependencyFilterValues,
+      resolutionContextKey,
+      stableAuthorizationScopeKey,
+      selectedValueKeys: currentSelectedKeys,
+    }
+  }, [
+    dependencyFilterValues,
+    resolutionContextKey,
+    selectedValues,
+    stableAuthorizationScopeKey,
+  ])
+
+  useEffect(() => {
+    const authorizedKeys = authorizedClearSelectionKeys.current
+    if (authorizedKeys === null) return
+    if (!selectionValueKeysEqual(authorizedKeys, selectionValueKeys(selectedValues))) {
+      authorizedClearSelectionKeys.current = null
+    }
+  }, [selectedValues])
+
+  useEffect(() => {
     if (selectedValues.length === 0) {
+      authorizedClearSelectionKeys.current = null
       reportResolveCompatibility(null)
       return
     }
     if (!source.operations.resolve) {
+      authorizedClearSelectionKeys.current = null
       reportResolveCompatibility({ status: 'unverifiable', reason: 'resolve_unavailable' })
       return
     }
     if (!dependenciesReady) {
+      authorizedClearSelectionKeys.current = null
       reportResolveCompatibility({ status: 'unverifiable', reason: 'dependencies_unavailable' })
       return
     }
     if (selectedValues.every((selected) => knownSelectedValues.current.has(
       knownDynamicValueKey(resolutionContextKey, selected),
     ))) {
+      authorizedClearSelectionKeys.current = null
       reportResolveCompatibility(null)
       return
     }
     const controller = new AbortController()
+    const resolveContextKey = resolutionContextKey
+    const authorizedKeys = authorizedClearSelectionKeys.current
+    const clearAuthorized = authorizedKeys !== null
+      && selectionValueKeysEqual(authorizedKeys, selectionValueKeys(selectedValues))
     reportResolveCompatibility({ status: 'pending' })
     void api.query({
       connectorInstanceId: instanceId,
@@ -425,10 +520,43 @@ function DynamicFilterControl({
       if (controller.signal.aborted) return
       if (result.status === 'resolve_ready') {
         for (const option of result.options) {
-          knownSelectedValues.current.add(knownDynamicValueKey(resolutionContextKey, option.value))
+          knownSelectedValues.current.add(knownDynamicValueKey(resolveContextKey, option.value))
         }
-        reportResolveCompatibility(result.unknownValues.length > 0
-          ? { status: 'unknown', values: result.unknownValues }
+        const accounting = accountResolveSelectedValues(
+          selectedValues,
+          result.options,
+          result.unknownValues,
+        )
+        const stillAuthorized = clearAuthorized
+          && authorizedClearSelectionKeys.current !== null
+          && selectionValueKeysEqual(
+            authorizedClearSelectionKeys.current,
+            selectionValueKeys(selectedValues),
+          )
+        const transition = stillAuthorized && accounting.unresolved.length === 0
+          ? dependencyTransitionClearDecision(selectedValues, accounting.explicitUnknown)
+          : null
+        if (transition) {
+          authorizedClearSelectionKeys.current = null
+          setDependencyClearFeedback(formatDependencyClearFeedback(
+            label,
+            transition.cleared,
+            labelsRef.current,
+          ))
+          reportResolveCompatibility(null)
+          onChangeRef.current(binding.cardinality === 'many'
+            ? transition.remaining
+            : transition.remaining[0])
+          setLabels((current) => ({
+            ...Object.fromEntries(result.options.map((option) => [valueKey(option.value), option.label])),
+            ...current,
+          }))
+          return
+        }
+        authorizedClearSelectionKeys.current = null
+        const blockingValues = [...accounting.explicitUnknown, ...accounting.unresolved]
+        reportResolveCompatibility(blockingValues.length > 0
+          ? { status: 'unknown', values: blockingValues }
           : null)
         setLabels((current) => ({
           ...Object.fromEntries(result.options.map((option) => [valueKey(option.value), option.label])),
@@ -452,11 +580,13 @@ function DynamicFilterControl({
     return () => controller.abort()
   }, [
     api,
+    binding.cardinality,
     binding.filterPointer,
     dependencies,
     dependenciesReady,
     identity,
     instanceId,
+    label,
     reportResolveCompatibility,
     resolveAttempt,
     resolutionContextKey,
@@ -615,6 +745,11 @@ function DynamicFilterControl({
         <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
       </label>
       {!dependenciesReady ? <p className="text-xs text-muted-foreground">Complete the dependent filters first.</p> : null}
+      {dependencyClearFeedback ? (
+        <p className="break-words text-xs text-muted-foreground" role="status">
+          {dependencyClearFeedback}
+        </p>
+      ) : null}
       {queryState !== 'idle' ? (
         <p className="text-xs text-muted-foreground" role="status">
           {queryState === 'loading'
@@ -715,20 +850,66 @@ function expectedIdentity(
 
 function dynamicResolutionContextKey({
   dependencies,
+  dependencyDeclarations,
   identity,
   instanceId,
   sourceId,
 }: {
   dependencies: ReturnType<typeof readDependencies>
+  dependencyDeclarations: string
   identity: ReturnType<typeof expectedIdentity>
   instanceId: string
   sourceId: string
 }) {
-  return JSON.stringify({ instanceId, sourceId, ...identity, dependencies })
+  return JSON.stringify({
+    instanceId,
+    sourceId,
+    ...identity,
+    dependencyDeclarations,
+    dependencies,
+  })
 }
 
-function knownDynamicValueKey(contextKey: string, value: unknown) {
-  return `${contextKey}:${valueKey(value)}`
+function dependencyFilterValueSnapshot(
+  source: DynamicOptions['sources'][number],
+  filters: Record<string, unknown>,
+) {
+  const snapshot: Record<string, string> = {}
+  for (const dependency of source.dependencies ?? []) {
+    snapshot[dependency.filterPointer] = dependencyFilterValueToken(
+      valueAtPointer(filters, dependency.filterPointer),
+    )
+  }
+  return snapshot
+}
+
+function dependencyFilterValuesChanged(
+  previous: Record<string, string> | null,
+  current: Record<string, string>,
+) {
+  if (previous === null) return false
+  for (const [pointer, currentValue] of Object.entries(current)) {
+    if (Object.prototype.hasOwnProperty.call(previous, pointer) && previous[pointer] !== currentValue) {
+      return true
+    }
+  }
+  return false
+}
+
+function dependencyFilterValueToken(value: unknown) {
+  if (value === undefined) return 'undefined'
+  if (value === null) return 'null'
+  if (value === '') return 'empty'
+  return valueKey(value)
+}
+
+function dependencyDeclarationScopeFingerprint(source: DynamicOptions['sources'][number]) {
+  return JSON.stringify((source.dependencies ?? []).map((dependency) => ({
+    id: dependency.id,
+    filterPointer: dependency.filterPointer,
+    cardinality: dependency.cardinality,
+    required: dependency.required,
+  })))
 }
 
 function readDependencies(
@@ -767,14 +948,4 @@ function valueAtPointer(root: unknown, pointer: string): unknown {
 
 function pointerLeaf(pointer: string) {
   return pointer.split('/').at(-1)?.replace(/~1/g, '/').replace(/~0/g, '~') ?? pointer
-}
-
-function valueKey(value: unknown) {
-  return typeof value === 'string' ? `s:${value}` : JSON.stringify(value)
-}
-
-function displayValue(value: unknown) {
-  if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return JSON.stringify(value) ?? 'unknown value'
 }

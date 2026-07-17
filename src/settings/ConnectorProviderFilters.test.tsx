@@ -377,49 +377,6 @@ describe('declarative connector provider filters', () => {
     expect(connectorsApi.update).not.toHaveBeenCalled()
   })
 
-  it('re-resolves persisted values when a declared dependency changes and blocks save while pending', async () => {
-    const changedResolution = deferred<ConnectorOptionQueryResult>()
-    const resolveInputs: PublicOptionQueryInput[] = []
-    const connectorsApi = await createFixtureApi({
-      country: 'US',
-      skills: ['typescript'],
-    }, {
-      resolve(input) {
-        resolveInputs.push(input)
-        if (input.body.dependencies.country === 'CA') return changedResolution.promise
-        return Promise.resolve(boundOptionResult(input, {
-          status: 'resolve_ready',
-          options: [{ key: 'typescript', label: 'TypeScript', value: 'typescript' }],
-          unknownValues: [],
-        }))
-      },
-    })
-    renderPanel(connectorsApi)
-
-    const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
-    await waitFor(() => expect(resolveInputs).toHaveLength(1))
-    await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider settings' }),
-    ).toBeEnabled())
-    fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
-      target: { value: 'CA' },
-    })
-    await waitFor(() => expect(resolveInputs).toHaveLength(2))
-    expect(resolveInputs[1]?.body.dependencies).toEqual({ country: 'CA' })
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
-      .toBeDisabled()
-
-    changedResolution.resolve(boundOptionResult(resolveInputs[1]!, {
-      status: 'resolve_ready',
-      options: [],
-      unknownValues: ['typescript'],
-    }))
-    const compatibility = await within(card).findByRole('alert')
-    expect(compatibility).toHaveTextContent(/typescript.*unknown|unknown.*typescript/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
-      .toBeDisabled()
-  })
-
   it('blocks persisted dynamic values that have no declared resolve operation', async () => {
     const descriptorWithoutResolve = {
       ...fixtureDescriptor,

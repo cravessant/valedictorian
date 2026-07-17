@@ -24,6 +24,7 @@ export function StaticFilterControl({
   label,
   onChange,
   presentation,
+  required = false,
   schema,
   value,
 }: {
@@ -33,6 +34,7 @@ export function StaticFilterControl({
   label: string
   onChange: (value: unknown) => void
   presentation: ConnectorRendererPresentationField
+  required?: boolean
   schema: ConnectorRendererSchema
   value: unknown
 }) {
@@ -63,6 +65,7 @@ export function StaticFilterControl({
   }
 
   if (schema.type === 'string' && schema.enum) {
+    const hasValidValue = typeof value === 'string' && schema.enum.includes(value)
     return (
       <label className="grid gap-1.5 text-sm">
         <span className="font-medium text-foreground">{label}</span>
@@ -71,10 +74,10 @@ export function StaticFilterControl({
           aria-label={label}
           className="h-9 rounded-md border border-input bg-input/30 px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
           disabled={disabled}
-          value={typeof value === 'string' ? value : (schema.default ?? '')}
+          value={typeof value === 'string' ? value : ''}
           onChange={(event) => onChange(event.target.value)}
         >
-          {!schema.enum.includes(value as string) ? <option role="none" value="">Select…</option> : null}
+          {!required || !hasValidValue ? <option role="none" value="">Select…</option> : null}
           {schema.enum.map((option) => (
             <option key={option} role="none" value={option}>
               {optionPresentationLabel(presentation, option) ?? option}
@@ -106,6 +109,7 @@ export function StaticFilterControl({
   }
 
   if ((schema.type === 'number' || schema.type === 'integer') && schema.enum) {
+    const hasValidValue = typeof value === 'number' && schema.enum.includes(value)
     return (
       <label className="grid gap-1.5 text-sm">
         <span className="font-medium text-foreground">{label}</span>
@@ -114,10 +118,10 @@ export function StaticFilterControl({
           aria-label={label}
           className="h-9 rounded-md border border-input bg-input/30 px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
           disabled={disabled}
-          value={typeof value === 'number' ? String(value) : String(schema.default ?? '')}
+          value={hasValidValue ? String(value) : ''}
           onChange={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}
         >
-          {!schema.enum.includes(value as number) ? <option role="none" value="">Select…</option> : null}
+          {!required || !hasValidValue ? <option role="none" value="">Select…</option> : null}
           {schema.enum.map((option) => (
             <option key={option} role="none" value={option}>
               {optionPresentationLabel(presentation, option) ?? String(option)}
