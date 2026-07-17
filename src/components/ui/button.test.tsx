@@ -48,4 +48,23 @@ describe('Button', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(onClick).not.toHaveBeenCalled()
   })
+
+  it('makes disabled primary actions visually muted instead of a full-strength CTA', () => {
+    render(
+      <>
+        <Button>Enabled run</Button>
+        <Button disabled>Disabled run</Button>
+      </>,
+    )
+
+    const enabled = screen.getByRole('button', { name: 'Enabled run' })
+    const disabled = screen.getByRole('button', { name: 'Disabled run' })
+    expect(enabled).toHaveAttribute('data-variant', 'default')
+    expect(enabled).toHaveClass('bg-primary')
+    expect(disabled).toBeDisabled()
+    expect(disabled).toHaveAttribute('data-variant', 'default')
+    expect(disabled.className).toMatch(/disabled:(?:bg-muted|opacity-50)/)
+    expect(disabled).toHaveClass('disabled:bg-muted')
+    expect(disabled).toHaveClass('disabled:text-muted-foreground')
+  })
 })

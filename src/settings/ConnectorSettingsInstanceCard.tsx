@@ -32,6 +32,14 @@ import {
   isUnchangedConnectorDisable,
 } from './connector-settings.helpers'
 import {
+  describeConnectorCredentialBlockReason,
+  describeConnectorRunActionReason,
+  describeConnectorSaveActionReason,
+  describeConnectorSettingsBlockReason,
+  isBrowserAlignedEmail,
+  isConnectorCredentialDraftReady,
+} from './connector-action-state'
+import {
   maximumSelectableEarliestBackfillDate,
   validateSelectableEarliestBackfillDate,
 } from '../modules/connectors/connector.earliest-backfill'
@@ -148,11 +156,15 @@ export function ConnectorSettingsInstanceCard({
   const authMessage = connectorAuthStatusMessage(authState)
   const latestSynchronization = latestRun ? connectorRunSynchronizationCopy(latestRun) : null
   const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
-  const earliestValid = !isJobrightInstance || validateSelectableEarliestBackfillDate({
-    candidate: draft.earliestBackfillDate,
-    createdAt: instance.createdAt,
-    todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
-  }).ok
+  const earliestValidation = isJobrightInstance
+    ? validateSelectableEarliestBackfillDate({
+      candidate: draft.earliestBackfillDate,
+      createdAt: instance.createdAt,
+      todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
+    })
+    : { ok: true as const, value: draft.earliestBackfillDate }
+  const earliestValid = earliestValidation.ok
+  const earliestMessage = earliestValidation.ok ? null : earliestValidation.message
   const filterIssues = descriptor?.filterSchema
     ? validateConnectorSchemaValue(descriptor.filterSchema.schema, draft.filters, {
         allowMissingRootRequired: !draft.enabled,
@@ -180,17 +192,58 @@ export function ConnectorSettingsInstanceCard({
     && configValid
     && configPresentationCompatible
     && filterPresentationCompatible
+    && earliestValid
     && (descriptor?.dynamicOptions ? providerFiltersCompatible : true)
   const settingsSaveAllowed = settingsValid || safeDisable
+  const settingsBlockReason = describeConnectorSettingsBlockReason({
+    descriptorCompatible,
+    filterIssues,
+    configIssues,
+    presentationCompatible: configPresentationCompatible && filterPresentationCompatible,
+    providerFiltersCompatible: !descriptor?.dynamicOptions || providerFiltersCompatible,
+    earliestValid,
+    earliestMessage,
+  })
+  const draftDirty = isDraftDirty(instance)
   const runBlocked = !instance.enabled
     || !draft.enabled
     || !authReady
     || runningInstanceId === instance.id
     || isSavingSettings
-    || isDraftDirty(instance)
+    || draftDirty
     || !earliestValid
     || !settingsValid
-
+  const saveBlockReason = describeConnectorSaveActionReason({
+    isSaving: isSavingSettings,
+    settingsSaveAllowed,
+    settingsBlockReason: settingsSaveAllowed ? null : settingsBlockReason,
+  })
+  const runBlockReason = runBlocked
+    ? describeConnectorRunActionReason({
+      isRunning: runningInstanceId === instance.id,
+      isSavingSettings,
+      draftDirty,
+      settingsValid,
+      earliestValid,
+      earliestMessage,
+      authReady,
+      connectorEnabled: instance.enabled,
+      draftEnabled: draft.enabled,
+      settingsBlockReason: settingsSaveAllowed ? null : settingsBlockReason,
+    })
+    : null
+  const saveReasonId = `connector-save-reason-${instance.id}`
+  const runReasonId = `connector-run-reason-${instance.id}`
+  const actionReasonIds = [
+    saveBlockReason ? saveReasonId : null,
+    runBlockReason ? runReasonId : null,
+  ].filter((value): value is string => value !== null)
+  const actionsDescribedBy = actionReasonIds.length > 0 ? actionReasonIds.join(' ') : undefined
+  const credentialsReady = isConnectorCredentialDraftReady(credentialDraft)
+  const credentialBlockReason = describeConnectorCredentialBlockReason(credentialDraft)
+  const credentialReasonId = `connector-credential-reason-${instance.id}`
+  const emailInvalid = credentialDraft.email.trim().length > 0
+    && !isBrowserAlignedEmail(credentialDraft.email)
   return (
                   <div
                     key={instance.id}
@@ -246,7 +299,10 @@ export function ConnectorSettingsInstanceCard({
                         className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
                         data-testid={`connector-credential-form-${instance.id}`}
                       >
-                        <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+                        <Field
+                          className="grid gap-1 text-xs font-medium text-muted-foreground"
+                          data-invalid={emailInvalid ? true : undefined}
+                        >
                           <FieldLabel
                             className="text-xs font-medium text-muted-foreground"
                             htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
@@ -254,8 +310,11 @@ export function ConnectorSettingsInstanceCard({
                             Jobright email
                           </FieldLabel>
                           <Input
+                            aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
+                            aria-invalid={emailInvalid}
                             autoComplete="off"
                             id={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
+                            required
                             type="email"
                             value={credentialDraft.email}
                             onChange={(event) =>
@@ -270,29 +329,49 @@ export function ConnectorSettingsInstanceCard({
                             Jobright password
                           </FieldLabel>
                           <Input
+                            aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
                             autoComplete="new-password"
                             id={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
+                            required
                             type="password"
                             value={credentialDraft.password}
                             onChange={(event) =>
                               onUpdateCredentialDraft(instance.id, { password: event.target.value })}
                           />
                         </Field>
-                        <Button
-                          type="button"
-                          disabled={authenticatingInstanceId === instance.id}
-                          onClick={() => onSaveAndValidateCredentials(instance)}
+                        <div
+                          aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
+                          aria-label="Credential save actions"
+                          className="grid gap-2 sm:grid-cols-[auto_auto] sm:items-end xl:col-span-2"
+                          data-testid={`connector-credential-actions-${instance.id}`}
+                          role="group"
+                          tabIndex={credentialBlockReason ? 0 : undefined}
                         >
-                          {authenticatingInstanceId === instance.id ? 'Validating...' : 'Save and validate'}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={authenticatingInstanceId === instance.id}
-                          onClick={() => onCancelCredentialEdit(instance.id)}
-                        >
-                          Cancel
-                        </Button>
+                          {credentialBlockReason ? (
+                            <p
+                              className="text-xs text-warning sm:col-span-2"
+                              id={credentialReasonId}
+                            >
+                              {credentialBlockReason}
+                            </p>
+                          ) : null}
+                          <Button
+                            type="button"
+                            aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
+                            disabled={authenticatingInstanceId === instance.id || !credentialsReady}
+                            onClick={() => onSaveAndValidateCredentials(instance)}
+                          >
+                            {authenticatingInstanceId === instance.id ? 'Validating...' : 'Save and validate'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={authenticatingInstanceId === instance.id}
+                            onClick={() => onCancelCredentialEdit(instance.id)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <p className="text-xs text-muted-foreground">
@@ -395,21 +474,45 @@ export function ConnectorSettingsInstanceCard({
                         onUpdateDraft(instance.id, { earliestBackfillDate })}
                     />
                     <div
+                      aria-describedby={actionsDescribedBy}
+                      aria-label={`${instance.displayName} save and run actions`}
                       className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] xl:items-end"
                       data-testid={`connector-run-actions-${instance.id}`}
+                      role="group"
+                      tabIndex={actionsDescribedBy ? 0 : undefined}
                     >
                       <p className="text-xs text-muted-foreground xl:col-span-full">
                         Run now advances the newest frontier, historical backfill, and pending link resolution.
                       </p>
+                      {saveBlockReason ? (
+                        <p
+                          className="text-xs text-warning xl:col-span-full"
+                          id={saveReasonId}
+                        >
+                          {saveBlockReason}
+                        </p>
+                      ) : null}
+                      {runBlockReason && runBlockReason !== saveBlockReason ? (
+                        <p
+                          className="text-xs text-warning xl:col-span-full"
+                          id={runReasonId}
+                        >
+                          {runBlockReason}
+                        </p>
+                      ) : null}
+                      {runBlockReason && runBlockReason === saveBlockReason ? (
+                        <span className="sr-only" id={runReasonId}>{runBlockReason}</span>
+                      ) : null}
                       <Button
                         type="button"
                         variant="outline"
+                        aria-describedby={saveBlockReason ? saveReasonId : undefined}
                         disabled={isSavingSettings || !settingsSaveAllowed}
                         onClick={() => onSaveSettings(instance)}
                       >
                         {isSavingSettings ? 'Saving...' : 'Save Jobright settings'}
                       </Button>
-                      {isDraftDirty(instance) && !isSavingSettings ? (
+                      {draftDirty && !isSavingSettings ? (
                         <Button
                           type="button"
                           variant="outline"
@@ -420,6 +523,7 @@ export function ConnectorSettingsInstanceCard({
                       ) : null}
                       <Button
                         type="button"
+                        aria-describedby={runBlockReason ? runReasonId : undefined}
                         disabled={runBlocked}
                         onClick={() => onRunNow(instance)}
                       >
@@ -462,16 +566,32 @@ export function ConnectorSettingsInstanceCard({
                     ) : null}
                     </>
                     ) : (
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div
+                        aria-describedby={saveBlockReason ? saveReasonId : undefined}
+                        aria-label={`${instance.displayName} settings actions`}
+                        className="flex flex-wrap items-center gap-2"
+                        data-testid={`connector-settings-actions-${instance.id}`}
+                        role="group"
+                        tabIndex={saveBlockReason ? 0 : undefined}
+                      >
+                        {saveBlockReason ? (
+                          <p
+                            className="basis-full text-xs text-warning"
+                            id={saveReasonId}
+                          >
+                            {saveBlockReason}
+                          </p>
+                        ) : null}
                         <Button
                           type="button"
                           variant="outline"
+                          aria-describedby={saveBlockReason ? saveReasonId : undefined}
                           disabled={isSavingSettings || !settingsSaveAllowed}
                           onClick={() => onSaveSettings(instance)}
                         >
                           {isSavingSettings ? 'Saving...' : `Save ${instance.displayName} settings`}
                         </Button>
-                        {isDraftDirty(instance) && !isSavingSettings ? (
+                        {draftDirty && !isSavingSettings ? (
                           <Button
                             type="button"
                             variant="outline"

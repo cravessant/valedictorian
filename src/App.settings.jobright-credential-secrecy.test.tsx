@@ -152,9 +152,11 @@ describe('Jobright credential secrecy', () => {
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
 
-    expect(await screen.findByText(
+    const saveAndValidate = screen.getByRole('button', { name: 'Save and validate' })
+    expect(saveAndValidate).toBeDisabled()
+    fireEvent.click(saveAndValidate)
+    expect(screen.getByText(
       'Enter a Jobright email and password before validating.',
     )).toBeInTheDocument()
     expect(screen.getByLabelText('Jobright email')).toBeInTheDocument()

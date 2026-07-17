@@ -229,6 +229,8 @@ export function ConnectorProviderFilters({
                 description={fieldPresentation.description}
                 descriptionId={descriptionId}
                 disabled={disabled}
+                issues={issues.filter((issue) =>
+                  issue.path === pointer || issue.path.startsWith(`${pointer}/`))}
                 label={fieldPresentation.label}
                 presentation={fieldPresentation}
                 required={required}
@@ -311,6 +313,8 @@ export function ConnectorSynchronizationConfiguration({
                 description={fieldPresentation.description}
                 descriptionId={`${instanceId}-config-${encodeURIComponent(pointer)}-description`}
                 disabled={disabled}
+                issues={issues.filter((issue) =>
+                  issue.path === pointer || issue.path.startsWith(`${pointer}/`))}
                 label={fieldPresentation.label}
                 presentation={fieldPresentation}
                 required={schema.required?.includes(property) === true}

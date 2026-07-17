@@ -28,6 +28,10 @@ import {
   sanitizedConnectorCreateErrorMessage,
   shouldAutoValidateJobrightAuth,
 } from './connector-settings.helpers'
+import {
+  describeConnectorCredentialBlockReason,
+  isConnectorCredentialDraftReady,
+} from './connector-action-state'
 import type {
   ConnectorAuthCredentialDraft,
   ConnectorAuthUiState,
@@ -396,13 +400,15 @@ export function ConnectorSettingsPanel({
     const email = credentials.email.trim()
     const password = credentials.password
     const secretKey = jobrightSecretKeyForInstance(instance.id)
+    const credentialBlockReason = describeConnectorCredentialBlockReason(credentials)
 
-    if (email.length === 0 || password.length === 0) {
+    if (!isConnectorCredentialDraftReady(credentials) || credentialBlockReason) {
       setAuthStates((currentStates) => ({
         ...currentStates,
         [instance.id]: {
           kind: 'local',
-          message: 'Enter a Jobright email and password before validating.',
+          message: credentialBlockReason
+            ?? 'Enter a Jobright email and password before validating.',
           status: 'action_required',
         },
       }))

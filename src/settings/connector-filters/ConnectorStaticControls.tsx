@@ -11,6 +11,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import type { ConnectorSchemaValidationIssue } from '../../modules/connectors/connector.renderer-schema-validation'
 import {
   durationDisplayToStorage,
   durationStorageToDisplay,
@@ -21,6 +22,7 @@ export function StaticFilterControl({
   description,
   descriptionId,
   disabled,
+  issues = [],
   label,
   onChange,
   presentation,
@@ -31,6 +33,7 @@ export function StaticFilterControl({
   description: string
   descriptionId: string
   disabled: boolean
+  issues?: ConnectorSchemaValidationIssue[]
   label: string
   onChange: (value: unknown) => void
   presentation: ConnectorRendererPresentationField
@@ -205,16 +208,22 @@ export function StaticFilterControl({
     const values = Array.isArray(value) ? value : []
     const rangeLabel = label.replace(/ range$/i, '')
     const itemSchema = schema.items
+    const invalid = issues.length > 0
+    const errorId = `${descriptionId}-error`
+    const describedBy = invalid ? `${descriptionId} ${errorId}` : descriptionId
     return (
       <fieldset
-        aria-describedby={descriptionId}
+        aria-describedby={describedBy}
         className="grid grid-cols-2 gap-2 rounded-md border border-border/70 p-3"
+        data-invalid={invalid ? true : undefined}
       >
         <legend className="px-1 text-sm font-medium text-foreground">{rangeLabel}</legend>
         {[0, 1].map((index) => (
           <label className="grid gap-1 text-xs text-muted-foreground" key={index}>
             <span>{index === 0 ? 'Minimum' : 'Maximum'}</span>
             <Input
+              aria-describedby={describedBy}
+              aria-invalid={invalid}
               aria-label={`${index === 0 ? 'Minimum' : 'Maximum'} ${rangeLabel.toLowerCase()}`}
               disabled={disabled}
               max={itemSchema.maximum}
@@ -231,6 +240,11 @@ export function StaticFilterControl({
           </label>
         ))}
         {help}
+        {invalid ? (
+          <p className="col-span-2 text-xs text-destructive" id={errorId}>
+            {issues.map((issue) => issue.message).join(' ')}
+          </p>
+        ) : null}
       </fieldset>
     )
   }
