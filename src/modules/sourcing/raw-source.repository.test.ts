@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { captureLineages } from '../../db/schema'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteConnectorRepository } from '../connectors/connector.repository'
 import { createSqliteRawSourceRepository } from './raw-source.repository'
@@ -8,6 +9,25 @@ describe('raw source repository', () => {
 
   afterEach(() => {
     databases.splice(0).forEach((database) => database.close())
+  })
+
+  it('rolls back raw capture when transactional staging fails', async () => {
+    const sqlite = createInMemoryDatabase()
+    databases.push(sqlite)
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteRawSourceRepository(database)
+
+    await expect(repository.ingestBatch({
+      records: [{
+        adapter: { id: 'fixture.manual', kind: 'manual', version: '1.0.0' },
+        observedAt: '2026-07-10T12:00:00.000Z',
+        payload: { companyName: 'Fixture', roleTitle: 'Engineer' },
+      }],
+    }, {
+      stage: () => { throw new Error('provider staging failed') },
+    })).rejects.toThrow('provider staging failed')
+    expect(database.select().from(captureLineages).all()).toHaveLength(0)
   })
 
   it('rejects connector intake without complete capture lineage', async () => {

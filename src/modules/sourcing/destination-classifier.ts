@@ -1,4 +1,8 @@
-import { canonicalizeApplicationUrl, type CanonicalCandidateDestination } from 'sparxie'
+import {
+  canonicalizeApplicationUrl,
+  normalizeApplicationUrlPreservingQuery,
+  type CanonicalCandidateDestination,
+} from 'sparxie'
 
 export const DESTINATION_TAXONOMY_VERSION = 'deterministic-destination/v1'
 const MAX_STRONG_IDENTITY_VALUE_LENGTH = 2_048
@@ -24,12 +28,65 @@ const RESERVED_NAMESPACE_SEGMENTS = new Set([
 ])
 const RESERVED_PROVIDER_NAMESPACE_SEGMENTS = new Set([...RESERVED_NAMESPACE_SEGMENTS, 'careers'])
 const RESERVED_JOB_SEGMENTS = new Set(RESERVED_PROVIDER_NAMESPACE_SEGMENTS)
+const PROVIDER_FALLBACK_EXCLUDED_HOSTS = [
+  'adzuna.com',
+  'boards.greenhouse.io',
+  'builtin.com',
+  'careerbuilder.com',
+  'dice.com',
+  'glassdoor.com',
+  'indeed.com',
+  'job-boards.greenhouse.io',
+  'jobright.ai',
+  'jobs.ashbyhq.com',
+  'jobs.lever.co',
+  'jobs.smartrecruiters.com',
+  'jooble.org',
+  'linkedin.com',
+  'lensa.com',
+  'monster.com',
+  'simplyhired.com',
+  'snagajob.com',
+  'talent.com',
+  'wellfound.com',
+  'ziprecruiter.com',
+] as const
 
 export function classifyDeterministicDestination(value: string): CanonicalCandidateDestination | null {
-  let canonical: string
+  try {
+    return classifyDestinationUrl(canonicalizeApplicationUrl(value))
+  } catch {
+    return null
+  }
+}
+
+export function classifyProviderUrlDestination(value: string): CanonicalCandidateDestination | null {
+  try {
+    const canonical = normalizeApplicationUrlPreservingQuery(value)
+    return classifyDestinationUrl(canonical) ?? classifyProviderEmployerUrl(canonical)
+  } catch {
+    return null
+  }
+}
+
+function classifyProviderEmployerUrl(canonical: string): CanonicalCandidateDestination | null {
+  if (canonical.length > MAX_STRONG_IDENTITY_VALUE_LENGTH) return null
+  const url = new URL(canonical)
+  const host = url.hostname.replace(/^www\./, '')
+  const parts = url.pathname.split('/').filter(Boolean).map(decodePathSegment)
+  if (url.protocol !== 'https:' || url.username || url.password || url.port
+    || !host.includes('.') || parts.length === 0 || parts.some((part) => part === null)
+    || host.endsWith('.myworkdayjobs.com')
+    || PROVIDER_FALLBACK_EXCLUDED_HOSTS.some((candidate) => host === candidate || host.endsWith(`.${candidate}`))
+    || !isJobSegment(parts.at(-1) ?? undefined)) {
+    return null
+  }
+  return { class: 'employer_or_ats', url: canonical, intermediaryUrl: null }
+}
+
+function classifyDestinationUrl(canonical: string): CanonicalCandidateDestination | null {
   let url: URL
   try {
-    canonical = canonicalizeApplicationUrl(value)
     url = new URL(canonical)
   } catch {
     return null

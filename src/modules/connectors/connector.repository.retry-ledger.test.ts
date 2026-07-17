@@ -11,6 +11,36 @@ import { completedConnectorRefreshContract } from './connector-refresh-result.te
 import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 
 describe('SQLite connector repository retry ledger', () => {
+  it('leaves provider URL lineage for the app-wide source instead of connector acquisition', async () => {
+    const sqlite = createInMemoryDatabase()
+    migrateDatabase(sqlite)
+    const database = createDrizzleDatabase(sqlite)
+    const repository = createSqliteConnectorRepository(database)
+    await repository.upsertInstance({
+      id: 'provider-owner', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
+      displayName: 'Provider owner', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
+    })
+    seedNormalizationRetry(sqlite, database, 'provider-owner', 'provider-url-work', '2026-07-11T12:00:00.000Z', 'provider-one')
+    database.update(retryWork).set({
+      lineageJson: JSON.stringify({
+        connectorInstanceId: 'provider-owner',
+        intermediaryUrl: 'https://jobright.ai/jobs/info/provider-one',
+        providerRecordId: 'jobright.public:provider-one',
+        workKind: 'provider_url_resolution',
+      }),
+    }).where(eq(retryWork.id, 'provider-url-work')).run()
+
+    const request = await repository.recordRunRequest({
+      connectorInstanceId: 'provider-owner', mode: 'manual', startedAt: '2026-07-11T12:00:00.000Z',
+    })
+
+    expect(request.acquiredWork).toBeNull()
+    expect(database.select().from(retryWork).get()).toMatchObject({
+      id: 'provider-url-work', state: 'scheduled', acquisitionRunId: null,
+    })
+    sqlite.close()
+  })
+
   it('selects due work independently of large terminal retry history', async () => {
     const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite); const repository = createSqliteConnectorRepository(database)

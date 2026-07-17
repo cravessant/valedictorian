@@ -100,7 +100,7 @@ export async function dispatchAcquiredNormalizationWork({
     throw new Error(`Raw revision missing for normalization retry: ${acquiredWork.rawRevisionId}`)
   }
 
-  const latest = normalizationRepository.getLatest(raw.revision.rawRecordId)
+  const latest = normalizationRepository.getLatestForRevision(raw.revision.id)
   const resolverFields = new Set(resolver.declaration.outputFields)
   const baselineOutcomes = latest?.fieldOutcomes.filter(({ field }) => !resolverFields.has(field)) ?? []
 

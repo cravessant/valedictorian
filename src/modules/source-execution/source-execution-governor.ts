@@ -99,20 +99,10 @@ export function createSourceExecutionGovernor(
     blockScope(scopeId: SourceExecutionScopeId, input: BlockScopeInput) {
       return database.transaction((transaction) => {
         const scope = readScope(transaction, scopeId)
-        const parsedRetryAfter = parseRetryAfter(input.retryAfter, input.now)
-        const backoffAttempt = parsedRetryAfter === null ? scope.backoffAttempt + 1 : 0
-        const maximumDelay = Math.min(
-          MAX_BACKOFF_MS,
-          BASE_BACKOFF_MS * (2 ** Math.max(0, backoffAttempt - 1)),
-        )
-        const random = Math.max(0, Math.min(1, input.random?.() ?? Math.random()))
-        const blockedUntil = parsedRetryAfter ?? new Date(
-          Date.parse(input.now) + Math.floor(maximumDelay * random),
-        ).toISOString()
+        const cooldown = cooldownValues(scope, input)
         transaction.update(sourceExecutionScopes).set({
+          ...cooldown,
           status: 'cooldown',
-          blockedUntil,
-          backoffAttempt,
           updatedAt: input.now,
         }).where(eq(sourceExecutionScopes.id, scopeId)).run()
         return readScope(transaction, scopeId)

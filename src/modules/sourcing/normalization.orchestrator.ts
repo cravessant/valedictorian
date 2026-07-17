@@ -12,7 +12,7 @@ import {
   workModes,
   retryAdviceSchema,
 } from 'sparxie'
-import { classifyDeterministicDestination } from './destination-classifier'
+import { classifyDeterministicDestination, classifyProviderUrlDestination } from './destination-classifier'
 import { createSqliteNormalizationRepository } from './normalization.repository'
 import {
   hashJson,
@@ -28,8 +28,13 @@ export const NORMALIZATION_GATE_POLICY_VERSION = 'sourcing-admission/v1'
 
 export interface NormalizationExecutionOptions {
   acquiredRetryWork?: {
-    acquisitionRunId: string
+    acquisitionRunId?: string
+    acquisitionToken?: string
     executionScopeId: string
+    failureFinalization?: {
+      evidence: unknown
+      terminal?: boolean
+    }
     retryWorkId: string
   }
   deferAcquiredRetryCompletion?: boolean
@@ -127,7 +132,7 @@ export function createNormalizationOrchestrator(options: {
             const issuedInputHashes = new Set<string>([raw.revision.contentHash])
             const context = Object.freeze({ rawRevision: deepFreeze(structuredClone(raw.revision)), sourceEntity: raw.sourceEntity ? deepFreeze(structuredClone(raw.sourceEntity)) : null, enabledCapabilities: Object.freeze([...enabledCapabilities]), resolverId: resolver.declaration.id, hashInput(value: JsonValue) { const hash = hashJson(value); issuedInputHashes.add(hash); return hash } })
             outcomes = await resolver.resolve(context)
-            validateOutcomes(resolver.declaration.id, resolver.declaration.version, resolver.declaration.outputFields, outcomes, issuedInputHashes)
+            validateOutcomes(resolver.declaration, outcomes, issuedInputHashes)
             outcomes = outcomes.map((outcome) => ({ ...outcome, inputHash: attemptInputHash }))
             outcomes = outcomes.map((outcome) => isSuppressionBarrier(outcome.field, winners, rejectedFields, failedFields, terminalFields)
               ? suppressedOutcome(resolver.declaration.id, resolver.declaration.version, outcome.field, outcome.inputHash)
@@ -272,7 +277,7 @@ function applicabilityFor(declaration: NormalizationAttempt['resolver'], field: 
   if ((supported?.kinds && !supported.kinds.includes(adapter.kind)) || (supported?.ids && !supported.ids.includes(adapter.id)) || (supported?.versions && !supported.versions.includes(adapter.version)) || (declaration.supportedProviderSchemas && (!providerSchema || !declaration.supportedProviderSchemas.includes(providerSchema)))) return { resolverId: declaration.id, resolverVersion: declaration.version, field, inputHash, status: 'not_applicable', reason: 'Raw revision is outside the resolver declaration' }
   return { resolverId: declaration.id, resolverVersion: declaration.version, field, inputHash, status: 'applicable' }
 }
-function validateOutcomes(id: string, version: string, fields: CanonicalCandidateField[], outcomes: FieldResolutionOutcome[], issuedInputHashes: Set<string>) { const counts = new Map(fields.map((field) => [field, 0])); for (const outcome of outcomes) { if (!isValidFieldResolutionOutcome(outcome)) throw new Error(`Resolver ${id}@${version} emitted an invalid outcome shape`); counts.set(outcome.field, (counts.get(outcome.field) ?? 0) + 1); if (outcome.resolverId !== id || outcome.resolverVersion !== version || !fields.includes(outcome.field) || !issuedInputHashes.has(outcome.inputHash) || ((outcome.status === 'resolved' || outcome.status === 'locked') && !isValidCanonicalFieldValue(outcome.field, outcome.value))) throw new Error(`Resolver ${id}@${version} emitted an outcome outside its declaration, context, or bounded field contract`) } if ([...counts.values()].some((count) => count !== 1)) throw new Error(`Resolver ${id}@${version} did not emit exactly one outcome per declared field`) }
+function validateOutcomes(declaration: NormalizationAttempt['resolver'], outcomes: FieldResolutionOutcome[], issuedInputHashes: Set<string>) { const { id, version, outputFields: fields } = declaration; const providerUrlNormalization = (declaration as NormalizationAttempt['resolver'] & { providerUrlNormalization?: boolean }).providerUrlNormalization === true; const counts = new Map(fields.map((field) => [field, 0])); for (const outcome of outcomes) { if (!isValidFieldResolutionOutcome(outcome)) throw new Error(`Resolver ${id}@${version} emitted an invalid outcome shape`); counts.set(outcome.field, (counts.get(outcome.field) ?? 0) + 1); if (outcome.resolverId !== id || outcome.resolverVersion !== version || !fields.includes(outcome.field) || !issuedInputHashes.has(outcome.inputHash) || ((outcome.status === 'resolved' || outcome.status === 'locked') && !isValidCanonicalFieldValue(outcome.field, outcome.value, { providerUrlNormalization }))) throw new Error(`Resolver ${id}@${version} emitted an outcome outside its declaration, context, or bounded field contract`) } if ([...counts.values()].some((count) => count !== 1)) throw new Error(`Resolver ${id}@${version} did not emit exactly one outcome per declared field`) }
 function isValidFieldResolutionOutcome(value: unknown): value is FieldResolutionOutcome {
   if (!isUnknownRecord(value) || typeof value.status !== 'string' || !fieldResolutionStatuses.some((status) => status === value.status)) return false
   if (typeof value.resolverId !== 'string' || typeof value.resolverVersion !== 'string' || typeof value.field !== 'string' || typeof value.inputHash !== 'string') return false
@@ -345,7 +350,7 @@ function jsonValuesEqual(left: JsonValue | undefined, right: JsonValue | undefin
 }
 function isObjectValue(value: JsonValue | undefined): value is { [key: string]: JsonValue } { return value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value) }
 function deepFreeze<T>(value: T): T { if (value && typeof value === 'object') { Object.freeze(value); for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child) } return value }
-export function isValidCanonicalFieldValue(field: CanonicalCandidateField, value: JsonValue): boolean {
+export function isValidCanonicalFieldValue(field: CanonicalCandidateField, value: JsonValue, options: { providerUrlNormalization?: boolean } = {}): boolean {
   if (field === 'companyName' || field === 'roleTitle' || field === 'providerJobId') return typeof value === 'string' && value.length > 0 && value === value.trim()
   if (field === 'employmentType') return typeof value === 'string' && canonicalEmploymentTypes.some((item) => item === value)
   if (field === 'seniority') return typeof value === 'string' && canonicalSeniorities.some((item) => item === value)
@@ -353,8 +358,11 @@ export function isValidCanonicalFieldValue(field: CanonicalCandidateField, value
   if (field === 'sourceUrl') { if (typeof value !== 'string') return false; try { return value === normalizeApplicationUrlPreservingQuery(value) } catch { return false } }
   if (field === 'destinationUrl') {
     if (!isObject(value) || !hasExactObjectKeys(value, ['class','url'], ['intermediaryUrl']) || typeof value.url !== 'string' || typeof value.class !== 'string') return false
-    const classified = classifyDeterministicDestination(value.url)
-    return classified?.url === value.url && classified.class === value.class && (value.intermediaryUrl === null || value.intermediaryUrl === undefined || typeof value.intermediaryUrl === 'string')
+    const classified = options.providerUrlNormalization
+      ? classifyProviderUrlDestination(value.url)
+      : classifyDeterministicDestination(value.url)
+    return classified?.class === value.class && classified.url === value.url
+      && (value.intermediaryUrl === null || value.intermediaryUrl === undefined || typeof value.intermediaryUrl === 'string')
   }
   if (field === 'canonicalIdentity') return isObject(value) && hasExactObjectKeys(value, ['kind','value']) && typeof value.kind === 'string' && ['provider_job','destination_url','source_alias'].includes(value.kind) && typeof value.value === 'string' && value.value.length > 0 && value.value === value.value.trim()
   if (field === 'location') return value === null || (isObject(value) && hasExactObjectKeys(value, ['raw','city','region','country']) && ['raw','city','region','country'].every((key) => value[key] === null || typeof value[key] === 'string'))

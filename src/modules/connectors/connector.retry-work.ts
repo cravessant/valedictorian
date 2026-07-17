@@ -62,6 +62,7 @@ export function synchronizeConnectorRetryWork(
     eq(retryWork.kind, 'normalization'),
     eq(retryWork.state, 'acquired'),
     eq(retryWork.acquisitionRunId, input.runId),
+    notProviderUrlWork(),
   )).all()
   // Validate Jobright v5 pending-retry ledger when present, but never infer
   // normalization completion from provider-id disappearance. Exact acquired
@@ -85,6 +86,7 @@ export function synchronizeConnectorRetryWork(
       eq(retryWork.kind, 'normalization'),
       eq(retryWork.state, 'scheduled'),
       sql`json_extract(${retryWork.lineageJson}, '$.connectorRunId') = ${input.runId}`,
+      notProviderUrlWork(),
       isNull(retryWork.deletedAt),
     )).get()
   if (normalizationOwnedAdvice) return
@@ -263,6 +265,7 @@ export function selectPendingRetryWork(
     eq(retryWork.kind, 'normalization'),
     eq(retryWork.executionScopeId, input.executionScopeId),
     eq(retryWork.state, state),
+    notProviderUrlWork(),
     activeJobrightProviderIds === null ? sql`1 = 1` : or(
       ne(retryWork.resolverId, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID),
       ne(retryWork.resolverVersion, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION),
@@ -297,6 +300,10 @@ export function selectPendingRetryWork(
     ?? retryCandidates
       .filter((work) => work.state === 'scheduled')
       .sort((left, right) => Date.parse(left.nextAttemptAt!) - Date.parse(right.nextAttemptAt!))[0]
+}
+
+function notProviderUrlWork() {
+  return sql`coalesce(json_extract(${retryWork.lineageJson}, '$.workKind'), '') <> 'provider_url_resolution'`
 }
 
 function scopeAvailableAt(now: string) {

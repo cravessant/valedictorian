@@ -40,7 +40,7 @@ export function createConnectorNormalizationHost(options: {
         }),
       }
       const currentFields = new Set<CanonicalCandidateField>(input.resolver.outputFields)
-      const baselineOutcomes = options.repository.getLatest(input.rawRevision.rawRecordId)
+      const baselineOutcomes = options.repository.getLatestForRevision(input.rawRevision.id)
         ?.fieldOutcomes.filter(({ field }) => !currentFields.has(field)) ?? []
       const exactReplay = context.acquiredRetryWork
       const result = await orchestrator.normalize(

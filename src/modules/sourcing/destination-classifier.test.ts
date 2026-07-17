@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { classifyDeterministicDestination, classifyExplicitIntermediaryAlias } from './destination-classifier'
+import {
+  classifyDeterministicDestination,
+  classifyExplicitIntermediaryAlias,
+  classifyProviderUrlDestination,
+} from './destination-classifier'
 
 const additionalReservedSegments = [
   'about', 'apply', 'browse', 'companies', 'job', 'job-search', 'lists', 'login',
@@ -41,6 +45,27 @@ const unsafeAuthorityCases = recognizedProviderJobUrls.flatMap((url) => [
 ])
 
 describe('deterministic destination taxonomy', () => {
+  it('keeps provider query parameters exact while ordinary classification canonicalizes tracking parameters', () => {
+    const exact = 'https://jobs.lever.co/acme/job-1?utm_source=jobright&ref=a%2Bb'
+    expect(classifyDeterministicDestination(exact)).toEqual({
+      class: 'employer_or_ats', intermediaryUrl: null, url: 'https://jobs.lever.co/acme/job-1',
+    })
+    expect(classifyProviderUrlDestination(exact)).toEqual({
+      class: 'employer_or_ats', intermediaryUrl: null, url: exact,
+    })
+  })
+
+  it('accepts an exact provider employer URL without loosening global or intermediary classification', () => {
+    const exact = 'https://careers.example.com/openings/software-engineer?source=jobright&ref=a%2Bb'
+    expect(classifyProviderUrlDestination(exact)).toEqual({
+      class: 'employer_or_ats', intermediaryUrl: null, url: exact,
+    })
+    expect(classifyDeterministicDestination(exact)).toBeNull()
+    expect(classifyProviderUrlDestination('https://jobright.ai/jobs/info/123')).toBeNull()
+    expect(classifyProviderUrlDestination('https://www.indeed.com/viewjob?jk=123')).toBeNull()
+    expect(classifyProviderUrlDestination('https://www.linkedin.com/jobs/search/?keywords=engineer')).toBeNull()
+  })
+
   it('canonicalizes an explicit job-specific Jobright intermediary alias', () => {
     expect(classifyExplicitIntermediaryAlias('https://www.jobright.ai/jobs/info/job-123?utm_source=test#apply')).toBe(
       'https://jobright.ai/jobs/info/job-123',

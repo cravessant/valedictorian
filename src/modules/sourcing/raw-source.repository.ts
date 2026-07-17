@@ -13,6 +13,7 @@ import {
   type JsonObject,
   type JsonValue,
   type RawSourceEvidenceInput,
+  type RawSourceIntakeReceipt,
   type RawSourceRecord,
   type RawSourceRecordInput,
   type RawSourceRecordsListQuery,
@@ -30,6 +31,15 @@ import {
 } from '../../db/schema'
 import type { DrizzleDatabase } from '../../db/sqlite'
 import { listRawSourceRecords } from './raw-source-list.repository'
+
+export type RawSourceTransaction = Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0]
+
+export interface RawSourceIngestOptions {
+  stage?: (transaction: RawSourceTransaction, input: {
+    records: readonly RawSourceRecordInput[]
+    receipts: readonly RawSourceIntakeReceipt[]
+  }) => void
+}
 
 const PROVIDER_JOB_IDENTITY_KIND = 'provider_job'
 const forbiddenKeyNames = new Set(
@@ -60,7 +70,7 @@ const forbiddenKeyNames = new Set(
 )
 
 export interface RawSourceRepository {
-  ingestBatch(input: BatchRawSourceRecordsInput): Promise<BatchRawSourceRecordsResult>
+  ingestBatch(input: BatchRawSourceRecordsInput, options?: RawSourceIngestOptions): Promise<BatchRawSourceRecordsResult>
   list(query?: RawSourceRecordsListQuery): Promise<RawSourceRecordsListResult>
   get(rawRecordId: string): Promise<RawSourceRecord | null>
 }
@@ -74,13 +84,15 @@ export function createSqliteRawSourceRepository(
       return listRawSourceRecords(database, query)
     },
 
-    async ingestBatch(input) {
+    async ingestBatch(input, options) {
       const records = validateBatch(input)
       const receivedAt = now().toISOString()
 
-      return database.transaction((transaction) => ({
-        receipts: records.map((record) => ingestRecord(transaction, record, receivedAt)),
-      }))
+      return database.transaction((transaction) => {
+        const receipts = records.map((record) => ingestRecord(transaction, record, receivedAt))
+        options?.stage?.(transaction, { records, receipts })
+        return { receipts }
+      })
     },
 
     async get(rawRecordId) {

@@ -54,8 +54,13 @@ export interface PersistNormalizationInput {
   gate: NormalizationGateOutcome
   now: string
   acquiredRetryWork?: {
-    acquisitionRunId: string
+    acquisitionRunId?: string
+    acquisitionToken?: string
     executionScopeId: string
+    failureFinalization?: {
+      evidence: unknown
+      terminal?: boolean
+    }
     retryWorkId: string
   }
   deferAcquiredRetryCompletion?: boolean
@@ -294,6 +299,12 @@ export function createSqliteNormalizationRepository(
         ).get()?.run
       return run ? mapResult(database, run) : null
     },
+    getLatestForRevision(rawRevisionId: string) {
+      const run = database.select().from(normalizationRuns)
+        .where(eq(normalizationRuns.captureEvidenceVersionId, rawRevisionId))
+        .orderBy(desc(normalizationRuns.updatedAt), sql`${normalizationRuns}.rowid desc`).get()
+      return run ? mapResult(database, run) : null
+    },
     listHistory(rawRecordId: string) {
       return database.select({ run: normalizationRuns }).from(normalizationRuns)
         .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, normalizationRuns.captureEvidenceVersionId))
@@ -391,12 +402,22 @@ function synchronizeNormalizationRetryWork(
   input: PersistNormalizationWithTriggerInput,
   attempt: NormalizationAttempt,
 ) {
+  if (input.acquiredRetryWork
+    && !input.acquiredRetryWork.acquisitionRunId
+    && !input.acquiredRetryWork.acquisitionToken) {
+    throw new Error('Acquired normalization retry requires a run id or acquisition token')
+  }
   const acquiredByIdentity = input.acquiredRetryWork
     ? transaction.select().from(retryWork).where(and(
         eq(retryWork.id, input.acquiredRetryWork.retryWorkId),
         eq(retryWork.kind, 'normalization'),
         eq(retryWork.state, 'acquired'),
-        eq(retryWork.acquisitionRunId, input.acquiredRetryWork.acquisitionRunId),
+        ...(input.acquiredRetryWork.acquisitionRunId
+          ? [eq(retryWork.acquisitionRunId, input.acquiredRetryWork.acquisitionRunId)]
+          : []),
+        ...(input.acquiredRetryWork.acquisitionToken
+          ? [eq(retryWork.acquisitionToken, input.acquiredRetryWork.acquisitionToken)]
+          : []),
         isNull(retryWork.deletedAt),
       )).get()
     : null
@@ -419,6 +440,13 @@ function synchronizeNormalizationRetryWork(
     eq(retryWork.inputHash, attempt.inputHash),
     isNull(retryWork.deletedAt),
   )).get()
+  const priorLineage = existing ? parseRetryLineage(existing.lineageJson) : {}
+  const failureFinalization = input.acquiredRetryWork?.failureFinalization
+  if (input.acquiredRetryWork && !acquiredByIdentity) {
+    throw new Error(
+      'Acquired normalization retry identity does not match the persisted claim',
+    )
+  }
   if (acquiredByIdentity && acquiredByIdentity.id !== existing?.id) {
     throw new Error(
       'Acquired normalization retry identity does not match the persisted attempt identity',
@@ -446,11 +474,21 @@ function synchronizeNormalizationRetryWork(
         return
       }
       transaction.update(retryWork).set({
-        state: 'completed',
+        state: failureFinalization?.terminal ? 'cancelled' : 'completed',
         nextAttemptAt: null,
         acquiredAt: null,
         acquisitionToken: null,
         acquisitionRunId: null,
+        lineageJson: JSON.stringify({
+          ...priorLineage,
+          normalizationRunId: input.runId,
+          acquiredRetryWorkId: input.acquiredRetryWork?.retryWorkId ?? priorLineage.acquiredRetryWorkId ?? null,
+          acquisitionRunId: input.acquiredRetryWork?.acquisitionRunId ?? priorLineage.acquisitionRunId ?? null,
+          acquisitionToken: input.acquiredRetryWork?.acquisitionToken ?? priorLineage.acquisitionToken ?? null,
+          ...(failureFinalization
+            ? { failureEvidence: failureFinalization.evidence }
+            : {}),
+        }),
         updatedAt: input.now,
       }).where(eq(retryWork.id, existing.id)).run()
     }
@@ -468,7 +506,6 @@ function synchronizeNormalizationRetryWork(
     throw new Error(`Resolver ${attempt.resolver.id}@${attempt.resolver.version} emitted inconsistent retry advice for one invocation`)
   }
   if (existing?.state === 'exhausted' || existing?.state === 'cancelled') return
-  const priorLineage = existing ? JSON.parse(existing.lineageJson) as Record<string, unknown> : {}
   let executionScopeId = attempt.executionScopeId
   if (executionScopeId === null) {
     const revision = transaction.select().from(captureEvidenceVersions)
@@ -502,6 +539,10 @@ function synchronizeNormalizationRetryWork(
       connectorRunId: input.triggerOccurrence?.capture?.connectorRunId ?? priorLineage.connectorRunId ?? null,
       acquiredRetryWorkId: input.acquiredRetryWork?.retryWorkId ?? null,
       acquisitionRunId: input.acquiredRetryWork?.acquisitionRunId ?? null,
+      acquisitionToken: input.acquiredRetryWork?.acquisitionToken ?? priorLineage.acquisitionToken ?? null,
+      ...(failureFinalization
+        ? { failureEvidence: failureFinalization.evidence }
+        : {}),
     }),
     acquiredAt: null,
     acquisitionToken: null,
@@ -530,6 +571,17 @@ function mapPersistedRun(database: DrizzleDatabase, runId: string) {
   const run = database.select().from(normalizationRuns).where(eq(normalizationRuns.id, runId)).get()
   if (!run) throw new Error('Normalization run was not persisted')
   return mapResult(database, run)
+}
+
+function parseRetryLineage(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
+  } catch {
+    return {}
+  }
 }
 
 function identityEvidence(input: {

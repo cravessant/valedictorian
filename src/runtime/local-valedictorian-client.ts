@@ -70,6 +70,7 @@ import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.proc
 import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
 import { createCanonicalCandidateProjectionService } from '../modules/sourcing/canonical-candidate.projection'
 import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
+import { createProviderUrlResolutionService } from '../modules/sourcing/provider-url-resolution.service'
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import {
   dispatchAcquiredNormalizationWork,
@@ -216,17 +217,20 @@ export function createLocalValedictorianClient({
     connectorRepository,
     workspaceId,
   })
+  const sourceExecutionGovernor = createSourceExecutionGovernor(database, secretCodec)
+  const providerUrlResolution = createProviderUrlResolutionService({
+    authHost: trustedConnectorAuth, connectorRegistry, connectorRepository, connectorRuntime,
+    database, governor: sourceExecutionGovernor, normalizationOrchestrator, normalizationRegistry, normalizationRepository, now,
+    onScheduledWorkChanged, rawSourceRepository, workspaceId,
+  }); registerScheduledWorkSource?.(providerUrlResolution.source)
   const connectorRunner = createConnectorRunner({
     auth: trustedConnectorAuth,
     normalization: connectorNormalization,
     rawSource: {
-      async ingest(record) {
-        const result = await rawSourceRepository.ingestBatch({ records: [record] })
-        return result.receipts[0]
-      },
+      async ingest(record) { return (await providerUrlResolution.ingestBatch({ records: [record] })).receipts[0] },
     },
     repository: connectorRepository,
-    sourceExecutionGovernor: createSourceExecutionGovernor(database, secretCodec),
+    sourceExecutionGovernor,
     runtime: connectorRuntime,
     workspaceId,
     now,
@@ -621,7 +625,7 @@ export function createLocalValedictorianClient({
       },
       rawRecords: { list: (query) => rawSourceRepository.list(query),
         ingestBatch: async (input) => {
-          const result = await rawSourceRepository.ingestBatch(input)
+          const result = await providerUrlResolution.ingestBatch(input)
           for (const receipt of result.receipts) {
             try {
               await normalizationOrchestrator.normalize(

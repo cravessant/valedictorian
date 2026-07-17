@@ -925,22 +925,21 @@ function redactRefreshResult(
   }
   return redactSensitiveValue(result, sensitiveValues) as ConnectorRefreshResultInput
 }
-function redactSensitiveValue(value: unknown, sensitiveValues: Set<string>): unknown {
-  if (typeof value === 'string') {
-    return redactSensitiveString(value, sensitiveValues)
-  }
+export function redactSensitiveValue(value: unknown, sensitiveValues: Set<string>, seen = new WeakMap<object, unknown>()): unknown {
+  if (typeof value === 'string') return redactSensitiveString(value, sensitiveValues)
   if (Array.isArray(value)) {
-    return value.map((item) => redactSensitiveValue(item, sensitiveValues))
+    if (seen.has(value)) return seen.get(value)
+    seen.set(value, null)
+    const redacted = value.map((item) => redactSensitiveValue(item, sensitiveValues, seen))
+    seen.set(value, redacted)
+    return redacted
   }
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        redactSensitiveValue(item, sensitiveValues),
-      ]),
-    )
-  }
-  return value
+  if (!value || typeof value !== 'object') return value
+  if (seen.has(value)) return seen.get(value)
+  seen.set(value, null)
+  const redacted = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactSensitiveValue(item, sensitiveValues, seen)]))
+  seen.set(value, redacted)
+  return redacted
 }
 function redactSensitiveString(value: string, sensitiveValues: Set<string>): string {
   let next = value
