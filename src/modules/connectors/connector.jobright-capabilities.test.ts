@@ -13,7 +13,6 @@ describe('installed Jobright declarative capabilities', () => {
     expect(Object.keys(descriptor.configSchema!.schema.properties)).toEqual([
       'discoveryCount',
       'maxRunElapsedMs',
-      'maxRetryAttemptsPerSource',
     ])
     expect(Object.keys(descriptor.filterSchema!.schema.properties)).toEqual([
       'jobTaxonomyList',

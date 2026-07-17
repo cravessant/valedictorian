@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobright'
 import { describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
@@ -72,6 +73,163 @@ describe('runtime provider URL resolution', () => {
       status: 'cooldown', blockedUntil: '2026-07-16T12:02:00.000Z',
     })
     fixture.sqlite.close()
+  })
+
+  it('runs the published Jobright 0.14 connector as Capture then scheduled provider resolution', async () => {
+    const clock = new Date('2026-07-17T07:00:00.000Z')
+    const destinationUrl = 'https://careers.example.com/openings/software-engineer?source=jobright&ref=a%2Bb'
+    const registeredSources: LocalScheduledWorkSource[] = []
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url
+      if (url.includes('/swan/auth/login/pwd')) {
+        return new Response(JSON.stringify({ success: true, result: {} }), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'set-cookie': 'SESSION_ID=published-connector-session; Path=/',
+          },
+        })
+      }
+      if (url.includes('/swan/auth/newinfo')) {
+        return new Response(JSON.stringify({ success: true, result: { logined: true } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (url.includes('/swan/recommend/search')) {
+        const position = Number(new URL(url).searchParams.get('position'))
+        return new Response(JSON.stringify({
+          success: true,
+          result: {
+            jobNum: 1,
+            jobList: position === 0 ? [{
+              jobResult: {
+                jobId: 'published-job',
+                jobTitle: 'Software Engineer',
+                companyName: 'Example',
+                publishTime: '2026-07-16T12:00:00.000Z',
+              },
+              companyResult: { companyName: 'Example' },
+            }] : [],
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url.endsWith('/swan/share/job/published-job')) {
+        return new Response(JSON.stringify({
+          success: true,
+          result: {
+            logined: true,
+            jobDetail: {
+              jobResult: {
+                applyLink: destinationUrl,
+                originalUrl: 'https://jobright.ai/jobs/info/published-job',
+                jobTitle: 'Software Engineer',
+                companyName: 'Example',
+                isCompanySiteLink: true,
+              },
+            },
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      throw new Error(`Unexpected published connector request: ${url}`)
+    }) as typeof fetch
+    const connector = createJobrightConnector({
+      fetch: fetchImpl,
+      now: () => clock.toISOString(),
+      nowEpochMs: () => clock.getTime(),
+      nowMs: () => clock.getTime(),
+      random: () => 0,
+    })
+    const sqlitePath = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'published-provider-url-')),
+      'valedictorian.sqlite',
+    )
+    const secretCodec = {
+      encrypt: (value: string) => `enc:${value}`,
+      decrypt: (value: string) => value.replace(/^enc:/, ''),
+    }
+    const client = createLocalValedictorianClient({
+      connectorRegistry: createStaticConnectorRegistry([connector]),
+      connectorRuntime: { delay: { async wait() { return 0 } } },
+      now: () => clock,
+      registerScheduledWorkSource: (source) => registeredSources.push(source),
+      secretCodec,
+      seedDataMode: 'none',
+      sqlitePath,
+      workspaceId: 'workspace-published-provider-url',
+    })
+    await client.secrets.upsert({
+      key: 'published-jobright-credentials',
+      kind: 'password',
+      label: 'Published Jobright credentials',
+      value: JSON.stringify({ username: 'fixture@example.test', password: 'fixture-password' }),
+    })
+    await client.connectors.create({
+      id: 'published-jobright',
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      displayName: 'Published Jobright',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password',
+        secretKey: 'published-jobright-credentials',
+      }],
+      config: { discoveryCount: 1 },
+      filters: {
+        jobTaxonomyList: [{
+          taxonomyId: 'software-engineering',
+          title: 'Software Engineering',
+        }],
+      },
+      earliestBackfillDate: '2026-07-01',
+    })
+    await client.connectors.status.reconnect({ connectorInstanceId: 'published-jobright' })
+
+    const run = await client.connectors.runs.trigger({
+      connectorInstanceId: 'published-jobright',
+      mode: 'manual',
+      coverageEndedAt: clock.toISOString(),
+    })
+
+    expect(run.status).toBe('completed')
+    expect(fetchImpl.mock.calls.some(([request]) => requestUrl(request).includes('/swan/share/job/')))
+      .toBe(false)
+    const source = registeredSources.find(({ id }) => id === 'provider-url-resolution')
+    expect(source).toBeDefined()
+    expect(await source!.nextDueAt()).toBe(clock.toISOString())
+
+    await source!.runDue()
+
+    expect(fetchImpl.mock.calls.filter(([request]) =>
+      requestUrl(request).endsWith('/swan/share/job/published-job'))).toHaveLength(1)
+    const captures = await client.sourcing.rawRecords.list({
+      connectorInstanceId: 'published-jobright',
+      limit: 10,
+    })
+    expect(captures.items).toHaveLength(1)
+    const normalization = await client.sourcing.rawRecords.normalization.get(captures.items[0]!.id)
+    expect(normalization.fieldOutcomes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        field: 'destinationUrl',
+        resolverId: 'jobright.provider-url',
+        status: 'resolved',
+        value: {
+          class: 'employer_or_ats',
+          intermediaryUrl: 'https://jobright.ai/jobs/info/published-job',
+          url: destinationUrl,
+        },
+      }),
+    ]))
+    expect(normalization.canonicalCandidate).toMatchObject({
+      companyName: 'Example',
+      roleTitle: 'Software Engineer',
+      destination: { url: destinationUrl },
+    })
   })
 
   it('acknowledges Capture and completes backfill before scheduled provider resolution runs', async () => {
@@ -403,4 +561,12 @@ async function createProviderRuntimeFixture(enabled: boolean) {
     resolverVersion: 'jobright-provider-url@1', serverMinimumDelayMs: null, retryWorkId: 'runtime-work',
   }
   return { database, governor, now, resolve, runtime, scopeId: instance.executionScopeId, sqlite, work }
+}
+
+function requestUrl(input: RequestInfo | URL) {
+  return typeof input === 'string'
+    ? input
+    : input instanceof URL
+      ? input.href
+      : input.url
 }

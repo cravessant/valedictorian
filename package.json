@@ -1,7 +1,7 @@
 {
   "name": "valedictorian-app",
   "private": true,
-  "version": "0.1.0-alpha.38",
+  "version": "0.1.0-alpha.39",
   "description": "Local job application tracker and agent access app.",
   "author": "Keni",
   "type": "module",
@@ -42,7 +42,7 @@
     "@radix-ui/react-toggle": "^1.1.14",
     "@radix-ui/react-toggle-group": "^1.1.15",
     "@radix-ui/react-tooltip": "^1.2.12",
-    "@sparxie/valedictorian-connectors-jobright": "0.13.0",
+    "@sparxie/valedictorian-connectors-jobright": "0.14.0",
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.2",
@@ -71,8 +71,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@sparxie/valedictorian-connectors-core": "0.13.0",
-    "@sparxie/valedictorian-connectors-test-harness": "0.13.0",
+    "@sparxie/valedictorian-connectors-core": "0.14.0",
+    "@sparxie/valedictorian-connectors-test-harness": "0.14.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
