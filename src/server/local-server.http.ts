@@ -75,6 +75,22 @@ export function readStringField(body: unknown, field: string) {
   throw new Error(`Missing ${field}`)
 }
 
+/** Required string field preserved byte-for-byte (no trim). Empty string is valid. */
+export function readRequiredOpaqueStringField(body: unknown, field: string) {
+  const record = readRecord(body)
+
+  if (!(field in record)) {
+    throw new Error(`Missing ${field}`)
+  }
+
+  const value = record[field]
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${field}`)
+  }
+
+  return value
+}
+
 export function readOptionalStringField(body: unknown, field: string) {
   const record = readRecord(body)
 

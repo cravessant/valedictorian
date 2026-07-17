@@ -1,7 +1,6 @@
 import fs from 'node:fs'
 import type {
   ConnectorAuthReferenceInput,
-  ValedictorianWorkspaceClient
 } from 'sparxie'
 import {
   connectorOverviewListQuerySchema,
@@ -52,7 +51,6 @@ import { createConnectorOptionQueryService } from '../modules/connectors/connect
 import {
   createConnectorRunner,
   type AppConnectorAuthGrant,
-  type AppConnectorAuthHost,
   type AppConnectorAuthValidationResult,
 } from '../modules/connectors/connector.runner'
 import {
@@ -64,7 +62,14 @@ import type {
   ConnectorRunRecord,
 } from '../modules/connectors/connector.repository'
 import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
-import { createSqliteProfileRepository, type ProfileSecretCodec } from '../modules/profile/profile.repository'
+import { createSqliteProfileService } from '../modules/profile/profile.composition'
+import { createSqliteSecretService } from '../modules/secrets/secret.composition'
+import type { SecretCodec } from '../modules/secrets/secret.codec'
+import {
+  composeTrustedConnectorAuth,
+  createWorkspaceProfileMethods,
+  createWorkspaceSecretMethods,
+} from './local-profile-secret-client'
 import { createSqliteScoringRepository } from '../modules/scoring/scoring.repository'
 import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.processor'
 import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
@@ -124,7 +129,7 @@ import type {
   LocalConnectorReconnectActionResult,
   LocalValedictorianClient
 } from './local-connector-client.contract'
-const unavailableSecretCodec: ProfileSecretCodec = {
+const unavailableSecretCodec: SecretCodec = {
   decrypt() {
     throw new Error('Profile secrets are only available through local profile IPC')
   },
@@ -158,7 +163,8 @@ export function createLocalValedictorianClient({
     seedDataMode,
   })
   const scoringRepository = createSqliteScoringRepository(database)
-  const profileRepository = createSqliteProfileRepository(database, secretCodec)
+  const profileService = createSqliteProfileService(database, secretCodec)
+  const secretService = createSqliteSecretService(database, secretCodec)
   const actionQueueRepository = createSqliteActionQueueRepository(database)
   const connectorRepository = createSqliteConnectorRepository(database)
   const recoverInterruptedRuns = () => {
@@ -210,7 +216,7 @@ export function createLocalValedictorianClient({
     registry: normalizationRegistry,
     now,
   })
-  const trustedConnectorAuth = composeTrustedConnectorAuth(profileRepository)
+  const trustedConnectorAuth = composeTrustedConnectorAuth(secretService)
   const connectorOptionQueries = createConnectorOptionQueryService({
     authHost: trustedConnectorAuth,
     connectorRegistry,
@@ -584,29 +590,8 @@ export function createLocalValedictorianClient({
         runWindow: (input) => policyRepository.evaluateRunWindow(input),
       },
     },
-    profile: {
-      get: () => profileRepository.getProfile(),
-      update: (input) => profileRepository.updateProfile(input),
-      agentContext: {
-        get: () => profileRepository.getAgentContext(),
-      },
-      secrets: {
-        delete: (key: string) => profileRepository.deleteSecret(key),
-        list: () => profileRepository.listSecrets(),
-        upsert: (input: Parameters<typeof profileRepository.upsertSecret>[0]) =>
-          profileRepository.upsertSecret(input),
-      },
-      sensitive: {
-        get: () => profileRepository.getSensitiveDetails(),
-        update: (input: Parameters<typeof profileRepository.updateSensitiveDetails>[0]) =>
-          profileRepository.updateSensitiveDetails(input),
-      },
-    } as ValedictorianWorkspaceClient['profile'],
-    secrets: {
-      delete: (key) => profileRepository.deleteSecret(key),
-      list: async () => ({ items: await profileRepository.listSecrets() }),
-      upsert: (input) => profileRepository.upsertSecret(input),
-    },
+    profile: createWorkspaceProfileMethods(profileService),
+    secrets: createWorkspaceSecretMethods(secretService),
     runs: {
       list: (query) => workflowRunRepository.listRuns(query),
       start: (input) => workflowRunRepository.startRun(input),
@@ -682,15 +667,6 @@ export function createLocalValedictorianClient({
     })),
   }))
   return client
-}
-function composeTrustedConnectorAuth(
-  profileRepository: ReturnType<typeof createSqliteProfileRepository>,
-): AppConnectorAuthHost {
-  return {
-    secrets: {
-      revealSecret: (key) => profileRepository.revealSecret(key),
-    },
-  }
 }
 async function reconnectConnectorStatus({
   connectorRegistry,

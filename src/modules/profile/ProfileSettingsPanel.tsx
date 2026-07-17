@@ -21,14 +21,12 @@ import {
   profileEducationTypeOptions,
   type ProfileAnswer,
   type ProfileEducation,
+  type ProfileSecretSummary,
+  type ProfileSensitiveDetails,
   type ProfileUpdateInput,
   type UserProfile,
 } from 'sparxie'
 import type { ProfilePreloadApi } from '../../ipc/profile.preload'
-import type {
-  ProfileSensitiveDetails,
-  ProfileSecretSummary,
-} from './profile.repository'
 import { SettingsTextInput } from '../../settings/SettingsTextInput'
 import {
   BirthDateSelectRow,

@@ -6,7 +6,7 @@ import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import { createSqliteProfileRepository } from '../modules/profile/profile.repository'
+import { createSqliteSecretService } from '../modules/secrets/secret.composition'
 
 function createTempSqlitePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
@@ -240,9 +240,9 @@ describe('runtime local Valedictorian client', () => {
     const sqlite = createFileDatabase(sqlitePath)
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)
-    const profileRepository = createSqliteProfileRepository(database, secretCodec)
+    const secretService = createSqliteSecretService(database, secretCodec)
 
-    await profileRepository.upsertSecret({
+    await secretService.upsert({
       key: 'connector_jobright_credentials_jobright_default',
       kind: 'password',
       label: 'Jobright username and password',

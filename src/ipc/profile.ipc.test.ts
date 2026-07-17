@@ -1,48 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import type { ProfileRepository } from '../modules/profile/profile.repository'
+import { defaultUserProfile } from 'sparxie'
+import type { ProfileService } from '../modules/profile/profile.service'
+import type { SecretService } from '../modules/secrets/secret.service'
 import { registerProfileIpc } from './profile.ipc'
 
 describe('profile IPC registration', () => {
-  it('registers profile and secret handlers against the repository', async () => {
+  it('registers profile and secret handlers against owned services', async () => {
     const handlers = new Map<string, (event: unknown, payload?: unknown) => unknown>()
-    const repository: ProfileRepository = {
-      async deleteSecret() {},
-      async getAgentContext() {
-        return { answers: [], basics: { fullName: 'Kenny Lin' } }
+    const profileService: ProfileService = {
+      async formatDocument() {
+        throw new Error('unused')
       },
-      async getProfile() {
-        return {
-          addressLine1: null,
-          addressLine2: null,
-          answers: [],
-          city: null,
-          country: null,
-          citizenship: null,
-          classStanding: null,
-          coverLetterPath: null,
-          degree: null,
-          email: null,
-          fullName: 'Kenny Lin',
-          githubUrl: null,
-          graduationDate: null,
-          highSchool: null,
-          language: null,
-          linkedinUrl: null,
-          major: null,
-          phone: null,
-          phoneDeviceType: null,
-          portfolioUrl: null,
-          preferredName: null,
-          region: null,
-          relocation: null,
-          requireSponsorship: null,
-          requireSponsorshipFuture: null,
-          satScore: null,
-          school: null,
-          transcriptPath: null,
-          travel: null,
-          workAuthorization: null,
-        }
+      async get() {
+        return { ...defaultUserProfile, fullName: 'Kenny Lin' }
+      },
+      async getAgentContext() {
+        return { answers: [], basics: { fullName: 'Kenny Lin' }, education: [] }
+      },
+      async getDocument() {
+        throw new Error('unused')
       },
       async getSensitiveDetails() {
         return {
@@ -57,51 +33,14 @@ describe('profile IPC registration', () => {
           veteranStatus: null,
         }
       },
-      async listSecrets() {
-        return [{ key: 'greenhouse_password', kind: 'password', label: 'Greenhouse', updatedAt: 'now' }]
+      async restoreDocument() {
+        throw new Error('unused')
       },
-      async revealSecret() {
-        return {
-          key: 'greenhouse_password',
-          kind: 'password',
-          label: 'Greenhouse',
-          updatedAt: 'now',
-          value: 'secret',
-        }
+      async update(input) {
+        return { ...defaultUserProfile, fullName: input.fullName ?? null }
       },
-      async updateProfile(input) {
-        return {
-          addressLine1: null,
-          addressLine2: null,
-          answers: [],
-          city: null,
-          country: null,
-          citizenship: null,
-          classStanding: null,
-          coverLetterPath: null,
-          degree: null,
-          email: null,
-          fullName: input.fullName ?? null,
-          githubUrl: null,
-          graduationDate: null,
-          highSchool: null,
-          language: null,
-          linkedinUrl: null,
-          major: null,
-          phone: null,
-          phoneDeviceType: null,
-          portfolioUrl: null,
-          preferredName: null,
-          region: null,
-          relocation: null,
-          requireSponsorship: null,
-          requireSponsorshipFuture: null,
-          satScore: null,
-          school: null,
-          transcriptPath: null,
-          travel: null,
-          workAuthorization: null,
-        }
+      async updateDocument() {
+        throw new Error('unused')
       },
       async updateSensitiveDetails(input) {
         return {
@@ -116,12 +55,27 @@ describe('profile IPC registration', () => {
           veteranStatus: null,
         }
       },
-      async upsertSecret(input) {
+      async validateDocument() {
+        throw new Error('unused')
+      },
+    }
+    const secretService: SecretService = {
+      async delete() {},
+      async list() {
+        return [{ key: 'greenhouse_password', kind: 'password', label: 'Greenhouse', updatedAt: 'now' }]
+      },
+      async listResult() {
+        return { items: await this.list() }
+      },
+      async resolve() {
+        return null
+      },
+      async upsert(input) {
         return { key: input.key, kind: input.kind, label: input.label, updatedAt: 'now' }
       },
     }
 
-    registerProfileIpc(repository, {
+    registerProfileIpc(profileService, secretService, {
       handle(channel, handler) {
         handlers.set(channel, handler)
       },
@@ -161,6 +115,7 @@ describe('profile IPC registration', () => {
       ),
     ).resolves.toMatchObject({ key: 'greenhouse_password' })
     expect(handlers.has('profile:secrets:reveal')).toBe(false)
+    expect(handlers.has('secrets:local:resolve')).toBe(false)
     await expect(
       handlers.get('profile:secrets:delete')?.({}, 'greenhouse_password'),
     ).resolves.toBeUndefined()

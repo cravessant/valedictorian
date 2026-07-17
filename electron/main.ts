@@ -27,7 +27,8 @@ import {
 } from '../src/ipc/valedictorian-http.preload'
 import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
 import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '../src/server/local-workspaces'
-import { createSqliteProfileRepository } from '../src/modules/profile/profile.repository'
+import { createSqliteProfileService } from '../src/modules/profile/profile.composition'
+import { createSqliteSecretService } from '../src/modules/secrets/secret.composition'
 import {
   createValedictorianRuntime,
   resolveValedictorianRuntimeConfig,
@@ -257,14 +258,13 @@ async function registerRuntimeServices(
   }
   const profileSqlite = createFileDatabase(config.sqlitePath)
   migrateDatabase(profileSqlite)
-  const profileRepository = createSqliteProfileRepository(
-    createDrizzleDatabase(profileSqlite),
-    secretCodec,
-  )
+  const profileDatabase = createDrizzleDatabase(profileSqlite)
+  const profileService = createSqliteProfileService(profileDatabase, secretCodec)
+  const secretService = createSqliteSecretService(profileDatabase, secretCodec)
 
   registerApplicationIpc(runtime.client, ipcMain)
   registerPolicyIpc(runtime.client, ipcMain)
-  registerProfileIpc(profileRepository, ipcMain)
+  registerProfileIpc(profileService, secretService, ipcMain)
   registerActionQueueIpc(runtime.client, ipcMain)
   registerConnectorsIpc(runtime.connectors, ipcMain)
   registerScoresIpc(runtime.client, ipcMain)

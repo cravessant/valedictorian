@@ -1,4 +1,4 @@
-import type { ProfileSecretCodec } from '../src/modules/profile/profile.repository'
+import type { SecretCodec } from '../src/modules/secrets/secret.codec'
 
 const safeStoragePrefix = 'electron-safe-storage:'
 const safeStorageVersionPrefix = `${safeStoragePrefix}v1:`
@@ -25,7 +25,7 @@ export class ElectronSecretCodecError extends Error {
   }
 }
 
-export function createElectronSecretCodec(safeStorage: ElectronSafeStorage): ProfileSecretCodec {
+export function createElectronSecretCodec(safeStorage: ElectronSafeStorage): SecretCodec {
   return {
     decrypt(value) {
       if (!safeStorage.isEncryptionAvailable()) {

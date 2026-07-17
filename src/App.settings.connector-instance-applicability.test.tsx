@@ -21,7 +21,6 @@ import {
   openSettingsPage
 } from './App.test-helpers'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
-import type { ProfilePreloadApi } from './ipc/profile.preload'
 import { createStaticConnectorRegistry } from './modules/connectors/connector.registry'
 import type { AppJobConnector } from './modules/connectors/connector.runner'
 import { JOBRIGHT_CONNECTOR_VERSION } from './modules/connectors/jobright.constants'
@@ -178,7 +177,17 @@ describe('connector instance applicability', () => {
       <App
         applicationLoader={() => Promise.resolve(createListResult([]))}
         connectorsApi={client.connectors as ConnectorsPreloadApi}
-        profileApi={client.profile as ProfilePreloadApi}
+        profileApi={{
+          get: () => client.profile.get(),
+          update: (input) => client.profile.update(input),
+          agentContext: client.profile.agentContext,
+          sensitive: client.profile.sensitive,
+          secrets: {
+            delete: (key) => client.secrets.delete(key),
+            list: async () => (await client.secrets.list()).items,
+            upsert: (input) => client.secrets.upsert(input),
+          },
+        }}
         settingsApi={createSettingsApi()}
       />,
     )

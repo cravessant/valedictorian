@@ -9,7 +9,7 @@ import {
   createDefaultLocalConnectorPorts,
   type DefaultLocalConnectorPorts,
 } from '../modules/connectors/connector.runtime-ports'
-import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
+import type { SecretCodec } from '../modules/secrets/secret.codec'
 import {
   createConnectorRunRecoveryLifecycle,
   type ConnectorRunRecoveryLifecycle,
@@ -70,7 +70,7 @@ export interface CreateLocalWorkspaceManagerOptions {
   now?: () => Date
   referenceTrackerPath?: string
   registryStore: WorkspaceRegistryStore
-  secretCodec?: ProfileSecretCodec
+  secretCodec?: SecretCodec
   seedDataMode?: LocalValedictorianClientOptions['seedDataMode']
 }
 

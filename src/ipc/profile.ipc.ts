@@ -1,9 +1,10 @@
-import type { ProfileUpdateInput } from 'sparxie'
 import type {
-  ProfileRepository,
   ProfileSensitiveDetailsInput,
+  ProfileUpdateInput,
   UpsertProfileSecretInput,
-} from '../modules/profile/profile.repository'
+} from 'sparxie'
+import type { ProfileService } from '../modules/profile/profile.service'
+import type { SecretService } from '../modules/secrets/secret.service'
 
 interface IpcMainLike {
   handle(
@@ -12,19 +13,23 @@ interface IpcMainLike {
   ): void
 }
 
-export function registerProfileIpc(repository: ProfileRepository, ipcMain: IpcMainLike) {
-  ipcMain.handle('profile:get', () => repository.getProfile())
+export function registerProfileIpc(
+  profileService: ProfileService,
+  secretService: SecretService,
+  ipcMain: IpcMainLike,
+) {
+  ipcMain.handle('profile:get', () => profileService.get())
   ipcMain.handle('profile:update', (_event, input) =>
-    repository.updateProfile(input as ProfileUpdateInput),
+    profileService.update(input as ProfileUpdateInput),
   )
-  ipcMain.handle('profile:agent-context:get', () => repository.getAgentContext())
-  ipcMain.handle('profile:sensitive:get', () => repository.getSensitiveDetails())
+  ipcMain.handle('profile:agent-context:get', () => profileService.getAgentContext())
+  ipcMain.handle('profile:sensitive:get', () => profileService.getSensitiveDetails())
   ipcMain.handle('profile:sensitive:update', (_event, input) =>
-    repository.updateSensitiveDetails(input as ProfileSensitiveDetailsInput),
+    profileService.updateSensitiveDetails(input as ProfileSensitiveDetailsInput),
   )
-  ipcMain.handle('profile:secrets:list', () => repository.listSecrets())
+  ipcMain.handle('profile:secrets:list', () => secretService.list())
   ipcMain.handle('profile:secrets:upsert', (_event, input) =>
-    repository.upsertSecret(input as UpsertProfileSecretInput),
+    secretService.upsert(input as UpsertProfileSecretInput),
   )
-  ipcMain.handle('profile:secrets:delete', (_event, key) => repository.deleteSecret(key as string))
+  ipcMain.handle('profile:secrets:delete', (_event, key) => secretService.delete(key as string))
 }

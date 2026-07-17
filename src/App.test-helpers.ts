@@ -27,7 +27,7 @@ import type {
   ApplicationListResult,
 } from './modules/applications/application.types'
 import type { ActionQueueListItem, ActionQueueListResult } from './modules/action-queue/action-queue.repository'
-import type { ProfileSensitiveDetails } from './modules/profile/profile.repository'
+import type { ProfileSensitiveDetails } from 'sparxie'
 import {
   defaultPolicyConfig,
   defaultUserProfile,

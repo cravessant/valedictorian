@@ -7,11 +7,14 @@ import {
   defaultLocalCapabilities,
   invalidPersistedRawDetailErrorBody,
   isApplicationStatus,
+  localSecretResolutionErrorCodes,
+  profileDocumentErrorCodes,
   rawSourceRecordSchema,
   rawSourceRecordsListResultSchema,
   type BatchRawSourceRecordsInput,
   type ConnectorSchedulingCapability,
   type ValedictorianWorkspaceClient,
+  type ProfileSensitiveDetailsInput,
   type ProfileUpdateInput,
 } from 'sparxie'
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
@@ -19,6 +22,7 @@ import {
   readJsonBody,
   readOptionalBooleanField,
   readOptionalStringField,
+  readRequiredOpaqueStringField,
   readStringField,
   writeJson,
 } from './local-server.http'
@@ -276,7 +280,7 @@ export async function handleRequest({
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/profile/sensitive') {
-      writeJson(response, 200, await profileExtensions(client).sensitive.get())
+      writeJson(response, 200, await client.profile.sensitive.get())
       return
     }
 
@@ -284,13 +288,52 @@ export async function handleRequest({
       writeJson(
         response,
         200,
-        await profileExtensions(client).sensitive.update(await readJsonBody(request)),
+        await client.profile.sensitive.update(
+          (await readJsonBody(request)) as ProfileSensitiveDetailsInput,
+        ),
+      )
+      return
+    }
+
+    if (request.method === 'GET' && requestUrl.pathname === '/v1/profile/document') {
+      writeJson(response, 200, await client.profile.document.get())
+      return
+    }
+
+    if (request.method === 'PUT' && requestUrl.pathname === '/v1/profile/document') {
+      writeJson(
+        response,
+        200,
+        await client.profile.document.update(await readJsonBody(request) as never),
+      )
+      return
+    }
+
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/profile/document/validate') {
+      writeJson(response, 200, await client.profile.document.validate())
+      return
+    }
+
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/profile/document/format') {
+      writeJson(
+        response,
+        200,
+        await client.profile.document.format(await readJsonBody(request) as never),
+      )
+      return
+    }
+
+    if (request.method === 'POST' && requestUrl.pathname === '/v1/profile/document/restore') {
+      writeJson(
+        response,
+        200,
+        await client.profile.document.restore(await readJsonBody(request) as never),
       )
       return
     }
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/secrets') {
-      writeJson(response, 200, { items: await profileExtensions(client).secrets.list() })
+      writeJson(response, 200, await client.secrets.list())
       return
     }
 
@@ -302,18 +345,18 @@ export async function handleRequest({
       writeJson(
         response,
         200,
-        await profileExtensions(client).secrets.upsert({
+        await client.secrets.upsert({
           key: decodeURIComponent(secretMatch[1]),
           kind: readStringField(body, 'kind') as never,
           label: readStringField(body, 'label'),
-          value: readStringField(body, 'value'),
+          value: readRequiredOpaqueStringField(body, 'value'),
         }),
       )
       return
     }
 
     if (request.method === 'DELETE' && secretMatch) {
-      await profileExtensions(client).secrets.delete(decodeURIComponent(secretMatch[1]))
+      await client.secrets.delete(decodeURIComponent(secretMatch[1]))
       writeJson(response, 200, { ok: true })
       return
     }
@@ -770,6 +813,26 @@ export async function handleRequest({
       writeJson(response, 409, retirementConflict.data)
       return
     }
+
+    if (
+      error &&
+      typeof error === 'object' &&
+      'body' in error &&
+      error.body &&
+      typeof error.body === 'object' &&
+      'code' in error.body &&
+      typeof (error.body as { code?: unknown }).code === 'string' &&
+      ((profileDocumentErrorCodes as readonly string[]).includes(
+        (error.body as { code: string }).code,
+      )
+        || (localSecretResolutionErrorCodes as readonly string[]).includes(
+          (error.body as { code: string }).code,
+        ))
+    ) {
+      writeJson(response, readErrorStatusCode(error), error.body)
+      return
+    }
+
     const body: { code?: string; message: string } = {
       message: error instanceof Error ? error.message : String(error),
     }
@@ -810,27 +873,4 @@ function isDomainRoute(pathname: string) {
   return /^\/v1\/(applications|action-queue|connector-descriptors|connectors|policy|profile|runs|sourcing|scores|secrets)(?:\/|$)/.test(
     pathname,
   )
-}
-
-type ProfileExtensionsClient = ValedictorianWorkspaceClient & {
-  profile: ValedictorianWorkspaceClient['profile'] & {
-    secrets: {
-      delete(key: string): Promise<void>
-      list(): Promise<unknown[]>
-      upsert(input: {
-        key: string
-        kind: never
-        label: string
-        value: string
-      }): Promise<unknown>
-    }
-    sensitive: {
-      get(): Promise<unknown>
-      update(input: unknown): Promise<unknown>
-    }
-  }
-}
-
-function profileExtensions(client: ValedictorianWorkspaceClient) {
-  return (client as ProfileExtensionsClient).profile
 }

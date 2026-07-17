@@ -2,7 +2,7 @@ import type { ConnectorSchedulingCapability } from 'sparxie'
 import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppConnectorRuntimePorts } from '../modules/connectors/connector.runner'
-import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
+import type { SecretCodec } from '../modules/secrets/secret.codec'
 import type { NormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
 import type { DrizzleDatabase } from '../db/sqlite'
 import type { LocalScheduledWorkSource } from './local-scheduler'
@@ -24,7 +24,7 @@ export interface LocalValedictorianClientOptions {
   ) => string
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
-  secretCodec?: ProfileSecretCodec
+  secretCodec?: SecretCodec
   sqlitePath: string
   workspaceId?: string
 }

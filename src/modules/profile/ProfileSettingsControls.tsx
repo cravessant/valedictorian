@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react'
-import type { ProfileSensitiveDetails } from './profile.repository'
+import type { ProfileSensitiveDetails } from 'sparxie'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import {

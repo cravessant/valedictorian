@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteProfileRepository, type ProfileSecretCodec } from '../profile/profile.repository'
+import { createSqliteSecretService } from '../secrets/secret.composition'
+import { createConnectorSecretResolver } from '../secrets/connector-secret-resolver'
+import type { SecretCodec } from '../secrets/secret.codec'
 import {
   createSqliteConnectorRepository,
   type ConnectorCoverageWindow,
@@ -8,7 +10,7 @@ import {
 } from './connector.repository'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
 
-const testCodec: ProfileSecretCodec = {
+const testCodec: SecretCodec = {
   decrypt(value) {
     return value.replace(/^enc:/, '')
   },
@@ -413,12 +415,12 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const profileRepository = createSqliteProfileRepository(database, testCodec)
+    const secretService = createSqliteSecretService(database, testCodec)
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
       auth: {
-        secrets: profileRepository,
+        secrets: createConnectorSecretResolver(secretService),
       },
     })
     const receivedGrants: unknown[] = []
@@ -472,7 +474,7 @@ describe('connector runner', () => {
       },
     }
 
-    await profileRepository.upsertSecret({
+    await secretService.upsert({
       key: 'fixture_api_key',
       kind: 'token',
       label: 'Fixture API key',
@@ -562,12 +564,12 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const profileRepository = createSqliteProfileRepository(database, testCodec)
+    const secretService = createSqliteSecretService(database, testCodec)
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
       auth: {
-        secrets: profileRepository,
+        secrets: createConnectorSecretResolver(secretService),
       },
     })
     const fixtureConnector: AppJobConnector = {
@@ -614,13 +616,13 @@ describe('connector runner', () => {
       },
     }
 
-    await profileRepository.upsertSecret({
+    await secretService.upsert({
       key: 'short_key',
       kind: 'token',
       label: 'Short key',
       value: 'abc',
     })
-    await profileRepository.upsertSecret({
+    await secretService.upsert({
       key: 'long_key',
       kind: 'token',
       label: 'Long key',
@@ -693,12 +695,12 @@ describe('connector runner', () => {
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
-    const profileRepository = createSqliteProfileRepository(database, testCodec)
+    const secretService = createSqliteSecretService(database, testCodec)
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
       auth: {
-        secrets: profileRepository,
+        secrets: createConnectorSecretResolver(secretService),
       },
     })
     const receivedGrants: unknown[] = []

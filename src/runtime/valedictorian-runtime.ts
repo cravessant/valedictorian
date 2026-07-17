@@ -18,7 +18,7 @@ import {
 import { localDesktopConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
 import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
-import type { ProfileSecretCodec } from '../modules/profile/profile.repository'
+import type { SecretCodec } from '../modules/secrets/secret.codec'
 import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import {
   createLocalValedictorianClient,
@@ -72,7 +72,7 @@ export interface CreateValedictorianRuntimeOptions {
   createScheduler?: (options?: LocalSchedulerOptions) => LocalScheduler
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   deferServerStart?: boolean
-  secretCodec?: ProfileSecretCodec
+  secretCodec?: SecretCodec
   schedulerOptions?: LocalSchedulerOptions
   startServer?: (
     options: CreateValedictorianHttpServerOptions,

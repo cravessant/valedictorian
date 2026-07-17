@@ -1,10 +1,12 @@
-import type { ProfileAgentContext, ProfileUpdateInput, UserProfile } from 'sparxie'
 import type {
+  ProfileAgentContext,
+  ProfileSecretSummary,
   ProfileSensitiveDetails,
   ProfileSensitiveDetailsInput,
-  ProfileSecretSummary,
+  ProfileUpdateInput,
   UpsertProfileSecretInput,
-} from '../modules/profile/profile.repository'
+  UserProfile,
+} from 'sparxie'
 
 interface IpcRendererLike {
   invoke: (channel: string, payload?: unknown) => Promise<unknown>

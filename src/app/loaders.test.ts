@@ -80,6 +80,7 @@ describe('renderer HTTP loaders', () => {
           hostedSync: false,
           multiWorkspace: true,
           billing: false,
+          localSecretResolution: false,
           connectorScheduling: { available: false },
         })
       }
@@ -124,6 +125,7 @@ describe('renderer HTTP loaders', () => {
       hostedSync: false,
       multiWorkspace: true,
       billing: false,
+      localSecretResolution: false,
       connectorScheduling: { available: false },
     }))
     ;(window as Window & {

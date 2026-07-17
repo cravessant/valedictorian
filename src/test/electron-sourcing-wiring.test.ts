@@ -25,7 +25,7 @@ describe('Electron sourcing wiring', () => {
     expect(preloadSource).toContain(
       "contextBridge.exposeInMainWorld('profile', createProfilePreloadApi(ipcRenderer))",
     )
-    expect(mainSource).toContain('registerProfileIpc(profileRepository, ipcMain)')
+    expect(mainSource).toContain('registerProfileIpc(profileService, secretService, ipcMain)')
     expect(mainSource).toContain('safeStorage')
     expect(envSource).toContain("profile: import('../src/ipc/profile.preload').ProfilePreloadApi")
   })

@@ -8,7 +8,7 @@ import type { ScoresPreloadApi } from '../ipc/scores.preload'
 import type { SettingsPreloadApi } from '../ipc/settings.preload'
 import type { UpdatesPreloadApi } from '../ipc/updates.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
-import type { ProfileSensitiveDetails } from '../modules/profile/profile.repository'
+import type { ProfileSensitiveDetails } from 'sparxie'
 import type { ConnectorStatusListResult } from '../modules/connectors/connector.status'
 import { connectorStatusViewFromOverview } from '../modules/connectors/connector.status'
 import type {

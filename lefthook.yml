@@ -2,6 +2,8 @@ pre-commit:
   commands:
     line-limit-policy:
       run: pnpm run lint:line-limit-policy -- --staged
+    profile-secret-import-policy:
+      run: pnpm run lint:profile-secret-import-policy -- --staged
     oxlint:
       glob: "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"
       run: pnpm exec oxlint {staged_files}

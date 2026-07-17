@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { fieldControlId } from '@/lib/field-control-id'
-import type { ProfileSecretSummary } from './profile.repository'
+import type { ProfileSecretSummary } from 'sparxie'
 import {
   CompactInput,
   InlineEditorActions,
