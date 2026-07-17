@@ -19,6 +19,3 @@ pnpm-debug.log*
 .idea
 .vscode/*
 !.vscode/extensions.json
-
-# Track agent instructions in this repo (overrides global exclude)
-!AGENTS.md
