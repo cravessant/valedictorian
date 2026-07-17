@@ -1,6 +1,6 @@
 {
   "name": "@sparxie/valedictorian-connectors-test-harness",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Test helpers for Valedictorian connector packages.",
   "author": "Keni",
   "license": "MIT",
@@ -40,7 +40,7 @@
     }
   },
   "dependencies": {
-    "@sparxie/valedictorian-connectors-core": "workspace:^0.14.0",
+    "@sparxie/valedictorian-connectors-core": "workspace:^0.14.1",
     "sparxie": "^0.15.0"
   }
 }

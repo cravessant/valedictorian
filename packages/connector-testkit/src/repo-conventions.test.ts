@@ -154,8 +154,8 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("The app bumps concrete connector packages directly")
     expect(readme).toContain("Do not release or bump `sparxie` for adapter ABI changes")
     expect(readme).toContain("HTTP/client exposure is a separate `sparxie` change")
-    expect(readme).toContain("The current breaking release tree is `0.14.0`")
-    expect(readme).toContain("exact `workspace:^0.14.0` internal compatibility ranges")
+    expect(readme).toContain("The current breaking release tree is `0.14.1`")
+    expect(readme).toContain("exact `workspace:^0.14.1` internal compatibility ranges")
     expect(readme).toContain("Packages publish publicly to npm under the `@sparxie` scope")
     expect(readme).toContain("CI publishes packages from `.github/workflows/publish.yml`")
     expect(readme).toContain("Workflow filename: `publish.yml`")
@@ -185,7 +185,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.14.0",
+      version: "0.14.1",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -201,7 +201,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.14.0",
+      version: "0.14.1",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -217,7 +217,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.14.0",
+      version: "0.14.1",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -241,11 +241,11 @@ describe("connector repository conventions", () => {
       sparxie: "^0.15.0",
     })
     expect(harnessPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.14.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.14.1",
       sparxie: "^0.15.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.14.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.14.1",
     })
     expect(Object.keys(jobrightPackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
@@ -259,8 +259,17 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(jobrightPackage.devDependencies).toMatchObject({
-      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.14.0",
+      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.14.1",
     })
+  })
+
+  it("provides an explicit local test path that runs the Jobright live contract", () => {
+    const rootPackage = readPackageJson("package.json")
+
+    expect(rootPackage.scripts?.test).not.toContain("JOBRIGHT_LIVE")
+    expect(rootPackage.scripts?.["test:local"]).toBe(
+      "pnpm run build && JOBRIGHT_LIVE=1 node --env-file=.env node_modules/vitest/vitest.mjs run --passWithNoTests",
+    )
   })
 
   it("publishes typed retry policy and host declarations", () => {
