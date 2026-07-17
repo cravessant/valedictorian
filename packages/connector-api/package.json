@@ -33,7 +33,7 @@
     "sparxie": "^0.24.0"
   },
   "scripts": {
-    "build": "rm -rf dist && tsgo -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepack": "pnpm run build"
   },
   "exports": {

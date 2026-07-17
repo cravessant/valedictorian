@@ -30,7 +30,7 @@
   },
   "sideEffects": false,
   "scripts": {
-    "build": "pnpm --filter @sparxie/valedictorian-connectors-core run build && rm -rf dist && tsgo -p tsconfig.build.json",
+    "build": "pnpm --filter @sparxie/valedictorian-connectors-core run build && rm -rf dist && tsc -p tsconfig.build.json",
     "prepack": "pnpm run build"
   },
   "exports": {

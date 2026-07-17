@@ -123,7 +123,7 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("pnpm")
     expect(readme).toContain("mise")
     expect(readme).toContain("TS 7")
-    expect(readme).toContain("tsgo")
+    expect(readme).toContain("stable TS 7 through `tsc`")
     expect(readme).toContain("oxlint")
     expect(readme).toContain("Vitest")
     expect(readme).toContain("Zod")
@@ -232,7 +232,7 @@ describe("connector repository conventions", () => {
         import: "./dist/index.js",
         types: "./dist/index.d.ts",
       })
-      expect(packageJson.scripts?.build).toContain("tsgo -p tsconfig.build.json")
+      expect(packageJson.scripts?.build).toContain("tsc -p tsconfig.build.json")
       expect(packageJson.scripts?.prepack).toBe("pnpm run build")
     }
     expect(Object.keys(corePackage.dependencies ?? {})).not.toEqual(
@@ -321,7 +321,7 @@ describe("connector repository conventions", () => {
     expect(ciWorkflow).toContain("cancel-in-progress: true")
     expect(ciWorkflow.match(/run: pnpm build/g)).toHaveLength(1)
     expect(ciWorkflow).toContain("pnpm exec vitest run --passWithNoTests")
-    expect(ciWorkflow).toContain("pnpm exec tsgo --noEmit")
+    expect(ciWorkflow).toContain("pnpm exec tsc --noEmit")
     expect(ciWorkflow).toContain("pnpm --filter @sparxie/valedictorian-connectors-core pack --dry-run")
     expect(publishWorkflow).toContain("id-token: write")
     expect(publishWorkflow).toContain("group: npm-publish-${{ github.ref }}")
@@ -330,7 +330,7 @@ describe("connector repository conventions", () => {
     expect(publishWorkflow).toContain("need npm 11.5.1 or newer")
     expect(publishWorkflow.match(/run: pnpm build/g)).toHaveLength(1)
     expect(publishWorkflow).toContain("pnpm exec vitest run --passWithNoTests")
-    expect(publishWorkflow).toContain("pnpm exec tsgo --noEmit")
+    expect(publishWorkflow).toContain("pnpm exec tsc --noEmit")
     expect(publishWorkflow).toContain("pnpm --filter @sparxie/valedictorian-connectors-core pack --pack-destination .local/packs")
     expect(publishWorkflow).toContain("npm publish \"$package_file\" --access public --dry-run")
     expect(publishWorkflow).toContain("npm \"${publish_args[@]}\" .local/packs/sparxie-valedictorian-connectors-core-*.tgz")
