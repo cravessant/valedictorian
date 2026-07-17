@@ -9,7 +9,6 @@ import {
 import {
   profileSecretKinds,
   type ProfileSecretKind,
-  type ProfileSensitiveDetails,
   type ValedictorianClient,
   type ValedictorianWorkspaceClient,
 } from 'sparxie'
@@ -369,17 +368,6 @@ export function readJsonObjectFile<T extends object>(path: string, label: string
   }
 
   return parsed as T
-}
-
-export function summarizeSensitiveDetails(details: ProfileSensitiveDetails) {
-  const populatedFields = Object.entries(details)
-    .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
-    .map(([field]) => field)
-
-  return {
-    populatedFieldCount: populatedFields.length,
-    populatedFields,
-  }
 }
 
 export function writeJson(context: ValedictorianCliContext, value: unknown, pretty = true) {

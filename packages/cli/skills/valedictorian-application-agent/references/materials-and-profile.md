@@ -1,6 +1,6 @@
 # Materials And Profile
 
-Read this before choosing application materials, profile facts, sensitive facts, credential summaries, or saved answers.
+Read this before choosing application materials, profile facts, credential summaries, or saved answers.
 
 ## Source Order
 
@@ -10,16 +10,16 @@ Prefer sources in this order:
 2. `profile agent-context` and reusable answer-bank data.
 3. The selected resume, cover letter, transcript, portfolio, or other attached artifact.
 4. Prior attempt/run notes and receipts for the same application or employer.
-5. Sensitive-profile and secret summaries, used only to know whether a trusted value exists.
+5. Credential secret summaries, used only to know whether a trusted value exists.
 
 If sources disagree, pause or follow the most application-specific explicit user instruction.
 
 ## Profile Data
 
-- Use `profile agent-context` for normal reusable answers.
-- Treat `profile sensitive summary` as availability metadata, not permission to reveal or type raw sensitive values.
-- Treat `profile secrets list` as availability metadata, not permission to print or store credential values.
-- Do not infer missing data from surrounding context.
+- Use `profile agent-context` for reusable public profile facts, including populated date of birth and self-identification fields when present.
+- Populated DOB, demographic, and self-identification facts from agent context may be used deterministically for form answers when the application asks.
+- Never invent missing DOB, demographic, disability, veteran, or other self-identification facts.
+- Keep SSN and credentials on the secret path via `profile secrets`; treat `profile secrets list` as availability metadata, not permission to print or store credential values.
 - Do not update profile data from a form unless the user specifically asks for profile maintenance.
 
 ## Resumes And Cover Letters

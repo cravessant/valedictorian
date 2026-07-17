@@ -349,6 +349,7 @@ function connectorInstance() {
     connectorVersion: '0.11.0',
     displayName: 'Jobright',
     enabled: false,
+    lifecycle: 'disabled',
     auth: [{ id: 'jobright', mode: 'username_password', label: 'Jobright', configured: true }],
     config: {},
     filters: { remote: true, search: 'software internship' },

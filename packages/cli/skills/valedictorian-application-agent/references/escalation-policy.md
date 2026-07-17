@@ -10,7 +10,8 @@ Represent the user truthfully and minimize private disclosure. Proceed only from
 
 - Answering any question that requires a user-specific fact not already supported by approved sources.
 - Making legal certifications, arbitration acknowledgements, background-check authorizations, policy agreements, signatures, or consent statements.
-- Disclosing DOB, SSN or SSN last four, government ids, immigration details, demographic details, disability status, veteran status, accommodation needs, or other sensitive profile details without explicit policy.
+- Disclosing SSN or SSN last four, government ids, immigration details, or other secret-path identity details without explicit policy.
+- Disclosing DOB, demographic details, disability status, veteran status, accommodation needs, or other self-identification details when they are missing from approved sources or when recorded policy forbids disclosure.
 - Entering salary expectations, minimum compensation, relocation willingness, travel willingness, start date, work authorization, sponsorship, clearance, export-control, or assessment answers without recorded policy.
 - Creating, recovering, deleting, or materially changing accounts.
 - Uploading documents not selected for this application.
@@ -49,7 +50,8 @@ Never invent or exaggerate:
 ## Sensitive Data Handling
 
 - Use the minimum information required by the application.
-- Prefer non-sensitive profile and answer-bank data. Use sensitive profile details only through explicit trusted flows.
-- Do not place raw sensitive values or credential values in run notes, screenshots, messages, temp files, shell history, or commits.
+- Prefer profile agent-context and answer-bank data. Populated DOB/demographic/self-identification facts may be used deterministically; never invent missing facts.
+- Keep SSN and credentials on the secret path. Prefer secret summaries only to know whether a trusted value exists.
+- Do not place raw secret values or invented sensitive values in run notes, screenshots, messages, temp files, shell history, or commits.
 - Do not infer protected-class information from name, location, education, photos, or indirect signals.
 - If the page displays sensitive values, avoid capturing them unless evidence is required and the storage path is appropriate.

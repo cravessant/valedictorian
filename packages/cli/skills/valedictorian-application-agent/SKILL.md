@@ -15,14 +15,14 @@ Use this skill as the application operator protocol: it tells the agent how to b
 - Use browser automation for external employer/job-board/ATS sites. Do not use the Valedictorian app UI as the primary agent state interface; the app is the human cockpit.
 - Work one application attempt at a time unless the user explicitly asks for parallel application work.
 - Check for existing in-progress attempts or runs before opening a browser or starting a new attempt.
-- Keep credential values and sensitive profile values out of chat, logs, shell history, run notes, screenshots, and temp files.
+- Keep credential values and SSN out of chat, logs, shell history, run notes, screenshots, and temp files. Use populated DOB/self-identification facts from agent context when present; never invent missing facts.
 - If the CLI cannot express a needed operation, stop and report the missing CLI/API capability instead of bypassing the contract.
 
 ## Reference Map
 
 - Read `references/receipts-and-audit.md` before starting, resuming, stepping, or completing attempts/runs.
 - Read `references/browser-application-playbooks.md` before opening the external application site.
-- Read `references/materials-and-profile.md` before choosing resumes, cover letters, transcripts, profile facts, sensitive facts, or credential summaries.
+- Read `references/materials-and-profile.md` before choosing resumes, cover letters, transcripts, profile facts, or credential summaries.
 - Read `references/screening-answers.md` before answering eligibility, work authorization, salary, EEO, consent, or free-response questions.
 - Read `references/escalation-policy.md` whenever a question, site behavior, or final-submit decision could require user approval.
 
@@ -30,7 +30,7 @@ Use this skill as the application operator protocol: it tells the agent how to b
 
 1. Confirm workspace and API target through `valedictorian-cli`; require clear user intent before mutating non-local data.
 2. Select one unit of work from the Action Queue or a specific application id.
-3. Read the application, attempts, in-progress runs, profile agent context, sensitive-profile summary, and secret summaries.
+3. Read the application, attempts, in-progress runs, profile agent context, and secret summaries.
 4. Decide whether to proceed, skip, mark not fit/not pursued, or pause for missing user input.
 5. Start or resume an auditable `application_attempt` run and application attempt before browser work.
 6. Recover the official application URL when starting from an aggregator or job board.

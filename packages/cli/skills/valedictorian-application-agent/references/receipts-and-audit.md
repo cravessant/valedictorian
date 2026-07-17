@@ -27,11 +27,10 @@ valedictorian-cli --json applications get <application-id> --workspace "$VALEDIC
 valedictorian-cli --json applications attempts list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --limit 25
 valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --subject-application-id <application-id> --limit 25
 valedictorian-cli --json profile agent-context --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json profile sensitive summary --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 ```
 
-Only summaries of sensitive profile details and credential secrets belong in normal agent context.
+Use populated DOB and self-identification facts from agent context when present; never invent missing facts. Credential secret summaries belong in normal agent context only as availability metadata. Keep SSN and credentials on the secret path.
 
 ## Starting Or Resuming Work
 

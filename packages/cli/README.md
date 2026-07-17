@@ -27,7 +27,9 @@ valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE
 valedictorian-cli --json policy config get --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json sourcing ingest --workspace "$VALEDICTORIAN_WORKSPACE" --url "https://jobs.example.com/role"
 valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json profile sensitive summary --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile validate --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile format --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision <revision>
+valedictorian-cli --json profile restore --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision <revision|null> --confirm
 valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 ```
 

@@ -66,30 +66,24 @@ valedictorian-cli --json connectors runs list <connector-instance-id> --workspac
 valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --status in_progress --limit 25
 valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE" --workflow-run-id <run-id> --merge-status new --limit 25
 valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json profile sensitive summary --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile validate --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 ```
 
 ## Profile And Secrets
 
-Non-sensitive profile:
+Versioned profile document:
 
 ```sh
 valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json profile agent-context --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json profile update --workspace "$VALEDICTORIAN_WORKSPACE" --input-json profile.json
+valedictorian-cli --json profile update --workspace "$VALEDICTORIAN_WORKSPACE" --input-json profile.json --expected-revision <revision>
+valedictorian-cli --json profile validate --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json profile format --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision <revision>
+valedictorian-cli --json profile restore --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision <revision|null> --confirm
 ```
 
-`profile update` expects a JSON object matching the public profile input shape. This is intended for basics, education, and reusable answer-bank entries, not credential values or sensitive profile facts.
-
-Sensitive profile details:
-
-```sh
-valedictorian-cli --json profile sensitive update --workspace "$VALEDICTORIAN_WORKSPACE" --input-json sensitive-profile.json
-valedictorian-cli --json profile sensitive summary --workspace "$VALEDICTORIAN_WORKSPACE"
-```
-
-`profile sensitive update` writes DOB parts, SSN last four, demographics, veteran status, disability status, and similar sensitive facts. Both `update` and `summary` print only `{ populatedFieldCount, populatedFields }`, not raw sensitive values.
+`profile get`/`update`/`format` return the full versioned `ProfileDocument`. `profile update` requires a nonempty `--expected-revision` and accepts the unified public profile patch, including populated `dateOfBirth`, `gender`, `hispanicLatino`, `raceEthnicity`, `disabilityStatus`, and `veteranStatus`. SSN and credential values stay on the secret path, not the ordinary document. `profile validate` returns `{ schemaVersion, revision }`. `profile restore` requires `--confirm`, accepts the exact `null` revision sentinel, and on success returns only `{ restored, schemaVersion, revision }` with no profile values. Typed document errors keep their exact codes in human and `--json` modes; mutations never retry conflicts.
 
 Credential secrets:
 

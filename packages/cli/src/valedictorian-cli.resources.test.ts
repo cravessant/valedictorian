@@ -221,40 +221,9 @@ describe('valedictorian-cli npm package', () => {
     )
   })
 
-  it('manages profile details and secret summaries over workspace-scoped HTTP', async () => {
+  it('manages credential secret summaries over workspace-scoped HTTP', async () => {
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-cli-profile-'))
-    const profilePath = path.join(tempDirectory, 'profile.json')
-    const sensitivePath = path.join(tempDirectory, 'sensitive.json')
     const secretValuePath = path.join(tempDirectory, 'secret-value.txt')
-    const profileInput = {
-      fullName: 'Sparxie Example',
-      email: 'alex@example.com',
-      answers: [
-        {
-          key: 'work_auth',
-          label: 'Work authorization',
-          questionPattern: 'Are you authorized to work?',
-          answer: 'Yes',
-          includeInAgentContext: true,
-        },
-      ],
-    }
-    const sensitiveInput = {
-      birthYear: '2000',
-      ssnLast4: '1234',
-    }
-    const profilePayload = {
-      ...profileInput,
-      education: [],
-    }
-    const agentContextPayload = {
-      answers: profileInput.answers,
-      basics: {
-        email: 'alex@example.com',
-        fullName: 'Sparxie Example',
-      },
-      education: [],
-    }
     const secretSummary = {
       key: 'greenhouse_password',
       kind: 'password',
@@ -262,80 +231,14 @@ describe('valedictorian-cli npm package', () => {
       updatedAt: '2026-07-03T12:00:00.000Z',
     }
 
-    fs.writeFileSync(profilePath, JSON.stringify(profileInput))
-    fs.writeFileSync(sensitivePath, JSON.stringify(sensitiveInput))
     fs.writeFileSync(secretValuePath, 'super-secret-password')
 
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
-    fetchMock.mockResolvedValueOnce(jsonResponse(profilePayload))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agentContextPayload))
-    fetchMock.mockResolvedValueOnce(jsonResponse(profilePayload))
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        birthDay: null,
-        birthMonth: null,
-        birthYear: '2000',
-        disabilityStatus: null,
-        gender: null,
-        hispanicLatino: null,
-        raceEthnicity: null,
-        ssnLast4: '1234',
-        veteranStatus: null,
-      }),
-    )
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        birthDay: null,
-        birthMonth: null,
-        birthYear: '2000',
-        disabilityStatus: null,
-        gender: null,
-        hispanicLatino: null,
-        raceEthnicity: null,
-        ssnLast4: '1234',
-        veteranStatus: null,
-      }),
-    )
     fetchMock.mockResolvedValueOnce(jsonResponse(secretSummary))
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: [secretSummary] }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const profileGet = await runCli(['profile', 'get', '--workspace', 'workspace-1', '--json'])
-    const agentContext = await runCli([
-      'profile',
-      'agent-context',
-      '--workspace',
-      'workspace-1',
-      '--json',
-    ])
-    const profileUpdate = await runCli([
-      'profile',
-      'update',
-      '--workspace',
-      'workspace-1',
-      '--input-json',
-      profilePath,
-      '--json',
-    ])
-    const sensitiveUpdate = await runCli([
-      'profile',
-      'sensitive',
-      'update',
-      '--workspace',
-      'workspace-1',
-      '--input-json',
-      sensitivePath,
-      '--json',
-    ])
-    const sensitiveSummary = await runCli([
-      'profile',
-      'sensitive',
-      'summary',
-      '--workspace',
-      'workspace-1',
-      '--json',
-    ])
     const secretUpsert = await runCli([
       'profile',
       'secrets',
@@ -369,65 +272,17 @@ describe('valedictorian-cli npm package', () => {
       '--json',
     ])
 
-    expect(profileGet.exitCode).toBe(0)
-    expect(agentContext.exitCode).toBe(0)
-    expect(profileUpdate.exitCode).toBe(0)
-    expect(sensitiveUpdate.exitCode).toBe(0)
-    expect(sensitiveSummary.exitCode).toBe(0)
     expect(secretUpsert.exitCode).toBe(0)
     expect(secretList.exitCode).toBe(0)
     expect(secretDelete.exitCode).toBe(0)
-    expect(JSON.parse(profileGet.stdout)).toEqual(profilePayload)
-    expect(JSON.parse(agentContext.stdout)).toEqual(agentContextPayload)
-    expect(JSON.parse(profileUpdate.stdout)).toEqual(profilePayload)
-    expect(JSON.parse(sensitiveUpdate.stdout)).toEqual({
-      populatedFieldCount: 2,
-      populatedFields: ['birthYear', 'ssnLast4'],
-    })
-    expect(JSON.parse(sensitiveSummary.stdout)).toEqual({
-      populatedFieldCount: 2,
-      populatedFields: ['birthYear', 'ssnLast4'],
-    })
     expect(JSON.parse(secretUpsert.stdout)).toEqual(secretSummary)
     expect(JSON.parse(secretList.stdout)).toEqual({ items: [secretSummary] })
     expect(JSON.parse(secretDelete.stdout)).toEqual({ ok: true })
-    expect(`${sensitiveUpdate.stdout}${sensitiveSummary.stdout}`).not.toContain('1234')
     expect(`${secretUpsert.stdout}${secretList.stdout}${secretDelete.stdout}`).not.toContain(
       'super-secret-password',
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      'https://valedictorian.test/v1/workspaces/workspace-1/profile',
-      expect.objectContaining({ method: 'GET' }),
-    )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      'https://valedictorian.test/v1/workspaces/workspace-1/profile/agent-context',
-      expect.objectContaining({ method: 'GET' }),
-    )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      'https://valedictorian.test/v1/workspaces/workspace-1/profile',
-      expect.objectContaining({
-        body: JSON.stringify(profileInput),
-        method: 'PATCH',
-      }),
-    )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
-      'https://valedictorian.test/v1/workspaces/workspace-1/profile/sensitive',
-      expect.objectContaining({
-        body: JSON.stringify(sensitiveInput),
-        method: 'PATCH',
-      }),
-    )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      5,
-      'https://valedictorian.test/v1/workspaces/workspace-1/profile/sensitive',
-      expect.objectContaining({ method: 'GET' }),
-    )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      6,
       'https://valedictorian.test/v1/workspaces/workspace-1/secrets/greenhouse_password',
       expect.objectContaining({
         body: JSON.stringify({
@@ -439,12 +294,12 @@ describe('valedictorian-cli npm package', () => {
       }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
-      7,
+      2,
       'https://valedictorian.test/v1/workspaces/workspace-1/secrets',
       expect.objectContaining({ method: 'GET' }),
     )
     expect(fetchMock).toHaveBeenNthCalledWith(
-      8,
+      3,
       'https://valedictorian.test/v1/workspaces/workspace-1/secrets/greenhouse_password',
       expect.objectContaining({ method: 'DELETE' }),
     )
