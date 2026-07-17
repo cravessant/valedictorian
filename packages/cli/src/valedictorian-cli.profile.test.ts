@@ -626,7 +626,7 @@ describe('profile document commands', () => {
     expect(help.stdout).toContain('validate')
     expect(help.stdout).toContain('format')
     expect(help.stdout).toContain('restore')
-    expect(help.stdout).toContain('secrets')
+    expect(help.stdout).not.toContain('secrets')
 
     const obsolete = await runCli(['profile', 'sensitive', 'summary', '--workspace', 'workspace-1'])
     expect(obsolete.exitCode).toBe(1)

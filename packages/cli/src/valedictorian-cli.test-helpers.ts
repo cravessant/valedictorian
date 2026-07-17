@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { runValedictorianCli } from './valedictorian-cli'
+import type { SecretsRunSpawnAdapter } from './valedictorian-cli.secrets-run-spawn.js'
 
 export function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -23,7 +24,7 @@ export function readPackageJson() {
 export async function runCli(
   argv: string[],
   env: Record<string, string | undefined> = {},
-  options: { cwd?: string } = {},
+  options: { cwd?: string; secretsRunSpawn?: SecretsRunSpawnAdapter } = {},
 ) {
   const stdout: string[] = []
   const stderr: string[] = []
@@ -36,6 +37,7 @@ export async function runCli(
     cwd: options.cwd,
     stdout: (value) => stdout.push(value),
     stderr: (value) => stderr.push(value),
+    secretsRunSpawn: options.secretsRunSpawn,
   })
 
   return {

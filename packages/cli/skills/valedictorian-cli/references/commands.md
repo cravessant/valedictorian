@@ -67,7 +67,7 @@ valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-
 valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE" --workflow-run-id <run-id> --merge-status new --limit 25
 valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json profile validate --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 ```
 
 ## Profile And Secrets
@@ -88,12 +88,19 @@ valedictorian-cli --json profile restore --workspace "$VALEDICTORIAN_WORKSPACE" 
 Credential secrets:
 
 ```sh
-valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json profile secrets upsert greenhouse_password --workspace "$VALEDICTORIAN_WORKSPACE" --kind password --label "Greenhouse password" --value-file "$SECRET_VALUE_FILE"
-valedictorian-cli --json profile secrets delete greenhouse_password --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json secrets upsert greenhouse_password --workspace "$VALEDICTORIAN_WORKSPACE" --kind password --label "Greenhouse password" --value-file "$SECRET_VALUE_FILE"
+valedictorian-cli --json secrets delete greenhouse_password --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli secrets run --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --env TOKEN=secret://greenhouse_password \
+  --stdin-secret secret://other_key \
+  --fd 3=secret://fd_key \
+  -- some-tool --flag value
 ```
 
-Supported secret kinds are `password`, `token`, `identity`, and `other`. `profile secrets upsert` reads the exact contents of `--value-file` and returns only the non-secret summary. Prefer a `mktemp` file outside the repo for one-off migration values, remove it immediately after the command, and avoid shell history, logs, chat, and committed files for plaintext secrets.
+Supported secret kinds are `password`, `token`, `identity`, and `other`. `secrets upsert` reads the exact contents of `--value-file` and returns only the non-secret summary. Prefer a `mktemp` file outside the repo for one-off migration values, remove it immediately after the command, and avoid shell history, logs, chat, and committed files for plaintext secrets.
+
+`secrets run` requires at least one explicit injection destination (`--env`, `--fd`, or `--stdin-secret`), validates `secret://` references locally, confirms the server advertises local secret resolution, resolves each unique reference once immediately before spawn, and requires the exact child executable/argv after an explicit `--` escape marker for a direct spawn with `shell: false`. Environment destination names must be portable (`[A-Za-z_][A-Za-z0-9_]*`) and are compared case-insensitively for duplicates while preserving the original spelling in the child environment. Dedicated `--fd` numbers must be integers in `3..255`. Do not substitute secrets into argv or rely on temp secret files for routine child use. Wrapper-owned diagnostics exact-match redact resolved values; child stdout/stderr stay inherited. This reduces accidental disclosure rather than providing a same-user sandbox boundary—an unrestricted same-user process can still inspect or alter child process state.
 
 ## Applications
 

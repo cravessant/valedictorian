@@ -19,7 +19,7 @@ If sources disagree, pause or follow the most application-specific explicit user
 - Use `profile agent-context` for reusable public profile facts, including populated date of birth and self-identification fields when present.
 - Populated DOB, demographic, and self-identification facts from agent context may be used deterministically for form answers when the application asks.
 - Never invent missing DOB, demographic, disability, veteran, or other self-identification facts.
-- Keep SSN and credentials on the secret path via `profile secrets`; treat `profile secrets list` as availability metadata, not permission to print or store credential values.
+- Keep SSN and credentials on the secret path via `secrets`; treat `secrets list` as availability metadata, not permission to print or store credential values. Prefer `secrets run` with structured `secret://` references for trusted local child commands instead of temp files or argv substitution. This reduces accidental disclosure; it is not a same-user sandbox boundary.
 - Do not update profile data from a form unless the user specifically asks for profile maintenance.
 
 ## Resumes And Cover Letters

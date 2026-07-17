@@ -240,7 +240,6 @@ describe('valedictorian-cli npm package', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const secretUpsert = await runCli([
-      'profile',
       'secrets',
       'upsert',
       'greenhouse_password',
@@ -255,7 +254,6 @@ describe('valedictorian-cli npm package', () => {
       '--json',
     ])
     const secretList = await runCli([
-      'profile',
       'secrets',
       'list',
       '--workspace',
@@ -263,7 +261,6 @@ describe('valedictorian-cli npm package', () => {
       '--json',
     ])
     const secretDelete = await runCli([
-      'profile',
       'secrets',
       'delete',
       'greenhouse_password',

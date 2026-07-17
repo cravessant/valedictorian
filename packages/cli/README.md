@@ -30,10 +30,13 @@ valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json profile validate --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json profile format --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision <revision>
 valedictorian-cli --json profile restore --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision <revision|null> --confirm
-valedictorian-cli --json profile secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli secrets run --workspace "$VALEDICTORIAN_WORKSPACE" --env TOKEN=secret://greenhouse_password -- some-tool --flag
 ```
 
 `sourcing ingest` captures sparse source observations. Its output separates submitted provenance, durable intake, normalization, and exact-revision projection. Inspection failures retain the intake receipt, use bounded safe errors, and produce a nonzero exit after output. The server owns normalization, fit gating, duplicate detection, and projection into the sourcing findings queue. `applications create` remains the direct way to create a canonical application; sourcing intake does not create applications directly.
+
+Credential administration uses top-level `secrets list/upsert/delete`. `secrets upsert` reads values only from `--value-file` and prints summary metadata. `secrets run` resolves validated `secret://` references into explicit stdin, environment, or dedicated file-descriptor destinations for a direct child spawn after `--`. It reduces accidental disclosure; an unrestricted same-user process can still inspect or alter child process state, so this is not a sandbox boundary. Do not put secret values in argv, shell history, chat, logs, or temp files when a structured reference works.
 
 ## Project config discovery
 

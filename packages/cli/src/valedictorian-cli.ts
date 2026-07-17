@@ -25,6 +25,7 @@ import {
   optionFlags,
   optionValue,
   parseTimeoutMs,
+  readArgvEscapeSuffix,
   readPackageVersion,
   requiredOption,
   toArgvWithoutWorkspace,
@@ -34,6 +35,7 @@ import {
   type ValedictorianCliContext,
 } from './valedictorian-cli.command-runtime.js'
 import { buildProfileRoute } from './valedictorian-cli.profile-commands.js'
+import { buildSecretsRoute } from './valedictorian-cli.secrets-commands.js'
 import {
   parseConnectorConfiguration,
   parseConnectorObservationsList,
@@ -56,6 +58,7 @@ export interface RunValedictorianCliOptions {
   env?: Record<string, string | undefined>
   stdout?: (value: string) => void
   stderr?: (value: string) => void
+  secretsRunSpawn?: import('./valedictorian-cli.secrets-run-spawn.js').SecretsRunSpawnAdapter
 }
 
 export async function runValedictorianCli({
@@ -64,6 +67,7 @@ export async function runValedictorianCli({
   env = process.env,
   stdout = (value) => process.stdout.write(value),
   stderr = (value) => process.stderr.write(value),
+  secretsRunSpawn,
 }: RunValedictorianCliOptions): Promise<number> {
   const normalizedArgv = normalizeArgv(argv)
   const processLike: StricliProcess = {
@@ -75,10 +79,12 @@ export async function runValedictorianCli({
   const context: ValedictorianCliContext = {
     apiBaseUrl,
     apiToken: env.VALEDICTORIAN_API_TOKEN,
+    argvEscapeSuffix: readArgvEscapeSuffix(normalizedArgv),
     client: createClient(env),
     cwd,
     env,
     process: processLike,
+    ...(secretsRunSpawn ? { secretsRunSpawn } : {}),
   }
 
   await runValedictorianApp(normalizedArgv, context)
@@ -148,6 +154,7 @@ const application = buildApplication(
       }),
       examples: buildExamplesRoute(),
       profile: buildProfileRoute(),
+      secrets: buildSecretsRoute(),
       workspaces: buildRouteMap({
         docs: { brief: 'Manage local workspaces' },
         routes: {

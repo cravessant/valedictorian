@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import { buildRouteMap } from '@stricli/core'
 import {
   ProfileDocumentHttpError,
@@ -8,7 +7,6 @@ import {
   type ProfileDocument,
   type ProfileDocumentValidateResult,
   type ProfileUpdateInput,
-  type UpsertProfileSecretInput,
 } from 'sparxie'
 
 import {
@@ -16,9 +14,7 @@ import {
   makeCommand,
   optionFlags,
   optionValue,
-  parseProfileSecretKind,
   readJsonObjectFile,
-  requiredOption,
   workspaceClient,
   writeJson,
   type RawFlags,
@@ -94,7 +90,6 @@ export function buildProfileRoute() {
           })
         },
       }),
-      secrets: buildProfileSecretsRoute(),
       update: makeCommand({
         docs: {
           brief: 'Update the versioned profile document from a JSON file',
@@ -130,56 +125,6 @@ export function buildProfileRoute() {
           await withProfileDocumentErrors(context, async () => {
             writeProfileValidateResult(context, await client.profile.document.validate())
           })
-        },
-      }),
-    },
-  })
-}
-
-function buildProfileSecretsRoute() {
-  return buildRouteMap({
-    docs: { brief: 'Manage credential secret summaries' },
-    routes: {
-      delete: makeCommand({
-        docs: { brief: 'Delete a credential secret' },
-        flags: optionFlags(['workspace']),
-        positionalCount: 1,
-        run: async (context, flags, key) => {
-          const client = await workspaceClient(context, flags)
-
-          await client.secrets.delete(key)
-          writeJson(context, { ok: true })
-        },
-      }),
-      list: makeCommand({
-        docs: { brief: 'List credential secret summaries' },
-        flags: optionFlags(['workspace']),
-        run: async (context, flags) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(context, await client.secrets.list())
-        },
-      }),
-      upsert: makeCommand({
-        docs: {
-          brief: 'Create or update a credential secret from a value file',
-          fullDescription: 'Stores a secret value and prints only the non-secret summary.',
-        },
-        flags: optionFlags(['workspace'], ['kind', 'label', 'value-file']),
-        positionalCount: 1,
-        run: async (context, flags, key) => {
-          const client = await workspaceClient(context, flags)
-          const input: UpsertProfileSecretInput = {
-            key,
-            kind: parseProfileSecretKind(requiredOption(flags, 'kind', '--kind value')),
-            label: readRequiredText(optionValue(flags, 'label'), '--label value'),
-            value: fs.readFileSync(
-              readRequiredText(optionValue(flags, 'value-file'), '--value-file path'),
-              'utf8',
-            ),
-          }
-
-          writeJson(context, await client.secrets.upsert(input))
         },
       }),
     },

@@ -15,16 +15,23 @@ import {
 
 import { formatHumanOutput } from './valedictorian-cli.output.js'
 import { readRequiredText } from './valedictorian-cli.parsers.js'
+import type { SecretsRunSpawnAdapter } from './valedictorian-cli.secrets-run-spawn.js'
 import { isLocalApiUrl, readLocalWorkspaceList } from './valedictorian-cli.workspaces.js'
 
 export interface ValedictorianCliContext extends CommandContext {
   readonly apiBaseUrl: string
   readonly apiToken?: string
+  /**
+   * Exact argv tokens after the first `--` in the normalized invocation, or `null`
+   * when the escape marker is absent.
+   */
+  readonly argvEscapeSuffix: readonly string[] | null
   readonly client: ValedictorianClient
   readonly cwd: string
   readonly env: Record<string, string | undefined>
   outputJson?: boolean
   readonly process: StricliProcess
+  readonly secretsRunSpawn?: SecretsRunSpawnAdapter
 }
 
 const stringParser = (input: string) => input
@@ -51,20 +58,32 @@ export function makeCommand({
 }: {
   docs: { brief: string; fullDescription?: string }
   flags?: Record<string, unknown>
-  positionalCount?: number
+  positionalCount?: number | { minimum: number; maximum?: number }
   run: CommandRunner
 }) {
+  const positionalBounds =
+    typeof positionalCount === 'number'
+      ? positionalCount > 0
+        ? { minimum: positionalCount, maximum: positionalCount }
+        : null
+      : {
+          minimum: positionalCount.minimum,
+          ...(positionalCount.maximum === undefined ||
+          !Number.isFinite(positionalCount.maximum)
+            ? {}
+            : { maximum: positionalCount.maximum }),
+        }
+
   const parameters = {
     flags: {
       json: jsonFlag,
       ...flags,
     },
-    ...(positionalCount > 0
+    ...(positionalBounds
       ? {
           positional: {
             kind: 'array',
-            maximum: positionalCount,
-            minimum: positionalCount,
+            ...positionalBounds,
             parameter: {
               brief: 'Command argument',
               parse: stringParser,
@@ -429,32 +448,60 @@ export function normalizeArgv(argv: string[]) {
     return withoutGlobalJson
   }
 
-  return [...withoutGlobalJson, '--json']
+  return insertBeforeEscape(withoutGlobalJson, ['--json'])
+}
+
+/** Exact tokens after the first `--`, or `null` when the marker is absent. */
+export function readArgvEscapeSuffix(argv: readonly string[]): readonly string[] | null {
+  const escapeIndex = argv.indexOf('--')
+  if (escapeIndex === -1) {
+    return null
+  }
+  return argv.slice(escapeIndex + 1)
 }
 
 function normalizeLeadingFlags(argv: string[], leadingFlags: string[]) {
   let result = [...argv]
+  const commandTokens = tokensBeforeEscape(result)
   const hasGlobalJson = leadingFlags.includes('--json')
   const globalWorkspaceIndex = leadingFlags.indexOf('--workspace')
+  const flagsToInsert: string[] = []
 
   if (
     hasGlobalJson &&
     result.length > 0 &&
     !isHelpOrVersion(result) &&
-    !result.includes('--json')
+    !commandTokens.includes('--json')
   ) {
-    result = [...result, '--json']
+    flagsToInsert.push('--json')
   }
 
   if (
     globalWorkspaceIndex >= 0 &&
     shouldForwardGlobalWorkspace(result) &&
-    !result.includes('--workspace')
+    !commandTokens.includes('--workspace')
   ) {
-    result = [...result, '--workspace', leadingFlags[globalWorkspaceIndex + 1]]
+    flagsToInsert.push('--workspace', leadingFlags[globalWorkspaceIndex + 1])
   }
 
-  return result
+  if (flagsToInsert.length === 0) {
+    return result
+  }
+
+  return insertBeforeEscape(result, flagsToInsert)
+}
+
+function tokensBeforeEscape(argv: string[]) {
+  const escapeIndex = argv.indexOf('--')
+  return escapeIndex === -1 ? argv : argv.slice(0, escapeIndex)
+}
+
+function insertBeforeEscape(argv: string[], flags: readonly string[]) {
+  const escapeIndex = argv.indexOf('--')
+  if (escapeIndex === -1) {
+    return [...argv, ...flags]
+  }
+  return [...argv.slice(0, escapeIndex), ...flags, ...argv.slice(escapeIndex)]
 }
 
 function isHelpOrVersion(argv: string[]) {
