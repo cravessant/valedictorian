@@ -8,6 +8,14 @@ function readReleaseWorkflow() {
   return fs.readFileSync(workflowPath, 'utf8')
 }
 
+function sectionBetween(source: string, startMarker: string, endMarker: string) {
+  const start = source.indexOf(startMarker)
+  const end = source.indexOf(endMarker)
+  expect(start).toBeGreaterThanOrEqual(0)
+  expect(end).toBeGreaterThan(start)
+  return source.slice(start, end)
+}
+
 describe('Mac release workflow', () => {
   it('builds and uploads a Mac DMG from the app-only repository', () => {
     expect(fs.existsSync(workflowPath)).toBe(true)
@@ -23,7 +31,8 @@ describe('Mac release workflow', () => {
     expect(workflow).toContain('name: Build Mac DMG')
     expect(workflow).toContain('needs: verify')
     expect(workflow).toContain('runs-on: macos-latest')
-    expect(workflow).toContain('retention-days: 7')
+    expect(workflow).toContain('retention-days: 1')
+    expect(workflow).not.toContain('retention-days: 7')
     expect(workflow).toContain('actions/checkout@v6')
     expect(workflow).toContain('pnpm/action-setup@v6')
     expect(workflow).toContain('actions/setup-node@v6')
@@ -75,5 +84,73 @@ describe('Mac release workflow', () => {
     expect(workflow).toContain('release create "$GITHUB_REF_NAME"')
     expect(workflow).toContain('release_args+=(--prerelease)')
     expect(workflow).toContain('Valedictorian $GITHUB_REF_NAME')
+  })
+
+  it('reuses an exact-SHA successful CI run on tags and fails safe into full verification', () => {
+    const workflow = readReleaseWorkflow()
+    const verifyJob = sectionBetween(workflow, 'verify:', 'build-mac:')
+
+    expect(verifyJob).toContain('actions: read')
+    expect(verifyJob).toContain('id: prior-ci')
+    expect(verifyJob).toContain('Reuse prior successful CI when safe')
+    expect(verifyJob).toContain('actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}')
+    expect(verifyJob).toContain(
+      'select(.head_sha == \\"${GITHUB_SHA}\\" and .conclusion == \\"success\\" and .event == \\"push\\" and .head_branch == \\"main\\")',
+    )
+    expect(verifyJob).toContain('workflow_dispatch always runs full verification')
+    expect(verifyJob).toContain('falling back to full verification')
+    expect(verifyJob).toContain('No eligible successful main push CI')
+    expect(verifyJob).toContain('run_full_verification=${run_full_verification}')
+    expect(verifyJob.indexOf('Verify release tag')).toBeLessThan(
+      verifyJob.indexOf('Reuse prior successful CI when safe'),
+    )
+    expect(verifyJob.indexOf('Verify release tag')).toBeLessThan(verifyJob.indexOf('Set up pnpm'))
+
+    for (const stepName of [
+      'Set up pnpm',
+      'Set up Node.js',
+      'Install dependencies',
+      'Run tests',
+      'Lint and typecheck',
+    ]) {
+      expect(verifyJob).toMatch(
+        new RegExp(
+          `- name: ${stepName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n\\s+if: steps\\.prior-ci\\.outputs\\.run_full_verification == 'true'`,
+        ),
+      )
+    }
+
+    expect(verifyJob).toContain('cache: pnpm')
+    expect(verifyJob).toContain('cache-dependency-path: valedictorian-app/pnpm-lock.yaml')
+  })
+
+  it('rejects pull_request, workflow_dispatch, and non-main CI runs for release reuse', () => {
+    const workflow = readReleaseWorkflow()
+    const verifyJob = sectionBetween(workflow, 'verify:', 'build-mac:')
+    const eligibilitySelect =
+      'select(.head_sha == \\"${GITHUB_SHA}\\" and .conclusion == \\"success\\" and .event == \\"push\\" and .head_branch == \\"main\\")'
+
+    expect(verifyJob).toContain(eligibilitySelect)
+    expect(verifyJob).toContain('.event == \\"push\\"')
+    expect(verifyJob).toContain('.head_branch == \\"main\\"')
+    expect(verifyJob).not.toContain('.event == \\"pull_request\\"')
+    expect(verifyJob).toContain('workflow_dispatch always runs full verification')
+    expect(verifyJob).toMatch(
+      /if \[ "\$\{GITHUB_EVENT_NAME\}" = "workflow_dispatch" \]; then\n\s+echo "workflow_dispatch always runs full verification"/,
+    )
+    expect(eligibilitySelect).toContain('.event == \\"push\\"')
+    expect(eligibilitySelect).toContain('.head_branch == \\"main\\"')
+    expect(eligibilitySelect).not.toMatch(/pull_request/)
+  })
+
+  it('disables setup-node pnpm caching on macOS while keeping Linux verify caching', () => {
+    const workflow = readReleaseWorkflow()
+    const verifyJob = sectionBetween(workflow, 'verify:', 'build-mac:')
+    const buildMacJob = workflow.slice(workflow.indexOf('build-mac:'))
+
+    expect(verifyJob).toContain('cache: pnpm')
+    expect(buildMacJob).toContain('actions/setup-node@v6')
+    expect(buildMacJob).not.toContain('cache: pnpm')
+    expect(buildMacJob).not.toContain('cache-dependency-path:')
   })
 })
