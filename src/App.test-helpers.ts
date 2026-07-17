@@ -516,7 +516,7 @@ export function createConnectorsApiWithJobrightDescriptor() {
 }
 
 export async function selectSoftwareEngineeringTaxonomy() {
-  const taxonomy = await screen.findByRole('combobox', { name: 'Include job taxonomy list' })
+  const taxonomy = await screen.findByRole('combobox', { name: 'Include Job taxonomy' })
   fireEvent.change(taxonomy, { target: { value: 'software' } })
   fireEvent.click(await screen.findByRole('option', { name: 'Software Engineering' }))
 }

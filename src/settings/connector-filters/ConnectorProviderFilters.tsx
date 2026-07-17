@@ -2,19 +2,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ConnectorOption,
   ConnectorOptionQueryResult,
-  ConnectorRendererSchema,
+  ConnectorVersionedRendererSchema,
   InstalledConnectorDescriptor,
   ValedictorianWorkspaceClient,
 } from 'sparxie'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { AlertTriangle, X } from 'lucide-react'
 import {
   validateConnectorConfigPersistenceValue,
   validateConnectorSchemaValue,
 } from '../../modules/connectors/connector.renderer-schema-validation'
+import {
+  dynamicActionLabel,
+  dynamicBindingPointers,
+  escapePointer,
+  evaluateVersionedPresentationCompatibility,
+  presentationFieldForPointer,
+} from './connector-presentation'
+import { StaticFilterControl } from './ConnectorStaticControls'
 
 type OptionsApi = ValedictorianWorkspaceClient['connectors']['options']
 type DynamicOptions = NonNullable<InstalledConnectorDescriptor['dynamicOptions']>
@@ -47,10 +53,15 @@ export function ConnectorProviderFilters({
   compatibilityAlertRole?: 'alert' | 'status'
   onCompatibilityChange: (compatible: boolean) => void
 }) {
-  const filterSchema = descriptor.filterSchema?.schema
+  const filterDeclaration = descriptor.filterSchema
+  const filterSchema = filterDeclaration?.schema
   const filterObjectSchema = filterSchema && 'type' in filterSchema && filterSchema.type === 'object'
     ? filterSchema
     : null
+  const presentationCompatibility = evaluateVersionedPresentationCompatibility(
+    filterDeclaration,
+    { requiredDynamicPointers: dynamicBindingPointers(descriptor.dynamicOptions) },
+  )
   const dynamicOptions = descriptor.dynamicOptions
   const bindingsByPointer = useMemo(() => new Map(
     (dynamicOptions?.bindings ?? []).map((binding) => [binding.filterPointer, binding]),
@@ -70,7 +81,7 @@ export function ConnectorProviderFilters({
       return next
     })
   }, [])
-  const issues = filterObjectSchema
+  const issues = filterObjectSchema && presentationCompatibility.compatible
     ? validateConnectorSchemaValue(filterObjectSchema, filters, { allowMissingRootRequired })
     : []
   const dynamicCompatibilityEntries = Object.entries(dynamicCompatibilityByPointer)
@@ -81,7 +92,8 @@ export function ConnectorProviderFilters({
 
   useEffect(() => {
     onCompatibilityChange(
-      issues.length === 0
+      presentationCompatibility.compatible
+      && issues.length === 0
       && dynamicCompatibilityEntries.length === 0
       && missingSourceBindings.length === 0,
     )
@@ -90,9 +102,10 @@ export function ConnectorProviderFilters({
     issues.length,
     missingSourceBindings.length,
     onCompatibilityChange,
+    presentationCompatibility.compatible,
   ])
 
-  if (!filterObjectSchema) return null
+  if (!filterObjectSchema || !filterDeclaration) return null
 
   return (
     <section className="grid gap-4 border-y border-border/70 py-4">
@@ -104,7 +117,15 @@ export function ConnectorProviderFilters({
         </p>
       </div>
 
-      {issues.length > 0 || visibleDynamicCompatibilityEntries.length > 0
+      {!presentationCompatibility.compatible ? (
+        <Alert role={compatibilityAlertRole} variant="destructive">
+          <AlertTriangle aria-hidden="true" />
+          <AlertTitle>Saved filters are not compatible</AlertTitle>
+          <AlertDescription>
+            <p>{presentationCompatibility.message}</p>
+          </AlertDescription>
+        </Alert>
+      ) : issues.length > 0 || visibleDynamicCompatibilityEntries.length > 0
         || missingSourceBindings.length > 0 ? (
         <Alert role={compatibilityAlertRole} variant="destructive">
           <AlertTriangle aria-hidden="true" />
@@ -112,14 +133,16 @@ export function ConnectorProviderFilters({
           <AlertDescription>
             {issues.map((issue) => {
               const value = valueAtPointer(filters, issue.path)
+              const field = presentationFieldForPointer(filterDeclaration, issue.path)
               return (
                 <p key={`${issue.path}:${issue.message}`}>
-                  {humanize(pointerLeaf(issue.path))}: {displayValue(value)} {issue.message}.
+                  {field?.label ?? pointerLeaf(issue.path)}: {displayValue(value)} {issue.message}.
                 </p>
               )
             })}
             {visibleDynamicCompatibilityEntries.flatMap(([pointer, state]) => {
-              const label = humanize(pointerLeaf(pointer))
+              const label = presentationFieldForPointer(filterDeclaration, pointer)?.label
+                ?? pointerLeaf(pointer)
               if (state.status === 'unknown') {
                 return state.values.map((value) => (
                   <p key={`${pointer}:${valueKey(value)}`}>
@@ -150,7 +173,8 @@ export function ConnectorProviderFilters({
             })}
             {missingSourceBindings.map((binding) => (
               <p key={`${binding.filterPointer}:${binding.sourceId}`}>
-                {humanize(pointerLeaf(binding.filterPointer))}: Dynamic binding source{' '}
+                {presentationFieldForPointer(filterDeclaration, binding.filterPointer)?.label
+                  ?? pointerLeaf(binding.filterPointer)}: Dynamic binding source{' '}
                 {binding.sourceId} is not declared by the connector descriptor.
               </p>
             ))}
@@ -158,41 +182,52 @@ export function ConnectorProviderFilters({
         </Alert>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {Object.entries(filterObjectSchema.properties).map(([property, schema]) => {
-          const pointer = `/${escapePointer(property)}`
-          const binding = bindingsByPointer.get(pointer)
-          if (binding && dynamicOptions) {
-            const source = dynamicOptions.sources.find((candidate) => candidate.id === binding.sourceId)
-            if (!source) return null
+      {presentationCompatibility.compatible ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {Object.entries(filterObjectSchema.properties).map(([property, schema]) => {
+            const pointer = `/${escapePointer(property)}`
+            const fieldPresentation = presentationFieldForPointer(filterDeclaration, pointer)
+            if (!fieldPresentation) return null
+            const binding = bindingsByPointer.get(pointer)
+            const descriptionId = `${instanceId}-filter-${encodeURIComponent(pointer)}-description`
+            if (binding && dynamicOptions) {
+              const source = dynamicOptions.sources.find((candidate) => candidate.id === binding.sourceId)
+              if (!source) return null
+              return (
+                <DynamicFilterControl
+                  key={property}
+                  api={api}
+                  binding={binding}
+                  description={fieldPresentation.description}
+                  descriptionId={descriptionId}
+                  descriptor={descriptor}
+                  disabled={disabled}
+                  filters={filters}
+                  instanceId={instanceId}
+                  label={dynamicActionLabel(binding.intent, fieldPresentation.label)}
+                  source={source}
+                  value={filters[property]}
+                  onChange={(value) => onChange(withProperty(filters, property, value))}
+                  onCompatibilityChange={reportDynamicCompatibility}
+                />
+              )
+            }
             return (
-              <DynamicFilterControl
+              <StaticFilterControl
                 key={property}
-                api={api}
-                binding={binding}
-                descriptor={descriptor}
+                description={fieldPresentation.description}
+                descriptionId={descriptionId}
                 disabled={disabled}
-                filters={filters}
-                instanceId={instanceId}
-                source={source}
+                label={fieldPresentation.label}
+                presentation={fieldPresentation}
+                schema={schema}
                 value={filters[property]}
                 onChange={(value) => onChange(withProperty(filters, property, value))}
-                onCompatibilityChange={reportDynamicCompatibility}
               />
             )
-          }
-          return (
-            <StaticFilterControl
-              key={property}
-              disabled={disabled}
-              label={humanize(property)}
-              schema={schema}
-              value={filters[property]}
-              onChange={(value) => onChange(withProperty(filters, property, value))}
-            />
-          )
-        })}
-      </div>
+          })}
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -200,18 +235,24 @@ export function ConnectorProviderFilters({
 export function ConnectorSynchronizationConfiguration({
   allowMissingRootRequired,
   config,
+  declaration,
   disabled,
+  instanceId,
   onChange,
-  schema,
 }: {
   allowMissingRootRequired: boolean
   config: Record<string, unknown>
+  declaration: ConnectorVersionedRendererSchema
   disabled: boolean
+  instanceId: string
   onChange: (config: Record<string, unknown>) => void
-  schema: ConnectorRendererSchema
 }) {
+  const schema = declaration.schema
   if (!('type' in schema) || schema.type !== 'object') return null
-  const issues = validateConnectorConfigPersistenceValue(schema, config, { allowMissingRootRequired })
+  const presentationCompatibility = evaluateVersionedPresentationCompatibility(declaration)
+  const issues = presentationCompatibility.compatible
+    ? validateConnectorConfigPersistenceValue(schema, config, { allowMissingRootRequired })
+    : []
   return (
     <section className="grid gap-4 border-y border-border/70 py-4">
       <div className="grid gap-1">
@@ -220,203 +261,68 @@ export function ConnectorSynchronizationConfiguration({
           Tune how this connector synchronizes independently of provider sourcing filters.
         </p>
       </div>
-      {issues.length > 0 ? (
+      {!presentationCompatibility.compatible ? (
         <Alert role="alert" variant="destructive">
           <AlertTriangle aria-hidden="true" />
           <AlertTitle>Saved configuration is not compatible</AlertTitle>
           <AlertDescription>
-            {issues.map((issue) => (
-              <p key={`${issue.path}:${issue.message}`}>
-                {humanize(pointerLeaf(issue.path))}: {displayValue(valueAtPointer(config, issue.path))}{' '}
-                {issue.message}.
-              </p>
-            ))}
+            <p>{presentationCompatibility.message}</p>
+          </AlertDescription>
+        </Alert>
+      ) : issues.length > 0 ? (
+        <Alert role="alert" variant="destructive">
+          <AlertTriangle aria-hidden="true" />
+          <AlertTitle>Saved configuration is not compatible</AlertTitle>
+          <AlertDescription>
+            {issues.map((issue) => {
+              const field = presentationFieldForPointer(declaration, issue.path)
+              return (
+                <p key={`${issue.path}:${issue.message}`}>
+                  {field?.label ?? pointerLeaf(issue.path)}:{' '}
+                  {displayValue(valueAtPointer(config, issue.path))}{' '}
+                  {issue.message}.
+                </p>
+              )
+            })}
           </AlertDescription>
         </Alert>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-2">
-        {Object.entries(schema.properties).map(([property, propertySchema]) => (
-          <StaticFilterControl
-            key={property}
-            disabled={disabled}
-            label={humanize(property)}
-            schema={propertySchema}
-            value={config[property]}
-            onChange={(value) => onChange(withProperty(config, property, value))}
-          />
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function StaticFilterControl({
-  disabled,
-  label,
-  onChange,
-  schema,
-  value,
-}: {
-  disabled: boolean
-  label: string
-  onChange: (value: unknown) => void
-  schema: ConnectorRendererSchema
-  value: unknown
-}) {
-  if ('oneOf' in schema) return null
-  if (schema.type === 'boolean') {
-    return (
-      <label className="flex items-center justify-between gap-3 rounded-md border border-border/70 p-3 text-sm">
-        <span>{label}</span>
-        <Switch
-          aria-label={label}
-          checked={typeof value === 'boolean' ? value : (schema.default ?? false)}
-          disabled={disabled}
-          onCheckedChange={onChange}
-        />
-      </label>
-    )
-  }
-  if (schema.type === 'string' && schema.enum) {
-    return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
-        <select
-          aria-label={label}
-          className="h-9 rounded-md border border-input bg-input/30 px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
-          disabled={disabled}
-          value={typeof value === 'string' ? value : (schema.default ?? '')}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {!schema.enum.includes(value as string) ? <option role="none" value="">Select…</option> : null}
-          {schema.enum.map((option) => <option key={option} role="none" value={option}>{humanize(option)}</option>)}
-        </select>
-      </label>
-    )
-  }
-  if (schema.type === 'string') {
-    return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
-        <Input
-          aria-label={label}
-          disabled={disabled}
-          maxLength={schema.maxLength}
-          minLength={schema.minLength}
-          type={schema.format === 'date' ? 'date' : 'text'}
-          value={typeof value === 'string' ? value : (schema.default ?? '')}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </label>
-    )
-  }
-  if ((schema.type === 'number' || schema.type === 'integer') && schema.enum) {
-    return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
-        <select
-          aria-label={label}
-          className="h-9 rounded-md border border-input bg-input/30 px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
-          disabled={disabled}
-          value={typeof value === 'number' ? String(value) : String(schema.default ?? '')}
-          onChange={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}
-        >
-          {!schema.enum.includes(value as number) ? <option role="none" value="">Select…</option> : null}
-          {schema.enum.map((option) => <option key={option} role="none" value={option}>{option}</option>)}
-        </select>
-      </label>
-    )
-  }
-  if (schema.type === 'number' || schema.type === 'integer') {
-    return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
-        <Input
-          aria-label={label}
-          disabled={disabled}
-          max={schema.maximum}
-          min={schema.minimum}
-          step={schema.multipleOf ?? (schema.type === 'integer' ? 1 : 'any')}
-          type="number"
-          value={typeof value === 'number' ? value : (schema.default ?? '')}
-          onChange={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}
-        />
-      </label>
-    )
-  }
-  if (schema.type === 'array' && !('oneOf' in schema.items)
-    && (schema.items.type === 'number' || schema.items.type === 'integer')
-    && schema.minItems === 2 && schema.maxItems === 2 && !schema.items.enum) {
-    const values = Array.isArray(value) ? value : []
-    const rangeLabel = label.replace(/ range$/i, '')
-    const itemSchema = schema.items
-    return (
-      <fieldset className="grid grid-cols-2 gap-2 rounded-md border border-border/70 p-3">
-        <legend className="px-1 text-sm font-medium text-foreground">{rangeLabel}</legend>
-        {[0, 1].map((index) => (
-          <label className="grid gap-1 text-xs text-muted-foreground" key={index}>
-            <span>{index === 0 ? 'Minimum' : 'Maximum'}</span>
-            <Input
-              aria-label={`${index === 0 ? 'Minimum' : 'Maximum'} ${rangeLabel.toLowerCase()}`}
-              disabled={disabled}
-              max={itemSchema.maximum}
-              min={itemSchema.minimum}
-              step={itemSchema.multipleOf ?? (itemSchema.type === 'integer' ? 1 : 'any')}
-              type="number"
-              value={typeof values[index] === 'number' ? values[index] : ''}
-              onChange={(event) => {
-                const next = [...values]
-                next[index] = event.target.value === '' ? undefined : Number(event.target.value)
-                onChange(next)
-              }}
-            />
-          </label>
-        ))}
-      </fieldset>
-    )
-  }
-  if (schema.type === 'array'
-    && !('oneOf' in schema.items)
-    && (schema.items.type === 'string'
-      || schema.items.type === 'number'
-      || schema.items.type === 'integer')
-    && schema.items.enum) {
-    const selected = Array.isArray(value) ? value : []
-    const enumValues = schema.items.enum
-    return (
-      <fieldset className="grid gap-2 rounded-md border border-border/70 p-3">
-        <legend className="px-1 text-sm font-medium text-foreground">{label}</legend>
-        <div className="flex flex-wrap gap-x-4 gap-y-2">
-          {enumValues.map((option) => {
-            const checked = selected.includes(option)
+      {presentationCompatibility.compatible ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {Object.entries(schema.properties).map(([property, propertySchema]) => {
+            const pointer = `/${escapePointer(property)}`
+            const fieldPresentation = presentationFieldForPointer(declaration, pointer)
+            if (!fieldPresentation) return null
             return (
-              <label className="flex items-center gap-2 text-sm" key={String(option)}>
-                <Checkbox
-                  aria-label={humanize(String(option))}
-                  checked={checked}
-                  disabled={disabled}
-                  onCheckedChange={(nextChecked) => onChange(nextChecked
-                    ? [...selected, option]
-                    : selected.filter((candidate) => candidate !== option))}
-                />
-                <span>{humanize(String(option))}</span>
-              </label>
+              <StaticFilterControl
+                key={property}
+                description={fieldPresentation.description}
+                descriptionId={`${instanceId}-config-${encodeURIComponent(pointer)}-description`}
+                disabled={disabled}
+                label={fieldPresentation.label}
+                presentation={fieldPresentation}
+                schema={propertySchema}
+                value={config[property]}
+                onChange={(value) => onChange(withProperty(config, property, value))}
+              />
             )
           })}
         </div>
-      </fieldset>
-    )
-  }
-  return null
+      ) : null}
+    </section>
+  )
 }
 
 function DynamicFilterControl({
   api,
   binding,
+  description,
+  descriptionId,
   descriptor,
   disabled,
   filters,
   instanceId,
+  label,
   onChange,
   onCompatibilityChange,
   source,
@@ -424,10 +330,13 @@ function DynamicFilterControl({
 }: {
   api: OptionsApi
   binding: DynamicBinding
+  description: string
+  descriptionId: string
   descriptor: InstalledConnectorDescriptor
   disabled: boolean
   filters: Record<string, unknown>
   instanceId: string
+  label: string
   onChange: (value: unknown) => void
   onCompatibilityChange: (
     pointer: string,
@@ -454,9 +363,6 @@ function DynamicFilterControl({
   const activeOption = useRef<ConnectorOption | null>(null)
   const searchController = useRef<AbortController | null>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fieldLabel = humanize(pointerLeaf(binding.filterPointer)).toLowerCase()
-    .replace(binding.intent === 'exclude' ? /^(excluded?|exclude)\s+/ : /^(included?|include)\s+/, '')
-  const label = `${binding.intent === 'include' ? 'Include' : 'Exclude'} ${fieldLabel}`
   const dependencies = useMemo(() => readDependencies(source, filters), [filters, source])
   const dependenciesReady = dependencies !== null
   const identity = useMemo(
@@ -670,6 +576,7 @@ function DynamicFilterControl({
         <Input
           aria-autocomplete="list"
           aria-controls={listboxId}
+          aria-describedby={descriptionId}
           aria-activedescendant={activeIndex >= 0
             ? `${listboxId}-option-${activeIndex}`
             : undefined}
@@ -705,6 +612,7 @@ function DynamicFilterControl({
             }
           }}
         />
+        <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
       </label>
       {!dependenciesReady ? <p className="text-xs text-muted-foreground">Complete the dependent filters first.</p> : null}
       {queryState !== 'idle' ? (
@@ -859,20 +767,6 @@ function valueAtPointer(root: unknown, pointer: string): unknown {
 
 function pointerLeaf(pointer: string) {
   return pointer.split('/').at(-1)?.replace(/~1/g, '/').replace(/~0/g, '~') ?? pointer
-}
-
-function escapePointer(value: string) {
-  return value.replace(/~/g, '~0').replace(/\//g, '~1')
-}
-
-function humanize(value: string) {
-  const words = value
-    .replace(/[_-]+/g, ' ')
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .trim()
-  if (!words) return value
-  const normalized = words === words.toUpperCase() ? words : words.toLowerCase()
-  return `${normalized[0].toUpperCase()}${normalized.slice(1)}`
 }
 
 function valueKey(value: unknown) {

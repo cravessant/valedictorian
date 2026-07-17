@@ -55,6 +55,10 @@ import {
   validateConnectorConfigPersistenceValue,
   validateConnectorSchemaValue,
 } from '../modules/connectors/connector.renderer-schema-validation'
+import {
+  dynamicBindingPointers,
+  evaluateVersionedPresentationCompatibility,
+} from './connector-filters/connector-presentation'
 
 export function ConnectorSettingsInstanceCard({
   instance,
@@ -161,12 +165,21 @@ export function ConnectorSettingsInstanceCard({
     : []
   const filtersValid = filterIssues.length === 0
   const configValid = configIssues.length === 0
+  const configPresentationCompatible = evaluateVersionedPresentationCompatibility(
+    descriptor?.configSchema,
+  ).compatible
+  const filterPresentationCompatible = evaluateVersionedPresentationCompatibility(
+    descriptor?.filterSchema,
+    { requiredDynamicPointers: dynamicBindingPointers(descriptor?.dynamicOptions) },
+  ).compatible
   const descriptorRequired = connectorsApi.descriptors !== undefined
   const descriptorCompatible = !descriptorRequired || descriptor !== undefined
   const safeDisable = descriptorCompatible && isUnchangedConnectorDisable(instance, draft)
   const settingsValid = descriptorCompatible
     && filtersValid
     && configValid
+    && configPresentationCompatible
+    && filterPresentationCompatible
     && (descriptor?.dynamicOptions ? providerFiltersCompatible : true)
   const settingsSaveAllowed = settingsValid || safeDisable
   const runBlocked = !instance.enabled
@@ -312,8 +325,9 @@ export function ConnectorSettingsInstanceCard({
                       <ConnectorSynchronizationConfiguration
                         allowMissingRootRequired={!draft.enabled}
                         config={draft.config}
+                        declaration={descriptor.configSchema}
                         disabled={isSavingSettings}
-                        schema={descriptor.configSchema.schema}
+                        instanceId={instance.id}
                         onChange={(config) => onUpdateDraft(instance.id, { config })}
                       />
                     ) : null}

@@ -163,59 +163,157 @@ export function deferred<T>() {
   return { promise, resolve }
 }
 
+const fixtureConfigSchema = {
+  version: 'fixture-provider-config@1',
+  schema: {
+    type: 'object' as const,
+    additionalProperties: false,
+    properties: {
+      discoveryLimit: { type: 'integer' as const, enum: [10, 20, 50] },
+      maxRunElapsedMs: {
+        type: 'integer' as const,
+        minimum: 1,
+        maximum: 1_800_000,
+        default: 120_000,
+      },
+    },
+  },
+  presentation: {
+    fields: {
+      '/discoveryLimit': {
+        label: 'Discovery limit',
+        description: 'Maximum number of discoveries retained for one run.',
+        options: [
+          { value: 10, label: '10' },
+          { value: 20, label: '20' },
+          { value: 50, label: '50' },
+        ],
+      },
+      '/maxRunElapsedMs': {
+        label: 'Maximum run duration',
+        description: 'Maximum elapsed time allowed for one run.',
+        display: {
+          kind: 'duration' as const,
+          storageUnit: 'milliseconds' as const,
+          displayUnit: 'minutes' as const,
+        },
+      },
+    },
+  },
+}
+
+const fixtureFilterSchema = {
+  version: 'fixture-provider-filters@1',
+  schema: {
+    type: 'object' as const,
+    additionalProperties: false,
+    properties: {
+      employmentKind: { type: 'string' as const, enum: ['internship', 'full_time'] },
+      remoteOnly: { type: 'boolean' as const, default: false },
+      minimumSalary: {
+        type: 'integer' as const, minimum: 0, maximum: 300_000, multipleOf: 10_000,
+      },
+      compensationRange: {
+        type: 'array' as const, minItems: 2, maxItems: 2,
+        items: {
+          type: 'integer' as const, minimum: 0, maximum: 300_000, multipleOf: 10_000,
+        },
+      },
+      keyword: { type: 'string' as const, minLength: 2, maxLength: 40 },
+      daysAgo: { type: 'integer' as const, enum: [1, 3, 7] },
+      postedAfter: { type: 'string' as const, format: 'date' as const, maxLength: 10 },
+      workModels: {
+        type: 'array' as const, maxItems: 3, uniqueItems: true,
+        items: { type: 'string' as const, enum: ['remote', 'hybrid', 'onsite'] },
+      },
+      country: { type: 'string' as const, enum: ['US', 'CA'] },
+      skills: {
+        type: 'array' as const, maxItems: 10, uniqueItems: true,
+        items: { type: 'string' as const, minLength: 1, maxLength: 100 },
+      },
+      excludedSkills: {
+        type: 'array' as const, maxItems: 10, uniqueItems: true,
+        items: { type: 'string' as const, minLength: 1, maxLength: 100 },
+      },
+      unsupportedProviderObject: {
+        type: 'object' as const, additionalProperties: false, properties: {},
+      },
+    },
+  },
+  presentation: {
+    fields: {
+      '/employmentKind': {
+        label: 'Employment kind',
+        description: 'Employment classification used for sourcing.',
+        options: [
+          { value: 'internship', label: 'Internship' },
+          { value: 'full_time', label: 'Full time' },
+        ],
+      },
+      '/remoteOnly': {
+        label: 'Remote only',
+        description: 'Limit results to remote roles.',
+      },
+      '/minimumSalary': {
+        label: 'Minimum salary',
+        description: 'Lowest salary to include.',
+      },
+      '/compensationRange': {
+        label: 'Compensation range',
+        description: 'Inclusive minimum and maximum compensation.',
+      },
+      '/keyword': {
+        label: 'Keyword',
+        description: 'Free-text keyword applied to sourcing.',
+      },
+      '/daysAgo': {
+        label: 'Days ago',
+        description: 'Only include jobs posted within this many days.',
+        options: [
+          { value: 1, label: '1' },
+          { value: 3, label: '3' },
+          { value: 7, label: '7' },
+        ],
+      },
+      '/postedAfter': {
+        label: 'Posted after',
+        description: 'Only include jobs posted on or after this date.',
+      },
+      '/workModels': {
+        label: 'Work models',
+        description: 'Work arrangements to include.',
+        options: [
+          { value: 'remote', label: 'Remote' },
+          { value: 'hybrid', label: 'Hybrid' },
+          { value: 'onsite', label: 'Onsite' },
+        ],
+      },
+      '/country': {
+        label: 'Country',
+        description: 'Country used for location search.',
+        options: [
+          { value: 'US', label: 'United States' },
+          { value: 'CA', label: 'Canada' },
+        ],
+      },
+      '/skills': {
+        label: 'Skills',
+        description: 'Skills to include.',
+      },
+      '/excludedSkills': {
+        label: 'Excluded skills',
+        description: 'Skills to exclude.',
+      },
+    },
+  },
+}
+
 export const fixtureDescriptor = {
   connectorId: 'fixture.provider',
   connectorVersion: '1.2.3',
   displayName: 'Fixture provider',
-  configSchema: {
-    version: 'fixture-provider-config@1',
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        discoveryLimit: { type: 'integer', enum: [10, 20, 50] },
-      },
-    },
-  },
-  filterSchema: {
-    version: 'fixture-provider-filters@1',
-    schema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        employmentKind: { type: 'string', enum: ['internship', 'full_time'] },
-        remoteOnly: { type: 'boolean', default: false },
-        minimumSalary: {
-          type: 'integer', minimum: 0, maximum: 300_000, multipleOf: 10_000,
-        },
-        compensationRange: {
-          type: 'array', minItems: 2, maxItems: 2,
-          items: {
-            type: 'integer', minimum: 0, maximum: 300_000, multipleOf: 10_000,
-          },
-        },
-        keyword: { type: 'string', minLength: 2, maxLength: 40 },
-        daysAgo: { type: 'integer', enum: [1, 3, 7] },
-        postedAfter: { type: 'string', format: 'date', maxLength: 10 },
-        workModels: {
-          type: 'array', maxItems: 3, uniqueItems: true,
-          items: { type: 'string', enum: ['remote', 'hybrid', 'onsite'] },
-        },
-        country: { type: 'string', enum: ['US', 'CA'] },
-        skills: {
-          type: 'array', maxItems: 10, uniqueItems: true,
-          items: { type: 'string', minLength: 1, maxLength: 100 },
-        },
-        excludedSkills: {
-          type: 'array', maxItems: 10, uniqueItems: true,
-          items: { type: 'string', minLength: 1, maxLength: 100 },
-        },
-        unsupportedProviderObject: {
-          type: 'object', additionalProperties: false, properties: {},
-        },
-      },
-    },
-  },
+  configSchema: fixtureConfigSchema,
+  filterSchema: fixtureFilterSchema,
   dynamicOptions: {
     protocolVersion: 'connector-dynamic-options@1',
     version: 'fixture-provider-options@1',
@@ -241,4 +339,19 @@ export const fixtureDescriptor = {
       filterPointer: '/excludedSkills', sourceId: 'fixture.skills', cardinality: 'many', intent: 'exclude',
     }],
   },
-} satisfies InstalledConnectorDescriptor
+} as InstalledConnectorDescriptor
+
+export const missingPresentationDescriptor = {
+  connectorId: fixtureDescriptor.connectorId,
+  connectorVersion: fixtureDescriptor.connectorVersion,
+  displayName: fixtureDescriptor.displayName,
+  configSchema: {
+    version: fixtureConfigSchema.version,
+    schema: fixtureConfigSchema.schema,
+  },
+  filterSchema: {
+    version: fixtureFilterSchema.version,
+    schema: fixtureFilterSchema.schema,
+  },
+  dynamicOptions: fixtureDescriptor.dynamicOptions,
+} as InstalledConnectorDescriptor

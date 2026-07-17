@@ -57,8 +57,8 @@ importers:
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@sparxie/valedictorian-connectors-jobright':
-        specifier: 0.14.1
-        version: 0.14.1
+        specifier: 0.15.0
+        version: 0.15.0
       '@tailwindcss/vite':
         specifier: ^4.3.0
         version: 4.3.0(vite@5.4.21(@types/node@25.9.2)(lightningcss@1.32.0))
@@ -123,8 +123,8 @@ importers:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       sparxie:
-        specifier: 0.23.0
-        version: 0.23.0
+        specifier: 0.24.0
+        version: 0.24.0
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -142,11 +142,11 @@ importers:
         version: 4.4.3
     devDependencies:
       '@sparxie/valedictorian-connectors-core':
-        specifier: 0.14.1
-        version: 0.14.1
+        specifier: 0.15.0
+        version: 0.15.0
       '@sparxie/valedictorian-connectors-test-harness':
-        specifier: 0.14.1
-        version: 0.14.1
+        specifier: 0.15.0
+        version: 0.15.0
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
@@ -1837,14 +1837,14 @@ packages:
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
 
-  '@sparxie/valedictorian-connectors-core@0.14.1':
-    resolution: {integrity: sha512-O0x2AN4TOQHyrYwmKxQS/DD6BipkgwL4WoWHUY4nEO9+g4dSkw5mzaOcM5jYhwWZ5k2/T3BC1I7TtXeEhMPyxQ==}
+  '@sparxie/valedictorian-connectors-core@0.15.0':
+    resolution: {integrity: sha512-R49bNguuzgyRq6bSnVT+dVp1qCG10Lm3pmoSHHC6AHv75ogYaBe94YWvFVpPSsMcRjtBD5ktg0LQQ4AF/c3DjA==}
 
-  '@sparxie/valedictorian-connectors-jobright@0.14.1':
-    resolution: {integrity: sha512-UrXIl7R908qP9/p5TJroNcht8QNrY3WrHXln31o95aiQSW6zjzrJsHfvO9jL6uC+Za1n1INHcuLXvBVigYb+Bw==}
+  '@sparxie/valedictorian-connectors-jobright@0.15.0':
+    resolution: {integrity: sha512-YZPZ4opcXsELKNLojw2Zvsgesvb0Gj2XrAx/Cn4qLt7F8/Fv7XZ2id8aVlwE5/pb7SKLBL8LCsHiA0Z3RYyp8w==}
 
-  '@sparxie/valedictorian-connectors-test-harness@0.14.1':
-    resolution: {integrity: sha512-QGYui5+XBpEz63oJbjXSXJqOZBE0ER0hzWB+jvFklGT2fCMoRsH/HNO5sYOqu88LO8/r6mtdsTeQND3cCcWAUA==}
+  '@sparxie/valedictorian-connectors-test-harness@0.15.0':
+    resolution: {integrity: sha512-8Ttz8nyQX92LIDNSHmt3dAJE6/vaqc0Pf9FXp+KTnYHz/aPF3/nQm+taqk1Kgx/wzoX5kZCRwXVyCMY2HRLclQ==}
 
   '@szmarczak/http-timer@4.0.6':
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
@@ -3731,12 +3731,8 @@ packages:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
 
-  sparxie@0.15.0:
-    resolution: {integrity: sha512-ErZIBwpAW/5wv7XvyQPkE1K6Fo/Ef3Axb8CtNeiPDIXZLgMlBmhIpLwg4d2KBOy+PE4Bvh8yTTey8L3K776/nQ==}
-    engines: {node: '>=22.12.0'}
-
-  sparxie@0.23.0:
-    resolution: {integrity: sha512-cvPHiBrnEmMEyWX8bo4qF15jP1vPuvh4X33F9oZy9AC57wsc9TuQazqnyB+DLtSGOWK5unZvxhjTjvJc4iClug==}
+  sparxie@0.24.0:
+    resolution: {integrity: sha512-OX3yNTvTGa38ufa7DxxK3RJBRLl3xRb8tWWM4GzdrjfDIbqjtuG7hak5sl6t1Yc9ZObE/Aek+nBXN2RYdroGcA==}
     engines: {node: '>=22.12.0'}
 
   sprintf-js@1.0.3:
@@ -5374,18 +5370,18 @@ snapshots:
 
   '@sindresorhus/is@4.6.0': {}
 
-  '@sparxie/valedictorian-connectors-core@0.14.1':
+  '@sparxie/valedictorian-connectors-core@0.15.0':
     dependencies:
-      sparxie: 0.15.0
+      sparxie: 0.24.0
 
-  '@sparxie/valedictorian-connectors-jobright@0.14.1':
+  '@sparxie/valedictorian-connectors-jobright@0.15.0':
     dependencies:
-      '@sparxie/valedictorian-connectors-core': 0.14.1
+      '@sparxie/valedictorian-connectors-core': 0.15.0
 
-  '@sparxie/valedictorian-connectors-test-harness@0.14.1':
+  '@sparxie/valedictorian-connectors-test-harness@0.15.0':
     dependencies:
-      '@sparxie/valedictorian-connectors-core': 0.14.1
-      sparxie: 0.15.0
+      '@sparxie/valedictorian-connectors-core': 0.15.0
+      sparxie: 0.24.0
 
   '@szmarczak/http-timer@4.0.6':
     dependencies:
@@ -7364,11 +7360,7 @@ snapshots:
 
   source-map@0.6.1: {}
 
-  sparxie@0.15.0:
-    dependencies:
-      zod: 4.4.3
-
-  sparxie@0.23.0:
+  sparxie@0.24.0:
     dependencies:
       zod: 4.4.3
 

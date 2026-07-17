@@ -12,6 +12,7 @@ import {
   deferred,
   fixtureDescriptor,
   INSTANCE_ID,
+  missingPresentationDescriptor,
   optionIdentityForFixture,
   type PublicOptionQueryInput,
   renderPanel,
@@ -52,7 +53,7 @@ describe('declarative connector provider filters', () => {
     expect(within(card).getByLabelText('Posted after')).toHaveValue('2026-07-01')
     expect(within(card).getByRole('checkbox', { name: 'Remote' })).toBeChecked()
     expect(within(card).getByRole('checkbox', { name: 'Hybrid' })).not.toBeChecked()
-    expect(within(card).getByRole('combobox', { name: 'Include skills' })).toBeInTheDocument()
+    expect(within(card).getByRole('combobox', { name: 'Include Skills' })).toBeInTheDocument()
     expect(within(card).getByRole('combobox', { name: 'Exclude skills' })).toBeInTheDocument()
     expect(await within(card).findByText('TypeScript')).toBeInTheDocument()
     expect(await within(card).findByText('PHP')).toBeInTheDocument()
@@ -146,7 +147,7 @@ describe('declarative connector provider filters', () => {
     })
     renderPanel(connectorsApi)
 
-    const skills = await screen.findByRole('combobox', { name: 'Include skills' })
+    const skills = await screen.findByRole('combobox', { name: 'Include Skills' })
     fireEvent.change(skills, { target: { value: 'rea' } })
     expect(searchSignals).toHaveLength(0)
     await waitFor(() => expect(searchSignals).toHaveLength(1))
@@ -178,7 +179,7 @@ describe('declarative connector provider filters', () => {
     renderPanel(connectorsApi)
 
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
-    const skills = within(card).getByRole('combobox', { name: 'Include skills' })
+    const skills = within(card).getByRole('combobox', { name: 'Include Skills' })
     fireEvent.change(skills, { target: { value: 'rea' } })
     await waitFor(() => expect(searchSignals).toHaveLength(1))
     fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
@@ -208,7 +209,7 @@ describe('declarative connector provider filters', () => {
         onCompatibilityChange={onCompatibilityChange}
       />,
     )
-    fireEvent.change(screen.getByRole('combobox', { name: 'Include skills' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Include Skills' }), {
       target: { value: 'rea' },
     })
     const changedDescriptor = {
@@ -244,7 +245,7 @@ describe('declarative connector provider filters', () => {
     const connectorsApi = await createFixtureApi({ country: 'US', skills: [] })
     renderPanel(connectorsApi)
 
-    const skills = await screen.findByRole('combobox', { name: 'Include skills' })
+    const skills = await screen.findByRole('combobox', { name: 'Include Skills' })
     fireEvent.change(skills, { target: { value: 'x'.repeat(101) } })
 
     expect(await screen.findByRole('status')).toHaveTextContent(/100|too long|at most/i)
@@ -518,7 +519,7 @@ describe('declarative connector provider filters', () => {
       search: () => pending.promise,
     })
     const first = renderPanel(connectorsApi)
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Include skills' }), {
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Include Skills' }), {
       target: { value: 'rea' },
     })
     expect(await screen.findByRole('status')).toHaveTextContent(/searching/i)
@@ -533,7 +534,7 @@ describe('declarative connector provider filters', () => {
       }),
     })
     renderPanel(authApi)
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Include skills' }), {
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Include Skills' }), {
       target: { value: 'rea' },
     })
     expect(await screen.findByRole('status')).toHaveTextContent(/authentication.*required/i)
@@ -553,7 +554,7 @@ describe('declarative connector provider filters', () => {
         : searchResult('react', 'React')),
     })
     renderPanel(connectorsApi)
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Include skills' }), {
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Include Skills' }), {
       target: { value: 'rea' },
     })
     const retry = await screen.findByRole('button', { name: 'Retry' })
@@ -571,7 +572,7 @@ describe('declarative connector provider filters', () => {
       }),
     })
     renderPanel(connectorsApi)
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Include skills' }), {
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Include Skills' }), {
       target: { value: 'rea' },
     })
     expect(await screen.findByRole('status')).toHaveTextContent(/rejected|cannot be retried/i)
@@ -592,7 +593,7 @@ describe('declarative connector provider filters', () => {
     expect(daysAgo).toHaveValue('7')
     expect(within(card).queryByRole('spinbutton', { name: 'Days ago' })).not.toBeInTheDocument()
 
-    const include = within(card).getByRole('combobox', { name: 'Include skills' })
+    const include = within(card).getByRole('combobox', { name: 'Include Skills' })
     const exclude = within(card).getByRole('combobox', { name: 'Exclude skills' })
     expect(include).toHaveAttribute('aria-autocomplete', 'list')
     expect(include).toHaveAttribute('aria-controls')
@@ -811,7 +812,7 @@ describe('declarative connector provider filters', () => {
     const first = renderPanel(connectorsApi)
 
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
-    const skills = within(card).getByRole('combobox', { name: 'Include skills' })
+    const skills = within(card).getByRole('combobox', { name: 'Include Skills' })
     fireEvent.change(skills, { target: { value: 'rea' } })
     fireEvent.click(await within(card).findByRole('option', { name: 'React' }))
     fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
@@ -853,12 +854,20 @@ describe('declarative connector provider filters', () => {
       ...fixtureDescriptor,
       connectorVersion: '0.12.0',
       filterSchema: {
-        ...fixtureDescriptor.filterSchema,
+        version: 'fixture-provider-filters@0.12',
         schema: {
           type: 'object',
           additionalProperties: false,
           properties: {
             legacyKeyword: { type: 'string', minLength: 1 },
+          },
+        },
+        presentation: {
+          fields: {
+            '/legacyKeyword': {
+              label: 'Legacy keyword',
+              description: 'Legacy free-text keyword retained for older instances.',
+            },
           },
         },
       },
@@ -877,6 +886,73 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     expect(within(card).getByRole('textbox', { name: 'Legacy keyword' })).toBeInTheDocument()
     expect(within(card).queryByRole('combobox', { name: 'Country' })).not.toBeInTheDocument()
+  })
+
+  it('renders presentation option labels and duration minutes while saving exact provider values', async () => {
+    const connectorsApi = await createFixtureApi(
+      {
+        country: 'US',
+        workModels: ['remote'],
+        skills: [],
+      },
+      {},
+      { maxRunElapsedMs: 120_000 },
+    )
+    renderPanel(connectorsApi)
+
+    const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
+    const country = within(card).getByRole('combobox', { name: 'Country' })
+    expect(country).toHaveTextContent('United States')
+    expect(country).toHaveTextContent('Canada')
+    expect(within(card).getByRole('checkbox', { name: 'Remote' })).toBeChecked()
+    expect(within(card).getByRole('checkbox', { name: 'Hybrid' })).toBeInTheDocument()
+
+    const remoteOnly = within(card).getByRole('switch', { name: 'Remote only' })
+    expect(remoteOnly).toHaveAccessibleDescription(/remote roles/i)
+    expect(within(card).getByRole('combobox', { name: 'Include Skills' }))
+      .toHaveAccessibleDescription(/skills to include/i)
+
+    const duration = within(card).getByRole('spinbutton', { name: 'Maximum run duration' })
+    expect(duration).toHaveValue(2)
+    expect(duration).toHaveAccessibleDescription(/elapsed time/i)
+    expect(within(card).getByText('Minutes')).toBeInTheDocument()
+
+    fireEvent.change(country, { target: { value: 'CA' } })
+    fireEvent.click(within(card).getByRole('checkbox', { name: 'Hybrid' }))
+    fireEvent.change(duration, { target: { value: '1.5' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+
+    await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
+      connectorInstanceId: INSTANCE_ID,
+      enabled: true,
+      config: { maxRunElapsedMs: 90_000 },
+      filters: {
+        country: 'CA',
+        workModels: ['remote', 'hybrid'],
+        skills: [],
+      },
+    }))
+  })
+
+  it('shows an explicit compatibility alert and blocks save when presentation metadata is missing', async () => {
+    const connectorsApi = await createFixtureApi(
+      { country: 'US', skills: [] },
+      {},
+      { maxRunElapsedMs: 120_000 },
+      missingPresentationDescriptor,
+    )
+    renderPanel(connectorsApi)
+
+    const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
+    const compatibility = within(card).getAllByRole('alert')[0]
+    expect(compatibility).toHaveTextContent(/presentation|metadata|compatib/i)
+    expect(within(card).queryByRole('combobox', { name: 'Country' })).not.toBeInTheDocument()
+    expect(within(card).queryByRole('spinbutton', { name: 'Maximum run duration' }))
+      .not.toBeInTheDocument()
+    const save = within(card).getByRole('button', { name: 'Save Fixture provider settings' })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(connectorsApi.update).not.toHaveBeenCalled()
   })
 
 })
