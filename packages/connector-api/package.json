@@ -1,6 +1,6 @@
 {
   "name": "@sparxie/valedictorian-connectors-core",
-  "version": "0.14.1",
+  "version": "0.15.0",
   "description": "Source-agnostic connector ABI for Valedictorian job sources.",
   "author": "Keni",
   "license": "MIT",
