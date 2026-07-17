@@ -181,7 +181,10 @@ describe('connector instance applicability', () => {
           get: () => client.profile.get(),
           update: (input) => client.profile.update(input),
           agentContext: client.profile.agentContext,
-          sensitive: client.profile.sensitive,
+          identity: {
+            set: () => Promise.resolve(),
+            status: () => Promise.resolve(false),
+          },
           secrets: {
             delete: (key) => client.secrets.delete(key),
             list: async () => (await client.secrets.list()).items,

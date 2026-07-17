@@ -171,7 +171,7 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('exposes write-only workspace secrets and explicit sensitive profile details over HTTP', async () => {
+  it('exposes write-only workspace secrets without a legacy sensitive profile route', async () => {
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-secrets-'))
     const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
     const workspaceManager = createLocalWorkspaceManager({
@@ -229,26 +229,35 @@ describe('local Valedictorian HTTP server', () => {
     expect(listPayload.items[0]).not.toHaveProperty('value')
     expect(revealResponse.status).toBe(404)
 
-    const sensitiveUpdateResponse = await fetch(
-      `${server.url}/v1/workspaces/workspace-secrets/profile/sensitive`,
+    const profileUpdateResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-secrets/profile`,
       {
-        body: JSON.stringify({ disabilityStatus: 'No', ssnLast4: '5125' }),
+        body: JSON.stringify({ dateOfBirth: '1999-05-12', disabilityStatus: 'No' }),
         headers: { 'content-type': 'application/json' },
         method: 'PATCH',
       },
     )
-    const sensitiveGetResponse = await fetch(
+    const profilePayload = (await readJson(profileUpdateResponse)) as Record<string, unknown>
+    const legacySensitivePatchResponse = await fetch(
+      `${server.url}/v1/workspaces/workspace-secrets/profile/sensitive`,
+      {
+        body: JSON.stringify({ ssnLast4: '5125' }),
+        headers: { 'content-type': 'application/json' },
+        method: 'PATCH',
+      },
+    )
+    const legacySensitiveGetResponse = await fetch(
       `${server.url}/v1/workspaces/workspace-secrets/profile/sensitive`,
     )
 
-    await expect(readJson(sensitiveUpdateResponse)).resolves.toMatchObject({
+    expect(profileUpdateResponse.status).toBe(200)
+    expect(profilePayload).toMatchObject({
+      dateOfBirth: '1999-05-12',
       disabilityStatus: 'No',
-      ssnLast4: '5125',
     })
-    await expect(readJson(sensitiveGetResponse)).resolves.toMatchObject({
-      disabilityStatus: 'No',
-      ssnLast4: '5125',
-    })
+    expect(JSON.stringify(profilePayload)).not.toContain('ssn')
+    expect(legacySensitivePatchResponse.status).toBe(404)
+    expect(legacySensitiveGetResponse.status).toBe(404)
 
     const deleteResponse = await fetch(
       `${server.url}/v1/workspaces/workspace-secrets/secrets/greenhouse_password`,

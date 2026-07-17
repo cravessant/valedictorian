@@ -142,16 +142,15 @@ describe('profile settings', () => {
     fireEvent.change(screen.getByLabelText('Birth day'), { target: { value: '16' } })
     selectComboboxOption('Birth year', '2004')
     fireEvent.change(screen.getByLabelText('Last 4 SSN'), { target: { value: '5125' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save private identifiers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save date of birth' }))
 
     await waitFor(() => {
-      expect(profileApi.sensitive.update).toHaveBeenCalledWith({
-        birthDay: '16',
-        birthMonth: '03',
-        birthYear: '2004',
-        ssnLast4: '5125',
-      })
+      expect(profileApi.update).toHaveBeenCalledWith({ dateOfBirth: '2004-03-16' })
     })
+    fireEvent.click(screen.getByRole('button', { name: 'Set or replace SSN last four' }))
+    await waitFor(() => expect(profileApi.identity.set).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('SSN last four: Configured')).toBeInTheDocument()
+    expect(screen.getByLabelText('Last 4 SSN')).toHaveValue('')
 
     expect(screen.getByRole('combobox', { name: 'Race/ethnicity' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Gender' })).toBeInTheDocument()
@@ -168,7 +167,7 @@ describe('profile settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save voluntary self-ID' }))
 
     await waitFor(() => {
-      expect(profileApi.sensitive.update).toHaveBeenCalledWith({
+      expect(profileApi.update).toHaveBeenCalledWith({
         disabilityStatus: 'No',
         gender: 'Man',
         hispanicLatino: 'No',
@@ -191,57 +190,65 @@ describe('profile settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save answer' }))
 
     await waitFor(() => {
-      expect(profileApi.update).toHaveBeenLastCalledWith({
-        answers: [
-          {
-            answer: 'LinkedIn',
-            category: null,
-            includeInAgentContext: true,
-            key: 'how_i_heard_about_the_role',
-            label: 'How I heard about the role',
-            questionPattern: 'How did you hear about us?',
-          },
-        ],
-        addressLine1: '470 Mockingbird Lane',
-        education: [
-          {
-            classStanding: 'Senior',
-            degree: 'BS Computer Science',
-            educationType: 'College',
-            graduationDate: 'December 2027',
-            id: 'university_of_colorado_boulder',
-            major: 'Computer Science',
-            notes: null,
-            satScore: null,
-            school: 'University of Colorado Boulder',
-            transcriptPath: 'transcripts/Kenny_Lin_S26_Transcript.pdf',
-          },
-          {
-            classStanding: null,
-            degree: null,
-            educationType: 'Research fellowship',
-            graduationDate: null,
-            id: 'open_source_lab',
-            major: null,
-            notes: 'Maintainer fellowship.',
-            satScore: null,
-            school: 'Open Source Lab',
-            transcriptPath: null,
-          },
-        ],
-        email: 'kenny@example.com',
-        fullName: 'Kenny Lin',
-        language: 'English',
-        phone: '555-0100',
-        phoneDeviceType: 'Mobile',
-        relocationNotes: 'Open to NYC, Denver, or Bay Area roles.',
-        requireSponsorship: 'No',
-        requireSponsorshipFuture: 'No',
-        travelNotes: 'Prefer under 25%.',
-        willingToRelocate: true,
-        willingToTravel: false,
-        workAuthorization: 'Authorized to work in the US.',
-      })
+      expect(profileApi.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          answers: [
+            {
+              answer: 'LinkedIn',
+              category: null,
+              includeInAgentContext: true,
+              key: 'how_i_heard_about_the_role',
+              label: 'How I heard about the role',
+              questionPattern: 'How did you hear about us?',
+            },
+          ],
+          addressLine1: '470 Mockingbird Lane',
+          dateOfBirth: '2004-03-16',
+          disabilityStatus: 'No',
+          education: [
+            {
+              classStanding: 'Senior',
+              degree: 'BS Computer Science',
+              educationType: 'College',
+              graduationDate: 'December 2027',
+              id: 'university_of_colorado_boulder',
+              major: 'Computer Science',
+              notes: null,
+              satScore: null,
+              school: 'University of Colorado Boulder',
+              transcriptPath: 'transcripts/Kenny_Lin_S26_Transcript.pdf',
+            },
+            {
+              classStanding: null,
+              degree: null,
+              educationType: 'Research fellowship',
+              graduationDate: null,
+              id: 'open_source_lab',
+              major: null,
+              notes: 'Maintainer fellowship.',
+              satScore: null,
+              school: 'Open Source Lab',
+              transcriptPath: null,
+            },
+          ],
+          email: 'kenny@example.com',
+          fullName: 'Kenny Lin',
+          gender: 'Man',
+          hispanicLatino: 'No',
+          language: 'English',
+          phone: '555-0100',
+          phoneDeviceType: 'Mobile',
+          raceEthnicity: 'Asian',
+          relocationNotes: 'Open to NYC, Denver, or Bay Area roles.',
+          requireSponsorship: 'No',
+          requireSponsorshipFuture: 'No',
+          travelNotes: 'Prefer under 25%.',
+          veteranStatus: 'Not a protected veteran',
+          willingToRelocate: true,
+          willingToTravel: false,
+          workAuthorization: 'Authorized to work in the US.',
+        }),
+      )
     })
     expect(screen.getByRole('table', { name: 'Reusable Application Answers' })).toBeInTheDocument()
 
@@ -584,6 +591,99 @@ describe('profile settings', () => {
     expect(workAuthorization.querySelector('fieldset')).not.toBeInTheDocument()
     expect(within(workAuthorization).getByRole('radiogroup', { name: 'Willing to relocate' })).toBeInTheDocument()
     expect(within(workAuthorization).getByRole('radiogroup', { name: 'Willing to travel' })).toBeInTheDocument()
+  })
+
+  it('persists cleared voluntary self-ID selections as null', async () => {
+    const profileApi = createProfileApi()
+    const initial = await profileApi.get()
+    profileApi.get = vi.fn(async () => ({
+      ...initial,
+      disabilityStatus: 'No' as const,
+      gender: 'Man' as const,
+      hispanicLatino: 'No' as const,
+      raceEthnicity: 'Asian' as const,
+      veteranStatus: 'Not a protected veteran' as const,
+    }))
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(await screen.findByRole('heading', { name: 'Profile' })).toBeInTheDocument()
+    for (const label of [
+      'Race/ethnicity',
+      'Gender',
+      'Disability status',
+      'Veteran status',
+      'Hispanic/Latino',
+    ]) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value: '' } })
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Save voluntary self-ID' }))
+
+    await waitFor(() => {
+      expect(profileApi.update).toHaveBeenCalledWith({
+        disabilityStatus: null,
+        gender: null,
+        hispanicLatino: null,
+        raceEthnicity: null,
+        veteranStatus: null,
+      })
+    })
+  })
+
+  it('sends explicit canonical clears from profile basics without erasing arrays', async () => {
+    const profileApi = createProfileApi()
+    const initial = await profileApi.get()
+    const existingAnswer = {
+      answer: 'Referral',
+      category: null,
+      includeInAgentContext: true,
+      key: 'source',
+      label: 'Source',
+      questionPattern: 'How did you hear?',
+    }
+    profileApi.get = vi.fn(async () => ({
+      ...initial,
+      answers: [existingAnswer],
+      fullName: 'Ada Example',
+      gender: 'Woman' as const,
+      preferredName: 'Ada',
+      willingToRelocate: null,
+      willingToTravel: null,
+    }))
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(await screen.findByRole('heading', { name: 'Profile' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Preferred name'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Gender'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save profile basics' }))
+
+    await waitFor(() => {
+      expect(profileApi.update).toHaveBeenCalledWith(expect.objectContaining({
+        answers: [existingAnswer],
+        education: initial.education,
+        fullName: null,
+        gender: null,
+        preferredName: null,
+        willingToRelocate: null,
+        willingToTravel: null,
+      }))
+    })
   })
 
 })

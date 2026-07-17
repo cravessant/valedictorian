@@ -5,6 +5,8 @@ import type { AppConnectorRuntimePorts } from '../modules/connectors/connector.r
 import type { SecretCodec } from '../modules/secrets/secret.codec'
 import type { NormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
 import type { DrizzleDatabase } from '../db/sqlite'
+import type { ProfileService } from '../modules/profile/profile.service'
+import type { SecretService } from '../modules/secrets/secret.service'
 import type { LocalScheduledWorkSource } from './local-scheduler'
 
 export interface LocalValedictorianClientOptions {
@@ -27,6 +29,9 @@ export interface LocalValedictorianClientOptions {
   secretCodec?: SecretCodec
   /** Explicit local secret-resolution capability policy for this workspace client. */
   localSecretResolutionEnabled?: boolean
+  profilePath?: string
+  profileService?: ProfileService
+  secretService?: SecretService
   sqlitePath: string
   workspaceId?: string
 }

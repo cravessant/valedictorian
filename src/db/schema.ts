@@ -218,89 +218,11 @@ export const workflowRunSteps = sqliteTable('workflow_run_steps', {
   createdAt: text('created_at').notNull(),
 })
 
-export const userProfile = sqliteTable('user_profile', {
-  id: text('id').primaryKey(),
-  addressLine1: text('address_line_1'),
-  addressLine2: text('address_line_2'),
-  city: text('city'),
-  country: text('country'),
-  citizenship: text('citizenship'),
-  classStanding: text('class_standing'),
-  coverLetterPath: text('cover_letter_path'),
-  degree: text('degree'),
-  email: text('email'),
-  fullName: text('full_name'),
-  githubUrl: text('github_url'),
-  graduationDate: text('graduation_date'),
-  highSchool: text('high_school'),
-  language: text('language'),
-  linkedinUrl: text('linkedin_url'),
-  major: text('major'),
-  phone: text('phone'),
-  phoneDeviceType: text('phone_device_type'),
-  portfolioUrl: text('portfolio_url'),
-  preferredName: text('preferred_name'),
-  region: text('region'),
-  relocation: text('relocation'),
-  relocationNotes: text('relocation_notes'),
-  requireSponsorship: text('require_sponsorship'),
-  requireSponsorshipFuture: text('require_sponsorship_future'),
-  satScore: text('sat_score'),
-  school: text('school'),
-  transcriptPath: text('transcript_path'),
-  travel: text('travel'),
-  travelNotes: text('travel_notes'),
-  willingToRelocate: integer('willing_to_relocate', { mode: 'boolean' }),
-  willingToTravel: integer('willing_to_travel', { mode: 'boolean' }),
-  workAuthorization: text('work_authorization'),
-  ...timestamps,
-})
-
-export const profileEducation = sqliteTable('profile_education', {
-  id: text('id').primaryKey(),
-  educationType: text('education_type').notNull(),
-  school: text('school').notNull(),
-  degree: text('degree'),
-  major: text('major'),
-  graduationDate: text('graduation_date'),
-  classStanding: text('class_standing'),
-  satScore: text('sat_score'),
-  transcriptPath: text('transcript_path'),
-  notes: text('notes'),
-  sortOrder: integer('sort_order').notNull(),
-  ...timestamps,
-})
-
-export const profileAnswers = sqliteTable('profile_answers', {
-  key: text('key').primaryKey(),
-  label: text('label').notNull(),
-  questionPattern: text('question_pattern').notNull(),
-  answer: text('answer').notNull(),
-  category: text('category'),
-  includeInAgentContext: integer('include_in_agent_context', { mode: 'boolean' }).notNull(),
-  ...timestamps,
-})
-
 export const profileSecrets = sqliteTable('profile_secrets', {
   key: text('key').primaryKey(),
   label: text('label').notNull(),
   kind: text('kind').notNull(),
   encryptedValue: text('encrypted_value').notNull(),
-  ...timestamps,
-})
-
-export const profileSensitiveDetails = sqliteTable('profile_sensitive_details', {
-  id: text('id').primaryKey(),
-  birthDayEncrypted: text('birth_day_encrypted'),
-  birthMonthEncrypted: text('birth_month_encrypted'),
-  birthYearEncrypted: text('birth_year_encrypted'),
-  dateOfBirthEncrypted: text('date_of_birth_encrypted'),
-  disabilityStatusEncrypted: text('disability_status_encrypted'),
-  genderEncrypted: text('gender_encrypted'),
-  hispanicLatinoEncrypted: text('hispanic_latino_encrypted'),
-  raceEthnicityEncrypted: text('race_ethnicity_encrypted'),
-  ssnLast4Encrypted: text('ssn_last_4_encrypted'),
-  veteranStatusEncrypted: text('veteran_status_encrypted'),
   ...timestamps,
 })
 
@@ -971,9 +893,6 @@ export const schema = {
   normalizationRuns,
   policyConfig,
   policyEvidence,
-  profileAnswers,
-  profileEducation,
-  profileSensitiveDetails,
   profileSecrets,
   captures,
   captureLineages,
@@ -988,7 +907,6 @@ export const schema = {
   opportunities,
   sourcingProjectionOutcomes,
   sources,
-  userProfile,
   workflowRunSteps,
   workflowRuns,
 }

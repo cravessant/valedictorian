@@ -1,8 +1,6 @@
 import type {
   ProfileAgentContext,
   ProfileSecretSummary,
-  ProfileSensitiveDetails,
-  ProfileSensitiveDetailsInput,
   ProfileUpdateInput,
   UpsertProfileSecretInput,
   UserProfile,
@@ -17,9 +15,9 @@ export interface ProfilePreloadApi {
     get: () => Promise<ProfileAgentContext>
   }
   get: () => Promise<UserProfile>
-  sensitive: {
-    get: () => Promise<ProfileSensitiveDetails>
-    update: (input: ProfileSensitiveDetailsInput) => Promise<ProfileSensitiveDetails>
+  identity: {
+    set: (value: string) => Promise<void>
+    status: () => Promise<boolean>
   }
   secrets: {
     delete: (key: string) => Promise<void>
@@ -35,10 +33,9 @@ export function createProfilePreloadApi(ipcRenderer: IpcRendererLike): ProfilePr
       get: () => ipcRenderer.invoke('profile:agent-context:get') as Promise<ProfileAgentContext>,
     },
     get: () => ipcRenderer.invoke('profile:get') as Promise<UserProfile>,
-    sensitive: {
-      get: () => ipcRenderer.invoke('profile:sensitive:get') as Promise<ProfileSensitiveDetails>,
-      update: (input) =>
-        ipcRenderer.invoke('profile:sensitive:update', input) as Promise<ProfileSensitiveDetails>,
+    identity: {
+      set: (value) => ipcRenderer.invoke('profile:identity:set', value) as Promise<void>,
+      status: () => ipcRenderer.invoke('profile:identity:status') as Promise<boolean>,
     },
     secrets: {
       delete: (key) => ipcRenderer.invoke('profile:secrets:delete', key) as Promise<void>,

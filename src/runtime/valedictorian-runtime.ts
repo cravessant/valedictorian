@@ -20,6 +20,10 @@ import type { LocalWorkspaceManager } from '../server/local-workspaces'
 import { defaultAppSettings, type AppSettings } from '../settings/app-settings'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
 import { isSecretCodecAvailable } from '../modules/secrets/secret.codec'
+import {
+  prepareWorkspaceProfileCapabilities,
+  type PreparedWorkspaceProfileCapabilities,
+} from '../modules/profile/profile.composition'
 import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import {
   createLocalValedictorianClient,
@@ -33,6 +37,8 @@ import {
   type LocalSchedulerOptions,
 } from './local-scheduler'
 import { readNonEmptyEnvironmentApiToken } from './api-token-resolution'
+import type { ProfileService } from '../modules/profile/profile.service'
+import type { SecretService } from '../modules/secrets/secret.service'
 
 export type ValedictorianRuntimeMode = 'local-desktop' | 'local-shared' | 'remote'
 
@@ -51,6 +57,7 @@ export interface ValedictorianRuntimeConfig {
   apiToken?: string
   apiUrl: string
   mode: ValedictorianRuntimeMode
+  profilePath: string
   referenceTrackerPath?: string
   seedDataMode: ValedictorianSeedDataMode
   sqlitePath: string
@@ -60,6 +67,8 @@ export interface ValedictorianRuntimeConfig {
 export interface ValedictorianRuntime {
   client: ValedictorianWorkspaceClient
   connectors: LocalValedictorianClient['connectors'] | null
+  profileService: ProfileService | null
+  secretService: SecretService | null
   close: () => Promise<void>
   stopScheduler: () => Promise<void>
   server: Pick<StartedValedictorianHttpServer, 'close' | 'url'> | null
@@ -74,6 +83,7 @@ export interface CreateValedictorianRuntimeOptions {
   createScheduler?: (options?: LocalSchedulerOptions) => LocalScheduler
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   deferServerStart?: boolean
+  prepareWorkspaceCapabilities?: typeof prepareWorkspaceProfileCapabilities
   secretCodec?: SecretCodec
   schedulerOptions?: LocalSchedulerOptions
   startServer?: (
@@ -103,6 +113,8 @@ export function resolveValedictorianRuntimeConfig({
       env.VALEDICTORIAN_API_URL ??
       (mode === 'remote' ? settings.remoteApiUrl || defaultValedictorianApiBaseUrl : defaultApiUrl),
     mode,
+    profilePath:
+      env.VALEDICTORIAN_PROFILE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'profile.json'),
     referenceTrackerPath: env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
     seedDataMode: readSeedDataMode(env.VALEDICTORIAN_SEED_DATA),
     sqlitePath:
@@ -119,6 +131,7 @@ export async function createValedictorianRuntime({
   createScheduler = createLocalScheduler,
   connectorRunRecovery,
   deferServerStart = false,
+  prepareWorkspaceCapabilities,
   secretCodec,
   schedulerOptions,
   startServer = createValedictorianHttpServer,
@@ -135,6 +148,8 @@ export async function createValedictorianRuntime({
         token: config.apiToken,
       }).forWorkspace(config.workspaceId),
       connectors: null,
+      profileService: null,
+      secretService: null,
       close: async () => undefined,
       stopScheduler: async () => undefined,
       restartServer: null,
@@ -150,7 +165,29 @@ export async function createValedictorianRuntime({
     && Boolean(config.apiToken)
     && isSecretCodecAvailable(secretCodec)
 
-  const client = createLocalClient({
+  const prepareCapabilities = prepareWorkspaceCapabilities
+    ?? (createLocalClient === createLocalValedictorianClient
+      ? prepareWorkspaceProfileCapabilities
+      : null)
+  let preparedCapabilities: PreparedWorkspaceProfileCapabilities | null = null
+  if (prepareCapabilities) {
+    preparedCapabilities = await prepareCapabilities({
+      profilePath: config.profilePath,
+      secretCodec: secretCodec ?? unavailableRuntimeSecretCodec,
+      sqlitePath: config.sqlitePath,
+      workspaceId: config.workspaceId ?? 'local-workspace',
+    })
+  }
+
+  let capabilitiesDisposed = false
+  const disposePreparedCapabilities = () => {
+    if (capabilitiesDisposed) return
+    capabilitiesDisposed = true
+    preparedCapabilities?.dispose()
+  }
+  let client: LocalValedictorianClient
+  try {
+    client = createLocalClient({
     ...(effectiveConnectorRunRecovery === undefined
       ? {}
       : { connectorRunRecovery: effectiveConnectorRunRecovery }),
@@ -159,6 +196,13 @@ export async function createValedictorianRuntime({
       ? localDesktopConnectorSchedulingCapability
       : undefined,
     localSecretResolutionEnabled,
+    profilePath: config.profilePath,
+    ...(preparedCapabilities === null
+      ? {}
+      : {
+          profileService: preparedCapabilities.profileService,
+          secretService: preparedCapabilities.secretService,
+        }),
     onScheduledWorkChanged: () => scheduler.signal(),
     referenceTrackerPath: config.referenceTrackerPath,
     seedDataMode: config.seedDataMode,
@@ -166,7 +210,11 @@ export async function createValedictorianRuntime({
     sqlitePath: config.sqlitePath,
     registerScheduledWorkSource: (source) => scheduler.register(source),
     ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
-  })
+    })
+  } catch (error) {
+    disposePreparedCapabilities()
+    throw error
+  }
 
   const serverOptions: CreateValedictorianHttpServerOptions = {
     client,
@@ -188,7 +236,14 @@ export async function createValedictorianRuntime({
     }
   }
 
-  let server = deferServerStart ? null : await startServer(serverOptions)
+  let server: Pick<StartedValedictorianHttpServer, 'close' | 'url'> | null
+  try {
+    server = deferServerStart ? null : await startServer(serverOptions)
+  } catch (error) {
+    await scheduler.stop()
+    disposePreparedCapabilities()
+    throw error
+  }
 
   if (config.mode === 'local-desktop') {
     scheduler.start()
@@ -197,9 +252,19 @@ export async function createValedictorianRuntime({
   return {
     client,
     connectors: client.connectors,
+    profileService: preparedCapabilities?.profileService ?? null,
+    secretService: preparedCapabilities?.secretService ?? null,
     close: async () => {
-      await scheduler.stop()
-      await server?.close()
+      try {
+        await scheduler.stop()
+        await server?.close()
+      } finally {
+        try {
+          await workspaceManager?.close()
+        } finally {
+          disposePreparedCapabilities()
+        }
+      }
     },
     stopScheduler: () => scheduler.stop(),
     get server() {
@@ -210,6 +275,16 @@ export async function createValedictorianRuntime({
       return server
     },
   }
+}
+
+const unavailableRuntimeSecretCodec: SecretCodec = {
+  decrypt() {
+    throw new Error('Protected storage is unavailable.')
+  },
+  encrypt() {
+    throw new Error('Protected storage is unavailable.')
+  },
+  isAvailable: () => false,
 }
 
 function readRuntimeMode(value: string | undefined): ValedictorianRuntimeMode {

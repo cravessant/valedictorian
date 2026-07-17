@@ -8,7 +8,6 @@ import type { ScoresPreloadApi } from '../ipc/scores.preload'
 import type { SettingsPreloadApi } from '../ipc/settings.preload'
 import type { UpdatesPreloadApi } from '../ipc/updates.preload'
 import type { WorkspacePreloadApi } from '../ipc/workspace.preload'
-import type { ProfileSensitiveDetails } from 'sparxie'
 import type { ConnectorStatusListResult } from '../modules/connectors/connector.status'
 import { connectorStatusViewFromOverview } from '../modules/connectors/connector.status'
 import type {
@@ -859,27 +858,12 @@ export const defaultProfileApi: ProfilePreloadApi = {
 
     return getWindowProfileApi()?.get() ?? Promise.resolve(defaultUserProfile)
   },
-  sensitive: {
-    get() {
-      const httpClient = getRendererHttpWorkspaceClient()
-
-      if (httpClient) {
-        return httpClient.profile.sensitive.get()
-      }
-
-      return getWindowProfileApi()?.sensitive.get() ?? Promise.resolve(defaultSensitiveDetails)
+  identity: {
+    set(value) {
+      return getWindowProfileApi()?.identity.set(value) ?? Promise.reject(new Error('Identity storage is unavailable'))
     },
-    update(input) {
-      const httpClient = getRendererHttpWorkspaceClient()
-
-      if (httpClient) {
-        return httpClient.profile.sensitive.update(input)
-      }
-
-      return (
-        getWindowProfileApi()?.sensitive.update(input) ??
-        Promise.resolve({ ...defaultSensitiveDetails, ...input })
-      )
+    status() {
+      return getWindowProfileApi()?.identity.status() ?? Promise.resolve(false)
     },
   },
   secrets: {
@@ -928,16 +912,4 @@ export const defaultProfileApi: ProfilePreloadApi = {
 
     return getWindowProfileApi()?.update(input) ?? Promise.resolve({ ...defaultUserProfile, ...input })
   },
-}
-
-const defaultSensitiveDetails: ProfileSensitiveDetails = {
-  birthDay: null,
-  birthMonth: null,
-  birthYear: null,
-  disabilityStatus: null,
-  gender: null,
-  hispanicLatino: null,
-  raceEthnicity: null,
-  ssnLast4: null,
-  veteranStatus: null,
 }

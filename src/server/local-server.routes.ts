@@ -15,7 +15,6 @@ import {
   type BatchRawSourceRecordsInput,
   type ConnectorSchedulingCapability,
   type ValedictorianWorkspaceClient,
-  type ProfileSensitiveDetailsInput,
   type ProfileUpdateInput,
 } from 'sparxie'
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
@@ -320,22 +319,6 @@ export async function handleRequest({
 
     if (request.method === 'GET' && requestUrl.pathname === '/v1/profile/agent-context') {
       writeJson(response, 200, await client.profile.agentContext.get())
-      return
-    }
-
-    if (request.method === 'GET' && requestUrl.pathname === '/v1/profile/sensitive') {
-      writeJson(response, 200, await client.profile.sensitive.get())
-      return
-    }
-
-    if (request.method === 'PATCH' && requestUrl.pathname === '/v1/profile/sensitive') {
-      writeJson(
-        response,
-        200,
-        await client.profile.sensitive.update(
-          (await readJsonBody(request)) as ProfileSensitiveDetailsInput,
-        ),
-      )
       return
     }
 

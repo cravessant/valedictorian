@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 import type {
   ConnectorAuthReferenceInput,
 } from 'sparxie'
@@ -62,7 +63,7 @@ import type {
   ConnectorRunRecord,
 } from '../modules/connectors/connector.repository'
 import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
-import { createSqliteProfileService } from '../modules/profile/profile.composition'
+import { createJsonProfileService } from '../modules/profile/profile.composition'
 import { createSqliteSecretService } from '../modules/secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
@@ -73,6 +74,7 @@ import {
   createWorkspaceProfileMethods,
   createWorkspaceSecretMethods,
 } from './local-profile-secret-client'
+import { isReservedIdentitySecretKey } from '../modules/secrets/secret.identity'
 import { createSqliteScoringRepository } from '../modules/scoring/scoring.repository'
 import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.processor'
 import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
@@ -154,6 +156,9 @@ export function createLocalValedictorianClient({
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
   localSecretResolutionEnabled = false,
+  profilePath,
+  profileService: preparedProfileService,
+  secretService: preparedSecretService,
   sqlitePath,
   workspaceId = 'local-workspace',
 }: LocalValedictorianClientOptions): LocalValedictorianClient {
@@ -167,8 +172,10 @@ export function createLocalValedictorianClient({
     seedDataMode,
   })
   const scoringRepository = createSqliteScoringRepository(database)
-  const profileService = createSqliteProfileService(database, secretCodec)
-  const secretService = createSqliteSecretService(
+  const profileService = preparedProfileService ?? createJsonProfileService(
+    profilePath ?? path.join(path.dirname(sqlitePath), 'profile.json'),
+  )
+  const secretService = preparedSecretService ?? createSqliteSecretService(
     database,
     secretCodec,
     createWorkspaceSecretScope(workspaceId),
@@ -178,7 +185,9 @@ export function createLocalValedictorianClient({
       enabled: localSecretResolutionEnabled,
       isSecureStorageAvailable: () => isSecretCodecAvailable(secretCodec),
     },
-    resolveSecret: (key) => secretService.resolve(key),
+    resolveSecret: (key) => isReservedIdentitySecretKey(key)
+      ? Promise.resolve(null)
+      : secretService.resolve(key),
   })
   const actionQueueRepository = createSqliteActionQueueRepository(database)
   const connectorRepository = createSqliteConnectorRepository(database)

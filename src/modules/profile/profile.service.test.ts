@@ -39,11 +39,6 @@ describe('ProfileService', () => {
     expect(JSON.stringify(profile)).not.toContain('ssn')
     expect(JSON.stringify(profile)).not.toContain('5125')
 
-    await service.updateSensitiveDetails({ ssnLast4: '5125' })
-    const afterSsn = await service.get()
-    expect(JSON.stringify(afterSsn)).not.toContain('5125')
-    expect(afterSsn.dateOfBirth).toBe('2004-03-16')
-
     await expect(service.getAgentContext()).resolves.toMatchObject({
       answers: [expect.objectContaining({ key: 'how_heard', includeInAgentContext: true })],
       basics: expect.objectContaining({
@@ -55,7 +50,7 @@ describe('ProfileService', () => {
     expect(JSON.stringify(await service.getAgentContext())).not.toContain('5125')
   })
 
-  it('rejects invalid dates and keeps content-derived revisions stable across SSN-only changes', async () => {
+  it('rejects invalid dates and derives revisions from the complete profile document', async () => {
     const stores = createMemoryProfileStores()
     const service = createProfileService(stores)
 
@@ -72,18 +67,13 @@ describe('ProfileService', () => {
     expect(document.revision).toBe(computeProfileRevision(first))
     expect(document.schemaVersion).toBe(1)
 
-    const beforeSsn = document.revision
-    await service.updateSensitiveDetails({ ssnLast4: '5125' })
-    expect((await service.getDocument()).revision).toBe(beforeSsn)
-
-    await service.updateSensitiveDetails({
-      birthDay: '17',
-      birthMonth: '03',
-      birthYear: '2004',
+    const beforeUpdate = document.revision
+    await service.update({
+      dateOfBirth: '2004-03-17',
       gender: 'Woman',
     })
     const afterMoved = await service.getDocument()
-    expect(afterMoved.revision).not.toBe(beforeSsn)
+    expect(afterMoved.revision).not.toBe(beforeUpdate)
     expect(afterMoved.profile.dateOfBirth).toBe('2004-03-17')
     expect(afterMoved.profile.gender).toBe('Woman')
   })
@@ -217,10 +207,7 @@ describe('ProfileService', () => {
         return stores.profileStore.update(input)
       },
     }
-    const service = createProfileService({
-      profileStore: hostileStore,
-      sensitiveStore: stores.sensitiveStore,
-    })
+    const service = createProfileService({ profileStore: hostileStore })
 
     await expect(service.get()).rejects.toMatchObject({
       code: 'invalid_profile_document',
@@ -267,10 +254,7 @@ describe('ProfileService', () => {
         return stores.profileStore.update(input)
       },
     }
-    const service = createProfileService({
-      profileStore: hostileStore,
-      sensitiveStore: stores.sensitiveStore,
-    })
+    const service = createProfileService({ profileStore: hostileStore })
 
     await expect(service.get()).rejects.toMatchObject({
       code: 'unsupported_profile_schema_version',
@@ -305,7 +289,7 @@ describe('ProfileService', () => {
     expect(updateCalls).toBe(0)
   })
 
-  it('delegates format and restore to an optional document capability while retaining SQLite fallbacks', async () => {
+  it('delegates format and restore to an optional document capability while retaining local fallbacks', async () => {
     const stores = createMemoryProfileStores()
     const formatted = {
       ...(await stores.profileStore.get()),
@@ -318,7 +302,6 @@ describe('ProfileService', () => {
     const calls: string[] = []
     const service = createProfileService({
       profileStore: stores.profileStore,
-      sensitiveStore: stores.sensitiveStore,
       documentCapability: {
         dispose() {},
         getLastKnownGoodPreview: () => null,
@@ -359,95 +342,4 @@ describe('ProfileService', () => {
     fallback.dispose()
   })
 
-  it('passes only explicitly changed moved sensitive fields to the profile store', async () => {
-    const stores = createMemoryProfileStores()
-    const seen: Array<unknown> = []
-    const recordingStore = {
-      get: () => stores.profileStore.get(),
-      async update(input: Parameters<typeof stores.profileStore.update>[0]) {
-        seen.push(input.movedSensitiveChanges ?? {})
-        return stores.profileStore.update(input)
-      },
-    }
-    const service = createProfileService({
-      profileStore: recordingStore,
-      sensitiveStore: stores.sensitiveStore,
-    })
-
-    await service.update({ email: 'kenny@example.com' })
-    expect(seen.at(-1)).toEqual({})
-
-    await service.update({ gender: 'Man', raceEthnicity: 'Asian' })
-    expect(seen.at(-1)).toEqual({
-      gender: 'Man',
-      raceEthnicity: 'Asian',
-    })
-
-    const document = await service.getDocument()
-    await service.updateDocument({
-      expectedRevision: document.revision,
-      profile: { email: 'next@example.com' },
-    })
-    expect(seen.at(-1)).toEqual({})
-  })
-
-  it('normalizes sensitive compatibility patches in policy before the store and rejects impossible dates', async () => {
-    const saved: Array<Record<string, unknown>> = []
-    const stores = createMemoryProfileStores()
-    const recordingStore = {
-      get: () => stores.sensitiveStore.get(),
-      async update(details: Awaited<ReturnType<typeof stores.sensitiveStore.get>>) {
-        saved.push({ ...details })
-        return stores.sensitiveStore.update(details)
-      },
-    }
-    const service = createProfileService({
-      profileStore: stores.profileStore,
-      sensitiveStore: recordingStore,
-    })
-
-    await service.updateSensitiveDetails({
-      birthDay: '6',
-      birthMonth: '3',
-      birthYear: ' 2004 ',
-      gender: ' Male ',
-      ssnLast4: ' 5125 ',
-    })
-    expect(saved.at(-1)).toEqual({
-      birthDay: '06',
-      birthMonth: '03',
-      birthYear: '2004',
-      disabilityStatus: null,
-      gender: 'Male',
-      hispanicLatino: null,
-      raceEthnicity: null,
-      ssnLast4: '5125',
-      veteranStatus: null,
-    })
-
-    await expect(
-      service.updateSensitiveDetails({ dateOfBirth: '2024-02-30' }),
-    ).rejects.toMatchObject({
-      code: 'invalid_profile_document',
-      body: expect.objectContaining({
-        code: 'invalid_profile_document',
-        path: ['dateOfBirth'],
-      }),
-    })
-    expect(JSON.stringify(saved.at(-1))).not.toContain('2024-02-30')
-
-    await expect(
-      service.updateSensitiveDetails({
-        birthDay: '30',
-        birthMonth: '02',
-        birthYear: '2024',
-      }),
-    ).rejects.toMatchObject({
-      code: 'invalid_profile_document',
-      body: expect.objectContaining({
-        code: 'invalid_profile_document',
-        path: ['dateOfBirth'],
-      }),
-    })
-  })
 })

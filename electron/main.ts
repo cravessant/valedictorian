@@ -7,7 +7,6 @@ import { runLegacyJobrightBrowserPartitionCleanup } from './legacy-jobright-part
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
 import { createRuntimeQuitBarrier, stopRuntimeLifecycle } from './runtime-lifecycle'
-import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../src/db/sqlite'
 import { registerApplicationIpc } from '../src/ipc/applications.ipc'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
 import { registerProfileIpc } from '../src/ipc/profile.ipc'
@@ -27,9 +26,6 @@ import {
 } from '../src/ipc/valedictorian-http.preload'
 import { registerWorkspaceIpc } from '../src/ipc/workspace.ipc'
 import { createLocalWorkspaceManager, type LocalWorkspaceManager } from '../src/server/local-workspaces'
-import { createSqliteProfileService } from '../src/modules/profile/profile.composition'
-import { createSqliteSecretService } from '../src/modules/secrets/secret.composition'
-import { createWorkspaceSecretScope } from '../src/modules/secrets/secret.scope'
 import {
   createValedictorianRuntime,
   resolveValedictorianRuntimeConfig,
@@ -266,15 +262,11 @@ async function registerRuntimeServices(
       usePrivilegedTransport: config.mode === 'remote' || Boolean(config.apiToken),
     }
   }
-  const profileSqlite = createFileDatabase(config.sqlitePath)
-  migrateDatabase(profileSqlite)
-  const profileDatabase = createDrizzleDatabase(profileSqlite)
-  const profileService = createSqliteProfileService(profileDatabase, secretCodec)
-  const secretService = createSqliteSecretService(profileDatabase, secretCodec, createWorkspaceSecretScope(workspace.id))
-
   registerApplicationIpc(runtime.client, ipcMain)
   registerPolicyIpc(runtime.client, ipcMain)
-  registerProfileIpc(profileService, secretService, ipcMain)
+  if (runtime.profileService && runtime.secretService) {
+    registerProfileIpc(runtime.profileService, runtime.secretService, ipcMain)
+  }
   registerActionQueueIpc(runtime.client, ipcMain)
   registerConnectorsIpc(runtime.connectors, ipcMain)
   registerScoresIpc(runtime.client, ipcMain)

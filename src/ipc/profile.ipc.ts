@@ -1,5 +1,4 @@
 import type {
-  ProfileSensitiveDetailsInput,
   ProfileUpdateInput,
   UpsertProfileSecretInput,
 } from 'sparxie'
@@ -23,9 +22,9 @@ export function registerProfileIpc(
     profileService.update(input as ProfileUpdateInput),
   )
   ipcMain.handle('profile:agent-context:get', () => profileService.getAgentContext())
-  ipcMain.handle('profile:sensitive:get', () => profileService.getSensitiveDetails())
-  ipcMain.handle('profile:sensitive:update', (_event, input) =>
-    profileService.updateSensitiveDetails(input as ProfileSensitiveDetailsInput),
+  ipcMain.handle('profile:identity:status', () => secretService.hasTrustedIdentitySsnLast4())
+  ipcMain.handle('profile:identity:set', (_event, value) =>
+    secretService.upsertTrustedIdentitySsnLast4(value as string),
   )
   ipcMain.handle('profile:secrets:list', () => secretService.list())
   ipcMain.handle('profile:secrets:upsert', (_event, input) =>

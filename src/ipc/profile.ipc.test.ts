@@ -20,19 +20,6 @@ describe('profile IPC registration', () => {
       async getDocument() {
         throw new Error('unused')
       },
-      async getSensitiveDetails() {
-        return {
-          birthDay: '16',
-          birthMonth: '03',
-          birthYear: '2004',
-          disabilityStatus: null,
-          gender: null,
-          hispanicLatino: null,
-          raceEthnicity: null,
-          ssnLast4: '5125',
-          veteranStatus: null,
-        }
-      },
       async restoreDocument() {
         throw new Error('unused')
       },
@@ -42,25 +29,16 @@ describe('profile IPC registration', () => {
       async updateDocument() {
         throw new Error('unused')
       },
-      async updateSensitiveDetails(input) {
-        return {
-          birthDay: input.birthDay ?? null,
-          birthMonth: input.birthMonth ?? null,
-          birthYear: input.birthYear ?? null,
-          disabilityStatus: null,
-          gender: null,
-          hispanicLatino: null,
-          raceEthnicity: null,
-          ssnLast4: input.ssnLast4 ?? null,
-          veteranStatus: null,
-        }
-      },
       async validateDocument() {
         throw new Error('unused')
       },
     }
+    let identitySetCalls = 0
     const secretService: SecretService = {
       async delete() {},
+      async hasTrustedIdentitySsnLast4() {
+        return true
+      },
       async list() {
         return [{ key: 'greenhouse_password', kind: 'password', label: 'Greenhouse', updatedAt: 'now' }]
       },
@@ -73,6 +51,10 @@ describe('profile IPC registration', () => {
       async upsert(input) {
         return { key: input.key, kind: input.kind, label: input.label, updatedAt: 'now' }
       },
+      async upsertTrustedIdentitySsnLast4() {
+        identitySetCalls += 1
+      },
+      scope: { workspaceId: 'ipc-workspace' } as never,
     }
 
     registerProfileIpc(profileService, secretService, {
@@ -90,23 +72,11 @@ describe('profile IPC registration', () => {
     await expect(handlers.get('profile:agent-context:get')?.({}, undefined)).resolves.toMatchObject({
       basics: { fullName: 'Kenny Lin' },
     })
-    await expect(handlers.get('profile:sensitive:get')?.({}, undefined)).resolves.toMatchObject({
-      birthDay: '16',
-      birthMonth: '03',
-      birthYear: '2004',
-      ssnLast4: '5125',
-    })
-    await expect(
-      handlers.get('profile:sensitive:update')?.(
-        {},
-        { birthDay: '16', birthMonth: '03', birthYear: '2004', ssnLast4: '5125' },
-      ),
-    ).resolves.toMatchObject({
-      birthDay: '16',
-      birthMonth: '03',
-      birthYear: '2004',
-      ssnLast4: '5125',
-    })
+    expect(handlers.has('profile:sensitive:get')).toBe(false)
+    expect(handlers.has('profile:sensitive:update')).toBe(false)
+    await expect(handlers.get('profile:identity:status')?.({}, undefined)).resolves.toBe(true)
+    await expect(handlers.get('profile:identity:set')?.({}, '0000')).resolves.toBeUndefined()
+    expect(identitySetCalls).toBe(1)
     await expect(handlers.get('profile:secrets:list')?.({}, undefined)).resolves.toHaveLength(1)
     await expect(
       handlers.get('profile:secrets:upsert')?.(

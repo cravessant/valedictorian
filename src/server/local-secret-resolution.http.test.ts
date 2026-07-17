@@ -8,6 +8,7 @@ import {
 } from '../db/sqlite'
 import { createSqliteSecretService } from '../modules/secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
+import { identitySsnLast4SecretKey } from '../modules/secrets/secret.identity'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
@@ -99,6 +100,64 @@ describe('local secret resolution HTTP route', () => {
       value: ` ${CANARY} `,
       handling: { cache: 'no-store', sensitivity: 'secret' },
     })
+  })
+
+  it('blocks reserved identity resolution from authenticated shared HTTP while ordinary secrets resolve', async () => {
+    const sqlitePath = createTempSqlitePath()
+    const workspaceId = 'workspace-shared-identity-boundary'
+    const client = createSeededLocalClient({
+      localSecretResolutionEnabled: true,
+      secretCodec: availableCodec,
+      sqlitePath,
+      workspaceId,
+    })
+    const secretService = createSqliteSecretService(
+      createDrizzleDatabase(createFileDatabase(sqlitePath)),
+      availableCodec,
+      createWorkspaceSecretScope(workspaceId),
+    )
+    await secretService.upsertTrustedIdentitySsnLast4('5125')
+    await secretService.upsert({
+      key: 'ordinary_token',
+      kind: 'token',
+      label: 'Ordinary token',
+      value: 'ordinary-value',
+    })
+    const server = await fixture.start({
+      client,
+      localSecretResolutionEnabled: true,
+      resolveWorkspaceClient: async () => client,
+      token: 'server-token',
+    })
+    const resolve = (key: string) => fetch(
+      `${server.url}/v1/workspaces/${workspaceId}/secrets/local/resolve`,
+      {
+        body: JSON.stringify({
+          purpose: { kind: 'subprocess_injection' },
+          reference: { $valedictorianRef: `secret://${key}` },
+        }),
+        headers: {
+          authorization: 'Bearer server-token',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      },
+    )
+
+    for (const key of [
+      identitySsnLast4SecretKey,
+      'IDENTITY_SSN_LAST4',
+      'identity-ssn-last4',
+    ]) {
+      const identityResponse = await resolve(key)
+      expect(identityResponse.status).toBe(404)
+      expect(identityResponse.headers.get('cache-control')).toContain('no-store')
+      expect(JSON.stringify(await readJson(identityResponse))).not.toContain('5125')
+    }
+
+    const ordinaryResponse = await resolve('ordinary_token')
+    expect(ordinaryResponse.status).toBe(200)
+    await expect(readJson(ordinaryResponse)).resolves.toMatchObject({ value: 'ordinary-value' })
   })
 
   it('returns typed unauthorized and missing outcomes with no-store', async () => {
@@ -576,4 +635,3 @@ describe('local secret resolution HTTP route', () => {
     expect(JSON.stringify(bodyB)).not.toContain(CANARY_A)
   })
 })
-

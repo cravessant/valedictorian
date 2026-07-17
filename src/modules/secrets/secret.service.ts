@@ -1,5 +1,4 @@
 import {
-  normalizeProfileAnswerKey,
   profileSecretKinds,
   type ProfileSecretKind,
   type ProfileSecretSummary,
@@ -12,6 +11,7 @@ import {
   identitySsnLast4SecretKey,
   isIdentitySecretKind,
 } from './secret.identity'
+import { normalizeSecretKey } from './secret.key'
 import type {
   NormalizedSecretKey,
   SecretStore,
@@ -22,6 +22,7 @@ import type {
 export interface SecretService {
   readonly scope: WorkspaceSecretScope
   delete(key: string): Promise<void>
+  hasTrustedIdentitySsnLast4(): Promise<boolean>
   list(): Promise<ProfileSecretSummary[]>
   listResult(): Promise<ProfileSecretsListResult>
   resolve(key: string): Promise<SecretValue | null>
@@ -34,9 +35,12 @@ export function createSecretService(store: SecretStore): SecretService {
   return {
     scope: store.scope,
     async delete(key) {
-      const normalized = toNormalizedSecretKey(key)
+      const normalized = normalizeSecretKey(key)
       assertOrdinaryIdentityAdministrationAllowed(normalized)
       await store.delete(normalized)
+    },
+    async hasTrustedIdentitySsnLast4() {
+      return (await store.resolve(identitySsnLast4SecretKey as NormalizedSecretKey)) !== null
     },
     async list() {
       return (await store.list()).filter(isOrdinarySecretSummary)
@@ -46,10 +50,10 @@ export function createSecretService(store: SecretStore): SecretService {
       return { items }
     },
     async resolve(key) {
-      return store.resolve(toNormalizedSecretKey(key))
+      return store.resolve(normalizeSecretKey(key))
     },
     async upsert(input) {
-      const key = toNormalizedSecretKey(input.key)
+      const key = normalizeSecretKey(input.key)
       assertOrdinaryIdentityAdministrationAllowed(key, input.kind)
 
       const validated: ValidatedUpsertSecretInput = {
@@ -83,10 +87,6 @@ function assertOrdinaryIdentityAdministrationAllowed(key: string, kind?: string)
   if (key === identitySsnLast4SecretKey || (kind !== undefined && isIdentitySecretKind(kind))) {
     throw new Error('Identity secrets cannot be managed through ordinary secret administration')
   }
-}
-
-function toNormalizedSecretKey(key: string): NormalizedSecretKey {
-  return normalizeProfileAnswerKey(key) as NormalizedSecretKey
 }
 
 function requireSecretValue(value: unknown): string {

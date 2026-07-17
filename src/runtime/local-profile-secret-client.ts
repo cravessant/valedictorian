@@ -29,11 +29,7 @@ export function createWorkspaceProfileMethods(
       format: (input) => profileService.formatDocument(input),
       restore: (input) => profileService.restoreDocument(input),
     },
-    sensitive: {
-      get: () => profileService.getSensitiveDetails(),
-      update: (input) => profileService.updateSensitiveDetails(input),
-    },
-  }
+  } as ValedictorianWorkspaceClient['profile']
 }
 
 export function createWorkspaceSecretMethods(

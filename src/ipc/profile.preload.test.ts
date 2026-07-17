@@ -14,13 +14,8 @@ describe('profile preload API', () => {
     await api.get()
     await api.update({ fullName: 'Kenny Lin', answers: [] })
     await api.agentContext.get()
-    await api.sensitive.get()
-    await api.sensitive.update({
-      birthDay: '16',
-      birthMonth: '03',
-      birthYear: '2004',
-      ssnLast4: '5125',
-    })
+    await api.identity.status()
+    await api.identity.set('0000')
     await api.secrets.list()
     await api.secrets.upsert({
       key: 'greenhouse_password',
@@ -34,16 +29,8 @@ describe('profile preload API', () => {
       ['profile:get'],
       ['profile:update', { fullName: 'Kenny Lin', answers: [] }],
       ['profile:agent-context:get'],
-      ['profile:sensitive:get'],
-      [
-        'profile:sensitive:update',
-        {
-          birthDay: '16',
-          birthMonth: '03',
-          birthYear: '2004',
-          ssnLast4: '5125',
-        },
-      ],
+      ['profile:identity:status'],
+      ['profile:identity:set', '0000'],
       ['profile:secrets:list'],
       [
         'profile:secrets:upsert',

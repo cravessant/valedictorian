@@ -48,6 +48,8 @@ describe('identity SSN last4 secret representation', () => {
   it('blocks ordinary create, replace, and delete while trusted upsert returns no summary', async () => {
     const service = createService()
 
+    await expect(service.hasTrustedIdentitySsnLast4()).resolves.toBe(false)
+
     await service.upsert({
       key: 'jobright',
       kind: 'password',
@@ -82,6 +84,7 @@ describe('identity SSN last4 secret representation', () => {
     })
 
     await expect(service.upsertTrustedIdentitySsnLast4('5125')).resolves.toBeUndefined()
+    await expect(service.hasTrustedIdentitySsnLast4()).resolves.toBe(true)
 
     expect(await service.list()).toEqual([
       expect.objectContaining({ key: 'jobright', kind: 'password' }),

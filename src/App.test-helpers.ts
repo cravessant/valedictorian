@@ -27,7 +27,6 @@ import type {
   ApplicationListResult,
 } from './modules/applications/application.types'
 import type { ActionQueueListItem, ActionQueueListResult } from './modules/action-queue/action-queue.repository'
-import type { ProfileSensitiveDetails } from 'sparxie'
 import {
   defaultPolicyConfig,
   defaultUserProfile,
@@ -815,17 +814,7 @@ export function createPolicyApi(initialConfig: PolicyConfig = defaultPolicyConfi
 
 export function createProfileApi(): ProfilePreloadApi {
   let currentProfile = { ...defaultUserProfile }
-  let currentSensitiveDetails: ProfileSensitiveDetails = {
-    birthDay: null,
-    birthMonth: null,
-    birthYear: null,
-    disabilityStatus: null,
-    gender: null,
-    hispanicLatino: null,
-    raceEthnicity: null,
-    ssnLast4: null,
-    veteranStatus: null,
-  }
+  let identityConfigured = false
   let secrets: Array<{
     key: string
     kind: 'password' | 'token' | 'identity' | 'other'
@@ -839,16 +828,11 @@ export function createProfileApi(): ProfilePreloadApi {
       get: vi.fn(async () => ({ answers: [], basics: {}, education: [] })),
     },
     get: vi.fn(async () => currentProfile),
-    sensitive: {
-      get: vi.fn(async () => currentSensitiveDetails),
-      update: vi.fn(async (input) => {
-        currentSensitiveDetails = {
-          ...currentSensitiveDetails,
-          ...input,
-        }
-
-        return currentSensitiveDetails
+    identity: {
+      set: vi.fn(async () => {
+        identityConfigured = true
       }),
+      status: vi.fn(async () => identityConfigured),
     },
     secrets: {
       delete: vi.fn(async (key: string) => {

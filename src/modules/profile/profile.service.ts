@@ -11,8 +11,6 @@ import {
   type ProfileDocumentRestoreInput,
   type ProfileDocumentUpdateInput,
   type ProfileDocumentValidateResult,
-  type ProfileSensitiveDetails,
-  type ProfileSensitiveDetailsInput,
   type ProfileUpdateInput,
   type UserProfile,
 } from 'sparxie'
@@ -26,8 +24,7 @@ import {
   issuePath,
   profileDocumentError,
 } from './profile.errors'
-import { mergeProfile, normalizeProfilePatch, normalizeSensitiveDetailsUpdate, movedSensitiveChangesFromPatch } from './profile.normalize'
-import type { SensitiveProfileStore } from './profile.sensitive-store'
+import { mergeProfile, normalizeProfilePatch } from './profile.normalize'
 import type { ProfileStore } from './profile.store'
 
 export interface ProfileService {
@@ -37,21 +34,18 @@ export interface ProfileService {
   getAgentContext(): Promise<ProfileAgentContext>
   getDocument(): Promise<ProfileDocument>
   getLastKnownGoodPreview(): ProfileLastKnownGoodPreview | null
-  getSensitiveDetails(): Promise<ProfileSensitiveDetails>
   restoreDocument(input: ProfileDocumentRestoreInput): Promise<ProfileDocument>
   subscribe(listener: (event: ProfileDocumentChangeEvent) => void): () => void
   update(input: ProfileUpdateInput): Promise<UserProfile>
   updateDocument(input: ProfileDocumentUpdateInput): Promise<ProfileDocument>
-  updateSensitiveDetails(input: ProfileSensitiveDetailsInput): Promise<ProfileSensitiveDetails>
   validateDocument(): Promise<ProfileDocumentValidateResult>
 }
 
 export function createProfileService(options: {
   profileStore: ProfileStore
-  sensitiveStore: SensitiveProfileStore
   documentCapability?: ProfileDocumentCapability
 }): ProfileService {
-  const { profileStore, sensitiveStore, documentCapability } = options
+  const { profileStore, documentCapability } = options
   let disposed = false
 
   return {
@@ -68,7 +62,6 @@ export function createProfileService(options: {
         const result = await profileStore.update({
           expectedRevision: current.revision,
           profile: next,
-          movedSensitiveChanges: movedSensitiveChangesFromPatch(patch),
         })
         if (result.ok) {
           return parseDocument(result.document).profile
@@ -103,7 +96,6 @@ export function createProfileService(options: {
       const result = await profileStore.update({
         expectedRevision: parsed.data.expectedRevision,
         profile: next,
-        movedSensitiveChanges: movedSensitiveChangesFromPatch(patch),
       })
       if (!result.ok) {
         throw profileDocumentError('profile_revision_conflict')
@@ -164,16 +156,6 @@ export function createProfileService(options: {
       if (disposed) return
       disposed = true
       documentCapability?.dispose()
-    },
-    async getSensitiveDetails() {
-      assertNotDisposed()
-      return sensitiveStore.get()
-    },
-    async updateSensitiveDetails(input) {
-      assertNotDisposed()
-      const current = await sensitiveStore.get()
-      const normalized = normalizeSensitiveDetailsUpdate(current, input)
-      return sensitiveStore.update(normalized)
     },
   }
 

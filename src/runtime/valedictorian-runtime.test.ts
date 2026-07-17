@@ -64,6 +64,7 @@ describe('Valedictorian runtime config', () => {
       apiToken: undefined,
       apiUrl: 'http://127.0.0.1:4317',
       mode: 'local-desktop',
+      profilePath: '/Users/test/Library/Application Support/Valedictorian/profile.json',
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
       sqlitePath: '/Users/test/Library/Application Support/Valedictorian/valedictorian.sqlite',
@@ -79,6 +80,7 @@ describe('Valedictorian runtime config', () => {
         workspaceDataPath: '/Users/test/Job Search/.valedictorian',
       }),
     ).toMatchObject({
+      profilePath: '/Users/test/Job Search/.valedictorian/profile.json',
       sqlitePath: '/Users/test/Job Search/.valedictorian/valedictorian.sqlite',
     })
   })
@@ -145,6 +147,7 @@ describe('Valedictorian runtime config', () => {
       apiToken: 'saved-token',
       apiUrl: 'http://0.0.0.0:7777',
       mode: 'local-shared',
+      profilePath: '/Users/test/Library/Application Support/Valedictorian/profile.json',
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
       sqlitePath: '/Users/test/Library/Application Support/Valedictorian/valedictorian.sqlite',
@@ -206,6 +209,77 @@ describe('Valedictorian runtime config', () => {
 })
 
 describe('Valedictorian runtime creation', () => {
+  it('prepares and injects shared profile capabilities before serving and disposes them on close', async () => {
+    const events: string[] = []
+    const localClient = createWorkspaceClient('prepared-local')
+    const profileService = { dispose: vi.fn() }
+    const secretService = { scope: { workspaceId: 'workspace-prepared' } }
+    const dispose = vi.fn(() => events.push('capabilities.dispose'))
+    const prepareWorkspaceCapabilities = vi.fn(async () => {
+      events.push('capabilities.prepare')
+      return { dispose, profileService, secretService }
+    })
+    const createLocalClient = vi.fn((options: Record<string, unknown>) => {
+      expect(options.profileService).toBe(profileService)
+      expect(options.secretService).toBe(secretService)
+      events.push('client.create')
+      return localClient
+    })
+    const server = {
+      close: vi.fn(async () => events.push('server.close')),
+      url: 'http://127.0.0.1:4317',
+    }
+
+    const runtime = await createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({
+        env: {},
+        userDataPath: '/tmp/valedictorian-profile-prepared',
+        workspaceId: 'workspace-prepared',
+      }),
+      createLocalClient: createLocalClient as never,
+      prepareWorkspaceCapabilities: prepareWorkspaceCapabilities as never,
+      startServer: vi.fn(async () => {
+        events.push('server.start')
+        return server
+      }),
+    })
+
+    expect(events.slice(0, 3)).toEqual([
+      'capabilities.prepare',
+      'client.create',
+      'server.start',
+    ])
+    expect(runtime.profileService).toBe(profileService)
+    expect(runtime.secretService).toBe(secretService)
+    await runtime.close()
+    await runtime.close()
+    expect(events).toContain('capabilities.dispose')
+    expect(dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('disposes prepared capabilities when local server startup fails', async () => {
+    const dispose = vi.fn()
+    const prepareWorkspaceCapabilities = vi.fn(async () => ({
+      dispose,
+      profileService: {},
+      secretService: {},
+    }))
+
+    await expect(createValedictorianRuntime({
+      config: resolveValedictorianRuntimeConfig({
+        env: {},
+        userDataPath: '/tmp/valedictorian-profile-start-failure',
+      }),
+      createLocalClient: vi.fn(() => createWorkspaceClient('start-failure')),
+      prepareWorkspaceCapabilities: prepareWorkspaceCapabilities as never,
+      startServer: vi.fn(async () => {
+        throw new Error('fixture listener failure')
+      }),
+    })).rejects.toThrow('fixture listener failure')
+
+    expect(dispose).toHaveBeenCalledTimes(1)
+  })
+
   it('starts the local scheduler for desktop runtimes and stops it before closing the server', async () => {
     const localClient = createWorkspaceClient('local')
     const events: string[] = []
@@ -363,6 +437,7 @@ describe('Valedictorian runtime creation', () => {
     const otherWorkspaceClient = createWorkspaceClient('other-workspace')
     const server = { close: vi.fn(async () => undefined), url: 'http://127.0.0.1:4317' }
     const workspaceManager = {
+      close: vi.fn(async () => undefined),
       connectorRunRecovery: createConnectorRunRecoveryLifecycle(),
       create: vi.fn(),
       list: vi.fn(),

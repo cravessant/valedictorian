@@ -18,6 +18,10 @@ import {
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { resolveWorkspaceLayout } from '../workspace/workspace.paths'
 import type { WorkspaceRecord, WorkspaceRegistryStore } from '../workspace/workspace.registry'
+import {
+  prepareWorkspaceProfileCapabilities,
+  type PreparedWorkspaceProfileCapabilities,
+} from '../modules/profile/profile.composition'
 
 export class LocalWorkspaceConflictError extends Error {
   readonly statusCode = 409
@@ -46,6 +50,7 @@ export interface LocalWorkspaceListResult {
 }
 
 export interface LocalWorkspaceManager {
+  close(): Promise<void>
   connectorRunRecovery: ConnectorRunRecoveryLifecycle
   create(input: LocalWorkspaceCreateInput): Promise<LocalWorkspaceListItem>
   list(): Promise<LocalWorkspaceListResult>
@@ -69,6 +74,7 @@ export interface CreateLocalWorkspaceManagerOptions {
   createId?: () => string
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   now?: () => Date
+  prepareWorkspaceCapabilities?: typeof prepareWorkspaceProfileCapabilities
   referenceTrackerPath?: string
   registryStore: WorkspaceRegistryStore
   secretCodec?: SecretCodec
@@ -81,15 +87,29 @@ export function createLocalWorkspaceManager({
   createId = () => crypto.randomUUID(),
   connectorRunRecovery = createConnectorRunRecoveryLifecycle(),
   now = () => new Date(),
+  prepareWorkspaceCapabilities,
   referenceTrackerPath,
   registryStore,
   secretCodec,
   seedDataMode = 'none',
 }: CreateLocalWorkspaceManagerOptions): LocalWorkspaceManager {
   const clientCache = new Map<string, ValedictorianWorkspaceClient>()
+  const clientInflight = new Map<string, Promise<ValedictorianWorkspaceClient>>()
+  const capabilityCache = new Map<string, PreparedWorkspaceProfileCapabilities>()
+  const prepareCapabilities = prepareWorkspaceCapabilities
+    ?? (createClient === createLocalValedictorianClient
+      ? prepareWorkspaceProfileCapabilities
+      : null)
 
   return {
     connectorRunRecovery,
+    async close() {
+      await Promise.allSettled(clientInflight.values())
+      for (const capabilities of capabilityCache.values()) capabilities.dispose()
+      clientInflight.clear()
+      capabilityCache.clear()
+      clientCache.clear()
+    },
     async create(input) {
       fs.mkdirSync(input.path, { recursive: true })
       return openWorkspace({ createId, input, now, registryStore })
@@ -107,14 +127,16 @@ export function createLocalWorkspaceManager({
       return openWorkspace({ createId, input, now, registryStore })
     },
     async resolveClient(workspaceId) {
-      try {
-        const cachedClient = clientCache.get(workspaceId)
+      const cachedClient = clientCache.get(workspaceId)
+      if (cachedClient) {
+        await registryStore.clearError(workspaceId)
+        return cachedClient
+      }
+      const inflightClient = clientInflight.get(workspaceId)
+      if (inflightClient) return inflightClient
 
-        if (cachedClient) {
-          await registryStore.clearError(workspaceId)
-          return cachedClient
-        }
-
+      const resolution = (async () => {
+        try {
         const registry = await registryStore.get()
         const workspace = registry.workspaces[workspaceId]
 
@@ -127,29 +149,67 @@ export function createLocalWorkspaceManager({
         }
 
         const connectorPorts = createConnectorPorts(workspaceId)
-        const client = createClient({
-          connectorRunRecovery,
-          connectorRuntime: connectorPorts.connectorRuntime,
-          localSecretResolutionEnabled: isSecretCodecAvailable(secretCodec),
-          referenceTrackerPath,
-          seedDataMode,
-          secretCodec,
-          sqlitePath: resolveWorkspaceLayout(workspace.path).sqlitePath,
-          workspaceId,
-        })
+        const layout = resolveWorkspaceLayout(workspace.path)
+        const prepared = prepareCapabilities
+          ? await prepareCapabilities({
+              profilePath: layout.profilePath,
+              secretCodec: secretCodec ?? unavailableWorkspaceSecretCodec,
+              sqlitePath: layout.sqlitePath,
+              workspaceId,
+            })
+          : null
+        let client: ValedictorianWorkspaceClient
+        try {
+          client = createClient({
+            connectorRunRecovery,
+            connectorRuntime: connectorPorts.connectorRuntime,
+            localSecretResolutionEnabled: isSecretCodecAvailable(secretCodec),
+            profilePath: layout.profilePath,
+            ...(prepared === null
+              ? {}
+              : {
+                  profileService: prepared.profileService,
+                  secretService: prepared.secretService,
+                }),
+            referenceTrackerPath,
+            seedDataMode,
+            secretCodec,
+            sqlitePath: layout.sqlitePath,
+            workspaceId,
+          })
+        } catch (error) {
+          prepared?.dispose()
+          throw error
+        }
+        if (prepared) capabilityCache.set(workspaceId, prepared)
         clientCache.set(workspaceId, client)
         await registryStore.clearError(workspaceId)
         return client
-      } catch (error) {
-        await registryStore.recordError(
-          workspaceId,
-          error instanceof Error ? error.message : String(error),
-          now(),
-        )
-        throw error
-      }
+        } catch (error) {
+          await registryStore.recordError(
+            workspaceId,
+            error instanceof Error ? error.message : String(error),
+            now(),
+          )
+          throw error
+        }
+      })()
+      clientInflight.set(workspaceId, resolution)
+      return resolution.finally(() => {
+        if (clientInflight.get(workspaceId) === resolution) clientInflight.delete(workspaceId)
+      })
     },
   }
+}
+
+const unavailableWorkspaceSecretCodec: SecretCodec = {
+  decrypt() {
+    throw new Error('Protected storage is unavailable.')
+  },
+  encrypt() {
+    throw new Error('Protected storage is unavailable.')
+  },
+  isAvailable: () => false,
 }
 
 async function openWorkspace({

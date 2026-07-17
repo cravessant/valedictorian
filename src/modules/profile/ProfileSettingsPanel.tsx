@@ -22,7 +22,6 @@ import {
   type ProfileAnswer,
   type ProfileEducation,
   type ProfileSecretSummary,
-  type ProfileSensitiveDetails,
   type ProfileUpdateInput,
   type UserProfile,
 } from 'sparxie'
@@ -34,7 +33,6 @@ import {
   CompactInput,
   formatProfileError,
   InlineEditorActions,
-  nullableInput,
   ProfileAnswerRow,
   ProfileRowModal,
   ProfileSection,
@@ -47,7 +45,6 @@ import {
   answerDraftDefaults,
   educationDraftDefaults,
   secretDraftDefaults,
-  defaultSensitiveDetails,
 } from './ProfileSettingsControls'
 import { ProfileEducationSection } from './ProfileEducationSection'
 import { ProfileSecureValuesSection } from './ProfileSecureValuesSection'
@@ -55,8 +52,9 @@ import { ProfileSecureValuesSection } from './ProfileSecureValuesSection'
 type ProfileField = keyof Omit<UserProfile, 'answers' | 'education'>
 type ProfileSaveScope =
   | 'answer'
+  | 'date-of-birth'
   | 'education'
-  | 'private-identifiers'
+  | 'identity'
   | 'profile'
   | 'secret'
   | 'voluntary-self-id'
@@ -75,8 +73,9 @@ type PendingDestructiveRemoval = {
 
 function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi }) {
   const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
-  const [sensitiveDetails, setSensitiveDetails] =
-    useState<ProfileSensitiveDetails>(defaultSensitiveDetails)
+  const [birthDateDraft, setBirthDateDraft] = useState({ day: '', month: '', year: '' })
+  const [identityConfigured, setIdentityConfigured] = useState(false)
+  const [identityDraft, setIdentityDraft] = useState('')
   const [isProfileLoading, setIsProfileLoading] = useState(true)
   const [showAnswerEditor, setShowAnswerEditor] = useState(false)
   const [showEducationEditor, setShowEducationEditor] = useState(false)
@@ -102,14 +101,15 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   useEffect(() => {
     let active = true
 
-    void Promise.all([profileApi.get(), profileApi.sensitive.get(), profileApi.secrets.list()])
-      .then(([savedProfile, savedSensitiveDetails, savedSecrets]) => {
+    void Promise.all([profileApi.get(), profileApi.identity.status(), profileApi.secrets.list()])
+      .then(([savedProfile, savedIdentityStatus, savedSecrets]) => {
         if (!active) {
           return
         }
 
         setProfile(savedProfile)
-        setSensitiveDetails(savedSensitiveDetails)
+        setBirthDateDraft(splitDateOfBirth(savedProfile.dateOfBirth))
+        setIdentityConfigured(savedIdentityStatus)
         setSecretSummaries(savedSecrets)
       })
       .finally(() => {
@@ -130,13 +130,6 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     }))
   }
 
-  function updateSensitiveField(field: keyof ProfileSensitiveDetails, value: string) {
-    setSensitiveDetails((current) => ({
-      ...current,
-      [field]: value,
-    }))
-  }
-
   function buildProfilePatch(
     answers = profile.answers,
     education = profile.education,
@@ -152,20 +145,26 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
       'country',
       'citizenship',
       'coverLetterPath',
+      'dateOfBirth',
+      'disabilityStatus',
       'email',
       'fullName',
+      'gender',
       'githubUrl',
+      'hispanicLatino',
       'language',
       'linkedinUrl',
       'phone',
       'phoneDeviceType',
       'portfolioUrl',
       'preferredName',
+      'raceEthnicity',
       'region',
       'relocationNotes',
       'requireSponsorship',
       'requireSponsorshipFuture',
       'travelNotes',
+      'veteranStatus',
       'willingToRelocate',
       'willingToTravel',
       'workAuthorization',
@@ -173,10 +172,9 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
 
     for (const field of fields) {
       const value = profile[field]
-
-      if (value !== null && value !== undefined && value !== '') {
-        Object.assign(patch, { [field]: value })
-      }
+      Object.assign(patch, {
+        [field]: value === '' || value === undefined ? null : value,
+      })
     }
 
     return patch
@@ -375,38 +373,55 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     removeSecret(pendingRemoval.targetId)
   }
 
-  function savePrivateIdentifiers() {
+  function saveDateOfBirth() {
     runProfileAction({
-      errorPrefix: 'Could not save private identifiers',
-      onSuccess: setSensitiveDetails,
-      pendingMessage: 'Saving private identifiers...',
-      scope: 'private-identifiers',
-      successMessage: 'Private identifiers saved.',
-      task: () =>
-        profileApi.sensitive.update({
-          birthDay: nullableInput(sensitiveDetails.birthDay),
-          birthMonth: nullableInput(sensitiveDetails.birthMonth),
-          birthYear: nullableInput(sensitiveDetails.birthYear),
-          ssnLast4: nullableInput(sensitiveDetails.ssnLast4),
-        }),
+      errorPrefix: 'Could not save date of birth',
+      onSuccess: (saved) => setProfile((current) => ({
+        ...current,
+        dateOfBirth: saved.dateOfBirth,
+      })),
+      pendingMessage: 'Saving date of birth...',
+      scope: 'date-of-birth',
+      successMessage: 'Date of birth saved.',
+      task: () => profileApi.update({ dateOfBirth: canonicalBirthDate(birthDateDraft) }),
+    })
+  }
+
+  function saveIdentity() {
+    runProfileAction({
+      errorPrefix: 'Could not save SSN last four',
+      onSuccess: () => {
+        setIdentityConfigured(true)
+        setIdentityDraft('')
+      },
+      pendingMessage: 'Saving SSN last four...',
+      scope: 'identity',
+      successMessage: 'SSN last four saved.',
+      task: () => profileApi.identity.set(identityDraft),
     })
   }
 
   function saveVoluntarySelfId() {
     runProfileAction({
       errorPrefix: 'Could not save voluntary self-ID',
-      onSuccess: setSensitiveDetails,
+      onSuccess: (saved) => setProfile((current) => ({
+        ...current,
+        disabilityStatus: saved.disabilityStatus,
+        gender: saved.gender,
+        hispanicLatino: saved.hispanicLatino,
+        raceEthnicity: saved.raceEthnicity,
+        veteranStatus: saved.veteranStatus,
+      })),
       pendingMessage: 'Saving voluntary self-ID...',
       scope: 'voluntary-self-id',
       successMessage: 'Voluntary self-ID saved.',
-      task: () =>
-        profileApi.sensitive.update({
-          disabilityStatus: nullableInput(sensitiveDetails.disabilityStatus),
-          gender: nullableInput(sensitiveDetails.gender),
-          hispanicLatino: nullableInput(sensitiveDetails.hispanicLatino),
-          raceEthnicity: nullableInput(sensitiveDetails.raceEthnicity),
-          veteranStatus: nullableInput(sensitiveDetails.veteranStatus),
-        }),
+      task: () => profileApi.update({
+        disabilityStatus: profile.disabilityStatus || null,
+        gender: profile.gender || null,
+        hispanicLatino: profile.hispanicLatino || null,
+        raceEthnicity: profile.raceEthnicity || null,
+        veteranStatus: profile.veteranStatus || null,
+      }),
     })
   }
 
@@ -706,26 +721,36 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
 
           <ProfileSection title="Private Identifiers">
             <BirthDateSelectRow
-              day={sensitiveDetails.birthDay ?? ''}
-              month={sensitiveDetails.birthMonth ?? ''}
-              year={sensitiveDetails.birthYear ?? ''}
-              onDayChange={(value) => updateSensitiveField('birthDay', value)}
-              onMonthChange={(value) => updateSensitiveField('birthMonth', value)}
-              onYearChange={(value) => updateSensitiveField('birthYear', value)}
+              day={birthDateDraft.day}
+              month={birthDateDraft.month}
+              year={birthDateDraft.year}
+              onDayChange={(day) => setBirthDateDraft((current) => ({ ...current, day }))}
+              onMonthChange={(month) => setBirthDateDraft((current) => ({ ...current, month }))}
+              onYearChange={(year) => setBirthDateDraft((current) => ({ ...current, year }))}
             />
             <SettingsTextInput
               label="Last 4 SSN"
               type="password"
-              value={sensitiveDetails.ssnLast4 ?? ''}
-              onChange={(value) => updateSensitiveField('ssnLast4', value)}
+              value={identityDraft}
+              onChange={setIdentityDraft}
             />
+            <div className="px-4 py-3 text-sm text-muted-foreground">
+              SSN last four: {identityConfigured ? 'Configured' : 'Not configured'}
+            </div>
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
               <Button
                 type="button"
-                disabled={isSaving('private-identifiers')}
-                onClick={savePrivateIdentifiers}
+                disabled={isSaving('date-of-birth')}
+                onClick={saveDateOfBirth}
               >
-                {isSaving('private-identifiers') ? 'Saving...' : 'Save private identifiers'}
+                {isSaving('date-of-birth') ? 'Saving...' : 'Save date of birth'}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSaving('identity') || !/^\d{4}$/.test(identityDraft)}
+                onClick={saveIdentity}
+              >
+                {isSaving('identity') ? 'Saving...' : 'Set or replace SSN last four'}
               </Button>
             </div>
           </ProfileSection>
@@ -734,32 +759,32 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             <SettingsSelectInput
               label="Race/ethnicity"
               options={raceEthnicityOptions}
-              value={sensitiveDetails.raceEthnicity ?? ''}
-              onChange={(value) => updateSensitiveField('raceEthnicity', value)}
+              value={profile.raceEthnicity ?? ''}
+              onChange={(value) => updateProfileField('raceEthnicity', value)}
             />
             <SettingsSelectInput
               label="Gender"
               options={genderOptions}
-              value={sensitiveDetails.gender ?? ''}
-              onChange={(value) => updateSensitiveField('gender', value)}
+              value={profile.gender ?? ''}
+              onChange={(value) => updateProfileField('gender', value)}
             />
             <SettingsSelectInput
               label="Disability status"
               options={yesNoSelfIdOptions}
-              value={sensitiveDetails.disabilityStatus ?? ''}
-              onChange={(value) => updateSensitiveField('disabilityStatus', value)}
+              value={profile.disabilityStatus ?? ''}
+              onChange={(value) => updateProfileField('disabilityStatus', value)}
             />
             <SettingsSelectInput
               label="Veteran status"
               options={veteranStatusOptions}
-              value={sensitiveDetails.veteranStatus ?? ''}
-              onChange={(value) => updateSensitiveField('veteranStatus', value)}
+              value={profile.veteranStatus ?? ''}
+              onChange={(value) => updateProfileField('veteranStatus', value)}
             />
             <SettingsSelectInput
               label="Hispanic/Latino"
               options={yesNoSelfIdOptions}
-              value={sensitiveDetails.hispanicLatino ?? ''}
-              onChange={(value) => updateSensitiveField('hispanicLatino', value)}
+              value={profile.hispanicLatino ?? ''}
+              onChange={(value) => updateProfileField('hispanicLatino', value)}
             />
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
               <Button
@@ -920,6 +945,18 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
       </AlertDialog>
     </section>
   )
+}
+
+function splitDateOfBirth(value: string | null) {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match
+    ? { day: match[3], month: match[2], year: match[1] }
+    : { day: '', month: '', year: '' }
+}
+
+function canonicalBirthDate(value: { day: string; month: string; year: string }) {
+  if (!value.day && !value.month && !value.year) return null
+  return `${value.year}-${value.month}-${value.day}`
 }
 
 export { ProfileSettingsPanel }

@@ -10,10 +10,6 @@ describe('profile/secret import policy', () => {
     expect(
       findProfileSecretImportPolicyViolations([
         {
-          path: 'src/ipc/forbidden.ts',
-          source: "import { createSqliteProfileStore } from '../modules/profile/profile.sqlite.store'\n",
-        },
-        {
           path: 'src/settings/SettingsPage.forbidden.ts',
           source: "import { createFileAppSecretStore } from './app-secret.store'\n",
         },
@@ -22,38 +18,14 @@ describe('profile/secret import policy', () => {
           source: "import { createSqliteSecretStore } from '../secrets/secret.sqlite.store'\n",
         },
         {
-          path: 'src/app/forbidden.tsx',
-          source:
-            "import { createSqliteSensitiveProfileStore } from '../modules/profile/profile.sqlite.sensitive-store'\n",
-        },
-        {
-          path: 'src/ipc/forbidden-reexport.ts',
-          source:
-            "export { createSqliteProfileStore } from '../modules/profile/profile.sqlite.store'\n",
-        },
-        {
-          path: 'src/ipc/forbidden-star-export.ts',
-          source: "export * from '../modules/profile/profile.sqlite.store'\n",
-        },
-        {
           path: 'src/ipc/forbidden-dynamic.ts',
           source:
             "const load = () => import('../modules/secrets/secret.sqlite.store')\n",
         },
         {
-          path: 'electron/main.forbidden.ts',
-          source:
-            "import { createSqliteProfileStore } from '../src/modules/profile/profile.sqlite.store'\n",
-        },
-        {
           path: 'electron/preload.forbidden.ts',
           source:
             "export { createSqliteSecretStore } from '../src/modules/secrets/secret.sqlite.store'\n",
-        },
-        {
-          path: 'electron/main.forbidden-dynamic.ts',
-          source:
-            "const load = () => import('../src/modules/profile/profile.sqlite.sensitive-store')\n",
         },
         {
           path: 'src/server/forbidden-json.ts',
@@ -92,16 +64,10 @@ describe('profile/secret import policy', () => {
         },
       ]),
     ).toEqual([
-      'src/ipc/forbidden.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/settings/SettingsPage.forbidden.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/modules/connectors/forbidden.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'src/app/forbidden.tsx: concrete profile/secret adapters may only be imported from approved composition modules',
-      'src/ipc/forbidden-reexport.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'src/ipc/forbidden-star-export.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/ipc/forbidden-dynamic.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'electron/main.forbidden.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'electron/preload.forbidden.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'electron/main.forbidden-dynamic.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/server/forbidden-json.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/ipc/forbidden-json-helper.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'electron/main.forbidden-json.ts: concrete profile/secret adapters may only be imported from approved composition modules',
@@ -116,38 +82,16 @@ describe('profile/secret import policy', () => {
     expect(
       findProfileSecretImportPolicyViolations([
         {
-          path: 'src/modules/profile/profile.sqlite.store.ts',
-          source:
-            "import { createSqliteSensitiveProfileStore } from './profile.sqlite.sensitive-store'\n",
-        },
-        {
-          path: 'src/modules/profile/profile.sqlite.sensitive-store.ts',
-          source: "import { createSqliteProfileStore } from './profile.sqlite.store'\n",
-        },
-        {
           path: 'src/modules/secrets/secret.sqlite.store.ts',
-          source: "import { createSqliteProfileStore } from '../profile/profile.sqlite.store'\n",
-        },
-        {
-          path: 'src/modules/profile/profile.sqlite.store.test.ts',
-          source:
-            "import { createSqliteSensitiveProfileStore } from './profile.sqlite.sensitive-store'\n",
-        },
-        {
-          path: 'src/modules/profile/profile.sqlite.sensitive-store.test.ts',
-          source: "import { createSqliteProfileStore } from './profile.sqlite.store'\n",
+          source: "import { createFileAppSecretStore } from '../../../settings/app-secret.store'\n",
         },
         {
           path: 'src/modules/secrets/secret.sqlite.store.test.ts',
-          source: "import { createSqliteProfileStore } from '../profile/profile.sqlite.store'\n",
-        },
-        {
-          path: 'src/modules/profile/profile.sqlite.store.test.ts',
-          source: "import { createJsonProfileStore } from './profile.json.store'\n",
+          source: "import { createFileAppSecretStore } from '../../../settings/app-secret.store'\n",
         },
         {
           path: 'src/modules/profile/profile.json.document.ts',
-          source: "import { createSqliteProfileStore } from './profile.sqlite.store'\n",
+          source: "import { createSqliteSecretStore } from '../secrets/secret.sqlite.store'\n",
         },
         {
           path: 'src/modules/profile/profile.json.atomic.ts',
@@ -155,13 +99,8 @@ describe('profile/secret import policy', () => {
         },
       ]),
     ).toEqual([
-      'src/modules/profile/profile.sqlite.store.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'src/modules/profile/profile.sqlite.sensitive-store.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/modules/secrets/secret.sqlite.store.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'src/modules/profile/profile.sqlite.store.test.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'src/modules/profile/profile.sqlite.sensitive-store.test.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/modules/secrets/secret.sqlite.store.test.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'src/modules/profile/profile.sqlite.store.test.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/modules/profile/profile.json.document.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/modules/profile/profile.json.atomic.ts: concrete profile/secret adapters may only be imported from approved composition modules',
     ])
@@ -172,8 +111,19 @@ describe('profile/secret import policy', () => {
       findProfileSecretImportPolicyViolations([
         {
           path: 'src/modules/profile/profile.composition.ts',
-          source:
-            "import { createSqliteProfileStore } from './profile.sqlite.store'\nimport { createJsonProfileStore } from './profile.json.store'\n",
+          source: "import { createJsonProfileStore } from './profile.json.store'\n",
+        },
+        {
+          path: 'src/modules/profile/profile.composition.test.ts',
+          source: "import { serializeProfileJsonDocument } from './profile.json.document'\n",
+        },
+        {
+          path: 'src/modules/profile/profile.migration.ts',
+          source: "import { writeProfileJsonAtomically } from './profile.json.atomic'\n",
+        },
+        {
+          path: 'src/modules/profile/profile.migration.test.ts',
+          source: "import { parseProfileJsonDocument } from './profile.json.document'\n",
         },
         {
           path: 'src/modules/secrets/secret.composition.ts',
@@ -186,15 +136,6 @@ describe('profile/secret import policy', () => {
         {
           path: 'src/settings/app-secret.store.test.ts',
           source: "import { createFileAppSecretStore } from './app-secret.store'\n",
-        },
-        {
-          path: 'src/modules/profile/profile.sqlite.store.test.ts',
-          source: "import { createSqliteProfileStore } from './profile.sqlite.store'\n",
-        },
-        {
-          path: 'src/modules/profile/profile.sqlite.sensitive-store.test.ts',
-          source:
-            "import { createSqliteSensitiveProfileStore } from './profile.sqlite.sensitive-store'\n",
         },
         {
           path: 'src/modules/secrets/secret.sqlite.store.test.ts',
@@ -215,19 +156,12 @@ describe('profile/secret import policy', () => {
           source: "import { parseProfileJsonDocument } from './profile.json.document'\n",
         },
         {
-          path: 'src/modules/profile/docs.ts',
-          source:
-            "export function describeAdapter() {\n  return 'use profile.sqlite.store via composition'\n}\n",
-        },
-        {
           path: 'src/app/unrelated.ts',
-          source:
-            "export function createSqliteProfileStoreName() {\n  return 'createSqliteProfileStore'\n}\n",
+          source: "export function adapterName() {\n  return 'profile store'\n}\n",
         },
         {
           path: 'electron/main.ts',
-          source:
-            "export function note() {\n  return 'compose via profile.composition, not profile.sqlite.store'\n}\n",
+          source: "export function note() {\n  return 'compose via profile.composition'\n}\n",
         },
       ]),
     ).toEqual([])

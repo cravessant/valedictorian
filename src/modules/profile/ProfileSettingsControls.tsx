@@ -1,5 +1,4 @@
 import { type ReactNode } from 'react'
-import type { ProfileSensitiveDetails } from 'sparxie'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import {
@@ -503,16 +502,4 @@ export const secretDraftDefaults = {
   kind: 'password' as ProfileSecretKind,
   label: '',
   value: '',
-}
-
-export const defaultSensitiveDetails: ProfileSensitiveDetails = {
-  birthDay: null,
-  birthMonth: null,
-  birthYear: null,
-  disabilityStatus: null,
-  gender: null,
-  hispanicLatino: null,
-  raceEthnicity: null,
-  ssnLast4: null,
-  veteranStatus: null,
 }
