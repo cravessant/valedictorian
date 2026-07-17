@@ -117,7 +117,7 @@ describe("connector repository conventions", () => {
 
   it("documents stack and local agent-file conventions", () => {
     const readme = readText("README.md")
-    const agents = readText("AGENTS.md")
+    const gitignore = readText(".gitignore")
 
     expect(readme).toContain("## Stack Conventions")
     expect(readme).toContain("pnpm")
@@ -129,9 +129,17 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("Zod")
     expect(readme).toContain("Published npm packages must export compiled `dist/index.js`")
     expect(readme).toContain("## Agent Files")
+    expect(readme).toContain("`AGENTS.md` and `CLAUDE.md` are local-only")
+    expect(readme).toContain("globally git-excluded")
     expect(readme).toContain("`.local/` is gitignored")
-    expect(readme).toContain("`AGENTS.md` is the committed pointer")
-    expect(agents).toContain("agent-owned support files in `.local/`, which is intentionally gitignored")
+    expect(readme).toContain("agent-owned support")
+    expect(readme).toContain("must explicitly unexclude it")
+    expect(readme).toContain("this repository does not")
+    expect(readme).not.toContain("`AGENTS.md` is the committed pointer")
+    expect(gitignore).toContain(".local/")
+    expect(gitignore).not.toContain("!AGENTS.md")
+    expect(gitignore).not.toContain("!CLAUDE.md")
+    expect(gitignore).not.toContain("!.local")
   })
 
   it("limits release-age exceptions to internal sparxie packages", () => {
