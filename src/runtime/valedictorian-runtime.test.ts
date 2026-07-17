@@ -124,12 +124,13 @@ describe('Valedictorian runtime config', () => {
     })
   })
 
-  it('uses saved settings when env vars are absent', () => {
+  it('uses a resolved settings secret when env vars are absent', () => {
     expect(
       resolveValedictorianRuntimeConfig({
+        apiToken: 'saved-token',
         env: {},
         settings: {
-          apiToken: 'saved-token',
+          apiToken: '',
           localApiHost: '0.0.0.0',
           localApiPort: 7777,
           remoteApiUrl: 'https://saved.valedictorian.test',
@@ -152,9 +153,10 @@ describe('Valedictorian runtime config', () => {
 
     expect(
       resolveValedictorianRuntimeConfig({
+        apiToken: 'remote-token',
         env: {},
         settings: {
-          apiToken: 'remote-token',
+          apiToken: '',
           localApiHost: '127.0.0.1',
           localApiPort: 4317,
           remoteApiUrl: 'https://remote.valedictorian.test',
@@ -174,6 +176,7 @@ describe('Valedictorian runtime config', () => {
   it('lets env vars override saved settings', () => {
     expect(
       resolveValedictorianRuntimeConfig({
+        apiToken: 'saved-token',
         env: {
           VALEDICTORIAN_API_HOST: '127.0.0.2',
           VALEDICTORIAN_API_PORT: '9999',
@@ -182,7 +185,7 @@ describe('Valedictorian runtime config', () => {
           VALEDICTORIAN_MODE: 'remote',
         },
         settings: {
-          apiToken: 'saved-token',
+          apiToken: '',
           localApiHost: '0.0.0.0',
           localApiPort: 7777,
           remoteApiUrl: 'https://saved.valedictorian.test',

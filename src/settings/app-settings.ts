@@ -8,6 +8,7 @@ export type RuntimePreference = 'local-desktop' | 'local-shared' | 'remote'
 
 export interface AppSettings {
   apiToken: string
+  apiTokenSecretRef?: string
   localApiHost: string
   localApiPort: number
   remoteApiUrl: string
@@ -18,7 +19,7 @@ export interface AppSettings {
   theme: ThemeSettings
 }
 
-export type AppSettingsPatch = Partial<AppSettings>
+export type AppSettingsPatch = Partial<Omit<AppSettings, 'apiTokenSecretRef'>>
 
 export interface AppSettingsStore {
   get: () => Promise<AppSettings>
@@ -48,6 +49,10 @@ export function normalizeAppSettings(value: unknown): AppSettings {
   return {
     apiToken:
       typeof candidate.apiToken === 'string' ? candidate.apiToken : defaultAppSettings.apiToken,
+    apiTokenSecretRef:
+      typeof candidate.apiTokenSecretRef === 'string' && candidate.apiTokenSecretRef
+        ? candidate.apiTokenSecretRef
+        : undefined,
     localApiHost:
       typeof candidate.localApiHost === 'string'
         ? candidate.localApiHost

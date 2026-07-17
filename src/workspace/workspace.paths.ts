@@ -4,6 +4,7 @@ import { join } from 'pathe'
 export const workspaceDataDirectoryName = '.valedictorian'
 export const workspaceManifestFileName = 'manifest.json'
 export const workspaceAppSettingsFileName = 'app.json'
+export const workspaceAppSecretsFileName = 'secrets.json'
 export const workspaceSqliteFileName = 'valedictorian.sqlite'
 
 export interface WorkspaceLayout {

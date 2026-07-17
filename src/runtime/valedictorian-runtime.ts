@@ -35,6 +35,7 @@ import {
 export type ValedictorianRuntimeMode = 'local-desktop' | 'local-shared' | 'remote'
 
 export interface ValedictorianRuntimeConfigInput {
+  apiToken?: string
   env?: Record<string, string | undefined>
   settings?: AppSettings
   userDataPath: string
@@ -80,6 +81,7 @@ export interface CreateValedictorianRuntimeOptions {
 }
 
 export function resolveValedictorianRuntimeConfig({
+  apiToken,
   env = process.env,
   settings = defaultAppSettings,
   userDataPath,
@@ -94,7 +96,7 @@ export function resolveValedictorianRuntimeConfig({
   return {
     apiHost,
     apiPort,
-    apiToken: (env.VALEDICTORIAN_API_TOKEN ?? settings.apiToken) || undefined,
+    apiToken: (env.VALEDICTORIAN_API_TOKEN ?? apiToken) || undefined,
     apiUrl:
       env.VALEDICTORIAN_API_URL ??
       (mode === 'remote' ? settings.remoteApiUrl || defaultValedictorianApiBaseUrl : defaultApiUrl),

@@ -40,13 +40,17 @@ import {
   type SupervisedBackendListener,
 } from '../src/runtime/local-backend-supervisor'
 import { createFileAppSettingsStore } from '../src/settings/app-settings.store'
+import { createFileAppSecretStore } from '../src/settings/app-secret.store'
 import { defaultAppSettings } from '../src/settings/app-settings'
 import { serializeResolvedTheme } from '../src/theme/theme-bootstrap'
 import { resolveTheme, type ResolvedTheme } from '../src/theme/theme-registry'
 import { type WorkspaceSummary } from '../src/workspace/workspace.initializer'
 import { createWorkspaceMenuTemplate } from '../src/workspace/workspace.menu'
 import { createWorkspaceWindowTitle } from '../src/workspace/workspace.window'
-import { getDefaultWorkspaceRegistryPath } from '../src/workspace/workspace.paths'
+import {
+  getDefaultWorkspaceRegistryPath,
+  workspaceAppSecretsFileName,
+} from '../src/workspace/workspace.paths'
 import { createFileWorkspaceRegistryStore } from '../src/workspace/workspace.registry'
 import {
   createWorkspaceService,
@@ -182,17 +186,23 @@ async function registerRuntimeServices(
   workspace: WorkspaceSummary,
   options?: WorkspaceActivationOptions,
 ) {
-  const settingsStore = createFileAppSettingsStore(workspace.appSettingsPath)
+  const secretCodec = createElectronSecretCodec(safeStorage)
+  const settingsStore = createFileAppSettingsStore(workspace.appSettingsPath, {
+    secretStore: createFileAppSecretStore(
+      path.join(workspace.dataPath, workspaceAppSecretsFileName),
+      secretCodec,
+    ),
+  })
   const settings = await settingsStore.get()
   activeResolvedTheme = resolveTheme(settings.theme)
   const config = resolveValedictorianRuntimeConfig({
+    apiToken: settings.apiToken,
     settings,
     userDataPath: app.getPath('userData'),
     workspaceDataPath: workspace.dataPath,
     workspaceId: workspace.id,
   })
 
-  const secretCodec = createElectronSecretCodec(safeStorage)
   runtime = await createValedictorianRuntime({
     config: {
       ...config,
