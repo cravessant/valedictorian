@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createRuntimeQuitBarrier, stopRuntimeLifecycle } from './runtime-lifecycle'
 
 describe('Electron runtime lifecycle', () => {
-  it('stops runtime scheduling before the supervised backend without closing its server twice', async () => {
+  it('stops the supervised backend before closing every runtime-owned resource', async () => {
     const events: string[] = []
     let releaseScheduler: (() => void) | undefined
     const schedulerGate = new Promise<void>((resolve) => {
@@ -26,8 +26,8 @@ describe('Electron runtime lifecycle', () => {
     releaseScheduler?.()
     await stopPromise
 
-    expect(events).toEqual(['scheduler.stop', 'backend.stop'])
-    expect(runtime.close).not.toHaveBeenCalled()
+    expect(events).toEqual(['scheduler.stop', 'backend.stop', 'runtime.close'])
+    expect(runtime.close).toHaveBeenCalledOnce()
   })
 
   it('delays Electron quit until runtime cleanup settles and coalesces repeated requests', async () => {

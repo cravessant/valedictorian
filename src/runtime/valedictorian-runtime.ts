@@ -196,29 +196,29 @@ export async function createValedictorianRuntime({
   let client: LocalValedictorianClient
   try {
     client = await createLocalClient({
-    ...(preparedCapabilities ? { database: preparedCapabilities.database } : {}),
-    ...(effectiveConnectorRunRecovery === undefined
-      ? {}
-      : { connectorRunRecovery: effectiveConnectorRunRecovery }),
-    connectorRuntime: connectorPorts.connectorRuntime,
-    connectorScheduling: config.mode === 'local-desktop'
-      ? localDesktopConnectorSchedulingCapability
-      : undefined,
-    localSecretResolutionEnabled,
-    profilePath: config.profilePath,
-    ...(preparedCapabilities === null
-      ? {}
-      : {
-          profileService: preparedCapabilities.profileService,
-          secretService: preparedCapabilities.secretService,
-        }),
-    onScheduledWorkChanged: () => scheduler.signal(),
-    referenceTrackerPath: config.referenceTrackerPath,
-    seedDataMode: config.seedDataMode,
-    ...(secretCodec === undefined ? {} : { secretCodec }),
-    pgliteDataPath: config.pgliteDataPath,
-    registerScheduledWorkSource: (source) => scheduler.register(source),
-    ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
+      ...(preparedCapabilities ? { database: preparedCapabilities.database } : {}),
+      ...(effectiveConnectorRunRecovery === undefined
+        ? {}
+        : { connectorRunRecovery: effectiveConnectorRunRecovery }),
+      connectorRuntime: connectorPorts.connectorRuntime,
+      connectorScheduling: config.mode === 'local-desktop'
+        ? localDesktopConnectorSchedulingCapability
+        : undefined,
+      localSecretResolutionEnabled,
+      profilePath: config.profilePath,
+      ...(preparedCapabilities === null
+        ? {}
+        : {
+            profileService: preparedCapabilities.profileService,
+            secretService: preparedCapabilities.secretService,
+          }),
+      onScheduledWorkChanged: () => scheduler.signal(),
+      referenceTrackerPath: config.referenceTrackerPath,
+      seedDataMode: config.seedDataMode,
+      ...(secretCodec === undefined ? {} : { secretCodec }),
+      pgliteDataPath: config.pgliteDataPath,
+      registerScheduledWorkSource: (source) => scheduler.register(source),
+      ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
     } as LocalValedictorianClientOptions)
   } catch (error) {
     if (recoveryScope) effectiveConnectorRunRecovery?.deactivate(recoveryScope)

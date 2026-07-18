@@ -49,6 +49,7 @@ export async function stopRuntimeLifecycle({
   if (backendSupervisor) {
     await runtime?.stopScheduler?.()
     await backendSupervisor.stop()
+    await runtime?.close()
     return
   }
 

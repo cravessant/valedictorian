@@ -68,4 +68,15 @@ describe('local server HTTP test harness', () => {
 
     expect(onClosed).toHaveBeenCalledTimes(1)
   })
+
+  it('coalesces concurrent and repeated listener closure', async () => {
+    const server = await startBoundaryServer(createBoundaryWorkspaceClient(() => {}))
+    const onClosed = vi.fn()
+    server.onClosed(onClosed)
+
+    await Promise.all([server.close(), server.close()])
+    await server.close()
+
+    expect(onClosed).toHaveBeenCalledTimes(1)
+  })
 })
