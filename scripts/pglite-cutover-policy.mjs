@@ -24,11 +24,14 @@ const policyImplementationFiles = new Set([
   'scripts/inspect-pglite-runtime-assets.test.ts',
   'scripts/pglite-cutover-policy.mjs',
   'scripts/pglite-cutover-policy.test.mjs',
+  'electron/profile-runtime-composition.test.ts',
   'src/test/build-config.test.ts',
+  'src/workspace/workspace.paths.test.ts',
 ])
 
 export const pgliteCutoverAllowedLegacyEvidenceFiles = new Set([
   'UPGRADING.md',
+  'electron/profile-runtime-composition.test.ts',
   'scripts/pglite-cutover-policy.mjs',
   'scripts/pglite-cutover-policy.test.mjs',
   'src/modules/profile/profile.upgrade-policy.test.ts',
@@ -40,7 +43,12 @@ export function auditPgliteCutoverFiles(files) {
   for (const [filePath, contents] of files) {
     if (isForbiddenFile(filePath)) violations.push(`${filePath}: forbidden file`)
     if (filePath === 'package.json') auditManifest(contents, violations)
-    if (filePath !== 'package.json' && !policyImplementationFiles.has(filePath)) {
+    if (filePath === 'pnpm-lock.yaml') auditLockfile(contents, violations)
+    if (
+      filePath !== 'package.json'
+      && filePath !== 'pnpm-lock.yaml'
+      && !policyImplementationFiles.has(filePath)
+    ) {
       for (const [label, pattern] of forbiddenSourcePatterns) {
         if (pattern.test(contents)) violations.push(`${filePath}: ${label} is forbidden`)
       }
@@ -55,6 +63,19 @@ export function auditPgliteCutoverFiles(files) {
     }
   }
   return [...new Set(violations)].sort()
+}
+
+function auditLockfile(contents, violations) {
+  const packagesOffset = contents.indexOf('\npackages:\n')
+  const importers = packagesOffset === -1 ? contents : contents.slice(0, packagesOffset)
+  for (const dependencyName of forbiddenDependencyNames) {
+    const escapedName = dependencyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const importerPattern = new RegExp(`^ {6}['\"]?${escapedName}['\"]?:`, 'm')
+    const packagePattern = new RegExp(`^ {2}['\"]?${escapedName}@`, 'm')
+    if (importerPattern.test(importers) || packagePattern.test(contents)) {
+      violations.push(`pnpm-lock.yaml: resolved package ${dependencyName} is forbidden`)
+    }
+  }
 }
 
 function isForbiddenFile(filePath) {

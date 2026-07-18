@@ -248,6 +248,10 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Inspect assets and verify packaged PGlite restart
+        working-directory: valedictorian-app
+        run: pnpm run smoke:pglite-package
+
       - name: Generate update metadata
         working-directory: valedictorian-app
         run: pnpm exec tsx scripts/generate-mac-update-metadata.ts

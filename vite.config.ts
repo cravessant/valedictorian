@@ -16,8 +16,8 @@ export default defineConfig({
       ['src/theme/theme-applier.test.ts', 'jsdom'],
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
-    maxWorkers: process.env.CI ? 2 : undefined,
-    minWorkers: process.env.CI ? 2 : undefined,
+    maxWorkers: process.env.CI ? 4 : undefined,
+    minWorkers: process.env.CI ? 4 : undefined,
     setupFiles: './src/test/setup.ts',
   },
   plugins: [

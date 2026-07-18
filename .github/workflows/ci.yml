@@ -20,7 +20,7 @@ jobs:
   test:
     name: Test App
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -64,3 +64,54 @@ jobs:
       - name: Lint
         working-directory: valedictorian-app
         run: pnpm lint
+
+  package-smoke:
+    name: Package Smoke (${{ matrix.name }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            package_command: pnpm exec electron-builder --mac --dir --publish never -c.mac.identity=null -c.mac.notarize=false
+          - name: Windows
+            os: windows-latest
+            package_command: pnpm exec electron-builder --win --dir --publish never
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          path: valedictorian-app
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.3.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26.5.0
+          cache: pnpm
+          cache-dependency-path: valedictorian-app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: valedictorian-app
+        run: pnpm install --frozen-lockfile
+
+      - name: Build application bundles
+        working-directory: valedictorian-app
+        run: pnpm exec vite build
+
+      - name: Build unpacked application
+        working-directory: valedictorian-app
+        run: ${{ matrix.package_command }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Inspect assets and verify PGlite restart
+        working-directory: valedictorian-app
+        run: pnpm run smoke:pglite-package

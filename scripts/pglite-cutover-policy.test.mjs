@@ -51,10 +51,42 @@ test('accepts a PGlite-only manifest and fresh PostgreSQL baseline', () => {
       dependencies: { '@electric-sql/pglite': '0.5.4' },
       scripts: { test: 'vitest run', 'db:migrate': 'tsx scripts/migrate.ts' },
     })],
+    ['pnpm-lock.yaml', `lockfileVersion: '9.0'
+
+packages:
+  drizzle-orm@0.45.2:
+    peerDependencies:
+      better-sqlite3: '>=7'
+    peerDependenciesMeta:
+      better-sqlite3:
+        optional: true
+`],
     ['electron-builder.json5', '{ "extraResources": [{ "to": "pglite-runtime" }] }'],
     ['src/db/pglite.ts', "import { PGlite } from '@electric-sql/pglite'\n"],
     ['drizzle/0000_pglite_operational_baseline.sql', 'create table applications(id text);\n'],
   ]))
 
   assert.deepEqual(violations, [])
+})
+
+test('rejects forbidden packages resolved in the lockfile while allowing optional peer metadata', () => {
+  const lockfile = `lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      better-sqlite3:
+        specifier: 12.10.0
+        version: 12.10.0
+
+packages:
+  drizzle-orm@0.45.2:
+    peerDependencies:
+      better-sqlite3: '>=7'
+  better-sqlite3@12.10.0: {}
+`
+
+  assert.deepEqual(auditPgliteCutoverFiles(new Map([['pnpm-lock.yaml', lockfile]])), [
+    'pnpm-lock.yaml: resolved package better-sqlite3 is forbidden',
+  ])
 })

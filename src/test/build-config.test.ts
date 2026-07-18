@@ -162,6 +162,20 @@ describe('build configuration', () => {
     expect(packageJson.scripts?.build).not.toContain('better-sqlite3')
     expect(packageJson.scripts?.['build:mac']).not.toContain('better-sqlite3')
     expect(packageJson.scripts?.test).not.toContain('better-sqlite3')
+    expect(packageJson.scripts?.['smoke:pglite-package']).toBe(
+      'node scripts/run-packaged-pglite-smoke.mjs',
+    )
+  })
+
+  it('runs packaged PGlite restart smoke verification on macOS and Windows CI', () => {
+    const ciWorkflow = fs.readFileSync(path.resolve('.github/workflows/ci.yml'), 'utf8')
+    const releaseWorkflow = fs.readFileSync(path.resolve('.github/workflows/release-mac.yml'), 'utf8')
+
+    expect(ciWorkflow).toContain('package-smoke:')
+    expect(ciWorkflow).toContain('macos-latest')
+    expect(ciWorkflow).toContain('windows-latest')
+    expect(ciWorkflow).toContain('pnpm run smoke:pglite-package')
+    expect(releaseWorkflow).toContain('pnpm run smoke:pglite-package')
   })
 
   it('keeps Electron main runtime-probed packages out of the Vite bundle', () => {

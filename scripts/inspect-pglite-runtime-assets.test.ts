@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createPackage } from '@electron/asar'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   PGLITE_RUNTIME_BINARY_ASSETS,
@@ -56,8 +57,9 @@ describe('inspect-pglite-runtime-assets', () => {
     const runtimeDirectory = path.join(root, PGLITE_RUNTIME_DIRECTORY_NAME)
     fs.mkdirSync(runtimeDirectory, { recursive: true })
     fs.writeFileSync(path.join(runtimeDirectory, 'pglite.wasm'), 'wasm')
-    fs.mkdirSync(path.join(root, 'dist-electron'), { recursive: true })
-    fs.writeFileSync(path.join(root, 'dist-electron', 'main.js'), 'export {}\n')
+    const packageDist = path.join(root, 'node_modules', '@electric-sql', 'pglite', 'dist')
+    fs.mkdirSync(packageDist, { recursive: true })
+    fs.writeFileSync(path.join(packageDist, 'index.js'), 'export {}\n')
 
     expect(inspectPgliteRuntimeArtifactLayout(root)).toEqual([
       `missing ${PGLITE_RUNTIME_DIRECTORY_NAME}/initdb.wasm`,
@@ -74,8 +76,26 @@ describe('inspect-pglite-runtime-assets', () => {
     }
 
     expect(inspectPgliteRuntimeArtifactLayout(root)).toEqual([
-      'missing PGlite JavaScript contract (expected @electric-sql/pglite package files or dist-electron/*.js)',
+      'missing PGlite JavaScript contract (expected @electric-sql/pglite package files)',
     ])
+  })
+
+  it('inspects the actual Electron resources layout and app.asar JavaScript contract', async () => {
+    const sourceRoot = tempRoot('pglite-asar-source-')
+    const resourcesRoot = tempRoot('pglite-packaged-resources-')
+    const runtimeDirectory = path.join(resourcesRoot, PGLITE_RUNTIME_DIRECTORY_NAME)
+    const packageDist = path.join(sourceRoot, 'node_modules', '@electric-sql', 'pglite', 'dist')
+    fs.mkdirSync(runtimeDirectory, { recursive: true })
+    fs.mkdirSync(packageDist, { recursive: true })
+    fs.mkdirSync(path.join(sourceRoot, 'dist-electron'), { recursive: true })
+    for (const asset of PGLITE_RUNTIME_BINARY_ASSETS) {
+      fs.writeFileSync(path.join(runtimeDirectory, asset), `fixture:${asset}`)
+    }
+    fs.writeFileSync(path.join(packageDist, 'index.js'), 'export {}\n')
+    fs.writeFileSync(path.join(sourceRoot, 'dist-electron', 'main.js'), 'export {}\n')
+    await createPackage(sourceRoot, path.join(resourcesRoot, 'app.asar'))
+
+    expect(inspectPgliteRuntimeArtifactLayout(resourcesRoot)).toEqual([])
   })
 
   it('rejects builder config that still ships better-sqlite3 packaging rules', () => {

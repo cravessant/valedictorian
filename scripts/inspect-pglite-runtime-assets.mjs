@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { listPackage } from '@electron/asar'
 
 export const PGLITE_RUNTIME_DIRECTORY_NAME = 'pglite-runtime'
 export const PGLITE_PACKAGE_NAME = '@electric-sql/pglite'
@@ -42,15 +43,18 @@ export function inspectPgliteRuntimeArtifactLayout(root) {
     path.join(root, 'node_modules', '@electric-sql', 'pglite', 'dist', 'index.js'),
     path.join(root, 'node_modules', '@electric-sql', 'pglite', 'dist', 'index.cjs'),
   ]
-  const hasExternalizedPackage = packageEntryCandidates.some((candidate) => fs.existsSync(candidate))
-  const distElectronDirectory = path.join(root, 'dist-electron')
-  const hasBundledMain =
-    fs.existsSync(distElectronDirectory) &&
-    fs.readdirSync(distElectronDirectory).some((entry) => entry.endsWith('.js'))
+  let hasExternalizedPackage = packageEntryCandidates.some((candidate) => fs.existsSync(candidate))
+  const asarPath = path.join(root, 'app.asar')
+  if (!hasExternalizedPackage && fs.existsSync(asarPath)) {
+    const entries = listPackage(asarPath, { isPack: false })
+      .map((entry) => entry.replace(/^[/\\]/, '').replaceAll('\\', '/'))
+    hasExternalizedPackage = entries.includes('node_modules/@electric-sql/pglite/dist/index.js')
+      || entries.includes('node_modules/@electric-sql/pglite/dist/index.cjs')
+  }
 
-  if (!hasExternalizedPackage && !hasBundledMain) {
+  if (!hasExternalizedPackage) {
     problems.push(
-      `missing PGlite JavaScript contract (expected ${PGLITE_PACKAGE_NAME} package files or dist-electron/*.js)`,
+      `missing PGlite JavaScript contract (expected ${PGLITE_PACKAGE_NAME} package files)`,
     )
   }
 
