@@ -44,8 +44,11 @@ export function createPglitePolicyRepository(database: PgliteDatabase) {
       return writePolicyConfig(database, defaultPolicyConfig)
     },
     async updateConfig(patch: PolicyConfigPatch): Promise<PolicyConfig> {
-      const current = await readPolicyConfig(database)
-      return writePolicyConfig(database, normalizePolicyConfig(deepMerge(current, patch)))
+      return database.transaction(async (transaction) => {
+        await ensurePolicyConfigRow(transaction)
+        const current = await readPolicyConfigForUpdate(transaction)
+        return writePolicyConfig(transaction, normalizePolicyConfig(deepMerge(current, patch)))
+      })
     },
     async listEvidence(input: PolicyEvidenceListInput = {}): Promise<PolicyEvidenceRecord[]> {
       const limit = input.limit ?? DEFAULT_POLICY_EVIDENCE_LIMIT
@@ -135,6 +138,40 @@ export async function readPolicyConfig(database: PolicyQueryDatabase): Promise<P
 
   if (!row) {
     return normalizePolicyConfig(defaultPolicyConfig)
+  }
+
+  try {
+    return normalizePolicyConfig(JSON.parse(row.configJson) as unknown)
+  } catch {
+    return normalizePolicyConfig(defaultPolicyConfig)
+  }
+}
+
+async function ensurePolicyConfigRow(database: PolicyWriteDatabase) {
+  const normalized = normalizePolicyConfig(defaultPolicyConfig)
+  const now = new Date().toISOString()
+
+  await database
+    .insert(policyConfig)
+    .values({
+      id: ACTIVE_POLICY_CONFIG_ID,
+      configJson: JSON.stringify(normalized),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing()
+}
+
+async function readPolicyConfigForUpdate(database: PolicyQueryDatabase): Promise<PolicyConfig> {
+  const [row] = await database
+    .select()
+    .from(policyConfig)
+    .where(eq(policyConfig.id, ACTIVE_POLICY_CONFIG_ID))
+    .limit(1)
+    .for('update')
+
+  if (!row) {
+    throw new Error('Active policy config not found after initialization')
   }
 
   try {

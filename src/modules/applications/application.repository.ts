@@ -10,7 +10,7 @@ import {
   workflowRunSteps,
   workflowRuns,
 } from '../../db/schema'
-import type { PgliteDatabase } from '../../db/pglite'
+import type { PgliteRepositoryDatabase } from '../../db/pglite'
 import {
   DEFAULT_APPLICATION_LIST_OFFSET,
   isApplicationListSort,
@@ -72,7 +72,7 @@ const DEFAULT_LINK_LIST_LIMIT = 50
 const FIRST_ATTEMPT_STEP_SEQUENCE = 1
 const APPLICATION_ATTEMPT_METADATA_KIND = 'application_attempt'
 export function createPgliteApplicationRepository(
-  database: PgliteDatabase,
+  database: PgliteRepositoryDatabase,
 ): ApplicationRepository {
   return {
     async createApplication(input) {

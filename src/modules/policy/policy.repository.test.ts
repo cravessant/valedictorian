@@ -174,6 +174,23 @@ describe('PGlite policy repository', () => {
     }
   })
 
+  it('atomically merges concurrent disjoint policy config patches', async () => {
+    const { client, repository } = await openMigratedPolicyDb()
+    try {
+      await Promise.all([
+        repository.updateConfig({ scoring: { applyCutoff: 7 } }),
+        repository.updateConfig({ actionQueue: { staleLockHours: 3 } }),
+      ])
+
+      await expect(repository.getConfig()).resolves.toMatchObject({
+        scoring: { applyCutoff: 7 },
+        actionQueue: { staleLockHours: 3 },
+      })
+    } finally {
+      await closeClient(client)
+    }
+  })
+
   it('records and lists policy evidence without mutating the subject row', async () => {
     const { client, database, repository } = await openMigratedPolicyDb()
     try {

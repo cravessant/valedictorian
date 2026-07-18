@@ -8,6 +8,7 @@ import { schema } from './schema'
 
 export type PgliteClient = PGlite
 export type PgliteDatabase = ReturnType<typeof createPgliteDatabase>
+export type PgliteRepositoryDatabase = Omit<PgliteDatabase, '$client'>
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 

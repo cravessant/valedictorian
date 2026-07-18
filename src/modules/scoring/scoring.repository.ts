@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { ScoreInput, ScoreRecord } from 'sparxie'
 import { applicationScores, applications } from '../../db/schema'
-import type { PgliteDatabase } from '../../db/pglite'
+import type { PgliteRepositoryDatabase } from '../../db/pglite'
 
 export type { ScoreInput } from 'sparxie'
 
@@ -10,7 +10,7 @@ export interface ScoringRepository {
   recordScore: (input: ScoreInput) => Promise<ScoreRecord>
 }
 
-export function createPgliteScoringRepository(database: PgliteDatabase): ScoringRepository {
+export function createPgliteScoringRepository(database: PgliteRepositoryDatabase): ScoringRepository {
   return {
     async recordScore(input) {
       const createdAt = new Date().toISOString()
