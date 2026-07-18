@@ -13,6 +13,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/components/ui/use-toast'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { typography } from '@/components/ui/typography'
 import {
   defaultUserProfile,
@@ -799,21 +807,18 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
 
           <section className="space-y-3" aria-labelledby="reusable-answers-title">
             <SectionHeader title="Reusable Application Answers" id="reusable-answers-title" />
-            <div className="overflow-x-auto rounded-md border border-border bg-card">
-              <table
-                aria-label="Reusable Application Answers"
-                className="w-full min-w-[760px] text-left text-sm"
-              >
-                <thead className="border-b border-border text-xs uppercase tracking-normal text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Name</th>
-                    <th className="px-4 py-3 font-medium">Question hint</th>
-                    <th className="px-4 py-3 font-medium">Answer</th>
-                    <th className="px-4 py-3 font-medium">Available to automation</th>
-                    <th className="px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
+            <div className="rounded-md border border-border bg-card">
+              <Table aria-label="Reusable Application Answers" className="min-w-[760px]">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Name</TableHead>
+                    <TableHead>Question hint</TableHead>
+                    <TableHead>Answer</TableHead>
+                    <TableHead>Available to automation</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {profile.answers.map((answer) => (
                     <ProfileAnswerRow
                       key={answer.key}
@@ -823,14 +828,14 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
                     />
                   ))}
                   {profile.answers.length === 0 && !showAnswerEditor ? (
-                    <tr>
-                      <td className="px-4 py-4 text-muted-foreground" colSpan={5}>
+                    <TableRow>
+                      <TableCell className="text-muted-foreground" colSpan={5}>
                         No reusable answers yet.
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ) : null}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {!showAnswerEditor ? (

@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { TableCell, TableRow } from '@/components/ui/table'
 import { typography } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
 import { X } from 'lucide-react'
@@ -316,32 +317,34 @@ export function ProfileAnswerRow({
   onRemove: (key: string) => void
 }) {
   return (
-    <tr>
-      <td className="px-4 py-3 font-medium text-foreground">{answer.label}</td>
-      <td className="px-4 py-3 text-muted-foreground">{answer.questionPattern}</td>
-      <td className="px-4 py-3 text-foreground">{answer.answer}</td>
-      <td className="px-4 py-3 text-muted-foreground">
+    <TableRow>
+      <TableCell className="font-medium text-foreground">{answer.label}</TableCell>
+      <TableCell className="text-muted-foreground">{answer.questionPattern}</TableCell>
+      <TableCell className="text-foreground">{answer.answer}</TableCell>
+      <TableCell className="text-muted-foreground">
         {answer.includeInAgentContext ? 'Yes' : 'No'}
-      </td>
-      <td className="flex flex-wrap gap-2 px-4 py-3">
-        <Button
-          type="button"
-          variant="ghost"
-          aria-label={`Edit answer ${answer.label}`}
-          onClick={() => onEdit(answer)}
-        >
-          Edit
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          aria-label={`Remove answer ${answer.label}`}
-          onClick={() => onRemove(answer.key)}
-        >
-          Remove
-        </Button>
-      </td>
-    </tr>
+      </TableCell>
+      <TableCell>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={`Edit answer ${answer.label}`}
+            onClick={() => onEdit(answer)}
+          >
+            Edit
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={`Remove answer ${answer.label}`}
+            onClick={() => onRemove(answer.key)}
+          >
+            Remove
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -364,32 +367,34 @@ export function ProfileEducationRow({
   ].filter(Boolean)
 
   return (
-    <tr>
-      <td className="px-4 py-3 font-medium text-foreground">{education.educationType}</td>
-      <td className="px-4 py-3 text-foreground">{education.school}</td>
-      <td className="px-4 py-3 text-muted-foreground">
+    <TableRow>
+      <TableCell className="font-medium text-foreground">{education.educationType}</TableCell>
+      <TableCell className="text-foreground">{education.school}</TableCell>
+      <TableCell className="text-muted-foreground">
         {details.length ? details.join(' / ') : 'No details'}
-      </td>
-      <td className="px-4 py-3 text-muted-foreground">{education.notes ?? 'No notes'}</td>
-      <td className="flex flex-wrap gap-2 px-4 py-3">
-        <Button
-          type="button"
-          variant="ghost"
-          aria-label={`Edit education ${education.school}`}
-          onClick={() => onEdit(education)}
-        >
-          Edit
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          aria-label={`Remove education ${education.school}`}
-          onClick={() => onRemove(education.id)}
-        >
-          Remove
-        </Button>
-      </td>
-    </tr>
+      </TableCell>
+      <TableCell className="text-muted-foreground">{education.notes ?? 'No notes'}</TableCell>
+      <TableCell>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={`Edit education ${education.school}`}
+            onClick={() => onEdit(education)}
+          >
+            Edit
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={`Remove education ${education.school}`}
+            onClick={() => onRemove(education.id)}
+          >
+            Remove
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
   )
 }
 

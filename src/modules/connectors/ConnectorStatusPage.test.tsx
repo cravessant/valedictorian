@@ -213,6 +213,7 @@ describe('ConnectorStatusPage', () => {
     expect(scrollHint).toHaveAttribute('id', 'connector-status-scroll-hint')
 
     const scrollRegion = screen.getByRole('region', { name: 'Connector status table' })
+    expect(scrollRegion).toHaveAttribute('data-slot', 'table-container')
     expect(scrollRegion).toHaveAttribute('tabIndex', '0')
     expect(scrollRegion).toHaveAttribute('aria-describedby', 'connector-status-scroll-hint')
     expect(scrollRegion).toHaveClass('min-w-0', 'max-w-full', 'overflow-x-auto')

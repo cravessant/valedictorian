@@ -3,6 +3,14 @@ import { profileEducationTypeOptions, type ProfileEducation } from 'sparxie'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { fieldControlId } from '@/lib/field-control-id'
 import {
   CompactInput,
@@ -44,18 +52,18 @@ export function ProfileEducationSection({
     <>
       <section className="space-y-3" aria-labelledby="education-title">
         <SectionHeader title="Education" id="education-title" />
-        <div className="overflow-x-auto rounded-md border border-border bg-card">
-          <table aria-label="Education" className="w-full min-w-[820px] text-left text-sm">
-            <thead className="border-b border-border text-xs uppercase tracking-normal text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">School</th>
-                <th className="px-4 py-3 font-medium">Details</th>
-                <th className="px-4 py-3 font-medium">Notes</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+        <div className="rounded-md border border-border bg-card">
+          <Table aria-label="Education" className="min-w-[820px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Type</TableHead>
+                <TableHead>School</TableHead>
+                <TableHead>Details</TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {education.map((item) => (
                 <ProfileEducationRow
                   key={item.id}
@@ -65,14 +73,14 @@ export function ProfileEducationSection({
                 />
               ))}
               {education.length === 0 && !isEditorOpen ? (
-                <tr>
-                  <td className="px-4 py-4 text-muted-foreground" colSpan={5}>
+                <TableRow>
+                  <TableCell className="text-muted-foreground" colSpan={5}>
                     No education records yet.
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : null}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {!isEditorOpen ? (

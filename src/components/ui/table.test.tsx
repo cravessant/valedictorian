@@ -25,6 +25,12 @@ describe('Table', () => {
         ref={tableRef}
         aria-label="Connector status"
         className="min-w-[640px] table-fixed"
+        containerProps={{
+          'aria-label': 'Connector status viewport',
+          className: 'max-h-96 focus-visible:ring-2',
+          role: 'region',
+          tabIndex: 0,
+        }}
         data-testid="status-table"
       >
         <TableCaption className="text-xs">Latest connector health</TableCaption>
@@ -57,7 +63,15 @@ describe('Table', () => {
     const container = table.parentElement
     expect(container).not.toBeNull()
     expect(container).toHaveAttribute('data-slot', 'table-container')
-    expect(container).toHaveClass('relative', 'w-full', 'overflow-x-auto')
+    expect(container).toHaveAttribute('aria-label', 'Connector status viewport')
+    expect(container).toHaveAttribute('tabIndex', '0')
+    expect(container).toHaveClass(
+      'relative',
+      'w-full',
+      'overflow-x-auto',
+      'max-h-96',
+      'focus-visible:ring-2',
+    )
 
     const caption = within(table).getByText('Latest connector health')
     expect(caption.tagName).toBe('CAPTION')

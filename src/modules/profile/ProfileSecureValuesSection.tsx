@@ -3,6 +3,14 @@ import type { ProfileSecretKind } from 'sparxie'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { fieldControlId } from '@/lib/field-control-id'
 import type { ProfileSecretSummary } from 'sparxie'
 import {
@@ -44,53 +52,55 @@ export function ProfileSecureValuesSection({
     <>
       <section className="space-y-3" aria-labelledby="secure-values-title">
         <SectionHeader title="Secure Values" id="secure-values-title" />
-        <div className="overflow-x-auto rounded-md border border-border bg-card">
-          <table aria-label="Secure Values" className="w-full min-w-[760px] text-left text-sm">
-            <thead className="border-b border-border text-xs uppercase tracking-normal text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Key</th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Value</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
+        <div className="rounded-md border border-border bg-card">
+          <Table aria-label="Secure Values" className="min-w-[760px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Name</TableHead>
+                <TableHead>Key</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Value</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {secrets.map((secret) => (
-                <tr key={secret.key}>
-                  <td className="px-4 py-3 font-medium text-foreground">{secret.label}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{secret.key}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{secret.kind}</td>
-                  <td className="px-4 py-3 text-muted-foreground">••••••••</td>
-                  <td className="flex flex-wrap gap-2 px-4 py-3">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      aria-label={`Edit secure value ${secret.label}`}
-                      onClick={() => onEdit(secret)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      aria-label={`Remove secure value ${secret.label}`}
-                      onClick={() => onRemove(secret.key)}
-                    >
-                      Remove
-                    </Button>
-                  </td>
-                </tr>
+                <TableRow key={secret.key}>
+                  <TableCell className="font-medium text-foreground">{secret.label}</TableCell>
+                  <TableCell className="text-muted-foreground">{secret.key}</TableCell>
+                  <TableCell className="text-muted-foreground">{secret.kind}</TableCell>
+                  <TableCell className="text-muted-foreground">••••••••</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        aria-label={`Edit secure value ${secret.label}`}
+                        onClick={() => onEdit(secret)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        aria-label={`Remove secure value ${secret.label}`}
+                        onClick={() => onRemove(secret.key)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ))}
               {secrets.length === 0 && !isEditorOpen ? (
-                <tr>
-                  <td className="px-4 py-4 text-muted-foreground" colSpan={5}>
+                <TableRow>
+                  <TableCell className="text-muted-foreground" colSpan={5}>
                     No secure values yet.
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ) : null}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {!isEditorOpen ? (

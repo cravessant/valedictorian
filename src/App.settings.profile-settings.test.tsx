@@ -88,7 +88,7 @@ describe('profile settings', () => {
       target: { value: '470 Mockingbird Lane' },
     })
     fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'English' } })
-    expect(screen.getByRole('table', { name: 'Education' })).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Education' })).toHaveAttribute('data-slot', 'table')
     fireEvent.click(screen.getByRole('button', { name: 'Add education' }))
     fireEvent.change(screen.getByLabelText('Education type'), {
       target: { value: 'College' },
@@ -250,7 +250,8 @@ describe('profile settings', () => {
         }),
       )
     })
-    expect(screen.getByRole('table', { name: 'Reusable Application Answers' })).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Reusable Application Answers' }))
+      .toHaveAttribute('data-slot', 'table')
 
     fireEvent.click(screen.getByRole('button', { name: 'Add secure value' }))
     fireEvent.change(screen.getByLabelText('Secure value name'), {
@@ -272,7 +273,8 @@ describe('profile settings', () => {
         value: 'correct horse battery staple',
       })
     })
-    expect(screen.getByRole('table', { name: 'Secure Values' })).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Secure Values' }))
+      .toHaveAttribute('data-slot', 'table')
     expect(screen.getByText('Greenhouse password')).toBeInTheDocument()
     expect(screen.getByText('••••••••')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('correct horse battery staple')).not.toBeInTheDocument()

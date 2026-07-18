@@ -9,7 +9,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { typography, typographyClass } from '@/components/ui/typography'
 import { cn } from '@/lib/utils'
 import { AlertCircle, Cable } from 'lucide-react'
@@ -107,35 +107,33 @@ function ConnectorStatusPage({
             >
               Narrow layout: focus this status table and scroll horizontally to review every column.
             </p>
-            <div
-              aria-describedby={CONNECTOR_STATUS_SCROLL_HINT_ID}
-              aria-label="Connector status table"
-              className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-              role="region"
-              tabIndex={0}
+            <Table
+              aria-label="Connector status"
+              className="min-w-[1050px] table-fixed"
+              containerProps={{
+                'aria-describedby': CONNECTOR_STATUS_SCROLL_HINT_ID,
+                'aria-label': 'Connector status table',
+                className: 'min-h-0 min-w-0 max-w-full flex-1 outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                role: 'region',
+                tabIndex: 0,
+              }}
             >
-              <table
-                aria-label="Connector status"
-                className="w-full min-w-[1050px] table-fixed caption-bottom text-sm"
-                data-slot="table"
-              >
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-48">Connector</TableHead>
-                    <TableHead className="w-40">Status</TableHead>
-                    <TableHead>Summary</TableHead>
-                    <TableHead className="w-48">Warnings</TableHead>
-                    <TableHead className="w-36">Latest run</TableHead>
-                    <TableHead className="w-44">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {result.items.map((item) => (
-                    <ConnectorStatusRow key={item.id} item={item} onAction={onAction} />
-                  ))}
-                </TableBody>
-              </table>
-            </div>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-48">Connector</TableHead>
+                  <TableHead className="w-40">Status</TableHead>
+                  <TableHead>Summary</TableHead>
+                  <TableHead className="w-48">Warnings</TableHead>
+                  <TableHead className="w-36">Latest run</TableHead>
+                  <TableHead className="w-44">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {result.items.map((item) => (
+                  <ConnectorStatusRow key={item.id} item={item} onAction={onAction} />
+                ))}
+              </TableBody>
+            </Table>
           </section>
         ) : !isLoading && !error ? (
           <Empty
