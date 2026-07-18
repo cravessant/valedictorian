@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { connectorRuns, connectorRunSynchronizations } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { ConnectorRunRecord } from './connector-run.persistence-types'
 import { mapConnectorRun } from './connector-run.persistence'
 import { toJsonRecord } from './connector.persistence-json'
@@ -17,35 +17,35 @@ export function connectorSynchronizationSnapshot(boundary: string, outcome: unkn
   }
 }
 
-export function readConnectorRunSynchronization(
-  database: DrizzleDatabase,
+export async function readConnectorRunSynchronization(
+  database: PgliteDatabase,
   connectorRunId: string,
-): unknown {
-  const row = database.select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
+): Promise<unknown> {
+  const [row] = await database.select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
     .from(connectorRunSynchronizations)
-    .where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId)).get()
+    .where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId)).limit(1)
   return row ? JSON.parse(row.snapshotJson) as unknown : null
 }
 
-export function writeConnectorRunSynchronization(
-  database: Pick<DrizzleDatabase, 'insert'>,
+export async function writeConnectorRunSynchronization(
+  database: Pick<PgliteDatabase, 'insert'>,
   connectorRunId: string,
   snapshot: unknown,
   now: string,
-): void {
-  database.insert(connectorRunSynchronizations).values({
+): Promise<void> {
+  await database.insert(connectorRunSynchronizations).values({
     connectorRunId,
     snapshotJson: JSON.stringify(snapshot),
     createdAt: now,
     updatedAt: now,
-  }).run()
+  })
 }
 
-export function latestSynchronizedConnectorRun(
-  database: DrizzleDatabase,
+export async function latestSynchronizedConnectorRun(
+  database: PgliteDatabase,
   connectorInstanceId: string,
-): ConnectorRunRecord | null {
-  const row = database.select({
+): Promise<ConnectorRunRecord | null> {
+  const [row] = await database.select({
     run: connectorRuns,
     snapshotJson: connectorRunSynchronizations.snapshotJson,
   }).from(connectorRuns)
@@ -57,9 +57,9 @@ export function latestSynchronizedConnectorRun(
       eq(connectorRuns.connectorInstanceId, connectorInstanceId),
       isNull(connectorRuns.deletedAt),
     ))
-    .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
+    .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt), desc(connectorRuns.id))
     .limit(1)
-    .get()
+
   return row ? synchronizedConnectorRun(row.run, row.snapshotJson) : null
 }
 
@@ -70,40 +70,40 @@ export function synchronizedConnectorRun(
   return { ...mapConnectorRun(row), synchronization: JSON.parse(snapshotJson) as unknown }
 }
 
-export function updateConnectorSynchronizationOutcome(
-  database: Pick<DrizzleDatabase, 'select' | 'update'>,
+export async function updateConnectorSynchronizationOutcome(
+  database: Pick<PgliteDatabase, 'select' | 'update'>,
   connectorRunId: string,
   outcome: unknown,
   updatedAt: string,
-): void {
-  const row = database.select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
+): Promise<void> {
+  const [row] = await database.select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
     .from(connectorRunSynchronizations)
     .where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId))
-    .get()
+    .limit(1)
   if (!row) return
   const snapshot = toJsonRecord(JSON.parse(row.snapshotJson))
-  database.update(connectorRunSynchronizations).set({
+  await database.update(connectorRunSynchronizations).set({
     snapshotJson: JSON.stringify({ ...snapshot, outcome }),
     updatedAt,
-  }).where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId)).run()
+  }).where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId))
 }
 
-export function finalizeInProgressConnectorSynchronization(
-  database: Pick<DrizzleDatabase, 'select' | 'update'>,
+export async function finalizeInProgressConnectorSynchronization(
+  database: Pick<PgliteDatabase, 'select' | 'update'>,
   connectorRunId: string,
   outcome: unknown,
   updatedAt: string,
-): void {
-  const row = database.select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
+): Promise<void> {
+  const [row] = await database.select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
     .from(connectorRunSynchronizations)
     .where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId))
-    .get()
+    .limit(1)
   if (!row) throw new Error(`Connector run synchronization not found: ${connectorRunId}`)
   const snapshot = toJsonRecord(JSON.parse(row.snapshotJson))
   const current = toJsonRecord(snapshot.outcome)
   if (current.kind !== 'in_progress') return
-  database.update(connectorRunSynchronizations).set({
+  await database.update(connectorRunSynchronizations).set({
     snapshotJson: JSON.stringify({ ...snapshot, outcome }),
     updatedAt,
-  }).where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId)).run()
+  }).where(eq(connectorRunSynchronizations.connectorRunId, connectorRunId))
 }

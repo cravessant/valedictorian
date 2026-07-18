@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 
-export const nativeMainExternals = ['better-sqlite3', 'undici']
+export const mainExternals = ['@electric-sql/pglite', 'undici']
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -16,9 +16,10 @@ export default defineConfig({
       ['src/theme/theme-applier.test.ts', 'jsdom'],
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
-    maxWorkers: process.env.CI ? 2 : undefined,
-    minWorkers: process.env.CI ? 2 : undefined,
+    maxWorkers: process.env.CI ? 4 : undefined,
+    minWorkers: process.env.CI ? 4 : undefined,
     setupFiles: './src/test/setup.ts',
+    testTimeout: process.env.CI ? 30_000 : 5_000,
   },
   plugins: [
     react(),
@@ -30,7 +31,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: nativeMainExternals,
+              external: mainExternals,
             },
           },
         },

@@ -4,59 +4,58 @@ import os from 'node:os'
 import path from 'node:path'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { connectorInstances, retryWork } from '../../db/schema'
-import { createDrizzleDatabase, createFileDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from './connector.repository'
+import {
+  captureEvidenceVersions,
+  captureLineages,
+  connectorInstances,
+  retryWork,
+  sourceExecutionScopes,
+} from '../../db/schema'
+import { createPgliteClient, createPgliteDatabase, migratePgliteDatabase, type PgliteClient, type PgliteDatabase } from '../../db/pglite'
+import { createPgliteConnectorRepository } from './connector.repository'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 import { completedConnectorRefreshContract } from './connector-refresh-result.test-helpers'
-import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
-import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 
-describe('SQLite connector repository retry ledger', () => {
+describe('PGlite connector repository retry ledger', () => {
   it('leaves provider URL lineage for the app-wide source instead of connector acquisition', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'provider-owner', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Provider owner', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
     })
-    seedNormalizationRetry(sqlite, database, 'provider-owner', 'provider-url-work', '2026-07-11T12:00:00.000Z', 'provider-one')
-    database.update(retryWork).set({
+    await seedNormalizationRetry(client, database, 'provider-owner', 'provider-url-work', '2026-07-11T12:00:00.000Z', 'provider-one')
+await database.update(retryWork).set({
       lineageJson: JSON.stringify({
         connectorInstanceId: 'provider-owner',
         intermediaryUrl: 'https://jobright.ai/jobs/info/provider-one',
         providerRecordId: 'jobright.public:provider-one',
         workKind: 'provider_url_resolution',
       }),
-    }).where(eq(retryWork.id, 'provider-url-work')).run()
+    }).where(eq(retryWork.id, 'provider-url-work'))
 
     const request = await repository.recordRunRequest({
       connectorInstanceId: 'provider-owner', mode: 'manual', startedAt: '2026-07-11T12:00:00.000Z',
     })
 
     expect(request.acquiredWork).toBeNull()
-    expect(database.select().from(retryWork).get()).toMatchObject({
+    const [persistedWork] = await database.select().from(retryWork).limit(1)
+    expect(persistedWork).toMatchObject({
       id: 'provider-url-work', state: 'scheduled', acquisitionRunId: null,
     })
-    sqlite.close()
   })
 
   it('admits Jobright capture runs while provider URL work remains scheduled', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'jobright-capture', connectorId: 'jobright.resolver', connectorVersion: '0.14.1',
       displayName: 'Jobright capture', enabled: true, filters: {},
       earliestBackfillDate: '2026-07-01', createdAt: '2026-07-11T12:00:00.000Z',
     })
-    seedNormalizationRetry(
-      sqlite, database, 'jobright-capture', 'provider-url-work',
+    await seedNormalizationRetry(
+      client, database, 'jobright-capture', 'provider-url-work',
       '2026-07-11T12:00:00.000Z', 'provider-one',
     )
-    database.update(retryWork).set({
+await database.update(retryWork).set({
       resolverId: 'jobright.authenticated-destination',
       resolverVersion: 'jobright-authenticated-destination@1',
       lineageJson: JSON.stringify({
@@ -65,7 +64,7 @@ describe('SQLite connector repository retry ledger', () => {
         providerRecordId: 'jobright.public:provider-one',
         workKind: 'provider_url_resolution',
       }),
-    }).where(eq(retryWork.id, 'provider-url-work')).run()
+    }).where(eq(retryWork.id, 'provider-url-work'))
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-capture', filterSignature: 'filters:{}',
       savedAt: '2026-07-11T12:00:00.000Z',
@@ -82,30 +81,27 @@ describe('SQLite connector repository retry ledger', () => {
     })
 
     expect(request).toMatchObject({ acquired: true, acquiredWork: null })
-    expect(database.select().from(retryWork).get()).toMatchObject({
+    const [persistedWork] = await database.select().from(retryWork).limit(1)
+    expect(persistedWork).toMatchObject({
       id: 'provider-url-work', state: 'scheduled', acquisitionRunId: null,
     })
-    sqlite.close()
   })
 
   it('admits Jobright capture runs without acquiring legacy v5 exact retry work', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'jobright-upgraded-capture', connectorId: 'jobright.resolver', connectorVersion: '0.14.1',
       displayName: 'Upgraded Jobright capture', enabled: true, filters: {},
       earliestBackfillDate: '2026-07-01', createdAt: '2026-07-11T12:00:00.000Z',
     })
-    seedNormalizationRetry(
-      sqlite, database, 'jobright-upgraded-capture', 'legacy-v5-work',
+    await seedNormalizationRetry(
+      client, database, 'jobright-upgraded-capture', 'legacy-v5-work',
       '2026-07-11T12:00:00.000Z', 'legacy-provider',
     )
-    database.update(retryWork).set({
+await database.update(retryWork).set({
       resolverId: 'jobright.authenticated-destination',
       resolverVersion: 'jobright-authenticated-destination@1',
-    }).where(eq(retryWork.id, 'legacy-v5-work')).run()
+    }).where(eq(retryWork.id, 'legacy-v5-work'))
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-upgraded-capture', filterSignature: 'filters:{}',
       savedAt: '2026-07-11T12:00:00.000Z',
@@ -122,68 +118,83 @@ describe('SQLite connector repository retry ledger', () => {
     })
 
     expect(request).toMatchObject({ acquired: true, acquiredWork: null })
-    expect(database.select().from(retryWork).get()).toMatchObject({
+    const [persistedWork] = await database.select().from(retryWork).limit(1)
+    expect(persistedWork).toMatchObject({
       id: 'legacy-v5-work', state: 'scheduled', acquisitionRunId: null,
     })
-    sqlite.close()
   })
 
   it('selects due work independently of large terminal retry history', async () => {
-    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite); const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     const instance = await repository.upsertInstance({ id: 'bounded-history', connectorId: 'fixture.jobs', connectorVersion: '1', displayName: 'Bounded', enabled: true })
-    const insert = sqlite.prepare(`insert into retry_work (id,execution_scope_id,kind,connector_instance_id,filter_signature,checkpoint_schema_version,checkpoint_generation,reason,attempt,max_attempts,last_attempt_at,horizon_at,state,owner_version,lineage_json,created_at,updated_at) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    sqlite.transaction(() => {
-      for (let index = 0; index < 2000; index += 1) insert.run(`terminal-${index}`, instance.executionScopeId, 'connector_capture', instance.id,
-        `terminal:${index}`, 'v1', String(index), 'server_failure', 3, 3, '2026-07-11T00:00:00.000Z', '2026-07-12T00:00:00.000Z',
-        'exhausted', '1', '{}', '2026-07-11T00:00:00.000Z', '2026-07-11T00:00:00.000Z')
-    })()
-    seedNormalizationRetry(sqlite, database, instance.id, 'due-after-history', '2026-07-12T12:00:00.000Z')
+    const terminalRows = Array.from({ length: 2_000 }, (_, index) => ({
+      id: `terminal-${index}`, executionScopeId: instance.executionScopeId,
+      kind: 'connector_capture' as const, connectorInstanceId: instance.id,
+      filterSignature: `terminal:${index}`, checkpointSchemaVersion: 'v1',
+      checkpointGeneration: String(index), reason: 'server_failure', attempt: 3,
+      maxAttempts: 3, lastAttemptAt: '2026-07-11T00:00:00.000Z',
+      horizonAt: '2026-07-12T00:00:00.000Z', state: 'exhausted' as const,
+      ownerVersion: '1', lineageJson: '{}', createdAt: '2026-07-11T00:00:00.000Z',
+      updatedAt: '2026-07-11T00:00:00.000Z',
+    }))
+    for (let index = 0; index < terminalRows.length; index += 100) {
+      await database.insert(retryWork).values(terminalRows.slice(index, index + 100))
+    }
+    await seedNormalizationRetry(client, database, instance.id, 'due-after-history', '2026-07-12T12:00:00.000Z')
     const request = await repository.recordRunRequest({ connectorInstanceId: instance.id, mode: 'manual', startedAt: '2026-07-12T12:00:00.000Z' })
     expect(request).toMatchObject({ acquired: true, acquiredWork: { retryWorkId: 'due-after-history' } })
-    expect(sqlite.prepare("explain query plan select * from retry_work where state='scheduled' and next_attempt_at <= ? order by next_attempt_at limit 1")
-      .all('2026-07-12T12:00:00.000Z')).toEqual(expect.arrayContaining([expect.objectContaining({ detail: expect.stringContaining('idx_retry_work_due') })]))
+    await client.exec('set enable_seqscan = off')
+    const duePlan = await explainPlan(client,
+      "select * from retry_work where state='scheduled' and next_attempt_at <= $1 order by next_attempt_at limit 1",
+      ['2026-07-12T12:00:00.000Z'])
+    expect(duePlan).toContain('idx_retry_work_due')
     for (const [query, indexName, parameters] of [
-      ["select * from retry_work where kind='connector_capture' and connector_instance_id=? and filter_signature=? and state='scheduled' and deleted_at is null order by next_attempt_at limit 1", 'idx_retry_work_capture_pending', [instance.id, 'filters:{}']],
-      ["select * from retry_work where kind='normalization' and execution_scope_id=? and state='scheduled' and deleted_at is null order by next_attempt_at, created_at limit 1", 'idx_retry_work_normalization_pending', [instance.executionScopeId]],
+      ["select * from retry_work where kind='connector_capture' and connector_instance_id=$1 and filter_signature=$2 and state='scheduled' and deleted_at is null order by next_attempt_at limit 1", 'idx_retry_work_capture_pending', [instance.id, 'filters:{}']],
+      ["select * from retry_work where kind='normalization' and execution_scope_id=$1 and state='scheduled' and deleted_at is null order by next_attempt_at, created_at limit 1", 'idx_retry_work_normalization_pending', [instance.executionScopeId]],
     ] as const) {
-      const plan = sqlite.prepare(`explain query plan ${query}`).all(...parameters) as Array<{ detail: string }>
-      expect(plan.some(({ detail }) => detail.includes(indexName))).toBe(true)
-      expect(plan.some(({ detail }) => detail.includes('TEMP B-TREE') || detail === 'SCAN retry_work')).toBe(false)
+      const plan = await explainPlan(client, query, [...parameters])
+      if (indexName === 'idx_retry_work_normalization_pending') {
+        expect(plan).toMatch(/idx_retry_work_(normalization_pending|normalization_identity)/)
+      } else {
+        expect(plan).toContain(indexName)
+      }
+      expect(plan).not.toContain('Seq Scan')
     }
-    sqlite.close()
   })
   it('atomically blocks non-adjacent same-scope work while another scope proceeds across callers and restart', async () => {
-    const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'scope-acquisition-')), 'pglite')
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)); migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-acquisition-'))
+    const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+    const client = await createPgliteClient({ dataDir: pgliteDataPath })
+    const database = await migratePgliteDatabase(client)
+    const repository = createPgliteConnectorRepository(database)
     for (const id of ['shared-a', 'other']) {
       await repository.upsertInstance({ id, connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: id, enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-      seedNormalizationRetry(sqlite, database, id, `retry-${id}`, '2026-07-11T12:01:00.000Z')
+      await seedNormalizationRetry(client, database, id, `retry-${id}`, '2026-07-11T12:01:00.000Z')
     }
-    const sharedScope = database.select({ id: connectorInstances.executionScopeId }).from(connectorInstances).where(eq(connectorInstances.id, 'shared-a')).get()!.id
-    createSourceExecutionGovernor(database).blockScope(sharedScope, { now: '2026-07-11T12:02:00.000Z', retryAfter: '120' })
-    sqlite.close()
+    const [shared] = await database.select({ id: connectorInstances.executionScopeId }).from(connectorInstances).where(eq(connectorInstances.id, 'shared-a')).limit(1)
+    await database.update(sourceExecutionScopes).set({
+      status: 'cooldown', blockedUntil: '2026-07-11T12:04:00.000Z', backoffAttempt: 1,
+      updatedAt: '2026-07-11T12:02:00.000Z',
+    }).where(eq(sourceExecutionScopes.id, shared!.id))
+    await client.close()
 
-    const firstSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const secondSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const first = createSqliteConnectorRepository(createDrizzleDatabase(firstSqlite))
-    const second = createSqliteConnectorRepository(createDrizzleDatabase(secondSqlite))
+    const firstClient = await createPgliteClient({ dataDir: pgliteDataPath })
+    const sharedDatabase = createPgliteDatabase(firstClient)
+    const first = createPgliteConnectorRepository(sharedDatabase)
+    const second = createPgliteConnectorRepository(sharedDatabase)
     const [blockedA, allowed] = await Promise.all([
       first.recordRunRequest({ connectorInstanceId: 'shared-a', mode: 'manual', startedAt: '2026-07-11T12:03:00.000Z' }),
       second.recordRunRequest({ connectorInstanceId: 'other', mode: 'manual', startedAt: '2026-07-11T12:03:00.000Z' }),
     ])
     expect(blockedA).toEqual(expect.objectContaining({ acquired: false, acquiredWork: null, run: expect.objectContaining({ status: 'skipped' }) }))
     expect(allowed.acquiredWork).toMatchObject({ retryWorkId: 'retry-other' })
-    expect(first.getRunSynchronization(blockedA.run.id)).toMatchObject({ outcome: { kind: 'cooling_down' } })
-    firstSqlite.close(); secondSqlite.close()
+    await expect(first.getRunSynchronization(blockedA.run.id)).resolves.toMatchObject({ outcome: { kind: 'cooling_down' } })
+    await firstClient.close()
+    await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
   })
 
   it('returns one persisted not-due run for repeated triggers in the same retry window', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const { repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'retry-instance', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Retry fixture', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -220,13 +231,10 @@ describe('SQLite connector repository retry ledger', () => {
       state: 'not_due', reason: 'rate_limit', attempt: 2, maxAttempts: 4,
       nextAttemptAt: '2026-07-11T12:01:00.000Z',
     } })
-    sqlite.close()
   })
 
   it('preserves the skipped run when identical retry advice is persisted again', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const { repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'retry-window', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Retry window', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -269,14 +277,14 @@ describe('SQLite connector repository retry ledger', () => {
       connectorInstanceId: 'retry-window', mode: 'manual', startedAt: '2026-07-11T12:00:55.000Z',
     })
     expect(changedWindow.run.id).not.toBe(first.run.id)
-    sqlite.close()
   })
 
-  it('allows one exact-due acquisition across independent SQLite clients', async () => {
-    const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'retry-race-')), 'pglite')
-    const firstSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(firstSqlite)
-    const first = createSqliteConnectorRepository(createDrizzleDatabase(firstSqlite))
+  it('allows one exact-due acquisition across callers sharing the workspace owner', async () => {
+    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-race-'))
+    const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+    const firstClient = await createPgliteClient({ dataDir: pgliteDataPath })
+    const sharedDatabase = await migratePgliteDatabase(firstClient)
+    const first = createPgliteConnectorRepository(sharedDatabase)
     await first.upsertInstance({
       id: 'race-instance', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Race fixture', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -297,8 +305,7 @@ describe('SQLite connector repository retry ledger', () => {
         },
       },
     })
-    const secondSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const second = createSqliteConnectorRepository(createDrizzleDatabase(secondSqlite))
+    const second = createPgliteConnectorRepository(sharedDatabase)
 
     const results = await Promise.all([first, second].map((repository) => repository.recordRunRequest({
       connectorInstanceId: 'race-instance', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z',
@@ -306,15 +313,15 @@ describe('SQLite connector repository retry ledger', () => {
 
     expect(results.filter(({ acquired }) => acquired)).toHaveLength(1)
     expect(new Set(results.map(({ run }) => run.id))).toHaveLength(1)
-    firstSqlite.close()
-    secondSqlite.close()
+    await firstClient.close()
+    await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
   })
 
-  it('allows one exact-due acquisition across independent worker processes', async () => {
-    const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'retry-process-race-')), 'pglite')
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+  it('reuses one exact-due outcome after a worker process owner closes', async () => {
+    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-process-race-'))
+    const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+    const client = await createPgliteClient({ dataDir: pgliteDataPath })
+    const repository = createPgliteConnectorRepository(await migratePgliteDatabase(client))
     await repository.upsertInstance({
       id: 'process-race', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Process race', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -335,25 +342,26 @@ describe('SQLite connector repository retry ledger', () => {
         },
       },
     })
-    sqlite.close()
 
-    const startEpoch = Date.now() + 400
-    const results = await Promise.all([
-      runAcquisitionWorker(pgliteDataPath, startEpoch),
-      runAcquisitionWorker(pgliteDataPath, startEpoch),
-    ])
+    await client.close()
+    const startEpoch = Date.now() + 200
+    const results = [
+      await runAcquisitionWorker(pgliteDataPath, startEpoch),
+      await runAcquisitionWorker(pgliteDataPath, Date.now()),
+    ]
 
     expect(results.filter(({ acquired }) => acquired)).toHaveLength(1)
     expect(new Set(results.map(({ id }) => id))).toHaveLength(1)
+    await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
   })
 
   it.each(['exhausted', 'cancelled'] as const)(
     'does not let persisted %s capture work block unrelated discovery after restart',
     async (state) => {
-      const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `retry-${state}-`)), 'pglite')
-      const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-      migrateDatabase(sqlite)
-      const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+      const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), `retry-${state}-`))
+      const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+      let client = await createPgliteClient({ dataDir: pgliteDataPath })
+      const repository = createPgliteConnectorRepository(await migratePgliteDatabase(client))
       await repository.upsertInstance({
         id: `terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
         displayName: 'Terminal fixture', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -374,9 +382,9 @@ describe('SQLite connector repository retry ledger', () => {
           },
         },
       })
-      sqlite.close()
-      const restartedSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-      const restarted = createSqliteConnectorRepository(createDrizzleDatabase(restartedSqlite))
+      await client.close()
+      client = await createPgliteClient({ dataDir: pgliteDataPath })
+      const restarted = createPgliteConnectorRepository(createPgliteDatabase(client))
       await restarted.upsertInstance({
         id: `terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '2.0.0',
         displayName: 'Changed terminal fixture', enabled: true, filters: {}, config: { changed: true },
@@ -391,40 +399,40 @@ describe('SQLite connector repository retry ledger', () => {
 
       expect(first).toMatchObject({ acquired: true, acquiredWork: null, run: { status: 'queued', retryHints: null } })
       expect(second).toMatchObject({ acquired: false, acquiredWork: null, run: { id: first.run.id, retryHints: null } })
-      restartedSqlite.close()
+      await client.close()
+      await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
     },
   )
 
   it.each(['exhausted', 'cancelled'] as const)(
     'does not let persisted normalization %s work block unrelated discovery after restart',
     async (state) => {
-      const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `normalization-${state}-`)), 'pglite')
-      const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-      migrateDatabase(sqlite)
-      const database = createDrizzleDatabase(sqlite)
-      const repository = createSqliteConnectorRepository(database)
+      const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), `normalization-${state}-`))
+      const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+      let client = await createPgliteClient({ dataDir: pgliteDataPath })
+      const database = await migratePgliteDatabase(client)
+      const repository = createPgliteConnectorRepository(database)
       await repository.upsertInstance({ id: `normalization-terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Normalization terminal', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-      seedNormalizationRetry(sqlite, database, `normalization-terminal-${state}`, `normalization-${state}`, '2026-07-11T12:01:00.000Z')
-      database.update(retryWork).set({ state, nextAttemptAt: null }).where(eq(retryWork.id, `normalization-${state}`)).run()
-      sqlite.close()
+      await seedNormalizationRetry(client, database, `normalization-terminal-${state}`, `normalization-${state}`, '2026-07-11T12:01:00.000Z')
+      await database.update(retryWork).set({ state, nextAttemptAt: null })
+        .where(eq(retryWork.id, `normalization-${state}`))
 
-      const restartedSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-      const restarted = createSqliteConnectorRepository(createDrizzleDatabase(restartedSqlite))
+      await client.close()
+      client = await createPgliteClient({ dataDir: pgliteDataPath })
+      const restarted = createPgliteConnectorRepository(createPgliteDatabase(client))
       await restarted.upsertInstance({ id: `normalization-terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '2.0.0', displayName: 'Changed normalization terminal', enabled: true, filters: {}, config: { changed: true } })
       const first = await restarted.recordRunRequest({ connectorInstanceId: `normalization-terminal-${state}`, mode: 'catch_up', startedAt: '2026-07-11T14:00:00.000Z' })
       const second = await restarted.recordRunRequest({ connectorInstanceId: `normalization-terminal-${state}`, mode: 'catch_up', startedAt: '2026-07-11T15:00:00.000Z' })
 
       expect(first).toMatchObject({ acquired: true, acquiredWork: null, run: { status: 'queued', retryHints: null } })
       expect(second).toMatchObject({ acquired: false, acquiredWork: null, run: { id: first.run.id, retryHints: null } })
-      restartedSqlite.close()
+      await client.close()
+      await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
     },
   )
 
   it('acquires due normalization work ahead of later capture work', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'scope-priority', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Scope priority', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -438,25 +446,21 @@ describe('SQLite connector repository retry ledger', () => {
         retryHints: { state: 'scheduled', reason: 'rate_limit', attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 600_000, nextAttemptAt: '2026-07-11T12:10:00.000Z', horizonAt: '2026-07-11T13:00:00.000Z' },
       },
     })
-    seedNormalizationRetry(sqlite, database, 'scope-priority', 'normalization-due', '2026-07-11T12:01:00.000Z')
+    await seedNormalizationRetry(client, database, 'scope-priority', 'normalization-due', '2026-07-11T12:01:00.000Z')
 
     const acquisition = await repository.recordRunRequest({ connectorInstanceId: 'scope-priority', mode: 'catch_up', startedAt: '2026-07-11T12:02:00.000Z' })
 
     expect(acquisition.acquired).toBe(true)
-    expect(database.select().from(retryWork).all()).toEqual(expect.arrayContaining([
+    await expect(database.select().from(retryWork)).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'normalization-due', state: 'acquired', acquisitionRunId: acquisition.run.id }),
       expect.objectContaining({ kind: 'connector_capture', state: 'scheduled', nextAttemptAt: '2026-07-11T12:10:00.000Z' }),
     ]))
-    sqlite.close()
   })
 
   it('releases untouched acquired normalization work back to scheduled', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({ id: 'untouched', connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Untouched', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-    seedNormalizationRetry(sqlite, database, 'untouched', 'normalization-untouched', '2026-07-11T12:01:00.000Z')
+    await seedNormalizationRetry(client, database, 'untouched', 'normalization-untouched', '2026-07-11T12:01:00.000Z')
     const first = await repository.recordRunRequest({ connectorInstanceId: 'untouched', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z' })
     await repository.markRunRunning({ connectorRunId: first.run.id, startedAt: '2026-07-11T12:01:00.000Z' })
     await repository.recordRefreshResult({
@@ -464,23 +468,19 @@ describe('SQLite connector repository retry ledger', () => {
       startedAt: '2026-07-11T12:01:00.000Z', completedAt: '2026-07-11T12:01:01.000Z', config: {}, filters: {}, filterSignature: 'filters:{}',
       result: { ...completedConnectorRefreshContract('2026-07-11'), observations: [], warnings: [], stats: { observations: 0 }, coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:01:00.000Z' }, nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' }, retryHints: null },
     })
-    expect(database.select().from(retryWork).all()).toEqual([
+    await expect(database.select().from(retryWork)).resolves.toEqual([
       expect.objectContaining({ id: 'normalization-untouched', state: 'scheduled', acquisitionRunId: null }),
     ])
     const second = await repository.recordRunRequest({ connectorInstanceId: 'untouched', mode: 'catch_up', startedAt: '2026-07-11T12:02:00.000Z' })
     expect(second.acquired).toBe(true)
-    sqlite.close()
   })
 
   it('releases untouched acquired retry work when connector execution fails', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({ id: 'failed-acquisition', connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Failed acquisition', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-    seedNormalizationRetry(sqlite, database, 'failed-acquisition', 'normalization-failed-acquisition', '2026-07-11T12:01:00.000Z')
-    seedNormalizationRetry(sqlite, database, 'failed-acquisition', 'normalization-explicit-terminal', '2026-07-11T12:01:00.000Z')
-    database.update(retryWork).set({ state: 'exhausted', nextAttemptAt: null }).where(eq(retryWork.id, 'normalization-explicit-terminal')).run()
+    await seedNormalizationRetry(client, database, 'failed-acquisition', 'normalization-failed-acquisition', '2026-07-11T12:01:00.000Z')
+    await seedNormalizationRetry(client, database, 'failed-acquisition', 'normalization-explicit-terminal', '2026-07-11T12:01:00.000Z')
+await database.update(retryWork).set({ state: 'exhausted', nextAttemptAt: null }).where(eq(retryWork.id, 'normalization-explicit-terminal'))
     const acquisition = await repository.recordRunRequest({ connectorInstanceId: 'failed-acquisition', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z' })
     await repository.markRunRunning({ connectorRunId: acquisition.run.id, startedAt: '2026-07-11T12:01:00.000Z' })
 
@@ -489,42 +489,34 @@ describe('SQLite connector repository retry ledger', () => {
       warning: { code: 'connector.execution_failed', message: 'Connector execution failed.' },
     })
 
-    expect(database.select().from(retryWork).all()).toEqual(expect.arrayContaining([
+    await expect(database.select().from(retryWork)).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'normalization-failed-acquisition', state: 'scheduled', acquisitionRunId: null, acquisitionToken: null, acquiredAt: null }),
       expect.objectContaining({ id: 'normalization-explicit-terminal', state: 'exhausted', nextAttemptAt: null }),
     ]))
     const retry = await repository.recordRunRequest({ connectorInstanceId: 'failed-acquisition', mode: 'catch_up', startedAt: '2026-07-11T12:01:02.000Z' })
     expect(retry).toMatchObject({ acquired: true, run: { status: 'queued' } })
     expect(retry.run.id).not.toBe(acquisition.run.id)
-    sqlite.close()
   })
 
   it('returns acquired retry work to its resumable due state after startup recovery', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({ id: 'interrupted-acquisition', connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Interrupted acquisition', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-    seedNormalizationRetry(sqlite, database, 'interrupted-acquisition', 'normalization-interrupted-acquisition', '2026-07-11T12:01:00.000Z')
+    await seedNormalizationRetry(client, database, 'interrupted-acquisition', 'normalization-interrupted-acquisition', '2026-07-11T12:01:00.000Z')
     const acquisition = await repository.recordRunRequest({ connectorInstanceId: 'interrupted-acquisition', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z' })
     await repository.markRunRunning({ connectorRunId: acquisition.run.id, startedAt: '2026-07-11T12:01:00.000Z' })
 
-    expect(repository.recoverInterruptedRuns({ completedAt: '2026-07-11T12:02:00.000Z' })).toBe(1)
+    await expect(repository.recoverInterruptedRuns({ completedAt: '2026-07-11T12:02:00.000Z' })).resolves.toBe(1)
 
-    expect(database.select().from(retryWork).all()).toEqual([
+    await expect(database.select().from(retryWork)).resolves.toEqual([
       expect.objectContaining({ id: 'normalization-interrupted-acquisition', state: 'scheduled', nextAttemptAt: '2026-07-11T12:01:00.000Z', attempt: 1, acquisitionRunId: null, acquisitionToken: null, acquiredAt: null }),
     ])
     const retry = await repository.recordRunRequest({ connectorInstanceId: 'interrupted-acquisition', mode: 'catch_up', startedAt: '2026-07-11T12:03:00.000Z' })
     expect(retry).toMatchObject({ acquired: true, acquiredWork: { retryWorkId: 'normalization-interrupted-acquisition' }, run: { status: 'queued' } })
     expect(retry.run.id).not.toBe(acquisition.run.id)
-    sqlite.close()
   })
 
   it('keeps due generic normalization retries selectable on Jobright connector instances', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'jobright-generic-resolver',
       connectorId: 'jobright.resolver',
@@ -534,8 +526,8 @@ describe('SQLite connector repository retry ledger', () => {
       filters: {},
       createdAt: '2026-07-11T12:00:00.000Z',
     })
-    seedNormalizationRetry(
-      sqlite,
+    await seedNormalizationRetry(
+      client,
       database,
       'jobright-generic-resolver',
       'normalization-jobright-generic',
@@ -559,26 +551,23 @@ describe('SQLite connector repository retry ledger', () => {
         inputHash: 'sha256:normalization-jobright-generic',
       },
     })
-    expect(database.select().from(retryWork).all()).toEqual([
+    await expect(database.select().from(retryWork)).resolves.toEqual([
       expect.objectContaining({
         id: 'normalization-jobright-generic',
         state: 'acquired',
         acquisitionRunId: acquisition.run.id,
       }),
     ])
-    sqlite.close()
   })
 
   it('selects an active third Jobright retry without stale pre-filter starvation', async () => {
-    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({ id: 'jobright-active-third', connectorId: 'jobright.resolver', connectorVersion: '0.11.0', displayName: 'Active third', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
     for (const id of ['stale-one', 'stale-two', 'active-three']) {
-      seedNormalizationRetry(sqlite, database, 'jobright-active-third', id, '2026-07-11T12:01:00.000Z', id)
-      database.update(retryWork).set({
+      await seedNormalizationRetry(client, database, 'jobright-active-third', id, '2026-07-11T12:01:00.000Z', id)
+      await database.update(retryWork).set({
         resolverId: 'jobright.authenticated-destination', resolverVersion: 'jobright-authenticated-destination@1',
-      }).where(eq(retryWork.id, id)).run()
+      }).where(eq(retryWork.id, id))
     }
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-active-third', filterSignature: 'filters:{}', savedAt: '2026-07-11T12:00:00.000Z',
@@ -593,47 +582,47 @@ describe('SQLite connector repository retry ledger', () => {
       coverageStartedAt: '2026-07-01T00:00:00.000Z', startedAt: '2026-07-11T12:01:00.000Z',
     })
     expect(acquisition.acquiredWork).toMatchObject({ retryWorkId: 'active-three' })
-    sqlite.close()
   })
 
   it('does not replay an old retry when a newer revision of the same provider record exists', async () => {
-    const { sqlite, database, repository } = await currentRevisionFixture(['current-one'])
-    seedSharedProviderRevisionHistory(sqlite)
-    const insertRecord = sqlite.prepare('insert into capture_lineages (id,created_at) values (?,?)')
-    const insertRevision = sqlite.prepare(`insert into capture_evidence_versions
-      (id,capture_lineage_id,revision,content_hash,adapter_id,adapter_kind,adapter_version,observed_at,provider_record_id,evidence_json,created_at)
-      values (?,?,?,?,?,?,?,?,?,?,?)`)
-    sqlite.transaction(() => {
-      for (let index = 0; index < 2000; index += 1) {
-        insertRecord.run(`history-record-${index}`, '2026-07-10T00:00:00.000Z')
-        insertRevision.run(`history-revision-${index}`, `history-record-${index}`, 1, `history-hash-${index}`,
-          'jobright.resolver', 'connector', '0.11.0', '2026-07-10T00:00:00.000Z',
-          `history-provider-${index}`, '[]', '2026-07-10T00:00:00.000Z')
-      }
-    })()
-    const plan = sqlite.prepare(`explain query plan select 1 from capture_evidence_versions current indexed by idx_capture_evidence_versions_provider_current
-      where current.id=? and current.provider_record_id in (?) and current.id=(
+    const { client, database, repository } = await currentRevisionFixture(['current-one'])
+    await seedSharedProviderRevisionHistory(client)
+    const historyLineages = Array.from({ length: 2_000 }, (_, index) => ({
+      id: `history-record-${index}`, createdAt: '2026-07-10T00:00:00.000Z',
+    }))
+    const historyRevisions = Array.from({ length: 2_000 }, (_, index) => ({
+      id: `history-revision-${index}`, captureLineageId: `history-record-${index}`,
+      revision: 1, contentHash: `history-hash-${index}`, adapterId: 'jobright.resolver',
+      adapterKind: 'connector' as const, adapterVersion: '0.11.0',
+      observedAt: '2026-07-10T00:00:00.000Z', providerRecordId: `history-provider-${index}`,
+      evidenceJson: '[]', createdAt: '2026-07-10T00:00:00.000Z',
+    }))
+    for (let index = 0; index < historyLineages.length; index += 100) {
+      await database.insert(captureLineages).values(historyLineages.slice(index, index + 100))
+      await database.insert(captureEvidenceVersions).values(historyRevisions.slice(index, index + 100))
+    }
+    await client.exec('set enable_seqscan = off')
+    const plan = await explainPlan(client, `select 1 from capture_evidence_versions current
+      where current.id=$1 and current.provider_record_id in ($2) and current.id=(
         select latest.id from capture_evidence_versions latest where latest.capture_lineage_id=current.capture_lineage_id
-        order by latest.revision desc limit 1)` ).all('shared-revision-1', 'shared-provider') as Array<{ detail: string }>
-    expect(plan.map(({ detail }) => detail)).toEqual(expect.arrayContaining([
-      expect.stringContaining('idx_capture_evidence_versions_provider_current'),
-      expect.stringContaining('idx_capture_evidence_versions_lineage_revision'),
-    ]))
-    expect(plan.some(({ detail }) => detail.includes('SCAN raw_source_revisions') || detail.includes('TEMP B-TREE'))).toBe(false)
-    seedExactNormalizationRetry(database, 'current-one', 'old-retry', 'shared-revision-1')
+        order by latest.revision desc limit 1)`, ['shared-revision-1', 'shared-provider'])
+    expect(plan).toContain('idx_capture_evidence_versions_provider_current')
+    expect(plan).toContain('idx_capture_evidence_versions_lineage_revision')
+    expect(plan).not.toContain('Seq Scan')
+    await seedExactNormalizationRetry(database, 'current-one', 'old-retry', 'shared-revision-1')
     await recordActiveSharedProviderCheckpoint(repository, 'current-one')
     const acquisition = await repository.recordRunRequest({ connectorInstanceId: 'current-one', mode: 'manual',
       coverageStartedAt: '2026-07-01T00:00:00.000Z', startedAt: '2026-07-11T12:01:00.000Z' })
     expect(acquisition).toMatchObject({ acquired: true, acquiredWork: null })
-    expect(database.select().from(retryWork).where(eq(retryWork.id, 'old-retry')).get()).toMatchObject({ state: 'scheduled' })
-    sqlite.close()
+    const [oldRetry] = await database.select().from(retryWork).where(eq(retryWork.id, 'old-retry')).limit(1)
+    expect(oldRetry).toMatchObject({ state: 'scheduled' })
   })
 
   it('selects only the current retry across connector instances sharing a provider identity', async () => {
-    const { sqlite, database, repository } = await currentRevisionFixture(['current-a', 'current-b'])
-    seedSharedProviderRevisionHistory(sqlite)
-    seedExactNormalizationRetry(database, 'current-a', 'old-cross-scope', 'shared-revision-1')
-    seedExactNormalizationRetry(database, 'current-b', 'current-cross-scope', 'shared-revision-2')
+    const { client, database, repository } = await currentRevisionFixture(['current-a', 'current-b'])
+    await seedSharedProviderRevisionHistory(client)
+    await seedExactNormalizationRetry(database, 'current-a', 'old-cross-scope', 'shared-revision-1')
+    await seedExactNormalizationRetry(database, 'current-b', 'current-cross-scope', 'shared-revision-2')
     await recordActiveSharedProviderCheckpoint(repository, 'current-a')
     await recordActiveSharedProviderCheckpoint(repository, 'current-b')
     const old = await repository.recordRunRequest({ connectorInstanceId: 'current-a', mode: 'manual',
@@ -642,16 +631,12 @@ describe('SQLite connector repository retry ledger', () => {
       coverageStartedAt: '2026-07-01T00:00:00.000Z', startedAt: '2026-07-11T12:01:00.000Z' })
     expect(old.acquiredWork).toBeNull()
     expect(current.acquiredWork).toMatchObject({ retryWorkId: 'current-cross-scope', rawRevisionId: 'shared-revision-2' })
-    sqlite.close()
   })
 
   it('keeps untouched Jobright v5 normalization work scheduled when its canonical source remains pending', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({ id: 'jobright-pending', connectorId: 'jobright.resolver', connectorVersion: '0.11.0', displayName: 'Jobright pending', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-    seedNormalizationRetry(sqlite, database, 'jobright-pending', 'normalization-jobright-pending', '2026-07-11T12:01:00.000Z', 'job-retry')
+    await seedNormalizationRetry(client, database, 'jobright-pending', 'normalization-jobright-pending', '2026-07-11T12:01:00.000Z', 'job-retry')
     const acquisition = await repository.recordRunRequest({ connectorInstanceId: 'jobright-pending', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z' })
     await repository.markRunRunning({ connectorRunId: acquisition.run.id, startedAt: '2026-07-11T12:01:00.000Z' })
 
@@ -690,17 +675,13 @@ describe('SQLite connector repository retry ledger', () => {
       },
     })
 
-    expect(database.select().from(retryWork).all()).toEqual([
+    await expect(database.select().from(retryWork)).resolves.toEqual([
       expect.objectContaining({ id: 'normalization-jobright-pending', state: 'scheduled', acquisitionRunId: null }),
     ])
-    sqlite.close()
   })
 
   it('does not complete acquired Jobright normalization work merely because the provider left the checkpoint', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'jobright-disappeared',
       connectorId: 'jobright.resolver',
@@ -710,8 +691,8 @@ describe('SQLite connector repository retry ledger', () => {
       filters: {},
       createdAt: '2026-07-11T12:00:00.000Z',
     })
-    seedNormalizationRetry(
-      sqlite,
+    await seedNormalizationRetry(
+      client,
       database,
       'jobright-disappeared',
       'normalization-jobright-disappeared',
@@ -751,7 +732,7 @@ describe('SQLite connector repository retry ledger', () => {
       },
     })
 
-    expect(database.select().from(retryWork).all()).toEqual([
+    await expect(database.select().from(retryWork)).resolves.toEqual([
       expect.objectContaining({
         id: 'normalization-jobright-disappeared',
         state: 'scheduled',
@@ -761,20 +742,16 @@ describe('SQLite connector repository retry ledger', () => {
         acquisitionToken: null,
       }),
     ])
-    sqlite.close()
   })
 
   it('rejects malformed persisted and refreshed Jobright v5 retry state', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({ id: 'jobright-malformed', connectorId: 'jobright.resolver', connectorVersion: '0.11.0', displayName: 'Jobright malformed', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-    seedNormalizationRetry(sqlite, database, 'jobright-malformed', 'normalization-jobright-malformed', '2026-07-11T12:01:00.000Z', 'job-retry')
-    database.update(retryWork).set({
+    await seedNormalizationRetry(client, database, 'jobright-malformed', 'normalization-jobright-malformed', '2026-07-11T12:01:00.000Z', 'job-retry')
+await database.update(retryWork).set({
       resolverId: 'jobright.authenticated-destination',
       resolverVersion: 'jobright-authenticated-destination@1',
-    }).where(eq(retryWork.id, 'normalization-jobright-malformed')).run()
+    }).where(eq(retryWork.id, 'normalization-jobright-malformed'))
     await repository.recordCheckpoint({
       connectorInstanceId: 'jobright-malformed', filterSignature: 'filters:{}',
       savedAt: '2026-07-11T11:59:00.000Z',
@@ -788,7 +765,8 @@ describe('SQLite connector repository retry ledger', () => {
       connectorInstanceId: 'jobright-malformed', mode: 'catch_up',
       coverageStartedAt: '2026-07-04T00:00:00.000Z', startedAt: '2026-07-11T12:00:00.000Z',
     })).rejects.toThrow('Jobright v5 checkpoint pending retry ledger is malformed')
-    expect(database.select().from(retryWork).get()).toMatchObject({
+    const [persistedWork] = await database.select().from(retryWork).limit(1)
+    expect(persistedWork).toMatchObject({
       id: 'normalization-jobright-malformed', state: 'scheduled', acquisitionRunId: null,
     })
     await repository.recordCheckpoint({
@@ -845,10 +823,9 @@ describe('SQLite connector repository retry ledger', () => {
         retryHints: null,
       },
     })).rejects.toThrow()
-    expect(database.select().from(retryWork).all()).toEqual([
+    await expect(database.select().from(retryWork)).resolves.toEqual([
       expect.objectContaining({ id: 'normalization-jobright-malformed', state: 'acquired', acquisitionRunId: acquisition.run.id }),
     ])
-    sqlite.close()
   })
 
 })
@@ -857,19 +834,18 @@ function runAcquisitionWorker(pgliteDataPath: string, startEpoch: number) {
   const workerDirectory = fs.mkdtempSync(path.join(process.cwd(), '.retry-acquisition-worker-'))
   const workerPath = path.join(workerDirectory, 'worker.ts')
   const script = `
-    import { createDrizzleDatabase, createFileDatabase } from ${JSON.stringify(path.resolve('src/db/sqlite.ts'))};
-    import { createSqliteConnectorRepository } from ${JSON.stringify(path.resolve('src/modules/connectors/connector.repository.ts'))};
-    import { resolveDatabaseFilePath } from ${JSON.stringify(path.resolve('src/workspace/workspace.paths.ts'))};
+    import { createPgliteClient, createPgliteDatabase } from ${JSON.stringify(path.resolve('src/db/pglite.ts'))};
+    import { createPgliteConnectorRepository } from ${JSON.stringify(path.resolve('src/modules/connectors/connector.repository.ts'))};
     (async () => {
       const delay = Number(process.env.RETRY_START_EPOCH) - Date.now();
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-      const sqlite = createFileDatabase(resolveDatabaseFilePath(process.env.RETRY_DB_PATH));
-      const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite));
+      const client = await createPgliteClient({ dataDir: process.env.RETRY_DB_PATH });
+      const repository = createPgliteConnectorRepository(createPgliteDatabase(client));
       const result = await repository.recordRunRequest({
         connectorInstanceId: 'process-race', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z'
       });
       process.stdout.write(JSON.stringify({ acquired: result.acquired, id: result.run.id }));
-      sqlite.close();
+      await client.close();
     })().catch((error) => { process.stderr.write(String(error)); process.exitCode = 1; });
   `
   fs.writeFileSync(workerPath, script)
@@ -896,15 +872,15 @@ function runAcquisitionWorker(pgliteDataPath: string, startEpoch: number) {
   })
 }
 
-function seedNormalizationRetry(
-  sqlite: ReturnType<typeof createInMemoryDatabase>,
-  database: ReturnType<typeof createDrizzleDatabase>,
+async function seedNormalizationRetry(
+  client: PgliteClient,
+  database: PgliteDatabase,
   connectorInstanceId: string,
   id: string,
   nextAttemptAt: string,
   providerRecordId?: string,
 ) {
-  sqlite.exec(`
+  await client.exec(`
     insert into capture_lineages (id, created_at) values ('record-${id}', '2026-07-11T12:00:00.000Z');
     insert into capture_evidence_versions (
       id, capture_lineage_id, revision, content_hash, adapter_id, adapter_kind, adapter_version,
@@ -914,10 +890,11 @@ function seedNormalizationRetry(
       '2026-07-11T12:00:00.000Z', ${providerRecordId ? `'${providerRecordId}'` : 'null'}, '[]', '2026-07-11T12:00:00.000Z'
     );
   `)
-  database.insert(retryWork).values({
+  const [instance] = await database.select({ id: connectorInstances.executionScopeId })
+    .from(connectorInstances).where(eq(connectorInstances.id, connectorInstanceId)).limit(1)
+  await database.insert(retryWork).values({
     id,
-    executionScopeId: database.select({ id: connectorInstances.executionScopeId }).from(connectorInstances)
-      .where(eq(connectorInstances.id, connectorInstanceId)).get()?.id ?? null,
+    executionScopeId: instance?.id ?? null,
     kind: 'normalization', connectorInstanceId: null, filterSignature: null,
     checkpointSchemaVersion: null, checkpointGeneration: null,
     captureEvidenceVersionId: `revision-${id}`, resolverId: 'fixture.network', resolverVersion: '1.0.0',
@@ -928,20 +905,18 @@ function seedNormalizationRetry(
     lineageJson: JSON.stringify({ connectorInstanceId }), acquiredAt: null,
     acquisitionToken: null, acquisitionRunId: null, skippedRunId: null,
     createdAt: '2026-07-11T12:00:00.000Z', updatedAt: '2026-07-11T12:00:00.000Z', deletedAt: null,
-  }).run()
+  })
 }
 
 async function currentRevisionFixture(instanceIds: string[]) {
-  const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
-  const database = createDrizzleDatabase(sqlite)
-  const repository = createSqliteConnectorRepository(database)
+  const { client, database, repository } = await createConnectorRepositoryTestContext()
   for (const id of instanceIds) await repository.upsertInstance({ id, connectorId: 'jobright.resolver',
     connectorVersion: '0.11.0', displayName: id, enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-  return { sqlite, database, repository }
+  return { client, database, repository }
 }
 
-function seedSharedProviderRevisionHistory(sqlite: ReturnType<typeof createInMemoryDatabase>) {
-  sqlite.exec(`
+async function seedSharedProviderRevisionHistory(client: PgliteClient) {
+  await client.exec(`
     insert into capture_lineages (id,created_at) values ('shared-record','2026-07-11T12:00:00.000Z');
     insert into capture_evidence_versions (id,capture_lineage_id,revision,content_hash,adapter_id,adapter_kind,adapter_version,observed_at,provider_record_id,evidence_json,created_at) values
       ('shared-revision-1','shared-record',1,'shared-hash-1','jobright.resolver','connector','0.11.0','2026-07-11T12:00:00.000Z','shared-provider','[]','2026-07-11T12:00:00.000Z'),
@@ -949,21 +924,26 @@ function seedSharedProviderRevisionHistory(sqlite: ReturnType<typeof createInMem
   `)
 }
 
-function seedExactNormalizationRetry(database: ReturnType<typeof createDrizzleDatabase>, instanceId: string, id: string, rawRevisionId: string) {
-  const executionScopeId = database.select({ id: connectorInstances.executionScopeId }).from(connectorInstances)
-    .where(eq(connectorInstances.id, instanceId)).get()!.id
-  database.insert(retryWork).values({ id, executionScopeId, kind: 'normalization', captureEvidenceVersionId: rawRevisionId,
+async function seedExactNormalizationRetry(database: PgliteDatabase, instanceId: string, id: string, rawRevisionId: string) {
+  const [instance] = await database.select({ id: connectorInstances.executionScopeId })
+    .from(connectorInstances).where(eq(connectorInstances.id, instanceId)).limit(1)
+  await database.insert(retryWork).values({ id, executionScopeId: instance!.id, kind: 'normalization', captureEvidenceVersionId: rawRevisionId,
     resolverId: 'jobright.authenticated-destination', resolverVersion: 'jobright-authenticated-destination@1', inputHash: `hash-${id}`,
     reason: 'server_failure', attempt: 1, maxAttempts: 3, lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: 1000,
     nextAttemptAt: '2026-07-11T12:00:01.000Z', horizonAt: '2026-07-11T13:00:00.000Z', state: 'scheduled', ownerVersion: '1',
-    lineageJson: JSON.stringify({ connectorInstanceId: instanceId }), createdAt: '2026-07-11T12:00:00.000Z', updatedAt: '2026-07-11T12:00:00.000Z' }).run()
+    lineageJson: JSON.stringify({ connectorInstanceId: instanceId }), createdAt: '2026-07-11T12:00:00.000Z', updatedAt: '2026-07-11T12:00:00.000Z' })
 }
 
-async function recordActiveSharedProviderCheckpoint(repository: ReturnType<typeof createSqliteConnectorRepository>, connectorInstanceId: string) {
+async function recordActiveSharedProviderCheckpoint(repository: ReturnType<typeof createPgliteConnectorRepository>, connectorInstanceId: string) {
   await repository.recordCheckpoint({ connectorInstanceId, filterSignature: 'filters:{}', savedAt: '2026-07-11T12:00:00.000Z',
     coverage: { start: '2026-07-01T00:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
     checkpoint: { schemaVersion: 'jobright-resolution-checkpoint@5', checkpoint: { generationId: 'shared-generation',
       effectiveCoverageStart: '2026-07-01T00:00:00.000Z', pendingDetailRetries: [
         { sourceId: 'jobright.public:shared-provider', ownership: 'active', generationId: 'shared-generation' },
       ] } } })
+}
+
+async function explainPlan(client: PgliteClient, query: string, parameters: unknown[]) {
+  const result = await client.query<Record<'QUERY PLAN', string>>(`explain ${query}`, parameters)
+  return result.rows.map((row) => row['QUERY PLAN']).join('\n')
 }

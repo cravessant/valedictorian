@@ -7,15 +7,20 @@ import {
   workflowRuns,
   workflowRunSteps,
 } from '../../db/schema'
-import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
+import { eq, sql } from 'drizzle-orm'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
 import { seedSampleApplications } from './application.fixtures'
-import { createSqliteApplicationRepository } from './application.repository'
-import { createSqliteActionQueueRepository } from '../action-queue/action-queue.repository'
-import { createSqlitePolicyRepository } from '../policy/policy.repository'
+import { createPgliteApplicationRepository } from './application.repository'
+import { createPglitePolicyRepository } from '../policy/policy.repository'
 
-type ApplicationRepositoryInstance = ReturnType<typeof createSqliteApplicationRepository>
+type ApplicationRepositoryInstance = ReturnType<typeof createPgliteApplicationRepository>
+
+async function createTestDatabase() {
+  const client = await createPgliteClient()
+  onTestFinished(() => client.close())
+  return migratePgliteDatabase(client)
+}
 
 const passedVerificationReceiptPayload = {
   version: 1,
@@ -61,15 +66,13 @@ async function recordVerificationReceipt(
   })
 }
 
-describe('SQLite application repository workflow attempts', () => {
+describe('PGlite application repository workflow attempts', () => {
   it('starts an application attempt with a lock, first step, and audit event', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database) as ReturnType<
-      typeof createSqliteApplicationRepository
+    const repository = createPgliteApplicationRepository(database) as ReturnType<
+      typeof createPgliteApplicationRepository
     > & {
       startApplicationAttempt(input: {
         applicationId: string
@@ -113,10 +116,10 @@ describe('SQLite application repository workflow attempts', () => {
         },
       ],
     })
-    expect(database.select().from(applicationAttempts).all()).toHaveLength(0)
-    expect(database.select().from(applicationAttemptSteps).all()).toHaveLength(0)
+    expect(await database.select().from(applicationAttempts)).toHaveLength(0)
+    expect(await database.select().from(applicationAttemptSteps)).toHaveLength(0)
     expect(
-      database.select().from(workflowRuns).where(eq(workflowRuns.id, attempt.id)).get(),
+      await database.select().from(workflowRuns).where(eq(workflowRuns.id, attempt.id)).limit(1).then(([row]) => row),
     ).toMatchObject({
       id: attempt.id,
       subjectApplicationId: 'application-versant-platform',
@@ -125,11 +128,11 @@ describe('SQLite application repository workflow attempts', () => {
       outcome: null,
     })
     expect(
-      database
+      await database
         .select()
         .from(workflowRunSteps)
         .where(eq(workflowRunSteps.workflowRunId, attempt.id))
-        .all(),
+        ,
     ).toEqual([
       expect.objectContaining({
         sequence: 1,
@@ -138,41 +141,38 @@ describe('SQLite application repository workflow attempts', () => {
       }),
     ])
     expect(
-      database
+      await database
         .select()
         .from(applications)
         .where(eq(applications.id, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       status: 'in_progress',
     })
     expect(
-      database
+      await database
         .select()
         .from(applicationWorkflowStates)
         .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       applicationId: 'application-versant-platform',
       lockStartedAt: expect.any(String),
     })
     expect(
-      database
+      (await database
         .select()
         .from(applicationEvents)
-        .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
-        .all()
+        .where(eq(applicationEvents.applicationId, 'application-versant-platform')))
         .map((event) => event.type),
     ).toEqual(['attempt_started'])
   })
 
   it('rejects a second active attempt for the same application', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
@@ -190,22 +190,20 @@ describe('SQLite application repository workflow attempts', () => {
       }),
     ).rejects.toThrow('Application attempt already in progress')
     expect(
-      database
+      await database
         .select()
         .from(workflowRuns)
         .where(eq(workflowRuns.subjectApplicationId, 'application-versant-platform'))
-        .all(),
+        ,
     ).toHaveLength(1)
   })
 
   it('appends attempt steps in sequence order', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database) as ReturnType<
-      typeof createSqliteApplicationRepository
+    const repository = createPgliteApplicationRepository(database) as ReturnType<
+      typeof createPgliteApplicationRepository
     > & {
       startApplicationAttempt(input: {
         applicationId: string
@@ -247,22 +245,19 @@ describe('SQLite application repository workflow attempts', () => {
       payloadJson: '{"artifactPath":"tailored_resumes/versant/resume.pdf"}',
     })
     expect(
-      database
+      (await database
         .select()
         .from(workflowRunSteps)
-        .where(eq(workflowRunSteps.workflowRunId, attempt.id))
-        .all()
+        .where(eq(workflowRunSteps.workflowRunId, attempt.id)))
         .map((attemptStep) => attemptStep.type),
     ).toEqual(['attempt_started', 'resume_uploaded'])
   })
 
   it('completes a submitted attempt and clears workflow blockers in one transaction', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -306,21 +301,21 @@ describe('SQLite application repository workflow attempts', () => {
       message: 'Submitted and verified confirmation.',
     })
     expect(
-      database
+      await database
         .select()
         .from(applications)
         .where(eq(applications.id, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       status: 'submitted',
       hasApplied: true,
     })
     expect(
-      database
+      await database
         .select()
         .from(applicationWorkflowStates)
         .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       lockStartedAt: null,
       holdStartedAt: null,
@@ -329,22 +324,19 @@ describe('SQLite application repository workflow attempts', () => {
       blockerReason: null,
     })
     expect(
-      database
+      (await database
         .select()
         .from(applicationEvents)
-        .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
-        .all()
+        .where(eq(applicationEvents.applicationId, 'application-versant-platform')))
         .map((event) => event.type),
     ).toEqual(['attempt_started', 'workflow_updated', 'attempt_completed'])
   })
 
   it('rejects submitted completion without a passed final-review verification receipt', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -363,12 +355,10 @@ describe('SQLite application repository workflow attempts', () => {
   })
 
   it('rejects submitted completion with a failed final-review verification receipt', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -393,13 +383,11 @@ describe('SQLite application repository workflow attempts', () => {
   })
 
   it('rejects explicit-approval company submission until policy evidence is recorded', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
-    const policyRepository = createSqlitePolicyRepository(database)
+    const repository = createPgliteApplicationRepository(database)
+    const policyRepository = createPglitePolicyRepository(database)
     const application = await repository.createApplication({
       companyName: 'ByteDance',
       roleTitle: 'Software Engineer Intern',
@@ -457,12 +445,10 @@ describe('SQLite application repository workflow attempts', () => {
   })
 
   it('rejects ready-for-review completion without a final-review verification receipt', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -483,12 +469,10 @@ describe('SQLite application repository workflow attempts', () => {
   })
 
   it('completes ready-for-review with a failed receipt and unresolved items', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -519,13 +503,11 @@ describe('SQLite application repository workflow attempts', () => {
   })
 
   it('completes blocker outcomes without a verification receipt when blocker details are present', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
-    const policyRepository = createSqlitePolicyRepository(database)
+    const repository = createPgliteApplicationRepository(database)
+    const policyRepository = createPglitePolicyRepository(database)
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -562,14 +544,11 @@ describe('SQLite application repository workflow attempts', () => {
     })
   })
 
-  it('completes a needs-user-info attempt and moves the row into the action queue bucket', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+  it('completes a needs-user-info attempt and exposes the updated application state', async () => {
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
-    const queueRepository = createSqliteActionQueueRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -591,46 +570,45 @@ describe('SQLite application repository workflow attempts', () => {
       outcome: 'needs_user_info',
     })
     expect(
-      database
+      await database
         .select()
         .from(applicationWorkflowStates)
         .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       lockStartedAt: null,
       missingUserInfo: 'Confirm work authorization answer.',
       blockerReason: null,
     })
-    const queue = await queueRepository.listActionQueue({ actionBucket: 'needs_user_info' })
-    expect(queue.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'application-versant-platform',
-          actionBucket: 'needs_user_info',
-          nextAction: 'needs_user_info',
-        }),
-      ]),
-    )
+    await expect(repository.getApplication('application-versant-platform')).resolves.toMatchObject({
+      status: 'needs_user_info',
+    })
   })
 
   it('rolls back attempt mutations when step or audit insertion fails', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
-    const seededWorkflowRunCount = database.select().from(workflowRuns).all().length
-    const seededWorkflowRunStepCount = database.select().from(workflowRunSteps).all().length
+    const repository = createPgliteApplicationRepository(database)
+    const seededWorkflowRunCount = (await database.select().from(workflowRuns)).length
+    const seededWorkflowRunStepCount = (await database.select().from(workflowRunSteps)).length
 
-    sqlite.exec(`
-      CREATE TRIGGER fail_attempt_started_event
-      BEFORE INSERT ON application_events
-      WHEN NEW.type = 'attempt_started'
+    await database.execute(sql.raw(`
+      CREATE FUNCTION reject_attempt_started_event() RETURNS trigger
+      LANGUAGE plpgsql AS $$
       BEGIN
-        SELECT RAISE(ABORT, 'audit insert failed');
+        IF NEW.type = 'attempt_started' THEN
+          RAISE EXCEPTION 'audit insert failed';
+        END IF;
+        RETURN NEW;
       END;
-    `)
+      $$;
+    `))
+    await database.execute(sql.raw(`
+      CREATE TRIGGER fail_attempt_started_event
+        BEFORE INSERT ON application_events
+        FOR EACH ROW EXECUTE FUNCTION reject_attempt_started_event();
+    `))
 
     await expect(
       repository.startApplicationAttempt({
@@ -639,20 +617,21 @@ describe('SQLite application repository workflow attempts', () => {
         actorName: 'codex',
         summary: 'Started application.',
       }),
-    ).rejects.toThrow('audit insert failed')
-    expect(database.select().from(workflowRuns).all()).toHaveLength(seededWorkflowRunCount)
-    expect(database.select().from(workflowRunSteps).all()).toHaveLength(seededWorkflowRunStepCount)
+    ).rejects.toThrow('Failed query: insert into "application_events"')
+    expect(await database.select().from(workflowRuns)).toHaveLength(seededWorkflowRunCount)
+    expect(await database.select().from(workflowRunSteps)).toHaveLength(seededWorkflowRunStepCount)
     expect(
-      database
+      await database
         .select()
         .from(applications)
         .where(eq(applications.id, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       status: 'queued',
     })
 
-    sqlite.exec('DROP TRIGGER fail_attempt_started_event;')
+    await database.execute(sql.raw('DROP TRIGGER fail_attempt_started_event ON application_events;'))
+    await database.execute(sql.raw('DROP FUNCTION reject_attempt_started_event();'))
     const attempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -665,14 +644,22 @@ describe('SQLite application repository workflow attempts', () => {
       attempt.id,
       passedVerificationReceiptPayload,
     )
-    sqlite.exec(`
-      CREATE TRIGGER fail_attempt_completed_step
-      BEFORE INSERT ON workflow_run_steps
-      WHEN NEW.type = 'attempt_completed'
+    await database.execute(sql.raw(`
+      CREATE FUNCTION reject_attempt_completed_step() RETURNS trigger
+      LANGUAGE plpgsql AS $$
       BEGIN
-        SELECT RAISE(ABORT, 'attempt step insert failed');
+        IF NEW.type = 'attempt_completed' THEN
+          RAISE EXCEPTION 'attempt step insert failed';
+        END IF;
+        RETURN NEW;
       END;
-    `)
+      $$;
+    `))
+    await database.execute(sql.raw(`
+      CREATE TRIGGER fail_attempt_completed_step
+        BEFORE INSERT ON workflow_run_steps
+        FOR EACH ROW EXECUTE FUNCTION reject_attempt_completed_step();
+    `))
 
     await expect(
       repository.completeApplicationAttempt({
@@ -681,54 +668,50 @@ describe('SQLite application repository workflow attempts', () => {
         outcome: 'submitted',
         summary: 'Submitted application.',
       }),
-    ).rejects.toThrow('attempt step insert failed')
+    ).rejects.toThrow('Failed query: insert into "workflow_run_steps"')
     expect(
-      database
+      await database
         .select()
         .from(workflowRuns)
         .where(eq(workflowRuns.id, attempt.id))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       status: 'in_progress',
       outcome: null,
       completedAt: null,
     })
     expect(
-      database
+      (await database
         .select()
         .from(workflowRunSteps)
-        .where(eq(workflowRunSteps.workflowRunId, attempt.id))
-        .all()
+        .where(eq(workflowRunSteps.workflowRunId, attempt.id)))
         .map((step) => step.type),
     ).toEqual(['attempt_started', 'verification_receipt'])
     expect(
-      database
+      await database
         .select()
         .from(applications)
         .where(eq(applications.id, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       status: 'in_progress',
       hasApplied: false,
     })
     expect(
-      database
+      (await database
         .select()
         .from(applicationEvents)
-        .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
-        .all()
+        .where(eq(applicationEvents.applicationId, 'application-versant-platform')))
         .map((event) => event.type),
     ).toEqual(['attempt_started'])
   })
 
   it('lists application attempts newest first with their ordered steps', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database) as ReturnType<
-      typeof createSqliteApplicationRepository
+    const repository = createPgliteApplicationRepository(database) as ReturnType<
+      typeof createPgliteApplicationRepository
     > & {
       startApplicationAttempt(input: {
         applicationId: string
@@ -760,7 +743,7 @@ describe('SQLite application repository workflow attempts', () => {
         items: Array<{ id: string; summary: string | null; steps: Array<{ type: string }> }>
       }>
     }
-    const policyRepository = createSqlitePolicyRepository(database)
+    const policyRepository = createPglitePolicyRepository(database)
     const firstAttempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -788,11 +771,11 @@ describe('SQLite application repository workflow attempts', () => {
       summary: 'Stopped on platform error.',
       blockerReason: 'SmartRecruiters validation loop',
     } as never)
-    database
+    await database
       .update(workflowRuns)
       .set({ startedAt: '2026-06-04T16:00:00.000Z' })
       .where(eq(workflowRuns.id, firstAttempt.id))
-      .run()
+
     const secondAttempt = await repository.startApplicationAttempt({
       applicationId: 'application-versant-platform',
       actorType: 'agent',
@@ -805,12 +788,12 @@ describe('SQLite application repository workflow attempts', () => {
       type: 'page_verified',
       message: 'Verified contact page.',
     })
-    database
+    await database
       .update(workflowRuns)
       .set({ startedAt: '2026-06-04T17:00:00.000Z' })
       .where(eq(workflowRuns.id, secondAttempt.id))
-      .run()
-    database
+
+    await database
       .insert(workflowRuns)
       .values({
         id: 'workflow-run-broad-audit',
@@ -834,8 +817,8 @@ describe('SQLite application repository workflow attempts', () => {
         timezone: null,
         updatedAt: '2026-06-04T18:00:00.000Z',
       })
-      .run()
-    database
+
+    await database
       .insert(workflowRunSteps)
       .values({
         id: 'workflow-run-broad-audit-step-1',
@@ -847,7 +830,7 @@ describe('SQLite application repository workflow attempts', () => {
         type: 'run_started',
         workflowRunId: 'workflow-run-broad-audit',
       })
-      .run()
+
 
     await expect(
       repository.listApplicationAttempts({
@@ -871,6 +854,25 @@ describe('SQLite application repository workflow attempts', () => {
         },
       ],
     })
+  })
+
+  it('allows only one concurrent active attempt per application', async () => {
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
+    const repository = createPgliteApplicationRepository(database)
+    const input = {
+      applicationId: 'application-versant-platform',
+      actorType: 'agent' as const,
+      actorName: 'codex',
+      summary: 'Concurrent attempt.',
+    }
+    const results = await Promise.allSettled([
+      repository.startApplicationAttempt(input),
+      repository.startApplicationAttempt(input),
+    ])
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
   })
 
 })

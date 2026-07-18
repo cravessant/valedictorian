@@ -25,14 +25,17 @@ import {
   policyEvidence,
   workflowRunSteps,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import { isPassedFinalReviewReceipt } from '../applications/application.repository.helpers'
 
 const ACTIVE_POLICY_CONFIG_ID = 'active'
 const DEFAULT_POLICY_EVIDENCE_LIMIT = 100
 const blockerOutcomes = new Set(['manual_captcha', 'security_gate', 'login_needed', 'platform_error'])
 
-export function createSqlitePolicyRepository(database: DrizzleDatabase) {
+type PolicyQueryDatabase = Pick<PgliteDatabase, 'select'>
+type PolicyWriteDatabase = Pick<PgliteDatabase, 'insert' | 'select' | 'update'>
+
+export function createPglitePolicyRepository(database: PgliteDatabase) {
   return {
     async getConfig(): Promise<PolicyConfig> {
       return readPolicyConfig(database)
@@ -41,8 +44,11 @@ export function createSqlitePolicyRepository(database: DrizzleDatabase) {
       return writePolicyConfig(database, defaultPolicyConfig)
     },
     async updateConfig(patch: PolicyConfigPatch): Promise<PolicyConfig> {
-      const current = readPolicyConfig(database)
-      return writePolicyConfig(database, normalizePolicyConfig(deepMerge(current, patch)))
+      return database.transaction(async (transaction) => {
+        await ensurePolicyConfigRow(transaction)
+        const current = await readPolicyConfigForUpdate(transaction)
+        return writePolicyConfig(transaction, normalizePolicyConfig(deepMerge(current, patch)))
+      })
     },
     async listEvidence(input: PolicyEvidenceListInput = {}): Promise<PolicyEvidenceRecord[]> {
       const limit = input.limit ?? DEFAULT_POLICY_EVIDENCE_LIMIT
@@ -69,15 +75,15 @@ export function createSqlitePolicyRepository(database: DrizzleDatabase) {
         filters.push(eq(policyEvidence.tag, input.tag))
       }
 
-      return database
+      const rows = await database
         .select()
         .from(policyEvidence)
         .where(filters.length > 0 ? and(...filters) : undefined)
         .orderBy(desc(policyEvidence.createdAt))
         .limit(limit)
         .offset(offset)
-        .all()
-        .map(mapPolicyEvidence)
+
+      return rows.map(mapPolicyEvidence)
     },
     async recordEvidence(input: PolicyEvidenceInput): Promise<PolicyEvidenceRecord> {
       if (!isPolicySubjectType(input.subjectType)) {
@@ -91,7 +97,7 @@ export function createSqlitePolicyRepository(database: DrizzleDatabase) {
       const now = new Date().toISOString()
       const id = randomUUID()
 
-      database
+      const [created] = await database
         .insert(policyEvidence)
         .values({
           id,
@@ -103,9 +109,7 @@ export function createSqlitePolicyRepository(database: DrizzleDatabase) {
           payloadJson: JSON.stringify(input.payload ?? {}),
           createdAt: now,
         })
-        .run()
-
-      const created = database.select().from(policyEvidence).where(eq(policyEvidence.id, id)).get()
+        .returning()
 
       if (!created) {
         throw new Error(`Policy evidence not found: ${id}`)
@@ -114,23 +118,23 @@ export function createSqlitePolicyRepository(database: DrizzleDatabase) {
       return mapPolicyEvidence(created)
     },
     async evaluateApplication(input: EvaluateApplicationPolicyInput): Promise<PolicyDecision> {
-      return evaluateApplicationPolicy(database, readPolicyConfig(database), input)
+      return evaluateApplicationPolicy(database, await readPolicyConfig(database), input)
     },
     async evaluateSourcingCandidate(input: EvaluateSourcingCandidatePolicyInput): Promise<PolicyDecision> {
-      return evaluateSourcingCandidatePolicy(database, readPolicyConfig(database), input)
+      return evaluateSourcingCandidatePolicy(database, await readPolicyConfig(database), input)
     },
     async evaluateRunWindow(input: EvaluateRunWindowPolicyInput): Promise<PolicyRunWindowDecision> {
-      return evaluateRunWindowPolicy(readPolicyConfig(database), input)
+      return evaluateRunWindowPolicy(await readPolicyConfig(database), input)
     },
   }
 }
 
-export function readPolicyConfig(database: Pick<DrizzleDatabase, 'select'>): PolicyConfig {
-  const row = database
+export async function readPolicyConfig(database: PolicyQueryDatabase): Promise<PolicyConfig> {
+  const [row] = await database
     .select()
     .from(policyConfig)
     .where(eq(policyConfig.id, ACTIVE_POLICY_CONFIG_ID))
-    .get()
+    .limit(1)
 
   if (!row) {
     return normalizePolicyConfig(defaultPolicyConfig)
@@ -143,31 +147,11 @@ export function readPolicyConfig(database: Pick<DrizzleDatabase, 'select'>): Pol
   }
 }
 
-function writePolicyConfig(
-  database: Pick<DrizzleDatabase, 'insert' | 'select' | 'update'>,
-  config: PolicyConfig,
-) {
-  const normalized = normalizePolicyConfig(config)
+async function ensurePolicyConfigRow(database: PolicyWriteDatabase) {
+  const normalized = normalizePolicyConfig(defaultPolicyConfig)
   const now = new Date().toISOString()
-  const existing = database
-    .select({ id: policyConfig.id })
-    .from(policyConfig)
-    .where(eq(policyConfig.id, ACTIVE_POLICY_CONFIG_ID))
-    .get()
 
-  if (existing) {
-    database
-      .update(policyConfig)
-      .set({
-        configJson: JSON.stringify(normalized),
-        updatedAt: now,
-      })
-      .where(eq(policyConfig.id, ACTIVE_POLICY_CONFIG_ID))
-      .run()
-    return normalized
-  }
-
-  database
+  await database
     .insert(policyConfig)
     .values({
       id: ACTIVE_POLICY_CONFIG_ID,
@@ -175,18 +159,58 @@ function writePolicyConfig(
       createdAt: now,
       updatedAt: now,
     })
-    .run()
+    .onConflictDoNothing()
+}
+
+async function readPolicyConfigForUpdate(database: PolicyQueryDatabase): Promise<PolicyConfig> {
+  const [row] = await database
+    .select()
+    .from(policyConfig)
+    .where(eq(policyConfig.id, ACTIVE_POLICY_CONFIG_ID))
+    .limit(1)
+    .for('update')
+
+  if (!row) {
+    throw new Error('Active policy config not found after initialization')
+  }
+
+  try {
+    return normalizePolicyConfig(JSON.parse(row.configJson) as unknown)
+  } catch {
+    return normalizePolicyConfig(defaultPolicyConfig)
+  }
+}
+
+async function writePolicyConfig(database: PolicyWriteDatabase, config: PolicyConfig) {
+  const normalized = normalizePolicyConfig(config)
+  const now = new Date().toISOString()
+
+  await database
+    .insert(policyConfig)
+    .values({
+      id: ACTIVE_POLICY_CONFIG_ID,
+      configJson: JSON.stringify(normalized),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: policyConfig.id,
+      set: {
+        configJson: JSON.stringify(normalized),
+        updatedAt: now,
+      },
+    })
 
   return normalized
 }
 
-export function evaluateSourcingCandidatePolicy(
-  database: Pick<DrizzleDatabase, 'select'>,
+export async function evaluateSourcingCandidatePolicy(
+  database: PolicyQueryDatabase,
   config: PolicyConfig,
   input: EvaluateSourcingCandidatePolicyInput,
-): PolicyDecision {
+): Promise<PolicyDecision> {
   const evidence = input.findingId
-    ? listEvidenceForSubject(database, 'sourcing_finding', input.findingId)
+    ? await listEvidenceForSubject(database, 'sourcing_finding', input.findingId)
     : input.evidence ?? []
   const evidenceTags = tagSet(evidence)
 
@@ -235,14 +259,14 @@ export function evaluateSourcingCandidatePolicy(
   })
 }
 
-export function evaluateApplicationPolicy(
-  database: Pick<DrizzleDatabase, 'select'>,
+export async function evaluateApplicationPolicy(
+  database: PolicyQueryDatabase,
   config: PolicyConfig,
   input: EvaluateApplicationPolicyInput,
-): PolicyDecision {
-  const application = selectApplicationPolicyContext(database, input.applicationId)
+): Promise<PolicyDecision> {
+  const application = await selectApplicationPolicyContext(database, input.applicationId)
   const outcome = input.outcome ?? application.status
-  const evidence = listEvidenceForSubject(database, 'application', input.applicationId)
+  const evidence = await listEvidenceForSubject(database, 'application', input.applicationId)
   const evidenceTags = tagSet(evidence)
 
   if (evidenceTags.has('do_not_submit') && outcome === 'submitted') {
@@ -262,7 +286,7 @@ export function evaluateApplicationPolicy(
     if (
       config.verification.requireFinalReviewReceiptForSubmit &&
       input.attemptId &&
-      !isPassedFinalReviewReceipt(latestVerificationReceipt(database, input.attemptId))
+      !isPassedFinalReviewReceipt(await latestVerificationReceipt(database, input.attemptId))
     ) {
       return decision({
         action: 'needs_evidence',
@@ -424,25 +448,25 @@ export function evaluateRunWindowPolicy(
   }
 }
 
-export function listEvidenceForSubject(
-  database: Pick<DrizzleDatabase, 'select'>,
+export async function listEvidenceForSubject(
+  database: PolicyQueryDatabase,
   subjectType: PolicyEvidenceRecord['subjectType'],
   subjectId: string,
 ) {
-  return database
+  const rows = await database
     .select()
     .from(policyEvidence)
     .where(and(eq(policyEvidence.subjectType, subjectType), eq(policyEvidence.subjectId, subjectId)))
     .orderBy(desc(policyEvidence.createdAt))
-    .all()
-    .map(mapPolicyEvidence)
+
+  return rows.map(mapPolicyEvidence)
 }
 
-function selectApplicationPolicyContext(
-  database: Pick<DrizzleDatabase, 'select'>,
+async function selectApplicationPolicyContext(
+  database: PolicyQueryDatabase,
   applicationId: string,
 ) {
-  const row = database
+  const [row] = await database
     .select({
       id: applications.id,
       companyName: companies.name,
@@ -451,7 +475,7 @@ function selectApplicationPolicyContext(
     .from(applications)
     .innerJoin(companies, eq(applications.companyId, companies.id))
     .where(eq(applications.id, applicationId))
-    .get()
+    .limit(1)
 
   if (!row) {
     throw new Error(`Application not found: ${applicationId}`)
@@ -460,16 +484,16 @@ function selectApplicationPolicyContext(
   return row
 }
 
-function latestVerificationReceipt(
-  database: Pick<DrizzleDatabase, 'select'>,
+async function latestVerificationReceipt(
+  database: PolicyQueryDatabase,
   attemptId: string,
 ) {
-  const step = database
+  const [step] = await database
     .select()
     .from(workflowRunSteps)
     .where(and(eq(workflowRunSteps.workflowRunId, attemptId), eq(workflowRunSteps.type, 'verification_receipt')))
     .orderBy(desc(workflowRunSteps.sequence))
-    .get()
+    .limit(1)
 
   if (!step) {
     return null

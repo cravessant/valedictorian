@@ -1,16 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import {
-  createDrizzleDatabase,
-  createInMemoryDatabase,
-  migrateDatabase,
-} from '../../db/sqlite'
+import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
 import { createApplicationFileSecretStore } from '../../settings/app-secret.composition'
 import {
   createApplicationSecretScope,
   createWorkspaceSecretScope,
 } from './secret.scope'
 import type { SecretCodec } from './secret.codec'
-import { createSqliteSecretService } from './secret.composition'
+import { createPgliteSecretService } from './secret.composition'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -22,6 +18,22 @@ const testCodec: SecretCodec = {
   encrypt(value) {
     return `enc:${value}`
   },
+}
+
+async function createWorkspaceService(workspaceId: string) {
+  const client = await createPgliteClient()
+  const database = await migratePgliteDatabase(client)
+  return {
+    client,
+    service: createPgliteSecretService(
+      database,
+      testCodec,
+      createWorkspaceSecretScope(workspaceId),
+    ),
+    async cleanup() {
+      await client.close()
+    },
+  }
 }
 
 describe('secret scopes', () => {
@@ -45,84 +57,75 @@ describe('secret scopes', () => {
     expect(() => createWorkspaceSecretScope('')).toThrow('workspaceId is required')
   })
 
-  it('binds application and workspace stores to construction scopes through composition', () => {
+  it('binds application and workspace stores to construction scopes through composition', async () => {
     const applicationScope = createApplicationSecretScope()
     const workspaceScope = createWorkspaceSecretScope('ws-a')
     const secretsPath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'scoped-app-secrets-')),
       'secrets.json',
     )
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
+    const client = await createPgliteClient()
+    try {
+      const database = await migratePgliteDatabase(client)
+      const appStore = createApplicationFileSecretStore(secretsPath, testCodec)
+      const service = createPgliteSecretService(database, testCodec, workspaceScope)
 
-    const appStore = createApplicationFileSecretStore(secretsPath, testCodec)
-    const service = createSqliteSecretService(
-      createDrizzleDatabase(sqlite),
-      testCodec,
-      workspaceScope,
-    )
-
-    expect(appStore.scope).toEqual(applicationScope)
-    expect(service.scope).toEqual(workspaceScope)
-    expect(appStore.scope.domain).toBe('application')
+      expect(appStore.scope).toEqual(applicationScope)
+      expect(service.scope).toEqual(workspaceScope)
+      expect(appStore.scope.domain).toBe('application')
+    } finally {
+      await client.close()
+    }
   })
 
   it('isolates two workspace-scoped secret services', async () => {
-    const sqliteA = createInMemoryDatabase()
-    const sqliteB = createInMemoryDatabase()
-    migrateDatabase(sqliteA)
-    migrateDatabase(sqliteB)
+    const fixtureA = await createWorkspaceService('workspace-a')
+    const fixtureB = await createWorkspaceService('workspace-b')
+    try {
+      const { service: serviceA } = fixtureA
+      const { service: serviceB } = fixtureB
 
-    const serviceA = createSqliteSecretService(
-      createDrizzleDatabase(sqliteA),
-      testCodec,
-      createWorkspaceSecretScope('workspace-a'),
-    )
-    const serviceB = createSqliteSecretService(
-      createDrizzleDatabase(sqliteB),
-      testCodec,
-      createWorkspaceSecretScope('workspace-b'),
-    )
+      await serviceA.upsert({
+        key: 'shared_key',
+        kind: 'token',
+        label: 'Shared',
+        value: 'token-a',
+      })
+      await serviceB.upsert({
+        key: 'shared_key',
+        kind: 'token',
+        label: 'Shared',
+        value: 'token-b',
+      })
 
-    await serviceA.upsert({
-      key: 'shared_key',
-      kind: 'token',
-      label: 'Shared',
-      value: 'token-a',
-    })
-    await serviceB.upsert({
-      key: 'shared_key',
-      kind: 'token',
-      label: 'Shared',
-      value: 'token-b',
-    })
-
-    expect(serviceA.scope).toEqual({ domain: 'workspace', workspaceId: 'workspace-a' })
-    expect(serviceB.scope).toEqual({ domain: 'workspace', workspaceId: 'workspace-b' })
-    await expect(serviceA.resolve('shared_key')).resolves.toMatchObject({ value: 'token-a' })
-    await expect(serviceB.resolve('shared_key')).resolves.toMatchObject({ value: 'token-b' })
-    expect(serviceA.scope).not.toEqual(serviceB.scope)
+      expect(serviceA.scope).toEqual({ domain: 'workspace', workspaceId: 'workspace-a' })
+      expect(serviceB.scope).toEqual({ domain: 'workspace', workspaceId: 'workspace-b' })
+      await expect(serviceA.resolve('shared_key')).resolves.toMatchObject({ value: 'token-a' })
+      await expect(serviceB.resolve('shared_key')).resolves.toMatchObject({ value: 'token-b' })
+      expect(serviceA.scope).not.toEqual(serviceB.scope)
+    } finally {
+      await fixtureA.cleanup()
+      await fixtureB.cleanup()
+    }
   })
 
   it('does not accept a scope selector on service operations', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const service = createSqliteSecretService(
-      createDrizzleDatabase(sqlite),
-      testCodec,
-      createWorkspaceSecretScope('ws-a'),
-    )
+    const fixture = await createWorkspaceService('ws-a')
+    const { service } = fixture
+    try {
+      await service.upsert({
+        key: 'api_token',
+        kind: 'token',
+        label: 'API token',
+        value: 'tok',
+      })
 
-    await service.upsert({
-      key: 'api_token',
-      kind: 'token',
-      label: 'API token',
-      value: 'tok',
-    })
-
-    expect(service.upsert.length).toBe(1)
-    expect(service.resolve.length).toBe(1)
-    expect(service.delete.length).toBe(1)
-    expect(service.list.length).toBe(0)
+      expect(service.upsert.length).toBe(1)
+      expect(service.resolve.length).toBe(1)
+      expect(service.delete.length).toBe(1)
+      expect(service.list.length).toBe(0)
+    } finally {
+      await fixture.cleanup()
+    }
   })
 })

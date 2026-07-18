@@ -349,19 +349,19 @@ function GeneralSettingsPanel({
           }
         >
           <RuntimeModeOption
-            description="SQLite through Electron IPC, no local HTTP server."
+            description="PGlite through Electron IPC, no local HTTP server."
             icon={<Monitor className="h-4 w-4" aria-hidden="true" />}
             label="Local desktop"
             value="local-desktop"
           />
           <RuntimeModeOption
-            description="SQLite plus the embedded HTTP API for Tailscale or CLI access."
+            description="PGlite plus the embedded HTTP API for Tailscale or CLI access."
             icon={<Server className="h-4 w-4" aria-hidden="true" />}
             label="Local shared"
             value="local-shared"
           />
           <RuntimeModeOption
-            description="Use a hosted or remote HTTP API instead of local SQLite."
+            description="Use a hosted or remote HTTP API instead of local PGlite."
             icon={<Globe2 className="h-4 w-4" aria-hidden="true" />}
             label="Remote"
             value="remote"

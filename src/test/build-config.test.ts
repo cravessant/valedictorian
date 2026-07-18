@@ -22,6 +22,11 @@ function readElectronBuilderConfig() {
     appId?: string
     asarUnpack?: string[]
     detectUpdateChannel?: boolean
+    extraResources?: Array<{
+      filter?: string[]
+      from?: string
+      to?: string
+    }>
     files?: string[]
     productName?: string
     mac?: {
@@ -33,10 +38,22 @@ function readElectronBuilderConfig() {
       notarize?: boolean
       target?: string[]
     }
+    nsis?: {
+      allowToChangeInstallationDirectory?: boolean
+      deleteAppDataOnUninstall?: boolean
+      oneClick?: boolean
+      perMachine?: boolean
+    }
     publish?: Array<{
       provider?: string
       url?: string
     }>
+    win?: {
+      target?: Array<{
+        arch?: string[]
+        target?: string
+      }>
+    }
   }
 }
 
@@ -101,34 +118,82 @@ describe('build configuration', () => {
     expect(pnpmWorkspaceConfig).toContain('sparxie: true')
   })
 
-  it('packages native SQLite runtime helpers for the signed Mac app', () => {
+  it('packages PGlite runtime assets without native SQLite rebuild contracts', () => {
     const packageJson = readPackageJson()
     const config = readElectronBuilderConfig()
+    const scripts = Object.values(packageJson.scripts ?? {})
 
-    expect(packageJson.dependencies).toMatchObject({
-      'better-sqlite3': expect.any(String),
-      bindings: expect.any(String),
-      'file-uri-to-path': expect.any(String),
-    })
     expect(config.files).toEqual(
       expect.arrayContaining([
         'drizzle/**/*',
         'dist',
         'dist-electron',
-        'node_modules/better-sqlite3/**/*',
-        'node_modules/bindings/**/*',
-        'node_modules/file-uri-to-path/**/*',
+        'node_modules/@electric-sql/pglite/**/*',
       ]),
     )
-    expect(config.asarUnpack).toEqual(
-      expect.arrayContaining(['**/node_modules/better-sqlite3/**']),
+    expect(config.files?.join('\n')).not.toMatch(/better-sqlite3|bindings|file-uri-to-path/)
+    expect(config.asarUnpack ?? []).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('better-sqlite3')]),
     )
+    expect(config.extraResources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          from: 'node_modules/@electric-sql/pglite/dist',
+          to: 'pglite-runtime',
+          filter: expect.arrayContaining(['pglite.wasm', 'initdb.wasm', 'pglite.data']),
+        }),
+      ]),
+    )
+    expect(config.mac?.hardenedRuntime).toBe(true)
+    expect(config.mac?.notarize).toBe(true)
+    expect(config.win?.target).toEqual([{ target: 'nsis', arch: ['x64'] }])
+    expect(config.nsis).toMatchObject({
+      oneClick: false,
+      perMachine: false,
+      allowToChangeInstallationDirectory: true,
+      deleteAppDataOnUninstall: false,
+    })
+
+    expect(scripts.join('\n')).not.toMatch(/better-sqlite3|install-app-deps|rebuild:native|rebuild:node/)
+    expect(packageJson.scripts?.['rebuild:native']).toBeUndefined()
+    expect(packageJson.scripts?.['rebuild:node']).toBeUndefined()
+    expect(packageJson.scripts?.dev).not.toContain('install-app-deps')
+    expect(packageJson.scripts?.['validate:app']).not.toContain('install-app-deps')
+    expect(packageJson.scripts?.build).not.toContain('better-sqlite3')
+    expect(packageJson.scripts?.['build:mac']).not.toContain('better-sqlite3')
+    expect(packageJson.scripts?.test).not.toContain('better-sqlite3')
+    expect(packageJson.scripts?.['smoke:pglite-package']).toBe(
+      'node scripts/run-packaged-pglite-smoke.mjs',
+    )
+  })
+
+  it('runs packaged PGlite restart smoke verification on macOS and Windows CI', () => {
+    const ciWorkflow = fs.readFileSync(path.resolve('.github/workflows/ci.yml'), 'utf8')
+    const releaseWorkflow = fs.readFileSync(path.resolve('.github/workflows/release-mac.yml'), 'utf8')
+
+    expect(ciWorkflow).toContain('package-smoke:')
+    expect(ciWorkflow).toContain('macos-latest')
+    expect(ciWorkflow).toContain('windows-latest')
+    expect(ciWorkflow).toContain('pnpm exec electron-builder --win --publish never')
+    expect(ciWorkflow).not.toContain('electron-builder --win --dir')
+    expect(ciWorkflow).toContain('Verify Windows installer')
+    expect(ciWorkflow).toContain('pnpm run smoke:pglite-package')
+    expect(releaseWorkflow).toContain('pnpm run smoke:pglite-package')
   })
 
   it('keeps Electron main runtime-probed packages out of the Vite bundle', () => {
     const viteConfig = readViteConfig()
+    const testSetup = fs.readFileSync(path.resolve('src/test/setup.ts'), 'utf8')
 
-    expect(viteConfig).toContain("export const nativeMainExternals = ['better-sqlite3', 'undici']")
+    expect(viteConfig).toContain('testTimeout: process.env.CI ? 30_000 : 5_000')
+    expect(testSetup).toContain(
+      'configure({ asyncUtilTimeout: process.env.CI ? 15_000 : 1_000 })',
+    )
+    expect(testSetup).toContain("from '@testing-library/react'")
+    expect(viteConfig).toContain(
+      "export const mainExternals = ['@electric-sql/pglite', 'undici']",
+    )
+    expect(viteConfig).not.toContain('better-sqlite3')
   })
 
   it('documents project config discovery separately from app-owned workspace state', () => {

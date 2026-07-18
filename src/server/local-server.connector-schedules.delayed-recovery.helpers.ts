@@ -1,25 +1,27 @@
 import type { DispatchConnectorScheduleDueResult } from 'sparxie'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
+import type { PgliteDatabase } from '../db/pglite'
+import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
-  createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
   createStaticConnectorRegistry,
 } from './local-server.connector-schedules.http-fixture'
+import { openPgliteTestDatabase } from './local-valedictorian-client.test-harness'
 
 export const CONNECTOR_INSTANCE_ID = 'connector-instance-schedule'
 
 export async function seedHourlyScheduleWorkspace(input: {
   workspaceId: string
+  database: PgliteDatabase
   pgliteDataPath: string
   now: () => Date
 }) {
-  const client = createLocalValedictorianClient({
+  const client = await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
     connectorScheduling: availableSchedulingCapability,
+    database: input.database,
     now: input.now,
     seedDataMode: 'none',
     pgliteDataPath: input.pgliteDataPath,
@@ -45,52 +47,38 @@ export async function seedHourlyScheduleWorkspace(input: {
   return { client, created }
 }
 
-export function admitScheduleDueOnly(input: {
-  pgliteDataPath: string
+export async function admitScheduleDueOnly(input: {
+  database: PgliteDatabase
   now: () => Date
   expectedRevision: string
-}): Extract<DispatchConnectorScheduleDueResult, { status: 'admitted' }> {
-  const sqlite = createFileDatabase(resolveDatabaseFilePath(input.pgliteDataPath))
-  try {
-    const admitted = admitConnectorScheduleDue({
-      database: createDrizzleDatabase(sqlite),
-      now: input.now,
-      maximumCatchUpAgeMinutes: availableSchedulingCapability.maximumCatchUpAgeMinutes,
-      input: {
-        connectorInstanceId: CONNECTOR_INSTANCE_ID,
-        expectedRevision: input.expectedRevision,
-      },
-    })
-    if (admitted.status !== 'admitted') {
-      throw new Error(`expected admitted setup, got ${admitted.status}`)
-    }
-    return admitted
-  } finally {
-    sqlite.close()
-  }
-}
-
-export function openScheduleSqlite(pgliteDataPath: string) {
-  const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-  const database = createDrizzleDatabase(sqlite)
-  return {
-    sqlite,
-    database,
-    close() {
-      sqlite.close()
+}): Promise<Extract<DispatchConnectorScheduleDueResult, { status: 'admitted' }>> {
+  const admitted = await admitConnectorScheduleDue({
+    database: input.database,
+    now: input.now,
+    maximumCatchUpAgeMinutes: availableSchedulingCapability.maximumCatchUpAgeMinutes,
+    input: {
+      connectorInstanceId: CONNECTOR_INSTANCE_ID,
+      expectedRevision: input.expectedRevision,
     },
+  })
+  if (admitted.status !== 'admitted') {
+    throw new Error(`expected admitted setup, got ${admitted.status}`)
   }
+  return admitted
 }
 
-export function createReopenedScheduleClient(input: {
+export const openScheduleDatabase = openPgliteTestDatabase
+
+export async function createReopenedScheduleClient(input: {
   workspaceId: string
+  database: PgliteDatabase
   pgliteDataPath: string
   now: () => Date
   onRefresh?: AppJobConnector['refresh']
   connectorRegistry?: ReturnType<typeof createStaticConnectorRegistry>
 }) {
   let refreshCalls = 0
-  const client = createLocalValedictorianClient({
+  const client = await createLocalValedictorianClient({
     connectorRegistry: input.connectorRegistry ?? createStaticConnectorRegistry([
       {
         definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
@@ -121,6 +109,7 @@ export function createReopenedScheduleClient(input: {
       },
     ]),
     connectorScheduling: availableSchedulingCapability,
+    database: input.database,
     now: input.now,
     seedDataMode: 'none',
     pgliteDataPath: input.pgliteDataPath,

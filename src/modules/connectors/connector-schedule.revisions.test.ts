@@ -1,17 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
-import { createDrizzleDatabase, createFileDatabase } from '../../db/sqlite'
 import { createConnectorScheduleRepository } from '../connectors/connector-schedule.repository'
-import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
-  createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
   createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
 } from '../../server/local-server.connector-schedules.http-fixture'
+import {
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from '../../runtime/local-valedictorian-client.test-harness'
 describe('connector schedule immutable revision snapshots', () => {
   let server: ScheduleHttpServerHandle | null = null
 
@@ -24,7 +25,7 @@ describe('connector schedule immutable revision snapshots', () => {
     const workspaceId = 'schedule-revision-snapshots-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -97,9 +98,11 @@ describe('connector schedule immutable revision snapshots', () => {
       'upserted',
     ])
 
-    const inspectDb = createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)))
-    const scheduleRepository = createConnectorScheduleRepository(inspectDb, () => clock)
-    const snapshots = scheduleRepository.listRevisionSnapshots(created.id)
+    const scheduleRepository = createConnectorScheduleRepository(
+      getTestLocalValedictorianDatabase(localClient),
+      () => clock,
+    )
+    const snapshots = await scheduleRepository.listRevisionSnapshots(created.id)
 
     expect(snapshots).toEqual([
       expect.objectContaining({
@@ -145,7 +148,7 @@ describe('connector schedule immutable revision snapshots', () => {
     ])
 
     // Prior snapshots remain exact after later mutations (immutable).
-    expect(scheduleRepository.getRevisionSnapshot(created.revision)).toEqual(
+    expect(await scheduleRepository.getRevisionSnapshot(created.revision)).toEqual(
       expect.objectContaining({
         revision: created.revision,
         cadence: { kind: 'interval', everyMinutes: 60 },
@@ -153,7 +156,7 @@ describe('connector schedule immutable revision snapshots', () => {
         state: 'enabled',
       }),
     )
-    expect(scheduleRepository.getRevisionSnapshot(updated.revision)).toEqual(
+    expect(await scheduleRepository.getRevisionSnapshot(updated.revision)).toEqual(
       expect.objectContaining({
         revision: updated.revision,
         cadence: { kind: 'interval', everyMinutes: 90 },
@@ -164,7 +167,8 @@ describe('connector schedule immutable revision snapshots', () => {
 
     // Audit events reference durable revision identities that exist as snapshots.
     for (const event of audit.items) {
-      expect(scheduleRepository.getRevisionSnapshot(event.revision)?.revision).toBe(event.revision)
+      expect((await scheduleRepository.getRevisionSnapshot(event.revision))?.revision)
+        .toBe(event.revision)
     }
   })
 })

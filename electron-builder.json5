@@ -18,12 +18,18 @@
     "drizzle/**/*",
     "dist",
     "dist-electron",
-    "node_modules/better-sqlite3/**/*",
-    "node_modules/bindings/**/*",
-    "node_modules/file-uri-to-path/**/*"
+    "node_modules/@electric-sql/pglite/**/*"
   ],
-  "asarUnpack": [
-    "**/node_modules/better-sqlite3/**"
+  "extraResources": [
+    {
+      "from": "node_modules/@electric-sql/pglite/dist",
+      "to": "pglite-runtime",
+      "filter": [
+        "pglite.wasm",
+        "initdb.wasm",
+        "pglite.data"
+      ]
+    }
   ],
   "mac": {
     "icon": "build/icon.icns",

@@ -1,7 +1,7 @@
 import type { BatchRawSourceRecordsInput } from 'sparxie'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { LocalConnectorRegistry } from '../connectors/connector.registry'
-import type { createSqliteConnectorRepository } from '../connectors/connector.repository'
+import type { createPgliteConnectorRepository } from '../connectors/connector.repository'
 import type {
   AppConnectorAuthHost,
   AppConnectorRuntimePorts,
@@ -9,7 +9,7 @@ import type {
 import type { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 import type { createNormalizationOrchestrator } from './normalization.orchestrator'
 import { createNormalizationResolverRegistry, type NormalizationResolverRegistry } from './normalization.registry'
-import type { createSqliteNormalizationRepository } from './normalization.repository'
+import type { createPgliteNormalizationRepository } from './normalization.repository'
 import { createProviderUrlResolutionExecutor } from './provider-url-resolution.executor'
 import { createProviderUrlResolutionIntake } from './provider-url-resolution.intake'
 import { createProviderUrlResolutionRepository } from './provider-url-resolution.repository'
@@ -17,16 +17,16 @@ import { createProviderUrlResolutionRuntime } from './provider-url-resolution.ru
 import { createProviderUrlResolutionWorkSource } from './provider-url-resolution.source'
 import type { RawSourceRepository } from './raw-source.repository'
 
-export function createProviderUrlResolutionService(options: {
+export async function createProviderUrlResolutionService(options: {
   authHost?: AppConnectorAuthHost
   connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRuntime?: AppConnectorRuntimePorts
-  database: DrizzleDatabase
+  database: PgliteDatabase
   governor: ReturnType<typeof createSourceExecutionGovernor>
   normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
   normalizationRegistry: NormalizationResolverRegistry
-  normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
+  normalizationRepository: ReturnType<typeof createPgliteNormalizationRepository>
   now: () => Date
   onScheduledWorkChanged?: () => void
   rawSourceRepository: RawSourceRepository
@@ -36,7 +36,7 @@ export function createProviderUrlResolutionService(options: {
     options.database,
     options.now,
   )
-  repository.recoverAcquired(options.now().toISOString())
+  await repository.recoverAcquired(options.now().toISOString())
   const intake = createProviderUrlResolutionIntake({
     connectorRegistry: options.connectorRegistry,
     onScheduledWorkChanged: options.onScheduledWorkChanged,
@@ -67,11 +67,13 @@ export function createProviderUrlResolutionService(options: {
     async ingestBatch(input: BatchRawSourceRecordsInput) {
       let scheduled = false
       const result = await options.rawSourceRepository.ingestBatch(input, {
-        stage: (transaction, staged) => {
-          staged.receipts.forEach((receipt, index) => {
+        stage: async (transaction, staged) => {
+          for (const [index, receipt] of staged.receipts.entries()) {
             const record = staged.records[index]
-            if (record) scheduled = intake.enqueue(record, receipt, transaction) || scheduled
-          })
+            if (record) {
+              scheduled = await intake.enqueue(record, receipt, transaction) || scheduled
+            }
+          }
         },
       })
       if (scheduled) options.onScheduledWorkChanged?.()

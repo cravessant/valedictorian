@@ -1,40 +1,93 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { captureLineages } from '../../db/schema'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from '../connectors/connector.repository'
-import { createSqliteRawSourceRepository } from './raw-source.repository'
+import {
+  captureLineages,
+  captureEvidenceVersions,
+  captures,
+  connectorInstances,
+  connectorRuns,
+  jobIdentities,
+  jobs,
+  normalizationRuns,
+  sourceExecutionScopes,
+} from '../../db/schema'
+import {
+  createPgliteClient,
+  createPgliteDatabase,
+  migratePgliteDatabase,
+  type PgliteClient,
+  type PgliteDatabase,
+} from '../../db/pglite'
+import { createPgliteRawSourceRepository } from './raw-source.repository'
 
 describe('raw source repository', () => {
-  const databases: ReturnType<typeof createInMemoryDatabase>[] = []
+  const clients = new Set<PgliteClient>()
 
-  afterEach(() => {
-    databases.splice(0).forEach((database) => database.close())
+  afterEach(async () => {
+    await Promise.all([...clients].map((client) => client.close()))
+    clients.clear()
   })
 
   it('rolls back raw capture when transactional staging fails', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteRawSourceRepository(database)
+    const database = await createTestDatabase(clients)
+    const repository = createPgliteRawSourceRepository(database)
+    let stageCompleted = false
 
     await expect(repository.ingestBatch({
       records: [{
         adapter: { id: 'fixture.manual', kind: 'manual', version: '1.0.0' },
         observedAt: '2026-07-10T12:00:00.000Z',
         payload: { companyName: 'Fixture', roleTitle: 'Engineer' },
+      }, {
+        adapter: { id: 'fixture.import', kind: 'import', version: '1.0.0' },
+        observedAt: '2026-07-10T12:01:00.000Z',
+        payload: { companyName: 'Second', roleTitle: 'Designer' },
       }],
     }, {
-      stage: () => { throw new Error('provider staging failed') },
+      stage: async () => {
+        await Promise.resolve()
+        stageCompleted = true
+        throw new Error('provider staging failed')
+      },
     })).rejects.toThrow('provider staging failed')
-    expect(database.select().from(captureLineages).all()).toHaveLength(0)
+    expect(stageCompleted).toBe(true)
+    await expect(database.select().from(captureLineages)).resolves.toHaveLength(0)
+    await expect(database.select().from(captureEvidenceVersions)).resolves.toHaveLength(0)
+    await expect(database.select().from(captures)).resolves.toHaveLength(0)
+  })
+
+  it('returns receipts in input order after awaited transactional staging', async () => {
+    const database = await createTestDatabase(clients)
+    const repository = createPgliteRawSourceRepository(database)
+    let stagedIntakeIds: readonly string[] = []
+
+    const result = await repository.ingestBatch({
+      records: ['third', 'first', 'second'].map((intakeItemId, index) => ({
+        intakeItemId,
+        adapter: { id: 'fixture.manual', kind: 'manual' as const, version: '1.0.0' },
+        observedAt: `2026-07-10T12:0${index}:00.000Z`,
+        payload: { index },
+      })),
+    }, {
+      stage: async (_transaction, { receipts }) => {
+        await Promise.resolve()
+        stagedIntakeIds = receipts.map((receipt) => receipt.intakeItemId)
+      },
+    })
+
+    expect(result.receipts.map((receipt) => receipt.intakeItemId)).toEqual([
+      'third',
+      'first',
+      'second',
+    ])
+    expect(stagedIntakeIds).toEqual(['third', 'first', 'second'])
   })
 
   it('rejects connector intake without complete capture lineage', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
+    const database = await createTestDatabase(clients)
+    const repository = createPgliteRawSourceRepository(database)
 
     await expect(repository.ingestBatch({
       records: [{
@@ -46,16 +99,13 @@ describe('raw source repository', () => {
   })
 
   it('scopes strong identity independently from adapter version and preserves revision provenance', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
+    const database = await createTestDatabase(clients)
     const receivedTimes = [
       new Date('2026-07-10T14:00:00.000Z'),
       new Date('2026-07-10T15:00:00.000Z'),
     ]
-    const database = createDrizzleDatabase(sqlite)
     const capture = await createConnectorCapture(database, 'fixture.connector')
-    const repository = createSqliteRawSourceRepository(
+    const repository = createPgliteRawSourceRepository(
       database,
       () => receivedTimes.shift()!,
     )
@@ -120,30 +170,9 @@ describe('raw source repository', () => {
   })
 
   it('persists connector instance and run lineage on every raw occurrence', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
-    const repository = createSqliteRawSourceRepository(database)
-    const connectorInstanceId = 'jobright-instance-1'
-    await connectorRepository.upsertInstance({
-      id: connectorInstanceId,
-      connectorId: 'jobright.resolver',
-      connectorVersion: '0.5.0',
-      displayName: 'Jobright',
-      enabled: true,
-    })
-    const runRequest = await connectorRepository.recordRunRequest({
-      connectorInstanceId,
-      mode: 'manual',
-      startedAt: '2026-07-10T12:00:00.000Z',
-    })
-    const capture = {
-      connectorInstanceId,
-      connectorRunId: runRequest.run.id,
-      executionScopeId: runRequest.run.executionScopeId,
-    }
+    const database = await createTestDatabase(clients)
+    const repository = createPgliteRawSourceRepository(database)
+    const capture = await createConnectorCapture(database, 'jobright.resolver')
     const result = await repository.ingestBatch({
       records: [{
         adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.5.0' },
@@ -162,28 +191,17 @@ describe('raw source repository', () => {
   })
 
   it('rejects occurrence lineage assembled from different raw or connector owners', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
-    const rawRepository = createSqliteRawSourceRepository(database)
+    const database = await createTestDatabase(clients)
+    const rawRepository = createPgliteRawSourceRepository(database)
     const runs = []
 
     for (const suffix of ['one', 'two']) {
-      const connectorInstanceId = `instance-${suffix}`
-      await connectorRepository.upsertInstance({
-        id: connectorInstanceId,
-        connectorId: `fixture.${suffix}`,
-        connectorVersion: '1.0.0',
-        displayName: suffix,
-        enabled: true,
+      const capture = await createConnectorCapture(database, `fixture.${suffix}`)
+      runs.push({
+        id: capture.connectorRunId,
+        connectorInstanceId: capture.connectorInstanceId,
+        executionScopeId: capture.executionScopeId,
       })
-      runs.push((await connectorRepository.recordRunRequest({
-        connectorInstanceId,
-        mode: 'manual',
-        startedAt: '2026-07-10T12:00:00.000Z',
-      })).run)
     }
     const raw = await rawRepository.ingestBatch({ records: ['one', 'two'].map((suffix, index) => ({
       adapter: { id: `fixture.${suffix}`, kind: 'connector' as const, version: '1.0.0' },
@@ -197,27 +215,26 @@ describe('raw source repository', () => {
       providerSchema: 'fixture@1',
       payload: { suffix },
     })) })
-    const insert = sqlite.prepare(`
-      insert into captures (
-        id, capture_lineage_id, capture_evidence_version_id, connector_instance_id, connector_run_id,
-        observed_at, received_at
-      ) values (?, ?, ?, ?, ?, '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:01.000Z')
-    `)
-
-    expect(() => insert.run(
-      'mismatched-raw',
-      raw.receipts[0].rawRecordId,
-      raw.receipts[1].revision.id,
-      runs[0].connectorInstanceId,
-      runs[0].id,
-    )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
-    expect(() => insert.run(
-      'mismatched-connector',
-      raw.receipts[0].rawRecordId,
-      raw.receipts[0].revision.id,
-      runs[0].connectorInstanceId,
-      runs[1].id,
-    )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
+    await expectPostgresFailure(database.insert(captures).values({
+      id: 'mismatched-raw',
+      captureLineageId: raw.receipts[0].rawRecordId,
+      captureEvidenceVersionId: raw.receipts[1].revision.id,
+      connectorInstanceId: runs[0].connectorInstanceId,
+      connectorRunId: runs[0].id,
+      executionScopeId: runs[0].executionScopeId,
+      observedAt: '2026-07-10T12:00:00.000Z',
+      receivedAt: '2026-07-10T12:00:01.000Z',
+    }), /foreign key|lineage mismatch|scope owner mismatch/i)
+    await expectPostgresFailure(database.insert(captures).values({
+      id: 'mismatched-connector',
+      captureLineageId: raw.receipts[0].rawRecordId,
+      captureEvidenceVersionId: raw.receipts[0].revision.id,
+      connectorInstanceId: runs[0].connectorInstanceId,
+      connectorRunId: runs[1].id,
+      executionScopeId: runs[0].executionScopeId,
+      observedAt: '2026-07-10T12:00:00.000Z',
+      receivedAt: '2026-07-10T12:00:01.000Z',
+    }), /foreign key|lineage mismatch|scope owner mismatch/i)
     const captured = await rawRepository.ingestBatch({ records: [{
       adapter: { id: 'fixture.one', kind: 'connector', version: '1.0.0' },
       capture: {
@@ -230,51 +247,33 @@ describe('raw source repository', () => {
       providerSchema: 'fixture@1',
       payload: { suffix: 'one' },
     }] })
-    const insertNormalization = sqlite.prepare(`
-      insert into normalization_runs (
-        id, capture_lineage_id, capture_evidence_version_id, trigger_capture_id,
-        trigger_connector_instance_id, trigger_connector_run_id, input_hash, resolver_set_hash,
-        canonical_schema_version, gate_policy_version, trigger_kind, status, created_at, updated_at
-      ) values (?, ?, ?, ?, ?, ?, ?, 'sha256:resolvers', 'candidate/v1', 'gate/v1',
-        'intake', 'completed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z')
-    `)
-    expect(() => insertNormalization.run(
-      'bad-normalization-raw',
-      raw.receipts[1].rawRecordId,
-      raw.receipts[1].revision.id,
-      captured.receipts[0].occurrence.id,
-      runs[0].connectorInstanceId,
-      runs[0].id,
-      'sha256:bad-normalization-raw',
-    )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
-    expect(() => insertNormalization.run(
-      'bad-normalization-history',
-      raw.receipts[0].rawRecordId,
-      raw.receipts[0].revision.id,
-      raw.receipts[1].occurrence.id,
-      runs[1].connectorInstanceId,
-      runs[1].id,
-      'sha256:bad-normalization-history',
-    )).toThrow(/foreign key|lineage mismatch|scope owner mismatch/i)
-    expect(() => insertNormalization.run(
-      'manual-normalization',
-      raw.receipts[0].rawRecordId,
-      raw.receipts[0].revision.id,
-      null,
-      null,
-      null,
-      'sha256:manual-normalization',
-    )).not.toThrow()
-    expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
+    await expectPostgresFailure(database.insert(normalizationRuns).values(normalizationValues({
+      id: 'bad-normalization-raw',
+      rawRecordId: raw.receipts[1].rawRecordId,
+      revisionId: raw.receipts[1].revision.id,
+      captureId: captured.receipts[0].occurrence.id,
+      connectorInstanceId: runs[0].connectorInstanceId,
+      connectorRunId: runs[0].id,
+    })), /foreign key|lineage mismatch|invalid/i)
+    await expectPostgresFailure(database.insert(normalizationRuns).values(normalizationValues({
+      id: 'bad-normalization-history',
+      rawRecordId: raw.receipts[0].rawRecordId,
+      revisionId: raw.receipts[0].revision.id,
+      captureId: raw.receipts[1].occurrence.id,
+      connectorInstanceId: runs[1].connectorInstanceId,
+      connectorRunId: runs[1].id,
+    })), /foreign key|lineage mismatch|invalid/i)
+    await expect(database.insert(normalizationRuns).values(normalizationValues({
+      id: 'manual-normalization',
+      rawRecordId: raw.receipts[0].rawRecordId,
+      revisionId: raw.receipts[0].revision.id,
+    }))).resolves.toBeDefined()
   })
 
   it('does not create strong identity for blank connector provider ids', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase(clients)
     const capture = await createConnectorCapture(database, 'fixture.connector')
-    const repository = createSqliteRawSourceRepository(database)
+    const repository = createPgliteRawSourceRepository(database)
     const result = await repository.ingestBatch({
       records: ['', '   '].map((providerRecordId) => ({
         adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
@@ -290,12 +289,9 @@ describe('raw source repository', () => {
   })
 
   it('reuses trimmed-equivalent provider identity while preserving raw provenance', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase(clients)
     const capture = await createConnectorCapture(database, 'fixture.connector')
-    const repository = createSqliteRawSourceRepository(database)
+    const repository = createPgliteRawSourceRepository(database)
     const base = {
       adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
       capture,
@@ -321,12 +317,9 @@ describe('raw source repository', () => {
   })
 
   it('keeps null and present provider schemas in separate identity namespaces', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase(clients)
     const capture = await createConnectorCapture(database, 'fixture.connector')
-    const repository = createSqliteRawSourceRepository(database)
+    const repository = createPgliteRawSourceRepository(database)
     const result = await repository.ingestBatch({
       records: [null, 'null'].map((providerSchema) => ({
         adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
@@ -341,11 +334,161 @@ describe('raw source repository', () => {
     expect(result.receipts[0].rawRecordId).not.toBe(result.receipts[1].rawRecordId)
   })
 
+  it('reuses exact content while appending ordered occurrences to one durable revision', async () => {
+    const database = await createTestDatabase(clients)
+    const capture = await createConnectorCapture(database, 'fixture.connector')
+    const receivedTimes = [
+      new Date('2026-07-10T12:00:01.000Z'),
+      new Date('2026-07-10T12:00:02.000Z'),
+    ]
+    const repository = createPgliteRawSourceRepository(database, () => receivedTimes.shift()!)
+    const record = {
+      adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1.0.0' },
+      capture,
+      observedAt: '2026-07-10T12:00:00.000Z',
+      providerRecordId: 'job-exact',
+      providerSchema: 'fixture@1',
+      payload: { state: 'open' },
+    }
+
+    const first = await repository.ingestBatch({ records: [record] })
+    const second = await repository.ingestBatch({ records: [record] })
+
+    expect(second.receipts[0]).toMatchObject({
+      rawRecordId: first.receipts[0].rawRecordId,
+      sourceEntityId: first.receipts[0].sourceEntityId,
+      revision: {
+        id: first.receipts[0].revision.id,
+        revision: 1,
+        reused: true,
+      },
+    })
+    await expect(repository.get(first.receipts[0].rawRecordId)).resolves.toMatchObject({
+      latestRevision: { id: first.receipts[0].revision.id, revision: 1 },
+      occurrences: [
+        { receivedAt: '2026-07-10T12:00:01.000Z' },
+        { receivedAt: '2026-07-10T12:00:02.000Z' },
+      ],
+    })
+  })
+
+  it('converges concurrent duplicate intake on one canonical durable record', async () => {
+    const database = await createTestDatabase(clients)
+    const capture = await createConnectorCapture(database, 'fixture.concurrent')
+    const repository = createPgliteRawSourceRepository(
+      database,
+      () => new Date('2026-07-10T12:00:01.000Z'),
+    )
+    const input = {
+      records: [{
+        adapter: { id: 'fixture.concurrent', kind: 'connector' as const, version: '1.0.0' },
+        capture,
+        observedAt: '2026-07-10T12:00:00.000Z',
+        providerRecordId: 'job-concurrent',
+        providerSchema: 'fixture@1',
+        payload: { state: 'open' },
+      }],
+    }
+
+    const results = await Promise.all([
+      repository.ingestBatch(input),
+      repository.ingestBatch(input),
+    ])
+    const receipts = results.map((result) => result.receipts[0])
+
+    expect(new Set(receipts.map((receipt) => receipt.sourceEntityId)).size).toBe(1)
+    expect(new Set(receipts.map((receipt) => receipt.rawRecordId)).size).toBe(1)
+    expect(new Set(receipts.map((receipt) => receipt.revision.id)).size).toBe(1)
+    expect(receipts.map((receipt) => receipt.revision.reused)
+      .sort((left, right) => Number(left) - Number(right))).toEqual([false, true])
+    await expect(repository.get(receipts[0].rawRecordId)).resolves.toMatchObject({
+      latestRevision: { revision: 1 },
+      occurrences: [{}, {}],
+    })
+  })
+
+  it('rejects a captured identity already evidenced for a conflicting owner', async () => {
+    const database = await createTestDatabase(clients)
+    const capture = await createConnectorCapture(database, 'fixture.connector')
+    const repository = createPgliteRawSourceRepository(database)
+    const identityNamespace = 'adapter:17:fixture.connector|schema:value:9:fixture@1'
+    const createdAt = '2026-07-10T12:00:00.000Z'
+    await database.insert(jobs).values({
+      id: 'conflicting-owner',
+      identityKind: 'provider_job',
+      identityNamespace: 'seed-owner',
+      identityValue: 'seed-owner',
+      createdAt,
+    })
+    await database.insert(jobIdentities).values({
+      id: 'conflicting-identity',
+      jobId: 'conflicting-owner',
+      identityKind: 'provider_job',
+      identityNamespace,
+      identityValue: 'job-conflict',
+      provenanceKind: 'capture',
+      provenanceVersion: 'raw-source-capture/v1',
+      evidenceJson: '{}',
+      createdAt,
+    })
+
+    await expectPostgresFailure(repository.ingestBatch({ records: [{
+      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
+      capture,
+      observedAt: createdAt,
+      providerRecordId: 'job-conflict',
+      providerSchema: 'fixture@1',
+    }] }), /duplicate key|unique constraint/i)
+    await expect(database.select().from(jobs)).resolves.toHaveLength(1)
+    await expect(database.select().from(captureLineages)).resolves.toHaveLength(0)
+  })
+
+  it('keeps raw captures visible after an on-disk PGlite restart', async () => {
+    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-pglite-'))
+    const dataDir = path.join(temporaryRoot, 'pglite')
+    const closed = new Set<PgliteClient>()
+    const close = async (client: PgliteClient | null) => {
+      if (client && !closed.has(client)) {
+        closed.add(client)
+        await client.close()
+      }
+    }
+    let firstClient: PgliteClient | null = null
+    let secondClient: PgliteClient | null = null
+
+    try {
+      firstClient = await createPgliteClient({ dataDir })
+      const firstDatabase = await migratePgliteDatabase(firstClient)
+      const firstRepository = createPgliteRawSourceRepository(firstDatabase)
+      const intake = await firstRepository.ingestBatch({ records: [{
+        adapter: { id: 'fixture.import', kind: 'import', version: '1.0.0' },
+        observedAt: '2026-07-10T12:00:00.000Z',
+        payload: { roleTitle: 'Restart proof' },
+      }] })
+      await close(firstClient)
+
+      secondClient = await createPgliteClient({ dataDir })
+      const secondRepository = createPgliteRawSourceRepository(
+        createPgliteDatabase(secondClient),
+      )
+
+      await expect(secondRepository.get(intake.receipts[0].rawRecordId)).resolves.toMatchObject({
+        latestRevision: { payload: { roleTitle: 'Restart proof' } },
+        occurrences: [{ observedAt: '2026-07-10T12:00:00.000Z' }],
+      })
+    } finally {
+      await close(secondClient)
+      await close(firstClient)
+      await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
+    }
+
+    expect(closed.size).toBe(2)
+    expect(fs.existsSync(temporaryRoot)).toBe(false)
+  })
+
   it('rejects invalid timestamps and non-JSON runtime values', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
+    const database = await createTestDatabase(clients)
+    const repository = createPgliteRawSourceRepository(database)
     const base = {
       adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
     }
@@ -369,10 +512,8 @@ describe('raw source repository', () => {
   })
 
   it('rejects exact credential header aliases throughout fixed envelopes', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
+    const database = await createTestDatabase(clients)
+    const repository = createPgliteRawSourceRepository(database)
     const secretValue = 'envelope-secret-must-not-leak'
     const record = {
       adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
@@ -415,10 +556,8 @@ describe('raw source repository', () => {
   })
 
   it('rejects unknown keys on every fixed transport envelope', async () => {
-    const sqlite = createInMemoryDatabase()
-    databases.push(sqlite)
-    migrateDatabase(sqlite)
-    const repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
+    const database = await createTestDatabase(clients)
+    const repository = createPgliteRawSourceRepository(database)
     const record = {
       adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -454,26 +593,100 @@ describe('raw source repository', () => {
 })
 
 async function createConnectorCapture(
-  database: ReturnType<typeof createDrizzleDatabase>,
+  database: PgliteDatabase,
   connectorId: string,
 ) {
-  const connectorRepository = createSqliteConnectorRepository(database)
-  const connectorInstanceId = `${connectorId.replaceAll('.', '-')}-instance`
-  await connectorRepository.upsertInstance({
+  const stem = connectorId.replaceAll('.', '-')
+  const executionScopeId = `${stem}-scope`
+  const connectorInstanceId = `${stem}-instance`
+  const connectorRunId = `${stem}-run`
+  const timestamp = '2026-07-10T12:00:00.000Z'
+  await database.insert(sourceExecutionScopes).values({
+    id: executionScopeId,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })
+  await database.insert(connectorInstances).values({
     id: connectorInstanceId,
+    executionScopeId,
     connectorId,
     connectorVersion: '1.0.0',
     displayName: connectorId,
     enabled: true,
+    configJson: '{}',
+    createdAt: timestamp,
+    updatedAt: timestamp,
   })
-  const { run } = await connectorRepository.recordRunRequest({
+  await database.insert(connectorRuns).values({
+    id: connectorRunId,
+    executionScopeId,
     connectorInstanceId,
     mode: 'manual',
-    startedAt: '2026-07-10T12:00:00.000Z',
+    status: 'running',
+    startedAt: timestamp,
+    observationCount: 0,
+    warningCount: 0,
+    statsJson: '{}',
+    warningsJson: '[]',
+    retryHintsJson: 'null',
+    createdAt: timestamp,
+    updatedAt: timestamp,
   })
   return {
     connectorInstanceId,
-    connectorRunId: run.id,
-    executionScopeId: run.executionScopeId,
+    connectorRunId,
+    executionScopeId,
   }
+}
+
+async function createTestDatabase(clients: Set<PgliteClient>) {
+  const client = await createPgliteClient()
+  clients.add(client)
+  return migratePgliteDatabase(client)
+}
+
+function normalizationValues(input: {
+  id: string
+  rawRecordId: string
+  revisionId: string
+  captureId?: string
+  connectorInstanceId?: string
+  connectorRunId?: string
+}): typeof normalizationRuns.$inferInsert {
+  return {
+    id: input.id,
+    captureLineageId: input.rawRecordId,
+    captureEvidenceVersionId: input.revisionId,
+    triggerCaptureId: input.captureId ?? null,
+    triggerConnectorInstanceId: input.connectorInstanceId ?? null,
+    triggerConnectorRunId: input.connectorRunId ?? null,
+    inputHash: `sha256:${input.id}`,
+    resolverSetHash: 'sha256:resolvers',
+    canonicalSchemaVersion: 'candidate/v1',
+    gatePolicyVersion: 'gate/v1',
+    triggerKind: 'intake',
+    status: 'completed',
+    createdAt: '2026-07-10T12:00:00.000Z',
+    updatedAt: '2026-07-10T12:00:00.000Z',
+  }
+}
+
+async function expectPostgresFailure(
+  operation: PromiseLike<unknown>,
+  expected: RegExp,
+) {
+  const caught = await Promise.resolve(operation).catch((error: unknown) => error)
+  const messages: string[] = []
+  const visited = new Set<unknown>()
+  let current: unknown = caught
+
+  while (current && !visited.has(current)) {
+    visited.add(current)
+    if (current instanceof Error) messages.push(current.message)
+    current = typeof current === 'object' && 'cause' in current
+      ? current.cause
+      : null
+  }
+
+  expect(messages.join('\n')).toMatch(expected)
 }

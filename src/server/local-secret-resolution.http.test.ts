@@ -2,19 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import {
-  createDrizzleDatabase,
-  createFileDatabase,
-} from '../db/sqlite'
-import { createSqliteSecretService } from '../modules/secrets/secret.composition'
+import { createPgliteSecretService } from '../modules/secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
 import { identitySsnLast4SecretKey } from '../modules/secrets/secret.identity'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
 import { createLocalWorkspaceManager } from './local-workspaces'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
+import { getLocalValedictorianTestDatabase } from './local-valedictorian-client.test-harness'
 import {
   createLocalServerHttpTestFixture,
   createSeededLocalClient,
@@ -46,15 +41,14 @@ describe('local secret resolution HTTP route', () => {
   it('advertises and serves authenticated workspace-scoped resolution with no-store', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-resolve'
-    const client = createSeededLocalClient({
+    const client = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath,
       workspaceId,
     })
-    const database = createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)))
-    const secretService = createSqliteSecretService(
-      database,
+    const secretService = createPgliteSecretService(
+      getLocalValedictorianTestDatabase(client),
       availableCodec,
       createWorkspaceSecretScope(workspaceId),
     )
@@ -107,14 +101,14 @@ describe('local secret resolution HTTP route', () => {
   it('blocks reserved identity resolution from authenticated shared HTTP while ordinary secrets resolve', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-shared-identity-boundary'
-    const client = createSeededLocalClient({
+    const client = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath,
       workspaceId,
     })
-    const secretService = createSqliteSecretService(
-      createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))),
+    const secretService = createPgliteSecretService(
+      getLocalValedictorianTestDatabase(client),
       availableCodec,
       createWorkspaceSecretScope(workspaceId),
     )
@@ -165,7 +159,7 @@ describe('local secret resolution HTTP route', () => {
   it('returns typed unauthorized and missing outcomes with no-store', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-resolve-errors'
-    const enabledClient = createSeededLocalClient({
+    const enabledClient = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath,
@@ -217,7 +211,7 @@ describe('local secret resolution HTTP route', () => {
 
   it('requires authentication before unsupported when policy is disabled', async () => {
     const workspaceId = 'workspace-resolve-auth-first'
-    const disabledClient = createSeededLocalClient({
+    const disabledClient = await createSeededLocalClient({
       localSecretResolutionEnabled: false,
       secretCodec: availableCodec,
       pgliteDataPath: createTempDatabasePath(),
@@ -281,7 +275,7 @@ describe('local secret resolution HTTP route', () => {
 
   it('returns unauthorized when the server has no token configured', async () => {
     const workspaceId = 'workspace-resolve-no-server-token'
-    const client = createSeededLocalClient({
+    const client = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath: createTempDatabasePath(),
@@ -316,7 +310,7 @@ describe('local secret resolution HTTP route', () => {
   })
 
   it('keeps the unscoped root resolve path as canonical 404 no-store', async () => {
-    const client = createSeededLocalClient({
+    const client = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath: createTempDatabasePath(),
@@ -346,7 +340,7 @@ describe('local secret resolution HTTP route', () => {
 
   it('returns value-free 404 no-store when workspace resolution fails', async () => {
     const workspaceId = 'workspace-missing'
-    const client = createSeededLocalClient({
+    const client = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath: createTempDatabasePath(),
@@ -384,7 +378,7 @@ describe('local secret resolution HTTP route', () => {
 
   it('marks every sensitive-route method outcome as no-store including OPTIONS', async () => {
     const workspaceId = 'workspace-methods'
-    const client = createSeededLocalClient({
+    const client = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath: createTempDatabasePath(),
@@ -418,7 +412,7 @@ describe('local secret resolution HTTP route', () => {
 
   it('returns value-free 400 no-store for schema-invalid resolve input', async () => {
     const workspaceId = 'workspace-schema'
-    const client = createSeededLocalClient({
+    const client = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath: createTempDatabasePath(),
@@ -452,7 +446,7 @@ describe('local secret resolution HTTP route', () => {
   it('never echoes forged downstream error bodies and keeps canonical no-store outcomes', async () => {
     const SECRET_CANARY = 'forged-downstream-secret-canary-9f3c'
     const workspaceId = 'workspace-forged-errors'
-    const baseClient = createSeededLocalClient({
+    const baseClient = await createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
       pgliteDataPath: createTempDatabasePath(),
@@ -537,7 +531,7 @@ describe('local secret resolution HTTP route', () => {
 
   it('keeps capability false and unsupported when policy disables resolution', async () => {
     const workspaceId = 'workspace-resolve-disabled'
-    const disabledClient = createSeededLocalClient({
+    const disabledClient = await createSeededLocalClient({
       localSecretResolutionEnabled: false,
       secretCodec: availableCodec,
       pgliteDataPath: createTempDatabasePath(),
@@ -576,7 +570,6 @@ describe('local secret resolution HTTP route', () => {
     const workspaceA = initializeWorkspace(rootA, { createId: () => 'secret-ws-a' })
     const workspaceB = initializeWorkspace(rootB, { createId: () => 'secret-ws-b' })
     const manager = createLocalWorkspaceManager({
-      createClient: (options) => createLocalValedictorianClient({ ...options, seedDataMode: 'none' }),
       registryStore: createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json')),
       secretCodec: availableCodec,
     })
@@ -635,5 +628,6 @@ describe('local secret resolution HTTP route', () => {
       handling: { cache: 'no-store', sensitivity: 'secret' },
     })
     expect(JSON.stringify(bodyB)).not.toContain(CANARY_A)
+    await manager.close()
   })
 })

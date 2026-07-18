@@ -7,7 +7,7 @@ import { registerConnectorsIpc } from '../ipc/connectors.ipc'
 import { createConnectorsPreloadApi } from '../ipc/connectors.preload'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import {
   createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
@@ -153,7 +153,7 @@ async function createPublicSurfaces(options?: {
   waitForRefresh?: Promise<void>
 }) {
   const connector = createParityConnector(options?.waitForRefresh)
-  const local = createLocalValedictorianClient({
+  const local = await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
     now: () => new Date(CLOCK),
     seedDataMode: 'none',

@@ -23,7 +23,9 @@ import {
 } from './modules/connectors/connector.registry'
 import type { AppJobConnector } from './modules/connectors/connector.runner'
 import { JOBRIGHT_CONNECTOR_ID, JOBRIGHT_CONNECTOR_VERSION } from './modules/connectors/jobright.constants'
-import { createLocalValedictorianClient } from './runtime/local-valedictorian-client'
+import {
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+} from './runtime/local-valedictorian-client.test-harness'
 import {
   createValedictorianHttpServer,
   type StartedValedictorianHttpServer,
@@ -151,7 +153,7 @@ describe('Jobright public trigger through default HTTP client', () => {
 async function startFixtureServer() {
   const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-public-trigger-'))
   const connector = createJobrightFixtureConnector()
-  const client = createLocalValedictorianClient({
+  const client = await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
     now: () => new Date(CLOCK),
     secretCodec: {

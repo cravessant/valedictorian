@@ -1,10 +1,10 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { connectorCheckpoints } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { ConnectorCheckpointRecord, RecordConnectorCheckpointInput } from './connector-checkpoint.persistence-types'
 
-export function copyConnectorCheckpointIfAbsent(
-  database: Pick<DrizzleDatabase, 'insert' | 'select'>,
+export async function copyConnectorCheckpointIfAbsent(
+  database: Pick<PgliteDatabase, 'insert' | 'select'>,
   input: {
     connectorInstanceId: string
     expectedSchemaVersion: string
@@ -13,7 +13,7 @@ export function copyConnectorCheckpointIfAbsent(
   },
   now: string,
 ) {
-  const source = database
+  const [source] = await database
     .select()
     .from(connectorCheckpoints)
     .where(and(
@@ -22,24 +22,24 @@ export function copyConnectorCheckpointIfAbsent(
       eq(connectorCheckpoints.schemaVersion, input.expectedSchemaVersion),
       isNull(connectorCheckpoints.deletedAt),
     ))
-    .get()
+    .limit(1)
   if (!source || !source.coverageStartedAt || !source.coverageEndedAt) return
 
-  database.insert(connectorCheckpoints).values({
+  await database.insert(connectorCheckpoints).values({
     ...source,
     filterSignature: input.targetFilterSignature,
     savedAt: now,
     createdAt: now,
     updatedAt: now,
-  }).onConflictDoNothing().run()
+  }).onConflictDoNothing()
 }
 
-export function upsertConnectorCheckpoint(
-  database: Pick<DrizzleDatabase, 'insert' | 'select' | 'update'>,
+export async function upsertConnectorCheckpoint(
+  database: Pick<PgliteDatabase, 'insert' | 'select' | 'update'>,
   input: RecordConnectorCheckpointInput,
   now: string,
 ) {
-  const existingCheckpoint = database
+  const [existingCheckpoint] = await database
     .select({
       connectorInstanceId: connectorCheckpoints.connectorInstanceId,
       filterSignature: connectorCheckpoints.filterSignature,
@@ -52,7 +52,7 @@ export function upsertConnectorCheckpoint(
         isNull(connectorCheckpoints.deletedAt),
       ),
     )
-    .get()
+    .limit(1)
   const checkpointValues = {
     checkpointJson: JSON.stringify(input.checkpoint.checkpoint),
     schemaVersion: input.checkpoint.schemaVersion,
@@ -64,7 +64,7 @@ export function upsertConnectorCheckpoint(
   }
 
   if (existingCheckpoint) {
-    database
+    await database
       .update(connectorCheckpoints)
       .set(checkpointValues)
       .where(
@@ -73,11 +73,10 @@ export function upsertConnectorCheckpoint(
           eq(connectorCheckpoints.filterSignature, input.filterSignature),
         ),
       )
-      .run()
     return
   }
 
-  database
+  await database
     .insert(connectorCheckpoints)
     .values({
       connectorInstanceId: input.connectorInstanceId,
@@ -85,7 +84,6 @@ export function upsertConnectorCheckpoint(
       ...checkpointValues,
       createdAt: now,
     })
-    .run()
 }
 
 

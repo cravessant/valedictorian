@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { RendererBackendState } from '../ipc/valedictorian-http.preload'
 import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/jobright.constants'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import {
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from '../runtime/local-valedictorian-client.test-harness'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from '../server/local-server'
 import { createTempDatabasePath } from '../server/local-server.http-test-harness'
 import { defaultConnectorsApi } from './loaders'
@@ -15,7 +18,7 @@ afterEach(async () => {
 })
 describe('renderer connector transport', () => {
   it('reuses the renderer across an unreachable origin and recovery on a new endpoint', async () => {
-    const client = createConnectorClient()
+    const client = await createConnectorClient()
     const first = await start(client)
     let state: RendererBackendState = { origin: first.url, status: 'available' }
     installRendererBinding(first.url, () => state)
@@ -31,7 +34,7 @@ describe('renderer connector transport', () => {
     })
   })
   it('creates and lists Jobright through the real workspace-scoped HTTP transport', async () => {
-    const client = createConnectorClient()
+    const client = await createConnectorClient()
     const server = await start(client)
     installRendererBinding(server.url, () => ({ origin: server.url, status: 'available' }))
     await defaultConnectorsApi.create(jobrightCreateInput())
@@ -41,7 +44,7 @@ describe('renderer connector transport', () => {
   })
 
   it('retires a connector through the real workspace-scoped HTTP transport', async () => {
-    const client = createConnectorClient()
+    const client = await createConnectorClient()
     const server = await start(client)
     installRendererBinding(server.url, () => ({ origin: server.url, status: 'available' }))
     await defaultConnectorsApi.create(jobrightCreateInput())
@@ -55,7 +58,7 @@ describe('renderer connector transport', () => {
     await expect(defaultConnectorsApi.list()).resolves.toEqual({ items: [] })
   })
   it('rejects duplicate Jobright creation without resetting the configured instance', async () => {
-    const client = createConnectorClient()
+    const client = await createConnectorClient()
     const server = await start(client)
     installRendererBinding(server.url, () => ({ origin: server.url, status: 'available' }))
     await defaultConnectorsApi.create(jobrightCreateInput())
@@ -71,9 +74,13 @@ describe('renderer connector transport', () => {
 
   it('atomically admits one of two concurrent same-id creates without losing the winner', async () => {
     const pgliteDataPath = createTempDatabasePath()
+    const firstClient = await createLocalValedictorianClient({ pgliteDataPath })
     const clients = [
-      createLocalValedictorianClient({ pgliteDataPath }),
-      createLocalValedictorianClient({ pgliteDataPath }),
+      firstClient,
+      await createLocalValedictorianClient({
+        database: getTestLocalValedictorianDatabase(firstClient),
+        pgliteDataPath,
+      }),
     ]
     const inputs = [
       jobrightCreateInput(),
@@ -97,7 +104,7 @@ describe('renderer connector transport', () => {
     })
   })
 })
-async function start(client: ReturnType<typeof createLocalValedictorianClient>) {
+async function start(client: Awaited<ReturnType<typeof createLocalValedictorianClient>>) {
   const server = await createValedictorianHttpServer({ client, host: '127.0.0.1', port: 0 })
   activeServers.add(server)
   return server
@@ -127,8 +134,8 @@ function jobrightCreateInput() {
     },
   }
 }
-function createConnectorClient() {
-  return createLocalValedictorianClient({
+async function createConnectorClient() {
+  return await createLocalValedictorianClient({
     pgliteDataPath: createTempDatabasePath(),
   })
 }

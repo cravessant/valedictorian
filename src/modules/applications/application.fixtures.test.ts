@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import {
   applicationLinks,
   applicationScores,
@@ -8,25 +11,30 @@ import {
   workflowRuns,
   workflowRunSteps,
 } from '../../db/schema'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
+import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
 import {
   parseReferenceTrackerApplications,
   seedReferenceTrackerApplications,
   seedSampleApplications,
   seedSampleSourcingFindings,
 } from './application.fixtures'
+import { createPgliteApplicationRepository } from './application.repository'
+
+async function createTestDatabase() {
+  const client = await createPgliteClient()
+  onTestFinished(() => client.close())
+  return migratePgliteDatabase(client)
+}
 
 describe('sample applications seed', () => {
-  it('creates sample tracker applications with links and scores', () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+  it('creates sample tracker applications with links and scores', async () => {
+    const database = await createTestDatabase()
 
-    seedSampleApplications(database)
+    await seedSampleApplications(database)
 
-    const rows = database.select().from(applications).all()
-    const links = database.select().from(applicationLinks).all()
-    const scores = database.select().from(applicationScores).all()
+    const rows = await database.select().from(applications)
+    const links = await database.select().from(applicationLinks)
+    const scores = await database.select().from(applicationScores)
 
     expect(rows).toHaveLength(3)
     expect(links).toHaveLength(3)
@@ -35,27 +43,25 @@ describe('sample applications seed', () => {
       expect.arrayContaining(['needs_user_info', 'queued', 'not_fit']),
     )
     expect(
-      database.select().from(applicationScores).where(eq(applicationScores.score, 8)).get(),
+      await database.select().from(applicationScores).where(eq(applicationScores.score, 8)).limit(1).then(([row]) => row),
     ).toBeDefined()
   })
 
-  it('creates sample sourcing runs and findings for the Sourcing UI', () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+  it('creates sample sourcing runs and findings for the Sourcing UI', async () => {
+    const database = await createTestDatabase()
 
-    seedSampleApplications(database)
-    seedSampleSourcingFindings(database)
+    await seedSampleApplications(database)
+    await seedSampleSourcingFindings(database)
 
-    expect(database.select().from(workflowRuns).where(eq(workflowRuns.runType, 'sourcing')).all()).toHaveLength(1)
+    expect(await database.select().from(workflowRuns).where(eq(workflowRuns.runType, 'sourcing'))).toHaveLength(1)
     expect(
-      database
+      await database
         .select()
         .from(workflowRunSteps)
         .where(eq(workflowRunSteps.workflowRunId, 'workflow-run-sourcing-sample-linkedin'))
-        .all(),
+        ,
     ).toHaveLength(3)
-    expect(database.select().from(opportunities).all()).toMatchObject([
+    expect(await database.select().from(opportunities)).toMatchObject([
       {
         companyName: 'Delta Labs',
         mergeStatus: 'new',
@@ -73,20 +79,17 @@ describe('sample applications seed', () => {
     ])
   })
 
-  it('creates an Astranis application attempt with a failed verification receipt', () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+  it('creates an Astranis application attempt with a failed verification receipt', async () => {
+    const database = await createTestDatabase()
 
-    seedSampleApplications(database)
+    await seedSampleApplications(database)
 
     const runId = 'workflow-run-application-attempt-astranis-verification'
-    const run = database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).get()
-    const steps = database
+    const run = await database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).limit(1).then(([row]) => row)
+    const steps = (await database
       .select()
       .from(workflowRunSteps)
-      .where(eq(workflowRunSteps.workflowRunId, runId))
-      .all()
+      .where(eq(workflowRunSteps.workflowRunId, runId)))
       .sort((left, right) => left.sequence - right.sequence)
     const receiptStep = steps.find((step) => step.type === 'verification_receipt')
 
@@ -123,30 +126,28 @@ describe('sample applications seed', () => {
     })
   })
 
-  it('keeps sample application and receipt attempt seeding idempotent', () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+  it('keeps sample application and receipt attempt seeding idempotent', async () => {
+    const database = await createTestDatabase()
 
-    seedSampleApplications(database)
-    seedSampleApplications(database)
+    await seedSampleApplications(database)
+    await seedSampleApplications(database)
 
     const runId = 'workflow-run-application-attempt-astranis-verification'
 
-    expect(database.select().from(applications).all()).toHaveLength(3)
-    expect(database.select().from(applicationLinks).all()).toHaveLength(3)
-    expect(database.select().from(applicationScores).all()).toHaveLength(3)
-    expect(database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).all()).toHaveLength(1)
+    expect(await database.select().from(applications)).toHaveLength(3)
+    expect(await database.select().from(applicationLinks)).toHaveLength(3)
+    expect(await database.select().from(applicationScores)).toHaveLength(3)
+    expect(await database.select().from(workflowRuns).where(eq(workflowRuns.id, runId))).toHaveLength(1)
     expect(
-      database
+      await database
         .select()
         .from(workflowRunSteps)
         .where(eq(workflowRunSteps.workflowRunId, runId))
-        .all(),
+        ,
     ).toHaveLength(4)
   })
 
-  it('parses reference tracker markdown rows into seedable applications', () => {
+  it('parses reference tracker markdown rows into seedable applications', async () => {
     const trackerMarkdown = `
 | 2026-06-04 | Astranis Space Technologies | Software Engineer- Backend Intern (Fall 2026) | San Francisco, CA / Onsite | Fall 2026 internship | [official](https://jobs.example.test/remediated/f60a3102c158cd7c?gh_src=602966e76us) | N |  | needs_user_info | Source: LinkedIn. Priority score: high/8. Tailored resume uploaded. |
 | 2026-04-22 | Vantage | Software Engineering Intern (Summer 2026) | New York, NY | Intern (Summer 2026) | [link](https://jobs.example.test/remediated/909841a95a81579b) | Y | 2026-04-22 | submitted | Ashby confirmation shows success. |
@@ -175,20 +176,43 @@ describe('sample applications seed', () => {
     ])
   })
 
-  it('seeds applications from a reference tracker when it has many rows', () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+  it('seeds applications from a reference tracker when it has many rows', async () => {
+    const database = await createTestDatabase()
     const rows = Array.from(
       { length: 101 },
       (_, index) =>
         `| 2026-06-04 | Company ${index} | Backend Intern ${index} | Remote | Internship | [source](https://example.com/jobs/${index}) | N |  | queued | Priority score: medium/6. |`,
     ).join('\n')
 
-    seedReferenceTrackerApplications(database, rows)
+    await seedReferenceTrackerApplications(database, rows)
 
-    expect(database.select().from(applications).all()).toHaveLength(101)
-    expect(database.select().from(applicationLinks).all()).toHaveLength(101)
-    expect(database.select().from(applicationScores).all()).toHaveLength(101)
+    expect(await database.select().from(applications)).toHaveLength(101)
+    expect(await database.select().from(applicationLinks)).toHaveLength(101)
+    expect(await database.select().from(applicationScores)).toHaveLength(101)
+  })
+
+  it('keeps fixture rows visible after an on-disk close and reopen', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'valedictorian-applications-'))
+
+    try {
+      const firstClient = await createPgliteClient({ dataDir: directory })
+      try {
+        const database = await migratePgliteDatabase(firstClient)
+        await seedSampleApplications(database)
+      } finally {
+        await firstClient.close()
+      }
+
+      const reopenedClient = await createPgliteClient({ dataDir: directory })
+      try {
+        const database = await migratePgliteDatabase(reopenedClient)
+        const repository = createPgliteApplicationRepository(database)
+        await expect(repository.listApplications()).resolves.toMatchObject({ total: 3 })
+      } finally {
+        await reopenedClient.close()
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 })

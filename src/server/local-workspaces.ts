@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import path from 'node:path'
 import type { ValedictorianWorkspaceClient } from 'sparxie'
 import {
   createLocalValedictorianClient,
@@ -22,6 +23,7 @@ import {
   prepareWorkspaceProfileCapabilities,
   type PreparedWorkspaceProfileCapabilities,
 } from '../modules/profile/profile.composition'
+import { ProfileUpgradeRequiredError } from '../modules/profile/profile.upgrade-policy'
 
 export class LocalWorkspaceConflictError extends Error {
   readonly statusCode = 409
@@ -69,7 +71,9 @@ export interface LocalWorkspaceOpenInput {
 }
 
 export interface CreateLocalWorkspaceManagerOptions {
-  createClient?: (options: LocalValedictorianClientOptions) => ValedictorianWorkspaceClient
+  createClient?: (
+    options: LocalValedictorianClientOptions,
+  ) => Promise<ValedictorianWorkspaceClient> | ValedictorianWorkspaceClient
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createId?: () => string
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
@@ -96,6 +100,8 @@ export function createLocalWorkspaceManager({
   const clientCache = new Map<string, ValedictorianWorkspaceClient>()
   const clientInflight = new Map<string, Promise<ValedictorianWorkspaceClient>>()
   const capabilityCache = new Map<string, PreparedWorkspaceProfileCapabilities>()
+  const recoveryScopeCache = new Map<string, { pgliteDataPath: string; workspaceId: string }>()
+  let closeInflight: Promise<void> | null = null
   const prepareCapabilities = prepareWorkspaceCapabilities
     ?? (createClient === createLocalValedictorianClient
       ? prepareWorkspaceProfileCapabilities
@@ -103,12 +109,22 @@ export function createLocalWorkspaceManager({
 
   return {
     connectorRunRecovery,
-    async close() {
-      await Promise.allSettled(clientInflight.values())
-      for (const capabilities of capabilityCache.values()) capabilities.dispose()
-      clientInflight.clear()
-      capabilityCache.clear()
-      clientCache.clear()
+    close() {
+      if (closeInflight) return closeInflight
+      closeInflight = (async () => {
+        await Promise.allSettled(clientInflight.values())
+        const capabilities = [...capabilityCache.values()]
+        const recoveryScopes = [...recoveryScopeCache.values()]
+        clientInflight.clear()
+        capabilityCache.clear()
+        recoveryScopeCache.clear()
+        clientCache.clear()
+        await Promise.allSettled(capabilities.map((prepared) => prepared.dispose()))
+        for (const scope of recoveryScopes) connectorRunRecovery.deactivate(scope)
+      })().finally(() => {
+        closeInflight = null
+      })
+      return closeInflight
     },
     async create(input) {
       fs.mkdirSync(input.path, { recursive: true })
@@ -127,6 +143,7 @@ export function createLocalWorkspaceManager({
       return openWorkspace({ createId, input, now, registryStore })
     },
     async resolveClient(workspaceId) {
+      if (closeInflight) await closeInflight
       const cachedClient = clientCache.get(workspaceId)
       if (cachedClient) {
         await registryStore.clearError(workspaceId)
@@ -136,31 +153,33 @@ export function createLocalWorkspaceManager({
       if (inflightClient) return inflightClient
 
       const resolution = (async () => {
+        let prepared: PreparedWorkspaceProfileCapabilities | null = null
+        let recoveryScope: { pgliteDataPath: string; workspaceId: string } | null = null
         try {
-        const registry = await registryStore.get()
-        const workspace = registry.workspaces[workspaceId]
+          const registry = await registryStore.get()
+          const workspace = registry.workspaces[workspaceId]
 
-        if (!workspace) {
-          throw new Error(`Workspace not registered: ${workspaceId}`)
-        }
+          if (!workspace) {
+            throw new Error(`Workspace not registered: ${workspaceId}`)
+          }
 
-        if (!fs.existsSync(workspace.path)) {
-          throw new Error(`Workspace path does not exist: ${workspace.path}`)
-        }
+          if (!fs.existsSync(workspace.path)) {
+            throw new Error(`Workspace path does not exist: ${workspace.path}`)
+          }
 
-        const connectorPorts = createConnectorPorts(workspaceId)
-        const layout = resolveWorkspaceLayout(workspace.path)
-        const prepared = prepareCapabilities
-          ? await prepareCapabilities({
-              profilePath: layout.profilePath,
-              secretCodec: secretCodec ?? unavailableWorkspaceSecretCodec,
-              pgliteDataPath: layout.pgliteDataPath,
-              workspaceId,
-            })
-          : null
-        let client: ValedictorianWorkspaceClient
-        try {
-          client = createClient({
+          const connectorPorts = createConnectorPorts(workspaceId)
+          const layout = resolveWorkspaceLayout(workspace.path)
+          recoveryScope = { pgliteDataPath: layout.pgliteDataPath, workspaceId }
+          prepared = prepareCapabilities
+            ? await prepareCapabilities({
+                profilePath: layout.profilePath,
+                secretCodec: secretCodec ?? unavailableWorkspaceSecretCodec,
+                pgliteDataPath: layout.pgliteDataPath,
+                workspaceId,
+              })
+            : null
+          const client = await createClient({
+            ...(prepared ? { database: prepared.database } : {}),
             connectorRunRecovery,
             connectorRuntime: connectorPorts.connectorRuntime,
             localSecretResolutionEnabled: isSecretCodecAvailable(secretCodec),
@@ -176,19 +195,21 @@ export function createLocalWorkspaceManager({
             secretCodec,
             pgliteDataPath: layout.pgliteDataPath,
             workspaceId,
-          })
+          } as LocalValedictorianClientOptions)
+          await registryStore.clearError(workspaceId)
+          if (prepared) capabilityCache.set(workspaceId, prepared)
+          recoveryScopeCache.set(workspaceId, recoveryScope)
+          clientCache.set(workspaceId, client)
+          return client
         } catch (error) {
-          prepared?.dispose()
-          throw error
-        }
-        if (prepared) capabilityCache.set(workspaceId, prepared)
-        clientCache.set(workspaceId, client)
-        await registryStore.clearError(workspaceId)
-        return client
-        } catch (error) {
+          clientCache.delete(workspaceId)
+          capabilityCache.delete(workspaceId)
+          if (recoveryScope) connectorRunRecovery.deactivate(recoveryScope)
+          recoveryScopeCache.delete(workspaceId)
+          if (prepared) await Promise.allSettled([prepared.dispose()])
           await registryStore.recordError(
             workspaceId,
-            error instanceof Error ? error.message : String(error),
+            sanitizedWorkspaceInitializationError(error),
             now(),
           )
           throw error
@@ -200,6 +221,21 @@ export function createLocalWorkspaceManager({
       })
     },
   }
+}
+
+function sanitizedWorkspaceInitializationError(error: unknown) {
+  if (
+    error instanceof Error
+    && (
+      error.name === 'ProfileMigrationError'
+      || error instanceof ProfileUpgradeRequiredError
+    )
+    && !error.message.includes('/')
+    && !error.message.includes('\\')
+  ) {
+    return error.message
+  }
+  return 'Workspace initialization failed. Retry opening this workspace.'
 }
 
 const unavailableWorkspaceSecretCodec: SecretCodec = {
@@ -226,9 +262,24 @@ async function openWorkspace({
   const openedAt = now()
   let workspace = initializeWorkspace(input.path, { createId, now: openedAt })
   const currentRegistry = await registryStore.get()
+  const physicalWorkspace = Object.values(currentRegistry.workspaces).find(
+    (registered) => samePhysicalWorkspace(registered.path, workspace.rootPath),
+  )
+  if (physicalWorkspace) {
+    if (physicalWorkspace.id !== workspace.id) {
+      throw new LocalWorkspaceConflictError(
+        `Workspace path is already registered as ${physicalWorkspace.id}.`,
+      )
+    }
+    workspace = {
+      ...workspace,
+      name: physicalWorkspace.name,
+      rootPath: physicalWorkspace.path,
+    }
+  }
   const existingWorkspace = currentRegistry.workspaces[workspace.id]
 
-  if (existingWorkspace && existingWorkspace.path !== workspace.rootPath) {
+  if (!physicalWorkspace && existingWorkspace && existingWorkspace.path !== workspace.rootPath) {
     if (!input.rekey) {
       throw new LocalWorkspaceConflictError(
         `Workspace id ${workspace.id} is already registered to a different path. Re-key the workspace to register it here.`,
@@ -261,6 +312,14 @@ async function openWorkspace({
   )
 
   return toListItem(registry.workspaces[workspace.id])
+}
+
+function samePhysicalWorkspace(firstPath: string, secondPath: string) {
+  try {
+    return fs.realpathSync.native(firstPath) === fs.realpathSync.native(secondPath)
+  } catch {
+    return path.resolve(firstPath) === path.resolve(secondPath)
+  }
 }
 
 function rekeyWorkspaceManifest(rootPath: string, workspaceId: string) {

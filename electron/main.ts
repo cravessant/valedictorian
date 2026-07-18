@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, screen, shell } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron'
+import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { runPackagedPgliteSmoke } from './pglite-packaged-smoke'
 import { runLegacyJobrightBrowserPartitionCleanup } from './legacy-jobright-partition-cleanup'
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
@@ -609,6 +611,32 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(async () => {
+  const packagedSmokePath = process.env.VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PATH
+  if (packagedSmokePath) {
+    try {
+      const packagedSmokePhase = process.env.VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PHASE
+      if (packagedSmokePhase !== 'write' && packagedSmokePhase !== 'verify') {
+        throw new Error('Packaged PGlite smoke phase must be write or verify')
+      }
+      fs.mkdirSync(packagedSmokePath, { recursive: true })
+      const result = await runPackagedPgliteSmoke({
+        dataDirectory: path.join(packagedSmokePath, 'pglite'),
+        phase: packagedSmokePhase,
+      })
+      fs.writeFileSync(
+        path.join(packagedSmokePath, `${packagedSmokePhase}.json`),
+        `${JSON.stringify(result)}\n`,
+        { mode: 0o600 },
+      )
+      const successfulPackagedSmokeExitCode = 0
+      app.exit(successfulPackagedSmokeExitCode)
+    } catch (error) {
+      console.error(error)
+      app.exit(1)
+    }
+    return
+  }
+
   await runLegacyJobrightBrowserPartitionCleanup({ userDataPath: app.getPath('userData') })
 
   ipcMain.handle('window-chrome:get-state', (event) =>

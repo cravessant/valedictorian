@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import {
   applicationLinks,
   applications,
@@ -6,7 +6,7 @@ import {
   companies,
   sources,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { ApplicationStatus, WorkMode } from '../applications/application.types'
 import { readPolicyConfig } from '../policy/policy.repository'
 import type { PolicyConfig, PolicyReason } from 'sparxie'
@@ -107,8 +107,8 @@ const blockerStatuses = new Set([
   'not_pursued',
 ])
 
-export function createSqliteActionQueueRepository(
-  database: DrizzleDatabase,
+export function createPgliteActionQueueRepository(
+  database: PgliteDatabase,
   options: {
     now?: () => Date
   } = {},
@@ -117,9 +117,11 @@ export function createSqliteActionQueueRepository(
     async listActionQueue(query: ActionQueueListQuery = {}): Promise<ActionQueueListResult> {
       const limit = query.limit ?? DEFAULT_ACTION_QUEUE_LIMIT
       const offset = query.offset ?? 0
-      const policyConfig = readPolicyConfig(database)
+      const policyConfig = await readPolicyConfig(database)
       const now = options.now?.() ?? new Date()
-      const actionQueueItems = database
+      // Explicit NULLS LAST: PG DESC defaults to NULLS FIRST; final public order is
+      // compareActionQueueItems (bucket → score with null as -1 → updatedAt).
+      const rows = await database
         .select({
           id: applications.id,
           companyName: companies.name,
@@ -160,8 +162,12 @@ export function createSqliteActionQueueRepository(
           eq(applicationWorkflowStates.applicationId, applications.id),
         )
         .where(isNull(applications.deletedAt))
-        .orderBy(desc(applications.currentPriorityScore), desc(applications.updatedAt))
-        .all()
+        .orderBy(
+          sql`${applications.currentPriorityScore} desc nulls last`,
+          desc(applications.updatedAt),
+        )
+
+      const actionQueueItems = rows
         .flatMap((row) => mapActionQueueRow(row, policyConfig, now))
         .sort(compareActionQueueItems)
 

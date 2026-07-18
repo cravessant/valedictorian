@@ -1,16 +1,20 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
 import { createHttpValedictorianClient } from 'sparxie'
 import { afterEach, describe, expect, it } from 'vitest'
 import { sourcingProjectionOutcomes } from '../db/schema'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import type { PgliteDatabase } from '../db/pglite'
+import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
+import {
+  createLocalValedictorianClient,
+  getLocalValedictorianTestDatabase,
+} from './local-valedictorian-client.test-harness'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('raw source projection receipt HTTP API', () => {
   let server: StartedValedictorianHttpServer | null = null
+  let localClient: LocalValedictorianClient | null = null
   afterEach(async () => { await server?.close(); server = null })
 
   it('returns not eligible and 404 through the workspace client', async () => {
@@ -28,8 +32,9 @@ describe('raw source projection receipt HTTP API', () => {
     let observedPending = false
     const pgliteDataPath = tempPath()
     const sourcing = await start({
-      projectCanonicalCandidate: (transaction) => {
-        observedPending = transaction.select().from(sourcingProjectionOutcomes).get()?.status === 'pending'
+      projectCanonicalCandidate: async (transaction) => {
+        const [pending] = await transaction.select().from(sourcingProjectionOutcomes).limit(1)
+        observedPending = pending?.status === 'pending'
         throw new Error(secret)
       },
     }, pgliteDataPath)
@@ -43,11 +48,10 @@ describe('raw source projection receipt HTTP API', () => {
       failure: { code: 'projection_failed', retryable: false },
     })
     expect(JSON.stringify(projection)).not.toContain(secret)
-    const sqlite = new Database(resolveDatabaseFilePath(pgliteDataPath))
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'pending', failed_at = null, failure_code = null, failure_retryable = null").run()).toThrow(/terminal transition is immutable/i)
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'projected', opportunity_id = 'missing', failed_at = null, failure_code = null, failure_retryable = null, projected_at = '2026-07-10T14:00:00.000Z'").run()).toThrow(/terminal transition is immutable/i)
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set updated_at = '2026-07-10T15:00:00.000Z'").run()).toThrow(/terminal transition is immutable/i)
-    sqlite.close()
+    const database = getLocalValedictorianTestDatabase(localClient!)
+    await expect(database.$client.exec("update sourcing_projection_outcomes set status = 'pending', failed_at = null, failure_code = null, failure_retryable = null")).rejects.toThrow(/terminal transition is immutable/i)
+    await expect(database.$client.exec("update sourcing_projection_outcomes set status = 'projected', opportunity_id = 'missing', failed_at = null, failure_code = null, failure_retryable = null, projected_at = '2026-07-10T14:00:00.000Z'")).rejects.toThrow(/terminal transition is immutable/i)
+    await expect(database.$client.exec("update sourcing_projection_outcomes set updated_at = '2026-07-10T15:00:00.000Z'")).rejects.toThrow(/terminal transition is immutable/i)
   })
 
   it('retains both revision receipts when strong identity advances one finding', async () => {
@@ -67,29 +71,27 @@ describe('raw source projection receipt HTTP API', () => {
     expect(firstReceipt.canonicalCandidateId).not.toBe(secondReceipt.canonicalCandidateId)
   })
 
-  it('rejects impossible status fields and lineage in SQLite', async () => {
+  it('rejects impossible status fields and lineage in PGlite', async () => {
     const pgliteDataPath = tempPath()
     const sourcing = await start({}, pgliteDataPath)
     await sourcing.rawRecords.ingestBatch({ records: [passedRecord('constraint')] })
-    const sqlite = new Database(resolveDatabaseFilePath(pgliteDataPath))
-    sqlite.pragma('foreign_keys = ON')
-    expect(() => sqlite.prepare(`update sourcing_projection_outcomes
-      set status = 'projected', opportunity_id = null, projected_at = null`).run()).toThrow(/terminal transition is immutable/i)
-    expect(() => sqlite.prepare(`update sourcing_projection_outcomes
-      set capture_lineage_id = 'wrong-lineage'`).run()).toThrow(/lineage is immutable/i)
-    expect(() => sqlite.prepare(`insert into sourcing_projection_outcomes
+    const database = getLocalValedictorianTestDatabase(localClient!)
+    await expect(database.$client.exec(`update sourcing_projection_outcomes
+      set status = 'projected', opportunity_id = null, projected_at = null`)).rejects.toThrow(/terminal transition is immutable/i)
+    await expect(database.$client.exec(`update sourcing_projection_outcomes
+      set capture_lineage_id = 'wrong-lineage'`)).rejects.toThrow(/lineage is immutable/i)
+    await expect(database.$client.exec(`insert into sourcing_projection_outcomes
       (id, capture_lineage_id, capture_evidence_version_id, job_fact_version_id, status, created_at, updated_at)
-      values ('terminal-direct', 'missing', 'missing', 'missing', 'failed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z')`).run()).toThrow(/must begin pending/i)
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'pending', opportunity_id = null, projected_at = null").run()).toThrow(/terminal transition is immutable/i)
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set status = 'failed', opportunity_id = null, projected_at = null, failed_at = '2026-07-10T14:00:00.000Z', failure_code = 'internal_error', failure_retryable = 0").run()).toThrow(/terminal transition is immutable/i)
-    expect(() => sqlite.prepare("update sourcing_projection_outcomes set created_at = '2026-07-09T12:00:00.000Z'").run()).toThrow(/immutable/i)
-    expect(() => sqlite.prepare('delete from sourcing_projection_outcomes').run()).toThrow(/append-only/i)
-    sqlite.close()
+      values ('terminal-direct', 'missing', 'missing', 'missing', 'failed', '2026-07-10T12:00:00.000Z', '2026-07-10T12:00:00.000Z')`)).rejects.toThrow(/must begin pending/i)
+    await expect(database.$client.exec("update sourcing_projection_outcomes set status = 'pending', opportunity_id = null, projected_at = null")).rejects.toThrow(/terminal transition is immutable/i)
+    await expect(database.$client.exec("update sourcing_projection_outcomes set status = 'failed', opportunity_id = null, projected_at = null, failed_at = '2026-07-10T14:00:00.000Z', failure_code = 'internal_error', failure_retryable = false")).rejects.toThrow(/terminal transition is immutable/i)
+    await expect(database.$client.exec("update sourcing_projection_outcomes set created_at = '2026-07-09T12:00:00.000Z'")).rejects.toThrow(/immutable/i)
+    await expect(database.$client.exec('delete from sourcing_projection_outcomes')).rejects.toThrow(/append-only/i)
   })
 
   it('rolls finding creation back when the projected terminal transition fails', async () => {
     const pgliteDataPath = tempPath(), sourcing = await start({}, pgliteDataPath)
-    installTransitionFailure(pgliteDataPath, 'projected')
+    await installTransitionFailure(getLocalValedictorianTestDatabase(localClient!), 'projected')
     const intake = await sourcing.rawRecords.ingestBatch({ records: [passedRecord('projected-transition')] })
     await expect(sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).resolves.toMatchObject({
       status: 'failed', failure: { code: 'projection_failed', retryable: false },
@@ -99,21 +101,23 @@ describe('raw source projection receipt HTTP API', () => {
 
   it('leaves a truthful pending receipt when failed terminalization also fails', async () => {
     const pgliteDataPath = tempPath(), sourcing = await start({}, pgliteDataPath)
-    installTransitionFailure(pgliteDataPath, 'failed')
-    const sqlite = new Database(resolveDatabaseFilePath(pgliteDataPath))
-    sqlite.exec(`create trigger reject_finding before insert on opportunities
-      begin select raise(abort, 'finding failure'); end`)
-    sqlite.close()
+    const database = getLocalValedictorianTestDatabase(localClient!)
+    await installTransitionFailure(database, 'failed')
+    await database.$client.exec(`
+      create function reject_finding() returns trigger language plpgsql as $$
+      begin raise exception 'finding failure'; end;
+      $$;
+      create trigger reject_finding before insert on opportunities
+      for each row execute function reject_finding();
+    `)
     const intake = await sourcing.rawRecords.ingestBatch({ records: [passedRecord('failed-transition')] })
     await expect(sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).resolves.toMatchObject({
       status: 'pending', normalizationStatus: 'completed', gateStatus: 'passed',
     })
     await expect(sourcing.findings.list()).resolves.toMatchObject({ total: 0, items: [] })
-    const verify = new Database(resolveDatabaseFilePath(pgliteDataPath))
-    verify.exec('drop trigger reject_failed_receipt')
-    expect(() => verify.prepare("update sourcing_projection_outcomes set status = 'projected'").run()).toThrow(/check constraint/i)
-    expect(() => verify.prepare("update sourcing_projection_outcomes set status = 'failed', failed_at = '2026-07-10T14:00:00.000Z', failure_code = 'internal_error', failure_retryable = 2").run()).toThrow(/check constraint/i)
-    verify.close()
+    await database.$client.exec('drop trigger reject_failed_receipt on sourcing_projection_outcomes; drop function reject_failed_receipt();')
+    await expect(database.$client.exec("update sourcing_projection_outcomes set status = 'projected'")).rejects.toThrow(/check constraint/i)
+    await expect(database.$client.exec("update sourcing_projection_outcomes set status = 'failed', failed_at = '2026-07-10T14:00:00.000Z', failure_code = 'internal_error', failure_retryable = null")).rejects.toThrow(/check constraint/i)
   })
 
   it('returns the latest replay receipt while retaining prior candidate rows', async () => {
@@ -125,9 +129,11 @@ describe('raw source projection receipt HTTP API', () => {
     const latest = await sourcing.rawRevisions.projection.get(revisionId)
     expect(latest).toMatchObject({ status: 'projected', rawRevisionId: revisionId })
     expect(latest.canonicalCandidateId).not.toBe(first.canonicalCandidateId)
-    const sqlite = new Database(resolveDatabaseFilePath(pgliteDataPath))
-    expect(sqlite.prepare('select count(*) as count from sourcing_projection_outcomes where capture_evidence_version_id = ?').get(revisionId)).toEqual({ count: 2 })
-    sqlite.close()
+    const result = await getLocalValedictorianTestDatabase(localClient!).$client.query<{ count: string }>(
+      'select count(*) as count from sourcing_projection_outcomes where capture_evidence_version_id = $1',
+      [revisionId],
+    )
+    expect(Number(result.rows[0].count)).toBe(2)
   })
 
   it('returns existing finding dispositions without projection-only states', async () => {
@@ -147,8 +153,9 @@ describe('raw source projection receipt HTTP API', () => {
   })
 
   async function start(options = {}, pgliteDataPath = tempPath()) {
+    localClient = await createLocalValedictorianClient({ pgliteDataPath, ...options })
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ pgliteDataPath, ...options }), host: '127.0.0.1', port: 0,
+      client: localClient, host: '127.0.0.1', port: 0,
     })
     return createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace('workspace-1').sourcing
   }
@@ -157,4 +164,12 @@ describe('raw source projection receipt HTTP API', () => {
 function tempPath() { return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'projection-http-')), 'pglite') }
 function sparseRecord() { return { intakeItemId: 'sparse-record', adapter: { id: 'valedictorian.cli', kind: 'cli' as const, version: '0.7.6' }, observedAt: '2026-07-10T12:00:00.000Z', payload: { arbitrary: true } } }
 function passedRecord(id: string, adapterId = 'valedictorian.cli', kind: 'cli' | 'connector' = 'cli', providerRecordId?: string) { return { intakeItemId: `passed-${id}`, adapter: { id: adapterId, kind, version: '1.0.0' }, providerRecordId, observedAt: '2026-07-10T12:00:00.000Z', payload: { companyName: 'Fixture Robotics', roleTitle: 'Software Intern', applicationUrl: `https://jobs.lever.co/fixture/${id}` } } }
-function installTransitionFailure(pgliteDataPath: string, status: 'projected' | 'failed') { const sqlite = new Database(resolveDatabaseFilePath(pgliteDataPath)); sqlite.exec(`create trigger reject_${status}_receipt before update on sourcing_projection_outcomes when new.status = '${status}' begin select raise(abort, '${status} receipt failure'); end`); sqlite.close() }
+async function installTransitionFailure(database: PgliteDatabase, status: 'projected' | 'failed') {
+  await database.$client.exec(`
+    create function reject_${status}_receipt() returns trigger language plpgsql as $$
+    begin raise exception '${status} receipt failure'; end;
+    $$;
+    create trigger reject_${status}_receipt before update on sourcing_projection_outcomes
+    for each row when (new.status = '${status}') execute function reject_${status}_receipt();
+  `)
+}

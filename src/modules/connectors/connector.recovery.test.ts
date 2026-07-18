@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 import { createConnectorRunRecoveryLifecycle } from './connector.recovery'
 
 function createTempDirectory() {
@@ -16,57 +15,48 @@ function createPgliteDataPath(parent: string, name: string) {
 }
 
 describe('connector run recovery lifecycle', () => {
-  it('activates recovery once for symlink and hard-link aliases of the same database', () => {
+  it('activates recovery once for symlink aliases of the same PGlite directory', async () => {
     const directory = createTempDirectory()
     const pgliteDataPath = createPgliteDataPath(directory, 'primary')
     const symlinkDir = path.join(directory, 'symlink-dir')
-    const hardLinkDir = createPgliteDataPath(directory, 'hard-link-dir')
-    const databaseFilePath = resolveDatabaseFilePath(pgliteDataPath)
-    fs.writeFileSync(databaseFilePath, '')
     fs.symlinkSync(pgliteDataPath, symlinkDir, 'dir')
-    fs.linkSync(databaseFilePath, resolveDatabaseFilePath(hardLinkDir))
     const recover = vi.fn()
     const lifecycle = createConnectorRunRecoveryLifecycle()
 
-    expect(lifecycle.activate({ pgliteDataPath: symlinkDir, workspaceId: 'workspace-a' }, recover))
+    expect(await lifecycle.activate({ pgliteDataPath: symlinkDir, workspaceId: 'workspace-a' }, recover))
       .toBe(true)
-    expect(lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-a' }, recover)).toBe(false)
-    expect(lifecycle.activate({ pgliteDataPath: hardLinkDir, workspaceId: 'workspace-a' }, recover))
-      .toBe(false)
+    expect(await lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-a' }, recover)).toBe(false)
     expect(recover).toHaveBeenCalledOnce()
   })
 
-  it('keeps workspace identity explicit even when two scopes reference the same database', () => {
+  it('keeps workspace identity explicit even when two scopes reference the same database', async () => {
     const directory = createTempDirectory()
     const pgliteDataPath = createPgliteDataPath(directory, 'shared')
-    fs.writeFileSync(resolveDatabaseFilePath(pgliteDataPath), '')
     const recoverA = vi.fn()
     const recoverB = vi.fn()
     const lifecycle = createConnectorRunRecoveryLifecycle()
 
-    expect(lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-a' }, recoverA)).toBe(true)
-    expect(lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-b' }, recoverB)).toBe(true)
+    expect(await lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-a' }, recoverA)).toBe(true)
+    expect(await lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-b' }, recoverB)).toBe(true)
     expect(recoverA).toHaveBeenCalledOnce()
     expect(recoverB).toHaveBeenCalledOnce()
   })
 
-  it('activates recovery again when the database file is replaced at the same path', () => {
+  it('activates recovery again when the PGlite directory is replaced at the same path', async () => {
     const directory = createTempDirectory()
     const pgliteDataPath = createPgliteDataPath(directory, 'replaceable')
-    const databaseFilePath = resolveDatabaseFilePath(pgliteDataPath)
-    fs.writeFileSync(databaseFilePath, 'first')
     const recover = vi.fn()
     const lifecycle = createConnectorRunRecoveryLifecycle()
 
-    expect(lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-a' }, recover)).toBe(true)
-    fs.renameSync(databaseFilePath, path.join(pgliteDataPath, 'replaced.sqlite'))
-    fs.writeFileSync(databaseFilePath, 'second')
+    expect(await lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-a' }, recover)).toBe(true)
+    fs.renameSync(pgliteDataPath, path.join(directory, 'replaced-pglite'))
+    fs.mkdirSync(pgliteDataPath)
 
-    expect(lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-a' }, recover)).toBe(true)
+    expect(await lifecycle.activate({ pgliteDataPath, workspaceId: 'workspace-a' }, recover)).toBe(true)
     expect(recover).toHaveBeenCalledTimes(2)
   })
 
-  it('canonicalizes an existing parent for a missing database and recognizes its later creation', () => {
+  it('canonicalizes a symlink alias and recognizes a replacement directory', async () => {
     const realDirectory = createTempDirectory()
     const aliasDirectory = path.join(createTempDirectory(), 'workspace')
     fs.symlinkSync(realDirectory, aliasDirectory, 'dir')
@@ -75,20 +65,34 @@ describe('connector run recovery lifecycle', () => {
     const recover = vi.fn()
     const lifecycle = createConnectorRunRecoveryLifecycle()
 
-    expect(lifecycle.activate({
+    expect(await lifecycle.activate({
       pgliteDataPath: aliasPgliteDataPath,
       workspaceId: 'workspace-a',
     }, recover)).toBe(true)
-    expect(lifecycle.activate({
+    expect(await lifecycle.activate({
       pgliteDataPath: realPgliteDataPath,
       workspaceId: 'workspace-a',
     }, recover)).toBe(false)
 
-    fs.writeFileSync(resolveDatabaseFilePath(realPgliteDataPath), '')
-    expect(lifecycle.activate({
+    fs.renameSync(realPgliteDataPath, path.join(realDirectory, 'old-pglite'))
+    fs.mkdirSync(realPgliteDataPath)
+    expect(await lifecycle.activate({
       pgliteDataPath: realPgliteDataPath,
       workspaceId: 'workspace-a',
     }, recover)).toBe(true)
+    expect(recover).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases a closed owner so reopening performs recovery again', async () => {
+    const pgliteDataPath = createPgliteDataPath(createTempDirectory(), 'reopen')
+    const scope = { pgliteDataPath, workspaceId: 'workspace-reopen' }
+    const recover = vi.fn()
+    const lifecycle = createConnectorRunRecoveryLifecycle()
+
+    await expect(lifecycle.activate(scope, recover)).resolves.toBe(true)
+    await expect(lifecycle.activate(scope, recover)).resolves.toBe(false)
+    lifecycle.deactivate(scope)
+    await expect(lifecycle.activate(scope, recover)).resolves.toBe(true)
     expect(recover).toHaveBeenCalledTimes(2)
   })
 })

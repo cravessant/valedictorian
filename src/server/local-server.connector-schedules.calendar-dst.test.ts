@@ -25,7 +25,7 @@ describe('local server connector schedule calendar DST', () => {
     const pgliteDataPath = createTempDatabasePath()
     // 2026-03-06 12:00Z = 07:00 EST; daily 02:30 America/New_York.
     let clock = new Date('2026-03-06T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -110,7 +110,7 @@ describe('local server connector schedule calendar DST', () => {
     const pgliteDataPath = createTempDatabasePath()
     // Sunday 2026-10-25 12:00Z = 08:00 EDT; weekly Sunday 01:30 America/New_York.
     let clock = new Date('2026-10-25T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -180,7 +180,7 @@ describe('local server connector schedule calendar DST', () => {
     const workspaceId = 'schedule-daily-spring-forward-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-03-07T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -240,7 +240,7 @@ describe('local server connector schedule calendar DST', () => {
     const workspaceId = 'schedule-weekly-fall-back-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-10-25T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,

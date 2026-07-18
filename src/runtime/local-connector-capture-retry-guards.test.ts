@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
+import { sql } from 'drizzle-orm'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import {
   availableConnectorSchedulingCapability,
-  createLocalValedictorianClient,
   createScheduleHttpTempDatabasePath,
   createStaticConnectorRegistry,
 } from '../server/local-server.connector-schedules.http-fixture'
-import { createFileDatabase } from '../db/sqlite'
+import {
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
 import type { LocalScheduledWorkSource } from './local-scheduler'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('local connector capture retry guards', () => {
   it('does not advertise due retry work while its execution scope requires action', async () => {
@@ -46,7 +48,7 @@ describe('local connector capture retry guards', () => {
         }
       },
     }
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       connectorScheduling: availableConnectorSchedulingCapability,
       now: () => clock,
@@ -64,12 +66,11 @@ describe('local connector capture retry guards', () => {
     clock = new Date(schedule.nextEligibleAt)
     await sources.get('connector-schedules')!.runDue()
 
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    sqlite.prepare(`update source_execution_scopes set status='cooldown', blocked_until='2026-07-15T12:20:00.000Z'`).run()
+    const database = getTestLocalValedictorianDatabase(client)
+    await database.execute(sql`update source_execution_scopes set status='cooldown', blocked_until='2026-07-15T12:20:00.000Z'`)
     await expect(sources.get('connector-capture-retries')!.nextDueAt())
       .resolves.toBe('2026-07-15T12:20:00.000Z')
-    sqlite.prepare(`update source_execution_scopes set status='action_required', blocked_until=null`).run()
-    sqlite.close()
+    await database.execute(sql`update source_execution_scopes set status='action_required', blocked_until=null`)
     clock = new Date('2026-07-15T12:16:00.000Z')
 
     await expect(sources.get('connector-capture-retries')!.nextDueAt()).resolves.toBeNull()
@@ -121,7 +122,7 @@ describe('local connector capture retry guards', () => {
         }
       },
     }
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       connectorScheduling: availableConnectorSchedulingCapability,
       now: () => clock,
@@ -142,15 +143,14 @@ describe('local connector capture retry guards', () => {
     })
     clock = new Date(schedule.nextEligibleAt)
     await sources.get('connector-schedules')!.runDue()
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    sqlite.prepare(`update retry_work set state='completed', next_attempt_at=null`).run()
+    const database = getTestLocalValedictorianDatabase(client)
+    await database.execute(sql`update retry_work set state='completed', next_attempt_at=null`)
 
     const manualRun = client.connectors.runs.trigger({
       connectorInstanceId: 'retry-collision-connector',
     })
     await manualStarted
-    sqlite.prepare(`update retry_work set state='scheduled', next_attempt_at='2026-07-15T12:16:00.000Z'`).run()
-    sqlite.close()
+    await database.execute(sql`update retry_work set state='scheduled', next_attempt_at='2026-07-15T12:16:00.000Z'`)
     clock = new Date('2026-07-15T12:16:00.000Z')
     const signalsBeforeRetry = signalCalls
 

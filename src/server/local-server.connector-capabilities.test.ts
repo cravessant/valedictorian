@@ -5,7 +5,10 @@ import {
   createStaticConnectorRegistry,
 } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import {
+  closeLocalValedictorianClient,
+  createLocalValedictorianClient,
+} from './local-valedictorian-client.test-harness'
 import {
   createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
@@ -27,7 +30,7 @@ describe('released connector capability boundary', () => {
   it('exposes only sanitized declarative metadata and executes its declared option source', async () => {
     const optionQueries: unknown[] = []
     const connector = createCapabilityFixture(optionQueries)
-    const local = createLocalValedictorianClient({
+    const local = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date(CLOCK),
       seedDataMode: 'none',
@@ -144,7 +147,7 @@ describe('released connector capability boundary', () => {
     expect(await crossWorkspace.text()).not.toContain('React')
   })
 
-  it('round-trips installed Jobright internship [4] and full-time [1] include/exclude filters through HTTP and SQLite', async () => {
+  it('round-trips installed Jobright internship [4] and full-time [1] include/exclude filters through HTTP and PGlite', async () => {
     const pgliteDataPath = createScheduleHttpTempDatabasePath()
     const internshipFilters = {
       jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
@@ -168,7 +171,7 @@ describe('released connector capability boundary', () => {
       pgliteDataPath,
       workspaceId: WORKSPACE_ID,
     })
-    let local = createLocal()
+    let local = await createLocal()
     server = await createValedictorianHttpServer({
       client: local,
       host: '127.0.0.1',
@@ -189,8 +192,9 @@ describe('released connector capability boundary', () => {
     })
     await server.close()
     server = null
+    await closeLocalValedictorianClient(local)
 
-    local = createLocal()
+    local = await createLocal()
     server = await createValedictorianHttpServer({
       client: local,
       host: '127.0.0.1',
@@ -208,8 +212,9 @@ describe('released connector capability boundary', () => {
     })
     await server.close()
     server = null
+    await closeLocalValedictorianClient(local)
 
-    local = createLocal()
+    local = await createLocal()
     server = await createValedictorianHttpServer({
       client: local,
       host: '127.0.0.1',

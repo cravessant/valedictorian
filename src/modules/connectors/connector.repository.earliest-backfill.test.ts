@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from './connector.repository'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 
 describe('connector repository earliest backfill date persistence', () => {
   it('defaults create from injected createdAt and preserves explicit earliest dates across updates', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const { repository } = await createConnectorRepositoryTestContext()
 
     const created = await repository.upsertInstance({
       id: 'earliest-default',
@@ -68,29 +65,27 @@ describe('connector repository earliest backfill date persistence', () => {
   })
 
   it('fails closed when a persisted earliest backfill date is missing or invalid', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    sqlite.prepare("insert into source_execution_scopes (id, created_at, updated_at) values ('scope-broken-earliest', '2026-07-11T15:30:00.000Z', '2026-07-11T15:30:00.000Z')").run()
-    sqlite.prepare(`
+    const { client, repository } = await createConnectorRepositoryTestContext()
+    await client.exec("insert into source_execution_scopes (id, created_at, updated_at) values ('scope-broken-earliest', '2026-07-11T15:30:00.000Z', '2026-07-11T15:30:00.000Z')")
+    await client.exec(`
       insert into connector_instances (
         id, execution_scope_id, connector_id, connector_version, display_name, enabled,
         config_json, auth_json, filters_json, earliest_backfill_date,
         created_at, updated_at, deleted_at
       ) values (
-        'broken-earliest', 'scope-broken-earliest', 'fixture.jobs', '1.0.0', 'Broken', 1,
+        'broken-earliest', 'scope-broken-earliest', 'fixture.jobs', '1.0.0', 'Broken', true,
         '{}', '[]', '{}', null,
         '2026-07-11T15:30:00.000Z', '2026-07-11T15:30:00.000Z', null
       )
-    `).run()
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    `)
 
     await expect(repository.getInstance('broken-earliest')).rejects.toThrow(/earliest backfill date/i)
 
-    sqlite.prepare(`
+    await client.exec(`
       update connector_instances
       set earliest_backfill_date = '2026-7-4'
       where id = 'broken-earliest'
-    `).run()
+    `)
     await expect(repository.listInstances()).rejects.toThrow(/earliest backfill date/i)
   })
 })

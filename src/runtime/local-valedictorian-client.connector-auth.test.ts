@@ -2,13 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import { createSqliteSecretService } from '../modules/secrets/secret.composition'
+import { createPgliteSecretService } from '../modules/secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 function createTempDatabasePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
@@ -35,12 +36,11 @@ describe('runtime local Valedictorian client', () => {
 
   it('runs connector status reconnect and skip actions through the local client', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const database = getTestLocalValedictorianDatabase(client)
+    const connectorRepository = createPgliteConnectorRepository(database)
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -146,15 +146,14 @@ describe('runtime local Valedictorian client', () => {
       },
     ])
     expect(JSON.stringify(reconnect)).not.toContain('fixture-session-123')
-    sqlite.close()
   })
 
   it('returns unsupported reconnect when connector-owned validateAuth is unavailable', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({ pgliteDataPath })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const client = await createRuntimeLocalValedictorianClient({ pgliteDataPath })
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -185,7 +184,6 @@ describe('runtime local Valedictorian client', () => {
       reason: 'validate_auth_unsupported',
       status: 'unsupported',
     })
-    sqlite.close()
   })
 
   it('validates Jobright credentials through connector-owned validateAuth without plaintext', async () => {
@@ -232,17 +230,16 @@ describe('runtime local Valedictorian client', () => {
     }) as typeof fetch
     const { createJobrightConnector } = await import('@sparxie/valedictorian-connectors-jobright')
     const { createStaticConnectorRegistry } = await import('../modules/connectors/connector.registry')
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         createJobrightConnector({ fetch: fetchImpl }),
       ]),
       secretCodec,
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
-    const secretService = createSqliteSecretService(
+    const database = getTestLocalValedictorianDatabase(client)
+    const connectorRepository = createPgliteConnectorRepository(database)
+    const secretService = createPgliteSecretService(
       database,
       secretCodec,
       createWorkspaceSecretScope('local-workspace'),
@@ -297,7 +294,6 @@ describe('runtime local Valedictorian client', () => {
     expect(JSON.stringify(reconnect)).not.toContain('demo@example.com')
     expect(JSON.stringify(reconnect)).not.toContain(' pass with spaces ')
     expect(JSON.stringify(reconnect)).not.toContain('session-cookie')
-    sqlite.close()
   })
 
 })

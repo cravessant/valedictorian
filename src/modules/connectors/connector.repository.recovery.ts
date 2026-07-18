@@ -5,7 +5,7 @@ import {
   connectorScheduleOccurrences,
   retryWork,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import {
   persistFrozenConnectorRunLifecycleCounts,
   readConnectorWarnings,
@@ -14,12 +14,12 @@ import { toJsonRecord } from './connector.persistence-json'
 import type { RecoverInterruptedConnectorRunsInput } from './connector-run.persistence-types'
 import { occurrenceOutcomeForRunStatus } from './connector-schedule.occurrence-outcome'
 
-export function recoverInterruptedConnectorRuns(
-  database: DrizzleDatabase,
+export async function recoverInterruptedConnectorRuns(
+  database: PgliteDatabase,
   input: RecoverInterruptedConnectorRunsInput,
-): number {
-  return database.transaction((transaction) => {
-    const interruptedRuns = transaction
+): Promise<number> {
+  return database.transaction(async (transaction) => {
+    const interruptedRuns = await transaction
       .select()
       .from(connectorRuns)
       .where(
@@ -28,7 +28,6 @@ export function recoverInterruptedConnectorRuns(
           isNull(connectorRuns.deletedAt),
         ),
       )
-      .all()
     const warning = {
       code: 'connector.interrupted',
       message: 'Connector run was interrupted before completion.',
@@ -36,7 +35,7 @@ export function recoverInterruptedConnectorRuns(
 
     let recovered = 0
     for (const run of interruptedRuns) {
-      if (shouldPreserveAdmittedScheduleQueuedRun(transaction, run)) {
+      if (await shouldPreserveAdmittedScheduleQueuedRun(transaction, run)) {
         continue
       }
 
@@ -44,7 +43,7 @@ export function recoverInterruptedConnectorRuns(
       const warnings = readConnectorWarnings(run.warningsJson)
       warnings.push(warning)
 
-      transaction
+      await transaction
         .update(connectorRuns)
         .set({
           status: 'cancelled',
@@ -61,58 +60,56 @@ export function recoverInterruptedConnectorRuns(
           updatedAt: input.completedAt,
         })
         .where(eq(connectorRuns.id, run.id))
-        .run()
-      const synchronization = transaction
+      const [synchronization] = await transaction
         .select({ snapshotJson: connectorRunSynchronizations.snapshotJson })
         .from(connectorRunSynchronizations)
         .where(eq(connectorRunSynchronizations.connectorRunId, run.id))
-        .get()
+        .limit(1)
       if (synchronization) {
         const snapshot = toJsonRecord(JSON.parse(synchronization.snapshotJson))
-        transaction.update(connectorRunSynchronizations).set({
+        await transaction.update(connectorRunSynchronizations).set({
           snapshotJson: JSON.stringify({
             ...snapshot,
             outcome: { kind: 'cancelled', reason: 'connector_interrupted' },
           }),
           updatedAt: input.completedAt,
-        }).where(eq(connectorRunSynchronizations.connectorRunId, run.id)).run()
+        }).where(eq(connectorRunSynchronizations.connectorRunId, run.id))
       }
-      persistFrozenConnectorRunLifecycleCounts(database, run.id, input.completedAt)
-      transaction.update(retryWork).set({
+      await persistFrozenConnectorRunLifecycleCounts(transaction, run.id, input.completedAt)
+      await transaction.update(retryWork).set({
         state: 'scheduled', acquiredAt: null,
         acquisitionToken: null, acquisitionRunId: null, updatedAt: input.completedAt,
       }).where(and(
         eq(retryWork.state, 'acquired'),
         eq(retryWork.acquisitionRunId, run.id),
         isNull(retryWork.deletedAt),
-      )).run()
+      ))
       recovered += 1
     }
 
-    reconcileAdmittedOccurrencesWithTerminalRuns(transaction)
+    await reconcileAdmittedOccurrencesWithTerminalRuns(transaction)
 
     return recovered
-  }, { behavior: 'immediate' })
+  })
 }
 
-function reconcileAdmittedOccurrencesWithTerminalRuns(
+async function reconcileAdmittedOccurrencesWithTerminalRuns(
   transaction: {
-    select: DrizzleDatabase['select']
-    update: DrizzleDatabase['update']
+    select: PgliteDatabase['select']
+    update: PgliteDatabase['update']
   },
-): void {
-  const admittedOccurrences = transaction
+): Promise<void> {
+  const admittedOccurrences = await transaction
     .select()
     .from(connectorScheduleOccurrences)
     .where(eq(connectorScheduleOccurrences.outcome, 'admitted'))
-    .all()
 
   for (const occurrence of admittedOccurrences) {
     if (!occurrence.connectorRunId) {
       continue
     }
 
-    const run = transaction
+    const [run] = await transaction
       .select({
         id: connectorRuns.id,
         status: connectorRuns.status,
@@ -122,7 +119,7 @@ function reconcileAdmittedOccurrencesWithTerminalRuns(
         eq(connectorRuns.id, occurrence.connectorRunId),
         isNull(connectorRuns.deletedAt),
       ))
-      .get()
+      .limit(1)
 
     if (!run) {
       continue
@@ -133,27 +130,26 @@ function reconcileAdmittedOccurrencesWithTerminalRuns(
       continue
     }
 
-    transaction
+    await transaction
       .update(connectorScheduleOccurrences)
       .set({ outcome })
       .where(and(
         eq(connectorScheduleOccurrences.id, occurrence.id),
         eq(connectorScheduleOccurrences.outcome, 'admitted'),
       ))
-      .run()
   }
 }
 
-function shouldPreserveAdmittedScheduleQueuedRun(
+async function shouldPreserveAdmittedScheduleQueuedRun(
   transaction: {
-    select: DrizzleDatabase['select']
+    select: PgliteDatabase['select']
   },
   run: {
     id: string
     mode: string
     status: string
   },
-): boolean {
+): Promise<boolean> {
   if (run.status !== 'queued') {
     return false
   }
@@ -161,7 +157,7 @@ function shouldPreserveAdmittedScheduleQueuedRun(
     return false
   }
 
-  const occurrence = transaction
+  const [occurrence] = await transaction
     .select({
       id: connectorScheduleOccurrences.id,
       admittedMode: connectorScheduleOccurrences.admittedMode,
@@ -170,7 +166,7 @@ function shouldPreserveAdmittedScheduleQueuedRun(
     })
     .from(connectorScheduleOccurrences)
     .where(eq(connectorScheduleOccurrences.connectorRunId, run.id))
-    .get()
+    .limit(1)
 
   return Boolean(
     occurrence

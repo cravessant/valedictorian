@@ -155,7 +155,7 @@ describe('local Valedictorian HTTP server', () => {
           id: 'workspace-error',
           latestError: {
             at: '2026-06-12T15:00:00.000Z',
-            message: `Workspace path does not exist: ${workspaceRoot}`,
+            message: 'Workspace initialization failed. Retry opening this workspace.',
           },
         },
       ],
@@ -278,7 +278,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('lists and gets applications with auth, filters, and pagination', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -312,7 +312,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('lists action queue rows with auth, action bucket filtering, and pagination', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -338,7 +338,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves profile update, read, and non-secret agent context routes', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -415,7 +415,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves workflow runs and sourcing findings routes', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -711,7 +711,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('returns a bad request for invalid action queue buckets', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -732,7 +732,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves policy config, evidence, and scheduler-ready evaluation endpoints', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',

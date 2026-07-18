@@ -8,8 +8,6 @@ export const workspaceAppSecretsFileName = 'secrets.json'
 export const workspaceProfileFileName = 'profile.json'
 export const workspacePgliteDirectoryName = 'pglite'
 
-const workspaceDatabaseFileName = 'valedictorian.sqlite'
-
 export interface WorkspaceLayout {
   rootPath: string
   dataPath: string
@@ -38,11 +36,6 @@ export function resolveWorkspaceLayout(rootPath: string): WorkspaceLayout {
     templatesPath: join(dataPath, 'templates'),
     notesPath: join(dataPath, 'notes'),
   }
-}
-
-/** Internal engine file nested under the public PGlite data directory. */
-export function resolveDatabaseFilePath(pgliteDataPath: string) {
-  return join(pgliteDataPath, workspaceDatabaseFileName)
 }
 
 export function getDefaultWorkspaceRegistryPath(appDataPath?: string) {

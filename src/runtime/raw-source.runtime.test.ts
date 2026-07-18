@@ -2,12 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createLocalValedictorianClient } from './local-valedictorian-client'
-import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
+import {
+  createTestConnectorCaptureFixture as createConnectorCaptureFixture,
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+} from './local-valedictorian-client.test-harness'
 
 describe('local raw source runtime', () => {
   it('wires raw source persistence to deterministic normalization', async () => {
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-runtime-')),
       workspaceId: 'workspace-1',
     })
@@ -39,8 +41,8 @@ describe('local raw source runtime', () => {
 
   it('keeps cached normalization trigger-free while connector capture remains complete', async () => {
     const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-runtime-'))
-    const client = createLocalValedictorianClient({ pgliteDataPath })
-    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'fixture.connector', '1')
+    const client = await createLocalValedictorianClient({ pgliteDataPath })
+    const capture = await createConnectorCaptureFixture(client, 'fixture.connector', '1')
     const record = {
       adapter: { id: 'fixture.connector', kind: 'connector' as const, version: '1' },
       capture,

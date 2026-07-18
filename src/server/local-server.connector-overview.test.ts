@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import { createLocalServerHttpTestFixture } from './local-server.http-test-harness'
 
 describe('local connector overview HTTP route', () => {
@@ -14,7 +14,7 @@ describe('local connector overview HTTP route', () => {
   afterEach(() => fixture.teardown())
 
   it('serves the workspace-scoped Sparxie overview contract', async () => {
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
       pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-overview-')),

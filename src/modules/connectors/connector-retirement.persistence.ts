@@ -7,19 +7,19 @@ import {
   sourceExecutionScopes,
   sourceExecutionSessions,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type {
   ConnectorRetirementActiveWorkConflict,
   ConnectorRetirementResult,
 } from 'sparxie'
 
-export function retireConnectorInstance(
-  database: DrizzleDatabase,
+export async function retireConnectorInstance(
+  database: PgliteDatabase,
   connectorInstanceId: string,
   retiredAt: string,
-): ConnectorRetirementResult {
-  return database.transaction((transaction) => {
-    const instance = transaction
+): Promise<ConnectorRetirementResult> {
+  return database.transaction(async (transaction) => {
+    const [instance] = await transaction
       .select({
         id: connectorInstances.id,
         executionScopeId: connectorInstances.executionScopeId,
@@ -29,15 +29,14 @@ export function retireConnectorInstance(
         eq(connectorInstances.id, connectorInstanceId),
         isNull(connectorInstances.deletedAt),
       ))
-      .get()
+      .limit(1)
+      .for('update')
 
     if (!instance) {
-      throw Object.assign(new Error(`Connector instance not found: ${connectorInstanceId}`), {
-        statusCode: 404,
-      })
+      throw connectorInstanceNotFound(connectorInstanceId)
     }
 
-    const activeRuns = transaction
+    const activeRuns = (await transaction
       .select({ connectorRunId: connectorRuns.id, status: connectorRuns.status })
       .from(connectorRuns)
       .where(and(
@@ -45,7 +44,7 @@ export function retireConnectorInstance(
         inArray(connectorRuns.status, ['queued', 'running']),
         isNull(connectorRuns.deletedAt),
       ))
-      .all()
+      .for('update'))
       .map(({ connectorRunId, status }) => ({
         connectorRunId,
         status: status as 'queued' | 'running',
@@ -55,7 +54,7 @@ export function retireConnectorInstance(
       throw activeWorkConflict(connectorInstanceId, activeRuns)
     }
 
-    transaction.update(connectorInstances).set({
+    const [retiredInstance] = await transaction.update(connectorInstances).set({
       authJson: '[]',
       configJson: '{}',
       filtersJson: '{}',
@@ -66,15 +65,19 @@ export function retireConnectorInstance(
     }).where(and(
       eq(connectorInstances.id, connectorInstanceId),
       isNull(connectorInstances.deletedAt),
-    )).run()
-    transaction.update(connectorSchedules).set({
+    )).returning({ id: connectorInstances.id })
+    if (!retiredInstance) {
+      throw connectorInstanceNotFound(connectorInstanceId)
+    }
+
+    await transaction.update(connectorSchedules).set({
       updatedAt: retiredAt,
       deletedAt: retiredAt,
     }).where(and(
       eq(connectorSchedules.connectorInstanceId, connectorInstanceId),
       isNull(connectorSchedules.deletedAt),
-    )).run()
-    transaction.update(retryWork).set({
+    ))
+    await transaction.update(retryWork).set({
       updatedAt: retiredAt,
       deletedAt: retiredAt,
     }).where(and(
@@ -83,18 +86,18 @@ export function retireConnectorInstance(
         eq(retryWork.executionScopeId, instance.executionScopeId),
       ),
       isNull(retryWork.deletedAt),
-    )).run()
-    transaction.update(sourceExecutionScopes).set({
+    ))
+    await transaction.update(sourceExecutionScopes).set({
       status: 'action_required',
       blockedUntil: null,
       refreshLeaseToken: null,
       refreshLeaseExpiresAt: null,
       actionReason: 'connector_retired',
       updatedAt: retiredAt,
-    }).where(eq(sourceExecutionScopes.id, instance.executionScopeId)).run()
-    transaction.delete(sourceExecutionSessions).where(
+    }).where(eq(sourceExecutionScopes.id, instance.executionScopeId))
+    await transaction.delete(sourceExecutionSessions).where(
       eq(sourceExecutionSessions.executionScopeId, instance.executionScopeId),
-    ).run()
+    )
 
     return {
       connectorInstanceId,
@@ -121,7 +124,13 @@ export function retireConnectorInstance(
         sourcingFindings: true,
       },
     }
-  }, { behavior: 'immediate' })
+  }, { isolationLevel: 'serializable' })
+}
+
+function connectorInstanceNotFound(connectorInstanceId: string) {
+  return Object.assign(new Error(`Connector instance not found: ${connectorInstanceId}`), {
+    statusCode: 404,
+  })
 }
 
 function activeWorkConflict(

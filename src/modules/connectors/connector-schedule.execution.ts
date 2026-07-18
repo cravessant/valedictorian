@@ -35,7 +35,7 @@ export async function resolveAdmittedScheduleDispatch({
   markOccurrenceOutcome: (input: {
     occurrenceId: string
     outcome: ConnectorScheduleOccurrenceOutcome
-  }) => ConnectorScheduleOccurrenceSummary
+  }) => Promise<ConnectorScheduleOccurrenceSummary>
   now: () => Date
 }): Promise<Extract<DispatchConnectorScheduleDueResult, { status: 'admitted' }>> {
   const runId = admitted.occurrence.connectorRunId
@@ -45,7 +45,7 @@ export async function resolveAdmittedScheduleDispatch({
   }
 
   if (isTerminalConnectorRunStatus(current.status)) {
-    const occurrence = syncOccurrenceForTerminalRun({
+    const occurrence = await syncOccurrenceForTerminalRun({
       occurrence: admitted.occurrence,
       run: current,
       markOccurrenceOutcome,
@@ -82,7 +82,7 @@ export async function resolveAdmittedScheduleDispatch({
 
   if (!claim.claimed) {
     if (isTerminalConnectorRunStatus(claim.run.status)) {
-      const occurrence = syncOccurrenceForTerminalRun({
+      const occurrence = await syncOccurrenceForTerminalRun({
         occurrence: admitted.occurrence,
         run: claim.run,
         markOccurrenceOutcome,
@@ -110,7 +110,7 @@ export async function resolveAdmittedScheduleDispatch({
       coverageEndedAt,
       startedAt,
     })
-    const occurrence = syncOccurrenceForTerminalRun({
+    const occurrence = await syncOccurrenceForTerminalRun({
       occurrence: admitted.occurrence,
       run: executed,
       markOccurrenceOutcome,
@@ -125,7 +125,7 @@ export async function resolveAdmittedScheduleDispatch({
     if (!failed) {
       throw new Error(`Admitted connector run missing after execution failure: ${runId}`)
     }
-    const occurrence = syncOccurrenceForTerminalRun({
+    const occurrence = await syncOccurrenceForTerminalRun({
       occurrence: admitted.occurrence,
       run: failed,
       markOccurrenceOutcome,
@@ -138,7 +138,7 @@ export async function resolveAdmittedScheduleDispatch({
   }
 }
 
-function syncOccurrenceForTerminalRun({
+async function syncOccurrenceForTerminalRun({
   occurrence,
   run,
   markOccurrenceOutcome,
@@ -148,13 +148,13 @@ function syncOccurrenceForTerminalRun({
   markOccurrenceOutcome: (input: {
     occurrenceId: string
     outcome: ConnectorScheduleOccurrenceOutcome
-  }) => ConnectorScheduleOccurrenceSummary
-}): ConnectorScheduleOccurrenceSummary & { connectorRunId: string } {
+  }) => Promise<ConnectorScheduleOccurrenceSummary>
+}): Promise<ConnectorScheduleOccurrenceSummary & { connectorRunId: string }> {
   const outcome = occurrenceOutcomeForRunStatus(run.status)
   if (occurrence.outcome === outcome) {
     return occurrence
   }
-  const updated = markOccurrenceOutcome({
+  const updated = await markOccurrenceOutcome({
     occurrenceId: occurrence.id,
     outcome,
   })

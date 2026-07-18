@@ -14,9 +14,9 @@ The workspace manifest lives at `<workspace>/.valedictorian/manifest.json`.
 
 ### Profile storage and recovery
 
-`<workspace>/.valedictorian/profile.json` is the canonical source for the non-secret profile. On first startup after upgrading, Valedictorian validates the legacy SQLite profile, creates and verifies a recoverable backup plus completion marker under `.valedictorian/profile-migration/`, writes the JSON atomically, moves SSN last-four into the reserved encrypted workspace-secret store, and only then removes the legacy profile tables. Profile JSON never contains SSN material.
+`<workspace>/.valedictorian/profile.json` is the canonical source for the non-secret profile. Profile JSON never contains SSN material. The PGlite-only runtime never reads or migrates the legacy SQLite file; workspaces that have that file but no `profile.json` fail closed and require a staged upgrade. See `UPGRADING.md` for the supported upgrade path and immutable migration-evidence policy.
 
-Invalid JSON blocks profile reads and updates until it is corrected or restored. A valid existing JSON document that conflicts with legacy data also blocks automatic cutover instead of being overwritten. To restore the one-generation profile backup through the local API, use the workspace route:
+Invalid JSON blocks profile reads and updates until it is corrected or restored. To restore the one-generation profile backup through the local API, use the workspace route:
 
 ```sh
 curl -X POST "$VALEDICTORIAN_API_URL/v1/workspaces/$WORKSPACE_ID/profile/document/restore" \

@@ -14,7 +14,7 @@ import {
   connectorScheduleOccurrences,
   connectorSchedules,
 } from '../../db/schema.connectors'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import {
   assertPersistedEarliestBackfillDate,
   inclusiveCoverageStartFromEarliestBackfillDate,
@@ -32,23 +32,40 @@ export function admitConnectorScheduleDue({
   maximumCatchUpAgeMinutes,
   input,
 }: {
-  database: DrizzleDatabase
+  database: PgliteDatabase
   now: () => Date
   maximumCatchUpAgeMinutes: number
   input: {
     connectorInstanceId: string
     expectedRevision: string
   }
-}): DispatchConnectorScheduleDueResult {
-  return database.transaction((tx) => {
-    const scheduleRow = tx
+}): Promise<DispatchConnectorScheduleDueResult> {
+  return database.transaction(async (tx) => {
+    const [instance] = await tx
+      .select()
+      .from(connectorInstances)
+      .where(and(
+        eq(connectorInstances.id, input.connectorInstanceId),
+        isNull(connectorInstances.deletedAt),
+      ))
+      .limit(1)
+      .for('update')
+
+    if (!instance) {
+      throw Object.assign(new Error(`Connector instance not found: ${input.connectorInstanceId}`), {
+        statusCode: 404,
+      })
+    }
+
+    const [scheduleRow] = await tx
       .select()
       .from(connectorSchedules)
       .where(and(
         eq(connectorSchedules.connectorInstanceId, input.connectorInstanceId),
         isNull(connectorSchedules.deletedAt),
       ))
-      .get()
+      .limit(1)
+      .for('update')
 
     if (!scheduleRow || scheduleRow.revision !== input.expectedRevision) {
       throw createConnectorScheduleError(
@@ -61,21 +78,6 @@ export function admitConnectorScheduleDue({
       return { status: 'paused' }
     }
 
-    const instance = tx
-      .select()
-      .from(connectorInstances)
-      .where(and(
-        eq(connectorInstances.id, input.connectorInstanceId),
-        isNull(connectorInstances.deletedAt),
-      ))
-      .get()
-
-    if (!instance) {
-      throw Object.assign(new Error(`Connector instance not found: ${input.connectorInstanceId}`), {
-        statusCode: 404,
-      })
-    }
-
     if (!instance.enabled) {
       return { status: 'connector_disabled' }
     }
@@ -83,7 +85,7 @@ export function admitConnectorScheduleDue({
     const clock = now()
     const clockIso = clock.toISOString()
 
-    const unresolvedAdmitted = findUnresolvedAdmittedOccurrence(tx, {
+    const unresolvedAdmitted = await findUnresolvedAdmittedOccurrence(tx, {
       scheduleId: scheduleRow.id,
     })
     if (unresolvedAdmitted) {
@@ -95,26 +97,26 @@ export function admitConnectorScheduleDue({
     }
 
     if (Date.parse(scheduleRow.nextEligibleAt) > clock.getTime()) {
-      const priorOccurrence = tx
+      const [priorOccurrence] = await tx
         .select()
         .from(connectorScheduleOccurrences)
         .where(and(
           eq(connectorScheduleOccurrences.scheduleId, scheduleRow.id),
           eq(connectorScheduleOccurrences.scheduleRevision, scheduleRow.revision),
         ))
-        .orderBy(desc(connectorScheduleOccurrences.createdAt))
-        .get()
+        .orderBy(desc(connectorScheduleOccurrences.createdAt), desc(connectorScheduleOccurrences.id))
+        .limit(1)
 
       if (
         priorOccurrence?.connectorRunId
         && Date.parse(priorOccurrence.nominalAt) <= clock.getTime()
         && Date.parse(priorOccurrence.nominalAt) < Date.parse(scheduleRow.nextEligibleAt)
       ) {
-        const priorRun = tx
+        const [priorRun] = await tx
           .select()
           .from(connectorRuns)
           .where(eq(connectorRuns.id, priorOccurrence.connectorRunId))
-          .get()
+          .limit(1)
         if (priorRun) {
           return {
             status: 'admitted',
@@ -130,7 +132,7 @@ export function admitConnectorScheduleDue({
       }
     }
 
-    const activeRun = tx
+    const [activeRun] = await tx
       .select({ id: connectorRuns.id })
       .from(connectorRuns)
       .where(and(
@@ -138,8 +140,8 @@ export function admitConnectorScheduleDue({
         inArray(connectorRuns.status, ['queued', 'running']),
         isNull(connectorRuns.deletedAt),
       ))
-      .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
-      .get()
+      .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt), desc(connectorRuns.id))
+      .limit(1)
 
     if (activeRun) {
       return {
@@ -158,16 +160,16 @@ export function admitConnectorScheduleDue({
     })
 
     if (resolved.inHorizon.length === 0) {
-      const updated = tx.update(connectorSchedules).set({
+      const [updated] = await tx.update(connectorSchedules).set({
         nextEligibleAt: resolved.futureEligibleAt,
         updatedAt: clockIso,
       }).where(and(
         eq(connectorSchedules.id, scheduleRow.id),
         eq(connectorSchedules.revision, input.expectedRevision),
         isNull(connectorSchedules.deletedAt),
-      )).run()
+      )).returning({ id: connectorSchedules.id })
 
-      if (updated.changes !== 1) {
+      if (!updated) {
         throw createConnectorScheduleError(
           'schedule_dispatch_conflict',
           'Schedule changed during due dispatch',
@@ -189,18 +191,18 @@ export function admitConnectorScheduleDue({
       nominalAt,
     )
 
-    const existingOccurrence = tx
+    const [existingOccurrence] = await tx
       .select()
       .from(connectorScheduleOccurrences)
       .where(eq(connectorScheduleOccurrences.idempotencyKey, idempotencyKey))
-      .get()
+      .limit(1)
 
     if (existingOccurrence?.connectorRunId) {
-      const existingRun = tx
+      const [existingRun] = await tx
         .select()
         .from(connectorRuns)
         .where(eq(connectorRuns.id, existingOccurrence.connectorRunId))
-        .get()
+        .limit(1)
       if (existingRun) {
         return {
           status: 'admitted',
@@ -218,23 +220,23 @@ export function admitConnectorScheduleDue({
       instance.earliestBackfillDate,
     )
 
-    const updated = tx.update(connectorSchedules).set({
+    const [updated] = await tx.update(connectorSchedules).set({
       nextEligibleAt,
       updatedAt: clockIso,
     }).where(and(
       eq(connectorSchedules.id, scheduleRow.id),
       eq(connectorSchedules.revision, input.expectedRevision),
       isNull(connectorSchedules.deletedAt),
-    )).run()
+    )).returning({ id: connectorSchedules.id })
 
-    if (updated.changes !== 1) {
+    if (!updated) {
       throw createConnectorScheduleError(
         'schedule_dispatch_conflict',
         'Schedule changed during due dispatch',
       )
     }
 
-    tx.insert(connectorRuns).values({
+    const [insertedRun] = await tx.insert(connectorRuns).values({
       id: runId,
       executionScopeId: instance.executionScopeId,
       connectorInstanceId: input.connectorInstanceId,
@@ -255,12 +257,13 @@ export function admitConnectorScheduleDue({
       createdAt: clockIso,
       updatedAt: clockIso,
       deletedAt: null,
-    }).run()
-    writeConnectorRunSynchronization(tx, runId, connectorSynchronizationSnapshot(
+    }).returning({ id: connectorRuns.id })
+    if (!insertedRun) throw new Error('Failed to create admitted connector run')
+    await writeConnectorRunSynchronization(tx, runId, connectorSynchronizationSnapshot(
       earliestBackfillDate, { kind: 'in_progress' },
     ), clockIso)
 
-    tx.insert(connectorScheduleOccurrences).values({
+    const [insertedOccurrence] = await tx.insert(connectorScheduleOccurrences).values({
       id: occurrenceId,
       scheduleId: scheduleRow.id,
       scheduleRevision: scheduleRow.revision,
@@ -270,16 +273,17 @@ export function admitConnectorScheduleDue({
       outcome: 'admitted',
       connectorRunId: runId,
       createdAt: clockIso,
-    }).run()
+    }).returning({ id: connectorScheduleOccurrences.id })
+    if (!insertedOccurrence) throw new Error('Failed to create connector schedule occurrence')
 
-    tx.insert(connectorScheduleEvents).values({
+    await tx.insert(connectorScheduleEvents).values({
       id: randomUUID(),
       scheduleId: scheduleRow.id,
       actorClass: 'scheduler',
       action: 'dispatched',
       revision: revisionAfter,
       at: clockIso,
-    }).run()
+    })
 
     return {
       status: 'admitted',
@@ -305,37 +309,35 @@ export function admitConnectorScheduleDue({
   })
 }
 
-function findUnresolvedAdmittedOccurrence(
-  tx: {
-    select: DrizzleDatabase['select']
-  },
+async function findUnresolvedAdmittedOccurrence(
+  tx: Pick<PgliteDatabase, 'select'>,
   input: { scheduleId: string },
-): {
+): Promise<{
   occurrence: typeof connectorScheduleOccurrences.$inferSelect
   run: typeof connectorRuns.$inferSelect
-} | null {
-  const occurrence = tx
+} | null> {
+  const [occurrence] = await tx
     .select()
     .from(connectorScheduleOccurrences)
     .where(and(
       eq(connectorScheduleOccurrences.scheduleId, input.scheduleId),
       eq(connectorScheduleOccurrences.outcome, 'admitted'),
     ))
-    .orderBy(desc(connectorScheduleOccurrences.createdAt))
-    .get()
+    .orderBy(desc(connectorScheduleOccurrences.createdAt), desc(connectorScheduleOccurrences.id))
+    .limit(1)
 
   if (!occurrence?.connectorRunId) {
     return null
   }
 
-  const run = tx
+  const [run] = await tx
     .select()
     .from(connectorRuns)
     .where(and(
       eq(connectorRuns.id, occurrence.connectorRunId),
       isNull(connectorRuns.deletedAt),
     ))
-    .get()
+    .limit(1)
 
   if (!run) {
     return null

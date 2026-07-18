@@ -79,7 +79,9 @@ export interface CreateValedictorianRuntimeOptions {
   config: ValedictorianRuntimeConfig
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
-  createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
+  createLocalClient?: (
+    options: LocalValedictorianClientOptions,
+  ) => Promise<LocalValedictorianClient> | LocalValedictorianClient
   createScheduler?: (options?: LocalSchedulerOptions) => LocalScheduler
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   deferServerStart?: boolean
@@ -160,6 +162,12 @@ export async function createValedictorianRuntime({
   const connectorPorts = createConnectorPorts(config.workspaceId)
   const scheduler = createScheduler(schedulerOptions)
   const effectiveConnectorRunRecovery = connectorRunRecovery ?? workspaceManager?.connectorRunRecovery
+  const recoveryScope = effectiveConnectorRunRecovery
+    ? {
+        pgliteDataPath: config.pgliteDataPath,
+        workspaceId: config.workspaceId ?? 'local-workspace',
+      }
+    : null
   const localSecretResolutionEnabled =
     config.mode === 'local-shared'
     && Boolean(config.apiToken)
@@ -180,39 +188,41 @@ export async function createValedictorianRuntime({
   }
 
   let capabilitiesDisposed = false
-  const disposePreparedCapabilities = () => {
+  const disposePreparedCapabilities = async () => {
     if (capabilitiesDisposed) return
     capabilitiesDisposed = true
-    preparedCapabilities?.dispose()
+    await preparedCapabilities?.dispose()
   }
   let client: LocalValedictorianClient
   try {
-    client = createLocalClient({
-    ...(effectiveConnectorRunRecovery === undefined
-      ? {}
-      : { connectorRunRecovery: effectiveConnectorRunRecovery }),
-    connectorRuntime: connectorPorts.connectorRuntime,
-    connectorScheduling: config.mode === 'local-desktop'
-      ? localDesktopConnectorSchedulingCapability
-      : undefined,
-    localSecretResolutionEnabled,
-    profilePath: config.profilePath,
-    ...(preparedCapabilities === null
-      ? {}
-      : {
-          profileService: preparedCapabilities.profileService,
-          secretService: preparedCapabilities.secretService,
-        }),
-    onScheduledWorkChanged: () => scheduler.signal(),
-    referenceTrackerPath: config.referenceTrackerPath,
-    seedDataMode: config.seedDataMode,
-    ...(secretCodec === undefined ? {} : { secretCodec }),
-    pgliteDataPath: config.pgliteDataPath,
-    registerScheduledWorkSource: (source) => scheduler.register(source),
-    ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
-    })
+    client = await createLocalClient({
+      ...(preparedCapabilities ? { database: preparedCapabilities.database } : {}),
+      ...(effectiveConnectorRunRecovery === undefined
+        ? {}
+        : { connectorRunRecovery: effectiveConnectorRunRecovery }),
+      connectorRuntime: connectorPorts.connectorRuntime,
+      connectorScheduling: config.mode === 'local-desktop'
+        ? localDesktopConnectorSchedulingCapability
+        : undefined,
+      localSecretResolutionEnabled,
+      profilePath: config.profilePath,
+      ...(preparedCapabilities === null
+        ? {}
+        : {
+            profileService: preparedCapabilities.profileService,
+            secretService: preparedCapabilities.secretService,
+          }),
+      onScheduledWorkChanged: () => scheduler.signal(),
+      referenceTrackerPath: config.referenceTrackerPath,
+      seedDataMode: config.seedDataMode,
+      ...(secretCodec === undefined ? {} : { secretCodec }),
+      pgliteDataPath: config.pgliteDataPath,
+      registerScheduledWorkSource: (source) => scheduler.register(source),
+      ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
+    } as LocalValedictorianClientOptions)
   } catch (error) {
-    disposePreparedCapabilities()
+    if (recoveryScope) effectiveConnectorRunRecovery?.deactivate(recoveryScope)
+    await disposePreparedCapabilities()
     throw error
   }
 
@@ -241,7 +251,8 @@ export async function createValedictorianRuntime({
     server = deferServerStart ? null : await startServer(serverOptions)
   } catch (error) {
     await scheduler.stop()
-    disposePreparedCapabilities()
+    if (recoveryScope) effectiveConnectorRunRecovery?.deactivate(recoveryScope)
+    await disposePreparedCapabilities()
     throw error
   }
 
@@ -249,12 +260,10 @@ export async function createValedictorianRuntime({
     scheduler.start()
   }
 
-  return {
-    client,
-    connectors: client.connectors,
-    profileService: preparedCapabilities?.profileService ?? null,
-    secretService: preparedCapabilities?.secretService ?? null,
-    close: async () => {
+  let closeInflight: Promise<void> | null = null
+  const close = () => {
+    if (closeInflight) return closeInflight
+    closeInflight = (async () => {
       try {
         await scheduler.stop()
         await server?.close()
@@ -262,10 +271,23 @@ export async function createValedictorianRuntime({
         try {
           await workspaceManager?.close()
         } finally {
-          disposePreparedCapabilities()
+          try {
+            await disposePreparedCapabilities()
+          } finally {
+            if (recoveryScope) effectiveConnectorRunRecovery?.deactivate(recoveryScope)
+          }
         }
       }
-    },
+    })()
+    return closeInflight
+  }
+
+  return {
+    client,
+    connectors: client.connectors,
+    profileService: preparedCapabilities?.profileService ?? null,
+    secretService: preparedCapabilities?.secretService ?? null,
+    close,
     stopScheduler: () => scheduler.stop(),
     get server() {
       return server

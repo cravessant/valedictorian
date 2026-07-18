@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connectorRunSummarySchema } from 'sparxie'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
-import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client.test-harness'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createTempDatabasePath, readJson, createLocalServerHttpTestFixture } from './local-server.http-test-harness'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
+import { openPgliteTestDatabase } from './local-valedictorian-client.test-harness'
 
 describe('local Valedictorian HTTP server', () => {
   const fixture = createLocalServerHttpTestFixture()
@@ -23,9 +22,8 @@ describe('local Valedictorian HTTP server', () => {
       definition: { id: 'fixture.retry', version: '1.0.0' },
       refresh,
     } as AppJobConnector
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const setup = await openPgliteTestDatabase(pgliteDataPath)
+    const repository = createPgliteConnectorRepository(setup.database)
     await repository.upsertInstance({
       id: 'retry-http', connectorId: 'fixture.retry', connectorVersion: '1.0.0',
       displayName: 'Retry HTTP', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -44,8 +42,8 @@ describe('local Valedictorian HTTP server', () => {
         },
       },
     })
-    sqlite.close()
-    const client = createRuntimeLocalValedictorianClient({
+    await setup.close()
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]), now: () => new Date(clock),
       seedDataMode: 'none', pgliteDataPath,
     })

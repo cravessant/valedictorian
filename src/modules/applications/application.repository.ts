@@ -10,7 +10,7 @@ import {
   workflowRunSteps,
   workflowRuns,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteRepositoryDatabase } from '../../db/pglite'
 import {
   DEFAULT_APPLICATION_LIST_OFFSET,
   isApplicationListSort,
@@ -71,8 +71,8 @@ const DEFAULT_ATTEMPT_LIST_LIMIT = 50
 const DEFAULT_LINK_LIST_LIMIT = 50
 const FIRST_ATTEMPT_STEP_SEQUENCE = 1
 const APPLICATION_ATTEMPT_METADATA_KIND = 'application_attempt'
-export function createSqliteApplicationRepository(
-  database: DrizzleDatabase,
+export function createPgliteApplicationRepository(
+  database: PgliteRepositoryDatabase,
 ): ApplicationRepository {
   return {
     async createApplication(input) {
@@ -80,10 +80,10 @@ export function createSqliteApplicationRepository(
       const normalizedInput = normalizeCreateApplicationInput(input)
       const applicationId = randomUUID()
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
-        const company = findOrCreateCompany(tx, normalizedInput.companyName, now)
-        const source = findOrCreateSource(tx, normalizedInput.sourceName, now)
+        const company = await findOrCreateCompany(tx, normalizedInput.companyName, now)
+        const source = await findOrCreateSource(tx, normalizedInput.sourceName, now)
 
         if (normalizedInput.primaryLink?.kind === 'official' || normalizedInput.sourceLink?.kind === 'official') {
           const officialUrl =
@@ -91,16 +91,16 @@ export function createSqliteApplicationRepository(
               ? normalizedInput.primaryLink.url
               : normalizedInput.sourceLink?.url
 
-          if (officialUrl && hasActiveOfficialUrl(tx, officialUrl)) {
+          if (officialUrl && await hasActiveOfficialUrl(tx, officialUrl)) {
             throw new Error('Duplicate application official URL')
           }
         }
 
-        if (hasActiveApplicationFingerprint(tx, company.id, source.id, normalizedInput.roleTitle)) {
+        if (await hasActiveApplicationFingerprint(tx, company.id, source.id, normalizedInput.roleTitle)) {
           throw new Error('Duplicate application fingerprint')
         }
 
-        tx
+        await tx
           .insert(applications)
           .values({
             id: applicationId,
@@ -128,10 +128,9 @@ export function createSqliteApplicationRepository(
             updatedAt: now,
             deletedAt: null,
           })
-          .run()
 
         if (normalizedInput.primaryLink) {
-          insertApplicationLink(tx, {
+          await insertApplicationLink(tx, {
             applicationId,
             discoveredAt: now,
             isPrimary: true,
@@ -141,7 +140,7 @@ export function createSqliteApplicationRepository(
         }
 
         if (normalizedInput.sourceLink) {
-          insertApplicationLink(tx, {
+          await insertApplicationLink(tx, {
             applicationId,
             discoveredAt: now,
             isPrimary: !normalizedInput.primaryLink,
@@ -150,7 +149,7 @@ export function createSqliteApplicationRepository(
           })
         }
 
-        insertApplicationEvent(tx, {
+        await insertApplicationEvent(tx, {
           applicationId,
           message: 'Application created.',
           payload: normalizedInput,
@@ -159,7 +158,7 @@ export function createSqliteApplicationRepository(
         })
 
         if (normalizedInput.initialNote) {
-          insertApplicationEvent(tx, {
+          await insertApplicationEvent(tx, {
             applicationId,
             message: normalizedInput.initialNote,
             payload: {},
@@ -168,7 +167,7 @@ export function createSqliteApplicationRepository(
           })
         }
 
-        const created = selectApplicationById(tx, applicationId)
+        const created = await selectApplicationById(tx, applicationId)
 
         if (!created) {
           throw new Error(`Application not found: ${applicationId}`)
@@ -184,19 +183,23 @@ export function createSqliteApplicationRepository(
 
       assertNonEmptyPatch(patch, 'Application metadata update requires at least one field')
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
 
-        tx
+        const [changed] = await tx
           .update(applications)
           .set({
             ...patch,
             updatedAt: now,
           })
           .where(and(eq(applications.id, normalizedInput.applicationId), isNull(applications.deletedAt)))
-          .run()
+          .returning({ id: applications.id })
 
-        insertApplicationEvent(tx, {
+        if (!changed) {
+          throw new Error(`Application not found: ${normalizedInput.applicationId}`)
+        }
+
+        await insertApplicationEvent(tx, {
           applicationId: normalizedInput.applicationId,
           message: 'Application metadata updated.',
           payload: normalizedInput,
@@ -204,7 +207,7 @@ export function createSqliteApplicationRepository(
           now,
         })
 
-        const updated = selectApplicationById(tx, normalizedInput.applicationId)
+        const updated = await selectApplicationById(tx, normalizedInput.applicationId)
 
         if (!updated) {
           throw new Error(`Application not found: ${normalizedInput.applicationId}`)
@@ -217,19 +220,23 @@ export function createSqliteApplicationRepository(
       const now = new Date().toISOString()
       const message = requiredText(input.message, 'note message')
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
 
-        tx
+        const [changed] = await tx
           .update(applications)
           .set({
             notes: message,
             updatedAt: now,
           })
           .where(eq(applications.id, input.applicationId))
-          .run()
+          .returning({ id: applications.id })
 
-        insertApplicationEvent(tx, {
+        if (!changed) {
+          throw new Error(`Application not found: ${input.applicationId}`)
+        }
+
+        await insertApplicationEvent(tx, {
           applicationId: input.applicationId,
           message,
           payload: {},
@@ -237,7 +244,7 @@ export function createSqliteApplicationRepository(
           now,
         })
 
-        const updated = selectApplicationById(tx, input.applicationId)
+        const updated = await selectApplicationById(tx, input.applicationId)
 
         if (!updated) {
           throw new Error(`Application not found: ${input.applicationId}`)
@@ -251,28 +258,27 @@ export function createSqliteApplicationRepository(
       const message =
         input.note !== undefined ? requiredText(input.note, 'archive note') : 'Application archived.'
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
-        const existing = tx
+        const [existing] = await tx
           .select({ id: applications.id })
           .from(applications)
           .where(and(eq(applications.id, input.applicationId), isNull(applications.deletedAt)))
-          .get()
+          .limit(1)
 
         if (!existing) {
           throw new Error(`Application not found: ${input.applicationId}`)
         }
 
-        tx
+        await tx
           .update(applications)
           .set({
             deletedAt: now,
             updatedAt: now,
           })
           .where(eq(applications.id, input.applicationId))
-          .run()
 
-        insertApplicationEvent(tx, {
+        await insertApplicationEvent(tx, {
           applicationId: input.applicationId,
           message,
           payload: {
@@ -292,25 +298,34 @@ export function createSqliteApplicationRepository(
 
       validateWorkflowInput(input)
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
-        const existing = tx
+        const [application] = await tx
+          .select({ id: applications.id })
+          .from(applications)
+          .where(and(eq(applications.id, input.applicationId), isNull(applications.deletedAt)))
+          .limit(1)
+
+        if (!application) {
+          throw new Error(`Application not found: ${input.applicationId}`)
+        }
+
+        const [existing] = await tx
           .select()
           .from(applicationWorkflowStates)
           .where(eq(applicationWorkflowStates.applicationId, input.applicationId))
-          .get()
+          .limit(1)
 
         if (existing) {
-          tx
+          await tx
             .update(applicationWorkflowStates)
             .set({
               ...patch,
               updatedAt: now,
             })
             .where(eq(applicationWorkflowStates.applicationId, input.applicationId))
-            .run()
         } else {
-          tx
+          await tx
             .insert(applicationWorkflowStates)
             .values({
               applicationId: input.applicationId,
@@ -322,16 +337,14 @@ export function createSqliteApplicationRepository(
               createdAt: now,
               updatedAt: now,
             })
-            .run()
         }
 
-        tx
+        await tx
           .update(applications)
           .set({ updatedAt: now })
           .where(eq(applications.id, input.applicationId))
-          .run()
 
-        insertApplicationEvent(tx, {
+        await insertApplicationEvent(tx, {
           applicationId: input.applicationId,
           message: 'Workflow state updated.',
           payload: input,
@@ -339,7 +352,7 @@ export function createSqliteApplicationRepository(
           now,
         })
 
-        const updated = selectApplicationById(tx, input.applicationId)
+        const updated = await selectApplicationById(tx, input.applicationId)
 
         if (!updated) {
           throw new Error(`Application not found: ${input.applicationId}`)
@@ -354,23 +367,23 @@ export function createSqliteApplicationRepository(
       const attemptId = randomUUID()
       const message = normalizedInput.summary ?? 'Application attempt started.'
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
-        const existingApplication = tx
+        const [existingApplication] = await tx
           .select({ id: applications.id })
           .from(applications)
           .where(and(eq(applications.id, normalizedInput.applicationId), isNull(applications.deletedAt)))
-          .get()
+          .limit(1)
 
         if (!existingApplication) {
           throw new Error(`Application not found: ${normalizedInput.applicationId}`)
         }
 
-        if (hasActiveApplicationAttempt(tx, normalizedInput.applicationId)) {
+        if (await hasActiveApplicationAttempt(tx, normalizedInput.applicationId)) {
           throw new Error(`Application attempt already in progress: ${normalizedInput.applicationId}`)
         }
 
-        tx
+        await tx
           .insert(workflowRuns)
           .values({
             id: attemptId,
@@ -402,9 +415,8 @@ export function createSqliteApplicationRepository(
             updatedAt: now,
             deletedAt: null,
           })
-          .run()
 
-        insertWorkflowRunStep(tx, {
+        await insertWorkflowRunStep(tx, {
           workflowRunId: attemptId,
           actor: attemptActor(normalizedInput.actorType, normalizedInput.actorName),
           message,
@@ -414,7 +426,7 @@ export function createSqliteApplicationRepository(
           type: 'attempt_started',
         })
 
-        upsertApplicationWorkflowState(tx, {
+        await upsertApplicationWorkflowState(tx, {
           applicationId: normalizedInput.applicationId,
           now,
           patch: {
@@ -422,16 +434,15 @@ export function createSqliteApplicationRepository(
           },
         })
 
-        tx
+        await tx
           .update(applications)
           .set({
             status: 'in_progress',
             updatedAt: now,
           })
           .where(eq(applications.id, normalizedInput.applicationId))
-          .run()
 
-        insertApplicationEvent(tx, {
+        await insertApplicationEvent(tx, {
           applicationId: normalizedInput.applicationId,
           message,
           payload: {
@@ -441,7 +452,7 @@ export function createSqliteApplicationRepository(
           now,
         })
 
-        const attempt = selectApplicationAttemptById(tx, attemptId)
+        const attempt = await selectApplicationAttemptById(tx, attemptId)
 
         if (!attempt) {
           throw new Error(`Application attempt not found: ${attemptId}`)
@@ -454,9 +465,9 @@ export function createSqliteApplicationRepository(
       const now = new Date().toISOString()
       const normalizedInput = normalizeCreateApplicationAttemptStepInput(input)
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
-        const attempt = tx
+        const [attempt] = await tx
           .select({ id: workflowRuns.id })
           .from(workflowRuns)
           .where(
@@ -467,21 +478,21 @@ export function createSqliteApplicationRepository(
               eq(workflowRuns.status, 'in_progress'),
             ),
           )
-          .get()
+          .limit(1)
 
         if (!attempt) {
           throw new Error(`Active application attempt not found: ${normalizedInput.attemptId}`)
         }
 
-        const previousStep = tx
+        const [previousStep] = await tx
           .select({ sequence: workflowRunSteps.sequence })
           .from(workflowRunSteps)
           .where(eq(workflowRunSteps.workflowRunId, normalizedInput.attemptId))
           .orderBy(desc(workflowRunSteps.sequence))
-          .get()
+          .limit(1)
         const sequence = (previousStep?.sequence ?? 0) + 1
 
-        insertWorkflowRunStep(tx, {
+        await insertWorkflowRunStep(tx, {
           workflowRunId: normalizedInput.attemptId,
           actor: normalizedInput.actor ?? 'agent',
           message: normalizedInput.message,
@@ -491,7 +502,7 @@ export function createSqliteApplicationRepository(
           type: normalizedInput.type,
         })
 
-        const step = tx
+        const [step] = await tx
           .select()
           .from(workflowRunSteps)
           .where(
@@ -500,7 +511,7 @@ export function createSqliteApplicationRepository(
               eq(workflowRunSteps.sequence, sequence),
             ),
           )
-          .get()
+          .limit(1)
 
         if (!step) {
           throw new Error(`Application attempt step not found: ${normalizedInput.attemptId}`)
@@ -516,9 +527,9 @@ export function createSqliteApplicationRepository(
         normalizedInput.summary ??
         `Application attempt completed with outcome ${normalizedInput.outcome}.`
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
-        const existingAttempt = tx
+        const [existingAttempt] = await tx
           .select()
           .from(workflowRuns)
           .where(
@@ -529,19 +540,19 @@ export function createSqliteApplicationRepository(
               eq(workflowRuns.status, 'in_progress'),
             ),
           )
-          .get()
+          .limit(1)
 
         if (!existingAttempt) {
           throw new Error(`Active application attempt not found: ${normalizedInput.attemptId}`)
         }
 
-        validateVerificationReceiptForOutcome(
+        await validateVerificationReceiptForOutcome(
           tx,
           normalizedInput.attemptId,
           normalizedInput.outcome,
         )
 
-        const policyDecision = evaluateApplicationPolicy(tx, readPolicyConfig(tx), {
+        const policyDecision = await evaluateApplicationPolicy(tx, await readPolicyConfig(tx), {
           applicationId: normalizedInput.applicationId,
           attemptId: normalizedInput.attemptId,
           outcome: normalizedInput.outcome,
@@ -551,15 +562,15 @@ export function createSqliteApplicationRepository(
           throw new Error(policyDecision.reasons[0]?.message ?? 'Policy blocked application outcome')
         }
 
-        const previousStep = tx
+        const [previousStep] = await tx
           .select({ sequence: workflowRunSteps.sequence })
           .from(workflowRunSteps)
           .where(eq(workflowRunSteps.workflowRunId, normalizedInput.attemptId))
           .orderBy(desc(workflowRunSteps.sequence))
-          .get()
+          .limit(1)
         const existingMetadata = parseAttemptMetadata(existingAttempt.metadataJson)
 
-        tx
+        await tx
           .update(workflowRuns)
           .set({
             status: 'completed',
@@ -576,9 +587,8 @@ export function createSqliteApplicationRepository(
             updatedAt: now,
           })
           .where(eq(workflowRuns.id, normalizedInput.attemptId))
-          .run()
 
-        insertWorkflowRunStep(tx, {
+        await insertWorkflowRunStep(tx, {
           workflowRunId: normalizedInput.attemptId,
           actor: attemptActor(existingAttempt.actorType, existingAttempt.actorName),
           message,
@@ -588,13 +598,13 @@ export function createSqliteApplicationRepository(
           type: 'attempt_completed',
         })
 
-        upsertApplicationWorkflowState(tx, {
+        await upsertApplicationWorkflowState(tx, {
           applicationId: normalizedInput.applicationId,
           now,
           patch: workflowPatchForAttemptOutcome(normalizedInput, now),
         })
 
-        tx
+        await tx
           .update(applications)
           .set({
             status: normalizedInput.outcome,
@@ -604,9 +614,8 @@ export function createSqliteApplicationRepository(
               : {}),
           })
           .where(eq(applications.id, normalizedInput.applicationId))
-          .run()
 
-        insertApplicationEvent(tx, {
+        await insertApplicationEvent(tx, {
           applicationId: normalizedInput.applicationId,
           message,
           payload: {
@@ -617,7 +626,7 @@ export function createSqliteApplicationRepository(
           now,
         })
 
-        const attempt = selectApplicationAttemptById(tx, normalizedInput.attemptId)
+        const attempt = await selectApplicationAttemptById(tx, normalizedInput.attemptId)
 
         if (!attempt) {
           throw new Error(`Application attempt not found: ${normalizedInput.attemptId}`)
@@ -630,18 +639,28 @@ export function createSqliteApplicationRepository(
       const now = new Date().toISOString()
       const normalizedInput = normalizeApplicationLinkInput(input)
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
 
-        if (normalizedInput.kind === 'official' && hasActiveOfficialUrl(tx, normalizedInput.url)) {
+        const [application] = await tx
+          .select({ id: applications.id })
+          .from(applications)
+          .where(and(eq(applications.id, normalizedInput.applicationId), isNull(applications.deletedAt)))
+          .limit(1)
+
+        if (!application) {
+          throw new Error(`Application not found: ${normalizedInput.applicationId}`)
+        }
+
+        if (normalizedInput.kind === 'official' && await hasActiveOfficialUrl(tx, normalizedInput.url)) {
           throw new Error('Duplicate application official URL')
         }
 
         if (normalizedInput.isPrimary) {
-          clearPrimaryApplicationLinks(tx, normalizedInput.applicationId, now)
+          await clearPrimaryApplicationLinks(tx, normalizedInput.applicationId, now)
         }
 
-        const link = insertApplicationLink(tx, {
+        const link = await insertApplicationLink(tx, {
           applicationId: normalizedInput.applicationId,
           discoveredAt: now,
           isPrimary: normalizedInput.isPrimary ?? false,
@@ -649,13 +668,12 @@ export function createSqliteApplicationRepository(
           now,
         })
 
-        tx
+        await tx
           .update(applications)
           .set({ updatedAt: now })
           .where(eq(applications.id, normalizedInput.applicationId))
-          .run()
 
-        insertApplicationEvent(tx, {
+        await insertApplicationEvent(tx, {
           applicationId: normalizedInput.applicationId,
           message: 'Application link created.',
           payload: normalizedInput,
@@ -679,9 +697,9 @@ export function createSqliteApplicationRepository(
         'Application link update requires at least one field',
       )
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
-        const existing = tx
+        const [existing] = await tx
           .select()
           .from(applicationLinks)
           .where(
@@ -690,7 +708,7 @@ export function createSqliteApplicationRepository(
               eq(applicationLinks.applicationId, normalizedInput.applicationId),
             ),
           )
-          .get()
+          .limit(1)
 
         if (!existing) {
           throw new Error(`Application link not found: ${normalizedInput.linkId}`)
@@ -702,16 +720,16 @@ export function createSqliteApplicationRepository(
         if (
           !normalizedInput.archived &&
           nextKind === 'official' &&
-          hasActiveOfficialUrl(tx, nextUrl, existing.id)
+          await hasActiveOfficialUrl(tx, nextUrl, existing.id)
         ) {
           throw new Error('Duplicate application official URL')
         }
 
         if (normalizedInput.isPrimary) {
-          clearPrimaryApplicationLinks(tx, normalizedInput.applicationId, now)
+          await clearPrimaryApplicationLinks(tx, normalizedInput.applicationId, now)
         }
 
-        tx
+        await tx
           .update(applicationLinks)
           .set({
             ...patch,
@@ -724,15 +742,13 @@ export function createSqliteApplicationRepository(
               eq(applicationLinks.applicationId, normalizedInput.applicationId),
             ),
           )
-          .run()
 
-        tx
+        await tx
           .update(applications)
           .set({ updatedAt: now })
           .where(eq(applications.id, normalizedInput.applicationId))
-          .run()
 
-        insertApplicationEvent(tx, {
+        await insertApplicationEvent(tx, {
           applicationId: normalizedInput.applicationId,
           message: 'Application link updated.',
           payload: normalizedInput,
@@ -740,11 +756,11 @@ export function createSqliteApplicationRepository(
           now,
         })
 
-        const updated = tx
+        const [updated] = await tx
           .select()
           .from(applicationLinks)
           .where(eq(applicationLinks.id, normalizedInput.linkId))
-          .get()
+          .limit(1)
 
         if (!updated) {
           throw new Error(`Application link not found: ${normalizedInput.linkId}`)
@@ -761,19 +777,17 @@ export function createSqliteApplicationRepository(
         eq(applicationLinks.applicationId, applicationId),
         isNull(applicationLinks.deletedAt),
       )
-      const totalRow = database
+      const [totalRow] = await database
         .select({ value: count() })
         .from(applicationLinks)
         .where(where)
-        .get()
-      const items = database
+      const items = (await database
         .select()
         .from(applicationLinks)
         .where(where)
         .orderBy(desc(applicationLinks.isPrimary), desc(applicationLinks.discoveredAt))
         .limit(limit)
-        .offset(offset)
-        .all()
+        .offset(offset))
         .map(mapApplicationLinkRecord)
       const total = totalRow?.value ?? 0
 
@@ -789,19 +803,17 @@ export function createSqliteApplicationRepository(
       const limit = input.limit ?? DEFAULT_EVENT_LIST_LIMIT
       const offset = input.offset ?? 0
       const where = eq(applicationEvents.applicationId, input.applicationId)
-      const totalRow = database
+      const [totalRow] = await database
         .select({ value: count() })
         .from(applicationEvents)
         .where(where)
-        .get()
-      const items = database
+      const items = await database
         .select()
         .from(applicationEvents)
         .where(where)
         .orderBy(desc(applicationEvents.createdAt))
         .limit(limit)
         .offset(offset)
-        .all()
 
       const total = totalRow?.value ?? 0
 
@@ -823,22 +835,22 @@ export function createSqliteApplicationRepository(
         isNull(workflowRuns.deletedAt),
         isApplicationAttemptLifecycleRun(),
       )
-      const totalRow = database
+      const [totalRow] = await database
         .select({ value: count() })
         .from(workflowRuns)
         .where(where)
-        .get()
-      const rows = database
+      const rows = await database
         .select()
         .from(workflowRuns)
         .where(where)
         .orderBy(desc(workflowRuns.startedAt))
         .limit(limit)
         .offset(offset)
-        .all()
-      const items = rows.map((row) =>
-        mapApplicationAttempt(row, selectApplicationAttemptSteps(database, row.id)),
-      )
+      const items = []
+      for (const row of rows) {
+        const steps = await selectApplicationAttemptSteps(database, row.id)
+        items.push(mapApplicationAttempt(row, steps))
+      }
       const total = totalRow?.value ?? 0
 
       return {
@@ -857,7 +869,7 @@ export function createSqliteApplicationRepository(
       const limit = validateListLimit(query.limit)
       const offset = query.offset ?? DEFAULT_APPLICATION_LIST_OFFSET
       const where = buildApplicationListWhere(query)
-      const totalRow = database
+      const [totalRow] = await database
         .select({
           value: count(),
         })
@@ -873,8 +885,7 @@ export function createSqliteApplicationRepository(
           ),
         )
         .where(where)
-        .get()
-      const rows = database
+      const rows = await database
         .select(applicationSelection)
         .from(applications)
         .innerJoin(companies, eq(applications.companyId, companies.id))
@@ -891,7 +902,6 @@ export function createSqliteApplicationRepository(
         .orderBy(...buildApplicationListOrder(query))
         .limit(limit)
         .offset(offset)
-        .all()
 
       const items = rows.map(mapApplicationRow)
 
@@ -917,10 +927,10 @@ export function createSqliteApplicationRepository(
       const noteMessage =
         input.notes !== undefined ? requiredText(input.notes, 'note message') : undefined
 
-      return database.transaction((transaction) => {
+      return database.transaction(async (transaction) => {
         const tx = transaction
 
-        tx
+        const [changed] = await tx
           .update(applications)
           .set({
             status: input.status,
@@ -928,9 +938,13 @@ export function createSqliteApplicationRepository(
             ...(noteMessage !== undefined ? { notes: noteMessage } : {}),
           })
           .where(eq(applications.id, input.applicationId))
-          .run()
+          .returning({ id: applications.id })
 
-        insertApplicationEvent(tx, {
+        if (!changed) {
+          throw new Error(`Application not found: ${input.applicationId}`)
+        }
+
+        await insertApplicationEvent(tx, {
           applicationId: input.applicationId,
           message: `Application status updated to ${input.status}.`,
           payload: {
@@ -942,7 +956,7 @@ export function createSqliteApplicationRepository(
         })
 
         if (noteMessage !== undefined) {
-          insertApplicationEvent(tx, {
+          await insertApplicationEvent(tx, {
             applicationId: input.applicationId,
             message: noteMessage,
             payload: {},
@@ -951,7 +965,7 @@ export function createSqliteApplicationRepository(
           })
         }
 
-        const updated = selectApplicationById(tx, input.applicationId)
+        const updated = await selectApplicationById(tx, input.applicationId)
 
         if (!updated) {
           throw new Error(`Application not found: ${input.applicationId}`)

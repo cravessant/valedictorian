@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import { createLocalValedictorianClient } from './local-valedictorian-client'
+import { createTestLocalValedictorianClient as createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 
 describe('runtime connector overview', () => {
   it('returns a strict sanitized never-run connector row through the workspace contract', async () => {
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       now: () => new Date('2026-07-13T12:00:00.000Z'),
       seedDataMode: 'none',
@@ -41,7 +41,7 @@ describe('runtime connector overview', () => {
   })
 
   it('paginates in UTF-8 id order and binds continuation to the exact filters', async () => {
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
       pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-page-')),
@@ -77,7 +77,7 @@ describe('runtime connector overview', () => {
   })
 
   it('applies conjunctive public status and severity filters before pagination', async () => {
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
       pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-filter-')),
@@ -104,7 +104,7 @@ describe('runtime connector overview', () => {
   })
 
   it('classifies an explicit user skip without exposing its persisted reason', async () => {
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
       pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-skip-')),

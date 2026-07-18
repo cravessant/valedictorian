@@ -6,10 +6,12 @@ import { createHttpValedictorianClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { createApplication, createListResult, createSettingsApi } from './App.test-helpers'
-import { createFileDatabase, migrateDatabase } from './db/sqlite'
-import { createLocalValedictorianClient } from './runtime/local-valedictorian-client'
+import {
+  closeTestLocalValedictorianClient,
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+} from './runtime/local-valedictorian-client.test-harness'
+import type { LocalValedictorianClient } from './runtime/local-connector-client.contract'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './server/local-server'
-import { resolveDatabaseFilePath } from './workspace/workspace.paths'
 import {
   createLegacyRawSourceFixture,
   LEGACY_MIXED_RAW_RECORD_ID,
@@ -18,6 +20,8 @@ import {
 
 const WORKSPACE_ID = 'workspace-legacy-raw-source'
 let server: StartedValedictorianHttpServer | null = null
+let activeClient: LocalValedictorianClient | null = null
+let activePgliteDataPath: string | null = null
 
 beforeEach(() => {
   HTMLElement.prototype.scrollIntoView = vi.fn()
@@ -28,22 +32,31 @@ afterEach(async () => {
   delete (window as Window & { valedictorianHttp?: unknown }).valedictorianHttp
   await server?.close()
   server = null
+  if (activeClient) {
+    await closeTestLocalValedictorianClient(activeClient)
+    activeClient = null
+  }
+  if (activePgliteDataPath) {
+    fs.rmSync(activePgliteDataPath, { force: true, recursive: true })
+    activePgliteDataPath = null
+  }
 })
 
 describe('migrated raw-source inspection through renderer HTTP', () => {
   it('renders facts, lineage, normalization, gate, and projection from a legacy connector record', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-inspect-'))
-    createLegacyRawSourceFixture(pgliteDataPath)
-    const legacySqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(legacySqlite)
-    legacySqlite.close()
+    activePgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-inspect-'))
+    await createLegacyRawSourceFixture(activePgliteDataPath)
 
-    const client = createLocalValedictorianClient({
+    activeClient = await createLocalValedictorianClient({
       seedDataMode: 'none',
-      pgliteDataPath,
+      pgliteDataPath: activePgliteDataPath,
       workspaceId: WORKSPACE_ID,
     })
-    server = await createValedictorianHttpServer({ client, host: '127.0.0.1', port: 0 })
+    server = await createValedictorianHttpServer({
+      client: activeClient,
+      host: '127.0.0.1',
+      port: 0,
+    })
     ;(window as Window & { valedictorianHttp?: unknown }).valedictorianHttp = {
       apiBaseUrl: server.url,
       getBackendState: () => ({ origin: server!.url, status: 'available' }),

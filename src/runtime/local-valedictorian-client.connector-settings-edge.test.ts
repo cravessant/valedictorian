@@ -3,20 +3,21 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { normalizationReplayRequests } from '../db/schema'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { createLocalValedictorianClient } from './local-valedictorian-client'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
 
 const INSTANCE_ID = 'fixture-required-settings-instance'
 const CONNECTOR_ID = 'fixture.required-settings'
 
 describe('local connector settings completeness and upgrade edges', () => {
   it('validates descriptor-required config and filters when creating an enabled instance', async () => {
-    const client = clientFor(requiredSettingsConnector('1.0.0'))
+    const client = await clientFor(requiredSettingsConnector('1.0.0'))
 
     await expect(client.connectors.create(createInput({
       config: {},
@@ -29,7 +30,7 @@ describe('local connector settings completeness and upgrade edges', () => {
   })
 
   it('validates descriptor-required config as well as filters when enabling an existing draft', async () => {
-    const client = clientFor(requiredSettingsConnector('1.0.0'))
+    const client = await clientFor(requiredSettingsConnector('1.0.0'))
     await client.connectors.create(createInput({ enabled: false }))
 
     await expect(client.connectors.update({
@@ -44,7 +45,7 @@ describe('local connector settings completeness and upgrade edges', () => {
 
   it('validates descriptor-required config before running a persisted enabled instance', async () => {
     const pgliteDataPath = tempDatabasePath()
-    const legacy = createLocalValedictorianClient({
+    const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('1.0.0')]),
       seedDataMode: 'none',
       pgliteDataPath,
@@ -53,7 +54,7 @@ describe('local connector settings completeness and upgrade edges', () => {
       config: {},
       filters: { category: 'engineering' },
     }))
-    const current = createLocalValedictorianClient({
+    const current = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([requiredSettingsConnector('1.0.0')]),
       seedDataMode: 'none',
       pgliteDataPath,
@@ -69,7 +70,7 @@ describe('local connector settings completeness and upgrade edges', () => {
 
   it('disables incompatible persisted settings unchanged while other invalid saves stay blocked', async () => {
     const pgliteDataPath = tempDatabasePath()
-    const legacy = createLocalValedictorianClient({
+    const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('1.0.0')]),
       seedDataMode: 'none',
       pgliteDataPath,
@@ -78,7 +79,7 @@ describe('local connector settings completeness and upgrade edges', () => {
       config: { legacyPrivate: true },
       filters: { legacyCategory: 'old' },
     }))
-    const current = createLocalValedictorianClient({
+    const current = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([requiredSettingsConnector('1.0.0')]),
       seedDataMode: 'none',
       pgliteDataPath,
@@ -110,7 +111,7 @@ describe('local connector settings completeness and upgrade edges', () => {
 
   it('upgrades an old incomplete instance by saving a newly required field through reconciliation', async () => {
     const pgliteDataPath = tempDatabasePath()
-    const legacy = createLocalValedictorianClient({
+    const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('0.12.0')]),
       seedDataMode: 'none',
       pgliteDataPath,
@@ -121,7 +122,7 @@ describe('local connector settings completeness and upgrade edges', () => {
       enabled: false,
       filters: {},
     }))
-    const current = createLocalValedictorianClient({
+    const current = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([requiredSettingsConnector('0.13.0')]),
       seedDataMode: 'none',
       pgliteDataPath,
@@ -141,23 +142,20 @@ describe('local connector settings completeness and upgrade edges', () => {
       filters: { category: 'engineering' },
     })
 
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const replayRequests = createDrizzleDatabase(sqlite)
+    const replayRequests = await getTestLocalValedictorianDatabase(current)
       .select()
       .from(normalizationReplayRequests)
-      .all()
     expect(replayRequests).toEqual([
       expect.objectContaining({
         id: expect.stringMatching(/^connector-upgrade:/),
         status: 'completed',
       }),
     ])
-    sqlite.close()
   })
 
   it('can disable and replace credentials on an old-version instance without remove and re-add', async () => {
     const pgliteDataPath = tempDatabasePath()
-    const legacy = createLocalValedictorianClient({
+    const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('0.12.0')]),
       seedDataMode: 'none',
       pgliteDataPath,
@@ -167,7 +165,7 @@ describe('local connector settings completeness and upgrade edges', () => {
       auth: [{ id: 'fixture', mode: 'api_key', secretKey: 'old-secret' }],
       filters: {},
     }))
-    const current = createLocalValedictorianClient({
+    const current = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([requiredSettingsConnector('0.13.0')]),
       seedDataMode: 'none',
       pgliteDataPath,
@@ -200,7 +198,7 @@ describe('local connector settings completeness and upgrade edges', () => {
       decrypt: (value: string) => value.replace(/^enc:/, ''),
       encrypt: (value: string) => `enc:${value}`,
     }
-    const legacy = createLocalValedictorianClient({
+    const legacy = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([legacyConnector('0.12.0')]),
       secretCodec,
       seedDataMode: 'none',
@@ -219,13 +217,13 @@ describe('local connector settings completeness and upgrade edges', () => {
       enabled: false,
       filters: {},
     }))
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const persisted = await createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const persisted = await createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(legacy),
+    )
       .getInstance(INSTANCE_ID)
-    sqlite.close()
     const providerQueries: Array<{ grant: unknown; input: unknown }> = []
     const currentConnector = dynamicRepairConnector(providerQueries)
-    const current = createLocalValedictorianClient({
+    const current = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([currentConnector]),
       secretCodec,
       seedDataMode: 'none',
@@ -300,7 +298,7 @@ describe('local connector settings completeness and upgrade edges', () => {
   it('prefers an exact descriptor and otherwise falls back only to the installed same-id version', async () => {
     const old = legacyConnector('0.12.0')
     const current = requiredSettingsConnector('0.13.0')
-    const exactClient = createLocalValedictorianClient({
+    const exactClient = await createLocalValedictorianClient({
       connectorRegistry: versionedRegistry(current, old),
       seedDataMode: 'none',
       pgliteDataPath: tempDatabasePath(),
@@ -308,7 +306,7 @@ describe('local connector settings completeness and upgrade edges', () => {
     await expect(exactClient.connectors.descriptors.get(CONNECTOR_ID, '0.12.0'))
       .resolves.toMatchObject({ connectorId: CONNECTOR_ID, connectorVersion: '0.12.0' })
 
-    const fallbackClient = clientFor(current)
+    const fallbackClient = await clientFor(current)
     await expect(fallbackClient.connectors.descriptors.get(CONNECTOR_ID, '0.12.0'))
       .resolves.toMatchObject({ connectorId: CONNECTOR_ID, connectorVersion: '0.13.0' })
     await expect(fallbackClient.connectors.descriptors.get('fixture.other', '0.12.0'))
@@ -316,8 +314,8 @@ describe('local connector settings completeness and upgrade edges', () => {
   })
 })
 
-function clientFor(connector: AppJobConnector) {
-  return createLocalValedictorianClient({
+async function clientFor(connector: AppJobConnector) {
+  return await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
     seedDataMode: 'none',
     pgliteDataPath: tempDatabasePath(),

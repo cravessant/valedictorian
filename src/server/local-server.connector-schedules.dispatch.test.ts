@@ -24,7 +24,7 @@ describe('local server connector schedule dispatch', () => {
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let refreshCalls = 0
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
@@ -138,7 +138,7 @@ describe('local server connector schedule dispatch', () => {
     const workspaceId = 'schedule-dispatch-due-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -238,7 +238,7 @@ describe('local server connector schedule dispatch', () => {
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let refreshCalls = 0
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
@@ -336,7 +336,7 @@ describe('local server connector schedule dispatch', () => {
       releaseRefresh = resolve
     })
 
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
@@ -423,7 +423,7 @@ describe('local server connector schedule dispatch', () => {
     const workspaceId = 'schedule-catch-up-coalesce-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -529,7 +529,7 @@ describe('local server connector schedule dispatch', () => {
       ...availableSchedulingCapability,
       maximumCatchUpAgeMinutes: 30,
     }
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: limitedHorizon,
       now: () => clock,
@@ -595,7 +595,7 @@ describe('local server connector schedule dispatch', () => {
     const workspaceId = 'schedule-dispatch-paused-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -662,7 +662,7 @@ describe('local server connector schedule dispatch', () => {
     const workspaceId = 'schedule-dispatch-disabled-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -733,7 +733,7 @@ describe('local server connector schedule dispatch', () => {
       releaseRefresh = resolve
     })
 
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },

@@ -7,7 +7,7 @@ import {
   invalidPersistedRawDetailErrorBody,
 } from 'sparxie'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
 
 describe('raw source detail HTTP response boundary', () => {
@@ -20,7 +20,7 @@ describe('raw source detail HTTP response boundary', () => {
 
   it('returns a sanitized server-integrity error for contract-invalid persisted detail', async () => {
     const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-detail-boundary-'))
-    const client = createLocalValedictorianClient({ pgliteDataPath })
+    const client = await createLocalValedictorianClient({ pgliteDataPath })
     client.sourcing.rawRecords.get = async () => ({
       id: 'invalid-record',
       sourceEntityId: null,

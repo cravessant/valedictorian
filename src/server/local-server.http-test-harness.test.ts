@@ -10,10 +10,10 @@ import {
 } from './local-server.http-test-harness'
 
 describe('local server HTTP test harness', () => {
-  it('provides a temporary database path and seeded real local client', () => {
+  it('provides a temporary database path and seeded real local client', async () => {
     const pgliteDataPath = createTempDatabasePath()
     expect(pgliteDataPath).toMatch(/valedictorian-server-/)
-    const client = createSeededLocalClient({ pgliteDataPath })
+    const client = await createSeededLocalClient({ pgliteDataPath })
     expect(client.applications).toBeDefined()
   })
 
@@ -64,6 +64,17 @@ describe('local server HTTP test harness', () => {
     const onClosed = vi.fn()
     server.onClosed(onClosed)
 
+    await server.close()
+
+    expect(onClosed).toHaveBeenCalledTimes(1)
+  })
+
+  it('coalesces concurrent and repeated listener closure', async () => {
+    const server = await startBoundaryServer(createBoundaryWorkspaceClient(() => {}))
+    const onClosed = vi.fn()
+    server.onClosed(onClosed)
+
+    await Promise.all([server.close(), server.close()])
     await server.close()
 
     expect(onClosed).toHaveBeenCalledTimes(1)

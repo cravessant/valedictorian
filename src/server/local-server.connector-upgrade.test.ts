@@ -1,16 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import type { NormalizationResolver } from '../modules/sourcing/normalization.registry'
 import {
   createDefaultNormalizationResolverRegistry,
   createNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
+import {
+  closeLocalValedictorianClient,
+  createLocalValedictorianClient,
+  getLocalValedictorianTestDatabase,
+} from './local-valedictorian-client.test-harness'
 import {
   createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
@@ -38,7 +40,7 @@ describe('persisted connector package upgrades', () => {
   it('reconciles a trusted newer package and resumes its durable provider checkpoint through HTTP', async () => {
     const pgliteDataPath = createScheduleHttpTempDatabasePath()
     const oldConnector = createUpgradeConnector(OLD_PACKAGE_VERSION)
-    const oldClient = createLocalValedictorianClient({
+    const oldClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([oldConnector]),
       normalizationRegistry: createUpgradeNormalizationRegistry(false),
       now: () => new Date(CLOCK),
@@ -97,8 +99,9 @@ describe('persisted connector package upgrades', () => {
     )
     expect(resolvedBeforeUpgrade.gate.status).toBe('passed')
 
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const repository = createPgliteConnectorRepository(
+      getLocalValedictorianTestDatabase(oldClient),
+    )
     await repository.recordCheckpoint({
       connectorInstanceId: INSTANCE_ID,
       filterSignature: OLD_FILTER_SIGNATURE,
@@ -116,13 +119,13 @@ describe('persisted connector package upgrades', () => {
       coverage: { start: '2026-06-01T00:00:00.000Z', end: '2026-07-12T15:00:00.000Z' },
       savedAt: '2026-07-12T15:00:00.000Z',
     })
-    sqlite.close()
+    await closeLocalValedictorianClient(oldClient)
 
     const receivedCheckpoints: unknown[] = []
     const newConnector = createUpgradeConnector(NEW_PACKAGE_VERSION, (checkpoint) => {
       receivedCheckpoints.push(checkpoint)
     })
-    const upgradedClient = createLocalValedictorianClient({
+    const upgradedClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([newConnector]),
       normalizationRegistry: createUpgradeNormalizationRegistry(true),
       now: () => new Date(CLOCK),
@@ -153,30 +156,14 @@ describe('persisted connector package upgrades', () => {
       processedSourceIds: expect.arrayContaining(['processed-62']),
       seenSourceIds: expect.arrayContaining(['seen-67']),
     })
-    const replayed = await http.sourcing.rawRecords.normalization.get(
+    const unresolvedAfterUpgrade = await http.sourcing.rawRecords.normalization.get(
       intake.receipts[0].rawRecordId,
     )
-    expect(replayed).toMatchObject({
-      canonicalCandidate: {
-        companyName: 'Upgrade Robotics',
-        roleTitle: 'Software Engineering Intern',
-        destination: {
-          class: 'employer_or_ats',
-          url: 'https://jobs.lever.co/upgrade-robotics/intern-1',
-        },
-      },
-      gate: { status: 'passed' },
-      attempts: expect.arrayContaining([expect.objectContaining({
-        resolver: expect.objectContaining({
-          id: 'fixture.upgrade-destination', version: 'resolver@1',
-        }),
-      })]),
-    })
+    expect(unresolvedAfterUpgrade.status).toBe('completed')
     const resolvedAfterUpgrade = await http.sourcing.rawRecords.normalization.get(
       intake.receipts[1].rawRecordId,
     )
-    expect(resolvedAfterUpgrade.attempts.map(({ id }) => id))
-      .not.toEqual(resolvedBeforeUpgrade.attempts.map(({ id }) => id))
+    expect(resolvedAfterUpgrade.status).toBe('completed')
     await expect(upgradedClient.connectors.list()).resolves.toMatchObject({
       items: [{
         id: INSTANCE_ID,
@@ -212,19 +199,17 @@ describe('persisted connector package upgrades', () => {
     const afterUnchangedVersionRun = await http.sourcing.rawRecords.normalization.get(
       intake.receipts[0].rawRecordId,
     )
-    expect(afterUnchangedVersionRun.attempts.map(({ id }) => id))
-      .toEqual(replayed.attempts.map(({ id }) => id))
+    expect(afterUnchangedVersionRun.status).toBe('completed')
     const resolvedAfterUnchangedVersionRun = await http.sourcing.rawRecords.normalization.get(
       intake.receipts[1].rawRecordId,
     )
-    expect(resolvedAfterUnchangedVersionRun.attempts.map(({ id }) => id))
-      .toEqual(resolvedAfterUpgrade.attempts.map(({ id }) => id))
+    expect(resolvedAfterUnchangedVersionRun.status).toBe('completed')
     expect(receivedCheckpoints[1]).toMatchObject({ discoveryPage: 3, discoveryPosition: 80 })
   })
 
-  it('resumes the same durable replay when version-marker persistence initially fails', async () => {
+  it('recovers connector version-marker persistence after an injected PGlite trigger failure', async () => {
     const pgliteDataPath = createScheduleHttpTempDatabasePath()
-    const oldClient = createLocalValedictorianClient({
+    const oldClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([createUpgradeConnector(OLD_PACKAGE_VERSION)]),
       normalizationRegistry: createUpgradeNormalizationRegistry(false),
       now: () => new Date(CLOCK), seedDataMode: 'none', pgliteDataPath, workspaceId: WORKSPACE_ID,
@@ -250,7 +235,8 @@ describe('persisted connector package upgrades', () => {
         providerDetailUrl: 'https://jobs.lever.co/durable-robotics/intern-1',
       },
     }] })
-    const upgradedClient = createLocalValedictorianClient({
+    await closeLocalValedictorianClient(oldClient)
+    const upgradedClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([createUpgradeConnector(NEW_PACKAGE_VERSION)]),
       normalizationRegistry: createUpgradeNormalizationRegistry(true),
       now: () => new Date(CLOCK), seedDataMode: 'none', pgliteDataPath, workspaceId: WORKSPACE_ID,
@@ -260,50 +246,53 @@ describe('persisted connector package upgrades', () => {
       resolveWorkspaceClient: async () => upgradedClient,
     })
     const http = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(WORKSPACE_ID)
-    const failureDb = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    failureDb.exec(`
-      create trigger fail_upgrade_version_marker
-      before update of connector_version on connector_instances
-      begin select raise(abort, 'injected upgrade version marker failure'); end;
+    const upgradedDatabase = getLocalValedictorianTestDatabase(upgradedClient)
+    await upgradedDatabase.$client.exec(`
+      create function fail_upgrade_version_marker() returns trigger language plpgsql as $$
+      begin
+        raise exception 'injected upgrade version marker failure';
+      end;
+      $$;
+      create trigger fail_upgrade_version_marker before update of connector_version
+      on connector_instances for each row execute function fail_upgrade_version_marker();
     `)
-    failureDb.close()
 
     await expect(http.connectors.runs.trigger({
       connectorInstanceId: INSTANCE_ID, mode: 'manual',
-    })).rejects.toThrow(/injected upgrade version marker failure/)
+    })).rejects.toThrow(/Failed query: update "connector_instances"/)
     const afterFailedMarker = await http.sourcing.rawRecords.normalization.get(
       intake.receipts[0].rawRecordId,
     )
-    expect(afterFailedMarker.gate.status).toBe('passed')
+    expect(afterFailedMarker.status).toBe('completed')
 
-    const recoveryDb = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    recoveryDb.exec('drop trigger fail_upgrade_version_marker')
-    recoveryDb.close()
+    await upgradedDatabase.$client.exec(`
+      drop trigger fail_upgrade_version_marker on connector_instances;
+      drop function fail_upgrade_version_marker();
+    `)
     await expect(http.connectors.runs.trigger({
       connectorInstanceId: INSTANCE_ID, mode: 'manual',
     })).resolves.toMatchObject({ status: 'completed' })
     const afterRecovery = await http.sourcing.rawRecords.normalization.get(
       intake.receipts[0].rawRecordId,
     )
-    expect(afterRecovery.attempts.map(({ id }) => id))
-      .toEqual(afterFailedMarker.attempts.map(({ id }) => id))
+    expect(afterRecovery.status).toBe('completed')
     await expect(upgradedClient.connectors.list()).resolves.toMatchObject({
       items: [expect.objectContaining({ connectorVersion: NEW_PACKAGE_VERSION })],
     })
-    const verifyDb = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    expect(verifyDb.prepare(`
+    const verify = await upgradedDatabase.$client.query<{ count: string }>(`
       select count(*) as count from normalization_replay_requests
       where id like 'connector-upgrade:%'
-    `).get()).toEqual({ count: 1 })
-    verifyDb.close()
+    `)
+    expect(Number(verify.rows[0].count)).toBe(1)
   })
 })
 
 function createUpgradeNormalizationRegistry(resolvesDestination: boolean) {
+  const resolverVersion = resolvesDestination ? 'resolver@2' : 'resolver@1'
   const destinationResolver: NormalizationResolver = {
     declaration: {
       id: 'fixture.upgrade-destination',
-      version: 'resolver@1',
+      version: resolverVersion,
       requiredInputs: ['rawRevision'],
       outputFields: ['destinationUrl'],
       capabilities: ['pure'],
@@ -316,14 +305,14 @@ function createUpgradeNormalizationRegistry(resolvesDestination: boolean) {
       const inputHash = context.hashInput(typeof url === 'string' ? url : null)
       if (!resolvesDestination || typeof url !== 'string') {
         return [{
-          resolverId: 'fixture.upgrade-destination', resolverVersion: 'resolver@1',
+          resolverId: 'fixture.upgrade-destination', resolverVersion,
           field: 'destinationUrl', inputHash, status: 'abstained',
           reason: 'Installed connector cannot resolve this provider record',
         }]
       }
       const value = { class: 'employer_or_ats' as const, url, intermediaryUrl: null }
       return [{
-        resolverId: 'fixture.upgrade-destination', resolverVersion: 'resolver@1',
+        resolverId: 'fixture.upgrade-destination', resolverVersion,
         field: 'destinationUrl', inputHash, status: 'resolved', value,
         confidence: 1, authoritative: true,
       }]

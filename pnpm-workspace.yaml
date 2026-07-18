@@ -4,7 +4,6 @@ minimumReleaseAgeExclude:
 
 allowBuilds:
   lefthook: true
-  better-sqlite3: true
   electron: true
   electron-winstaller: true
   esbuild: false

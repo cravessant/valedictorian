@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import {
   createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
@@ -45,7 +45,7 @@ describe('disabled connector execution', () => {
       },
     }
     const workspaceId = 'disabled-connector-workspace'
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       seedDataMode: 'none',
       pgliteDataPath: createScheduleHttpTempDatabasePath(),

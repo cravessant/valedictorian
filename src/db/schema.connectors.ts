@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { boolean, index, integer, primaryKey, pgTable, text, unique, uniqueIndex } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 const timestamps = {
@@ -7,7 +7,7 @@ const timestamps = {
   deletedAt: text('deleted_at'),
 }
 
-export const connectorInstances = sqliteTable(
+export const connectorInstances = pgTable(
   'connector_instances',
   {
     id: text('id').primaryKey(),
@@ -15,7 +15,7 @@ export const connectorInstances = sqliteTable(
     connectorId: text('connector_id').notNull(),
     connectorVersion: text('connector_version').notNull(),
     displayName: text('display_name').notNull(),
-    enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+    enabled: boolean('enabled').notNull(),
     configJson: text('config_json').notNull(),
     authJson: text('auth_json').notNull().default('[]'),
     filtersJson: text('filters_json').notNull().default('{}'),
@@ -28,7 +28,7 @@ export const connectorInstances = sqliteTable(
   }),
 )
 
-export const connectorRuns = sqliteTable(
+export const connectorRuns = pgTable(
   'connector_runs',
   {
     id: text('id').primaryKey(),
@@ -53,7 +53,7 @@ export const connectorRuns = sqliteTable(
     ...timestamps,
   },
   (table) => ({
-    ownerIdx: uniqueIndex('idx_connector_runs_id_instance').on(
+    ownerIdx: unique('idx_connector_runs_id_instance').on(
       table.id,
       table.connectorInstanceId,
     ),
@@ -71,7 +71,7 @@ export const connectorRuns = sqliteTable(
   }),
 )
 
-export const connectorCheckpoints = sqliteTable(
+export const connectorCheckpoints = pgTable(
   'connector_checkpoints',
   {
     connectorInstanceId: text('connector_instance_id')
@@ -93,7 +93,7 @@ export const connectorCheckpoints = sqliteTable(
   }),
 )
 
-export const connectorObservations = sqliteTable(
+export const connectorObservations = pgTable(
   'connector_observations',
   {
     id: text('id').primaryKey(),
@@ -132,7 +132,7 @@ export const connectorObservations = sqliteTable(
   }),
 )
 
-export const connectorSchedules = sqliteTable(
+export const connectorSchedules = pgTable(
   'connector_schedules',
   {
     id: text('id').primaryKey(),
@@ -155,7 +155,7 @@ export const connectorSchedules = sqliteTable(
 )
 
 /** Immutable configuration/state snapshots keyed by schedule revision identity. */
-export const connectorScheduleRevisions = sqliteTable(
+export const connectorScheduleRevisions = pgTable(
   'connector_schedule_revisions',
   {
     revision: text('revision').primaryKey(),
@@ -175,7 +175,7 @@ export const connectorScheduleRevisions = sqliteTable(
   }),
 )
 
-export const connectorScheduleEvents = sqliteTable(
+export const connectorScheduleEvents = pgTable(
   'connector_schedule_events',
   {
     id: text('id').primaryKey(),
@@ -192,7 +192,7 @@ export const connectorScheduleEvents = sqliteTable(
   }),
 )
 
-export const connectorScheduleOccurrences = sqliteTable(
+export const connectorScheduleOccurrences = pgTable(
   'connector_schedule_occurrences',
   {
     id: text('id').primaryKey(),

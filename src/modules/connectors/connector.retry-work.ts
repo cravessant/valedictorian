@@ -5,7 +5,7 @@ import {
   connectorCheckpoints,
   retryWork,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { AcquiredRetryWork } from './connector-retry-work.identity-types'
 import type { ConnectorCheckpointPayload } from './connector-checkpoint.persistence-types'
 import {
@@ -17,7 +17,7 @@ import {
 } from './jobright.constants'
 
 type RetryWorkRow = typeof retryWork.$inferSelect
-type RetryWorkDatabase = Pick<DrizzleDatabase, 'insert' | 'select' | 'update'>
+type RetryWorkDatabase = Pick<PgliteDatabase, 'insert' | 'select' | 'update'>
 
 const JOBRIGHT_PUBLIC_SOURCE_PREFIX = 'jobright.public:'
 
@@ -44,7 +44,7 @@ export function retryAdviceFromWork(
   })
 }
 
-export function synchronizeConnectorRetryWork(
+export async function synchronizeConnectorRetryWork(
   database: RetryWorkDatabase,
   input: {
     advice: RetryAdvice | null
@@ -59,55 +59,57 @@ export function synchronizeConnectorRetryWork(
     runId: string
   },
 ) {
-  const acquiredNormalization = database.select().from(retryWork).where(and(
+  const acquiredNormalization = await database.select().from(retryWork).where(and(
     eq(retryWork.kind, 'normalization'),
     eq(retryWork.state, 'acquired'),
     eq(retryWork.acquisitionRunId, input.runId),
     notProviderUrlWork(),
-  )).all()
+  ))
   // Validate Jobright v5 pending-retry ledger when present, but never infer
   // normalization completion from provider-id disappearance. Exact acquired
   // rows complete only through normalization persistence.
   currentJobrightRetryProviderRecordIds(input.checkpoint)
   if (!input.preserveAcquiredNormalizationWork) {
     for (const work of acquiredNormalization) {
-      database.update(retryWork).set({
+      await database.update(retryWork).set({
         state: 'scheduled',
         nextAttemptAt: work.nextAttemptAt,
         acquiredAt: null,
         acquisitionToken: null,
         acquisitionRunId: null,
         updatedAt: input.now,
-      }).where(eq(retryWork.id, work.id)).run()
+      }).where(eq(retryWork.id, work.id))
     }
   }
-  const normalizationOwnedAdvice = input.advice && database.select({ id: retryWork.id })
+  const [normalizationOwnedAdvice] = input.advice
+    ? await database.select({ id: retryWork.id })
     .from(retryWork)
     .where(and(
       eq(retryWork.kind, 'normalization'),
       eq(retryWork.state, 'scheduled'),
-      sql`json_extract(${retryWork.lineageJson}, '$.connectorRunId') = ${input.runId}`,
+      sql`(${retryWork.lineageJson}::jsonb ->> 'connectorRunId') = ${input.runId}`,
       notProviderUrlWork(),
       isNull(retryWork.deletedAt),
-    )).get()
+    )).limit(1)
+    : []
   if (normalizationOwnedAdvice) return
   const generation = input.connectorVersion
-  const existing = database.select().from(retryWork).where(and(
+  const [existing] = await database.select().from(retryWork).where(and(
     eq(retryWork.kind, 'connector_capture'),
     eq(retryWork.connectorInstanceId, input.connectorInstanceId),
     eq(retryWork.filterSignature, input.filterSignature),
     eq(retryWork.checkpointSchemaVersion, input.checkpointSchemaVersion),
     eq(retryWork.checkpointGeneration, generation),
     isNull(retryWork.deletedAt),
-  )).get()
+  )).limit(1)
 
   if (!input.advice) {
     if (existing?.state === 'acquired' && existing.acquisitionRunId === input.runId) {
-      database.update(retryWork).set({
+      await database.update(retryWork).set({
         state: 'completed',
         nextAttemptAt: null,
         updatedAt: input.now,
-      }).where(eq(retryWork.id, existing.id)).run()
+      }).where(eq(retryWork.id, existing.id))
     }
     return
   }
@@ -138,11 +140,11 @@ export function synchronizeConnectorRetryWork(
   } as const
 
   if (existing) {
-    database.update(retryWork).set(values).where(eq(retryWork.id, existing.id)).run()
+    await database.update(retryWork).set(values).where(eq(retryWork.id, existing.id))
     return
   }
 
-  database.insert(retryWork).values({
+  await database.insert(retryWork).values({
     id: randomUUID(),
     kind: 'connector_capture',
     connectorInstanceId: input.connectorInstanceId,
@@ -156,7 +158,7 @@ export function synchronizeConnectorRetryWork(
     ...values,
     createdAt: input.now,
     deletedAt: null,
-  }).run()
+  })
 }
 
 export function assertValidJobrightV5CheckpointRetryState(checkpoint: ConnectorCheckpointPayload) {
@@ -230,8 +232,8 @@ export function mapAcquiredRetryWork(work: RetryWorkRow): AcquiredRetryWork {
   }
 }
 
-export function selectPendingRetryWork(
-  database: RetryWorkDatabase & Pick<DrizzleDatabase, 'select'>,
+export async function selectPendingRetryWork(
+  database: RetryWorkDatabase,
   input: {
     connectorInstanceId: string
     connectorId: string
@@ -243,7 +245,7 @@ export function selectPendingRetryWork(
   },
 ) {
   const activeJobrightProviderIds = input.connectorId === JOBRIGHT_CONNECTOR_ID
-    ? selectActiveJobrightProviderIds(database, input)
+    ? await selectActiveJobrightProviderIds(database, input)
     : null
   const capturePredicate = (state: 'scheduled' | 'acquired') => and(
     eq(retryWork.kind, 'connector_capture'),
@@ -253,15 +255,14 @@ export function selectPendingRetryWork(
     scopeAvailableAt(input.now),
     isNull(retryWork.deletedAt),
   )
-  const captureAcquired = database.select().from(retryWork)
-    .where(capturePredicate('acquired')).limit(1).all()
-  const captureScheduled = database
+  const captureAcquired = await database.select().from(retryWork)
+    .where(capturePredicate('acquired')).orderBy(asc(retryWork.id)).limit(1)
+  const captureScheduled = await database
     .select()
     .from(retryWork)
     .where(capturePredicate('scheduled'))
-    .orderBy(asc(retryWork.nextAttemptAt))
+    .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt), asc(retryWork.id))
     .limit(1)
-    .all()
   const normalizationPredicate = (state: 'scheduled' | 'acquired') => and(
     eq(retryWork.kind, 'normalization'),
     eq(retryWork.executionScopeId, input.executionScopeId),
@@ -279,17 +280,16 @@ export function selectPendingRetryWork(
   )
   const normalizationAcquired = input.retryKind === 'connector_capture'
     ? []
-    : database.select().from(retryWork)
-      .where(normalizationPredicate('acquired')).limit(1).all()
+    : await database.select().from(retryWork)
+      .where(normalizationPredicate('acquired')).orderBy(asc(retryWork.id)).limit(1)
   const normalizationScheduled = input.retryKind === 'connector_capture'
     ? []
-    : database
+    : await database
       .select()
       .from(retryWork)
       .where(normalizationPredicate('scheduled'))
-      .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt))
+      .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt), asc(retryWork.id))
       .limit(1)
-      .all()
   const retryCandidates = [
     ...captureAcquired, ...normalizationAcquired,
     ...captureScheduled, ...normalizationScheduled,
@@ -304,7 +304,7 @@ export function selectPendingRetryWork(
 }
 
 function notProviderUrlWork() {
-  return sql`coalesce(json_extract(${retryWork.lineageJson}, '$.workKind'), '') <> 'provider_url_resolution'`
+  return sql`coalesce(${retryWork.lineageJson}::jsonb ->> 'workKind', '') <> 'provider_url_resolution'`
 }
 
 function scopeAvailableAt(now: string) {
@@ -316,8 +316,8 @@ function scopeAvailableAt(now: string) {
   )`
 }
 
-function selectActiveJobrightProviderIds(
-  database: RetryWorkDatabase & Pick<DrizzleDatabase, 'select'>,
+async function selectActiveJobrightProviderIds(
+  database: RetryWorkDatabase,
   input: {
     connectorInstanceId: string
     connectorId: string
@@ -326,7 +326,7 @@ function selectActiveJobrightProviderIds(
     filterSignature: string
   },
 ) {
-  const authenticatedRetry = database.select({ id: retryWork.id }).from(retryWork).where(and(
+  const [authenticatedRetry] = await database.select({ id: retryWork.id }).from(retryWork).where(and(
     eq(retryWork.kind, 'normalization'),
     eq(retryWork.executionScopeId, input.executionScopeId),
     eq(retryWork.resolverId, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID),
@@ -334,9 +334,9 @@ function selectActiveJobrightProviderIds(
     inArray(retryWork.state, ['scheduled', 'acquired']),
     notProviderUrlWork(),
     isNull(retryWork.deletedAt),
-  )).limit(1).get()
+  )).limit(1)
   if (!authenticatedRetry) return null
-  const checkpointRow = database
+  const [checkpointRow] = await database
     .select()
     .from(connectorCheckpoints)
     .where(and(
@@ -344,7 +344,7 @@ function selectActiveJobrightProviderIds(
       eq(connectorCheckpoints.filterSignature, input.filterSignature),
       isNull(connectorCheckpoints.deletedAt),
     ))
-    .get()
+    .limit(1)
 
   if (!checkpointRow) {
     return []
@@ -412,13 +412,13 @@ function selectActiveJobrightProviderIds(
 function currentJobrightRevision(providerRecordIds: string[]) {
   const values = sql.join(providerRecordIds.map((id) => sql`${id}`), sql`, `)
   return sql`exists (
-    select 1 from capture_evidence_versions current indexed by idx_capture_evidence_versions_provider_current
+    select 1 from capture_evidence_versions current
     where current.id = ${retryWork.captureEvidenceVersionId}
       and current.provider_record_id in (${values})
       and current.id = (
         select latest.id from capture_evidence_versions latest
         where latest.capture_lineage_id = current.capture_lineage_id
-        order by latest.revision desc limit 1
+        order by latest.revision desc, latest.created_at desc, latest.id desc limit 1
       )
   )`
 }

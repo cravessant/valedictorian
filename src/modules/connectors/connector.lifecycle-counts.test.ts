@@ -11,19 +11,17 @@ import {
   sources,
   workflowRuns,
 } from '../../db/schema'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteRawSourceRepository } from '../sourcing/raw-source.repository'
+import type { PgliteDatabase } from '../../db/pglite'
+import { createPgliteRawSourceRepository } from '../sourcing/raw-source.repository'
 import { reconcileConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
-import { createSqliteConnectorRepository } from './connector.repository'
+import { createPgliteConnectorRepository } from './connector.repository'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 import { completedConnectorRefreshContract } from './connector-refresh-result.test-helpers'
 
 describe('connector run lifecycle counts', () => {
   it('reconciles provider rows while repeated occurrences remain one captured record', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectors = createSqliteConnectorRepository(database)
-    const rawSources = createSqliteRawSourceRepository(
+    const { database, repository: connectors } = await createConnectorRepositoryTestContext()
+    const rawSources = createPgliteRawSourceRepository(
       database,
       () => new Date('2026-07-11T17:00:00.000Z'),
     )
@@ -81,7 +79,7 @@ describe('connector run lifecycle counts', () => {
       },
     ] })
 
-    expect(reconcileConnectorRunLifecycleCounts(database, run)).toMatchObject({
+    expect(await reconcileConnectorRunLifecycleCounts(database, run)).toMatchObject({
       scope: { kind: 'connector_run', connectorRunId: run.id, executionScopeId: run.executionScopeId },
       provider: {
         returnedRows: 4,
@@ -125,10 +123,10 @@ describe('connector run lifecycle counts', () => {
       }
       await fixture.rawSources.ingestBatch({ records: [record, record] })
 
-      expect(reconcileConnectorRunLifecycleCounts(fixture.database, {
+      expect((await reconcileConnectorRunLifecycleCounts(fixture.database, {
         ...fixture.run,
         stats,
-      }).provider).toMatchObject({
+      })).provider).toMatchObject({
         returnedRows: 0,
         capturedRecords: 1,
         occurrenceCount: 2,
@@ -171,10 +169,10 @@ describe('connector run lifecycle counts', () => {
         }] })
       }
 
-      expect(reconcileConnectorRunLifecycleCounts(fixture.database, {
+      expect((await reconcileConnectorRunLifecycleCounts(fixture.database, {
         ...fixture.run,
         stats,
-      }).provider).toMatchObject({ invariant, gaps })
+      })).provider).toMatchObject({ invariant, gaps })
     },
   )
 
@@ -201,10 +199,10 @@ describe('connector run lifecycle counts', () => {
         providerSchema: 'jobright-visitor-list@1',
         payload: { jobResult: { jobId: `job-${index}` } },
       }] })).receipts[0]
-      persistNormalizationOutcome(fixture.database, receipt, outcome, index)
+await persistNormalizationOutcome(fixture.database, receipt, outcome, index)
     }
 
-    expect(reconcileConnectorRunLifecycleCounts(fixture.database, fixture.run)).toMatchObject({
+    expect(await reconcileConnectorRunLifecycleCounts(fixture.database, fixture.run)).toMatchObject({
       destination: {
         normalized: 2,
         resolvedEmployerOrAts: 1,
@@ -232,9 +230,9 @@ describe('connector run lifecycle counts', () => {
       providerSchema: 'jobright-visitor-list@1',
       payload: { jobResult: { jobId: 'job-resolved-needs-enrichment' } },
     }] })).receipts[0]
-    persistResolvedDestinationNeedsEnrichment(fixture.database, receipt, 60)
+await persistResolvedDestinationNeedsEnrichment(fixture.database, receipt, 60)
 
-    expect(reconcileConnectorRunLifecycleCounts(fixture.database, {
+    expect(await reconcileConnectorRunLifecycleCounts(fixture.database, {
       ...fixture.run,
       stats: {
         observations: 0,
@@ -283,11 +281,11 @@ describe('connector run lifecycle counts', () => {
         providerSchema: 'jobright-visitor-list@1',
         payload: { jobResult: { jobId: `job-${index}` } },
       }] })).receipts[0]
-      persistNormalizationOutcome(fixture.database, receipt, 'employer_or_ats', index)
-      persistFinding(fixture.database, receipt.sourceEntityId!, index, disposition)
+await persistNormalizationOutcome(fixture.database, receipt, 'employer_or_ats', index)
+await persistFinding(fixture.database, receipt.sourceEntityId!, index, disposition)
     }
 
-    expect(reconcileConnectorRunLifecycleCounts(fixture.database, fixture.run)).toMatchObject({
+    expect(await reconcileConnectorRunLifecycleCounts(fixture.database, fixture.run)).toMatchObject({
       sourcing: {
         added: 2,
         queueDuplicate: 1,
@@ -314,26 +312,26 @@ describe('connector run lifecycle counts', () => {
       providerSchema: 'jobright-visitor-list@1',
       payload: { jobResult: { jobId: 'job-frozen' } },
     }] })).receipts[0]
-    persistNormalizationOutcome(fixture.database, receipt, 'employer_or_ats', 30)
-    persistFinding(fixture.database, receipt.sourceEntityId!, 30, { status: 'new' })
+await persistNormalizationOutcome(fixture.database, receipt, 'employer_or_ats', 30)
+await persistFinding(fixture.database, receipt.sourceEntityId!, 30, { status: 'new' })
 
-    const repository = createSqliteConnectorRepository(fixture.database)
-    fixture.database.update(connectorRuns).set({
+    const repository = createPgliteConnectorRepository(fixture.database)
+    await fixture.database.update(connectorRuns).set({
       status: 'running',
       completedAt: null,
-    }).where(eq(connectorRuns.id, fixture.run.id)).run()
+    }).where(eq(connectorRuns.id, fixture.run.id))
     await repository.completeRun({
       connectorRunId: fixture.run.id,
             executionScopeId: fixture.run.executionScopeId,
       completedAt: '2026-07-11T17:04:01.000Z',
       status: 'completed',
     })
-    fixture.database.update(opportunities).set({
+    await fixture.database.update(opportunities).set({
       mergeStatus: 'not_fit',
       dispositionReason: 'Changed after the connector run completed.',
-    }).where(eq(opportunities.id, 'finding-30')).run()
+    }).where(eq(opportunities.id, 'finding-30'))
 
-    const reloaded = await createSqliteConnectorRepository(fixture.database).listRuns({
+    const reloaded = await createPgliteConnectorRepository(fixture.database).listRuns({
       connectorInstanceId: fixture.connectorInstanceId,
     })
     expect(reloaded.items[0].stats).toMatchObject({
@@ -359,10 +357,10 @@ describe('connector run lifecycle counts', () => {
       payload: { jobResult: { jobId: 'job-restart' } },
     }
     const firstReceipt = (await first.rawSources.ingestBatch({ records: [raw] })).receipts[0]
-    persistNormalizationOutcome(first.database, firstReceipt, 'employer_or_ats', 40)
-    persistFinding(first.database, firstReceipt.sourceEntityId!, 40, { status: 'new' })
+await persistNormalizationOutcome(first.database, firstReceipt, 'employer_or_ats', 40)
+await persistFinding(first.database, firstReceipt.sourceEntityId!, 40, { status: 'new' })
 
-    const connectors = createSqliteConnectorRepository(first.database)
+    const connectors = createPgliteConnectorRepository(first.database)
     const restartedRun = await connectors.recordRefreshResult({
       connectorInstanceId: first.connectorInstanceId,
       mode: 'manual',
@@ -389,7 +387,7 @@ describe('connector run lifecycle counts', () => {
       },
     }] })
 
-    expect(reconcileConnectorRunLifecycleCounts(first.database, restartedRun)).toMatchObject({
+    expect(await reconcileConnectorRunLifecycleCounts(first.database, restartedRun)).toMatchObject({
       provider: { capturedRecords: 1, occurrenceCount: 1 },
       destination: { normalized: 1, resolvedEmployerOrAts: 1 },
       sourcing: { added: 0, queueDuplicate: 1 },
@@ -415,10 +413,10 @@ describe('connector run lifecycle counts', () => {
         executionScopeId: fixture.run.executionScopeId,
       },
     }] })).receipts[0]
-    persistNormalizationOutcome(fixture.database, firstReceipt, 'employer_or_ats', 7)
-    persistFinding(fixture.database, firstReceipt.sourceEntityId!, 7, { status: 'new' })
+await persistNormalizationOutcome(fixture.database, firstReceipt, 'employer_or_ats', 7)
+await persistFinding(fixture.database, firstReceipt.sourceEntityId!, 7, { status: 'new' })
 
-    const later = await createSqliteConnectorRepository(fixture.database).recordRefreshResult({
+    const later = await createPgliteConnectorRepository(fixture.database).recordRefreshResult({
       connectorInstanceId: fixture.connectorInstanceId,
       mode: 'manual',
       startedAt: '2026-07-11T17:06:00.000Z',
@@ -441,9 +439,9 @@ describe('connector run lifecycle counts', () => {
         executionScopeId: later.executionScopeId,
       },
     }] })).receipts[0]
-    persistNormalizationOutcome(fixture.database, laterReceipt, 'employer_or_ats', 8)
+await persistNormalizationOutcome(fixture.database, laterReceipt, 'employer_or_ats', 8)
 
-    expect(reconcileConnectorRunLifecycleCounts(fixture.database, later)).toMatchObject({
+    expect(await reconcileConnectorRunLifecycleCounts(fixture.database, later)).toMatchObject({
       destination: { normalized: 1 },
       sourcing: { added: 0, queueDuplicate: 1 },
     })
@@ -463,10 +461,10 @@ describe('connector run lifecycle counts', () => {
       providerSchema: 'jobright-visitor-list@1',
       payload: { jobResult: { jobId: 'job-retry' } },
     }] })).receipts[0]
-    persistNormalizationOutcome(fixture.database, receipt, 'pending', 50)
-    persistNormalizationOutcome(fixture.database, receipt, 'pending', 51)
+await persistNormalizationOutcome(fixture.database, receipt, 'pending', 50)
+await persistNormalizationOutcome(fixture.database, receipt, 'pending', 51)
 
-    const counts = reconcileConnectorRunLifecycleCounts(fixture.database, {
+    const counts = await reconcileConnectorRunLifecycleCounts(fixture.database, {
       ...fixture.run,
       stats: { attempted: 3 },
     })
@@ -479,10 +477,7 @@ describe('connector run lifecycle counts', () => {
 })
 
 async function createRunFixture(id: string) {
-  const sqlite = createInMemoryDatabase()
-  migrateDatabase(sqlite)
-  const database = createDrizzleDatabase(sqlite)
-  const connectors = createSqliteConnectorRepository(database)
+  const { database, repository: connectors } = await createConnectorRepositoryTestContext()
   const connectorInstanceId = `connector-${id}`
   await connectors.upsertInstance({
     id: connectorInstanceId,
@@ -511,20 +506,20 @@ async function createRunFixture(id: string) {
   return {
     connectorInstanceId,
     database,
-    rawSources: createSqliteRawSourceRepository(database),
+    rawSources: createPgliteRawSourceRepository(database),
     run,
   }
 }
 
-function persistResolvedDestinationNeedsEnrichment(
-  database: ReturnType<typeof createDrizzleDatabase>,
-  receipt: Awaited<ReturnType<ReturnType<typeof createSqliteRawSourceRepository>['ingestBatch']>>['receipts'][number],
+async function persistResolvedDestinationNeedsEnrichment(
+  database: PgliteDatabase,
+  receipt: Awaited<ReturnType<ReturnType<typeof createPgliteRawSourceRepository>['ingestBatch']>>['receipts'][number],
   index: number,
 ) {
   const runId = `normalization-${index}`
   const attemptId = `attempt-${index}`
   const createdAt = `2026-07-11T17:01:${String(index).padStart(2, '0')}.000Z`
-  database.insert(normalizationRuns).values({
+await database.insert(normalizationRuns).values({
     id: runId,
     captureLineageId: receipt.rawRecordId,
     captureEvidenceVersionId: receipt.revision.id,
@@ -540,8 +535,8 @@ function persistResolvedDestinationNeedsEnrichment(
     status: 'completed',
     createdAt,
     updatedAt: createdAt,
-  }).run()
-  database.insert(normalizationAttempts).values({
+  })
+await database.insert(normalizationAttempts).values({
     id: attemptId,
     runId,
     captureEvidenceVersionId: receipt.revision.id,
@@ -554,8 +549,8 @@ function persistResolvedDestinationNeedsEnrichment(
     status: 'completed',
     startedAt: createdAt,
     completedAt: createdAt,
-  }).run()
-  database.insert(normalizationFieldOutcomes).values({
+  })
+await database.insert(normalizationFieldOutcomes).values({
     id: `outcome-${index}`,
     runId,
     attemptId,
@@ -572,8 +567,8 @@ function persistResolvedDestinationNeedsEnrichment(
       class: 'employer_or_ats',
       url: `https://example.test/${index}`,
     }),
-  }).run()
-  database.insert(normalizationGates).values({
+  })
+await database.insert(normalizationGates).values({
     id: `gate-${index}`,
     runId,
     policyVersion: 'normalization-gate/v1',
@@ -586,12 +581,12 @@ function persistResolvedDestinationNeedsEnrichment(
       reason: 'conflicting canonicalIdentity',
     }),
     evaluatedAt: createdAt,
-  }).run()
+  })
 }
 
-function persistNormalizationOutcome(
-  database: ReturnType<typeof createDrizzleDatabase>,
-  receipt: Awaited<ReturnType<ReturnType<typeof createSqliteRawSourceRepository>['ingestBatch']>>['receipts'][number],
+async function persistNormalizationOutcome(
+  database: PgliteDatabase,
+  receipt: Awaited<ReturnType<ReturnType<typeof createPgliteRawSourceRepository>['ingestBatch']>>['receipts'][number],
   outcome: 'employer_or_ats' | 'third_party_job_posting' | 'unresolved' | 'pending' | 'gate_rejected',
   index: number,
 ) {
@@ -600,7 +595,7 @@ function persistNormalizationOutcome(
   const candidateId = outcome === 'employer_or_ats' || outcome === 'third_party_job_posting'
     ? `candidate-${index}`
     : null
-  database.insert(normalizationRuns).values({
+await database.insert(normalizationRuns).values({
     id: runId,
     captureLineageId: receipt.rawRecordId,
     captureEvidenceVersionId: receipt.revision.id,
@@ -616,8 +611,8 @@ function persistNormalizationOutcome(
     status: 'completed',
     createdAt: `2026-07-11T17:01:0${index}.000Z`,
     updatedAt: `2026-07-11T17:01:0${index}.000Z`,
-  }).run()
-  database.insert(normalizationAttempts).values({
+  })
+await database.insert(normalizationAttempts).values({
     id: attemptId,
     runId,
     captureEvidenceVersionId: receipt.revision.id,
@@ -630,8 +625,8 @@ function persistNormalizationOutcome(
     status: 'completed',
     startedAt: `2026-07-11T17:01:0${index}.000Z`,
     completedAt: `2026-07-11T17:01:0${index}.000Z`,
-  }).run()
-  database.insert(normalizationFieldOutcomes).values({
+  })
+await database.insert(normalizationFieldOutcomes).values({
     id: `outcome-${index}`,
     runId,
     attemptId,
@@ -650,9 +645,9 @@ function persistNormalizationOutcome(
     resolverVersion: '1.0.0',
     inputHash: `input-${index}`,
     outcomeJson: JSON.stringify({ status: outcome }),
-  }).run()
+  })
   if (candidateId && receipt.sourceEntityId) {
-    database.insert(jobFactVersions).values({
+await database.insert(jobFactVersions).values({
       id: candidateId,
       runId,
       jobId: receipt.sourceEntityId,
@@ -666,14 +661,14 @@ function persistNormalizationOutcome(
         },
       }),
       createdAt: `2026-07-11T17:01:0${index}.000Z`,
-    }).run()
+    })
   }
   const gateStatus = candidateId
     ? 'passed'
     : outcome === 'gate_rejected'
       ? 'rejected'
       : 'needs_enrichment'
-  database.insert(normalizationGates).values({
+await database.insert(normalizationGates).values({
     id: `gate-${index}`,
     runId,
     policyVersion: 'normalization-gate/v1',
@@ -681,11 +676,11 @@ function persistNormalizationOutcome(
     jobFactVersionId: candidateId,
     gateJson: JSON.stringify({ status: gateStatus }),
     evaluatedAt: `2026-07-11T17:01:0${index}.000Z`,
-  }).run()
+  })
 }
 
-function persistFinding(
-  database: ReturnType<typeof createDrizzleDatabase>,
+async function persistFinding(
+  database: PgliteDatabase,
   sourceEntityId: string,
   index: number,
   disposition: {
@@ -695,15 +690,15 @@ function persistFinding(
   },
 ) {
   const timestamp = `2026-07-11T17:03:${index}.000Z`
-  database.insert(sources).values({
+await database.insert(sources).values({
     id: `source-${index}`,
     name: `Source ${index}`,
     accountHint: null,
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
-  }).run()
-  database.insert(workflowRuns).values({
+  })
+await database.insert(workflowRuns).values({
     id: `workflow-${index}`,
     runType: 'sourcing',
     status: 'completed',
@@ -724,8 +719,8 @@ function persistFinding(
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
-  }).run()
-  database.insert(opportunities).values({
+  })
+await database.insert(opportunities).values({
     id: `finding-${index}`,
     projectionIdentityKey: `source_entity:${sourceEntityId}`,
     projectionAliasesJson: '[]',
@@ -776,5 +771,5 @@ function persistFinding(
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
-  }).run()
+  })
 }

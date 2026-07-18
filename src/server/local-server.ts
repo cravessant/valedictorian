@@ -94,10 +94,12 @@ export async function createValedictorianHttpServer({
 
   const address = server.address()
   const resolvedPort = typeof address === 'object' && address ? address.port : port
+  let closePromise: Promise<void> | null = null
 
   return {
     close() {
-      return new Promise((resolve, reject) => {
+      if (closePromise) return closePromise
+      closePromise = new Promise((resolve, reject) => {
         server.close((error) => {
           if (error) {
             reject(error)
@@ -106,6 +108,7 @@ export async function createValedictorianHttpServer({
           }
         })
       })
+      return closePromise
     },
     host,
     onClosed(listener) {

@@ -1,9 +1,9 @@
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import {
   connectorRuns,
   retryWork,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import { hasPersistedExactSuccessfulNormalizationAttempt } from '../sourcing/normalization.repository'
 import { freezeConnectorRunLifecycleCounts } from './connector.lifecycle-counts'
 import { finalizeInProgressConnectorSynchronization } from './connector-synchronization.persistence'
@@ -26,21 +26,14 @@ export type ExactAcquiredNormalizationFinalizationMode =
   | 'require-persisted-exact-success'
   | 'complete-only-on-persisted-exact-success'
 
-export function releaseAcquiredNormalizationWorkForRun(
-  database: DrizzleDatabase,
+export async function releaseAcquiredNormalizationWorkForRun(
+  database: PgliteDatabase,
   input: {
     connectorRunId: string
     completedAt: string
   },
 ) {
-  try {
-    // A failed finalization transaction can leave SQLite needing an explicit
-    // rollback before later release statements can apply.
-    database.run(sql`rollback`)
-  } catch {
-    // No open transaction to roll back.
-  }
-  database.update(retryWork).set({
+  await database.update(retryWork).set({
     state: 'scheduled',
     acquiredAt: null,
     acquisitionToken: null,
@@ -50,11 +43,11 @@ export function releaseAcquiredNormalizationWorkForRun(
     eq(retryWork.state, 'acquired'),
     eq(retryWork.acquisitionRunId, input.connectorRunId),
     isNull(retryWork.deletedAt),
-  )).run()
+  ))
 }
 
-export function finalizeExactAcquiredNormalizationRetry(
-  database: DrizzleDatabase,
+export async function finalizeExactAcquiredNormalizationRetry(
+  database: PgliteDatabase,
   input: {
     acquiredRetryWork: {
       acquisitionRunId: string
@@ -74,9 +67,12 @@ export function finalizeExactAcquiredNormalizationRetry(
     savedAt: string
     terminalStatus: ConnectorRunTerminalStatus
   },
-): ConnectorRunRecord {
-  return database.transaction((transaction) => {
-    const run = transaction
+): Promise<ConnectorRunRecord> {
+  if (input.acquiredRetryWork.acquisitionRunId !== input.connectorRunId) {
+    throw new Error('Exact normalization retry acquisition does not match the finalizing run')
+  }
+  return database.transaction(async (transaction) => {
+    const [run] = await transaction
       .select()
       .from(connectorRuns)
       .where(and(
@@ -85,12 +81,13 @@ export function finalizeExactAcquiredNormalizationRetry(
         eq(connectorRuns.status, 'running'),
         isNull(connectorRuns.deletedAt),
       ))
-      .get()
+      .limit(1)
+      .for('update')
     if (!run) {
       throw new Error(`Running connector run not found: ${input.connectorRunId}`)
     }
 
-    const work = transaction.select().from(retryWork).where(and(
+    const [work] = await transaction.select().from(retryWork).where(and(
       eq(retryWork.id, input.acquiredRetryWork.retryWorkId),
       eq(retryWork.kind, 'normalization'),
       eq(retryWork.captureEvidenceVersionId, input.acquiredRetryWork.rawRevisionId),
@@ -98,12 +95,12 @@ export function finalizeExactAcquiredNormalizationRetry(
       eq(retryWork.resolverVersion, input.acquiredRetryWork.resolverVersion),
       eq(retryWork.inputHash, input.acquiredRetryWork.inputHash),
       isNull(retryWork.deletedAt),
-    )).get()
+    )).limit(1).for('update')
     if (!work) {
       throw new Error('Exact acquired normalization retry identity was not found for finalization')
     }
 
-    const exactSuccess = hasPersistedExactSuccessfulNormalizationAttempt(transaction, {
+    const exactSuccess = await hasPersistedExactSuccessfulNormalizationAttempt(transaction, {
       rawRevisionId: input.acquiredRetryWork.rawRevisionId,
       resolverId: input.acquiredRetryWork.resolverId,
       resolverVersion: input.acquiredRetryWork.resolverVersion,
@@ -111,19 +108,15 @@ export function finalizeExactAcquiredNormalizationRetry(
       retryWindowStartedAt: work.lastAttemptAt,
     })
 
-    if (input.finalizationMode === 'require-persisted-exact-success') {
-      if (!exactSuccess) {
-        throw new Error('Exact successful normalization attempt was not found for finalization')
-      }
-      if (work.state !== 'acquired' || work.acquisitionRunId !== input.acquiredRetryWork.acquisitionRunId) {
-        throw new Error('Exact acquired normalization retry is not acquired for finalization')
-      }
-    } else if (work.state === 'acquired' && work.acquisitionRunId !== input.acquiredRetryWork.acquisitionRunId) {
-      throw new Error('Exact normalization retry acquisition does not match the finalizing run')
+    if (input.finalizationMode === 'require-persisted-exact-success' && !exactSuccess) {
+      throw new Error('Exact successful normalization attempt was not found for finalization')
+    }
+    if (work.state !== 'acquired' || work.acquisitionRunId !== input.connectorRunId) {
+      throw new Error('Exact acquired normalization retry is not acquired for finalization')
     }
 
     assertValidJobrightV5CheckpointRetryState(input.checkpoint)
-    upsertConnectorCheckpoint(
+    await upsertConnectorCheckpoint(
       transaction,
       {
         connectorInstanceId: input.connectorInstanceId,
@@ -135,33 +128,42 @@ export function finalizeExactAcquiredNormalizationRetry(
       input.completedAt,
     )
 
-    if (exactSuccess) {
-      if (work.state !== 'acquired' || work.acquisitionRunId !== input.acquiredRetryWork.acquisitionRunId) {
-        throw new Error('Exact acquired normalization retry is not acquired for finalization')
-      }
-      transaction.update(retryWork).set({
+    const retryValues = exactSuccess
+      ? {
         state: 'completed',
         nextAttemptAt: null,
         acquiredAt: null,
         acquisitionToken: null,
         acquisitionRunId: null,
         updatedAt: input.completedAt,
-      }).where(eq(retryWork.id, work.id)).run()
-    } else if (work.state === 'acquired') {
-      transaction.update(retryWork).set({
+      } as const
+      : {
         state: 'scheduled',
         nextAttemptAt: work.nextAttemptAt,
         acquiredAt: null,
         acquisitionToken: null,
         acquisitionRunId: null,
         updatedAt: input.completedAt,
-      }).where(eq(retryWork.id, work.id)).run()
+      } as const
+    const [updatedWork] = await transaction.update(retryWork).set(retryValues).where(and(
+      eq(retryWork.id, work.id),
+      eq(retryWork.kind, 'normalization'),
+      eq(retryWork.state, 'acquired'),
+      eq(retryWork.acquisitionRunId, input.connectorRunId),
+      eq(retryWork.captureEvidenceVersionId, input.acquiredRetryWork.rawRevisionId),
+      eq(retryWork.resolverId, input.acquiredRetryWork.resolverId),
+      eq(retryWork.resolverVersion, input.acquiredRetryWork.resolverVersion),
+      eq(retryWork.inputHash, input.acquiredRetryWork.inputHash),
+      isNull(retryWork.deletedAt),
+    )).returning({ id: retryWork.id })
+    if (!updatedWork) {
+      throw new Error('Exact acquired normalization retry ownership changed during finalization')
     }
 
     const terminalStatus = exactSuccess ? 'completed' : input.terminalStatus
     const stats = toJsonRecord(JSON.parse(run.statsJson))
-    const lifecycleCounts = freezeConnectorRunLifecycleCounts(database, mapConnectorRun(run))
-    transaction.update(connectorRuns).set({
+    const lifecycleCounts = await freezeConnectorRunLifecycleCounts(transaction, mapConnectorRun(run))
+    const [persisted] = await transaction.update(connectorRuns).set({
       status: terminalStatus,
       completedAt: input.completedAt,
       statsJson: JSON.stringify({
@@ -171,8 +173,16 @@ export function finalizeExactAcquiredNormalizationRetry(
         running: false,
       }),
       updatedAt: input.completedAt,
-    }).where(eq(connectorRuns.id, input.connectorRunId)).run()
-    finalizeInProgressConnectorSynchronization(
+    }).where(and(
+      eq(connectorRuns.id, input.connectorRunId),
+      eq(connectorRuns.connectorInstanceId, input.connectorInstanceId),
+      eq(connectorRuns.status, 'running'),
+      isNull(connectorRuns.deletedAt),
+    )).returning()
+    if (!persisted) {
+      throw new Error(`Running connector run changed during finalization: ${input.connectorRunId}`)
+    }
+    await finalizeInProgressConnectorSynchronization(
       transaction,
       input.connectorRunId,
       terminalStatus === 'failed'
@@ -180,13 +190,6 @@ export function finalizeExactAcquiredNormalizationRetry(
         : { kind: 'yielded', reason: 'invocation_budget' },
       input.completedAt,
     )
-
-    return mapConnectorRun(
-      transaction
-        .select()
-        .from(connectorRuns)
-        .where(eq(connectorRuns.id, input.connectorRunId))
-        .get(),
-    )
-  }, { behavior: 'immediate' })
+    return mapConnectorRun(persisted)
+  })
 }

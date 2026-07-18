@@ -12,7 +12,7 @@ import {
   createStaticConnectorRegistry,
 } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import {
   createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
@@ -370,7 +370,7 @@ async function createHarness(options: {
 } = {}) {
   const providerQueries: unknown[] = []
   const connector = createEdgeFixture(providerQueries, options.queryResult)
-  const local = createLocalValedictorianClient({
+  const local = await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
     seedDataMode: 'none',
     pgliteDataPath: createScheduleHttpTempDatabasePath(),

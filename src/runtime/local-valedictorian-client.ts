@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import type {
   ConnectorAuthReferenceInput,
@@ -8,23 +7,15 @@ import {
   connectorOverviewListResultSchema,
   DEFAULT_CONNECTOR_OVERVIEW_LIST_LIMIT,
 } from 'sparxie'
-import { applications } from '../db/schema'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
-import {
-  seedReferenceTrackerApplications,
-  seedSampleApplications,
-  seedSampleSourcingFindings
-} from '../modules/applications/application.fixtures'
-import { createApplicationServiceFromSqlite } from '../modules/applications/application.runtime'
-import { createSqliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
+import { createApplicationServiceFromPglite } from '../modules/applications/application.runtime'
+import { createPgliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createSourceExecutionGovernor } from '../modules/source-execution/source-execution-governor'
 import { createConnectorNormalizationHost } from '../modules/connectors/connector.normalization'
 import {
   createDefaultLocalConnectorRegistry,
   type LocalConnectorRegistry
 } from '../modules/connectors/connector.registry'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { retireConnectorInstance } from '../modules/connectors/connector-retirement.persistence'
 import {
   resolveConnectorSchedulingCapability,
@@ -63,9 +54,9 @@ import type {
   ConnectorInstanceRecord,
   ConnectorRunRecord,
 } from '../modules/connectors/connector.repository'
-import { createSqlitePolicyRepository } from '../modules/policy/policy.repository'
+import { createPglitePolicyRepository } from '../modules/policy/policy.repository'
 import { createJsonProfileService } from '../modules/profile/profile.composition'
-import { createSqliteSecretService } from '../modules/secrets/secret.composition'
+import { createPgliteSecretService } from '../modules/secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
 import { isSecretCodecAvailable } from '../modules/secrets/secret.codec'
@@ -76,11 +67,11 @@ import {
   createWorkspaceSecretMethods,
 } from './local-profile-secret-client'
 import { isReservedIdentitySecretKey } from '../modules/secrets/secret.identity'
-import { createSqliteScoringRepository } from '../modules/scoring/scoring.repository'
-import { createSqliteSourcingProcessor } from '../modules/sourcing/sourcing.processor'
-import { createSqliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
+import { createPgliteScoringRepository } from '../modules/scoring/scoring.repository'
+import { createPgliteSourcingProcessor } from '../modules/sourcing/sourcing.processor'
+import { createPgliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
 import { createCanonicalCandidateProjectionService } from '../modules/sourcing/canonical-candidate.projection'
-import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
+import { createPgliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
 import { createProviderUrlResolutionService } from '../modules/sourcing/provider-url-resolution.service'
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import {
@@ -93,8 +84,8 @@ import {
   mapLocalConnectorStatusSummary,
 } from './local-connector-status-mapping'
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
-import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
-import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
+import { createPgliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
+import { createPgliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
 import {
   createDefaultNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
@@ -104,7 +95,8 @@ import {
   createConnectorOverviewCursor,
   readConnectorOverviewCursor,
 } from './local-connector-overview.cursor'
-import { createSqliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
+import { createPgliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
+import { assertSeedOptions, seedLocalData } from './local-valedictorian-seeding'
 export type {
   LocalValedictorianClientOptions,
   ValedictorianSeedDataMode,
@@ -143,7 +135,8 @@ const unavailableSecretCodec: SecretCodec = {
     throw new Error('Profile secrets are only available through local profile IPC')
   },
 }
-export function createLocalValedictorianClient({
+export async function createLocalValedictorianClient({
+  database,
   connectorRunRecovery,
   connectorRegistry = createDefaultLocalConnectorRegistry(),
   connectorRuntime,
@@ -162,20 +155,18 @@ export function createLocalValedictorianClient({
   secretService: preparedSecretService,
   pgliteDataPath,
   workspaceId = 'local-workspace',
-}: LocalValedictorianClientOptions): LocalValedictorianClient {
+}: LocalValedictorianClientOptions): Promise<LocalValedictorianClient> {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
   const connectorScheduling = resolveConnectorSchedulingCapability(connectorSchedulingOption)
-  const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-  const applicationService = createApplicationServiceFromSqlite(sqlite)
-  const database = createDrizzleDatabase(sqlite)
-  seedLocalData(database, {
+  const applicationService = createApplicationServiceFromPglite(database)
+  await seedLocalData(database, {
     referenceTrackerPath,
     seedDataMode,
   })
-  const scoringRepository = createSqliteScoringRepository(database)
+  const scoringRepository = createPgliteScoringRepository(database)
   const profileService = preparedProfileService
-    ?? createJsonProfileService(profilePath ?? path.join(path.dirname(pgliteDataPath), 'profile.json'))
-  const secretService = preparedSecretService ?? createSqliteSecretService(
+    ?? createJsonProfileService(profilePath ?? path.join(path.dirname(pgliteDataPath ?? '.'), 'profile.json'))
+  const secretService = preparedSecretService ?? createPgliteSecretService(
     database,
     secretCodec,
     createWorkspaceSecretScope(workspaceId),
@@ -189,38 +180,28 @@ export function createLocalValedictorianClient({
       ? Promise.resolve(null)
       : secretService.resolve(key),
   })
-  const actionQueueRepository = createSqliteActionQueueRepository(database)
-  const connectorRepository = createSqliteConnectorRepository(database)
-  const recoverInterruptedRuns = () => {
-    connectorRepository.recoverInterruptedRuns({
-      completedAt: now().toISOString(),
-    })
-  }
-  if (connectorRunRecovery) {
-    connectorRunRecovery.activate({ pgliteDataPath, workspaceId }, recoverInterruptedRuns)
-  } else {
-    recoverInterruptedRuns()
-  }
-  const policyRepository = createSqlitePolicyRepository(database)
-  const workflowRunRepository = createSqliteWorkflowRunRepository(database)
-  const sourcingProcessor = createSqliteSourcingProcessor(database)
-  const sourcingRepository = createSqliteSourcingRepository(database)
-  const rawSourceRepository = createSqliteRawSourceRepository(database, now)
+  const actionQueueRepository = createPgliteActionQueueRepository(database)
+  const connectorRepository = createPgliteConnectorRepository(database)
+  const policyRepository = createPglitePolicyRepository(database)
+  const workflowRunRepository = createPgliteWorkflowRunRepository(database)
+  const sourcingProcessor = createPgliteSourcingProcessor(database)
+  const sourcingRepository = createPgliteSourcingRepository(database)
+  const rawSourceRepository = createPgliteRawSourceRepository(database, now)
   const canonicalCandidateProjection = createCanonicalCandidateProjectionService(now)
-  const projectionOutcomes = createSqliteProjectionOutcomeRepository(database)
-  const normalizationRepository = createSqliteNormalizationRepository(database, {
+  const projectionOutcomes = createPgliteProjectionOutcomeRepository(database)
+  const normalizationRepository = createPgliteNormalizationRepository(database, {
     stagePassedCandidate: (transaction, input) => projectionOutcomes.stagePending(transaction, input),
-    projectPassedCandidate: (candidateId, rawRevisionId) => {
+    projectPassedCandidate: async (candidateId, rawRevisionId) => {
       try {
-        database.transaction((transaction) => {
-          const findingId = (projectCanonicalCandidate ?? canonicalCandidateProjection.projectPersisted)(
+        await database.transaction(async (transaction) => {
+          const findingId = await (projectCanonicalCandidate ?? canonicalCandidateProjection.projectPersisted)(
             transaction, candidateId, rawRevisionId,
           )
           if (!findingId) throw new Error('Passed canonical candidate could not be projected')
-          projectionOutcomes.markProjected(transaction, candidateId, findingId, now().toISOString())
+          await projectionOutcomes.markProjected(transaction, candidateId, findingId, now().toISOString())
         })
       } catch {
-        projectionOutcomes.markFailed(candidateId, now().toISOString())
+        await projectionOutcomes.markFailed(candidateId, now().toISOString())
       }
     },
   })
@@ -248,7 +229,7 @@ export function createLocalValedictorianClient({
     workspaceId,
   })
   const sourceExecutionGovernor = createSourceExecutionGovernor(database, secretCodec)
-  const providerUrlResolution = createProviderUrlResolutionService({
+  const providerUrlResolution = await createProviderUrlResolutionService({
     authHost: trustedConnectorAuth, connectorRegistry, connectorRepository, connectorRuntime,
     database, governor: sourceExecutionGovernor, normalizationOrchestrator, normalizationRegistry, normalizationRepository, now,
     onScheduledWorkChanged, rawSourceRepository, workspaceId,
@@ -292,13 +273,13 @@ export function createLocalValedictorianClient({
     listSchedules: () => scheduleRepository.listEnabled(),
     now,
   }))
-  const mapRun = (record: ConnectorRunRecord): LocalConnectorRunSummary => {
+  const mapRun = async (record: ConnectorRunRecord): Promise<LocalConnectorRunSummary> => {
     const synchronizedRecord = {
       ...record,
       synchronization: record.synchronization
-        ?? connectorRepository.getRunSynchronization(record.id),
+        ?? await connectorRepository.getRunSynchronization(record.id),
     }
-    const occurrence = scheduleRepository.getOccurrenceLinkForRun(record.id)
+    const occurrence = await scheduleRepository.getOccurrenceLinkForRun(record.id)
     if (!occurrence || !occurrence.connectorRunId) {
       return mapConnectorRunSummary(synchronizedRecord)
     }
@@ -479,7 +460,7 @@ export function createLocalValedictorianClient({
         return updated
       },
       remove: async ({ connectorInstanceId }) => {
-        const result = retireConnectorInstance(
+        const result = await retireConnectorInstance(
           database,
           connectorInstanceId,
           now().toISOString(),
@@ -520,7 +501,7 @@ export function createLocalValedictorianClient({
           const result = await connectorRepository.listRuns(input)
           return {
             ...result,
-            items: result.items.map(mapRun),
+            items: await Promise.all(result.items.map(mapRun)),
           }
         },
         trigger: async (input) => {
@@ -541,7 +522,7 @@ export function createLocalValedictorianClient({
               normalizationRepository,
               now,
             })
-            return mapRun(run)
+            return await mapRun(run)
           } finally {
             onScheduledWorkChanged?.()
           }
@@ -592,7 +573,7 @@ export function createLocalValedictorianClient({
             action: 'skip',
             connectorInstanceId: input.connectorInstanceId,
             message: 'Connector run skipped.',
-            run: mapRun(run),
+            run: await mapRun(run),
             status: 'skipped',
           }
         },
@@ -626,7 +607,7 @@ export function createLocalValedictorianClient({
       rawRevisions: {
         projection: {
           get: async (rawRevisionId) => {
-            const result = projectionOutcomes.get(rawRevisionId)
+            const result = await projectionOutcomes.get(rawRevisionId)
             if (!result) throw Object.assign(new Error('Raw source revision not found'), { statusCode: 404 })
             return result
           },
@@ -658,7 +639,7 @@ export function createLocalValedictorianClient({
         replay: (input) => normalizationReplayService.replay(input),
         normalization: {
           get: async (rawRecordId) => {
-            const result = normalizationRepository.getLatest(rawRecordId)
+            const result = await normalizationRepository.getLatest(rawRecordId)
             if (!result) {
               throw Object.assign(new Error('Raw source normalization not found'), {
                 statusCode: 404,
@@ -682,7 +663,7 @@ export function createLocalValedictorianClient({
   }
   registerScheduledWorkSource?.(createConnectorCaptureRetryWorkSource({
     listRetries: () => scheduleRepository.listScheduledCaptureRetries(), now,
-    runRetry: async (connectorInstanceId, signal) => mapRun(await executeConnectorRunTrigger({
+    runRetry: async (connectorInstanceId, signal) => await mapRun(await executeConnectorRunTrigger({
       connectorRegistry, connectorRepository, connectorRunner,
       input: { connectorInstanceId, reason: 'scheduled_capture_retry' }, mode: 'scheduled',
       normalizationOrchestrator, normalizationReplayService, normalizationRegistry,
@@ -690,6 +671,17 @@ export function createLocalValedictorianClient({
       retryKind: 'connector_capture', ...(signal ? { signal } : {}),
     })),
   }))
+  const recoverInterruptedRuns = async () => {
+    await connectorRepository.recoverInterruptedRuns({ completedAt: now().toISOString() })
+  }
+  if (connectorRunRecovery) {
+    if (!pgliteDataPath) {
+      throw new Error('pgliteDataPath is required when connectorRunRecovery is provided')
+    }
+    await connectorRunRecovery.activate({ pgliteDataPath, workspaceId }, recoverInterruptedRuns)
+  } else {
+    await recoverInterruptedRuns()
+  }
   return client
 }
 async function reconnectConnectorStatus({
@@ -699,7 +691,7 @@ async function reconnectConnectorStatus({
   input,
 }: {
   connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   input: LocalConnectorStatusActionInput
 }): Promise<LocalConnectorReconnectActionResult> {
@@ -764,14 +756,14 @@ async function executeConnectorRunTrigger({
   signal,
 }: {
   connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   input: LocalConnectorInternalRunTriggerInput
   mode?: 'manual' | 'scheduled'
   normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
   normalizationReplayService: ReturnType<typeof createNormalizationReplayService>
   normalizationRegistry: ReturnType<typeof createDefaultNormalizationResolverRegistry>
-  normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
+  normalizationRepository: ReturnType<typeof createPgliteNormalizationRepository>
   now: () => Date
   retryKind?: 'connector_capture'
   signal?: AbortSignal
@@ -959,45 +951,4 @@ function toConnectorJsonRecord(value: unknown, fieldName: string): Record<string
     return value as Record<string, unknown>
   }
   throw new Error(`Invalid connector ${fieldName}`)
-}
-function seedLocalData(
-  database: ReturnType<typeof createDrizzleDatabase>,
-  {
-    referenceTrackerPath,
-    seedDataMode,
-  }: Pick<LocalValedictorianClientOptions, 'referenceTrackerPath' | 'seedDataMode'>,
-) {
-  if (seedDataMode === 'none') {
-    return
-  }
-  if (database.select().from(applications).limit(1).get()) {
-    return
-  }
-  if (seedDataMode === 'sample') {
-    seedSampleApplications(database)
-    seedSampleSourcingFindings(database)
-    return
-  }
-  seedReferenceTrackerApplications(
-    database,
-    fs.readFileSync(requireReferenceTrackerPath(referenceTrackerPath), 'utf8'),
-  )
-}
-function assertSeedOptions({
-  referenceTrackerPath,
-  seedDataMode,
-}: Pick<LocalValedictorianClientOptions, 'referenceTrackerPath' | 'seedDataMode'>) {
-  if (seedDataMode === 'reference-tracker' && !referenceTrackerPath) {
-    throw new Error(
-      'VALEDICTORIAN_REFERENCE_TRACKER_PATH is required when VALEDICTORIAN_SEED_DATA=reference-tracker',
-    )
-  }
-}
-function requireReferenceTrackerPath(referenceTrackerPath: string | undefined) {
-  if (!referenceTrackerPath) {
-    throw new Error(
-      'VALEDICTORIAN_REFERENCE_TRACKER_PATH is required when VALEDICTORIAN_SEED_DATA=reference-tracker',
-    )
-  }
-  return referenceTrackerPath
 }

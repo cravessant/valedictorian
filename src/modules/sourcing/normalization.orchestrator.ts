@@ -13,7 +13,7 @@ import {
   retryAdviceSchema,
 } from 'sparxie'
 import { classifyDeterministicDestination, classifyProviderUrlDestination } from './destination-classifier'
-import { createSqliteNormalizationRepository } from './normalization.repository'
+import { createPgliteNormalizationRepository } from './normalization.repository'
 import {
   hashJson,
   isDeterministicCanonicalCompensation,
@@ -46,7 +46,7 @@ export interface NormalizationExecutionOptions {
 }
 
 export function createNormalizationOrchestrator(options: {
-  repository: ReturnType<typeof createSqliteNormalizationRepository>
+  repository: ReturnType<typeof createPgliteNormalizationRepository>
   registry: NormalizationResolverRegistry
   now?: () => Date
   enabledCapabilities?: readonly ResolverCapability[]
@@ -61,7 +61,7 @@ export function createNormalizationOrchestrator(options: {
       trigger: { kind: 'intake' } | { kind: 'replay'; replayId: string; fieldDirectives: RawSourceFieldDirective[]; targetResolverVersions: ResolverVersionRef[] } = { kind: 'intake' },
       execution: NormalizationExecutionOptions = {},
     ): Promise<RawSourceNormalizationResult> {
-      const raw = options.repository.getRawContext(rawRevisionId)
+      const raw = await options.repository.getRawContext(rawRevisionId)
       if (!raw || raw.revision.rawRecordId !== rawRecordId) throw new Error('Raw source revision not found')
       const configuredRegistry = execution.registry ?? options.registry
       const registry = trigger.kind === 'replay' && trigger.targetResolverVersions.length
@@ -70,7 +70,7 @@ export function createNormalizationOrchestrator(options: {
       const enabledCapabilities = execution.enabledCapabilities ?? defaultEnabledCapabilities
       const inputHash = hashJson({ rawRevisionId, contentHash: raw.revision.contentHash })
       const cached = trigger.kind === 'intake' && execution.cache !== false
-        ? options.repository.findCached(rawRevisionId, inputHash, registry.resolverSetHash, CANONICAL_CANDIDATE_SCHEMA_VERSION, NORMALIZATION_GATE_POLICY_VERSION)
+        ? await options.repository.findCached(rawRevisionId, inputHash, registry.resolverSetHash, CANONICAL_CANDIDATE_SCHEMA_VERSION, NORMALIZATION_GATE_POLICY_VERSION)
         : null
       if (cached) return cached
 
@@ -245,7 +245,7 @@ export function createNormalizationOrchestrator(options: {
       if (initialStatus === 'passed' && destination) {
         const destinationOutcome = winners.get('destinationUrl')
         if (!destinationOutcome) throw new Error('Passed normalization is missing destination provenance')
-        return options.repository.persistWithStrongDestination({
+        return await options.repository.persistWithStrongDestination({
           sourceEntity: raw.sourceEntity,
           rawRevisionId,
           destination,
@@ -254,7 +254,7 @@ export function createNormalizationOrchestrator(options: {
           materialize: (reconciliation) => materialize(reconciliation.sourceEntity, reconciliation.conflict),
         })
       }
-      return options.repository.persist(materialize(entity))
+      return await options.repository.persist(materialize(entity))
     },
   }
 }

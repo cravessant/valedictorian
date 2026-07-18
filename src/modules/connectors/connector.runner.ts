@@ -32,7 +32,7 @@ import type {
   ConnectorRefreshResultInput,
   ConnectorRunRecord,
   ConnectorRunTerminalStatus,
-  createSqliteConnectorRepository,
+  createPgliteConnectorRepository,
 } from './connector.repository'
 import { inclusiveCoverageStartFromEarliestBackfillDate } from './connector.earliest-backfill'
 import * as connectorCheckpointSignatureModule from './connector.checkpoint-signature'
@@ -160,7 +160,7 @@ export interface CreateConnectorRunnerOptions {
   auth?: AppConnectorAuthHost
   normalization?: AppConnectorNormalizationHost
   rawSource?: AppConnectorRawSourceHost
-  repository: ReturnType<typeof createSqliteConnectorRepository>
+  repository: ReturnType<typeof createPgliteConnectorRepository>
   sourceExecutionGovernor?: ReturnType<typeof createSourceExecutionGovernor>
   runtime?: AppConnectorRuntimePorts
   workspaceId: string
@@ -252,7 +252,7 @@ export function createConnectorRunner({
           throw new Error('Connector returned rate-limit evidence for a different execution scope')
         }
         if (!sourceExecutionGovernor) throw new Error('Source execution governor is required')
-        sourceExecutionGovernor.blockScope(connectorInstance.executionScopeId, {
+        await sourceExecutionGovernor.blockScope(connectorInstance.executionScopeId, {
           now: now().toISOString(), retryAfter: result.operationOutcome.retryAt,
         })
       }
@@ -360,11 +360,13 @@ export function createConnectorRunner({
     }
     const sensitiveValues = new Set<string>()
     const authRequirements = connector.definition.auth?.requirements ?? []
-    const initialGeneration = sourceExecutionGovernor?.getScope(connectorInstance.executionScopeId).authGeneration ?? 0
+    const initialGeneration = sourceExecutionGovernor
+      ? (await sourceExecutionGovernor.getScope(connectorInstance.executionScopeId)).authGeneration : 0
     let reconnectRefreshInvoked = false
-    const reconnectLease = sourceExecutionGovernor?.acquireReconnectLease(connectorInstance.executionScopeId, {
-      leaseMs: 60_000, now: now().toISOString(),
-    })
+    const reconnectLease = sourceExecutionGovernor
+      ? await sourceExecutionGovernor.acquireReconnectLease(connectorInstance.executionScopeId, {
+          leaseMs: 60_000, now: now().toISOString(), })
+      : undefined
     if (sourceExecutionGovernor && !reconnectLease) {
       return {
         connectorInstanceId: input.connectorInstanceId,
@@ -388,7 +390,7 @@ export function createConnectorRunner({
       )
     } catch (error) {
       if (isSecureStorageUnavailableError(error)) {
-        sourceExecutionGovernor?.finishReconnectValidation(connectorInstance.executionScopeId, {
+        await sourceExecutionGovernor?.finishReconnectValidation(connectorInstance.executionScopeId, {
           now: now().toISOString(), reason: 'secure_storage_unavailable', status: 'action_required',
           token: reconnectLease!.token,
         })
@@ -399,7 +401,7 @@ export function createConnectorRunner({
           status: 'failed',
         }
       }
-      sourceExecutionGovernor?.finishReconnectValidation(connectorInstance.executionScopeId, {
+      await sourceExecutionGovernor?.finishReconnectValidation(connectorInstance.executionScopeId, {
         now: now().toISOString(), reason: 'validate_auth_failed', status: 'action_required',
         token: reconnectLease!.token,
       })
@@ -751,7 +753,7 @@ export function createRunRuntime(
     auth: {
       async resolve(input) {
         if (establishing === 0 && sessionExecutor) {
-          const session = sessionExecutor.resolve(executionScopeId)
+          const session = await sessionExecutor.resolve(executionScopeId)
           if (session.status === 'ready') {
             const reference = authReferences.find((candidate) => candidate.id === input.id)
             return { id: input.id, mode: input.mode ?? reference?.mode ?? 'none', status: 'ready', sessionId: session.sessionId }
@@ -806,7 +808,7 @@ const connectorProgressCountKeys = [
   'unresolved',
 ] as const
 function createPersistedProgressRuntime(
-  repository: ReturnType<typeof createSqliteConnectorRepository>,
+  repository: ReturnType<typeof createPgliteConnectorRepository>,
   connectorRunId: string,
   now: () => Date,
   downstream: ConnectorProgressRuntime | undefined,
