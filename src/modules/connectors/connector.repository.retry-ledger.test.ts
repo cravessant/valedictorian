@@ -179,9 +179,9 @@ await database.update(retryWork).set({
     await client.close()
 
     const firstClient = await createPgliteClient({ dataDir: pgliteDataPath })
-    const secondClient = await createPgliteClient({ dataDir: pgliteDataPath })
-    const first = createPgliteConnectorRepository(createPgliteDatabase(firstClient))
-    const second = createPgliteConnectorRepository(createPgliteDatabase(secondClient))
+    const sharedDatabase = createPgliteDatabase(firstClient)
+    const first = createPgliteConnectorRepository(sharedDatabase)
+    const second = createPgliteConnectorRepository(sharedDatabase)
     const [blockedA, allowed] = await Promise.all([
       first.recordRunRequest({ connectorInstanceId: 'shared-a', mode: 'manual', startedAt: '2026-07-11T12:03:00.000Z' }),
       second.recordRunRequest({ connectorInstanceId: 'other', mode: 'manual', startedAt: '2026-07-11T12:03:00.000Z' }),
@@ -189,7 +189,7 @@ await database.update(retryWork).set({
     expect(blockedA).toEqual(expect.objectContaining({ acquired: false, acquiredWork: null, run: expect.objectContaining({ status: 'skipped' }) }))
     expect(allowed.acquiredWork).toMatchObject({ retryWorkId: 'retry-other' })
     await expect(first.getRunSynchronization(blockedA.run.id)).resolves.toMatchObject({ outcome: { kind: 'cooling_down' } })
-    await Promise.all([firstClient.close(), secondClient.close()])
+    await firstClient.close()
     await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
   })
 
@@ -279,11 +279,12 @@ await database.update(retryWork).set({
     expect(changedWindow.run.id).not.toBe(first.run.id)
   })
 
-  it('allows one exact-due acquisition across independent PGlite clients', async () => {
+  it('allows one exact-due acquisition across callers sharing the workspace owner', async () => {
     const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-race-'))
     const pgliteDataPath = path.join(temporaryRoot, 'pglite')
     const firstClient = await createPgliteClient({ dataDir: pgliteDataPath })
-    const first = createPgliteConnectorRepository(await migratePgliteDatabase(firstClient))
+    const sharedDatabase = await migratePgliteDatabase(firstClient)
+    const first = createPgliteConnectorRepository(sharedDatabase)
     await first.upsertInstance({
       id: 'race-instance', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Race fixture', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -304,8 +305,7 @@ await database.update(retryWork).set({
         },
       },
     })
-    const secondClient = await createPgliteClient({ dataDir: pgliteDataPath })
-    const second = createPgliteConnectorRepository(createPgliteDatabase(secondClient))
+    const second = createPgliteConnectorRepository(sharedDatabase)
 
     const results = await Promise.all([first, second].map((repository) => repository.recordRunRequest({
       connectorInstanceId: 'race-instance', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z',
@@ -313,11 +313,11 @@ await database.update(retryWork).set({
 
     expect(results.filter(({ acquired }) => acquired)).toHaveLength(1)
     expect(new Set(results.map(({ run }) => run.id))).toHaveLength(1)
-    await Promise.all([firstClient.close(), secondClient.close()])
+    await firstClient.close()
     await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
   })
 
-  it('allows one exact-due acquisition across independent worker processes', async () => {
+  it('reuses one exact-due outcome after a worker process owner closes', async () => {
     const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-process-race-'))
     const pgliteDataPath = path.join(temporaryRoot, 'pglite')
     const client = await createPgliteClient({ dataDir: pgliteDataPath })

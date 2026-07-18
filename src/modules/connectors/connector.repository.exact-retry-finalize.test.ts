@@ -16,7 +16,6 @@ import {
 } from '../../db/schema'
 import {
   createPgliteClient,
-  createPgliteDatabase,
   migratePgliteDatabase,
   type PgliteDatabase,
 } from '../../db/pglite'
@@ -38,12 +37,11 @@ describe('exact acquired normalization retry finalization success gate', () => {
     { exactSuccess: true, expectedRunStatus: 'completed', expectedWorkState: 'completed' },
     { exactSuccess: false, expectedRunStatus: 'failed', expectedWorkState: 'scheduled' },
   ] as const)(
-    'lets only one independent client own the $expectedRunStatus terminal transition',
+    'lets only one shared-owner caller own the $expectedRunStatus terminal transition',
     async ({ exactSuccess, expectedRunStatus, expectedWorkState }) => {
       const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'exact-retry-finalize-race-'))
       const dataDir = path.join(temporaryRoot, 'pglite')
       const firstClient = await createPgliteClient({ dataDir })
-      let secondClient: Awaited<ReturnType<typeof createPgliteClient>> | undefined
 
       try {
         await migratePgliteDatabase(firstClient)
@@ -54,8 +52,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
         })
         const firstRepository = createPgliteConnectorRepository(firstDatabase)
         const fixture = await seedTerminalRace(firstDatabase, firstRepository, exactSuccess)
-        secondClient = await createPgliteClient({ dataDir })
-        const secondRepository = createPgliteConnectorRepository(createPgliteDatabase(secondClient))
+        const secondRepository = createPgliteConnectorRepository(firstDatabase)
         const finalization = {
           acquiredRetryWork: fixture.acquiredRetryWork,
           checkpoint: {
@@ -110,7 +107,6 @@ describe('exact acquired normalization retry finalization success gate', () => {
         expect(queries.some((query) => /update "connector_runs"[\s\S]*returning/i.test(query)))
           .toBe(true)
       } finally {
-        await secondClient?.close()
         await firstClient.close()
         await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
       }

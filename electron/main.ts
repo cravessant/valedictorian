@@ -623,7 +623,8 @@ app.whenReady().then(async () => {
         `${JSON.stringify(result)}\n`,
         { mode: 0o600 },
       )
-      app.exit(0)
+      const successfulPackagedSmokeExitCode = 0
+      app.exit(successfulPackagedSmokeExitCode)
     } catch (error) {
       console.error(error)
       app.exit(1)
