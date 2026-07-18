@@ -278,7 +278,7 @@ describe('profile settings', () => {
     expect(screen.getByText('Greenhouse password')).toBeInTheDocument()
     expect(screen.getByText('••••••••')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('correct horse battery staple')).not.toBeInTheDocument()
-  }, 15_000)
+  })
 
   it('shows profile save progress, success, and errors', async () => {
     const profileApi = createProfileApi()

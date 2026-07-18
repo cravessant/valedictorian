@@ -111,7 +111,6 @@ describe('exact acquired normalization retry finalization success gate', () => {
         await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
       }
     },
-    10_000,
   )
 
   it.each(['failed', 'rejected', 'abstained'] as const)(

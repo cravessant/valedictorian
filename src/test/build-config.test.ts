@@ -183,8 +183,13 @@ describe('build configuration', () => {
 
   it('keeps Electron main runtime-probed packages out of the Vite bundle', () => {
     const viteConfig = readViteConfig()
+    const testSetup = fs.readFileSync(path.resolve('src/test/setup.ts'), 'utf8')
 
     expect(viteConfig).toContain('testTimeout: process.env.CI ? 30_000 : 5_000')
+    expect(testSetup).toContain(
+      'configure({ asyncUtilTimeout: process.env.CI ? 15_000 : 1_000 })',
+    )
+    expect(testSetup).toContain("from '@testing-library/react'")
     expect(viteConfig).toContain(
       "export const mainExternals = ['@electric-sql/pglite', 'undici']",
     )
