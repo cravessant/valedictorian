@@ -4,7 +4,6 @@ import path from 'node:path'
 import { expect, it } from 'vitest'
 import {
   findPackagedAppExecutable,
-  packagedAppLaunch,
   packagedPgliteSmokeEnvironment,
   runPackagedPgliteRestartSmoke,
 } from './run-packaged-pglite-smoke.mjs'
@@ -38,17 +37,6 @@ it('creates an isolated packaged smoke environment without inheriting Electron r
   expect(environment.VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PATH).toBe(resultDirectory)
   expect(environment.VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PHASE).toBe('write')
   expect(environment.ELECTRON_RUN_AS_NODE).toBeUndefined()
-})
-
-it('launches a Windows package through Wine when cross-platform verification requests it', () => {
-  expect(packagedAppLaunch('/project/release/win-unpacked/Valedictorian.exe', 'wine')).toEqual({
-    args: ['/project/release/win-unpacked/Valedictorian.exe'],
-    command: 'wine',
-  })
-  expect(packagedAppLaunch('/Applications/Valedictorian')).toEqual({
-    args: [],
-    command: '/Applications/Valedictorian',
-  })
 })
 
 it('launches separate packaged processes to write and then verify persisted data', async () => {

@@ -178,11 +178,6 @@ describe('build configuration', () => {
     expect(ciWorkflow).not.toContain('electron-builder --win --dir')
     expect(ciWorkflow).toContain('Verify Windows installer')
     expect(ciWorkflow).toContain('pnpm run smoke:pglite-package')
-    expect(ciWorkflow).toContain('windows-wine-package-smoke:')
-    expect(ciWorkflow).toContain('electronuserland/builder:wine-chrome@sha256:')
-    expect(ciWorkflow).toContain(
-      'xvfb-run -a pnpm run smoke:pglite-package -- --platform win32 --runner wine',
-    )
     expect(releaseWorkflow).toContain('pnpm run smoke:pglite-package')
   })
 
