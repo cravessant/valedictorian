@@ -73,6 +73,7 @@ export function ConnectorSettingsInstanceCard({
   descriptor,
   connectorsApi,
   authState,
+  credentialEditFeedback,
   draft,
   credentialDraft,
   isEditingAuth,
@@ -113,6 +114,7 @@ export function ConnectorSettingsInstanceCard({
   descriptor: InstalledConnectorDescriptor | undefined
   connectorsApi: ConnectorSettingsUiApi
   authState: ConnectorAuthUiState
+  credentialEditFeedback: string | null
   draft: ConnectorSettingsDraft
   credentialDraft: ConnectorAuthCredentialDraft
   isEditingAuth: boolean
@@ -208,6 +210,7 @@ export function ConnectorSettingsInstanceCard({
   const runBlocked = !instance.enabled
     || !draft.enabled
     || !authReady
+    || isEditingAuth
     || runningInstanceId === instance.id
     || isSavingSettings
     || draftDirty
@@ -222,6 +225,7 @@ export function ConnectorSettingsInstanceCard({
     ? describeConnectorRunActionReason({
       isRunning: runningInstanceId === instance.id,
       isSavingSettings,
+      isEditingAuth,
       draftDirty,
       settingsValid,
       earliestValid,
@@ -234,407 +238,424 @@ export function ConnectorSettingsInstanceCard({
     : null
   const saveReasonId = `connector-save-reason-${instance.id}`
   const runReasonId = `connector-run-reason-${instance.id}`
-  const actionReasonIds = [
-    saveBlockReason ? saveReasonId : null,
-    runBlockReason ? runReasonId : null,
-  ].filter((value): value is string => value !== null)
-  const actionsDescribedBy = actionReasonIds.length > 0 ? actionReasonIds.join(' ') : undefined
   const credentialsReady = isConnectorCredentialDraftReady(credentialDraft)
   const credentialBlockReason = describeConnectorCredentialBlockReason(credentialDraft)
   const credentialReasonId = `connector-credential-reason-${instance.id}`
   const emailInvalid = credentialDraft.email.trim().length > 0
     && !isBrowserAlignedEmail(credentialDraft.email)
+  const cardHeadingId = `connector-heading-${instance.id}`
+  const credentialsHeadingId = `connector-credentials-heading-${instance.id}`
+  const connectorSettingsHeadingId = `connector-settings-heading-${instance.id}`
+  const executionHeadingId = `connector-execution-heading-${instance.id}`
+  const managementHeadingId = `connector-management-heading-${instance.id}`
+  const saveButtonLabel = `Save ${instance.displayName} connector settings`
+  const settingsActionsDescribedBy = saveBlockReason ? saveReasonId : undefined
+  const executionActionsDescribedBy = runBlockReason ? runReasonId : undefined
+
   return (
-                  <div
-                    key={instance.id}
-                    className="grid gap-4 p-3 text-sm"
-                    data-testid={`connector-instance-card-${instance.id}`}
-                  >
-                    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground">{instance.displayName}</p>
-                        <p className="text-xs text-muted-foreground">{instance.connectorId}</p>
-                      </div>
-                      <div
-                        className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end"
-                        data-testid={`connector-auth-actions-${instance.id}`}
-                      >
-                        <p className="text-xs font-medium text-muted-foreground">
-                          {authLabel}
-                        </p>
-                        {!isEditingAuth ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={authenticatingInstanceId === instance.id}
-                            onClick={() => onBeginCredentialEdit(instance)}
-                          >
-                            {authConfigured ? 'Update credentials' : 'Add credentials'}
-                          </Button>
-                        ) : null}
-                        {authConfigured && !isEditingAuth ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={authenticatingInstanceId === instance.id}
-                            onClick={() => onRevalidateCredentials(instance)}
-                          >
-                            {authenticatingInstanceId === instance.id ? 'Validating...' : 'Validate'}
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
+    <div
+      key={instance.id}
+      className="grid gap-4 p-3 text-sm"
+      data-testid={`connector-instance-card-${instance.id}`}
+    >
+      <div className="min-w-0">
+        <h3 className="font-medium text-foreground" id={cardHeadingId}>{instance.displayName}</h3>
+        <p className="text-xs text-muted-foreground">{instance.connectorId}</p>
+      </div>
 
-                    {isJobrightInstance ? (
-                      <p className="text-xs text-muted-foreground">
-                        A Jobright password is required. A Gmail address is only the username and does
-                        not initiate Google OAuth. Google-only Jobright accounts are currently
-                        unsupported until Jobright provides a supported desktop handoff.
-                      </p>
-                    ) : null}
+      <section
+        aria-labelledby={`${cardHeadingId} ${credentialsHeadingId}`}
+        className="grid gap-3 rounded-md border border-border bg-background/40 p-3"
+      >
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold text-foreground" id={credentialsHeadingId}>
+              Credentials
+            </h4>
+            {isJobrightInstance ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                A Jobright password is required. A Gmail address is only the username and does
+                not initiate Google OAuth. Google-only Jobright accounts are currently
+                unsupported until Jobright provides a supported desktop handoff.
+              </p>
+            ) : null}
+          </div>
+          <div
+            className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end"
+            data-testid={`connector-auth-actions-${instance.id}`}
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              {authLabel}
+            </p>
+            {!isEditingAuth ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={authenticatingInstanceId === instance.id}
+                onClick={() => onBeginCredentialEdit(instance)}
+              >
+                {authConfigured ? 'Update credentials' : 'Add credentials'}
+              </Button>
+            ) : null}
+            {authConfigured && !isEditingAuth ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={authenticatingInstanceId === instance.id}
+                onClick={() => onRevalidateCredentials(instance)}
+              >
+                {authenticatingInstanceId === instance.id ? 'Validating...' : 'Validate'}
+              </Button>
+            ) : null}
+          </div>
+        </div>
 
-                    {isEditingAuth ? (
-                      <div
-                        className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
-                        data-testid={`connector-credential-form-${instance.id}`}
-                      >
-                        <Field
-                          className="grid gap-1 text-xs font-medium text-muted-foreground"
-                          data-invalid={emailInvalid ? true : undefined}
-                        >
-                          <FieldLabel
-                            className="text-xs font-medium text-muted-foreground"
-                            htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
-                          >
-                            Jobright email
-                          </FieldLabel>
-                          <Input
-                            aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
-                            aria-invalid={emailInvalid}
-                            autoComplete="off"
-                            id={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
-                            required
-                            type="email"
-                            value={credentialDraft.email}
-                            onChange={(event) =>
-                              onUpdateCredentialDraft(instance.id, { email: event.target.value })}
-                          />
-                        </Field>
-                        <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
-                          <FieldLabel
-                            className="text-xs font-medium text-muted-foreground"
-                            htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
-                          >
-                            Jobright password
-                          </FieldLabel>
-                          <Input
-                            aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
-                            autoComplete="new-password"
-                            id={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
-                            required
-                            type="password"
-                            value={credentialDraft.password}
-                            onChange={(event) =>
-                              onUpdateCredentialDraft(instance.id, { password: event.target.value })}
-                          />
-                        </Field>
-                        <div
-                          aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
-                          aria-label="Credential save actions"
-                          className="grid gap-2 sm:grid-cols-[auto_auto] sm:items-end xl:col-span-2"
-                          data-testid={`connector-credential-actions-${instance.id}`}
-                          role="group"
-                          tabIndex={credentialBlockReason ? 0 : undefined}
-                        >
-                          {credentialBlockReason ? (
-                            <p
-                              className="text-xs text-warning sm:col-span-2"
-                              id={credentialReasonId}
-                            >
-                              {credentialBlockReason}
-                            </p>
-                          ) : null}
-                          <Button
-                            type="button"
-                            aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
-                            disabled={authenticatingInstanceId === instance.id || !credentialsReady}
-                            onClick={() => onSaveAndValidateCredentials(instance)}
-                          >
-                            {authenticatingInstanceId === instance.id ? 'Validating...' : 'Save and validate'}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            disabled={authenticatingInstanceId === instance.id}
-                            onClick={() => onCancelCredentialEdit(instance.id)}
-                          >
-                            Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        Credentials are write-only. Saved values are never shown again.
-                      </p>
-                    )}
+        {isEditingAuth ? (
+          <div
+            className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
+            data-testid={`connector-credential-form-${instance.id}`}
+          >
+            <Field
+              className="grid gap-1 text-xs font-medium text-muted-foreground"
+              data-invalid={emailInvalid ? true : undefined}
+            >
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
+              >
+                Jobright email
+              </FieldLabel>
+              <Input
+                aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
+                aria-invalid={emailInvalid}
+                autoComplete="off"
+                id={fieldControlId(`connector-${instance.id}`, 'Jobright email')}
+                required
+                type="email"
+                value={credentialDraft.email}
+                onChange={(event) =>
+                  onUpdateCredentialDraft(instance.id, { email: event.target.value })}
+              />
+            </Field>
+            <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
+              <FieldLabel
+                className="text-xs font-medium text-muted-foreground"
+                htmlFor={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
+              >
+                Jobright password
+              </FieldLabel>
+              <Input
+                aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
+                autoComplete="new-password"
+                id={fieldControlId(`connector-${instance.id}`, 'Jobright password')}
+                required
+                type="password"
+                value={credentialDraft.password}
+                onChange={(event) =>
+                  onUpdateCredentialDraft(instance.id, { password: event.target.value })}
+              />
+            </Field>
+            <div
+              aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
+              aria-label="Credential save actions"
+              className="grid gap-2 sm:grid-cols-[auto_auto] sm:items-end xl:col-span-2"
+              data-testid={`connector-credential-actions-${instance.id}`}
+              role="group"
+              tabIndex={credentialBlockReason ? 0 : undefined}
+            >
+              {credentialBlockReason ? (
+                <p
+                  className="text-xs text-warning sm:col-span-2"
+                  id={credentialReasonId}
+                >
+                  {credentialBlockReason}
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                aria-describedby={credentialBlockReason ? credentialReasonId : undefined}
+                disabled={authenticatingInstanceId === instance.id || !credentialsReady}
+                onClick={() => onSaveAndValidateCredentials(instance)}
+              >
+                {authenticatingInstanceId === instance.id ? 'Validating...' : 'Save and validate'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={authenticatingInstanceId === instance.id}
+                onClick={() => onCancelCredentialEdit(instance.id)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Credentials are write-only. Saved values are never shown again.
+          </p>
+        )}
 
-                    {authMessage ? (
-                      <p
-                        className={authReady
-                          ? 'text-xs text-success'
-                          : 'text-xs text-warning'}
-                        role="status"
-                      >
-                        {authMessage}
-                      </p>
-                    ) : null}
+        {authMessage ? (
+          <p
+            className={authReady
+              ? 'text-xs text-success'
+              : 'text-xs text-warning'}
+            role="status"
+          >
+            {authMessage}
+          </p>
+        ) : null}
 
-                    {!descriptorCompatible ? (
-                      <Alert role="alert" variant="destructive">
-                        <AlertTriangle aria-hidden="true" />
-                        <AlertTitle>Connector descriptor is unavailable</AlertTitle>
-                        <AlertDescription>
-                          These saved settings cannot be checked for compatibility, so saving is blocked.
-                        </AlertDescription>
-                      </Alert>
-                    ) : null}
+        {credentialEditFeedback ? (
+          <p className="text-xs text-muted-foreground" role="status">
+            {credentialEditFeedback}
+          </p>
+        ) : null}
+      </section>
 
-                    {descriptor?.configSchema ? (
-                      <ConnectorSynchronizationConfiguration
-                        allowMissingRootRequired={!draft.enabled}
-                        config={draft.config}
-                        declaration={descriptor.configSchema}
-                        disabled={isSavingSettings}
-                        instanceId={instance.id}
-                        onChange={(config) => onUpdateDraft(instance.id, { config })}
-                      />
-                    ) : null}
+      <section
+        aria-labelledby={`${cardHeadingId} ${connectorSettingsHeadingId}`}
+        className="grid gap-3 rounded-md border border-border bg-background/40 p-3"
+      >
+        <div className="grid gap-1">
+          <h4 className="text-sm font-semibold text-foreground" id={connectorSettingsHeadingId}>
+            Connector settings
+          </h4>
+          <p className="text-xs text-muted-foreground">
+            Synchronization, provider filters, enabled state
+            {isJobrightInstance ? ', and earliest backfill date' : ''} share one save and discard.
+          </p>
+        </div>
 
-                    {descriptor?.filterSchema && connectorsApi.options ? (
-                      <ConnectorProviderFilters
-                        api={connectorsApi.options}
-                        allowMissingRootRequired={!draft.enabled}
-                        descriptor={descriptor}
-                        disabled={isSavingSettings}
-                        filters={draft.filters}
-                        instanceId={instance.id}
-                        onChange={(filters) => onUpdateDraft(instance.id, { filters })}
-                        compatibilityAlertRole={configIssues.length === 0 ? 'alert' : 'status'}
-                        onCompatibilityChange={setProviderFiltersCompatible}
-                      />
-                    ) : null}
+        {!descriptorCompatible ? (
+          <Alert role="alert" variant="destructive">
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle>Connector descriptor is unavailable</AlertTitle>
+            <AlertDescription>
+              These saved settings cannot be checked for compatibility, so saving is blocked.
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
-                    <ConnectorScheduleControls
-                      capability={schedulingCapability}
-                      capabilityLoadError={capabilityLoadError}
-                      canonical={scheduleCanonical}
-                      connectorDisplayName={instance.displayName}
-                      connectorEnabled={instance.enabled}
-                      draft={scheduleDraft}
-                      isDirty={scheduleIsDirty}
-                      isLoading={scheduleIsLoading}
-                      isSaving={scheduleIsSaving}
-                      statusMessage={scheduleStatusMessage}
-                      statusTone={scheduleStatusTone}
-                      onDiscard={() => onDiscardSchedule(instance)}
-                      onDraftChange={(patch) => onScheduleDraftChange(instance.id, patch)}
-                      onPause={() => onPauseSchedule(instance)}
-                      onResume={() => onResumeSchedule(instance)}
-                      onSave={() => onSaveSchedule(instance)}
-                    />
+        {descriptor?.configSchema ? (
+          <ConnectorSynchronizationConfiguration
+            allowMissingRootRequired={!draft.enabled}
+            config={draft.config}
+            declaration={descriptor.configSchema}
+            disabled={isSavingSettings}
+            instanceId={instance.id}
+            regionLabel={`${instance.displayName} synchronization configuration`}
+            onChange={(config) => onUpdateDraft(instance.id, { config })}
+          />
+        ) : null}
 
-                    <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-background/40 p-3">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Connector enabled</p>
-                        <p className="text-xs text-muted-foreground">
-                          Disabled connectors cannot start manual or scheduled work.
-                        </p>
-                      </div>
-                      <Switch
-                        aria-label={isJobrightInstance
-                          ? 'Jobright connector enabled'
-                          : !settingsValid
-                            ? 'Enabled'
-                            : `${instance.displayName} connector enabled`}
-                        checked={draft.enabled}
-                        disabled={isSavingSettings || (!filtersValid && !draft.enabled)}
-                        onCheckedChange={(enabled) => onUpdateDraft(instance.id, { enabled })}
-                      />
-                    </div>
+        {descriptor?.filterSchema && connectorsApi.options ? (
+          <ConnectorProviderFilters
+            api={connectorsApi.options}
+            allowMissingRootRequired={!draft.enabled}
+            descriptor={descriptor}
+            disabled={isSavingSettings}
+            filters={draft.filters}
+            instanceId={instance.id}
+            regionLabel={`${instance.displayName} provider filters`}
+            onChange={(filters) => onUpdateDraft(instance.id, { filters })}
+            compatibilityAlertRole={configIssues.length === 0 ? 'alert' : 'status'}
+            onCompatibilityChange={setProviderFiltersCompatible}
+          />
+        ) : null}
 
-                    {isJobrightInstance ? (
-                    <>
-                    <ConnectorEarliestBackfillDateControl
-                      createdAt={instance.createdAt}
-                      disabled={isSavingSettings}
-                      instanceId={instance.id}
-                      value={draft.earliestBackfillDate}
-                      onChange={(earliestBackfillDate) =>
-                        onUpdateDraft(instance.id, { earliestBackfillDate })}
-                    />
-                    <div
-                      aria-describedby={actionsDescribedBy}
-                      aria-label={`${instance.displayName} save and run actions`}
-                      className="grid min-w-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(16rem,1fr)_12rem_auto_auto] xl:items-end"
-                      data-testid={`connector-run-actions-${instance.id}`}
-                      role="group"
-                      tabIndex={actionsDescribedBy ? 0 : undefined}
-                    >
-                      <p className="text-xs text-muted-foreground xl:col-span-full">
-                        Run now advances the newest frontier, historical backfill, and pending link resolution.
-                      </p>
-                      {saveBlockReason ? (
-                        <p
-                          className="text-xs text-warning xl:col-span-full"
-                          id={saveReasonId}
-                        >
-                          {saveBlockReason}
-                        </p>
-                      ) : null}
-                      {runBlockReason && runBlockReason !== saveBlockReason ? (
-                        <p
-                          className="text-xs text-warning xl:col-span-full"
-                          id={runReasonId}
-                        >
-                          {runBlockReason}
-                        </p>
-                      ) : null}
-                      {runBlockReason && runBlockReason === saveBlockReason ? (
-                        <span className="sr-only" id={runReasonId}>{runBlockReason}</span>
-                      ) : null}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        aria-describedby={saveBlockReason ? saveReasonId : undefined}
-                        disabled={isSavingSettings || !settingsSaveAllowed}
-                        onClick={() => onSaveSettings(instance)}
-                      >
-                        {isSavingSettings ? 'Saving...' : 'Save Jobright settings'}
-                      </Button>
-                      {draftDirty && !isSavingSettings ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => onDiscardSettings(instance)}
-                        >
-                          Discard unsaved settings
-                        </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        aria-describedby={runBlockReason ? runReasonId : undefined}
-                        disabled={runBlocked}
-                        onClick={() => onRunNow(instance)}
-                      >
-                        {runningInstanceId === instance.id ? 'Running...' : 'Run Jobright now'}
-                      </Button>
-                    </div>
-                    {latestRunStatus ? (
-                      <div
-                        className="grid gap-2"
-                      >
-                        <p
-                          aria-atomic={!latestRun ? 'true' : undefined}
-                          aria-label={!latestRun ? `${instance.displayName} run progress` : undefined}
-                          aria-live={!latestRun ? 'polite' : undefined}
-                          className="text-xs font-medium text-muted-foreground"
-                          role={!latestRun ? 'status' : undefined}
-                        >
-                          Latest synchronization: {latestSynchronization?.label ?? 'Starting'}
-                        </p>
-                        {latestRun ? (
-                          <ConnectorRunSynchronizationDetails
-                            ariaLabel={`${instance.displayName} run progress`}
-                            run={latestRun}
-                          />
-                        ) : null}
-                        {latestRun ? <ConnectorRunLifecycleDetails run={latestRun} /> : null}
-                        {latestRun ? (
-                          <Button
-                            aria-label={`View ${latestRun.id} in Connector Runs`}
-                            className="w-fit"
-                            size="sm"
-                            type="button"
-                            variant="outline"
-                            onClick={() => onOpenSourcingRuns?.(latestRun.id)}
-                          >
-                            View in Connector Runs
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    </>
-                    ) : (
-                      <div
-                        aria-describedby={saveBlockReason ? saveReasonId : undefined}
-                        aria-label={`${instance.displayName} settings actions`}
-                        className="flex flex-wrap items-center gap-2"
-                        data-testid={`connector-settings-actions-${instance.id}`}
-                        role="group"
-                        tabIndex={saveBlockReason ? 0 : undefined}
-                      >
-                        {saveBlockReason ? (
-                          <p
-                            className="basis-full text-xs text-warning"
-                            id={saveReasonId}
-                          >
-                            {saveBlockReason}
-                          </p>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          aria-describedby={saveBlockReason ? saveReasonId : undefined}
-                          disabled={isSavingSettings || !settingsSaveAllowed}
-                          onClick={() => onSaveSettings(instance)}
-                        >
-                          {isSavingSettings ? 'Saving...' : `Save ${instance.displayName} settings`}
-                        </Button>
-                        {draftDirty && !isSavingSettings ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => onDiscardSettings(instance)}
-                          >
-                            Discard unsaved settings
-                          </Button>
-                        ) : null}
-                      </div>
-                    )}
+        <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-background/40 p-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">Connector enabled</p>
+            <p className="text-xs text-muted-foreground">
+              Disabled connectors cannot start manual or scheduled work.
+            </p>
+          </div>
+          <Switch
+            aria-label={isJobrightInstance
+              ? 'Jobright connector enabled'
+              : !settingsValid
+                ? 'Enabled'
+                : `${instance.displayName} connector enabled`}
+            checked={draft.enabled}
+            disabled={isSavingSettings || (!filtersValid && !draft.enabled)}
+            onCheckedChange={(enabled) => onUpdateDraft(instance.id, { enabled })}
+          />
+        </div>
 
-                    <div className="flex justify-end border-t border-border pt-3">
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            disabled={isRemoving}
-                          >
-                            {isRemoving ? 'Removing...' : `Remove ${instance.displayName}`}
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Remove {instance.displayName}?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Configuration, schedules, and authentication references will be removed.
-                              Historical runs and sourcing lineage are preserved. Workspace secrets remain
-                              available for separate secret administration.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              variant="destructive"
-                              onClick={() => onRemove(instance)}
-                            >
-                              Remove connector
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </div>
-                )
+        {isJobrightInstance ? (
+          <ConnectorEarliestBackfillDateControl
+            createdAt={instance.createdAt}
+            disabled={isSavingSettings}
+            instanceId={instance.id}
+            value={draft.earliestBackfillDate}
+            onChange={(earliestBackfillDate) =>
+              onUpdateDraft(instance.id, { earliestBackfillDate })}
+          />
+        ) : null}
+
+        <div
+          aria-describedby={settingsActionsDescribedBy}
+          aria-label={`${instance.displayName} connector settings actions`}
+          className="flex flex-wrap items-center gap-2"
+          data-testid={`connector-settings-actions-${instance.id}`}
+          role="group"
+          tabIndex={settingsActionsDescribedBy ? 0 : undefined}
+        >
+          {saveBlockReason ? (
+            <p className="basis-full text-xs text-warning" id={saveReasonId}>
+              {saveBlockReason}
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            aria-describedby={saveBlockReason ? saveReasonId : undefined}
+            disabled={isSavingSettings || !settingsSaveAllowed}
+            onClick={() => onSaveSettings(instance)}
+          >
+            {isSavingSettings ? 'Saving...' : saveButtonLabel}
+          </Button>
+          {draftDirty && !isSavingSettings ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onDiscardSettings(instance)}
+            >
+              Discard unsaved connector settings
+            </Button>
+          ) : null}
+        </div>
+      </section>
+
+      <ConnectorScheduleControls
+        capability={schedulingCapability}
+        capabilityLoadError={capabilityLoadError}
+        canonical={scheduleCanonical}
+        connectorDisplayName={instance.displayName}
+        connectorEnabled={instance.enabled}
+        draft={scheduleDraft}
+        isDirty={scheduleIsDirty}
+        isLoading={scheduleIsLoading}
+        isSaving={scheduleIsSaving}
+        statusMessage={scheduleStatusMessage}
+        statusTone={scheduleStatusTone}
+        onDiscard={() => onDiscardSchedule(instance)}
+        onDraftChange={(patch) => onScheduleDraftChange(instance.id, patch)}
+        onPause={() => onPauseSchedule(instance)}
+        onResume={() => onResumeSchedule(instance)}
+        onSave={() => onSaveSchedule(instance)}
+      />
+
+      {isJobrightInstance ? (
+        <section
+          aria-labelledby={`${cardHeadingId} ${executionHeadingId}`}
+          className="grid gap-3 rounded-md border border-border bg-background/40 p-3"
+        >
+          <h4 className="text-sm font-semibold text-foreground" id={executionHeadingId}>
+            Execution and status
+          </h4>
+          <div
+            aria-describedby={executionActionsDescribedBy}
+            aria-label={`${instance.displayName} run actions`}
+            className="grid min-w-0 gap-3 lg:grid-cols-2"
+            data-testid={`connector-run-actions-${instance.id}`}
+            role="group"
+            tabIndex={executionActionsDescribedBy ? 0 : undefined}
+          >
+            <p className="text-xs text-muted-foreground lg:col-span-2">
+              Run now advances the newest frontier, historical backfill, and pending link resolution.
+            </p>
+            {runBlockReason ? (
+              <p className="text-xs text-warning lg:col-span-2" id={runReasonId}>
+                {runBlockReason}
+              </p>
+            ) : null}
+            <Button
+              type="button"
+              aria-describedby={runBlockReason ? runReasonId : undefined}
+              disabled={runBlocked}
+              onClick={() => onRunNow(instance)}
+            >
+              {runningInstanceId === instance.id ? 'Running...' : 'Run Jobright now'}
+            </Button>
+          </div>
+          {latestRunStatus ? (
+            <div className="grid gap-2">
+              <p
+                aria-atomic={!latestRun ? 'true' : undefined}
+                aria-label={!latestRun ? `${instance.displayName} run progress` : undefined}
+                aria-live={!latestRun ? 'polite' : undefined}
+                className="text-xs font-medium text-muted-foreground"
+                role={!latestRun ? 'status' : undefined}
+              >
+                Latest synchronization: {latestSynchronization?.label ?? 'Starting'}
+              </p>
+              {latestRun ? (
+                <ConnectorRunSynchronizationDetails
+                  ariaLabel={`${instance.displayName} run progress`}
+                  run={latestRun}
+                />
+              ) : null}
+              {latestRun ? <ConnectorRunLifecycleDetails run={latestRun} /> : null}
+              {latestRun ? (
+                <Button
+                  aria-label={`View ${latestRun.id} in Connector Runs`}
+                  className="w-fit"
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenSourcingRuns?.(latestRun.id)}
+                >
+                  View in Connector Runs
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <section
+        aria-labelledby={`${cardHeadingId} ${managementHeadingId}`}
+        className="grid gap-3 border-t border-border pt-3"
+      >
+        <h4 className="text-sm font-semibold text-foreground" id={managementHeadingId}>
+          Connector management
+        </h4>
+        <div className="flex justify-end">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={isRemoving}
+              >
+                {isRemoving ? 'Removing...' : `Remove ${instance.displayName}`}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove {instance.displayName}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Configuration, schedules, and authentication references will be removed.
+                  Historical runs and sourcing lineage are preserved. Workspace secrets remain
+                  available for separate secret administration.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  onClick={() => onRemove(instance)}
+                >
+                  Remove connector
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </section>
+    </div>
+  )
 }

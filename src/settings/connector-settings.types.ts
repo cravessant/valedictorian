@@ -26,7 +26,6 @@ export type ConnectorAuthUiState =
   | { kind: 'idle' }
   | { kind: 'checking'; message: string }
   | { kind: 'result'; result: ConnectorReconnectResult }
-  | { kind: 'cancelled'; message: string }
   | { kind: 'local'; message: string; status: 'action_required' | 'failed' }
 
 export const secureStorageUnavailableMessage =

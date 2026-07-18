@@ -66,7 +66,7 @@ async function authenticateJobrightInSettings({
   expect(screen.queryByDisplayValue(password)).not.toBeInTheDocument()
   await selectSoftwareEngineeringTaxonomy()
   fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
-  fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
   await waitFor(() => {
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
   })

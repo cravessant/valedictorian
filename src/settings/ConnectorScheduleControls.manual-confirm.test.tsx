@@ -50,6 +50,35 @@ function renderControls({
 }
 
 describe('ConnectorScheduleControls manual-only confirmation', () => {
+  it('labels persisted schedule state separately from an unsaved draft and scopes discard', () => {
+    renderControls({
+      canonical: {
+        id: 'schedule-1',
+        connectorInstanceId: 'jobright-default',
+        revision: 'rev-1',
+        state: 'enabled',
+        cadence: { kind: 'interval', everyMinutes: 60 },
+        timezone: 'UTC',
+        nextEligibleAt: '2026-07-12T13:00:00.000Z',
+        createdAt: '2026-07-12T12:00:00.000Z',
+        updatedAt: '2026-07-12T12:00:00.000Z',
+        lastOccurrence: null,
+        lastRun: null,
+      },
+      draft: {
+        ...createEmptyConnectorScheduleDraft('UTC'),
+        mode: 'preset',
+        presetId: 'interval-30',
+      },
+      isDirty: true,
+    })
+
+    expect(screen.getByText(/Persisted:\s*Enabled/i)).toBeInTheDocument()
+    expect(screen.getByText(/Draft:\s*Common preset/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Discard unsaved schedule' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Discard' })).not.toBeInTheDocument()
+  })
+
   it('saves Manual only without confirmation when no automatic schedule is persisted', () => {
     const onSave = vi.fn()
     renderControls({

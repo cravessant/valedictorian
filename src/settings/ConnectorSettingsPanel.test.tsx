@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ConnectorRetirementConflictError } from 'sparxie'
 
-import { createConnectorsApi, createProfileApi } from '../App.test-helpers'
+import {
+  createConnectorsApi,
+  createConnectorsApiWithJobrightDescriptor,
+  createProfileApi,
+} from '../App.test-helpers'
 import type { ConnectorScheduleUiApi } from './connector-schedule.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
 
@@ -30,11 +34,306 @@ function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
 }
 
 describe('ConnectorSettingsPanel', () => {
+  it('keeps semantic region and heading order aligned within a connector card', async () => {
+    const connectorsApi = createConnectorsApiWithJobrightDescriptor()
+    await connectorsApi.create({
+      id: 'jobright-focus',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.11.0',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password',
+        label: 'Jobright username and password',
+        configured: true,
+      }],
+      config: {},
+      filters: {},
+      earliestBackfillDate: '2026-07-02',
+    })
+
+    render(
+      <ConnectorSettingsPanel
+        connectorsApi={connectorsApi}
+        connectorScheduleApi={createUnavailableScheduleApi()}
+        onRunSettled={vi.fn()}
+        profileApi={createProfileApi()}
+        workspaceId="workspace-1"
+      />,
+    )
+
+    const card = await screen.findByTestId('connector-instance-card-jobright-focus')
+    const headingNames = within(card).getAllByRole('heading').map((node) => node.textContent)
+    expect(headingNames).toEqual([
+      'Jobright internslist',
+      'Credentials',
+      'Connector settings',
+      'Synchronization configuration',
+      'Provider filters',
+      'Automatic schedule',
+      'Execution and status',
+      'Connector management',
+    ])
+    expect(within(card).getByRole('heading', {
+      level: 3,
+      name: 'Jobright internslist',
+    })).toBeInTheDocument()
+    for (const name of [
+      'Credentials',
+      'Connector settings',
+      'Automatic schedule',
+      'Execution and status',
+      'Connector management',
+    ]) {
+      expect(within(card).getByRole('heading', { level: 4, name })).toBeInTheDocument()
+    }
+    for (const name of ['Synchronization configuration', 'Provider filters']) {
+      expect(within(card).getByRole('heading', { level: 5, name })).toBeInTheDocument()
+    }
+
+    const credentials = within(card).getByRole('region', {
+      name: 'Jobright internslist Credentials',
+    })
+    const connectorSettings = within(card).getByRole('region', {
+      name: 'Jobright internslist Connector settings',
+    })
+    const schedule = within(card).getByRole('region', { name: /schedule/i })
+    const execution = within(card).getByRole('region', {
+      name: 'Jobright internslist Execution and status',
+    })
+    const management = within(card).getByRole('region', {
+      name: 'Jobright internslist Connector management',
+    })
+
+    expect(credentials.compareDocumentPosition(connectorSettings)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(connectorSettings.compareDocumentPosition(schedule)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(schedule.compareDocumentPosition(execution)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(execution.compareDocumentPosition(management)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    const credentialsAction = within(credentials).getByRole('button', {
+      name: /Add credentials|Update credentials/,
+    })
+    const enabledSwitch = within(connectorSettings).getByRole('switch', {
+      name: 'Jobright connector enabled',
+    })
+    const runNow = within(execution).getByRole('button', { name: 'Run Jobright now' })
+    const remove = within(management).getByRole('button', { name: 'Remove Jobright internslist' })
+
+    expect(credentialsAction.compareDocumentPosition(enabledSwitch)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(enabledSwitch.compareDocumentPosition(runNow)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(runNow.compareDocumentPosition(remove)
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    for (const control of [credentialsAction, enabledSwitch, remove]) {
+      control.focus()
+      expect(control).toHaveFocus()
+    }
+  })
+
+  it('exposes distinct named regions with scoped configuration actions', async () => {
+    const connectorsApi = createConnectorsApiWithJobrightDescriptor()
+    await connectorsApi.create({
+      id: 'jobright-regions',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.11.0',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password',
+        label: 'Jobright username and password',
+        configured: true,
+      }],
+      config: {},
+      filters: {},
+      earliestBackfillDate: '2026-07-02',
+    })
+
+    render(
+      <ConnectorSettingsPanel
+        connectorsApi={connectorsApi}
+        connectorScheduleApi={createUnavailableScheduleApi()}
+        onRunSettled={vi.fn()}
+        profileApi={createProfileApi()}
+        workspaceId="workspace-1"
+      />,
+    )
+
+    const card = await screen.findByTestId('connector-instance-card-jobright-regions')
+    expect(within(card).getByRole('heading', { name: 'Jobright internslist' })).toBeInTheDocument()
+
+    const credentials = within(card).getByRole('region', {
+      name: 'Jobright internslist Credentials',
+    })
+    const connectorSettings = within(card).getByRole('region', {
+      name: 'Jobright internslist Connector settings',
+    })
+    const synchronization = within(card).getByRole('region', {
+      name: 'Jobright internslist synchronization configuration',
+    })
+    const providerFilters = within(card).getByRole('region', {
+      name: 'Jobright internslist provider filters',
+    })
+    const schedule = within(card).getByRole('region', { name: /schedule/i })
+    const execution = within(card).getByRole('region', { name: /execution|status/i })
+    const management = within(card).getByRole('region', { name: /management|remove/i })
+
+    expect(within(credentials).getByRole('heading', { name: 'Credentials' })).toBeInTheDocument()
+    expect(within(synchronization).getByRole('heading', {
+      level: 5,
+      name: 'Synchronization configuration',
+    })).toBeInTheDocument()
+    expect(within(providerFilters).getByRole('heading', {
+      level: 5,
+      name: 'Provider filters',
+    })).toBeInTheDocument()
+    expect(within(schedule).getByRole('heading', { name: 'Automatic schedule' })).toBeInTheDocument()
+    expect(within(execution).getByRole('heading', {
+      name: /execution|status/i,
+    })).toBeInTheDocument()
+    expect(within(management).getByRole('heading', {
+      name: /management/i,
+    })).toBeInTheDocument()
+
+    const save = within(connectorSettings).getByRole('button', {
+      name: /Save .* connector settings/i,
+    })
+    const discardLabel = /Discard unsaved connector settings/i
+    fireEvent.click(within(connectorSettings).getByRole('switch', {
+      name: 'Jobright connector enabled',
+    }))
+    expect(within(connectorSettings).getByRole('button', { name: discardLabel })).toBeInTheDocument()
+    expect(within(execution).queryByRole('button', { name: /Save .* connector settings/i }))
+      .not.toBeInTheDocument()
+    expect(within(execution).getByRole('button', { name: 'Run Jobright now' })).toBeInTheDocument()
+    expect(within(management).getByRole('button', { name: 'Remove Jobright internslist' }))
+      .toBeInTheDocument()
+    expect(save).toBeInTheDocument()
+
+    fireEvent.click(within(management).getByRole('button', { name: 'Remove Jobright internslist' }))
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+  })
+
+  it('keeps connector-settings and schedule drafts isolated across discard', async () => {
+    const connectorsApi = createConnectorsApiWithJobrightDescriptor()
+    await connectorsApi.create({
+      id: 'jobright-isolation',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.11.0',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password',
+        label: 'Jobright username and password',
+        configured: true,
+      }],
+      config: { discoveryCount: 20 },
+      filters: {},
+      earliestBackfillDate: '2026-07-02',
+    })
+    const scheduleApi = {
+      getCapabilities: vi.fn(async () => ({
+        connectorScheduling: {
+          available: true as const,
+          supportedCadences: ['interval', 'daily', 'weekly'] as const,
+          minimumIntervalMinutes: 15,
+          maximumCatchUpAgeMinutes: 24 * 60,
+          timezoneModel: 'iana' as const,
+          missedOccurrencePolicy: 'coalesce_one' as const,
+        },
+      })),
+      getSchedule: vi.fn(async () => ({
+        id: 'schedule-1',
+        connectorInstanceId: 'jobright-isolation',
+        revision: 'rev-1',
+        state: 'enabled' as const,
+        cadence: { kind: 'interval' as const, everyMinutes: 60 },
+        timezone: 'UTC',
+        nextEligibleAt: '2026-07-12T13:00:00.000Z',
+        createdAt: '2026-07-12T12:00:00.000Z',
+        updatedAt: '2026-07-12T12:00:00.000Z',
+        lastOccurrence: null,
+        lastRun: null,
+      })),
+      upsertSchedule: vi.fn(async () => {
+        throw new Error('unused')
+      }),
+      pauseSchedule: vi.fn(async () => {
+        throw new Error('unused')
+      }),
+      resumeSchedule: vi.fn(async () => {
+        throw new Error('unused')
+      }),
+      deleteSchedule: vi.fn(async () => {
+        throw new Error('unused')
+      }),
+    }
+
+    render(
+      <ConnectorSettingsPanel
+        connectorsApi={connectorsApi}
+        connectorScheduleApi={scheduleApi}
+        onRunSettled={vi.fn()}
+        profileApi={createProfileApi()}
+        workspaceId="workspace-1"
+      />,
+    )
+
+    const card = await screen.findByTestId('connector-instance-card-jobright-isolation')
+    const discovery = await within(card).findByLabelText('Discovery count')
+    fireEvent.change(discovery, { target: { value: '35' } })
+    fireEvent.change(within(card).getByLabelText('Schedule mode'), {
+      target: { value: 'preset' },
+    })
+    fireEvent.change(within(card).getByLabelText('Preset'), {
+      target: { value: 'interval-30' },
+    })
+
+    expect(discovery).toHaveValue(35)
+    expect(within(card).getByText(/Draft:\s*Common preset/i)).toBeInTheDocument()
+    expect(within(card).getByRole('button', {
+      name: 'Discard unsaved connector settings',
+    })).toBeInTheDocument()
+    expect(within(card).getByRole('button', {
+      name: 'Discard unsaved schedule',
+    })).toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', {
+      name: 'Discard unsaved connector settings',
+    }))
+    await waitFor(() => expect(discovery).toHaveValue(20))
+    expect(within(card).getByLabelText('Schedule mode')).toHaveValue('preset')
+    expect(within(card).getByLabelText('Preset')).toHaveValue('interval-30')
+    expect(within(card).getByText(/Draft:\s*Common preset/i)).toBeInTheDocument()
+
+    fireEvent.change(discovery, { target: { value: '40' } })
+    fireEvent.click(within(card).getByRole('button', {
+      name: 'Discard unsaved schedule',
+    }))
+    expect(discovery).toHaveValue(40)
+    expect(within(card).queryByText(/Draft:/i)).not.toBeInTheDocument()
+    expect(within(card).getByRole('button', {
+      name: 'Discard unsaved connector settings',
+    })).toBeInTheDocument()
+  })
+
   it('saves an accessible enabled switch for every connector type', async () => {
     const connectorsApi = createConnectorsApi()
     await connectorsApi.create({
       id: 'fixture-connector', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Fixture jobs', enabled: true, auth: [], config: {}, filters: {},
+    })
+    await connectorsApi.create({
+      id: 'fixture-backup', connectorId: 'fixture.backup', connectorVersion: '1.0.0',
+      displayName: 'Fixture backup', enabled: true, auth: [], config: {}, filters: {},
     })
     render(
       <ConnectorSettingsPanel
@@ -47,9 +346,15 @@ describe('ConnectorSettingsPanel', () => {
     )
 
     const enabled = await screen.findByRole('switch', { name: 'Fixture jobs connector enabled' })
+    expect(screen.getByRole('region', { name: 'Fixture jobs Credentials' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Fixture backup Credentials' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Fixture jobs Connector settings' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Fixture backup Connector settings' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Fixture jobs Connector management' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Fixture backup Connector management' })).toBeInTheDocument()
     expect(enabled).toBeChecked()
     fireEvent.click(enabled)
-    fireEvent.click(screen.getByRole('button', { name: 'Save Fixture jobs settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Fixture jobs connector settings' }))
 
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: 'fixture-connector',

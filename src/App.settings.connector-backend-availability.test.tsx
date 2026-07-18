@@ -143,7 +143,7 @@ describe('connector backend availability', () => {
     expect(connectorStatusLoader).toHaveBeenCalledTimes(2)
 
     fireEvent.click(await screen.findByRole('switch', { name: 'Jobright connector enabled' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledOnce())
     await act(async () => undefined)
     expect(connectorStatusLoader).toHaveBeenCalledTimes(3)

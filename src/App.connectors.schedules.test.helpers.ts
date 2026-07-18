@@ -158,7 +158,7 @@ export async function authenticateJobrightInConnectors({
   expect(connectorsApi.status.reconnect).toHaveBeenCalled()
   await selectSoftwareEngineeringTaxonomy()
   fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
-  fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
   await waitFor(() => {
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
   })

@@ -79,13 +79,13 @@ describe('declarative connector provider filters', () => {
     })
     const keyword = within(card).getByRole('textbox', { name: 'Keyword' })
     fireEvent.change(keyword, { target: { value: 'x' } })
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' })).toBeDisabled()
+    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })).toBeDisabled()
     fireEvent.change(keyword, { target: { value: 'infrastructure' } })
     fireEvent.change(within(card).getByLabelText('Posted after'), {
       target: { value: '2026-07-07' },
     })
     fireEvent.click(within(card).getByRole('checkbox', { name: 'Hybrid' }))
-    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
 
     const expectedFilters = {
       employmentKind: 'full_time',
@@ -274,7 +274,7 @@ describe('declarative connector provider filters', () => {
     const compatibility = await within(card).findByRole('alert')
     expect(compatibility).toHaveTextContent(/cobol/i)
     expect(compatibility).toHaveTextContent(/unknown|unavailable|compatib/i)
-    const save = within(card).getByRole('button', { name: 'Save Fixture provider settings' })
+    const save = within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })
     expect(save).toBeDisabled()
     fireEvent.click(save)
     expect(connectorsApi.update).not.toHaveBeenCalled()
@@ -293,7 +293,7 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     await waitFor(() => expect(connectorsApi.options.query).toHaveBeenCalled())
     expect(within(card).getByText('typescript')).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
       .toBeDisabled()
 
     resolution.resolve({
@@ -303,7 +303,7 @@ describe('declarative connector provider filters', () => {
       unknownValues: [],
     })
     await waitFor(() => {
-      expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+      expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
         .toBeEnabled()
     })
   })
@@ -344,7 +344,7 @@ describe('declarative connector provider filters', () => {
     expect(within(card).getByText('typescript')).toBeInTheDocument()
     const compatibility = await within(card).findByRole('alert')
     expect(compatibility).toHaveTextContent(message)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
       .toBeDisabled()
     if (retry) expect(within(card).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(connectorsApi.update).not.toHaveBeenCalled()
@@ -372,7 +372,7 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     const compatibility = await within(card).findByRole('alert')
     expect(compatibility).toHaveTextContent(/binding|source|declaration|compatib/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
       .toBeDisabled()
     expect(connectorsApi.update).not.toHaveBeenCalled()
   })
@@ -399,7 +399,7 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     expect(within(card).getByText('typescript')).toBeInTheDocument()
     expect(await within(card).findByRole('alert')).toHaveTextContent(/resolve|verify|compatib/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
       .toBeDisabled()
   })
 
@@ -411,7 +411,7 @@ describe('declarative connector provider filters', () => {
     expect(within(card).getByText('typescript')).toBeInTheDocument()
     expect(within(card).getAllByText(/complete the dependent filters first/i).length).toBeGreaterThan(0)
     expect(await within(card).findByRole('alert')).toHaveTextContent(/depend|require|compatib/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
       .toBeDisabled()
   })
 
@@ -442,7 +442,7 @@ describe('declarative connector provider filters', () => {
     await waitFor(() => expect(attempt).toBe(2))
     await waitFor(() => expect(within(card).queryByRole('alert')).not.toBeInTheDocument())
     expect(within(card).getByText('TypeScript')).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
       .toBeEnabled()
   })
 
@@ -465,7 +465,7 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     const compatibility = await within(card).findByRole('alert')
     expect(compatibility).toHaveTextContent(/private provider config|not declared|compatib/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
       .toBeDisabled()
     expect(connectorsApi.update).not.toHaveBeenCalled()
   })
@@ -600,7 +600,7 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     const minimum = within(card).getByRole('spinbutton', { name: 'Minimum compensation' })
     const maximum = within(card).getByRole('spinbutton', { name: 'Maximum compensation' })
-    const save = within(card).getByRole('button', { name: 'Save Fixture provider settings' })
+    const save = within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })
 
     fireEvent.change(minimum, { target: { value: '150000' } })
     expect(await within(card).findByRole('alert')).toHaveTextContent(/range|minimum|maximum|endpoint/i)
@@ -626,7 +626,7 @@ describe('declarative connector provider filters', () => {
     fireEvent.click(within(card).getByRole('switch', { name: 'Enabled' }))
     const compatibility = within(card).getByRole('alert')
     expect(compatibility).toHaveTextContent(/descriptor|compatib/i)
-    const save = within(card).getByRole('button', { name: 'Save Fixture provider settings' })
+    const save = within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })
     expect(save).toBeDisabled()
     fireEvent.click(save)
     expect(connectorsApi.update).not.toHaveBeenCalled()
@@ -649,7 +649,7 @@ describe('declarative connector provider filters', () => {
     expect(within(providerFilters).queryByLabelText('Discovery limit')).not.toBeInTheDocument()
 
     fireEvent.change(control, { target: { value: '20' } })
-    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: INSTANCE_ID,
       enabled: true,
@@ -670,7 +670,7 @@ describe('declarative connector provider filters', () => {
     expect(compatibility).toHaveTextContent(/compatib/i)
     expect(compatibility).toHaveTextContent(/employmentKind|employment kind/i)
     expect(compatibility).toHaveTextContent(/contractor/i)
-    const save = screen.getByRole('button', { name: 'Save Fixture provider settings' })
+    const save = screen.getByRole('button', { name: 'Save Fixture provider connector settings' })
     expect(save).toBeDisabled()
     fireEvent.click(save)
     expect(connectorsApi.update).not.toHaveBeenCalled()
@@ -686,7 +686,7 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     expect(within(card).getByRole('alert')).toHaveTextContent(/compatib/i)
     fireEvent.click(within(card).getByRole('switch', { name: 'Enabled' }))
-    const save = within(card).getByRole('button', { name: 'Save Fixture provider settings' })
+    const save = within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })
     expect(save).toBeEnabled()
     fireEvent.click(save)
 
@@ -714,7 +714,7 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     const country = within(card).getByRole('combobox', { name: 'Country' })
     fireEvent.change(country, { target: { value: 'CA' } })
-    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
 
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: INSTANCE_ID,
@@ -772,7 +772,7 @@ describe('declarative connector provider filters', () => {
     const skills = within(card).getByRole('combobox', { name: 'Include Skills' })
     fireEvent.change(skills, { target: { value: 'rea' } })
     fireEvent.click(await within(card).findByRole('option', { name: 'React' }))
-    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
 
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: INSTANCE_ID,
@@ -877,7 +877,7 @@ describe('declarative connector provider filters', () => {
     fireEvent.change(country, { target: { value: 'CA' } })
     fireEvent.click(within(card).getByRole('checkbox', { name: 'Hybrid' }))
     fireEvent.change(duration, { target: { value: '1.5' } })
-    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
 
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: INSTANCE_ID,
@@ -906,7 +906,7 @@ describe('declarative connector provider filters', () => {
     expect(within(card).queryByRole('combobox', { name: 'Country' })).not.toBeInTheDocument()
     expect(within(card).queryByRole('spinbutton', { name: 'Maximum run duration' }))
       .not.toBeInTheDocument()
-    const save = within(card).getByRole('button', { name: 'Save Fixture provider settings' })
+    const save = within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })
     expect(save).toBeDisabled()
     fireEvent.click(save)
     expect(connectorsApi.update).not.toHaveBeenCalled()

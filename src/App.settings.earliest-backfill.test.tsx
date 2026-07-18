@@ -103,7 +103,7 @@ describe('connector earliest backfill date UI', () => {
       .toHaveTextContent('2026-06-01')
     expect(within(cardA).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
 
-    fireEvent.click(within(cardA).getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.click(within(cardA).getByRole('button', { name: 'Save Jobright A connector settings' }))
     await waitFor(() => {
       expect(connectorsApi.update).toHaveBeenCalledWith(expect.objectContaining({
         connectorInstanceId: 'jobright-a',
@@ -126,7 +126,7 @@ describe('connector earliest backfill date UI', () => {
       expect(within(cardA).getByTestId('connector-earliest-backfill-value-jobright-a'))
         .toHaveTextContent('2026-07-02')
     })
-    fireEvent.click(within(cardA).getByRole('button', { name: 'Discard unsaved settings' }))
+    fireEvent.click(within(cardA).getByRole('button', { name: 'Discard unsaved connector settings' }))
     await waitFor(() => {
       expect(within(cardA).getByTestId('connector-earliest-backfill-value-jobright-a'))
         .toHaveTextContent('2026-07-01')

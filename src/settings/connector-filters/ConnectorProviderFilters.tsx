@@ -49,6 +49,7 @@ export function ConnectorProviderFilters({
   disabled,
   filters,
   instanceId,
+  regionLabel,
   onChange,
   compatibilityAlertRole = 'alert',
   onCompatibilityChange,
@@ -59,6 +60,7 @@ export function ConnectorProviderFilters({
   disabled: boolean
   filters: Record<string, unknown>
   instanceId: string
+  regionLabel?: string
   onChange: (filters: Record<string, unknown>) => void
   compatibilityAlertRole?: 'alert' | 'status'
   onCompatibilityChange: (compatible: boolean) => void
@@ -117,10 +119,16 @@ export function ConnectorProviderFilters({
 
   if (!filterObjectSchema || !filterDeclaration) return null
 
+  const headingId = `connector-provider-filters-heading-${instanceId}`
+
   return (
-    <section className="grid gap-4 border-y border-border/70 py-4">
+    <section
+      aria-label={regionLabel}
+      aria-labelledby={regionLabel ? undefined : headingId}
+      className="grid gap-4 border-y border-border/70 py-4"
+    >
       <div className="grid gap-1">
-        <h3 className="text-sm font-medium text-foreground">Provider filters</h3>
+        <h5 className="text-sm font-medium text-foreground" id={headingId}>Provider filters</h5>
         <p className="text-xs text-muted-foreground">
           These provider-owned filters control sourcing. Candidate-fit evaluation remains a separate,
           downstream step.
@@ -252,6 +260,7 @@ export function ConnectorSynchronizationConfiguration({
   declaration,
   disabled,
   instanceId,
+  regionLabel,
   onChange,
 }: {
   allowMissingRootRequired: boolean
@@ -259,6 +268,7 @@ export function ConnectorSynchronizationConfiguration({
   declaration: ConnectorVersionedRendererSchema
   disabled: boolean
   instanceId: string
+  regionLabel?: string
   onChange: (config: Record<string, unknown>) => void
 }) {
   const schema = declaration.schema
@@ -267,10 +277,17 @@ export function ConnectorSynchronizationConfiguration({
   const issues = presentationCompatibility.compatible
     ? validateConnectorConfigPersistenceValue(schema, config, { allowMissingRootRequired })
     : []
+  const headingId = `connector-synchronization-heading-${instanceId}`
   return (
-    <section className="grid gap-4 border-y border-border/70 py-4">
+    <section
+      aria-label={regionLabel}
+      aria-labelledby={regionLabel ? undefined : headingId}
+      className="grid gap-4 border-y border-border/70 py-4"
+    >
       <div className="grid gap-1">
-        <h3 className="text-sm font-medium text-foreground">Synchronization configuration</h3>
+        <h5 className="text-sm font-medium text-foreground" id={headingId}>
+          Synchronization configuration
+        </h5>
         <p className="text-xs text-muted-foreground">
           Tune how this connector synchronizes independently of provider sourcing filters.
         </p>

@@ -42,10 +42,6 @@ export function connectorAuthStatusLabel(
     return 'Checking auth...'
   }
 
-  if (state.kind === 'cancelled') {
-    return 'Auth cancelled'
-  }
-
   if (state.kind === 'result') {
     if (state.result.status === 'ready') {
       return 'Auth verified'
@@ -74,7 +70,7 @@ export function connectorAuthStatusLabel(
 }
 
 export function connectorAuthStatusMessage(state: ConnectorAuthUiState): string | null {
-  if (state.kind === 'checking' || state.kind === 'cancelled' || state.kind === 'local') {
+  if (state.kind === 'checking' || state.kind === 'local') {
     return state.message
   }
 

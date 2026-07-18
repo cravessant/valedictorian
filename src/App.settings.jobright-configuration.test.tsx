@@ -39,7 +39,7 @@ describe('Jobright configuration', () => {
     expect(screen.queryByLabelText('Requested detail-resolution attempts')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
 
     await waitFor(() => {
       expect(connectorsApi.update).toHaveBeenCalledWith({
@@ -77,12 +77,12 @@ describe('Jobright configuration', () => {
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledTimes(1))
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
 
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledTimes(2))
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
   })
@@ -96,7 +96,7 @@ describe('Jobright configuration', () => {
     const first = renderApp(connectorsApi)
     await openConnectors()
     fireEvent.click(await screen.findByLabelText('Jobright connector enabled'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalled())
     expect(screen.getByText('Earliest backfill date')).toBeInTheDocument()
     expect(screen.getByText('Automatic schedule')).toBeInTheDocument()

@@ -99,7 +99,7 @@ describe('connector instance applicability', () => {
     expect(screen.queryByDisplayValue('main-page-fixture-password')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled())
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
@@ -209,7 +209,7 @@ describe('connector instance applicability', () => {
 
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
-    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
     const runButton = screen.getByRole('button', { name: 'Run Jobright now' })
     await waitFor(() => expect(runButton).toBeEnabled())
     fireEvent.click(runButton)
@@ -347,7 +347,7 @@ describe('connector instance applicability', () => {
     expect(within(fixtureCard).getByText('fixture.jobs')).toBeInTheDocument()
     expect(within(fixtureCard).queryByLabelText('Useful results target')).not.toBeInTheDocument()
     expect(within(fixtureCard).queryByText('Advanced connector limits')).not.toBeInTheDocument()
-    expect(within(fixtureCard).queryByRole('button', { name: 'Save Jobright settings' }))
+    expect(within(fixtureCard).queryByRole('button', { name: 'Save Jobright internslist connector settings' }))
       .not.toBeInTheDocument()
     expect(within(fixtureCard).queryByRole('button', { name: 'Run Jobright now' }))
       .not.toBeInTheDocument()

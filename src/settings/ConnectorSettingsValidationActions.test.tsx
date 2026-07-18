@@ -45,7 +45,7 @@ describe('connector validation and action-state synchronization', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     const minimum = within(card).getByRole('spinbutton', { name: 'Minimum compensation' })
     const maximum = within(card).getByRole('spinbutton', { name: 'Maximum compensation' })
-    const save = within(card).getByRole('button', { name: 'Save Fixture provider settings' })
+    const save = within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })
 
     fireEvent.change(minimum, { target: { value: '150000' } })
     fireEvent.change(maximum, { target: { value: '50000' } })
@@ -106,7 +106,7 @@ describe('connector validation and action-state synchronization', () => {
       .toHaveAttribute('aria-invalid', 'true')
     expect(save).toBeDisabled()
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard unsaved settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Discard unsaved connector settings' }))
     await waitFor(() => {
       expect(minimum).toHaveValue(70_000)
       expect(maximum).toHaveValue(120_000)

@@ -143,7 +143,7 @@ export function ConnectorScheduleControls({
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
-          <p className="text-xs font-medium text-muted-foreground">Manual only</p>
+          <p className="text-xs font-medium text-muted-foreground">Persisted: Not loaded</p>
         </div>
         <p className="text-xs text-muted-foreground">
           {CONNECTOR_SCHEDULE_UNAVAILABLE_EXPLANATION}
@@ -182,13 +182,20 @@ export function ConnectorScheduleControls({
   const presets = supportedSchedulePresets(capability)
   const timezones = listIanaTimeZones(draft.timezone)
   const timezoneOptions = timezones.map((timezone) => ({ label: timezone, value: timezone }))
-  const scheduleStateLabel = !connectorEnabled
-    ? 'Connector disabled'
-    : canonical?.state === 'paused'
-      ? 'Paused'
-      : canonical
-        ? 'Enabled'
-        : 'Manual only'
+  const scheduleStateLabel = canonical?.state === 'paused'
+    ? 'Paused'
+    : canonical
+      ? 'Enabled'
+      : 'Manual only'
+  const draftModeLabel = draft.mode === 'manual'
+    ? 'Manual only'
+    : draft.mode === 'preset'
+      ? 'Common preset'
+      : draft.mode === 'custom-interval'
+        ? 'Custom interval'
+        : draft.mode === 'custom-daily'
+          ? 'Custom daily'
+          : 'Custom weekly'
 
   return (
     <section
@@ -197,7 +204,10 @@ export function ConnectorScheduleControls({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
-        <p className="text-xs font-medium text-muted-foreground">{scheduleStateLabel}</p>
+        <div className="grid gap-0.5 text-right text-xs font-medium text-muted-foreground">
+          <p>Persisted: {scheduleStateLabel}</p>
+          {isDirty ? <p>Draft: {draftModeLabel}</p> : null}
+        </div>
       </div>
 
       <Field
@@ -408,7 +418,7 @@ export function ConnectorScheduleControls({
           type="button"
           onClick={onDiscard}
         >
-          Discard
+          Discard unsaved schedule
         </Button>
         {canonical?.state === 'enabled' ? (
           <Button

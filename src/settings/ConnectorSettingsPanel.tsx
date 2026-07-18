@@ -90,6 +90,7 @@ export function ConnectorSettingsPanel({
   const [isAdding, setIsAdding] = useState(false)
   const [authenticatingInstanceId, setAuthenticatingInstanceId] = useState<string | null>(null)
   const [authStates, setAuthStates] = useState<Record<string, ConnectorAuthUiState>>({})
+  const [credentialEditFeedback, setCredentialEditFeedback] = useState<Record<string, string>>({})
   const [savingInstanceIds, setSavingInstanceIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   )
@@ -355,9 +356,22 @@ export function ConnectorSettingsPanel({
       },
     }))
     setAuthStates((currentStates) => {
+      const existing = currentStates[instance.id]
+      // Drop only in-flight checks so settled verified/expired/failed status stays visible.
+      if (existing?.kind !== 'checking') {
+        return currentStates
+      }
       const nextStates = { ...currentStates }
       delete nextStates[instance.id]
       return nextStates
+    })
+    setCredentialEditFeedback((current) => {
+      if (!(instance.id in current)) {
+        return current
+      }
+      const next = { ...current }
+      delete next[instance.id]
+      return next
     })
     setConnectorActionError(null)
   }
@@ -372,12 +386,9 @@ export function ConnectorSettingsPanel({
         password: '',
       },
     }))
-    setAuthStates((currentStates) => ({
-      ...currentStates,
-      [instanceId]: {
-        kind: 'cancelled',
-        message: 'Credential update cancelled.',
-      },
+    setCredentialEditFeedback((current) => ({
+      ...current,
+      [instanceId]: 'Credential update cancelled.',
     }))
   }
 
@@ -418,6 +429,14 @@ export function ConnectorSettingsPanel({
     const generation = nextAuthValidationGeneration(instance.id)
     setAuthenticatingInstanceId(instance.id)
     setConnectorActionError(null)
+    setCredentialEditFeedback((current) => {
+      if (!(instance.id in current)) {
+        return current
+      }
+      const next = { ...current }
+      delete next[instance.id]
+      return next
+    })
     setAuthStates((currentStates) => ({
       ...currentStates,
       [instance.id]: {
@@ -507,6 +526,14 @@ export function ConnectorSettingsPanel({
     const generation = nextAuthValidationGeneration(instance.id)
     setAuthenticatingInstanceId(instance.id)
     setConnectorActionError(null)
+    setCredentialEditFeedback((current) => {
+      if (!(instance.id in current)) {
+        return current
+      }
+      const next = { ...current }
+      delete next[instance.id]
+      return next
+    })
     setAuthStates((currentStates) => ({
       ...currentStates,
       [instance.id]: {
@@ -662,6 +689,11 @@ export function ConnectorSettingsPanel({
           const nextStates = { ...currentStates }
           delete nextStates[instance.id]
           return nextStates
+        })
+        setCredentialEditFeedback((currentFeedback) => {
+          const nextFeedback = { ...currentFeedback }
+          delete nextFeedback[instance.id]
+          return nextFeedback
         })
         onConnectorChanged()
       })
@@ -886,6 +918,7 @@ export function ConnectorSettingsPanel({
                 key={instance.id}
                 instance={instance}
                 authState={authStates[instance.id] ?? { kind: 'idle' as const }}
+                credentialEditFeedback={credentialEditFeedback[instance.id] ?? null}
                 draft={drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)}
                 descriptor={descriptor}
                 connectorsApi={connectorsApi}

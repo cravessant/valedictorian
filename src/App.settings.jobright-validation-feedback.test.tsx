@@ -86,6 +86,13 @@ describe('Jobright validation feedback', () => {
     expect(screen.getByText('Auth failed')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
     expect(screen.queryByText(/sensitive/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update credentials' }))
+    expect(screen.getByText('Auth failed')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByText('Credential update cancelled.')).toBeInTheDocument()
+    expect(screen.getByText('Auth failed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
   })
 
   it('keeps failed validation non-ready and clears credential inputs', async () => {

@@ -77,7 +77,7 @@ describe('App connector schedules', () => {
     await authenticateJobrightInConnectors({ connectorsApi, profileApi })
 
     expect(await screen.findByText(CONNECTOR_SCHEDULE_UNAVAILABLE_EXPLANATION)).toBeInTheDocument()
-    expect(screen.getByText('Manual only')).toBeInTheDocument()
+    expect(screen.getByText(/Persisted:\s*Not loaded/i)).toBeInTheDocument()
     expect(scheduleApi.getCapabilities).toHaveBeenCalled()
     expect(scheduleApi.getSchedule).not.toHaveBeenCalled()
     expect(scheduleApi.upsertSchedule).not.toHaveBeenCalled()
@@ -201,7 +201,7 @@ describe('App connector schedules', () => {
     await openConnectorsOverview()
 
     expect(await screen.findByText('Cadence: Every hour')).toBeInTheDocument()
-    expect(screen.getByText('Enabled')).toBeInTheDocument()
+    expect(screen.getByText(/Persisted:\s*Enabled/)).toBeInTheDocument()
   }, 10_000)
 
   it('validates custom interval bounds and preserves draft after typed server errors', async () => {
@@ -417,8 +417,12 @@ describe('App connector schedules', () => {
     fireEvent.change(screen.getByLabelText('Preset'), {
       target: { value: 'interval-30' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
+    expect(screen.getByText(/Persisted:\s*Enabled/i)).toBeInTheDocument()
+    expect(screen.getByText(/Draft:\s*Common preset/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Discard unsaved schedule' }))
     expect(await screen.findByText('Cadence: Every hour')).toBeInTheDocument()
+    expect(screen.queryByText(/Draft:/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Persisted:\s*Enabled/i)).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Preset'), {
       target: { value: 'interval-30' },
@@ -565,7 +569,7 @@ describe('App connector schedules', () => {
     await screen.findByRole('table', { name: 'Applications' })
     await openConnectorsOverview()
     const instanceId = await authenticateJobrightInConnectors({ connectorsApi, profileApi })
-    expect(await screen.findByText('Enabled')).toBeInTheDocument()
+    expect(await screen.findByText(/Persisted:\s*Enabled/)).toBeInTheDocument()
     expect(screen.getByText(/Last occurrence: completed/)).toBeInTheDocument()
     expect(screen.getByText(/Last scheduled run: completed \(scheduled\)/)).toBeInTheDocument()
 
@@ -576,7 +580,7 @@ describe('App connector schedules', () => {
         expectedRevision: 'rev-live',
       })
     })
-    expect(await screen.findByText('Paused')).toBeInTheDocument()
+    expect(await screen.findByText(/Persisted:\s*Paused/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Resume schedule' }))
     await waitFor(() => {
@@ -585,7 +589,7 @@ describe('App connector schedules', () => {
         expectedRevision: 'rev-live-paused',
       })
     })
-    expect(await screen.findByText('Enabled')).toBeInTheDocument()
+    expect(await screen.findByText(/Persisted:\s*Enabled/)).toBeInTheDocument()
   })
 
   it('shows connector-disabled schedule state and never uses schedule dispatch helpers', async () => {
@@ -628,7 +632,8 @@ describe('App connector schedules', () => {
     await screen.findByRole('table', { name: 'Applications' })
     await openConnectorsOverview()
 
-    expect(await screen.findByText('Connector disabled')).toBeInTheDocument()
+    expect(await screen.findByText(/Persisted:\s*Enabled/)).toBeInTheDocument()
+    expect(screen.getByText('This connector is disabled.', { exact: false })).toBeInTheDocument()
     expect(screen.getByText(/Saved schedules stay paused from dispatch/)).toBeInTheDocument()
     expect('dispatchDue' in scheduleApi).toBe(false)
     expect('listAudit' in scheduleApi).toBe(false)

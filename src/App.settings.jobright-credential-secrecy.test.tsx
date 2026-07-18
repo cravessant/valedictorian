@@ -127,11 +127,84 @@ describe('Jobright credential secrecy', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(await screen.findByText('Credential update cancelled.')).toBeInTheDocument()
-    expect(screen.getByText('Auth cancelled')).toBeInTheDocument()
+    expect(screen.queryByText('Auth cancelled')).not.toBeInTheDocument()
+    expect(screen.getByText('Auth required')).toBeInTheDocument()
     expect(profileApi.secrets.upsert).not.toHaveBeenCalled()
     expect(connectorsApi.update).not.toHaveBeenCalled()
     expect(connectorsApi.status.reconnect).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+  })
+
+  it('preserves verified auth status when credential editing is opened and cancelled', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.11.0',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password',
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {},
+        filters: {},
+        earliestBackfillDate: '2026-07-02',
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+    vi.mocked(connectorsApi.status.reconnect).mockResolvedValue({
+      action: 'reconnect',
+      connectorInstanceId: 'jobright-default',
+      grants: [{
+        id: 'jobright',
+        mode: 'username_password',
+        status: 'ready',
+      }],
+      message: 'Connector credentials are verified and ready.',
+      reason: 'jobright_auth_ready',
+      status: 'ready',
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update credentials' }))
+    expect(await screen.findByLabelText('Jobright email')).toBeInTheDocument()
+    expect(screen.getByText('Auth verified')).toBeInTheDocument()
+    expect(screen.queryByText('Auth cancelled')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Jobright email'), {
+      target: { value: 'other@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(await screen.findByText('Credential update cancelled.')).toBeInTheDocument()
+    expect(screen.getByText('Auth verified')).toBeInTheDocument()
+    expect(screen.queryByText('Auth cancelled')).not.toBeInTheDocument()
+    expect(profileApi.secrets.upsert).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    expect(screen.queryByText('Credential update cancelled.')).not.toBeInTheDocument()
+    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
   })
 
   it('keeps invalid empty credentials in the editor without secret calls', async () => {

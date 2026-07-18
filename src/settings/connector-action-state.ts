@@ -80,6 +80,7 @@ export function describeConnectorSaveActionReason(input: {
 export function describeConnectorRunActionReason(input: {
   isRunning: boolean
   isSavingSettings: boolean
+  isEditingAuth?: boolean
   draftDirty: boolean
   settingsValid: boolean
   earliestValid: boolean
@@ -94,6 +95,9 @@ export function describeConnectorRunActionReason(input: {
   }
   if (input.isSavingSettings) {
     return 'Run must wait until settings finish saving.'
+  }
+  if (input.isEditingAuth) {
+    return 'Finish or cancel credential editing before running.'
   }
   if (!input.earliestValid) {
     return input.earliestMessage
