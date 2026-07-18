@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, count, desc, eq, isNull, like, type SQL } from 'drizzle-orm'
+import { and, count, desc, eq, ilike, isNull, type SQL } from 'drizzle-orm'
 import type {
   CompleteWorkflowRunInput,
   CreateWorkflowRunStepInput,
@@ -10,9 +10,12 @@ import type {
   WorkflowRunStep,
 } from 'sparxie'
 import { sources, workflowRuns, workflowRunSteps } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 
 const DEFAULT_RUN_LIST_LIMIT = 50
+
+type WorkflowRunQueryDatabase = Pick<PgliteDatabase, 'select'>
+type WorkflowRunWriteDatabase = Pick<PgliteDatabase, 'insert' | 'select' | 'update'>
 
 interface WorkflowRunRow {
   id: string
@@ -60,42 +63,39 @@ const workflowRunSelection = {
   updatedAt: workflowRuns.updatedAt,
 }
 
-export function createSqliteWorkflowRunRepository(database: DrizzleDatabase) {
+export function createPgliteWorkflowRunRepository(database: PgliteDatabase) {
   return {
     async startRun(input: StartWorkflowRunInput): Promise<WorkflowRun> {
       const now = new Date().toISOString()
       const workflowRunId = randomUUID()
 
-      return database.transaction((transaction) => {
-        const sourceId = resolveWorkflowRunSourceId(transaction, input, now)
+      return database.transaction(async (transaction) => {
+        const sourceId = await resolveWorkflowRunSourceId(transaction, input, now)
 
-        transaction
-          .insert(workflowRuns)
-          .values({
-            id: workflowRunId,
-            runType: input.runType,
-            status: 'in_progress',
-            actorType: input.actorType,
-            actorName: input.actorName ?? null,
-            sourceId,
-            subjectApplicationId: input.subjectApplicationId ?? null,
-            startedAt: now,
-            completedAt: null,
-            coverageStartedAt: input.coverageStartedAt ?? null,
-            coverageEndedAt: input.coverageEndedAt ?? null,
-            timezone: input.timezone ?? null,
-            inputJson: JSON.stringify(input.input ?? {}),
-            summary: input.summary ?? null,
-            outcome: null,
-            blocker: null,
-            metadataJson: JSON.stringify(input.metadata ?? {}),
-            createdAt: now,
-            updatedAt: now,
-            deletedAt: null,
-          })
-          .run()
+        await transaction.insert(workflowRuns).values({
+          id: workflowRunId,
+          runType: input.runType,
+          status: 'in_progress',
+          actorType: input.actorType,
+          actorName: input.actorName ?? null,
+          sourceId,
+          subjectApplicationId: input.subjectApplicationId ?? null,
+          startedAt: now,
+          completedAt: null,
+          coverageStartedAt: input.coverageStartedAt ?? null,
+          coverageEndedAt: input.coverageEndedAt ?? null,
+          timezone: input.timezone ?? null,
+          inputJson: JSON.stringify(input.input ?? {}),
+          summary: input.summary ?? null,
+          outcome: null,
+          blocker: null,
+          metadataJson: JSON.stringify(input.metadata ?? {}),
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        })
 
-        insertWorkflowRunStep(transaction, {
+        await insertWorkflowRunStep(transaction, {
           actor: runActor(input.actorType, input.actorName),
           message: input.summary ?? 'Workflow run started.',
           now,
@@ -111,26 +111,26 @@ export function createSqliteWorkflowRunRepository(database: DrizzleDatabase) {
     async createRunStep(input: CreateWorkflowRunStepInput): Promise<WorkflowRunStep> {
       const now = new Date().toISOString()
 
-      return database.transaction((transaction) => {
-        const existing = transaction
+      return database.transaction(async (transaction) => {
+        const [existing] = await transaction
           .select({ id: workflowRuns.id })
           .from(workflowRuns)
           .where(and(eq(workflowRuns.id, input.workflowRunId), isNull(workflowRuns.deletedAt)))
-          .get()
+          .limit(1)
 
         if (!existing) {
           throw new Error(`Workflow run not found: ${input.workflowRunId}`)
         }
 
-        const previousStep = transaction
+        const [previousStep] = await transaction
           .select({ sequence: workflowRunSteps.sequence })
           .from(workflowRunSteps)
           .where(eq(workflowRunSteps.workflowRunId, input.workflowRunId))
           .orderBy(desc(workflowRunSteps.sequence))
-          .get()
+          .limit(1)
         const sequence = (previousStep?.sequence ?? 0) + 1
 
-        insertWorkflowRunStep(transaction, {
+        await insertWorkflowRunStep(transaction, {
           actor: input.actor ?? 'agent',
           message: input.message,
           now,
@@ -140,7 +140,7 @@ export function createSqliteWorkflowRunRepository(database: DrizzleDatabase) {
           workflowRunId: input.workflowRunId,
         })
 
-        const step = transaction
+        const [step] = await transaction
           .select()
           .from(workflowRunSteps)
           .where(
@@ -149,7 +149,7 @@ export function createSqliteWorkflowRunRepository(database: DrizzleDatabase) {
               eq(workflowRunSteps.sequence, sequence),
             ),
           )
-          .get()
+          .limit(1)
 
         if (!step) {
           throw new Error(`Workflow run step not found: ${input.workflowRunId}`)
@@ -161,25 +161,25 @@ export function createSqliteWorkflowRunRepository(database: DrizzleDatabase) {
     async completeRun(input: CompleteWorkflowRunInput): Promise<WorkflowRun> {
       const now = new Date().toISOString()
 
-      return database.transaction((transaction) => {
-        const existing = transaction
+      return database.transaction(async (transaction) => {
+        const [existing] = await transaction
           .select()
           .from(workflowRuns)
           .where(and(eq(workflowRuns.id, input.workflowRunId), isNull(workflowRuns.deletedAt)))
-          .get()
+          .limit(1)
 
         if (!existing) {
           throw new Error(`Workflow run not found: ${input.workflowRunId}`)
         }
 
-        const previousStep = transaction
+        const [previousStep] = await transaction
           .select({ sequence: workflowRunSteps.sequence })
           .from(workflowRunSteps)
           .where(eq(workflowRunSteps.workflowRunId, input.workflowRunId))
           .orderBy(desc(workflowRunSteps.sequence))
-          .get()
+          .limit(1)
 
-        transaction
+        await transaction
           .update(workflowRuns)
           .set({
             status: input.status ?? 'completed',
@@ -192,9 +192,8 @@ export function createSqliteWorkflowRunRepository(database: DrizzleDatabase) {
             updatedAt: now,
           })
           .where(eq(workflowRuns.id, input.workflowRunId))
-          .run()
 
-        insertWorkflowRunStep(transaction, {
+        await insertWorkflowRunStep(transaction, {
           actor: runActor(existing.actorType, existing.actorName),
           message: input.summary ?? 'Workflow run completed.',
           now,
@@ -211,13 +210,12 @@ export function createSqliteWorkflowRunRepository(database: DrizzleDatabase) {
       const limit = input.limit ?? DEFAULT_RUN_LIST_LIMIT
       const offset = input.offset ?? 0
       const where = buildWorkflowRunWhere(input)
-      const totalRow = database
+      const [totalRow] = await database
         .select({ value: count() })
         .from(workflowRuns)
         .leftJoin(sources, eq(workflowRuns.sourceId, sources.id))
         .where(where)
-        .get()
-      const rows = database
+      const rows = await database
         .select(workflowRunSelection)
         .from(workflowRuns)
         .leftJoin(sources, eq(workflowRuns.sourceId, sources.id))
@@ -225,8 +223,9 @@ export function createSqliteWorkflowRunRepository(database: DrizzleDatabase) {
         .orderBy(desc(workflowRuns.startedAt))
         .limit(limit)
         .offset(offset)
-        .all()
-      const items = rows.map((row) => mapWorkflowRun(row, selectWorkflowRunSteps(database, row.id)))
+      const items = await Promise.all(
+        rows.map(async (row) => mapWorkflowRun(row, await selectWorkflowRunSteps(database, row.id))),
+      )
       const total = totalRow?.value ?? 0
 
       return {
@@ -254,7 +253,8 @@ function buildWorkflowRunWhere(input: WorkflowRunsListInput) {
   if (input.sourceId) {
     filters.push(eq(workflowRuns.sourceId, input.sourceId))
   } else if (input.source) {
-    filters.push(like(sources.name, `%${input.source}%`))
+    // SQLite LIKE was ASCII case-insensitive; preserve that public contract with ILIKE.
+    filters.push(ilike(sources.name, `%${input.source}%`))
   }
 
   if (input.subjectApplicationId) {
@@ -264,17 +264,18 @@ function buildWorkflowRunWhere(input: WorkflowRunsListInput) {
   return and(...filters)
 }
 
-function findOrCreateSource(
-  database: Pick<DrizzleDatabase, 'insert' | 'select'>,
+async function findOrCreateSource(
+  database: WorkflowRunWriteDatabase,
   sourceName: string,
   now: string,
 ) {
-  const normalizedName = sourceName.trim().toLowerCase()
-  const existing = database
+  const trimmedName = sourceName.trim()
+  const normalizedName = trimmedName.toLowerCase()
+  const [existing] = await database
     .select()
     .from(sources)
-    .where(eq(sources.name, sourceName.trim()))
-    .get()
+    .where(eq(sources.name, trimmedName))
+    .limit(1)
 
   if (existing) {
     return existing
@@ -282,29 +283,42 @@ function findOrCreateSource(
 
   const source = {
     id: `source-${normalizedName.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`,
-    name: sourceName.trim(),
+    name: trimmedName,
     accountHint: null,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
   }
 
-  database.insert(sources).values(source).run()
+  const [inserted] = await database.insert(sources).values(source).onConflictDoNothing().returning()
+  if (inserted) {
+    return inserted
+  }
 
-  return source
+  const [createdByPeer] = await database
+    .select()
+    .from(sources)
+    .where(eq(sources.id, source.id))
+    .limit(1)
+
+  if (!createdByPeer) {
+    throw new Error(`Source not found after conflict: ${source.id}`)
+  }
+
+  return createdByPeer
 }
 
-function resolveWorkflowRunSourceId(
-  database: Pick<DrizzleDatabase, 'insert' | 'select'>,
+async function resolveWorkflowRunSourceId(
+  database: WorkflowRunWriteDatabase,
   input: StartWorkflowRunInput,
   now: string,
 ) {
   if (input.sourceId) {
-    const source = database
+    const [source] = await database
       .select()
       .from(sources)
       .where(eq(sources.id, input.sourceId))
-      .get()
+      .limit(1)
 
     if (!source) {
       throw new Error(`Source not found: ${input.sourceId}`)
@@ -313,11 +327,11 @@ function resolveWorkflowRunSourceId(
     return source.id
   }
 
-  return input.sourceName ? findOrCreateSource(database, input.sourceName, now).id : null
+  return input.sourceName ? (await findOrCreateSource(database, input.sourceName, now)).id : null
 }
 
-function insertWorkflowRunStep(
-  database: Pick<DrizzleDatabase, 'insert'>,
+async function insertWorkflowRunStep(
+  database: Pick<PgliteDatabase, 'insert'>,
   {
     actor,
     message,
@@ -336,41 +350,38 @@ function insertWorkflowRunStep(
     workflowRunId: string
   },
 ) {
-  database
-    .insert(workflowRunSteps)
-    .values({
-      id: randomUUID(),
-      workflowRunId,
-      sequence,
-      type,
-      message,
-      payloadJson: JSON.stringify(payload),
-      actor,
-      createdAt: now,
-    })
-    .run()
+  await database.insert(workflowRunSteps).values({
+    id: randomUUID(),
+    workflowRunId,
+    sequence,
+    type,
+    message,
+    payloadJson: JSON.stringify(payload),
+    actor,
+    createdAt: now,
+  })
 }
 
-function selectWorkflowRunById(
-  database: Pick<DrizzleDatabase, 'select'>,
+async function selectWorkflowRunById(
+  database: WorkflowRunQueryDatabase,
   workflowRunId: string,
 ) {
-  const row = database
+  const [row] = await database
     .select(workflowRunSelection)
     .from(workflowRuns)
     .leftJoin(sources, eq(workflowRuns.sourceId, sources.id))
     .where(eq(workflowRuns.id, workflowRunId))
-    .get()
+    .limit(1)
 
   if (!row) {
     throw new Error(`Workflow run not found: ${workflowRunId}`)
   }
 
-  return mapWorkflowRun(row, selectWorkflowRunSteps(database, workflowRunId))
+  return mapWorkflowRun(row, await selectWorkflowRunSteps(database, workflowRunId))
 }
 
-function selectWorkflowRunSteps(
-  database: Pick<DrizzleDatabase, 'select'>,
+async function selectWorkflowRunSteps(
+  database: WorkflowRunQueryDatabase,
   workflowRunId: string,
 ) {
   return database
@@ -378,7 +389,6 @@ function selectWorkflowRunSteps(
     .from(workflowRunSteps)
     .where(eq(workflowRunSteps.workflowRunId, workflowRunId))
     .orderBy(workflowRunSteps.sequence)
-    .all()
 }
 
 function mapWorkflowRun(row: WorkflowRunRow, steps: Array<typeof workflowRunSteps.$inferSelect>) {
