@@ -1,16 +1,19 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
+import { sql } from 'drizzle-orm'
 import { retryWork } from '../db/schema'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/jobright.constants'
 import { deriveSourceExecutionScopeId } from '../modules/source-execution/source-execution-governor'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import {
+  closeTestLocalValedictorianClient,
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from '../runtime/local-valedictorian-client.test-harness'
 import type { RendererBackendState } from '../ipc/valedictorian-http.preload'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from '../server/local-server'
 import { createTempDatabasePath } from '../server/local-server.http-test-harness'
 import { defaultConnectorsApi } from './loaders'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 const activeServers = new Set<StartedValedictorianHttpServer>()
 
@@ -23,7 +26,7 @@ afterEach(async () => {
 describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
   it('rejects resurrecting a retired connector-instance id as an immutable tombstone', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createLocalValedictorianClient({ seedDataMode: 'none', pgliteDataPath })
+    const client = await createLocalValedictorianClient({ seedDataMode: 'none', pgliteDataPath })
     const server = await start(client)
     const workspace = createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-transport')
@@ -38,7 +41,7 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
 
   it('creates a fresh Jobright instance after remove without reviving the retired id or scope', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createLocalValedictorianClient({ seedDataMode: 'none', pgliteDataPath })
+    const client = await createLocalValedictorianClient({ seedDataMode: 'none', pgliteDataPath })
     const server = await start(client)
     installRendererBinding(server.url, () => ({ origin: server.url, status: 'available' }))
 
@@ -54,30 +57,31 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
       items: [{ id: second.id, connectorId: 'jobright.resolver' }],
     })
 
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    expect(sqlite.prepare(
-      'select deleted_at as deletedAt from connector_instances where id = ?',
-    ).get(first.id)).toEqual({ deletedAt: expect.any(String) })
-    expect(sqlite.prepare(
-      'select deleted_at as deletedAt from connector_instances where id = ?',
-    ).get(second.id)).toEqual({ deletedAt: null })
-    expect(sqlite.prepare(
-      'select id from source_execution_scopes where id = ?',
-    ).get(deriveSourceExecutionScopeId(first.id))).toEqual({
+    const database = getTestLocalValedictorianDatabase(client)
+    expect((await database.execute(sql`
+      select deleted_at as "deletedAt" from connector_instances where id = ${first.id}
+    `)).rows[0]).toEqual({ deletedAt: expect.any(String) })
+    expect((await database.execute(sql`
+      select deleted_at as "deletedAt" from connector_instances where id = ${second.id}
+    `)).rows[0]).toEqual({ deletedAt: null })
+    expect((await database.execute(sql`
+      select id from source_execution_scopes
+      where id = ${deriveSourceExecutionScopeId(first.id)}
+    `)).rows[0]).toEqual({
       id: deriveSourceExecutionScopeId(first.id),
     })
-    expect(sqlite.prepare(
-      'select id from source_execution_scopes where id = ?',
-    ).get(deriveSourceExecutionScopeId(second.id))).toEqual({
+    expect((await database.execute(sql`
+      select id from source_execution_scopes
+      where id = ${deriveSourceExecutionScopeId(second.id)}
+    `)).rows[0]).toEqual({
       id: deriveSourceExecutionScopeId(second.id),
     })
-    sqlite.close()
   })
 
   it('re-adds Jobright after process restart without copying retired schedule or retry state', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const retiredAt = '2026-07-13T16:00:00.000Z'
-    const firstClient = createLocalValedictorianClient({
+    const firstClient = await createLocalValedictorianClient({
       seedDataMode: 'none',
       pgliteDataPath,
       now: () => new Date(retiredAt),
@@ -87,14 +91,14 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
       .forWorkspace('workspace-transport')
 
     const first = await firstWorkspace.connectors.create(jobrightCreateInput('jobright-before-restart'))
-    const drizzle = createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)))
-    const schedule = createConnectorScheduleRepository(drizzle, () => new Date(retiredAt)).create({
+    const database = getTestLocalValedictorianDatabase(firstClient)
+    const schedule = await createConnectorScheduleRepository(database, () => new Date(retiredAt)).create({
       connectorInstanceId: first.id,
       state: 'active',
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'UTC',
     })
-    drizzle.insert(retryWork).values({
+    await database.insert(retryWork).values({
       id: 'retry-before-restart',
       executionScopeId: deriveSourceExecutionScopeId(first.id),
       kind: 'connector_capture',
@@ -119,12 +123,13 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
       createdAt: retiredAt,
       updatedAt: retiredAt,
       deletedAt: null,
-    }).run()
+    })
     await firstWorkspace.connectors.remove({ connectorInstanceId: first.id })
     await firstServer.close()
     activeServers.delete(firstServer)
+    await closeTestLocalValedictorianClient(firstClient)
 
-    const restarted = createLocalValedictorianClient({
+    const restarted = await createLocalValedictorianClient({
       seedDataMode: 'none',
       pgliteDataPath,
       now: () => new Date('2026-07-13T17:00:00.000Z'),
@@ -138,30 +143,33 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
     expect(replacement.id).toBe('jobright-after-restart')
     expect(replacement.id).not.toBe(first.id)
 
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    expect(sqlite.prepare(
-      'select deleted_at as deletedAt from connector_schedules where id = ?',
-    ).get(schedule.id)).toEqual({ deletedAt: retiredAt })
-    expect(sqlite.prepare(
-      'select deleted_at as deletedAt from retry_work where id = ?',
-    ).get('retry-before-restart')).toEqual({ deletedAt: retiredAt })
-    expect(sqlite.prepare(
-      'select count(*) as count from connector_schedules where connector_instance_id = ? and deleted_at is null',
-    ).get(replacement.id)).toEqual({ count: 0 })
-    expect(sqlite.prepare(
-      'select count(*) as count from retry_work where execution_scope_id = ? and deleted_at is null',
-    ).get(deriveSourceExecutionScopeId(replacement.id))).toEqual({ count: 0 })
-    expect(sqlite.prepare(
-      'select status, action_reason as actionReason from source_execution_scopes where id = ?',
-    ).get(deriveSourceExecutionScopeId(first.id))).toEqual({
+    const restartedDatabase = getTestLocalValedictorianDatabase(restarted)
+    expect((await restartedDatabase.execute(sql`
+      select deleted_at as "deletedAt" from connector_schedules where id = ${schedule.id}
+    `)).rows[0]).toEqual({ deletedAt: retiredAt })
+    expect((await restartedDatabase.execute(sql`
+      select deleted_at as "deletedAt" from retry_work where id = 'retry-before-restart'
+    `)).rows[0]).toEqual({ deletedAt: retiredAt })
+    expect((await restartedDatabase.execute(sql`
+      select count(*)::integer as count from connector_schedules
+      where connector_instance_id = ${replacement.id} and deleted_at is null
+    `)).rows[0]).toEqual({ count: 0 })
+    expect((await restartedDatabase.execute(sql`
+      select count(*)::integer as count from retry_work
+      where execution_scope_id = ${deriveSourceExecutionScopeId(replacement.id)}
+        and deleted_at is null
+    `)).rows[0]).toEqual({ count: 0 })
+    expect((await restartedDatabase.execute(sql`
+      select status, action_reason as "actionReason" from source_execution_scopes
+      where id = ${deriveSourceExecutionScopeId(first.id)}
+    `)).rows[0]).toEqual({
       status: 'action_required',
       actionReason: 'connector_retired',
     })
-    sqlite.close()
   })
 })
 
-async function start(client: ReturnType<typeof createLocalValedictorianClient>) {
+async function start(client: Awaited<ReturnType<typeof createLocalValedictorianClient>>) {
   const server = await createValedictorianHttpServer({ client, host: '127.0.0.1', port: 0 })
   activeServers.add(server)
   return server

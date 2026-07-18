@@ -3,10 +3,10 @@ import { completedConnectorRefreshContract } from '../modules/connectors/connect
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import {
   availableConnectorSchedulingCapability,
-  createLocalValedictorianClient,
   createScheduleHttpTempDatabasePath,
   createStaticConnectorRegistry,
 } from '../server/local-server.connector-schedules.http-fixture'
+import { createTestLocalValedictorianClient as createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import { createLocalScheduler } from './local-scheduler'
 
 describe('local connector scheduler shutdown', () => {
@@ -52,7 +52,7 @@ describe('local connector scheduler shutdown', () => {
         }
       },
     }
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       connectorScheduling: availableConnectorSchedulingCapability,
       now: () => clock,

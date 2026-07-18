@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createLocalValedictorianClient } from '../../runtime/local-valedictorian-client'
+import { createTestLocalValedictorianClient as createLocalValedictorianClient } from '../../runtime/local-valedictorian-client.test-harness'
 import { createTempDatabasePath } from '../../server/local-server.http-test-harness'
 import { createDefaultLocalConnectorRegistry } from './connector.registry'
 
@@ -108,7 +108,7 @@ describe('connector registry', () => {
   it('triggers the default production Jobright registry through the public local client', async () => {
     const providerFetch = vi.fn()
     vi.stubGlobal('fetch', providerFetch)
-    const client = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
+    const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
     await client.connectors.create({
       id: 'jobright-default', connectorId: 'jobright.resolver', connectorVersion: '0.15.0',
       displayName: 'Jobright internslist', enabled: true,

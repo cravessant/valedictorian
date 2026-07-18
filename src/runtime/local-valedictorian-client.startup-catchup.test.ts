@@ -2,12 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 function createTempDatabasePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
@@ -33,7 +34,7 @@ describe('runtime local Valedictorian client deferred refresh', () => {
 
   it('persists deferred_refresh work as public manual mode without schedule provenance or a startup scan API', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs' ? fixtureConnector() : null
@@ -43,9 +44,9 @@ describe('runtime local Valedictorian client deferred refresh', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-enabled',
@@ -71,7 +72,6 @@ describe('runtime local Valedictorian client deferred refresh', () => {
       scheduleOccurrence: null,
       status: 'completed',
     })
-    sqlite.close()
   })
 })
 

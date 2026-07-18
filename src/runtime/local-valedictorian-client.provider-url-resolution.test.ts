@@ -4,17 +4,21 @@ import path from 'node:path'
 import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobright'
 import { describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createSourceExecutionGovernor } from '../modules/source-execution/source-execution-governor'
 import { createProviderUrlResolutionRuntime } from '../modules/sourcing/provider-url-resolution.runtime'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../db/sqlite'
+import { createPgliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
+import { createPgliteClient, migratePgliteDatabase } from '../db/pglite'
 import type {
   AppConnectorRuntime,
   AppJobConnector,
 } from '../modules/connectors/connector.runner'
 import type { ProviderUrlResolverResult } from '../modules/sourcing/provider-url-resolution.outcome'
 import type { LocalScheduledWorkSource } from './local-scheduler'
-import { createLocalValedictorianClient } from './local-valedictorian-client'
+import {
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
 
 interface ProviderUrlResolverConnector extends AppJobConnector {
   providerUrlResolver: {
@@ -39,12 +43,12 @@ describe('runtime provider URL resolution', () => {
 
     expect(result).toEqual({ status: 'terminal', reason: 'provider_url_connector_disabled' })
     expect(fixture.resolve).not.toHaveBeenCalled()
-    fixture.sqlite.close()
+    await fixture.pglite.close()
   })
 
   it('does not invoke a provider resolver while its source scope is cooling down', async () => {
     const fixture = await createProviderRuntimeFixture(true)
-    fixture.governor.blockScope(fixture.scopeId, {
+    await fixture.governor.blockScope(fixture.scopeId, {
       now: fixture.now,
       serverMinimumDelayMs: 60_000,
       random: () => 0,
@@ -56,7 +60,7 @@ describe('runtime provider URL resolution', () => {
       status: 'retryable', reason: 'source_scope_cooldown', retryReason: 'rate_limit', serverMinimumDelayMs: 60_000,
     })
     expect(fixture.resolve).not.toHaveBeenCalled()
-    fixture.sqlite.close()
+    await fixture.pglite.close()
   })
 
   it('propagates provider Retry-After into the shared source governor', async () => {
@@ -69,14 +73,14 @@ describe('runtime provider URL resolution', () => {
     const result = await fixture.runtime(fixture.work)
 
     expect(result).toMatchObject({ status: 'retryable', retryReason: 'rate_limit' })
-    expect(fixture.governor.getScope(fixture.scopeId)).toMatchObject({
+    expect(await fixture.governor.getScope(fixture.scopeId)).toMatchObject({
       status: 'cooldown', blockedUntil: '2026-07-16T12:02:00.000Z',
     })
-    fixture.sqlite.close()
+    await fixture.pglite.close()
   })
 
   it('runs the published Jobright 0.14 connector as Capture then scheduled provider resolution', async () => {
-    const clock = new Date('2026-07-17T07:00:00.000Z')
+    let clock = new Date('2026-07-17T07:00:00.000Z')
     const destinationUrl = 'https://careers.example.com/openings/software-engineer?source=jobright&ref=a%2Bb'
     const registeredSources: LocalScheduledWorkSource[] = []
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
@@ -119,6 +123,7 @@ describe('runtime provider URL resolution', () => {
         }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       if (url.endsWith('/swan/share/job/published-job')) {
+        clock = new Date(clock.getTime() + 1)
         return new Response(JSON.stringify({
           success: true,
           result: {
@@ -149,7 +154,7 @@ describe('runtime provider URL resolution', () => {
       encrypt: (value: string) => `enc:${value}`,
       decrypt: (value: string) => value.replace(/^enc:/, ''),
     }
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       connectorRuntime: { delay: { async wait() { return 0 } } },
       now: () => clock,
@@ -200,6 +205,7 @@ describe('runtime provider URL resolution', () => {
     expect(source).toBeDefined()
     expect(await source!.nextDueAt()).toBe(clock.toISOString())
 
+    clock = new Date(clock.getTime() + 1)
     await source!.runDue()
 
     expect(fetchImpl.mock.calls.filter(([request]) =>
@@ -209,7 +215,7 @@ describe('runtime provider URL resolution', () => {
       limit: 10,
     })
     expect(captures.items).toHaveLength(1)
-    const normalization = await client.sourcing.rawRecords.normalization.get(captures.items[0]!.id)
+    const normalization = await getProviderResolutionNormalization(client, captures.items[0]!.id)
     expect(normalization.fieldOutcomes).toEqual(expect.arrayContaining([
       expect.objectContaining({
         field: 'destinationUrl',
@@ -230,7 +236,7 @@ describe('runtime provider URL resolution', () => {
   })
 
   it('acknowledges Capture and completes backfill before scheduled provider resolution runs', async () => {
-    const clock = new Date('2026-07-16T12:00:00.000Z')
+    let clock = new Date('2026-07-16T12:00:00.000Z')
     const registeredSources: LocalScheduledWorkSource[] = []
     const resolve = vi.fn(async (
       input: {
@@ -243,6 +249,7 @@ describe('runtime provider URL resolution', () => {
     ): Promise<ProviderUrlResolverResult> => {
       expect(await runtime.auth.resolve({ id: 'anonymous', mode: 'none' }))
         .toMatchObject({ status: 'ready' })
+      clock = new Date(clock.getTime() + 1)
       return {
         status: 'resolved',
         url: 'https://jobs.lever.co/example/opening-1?utm_source=jobright&ref=a%2Bb',
@@ -308,7 +315,7 @@ describe('runtime provider URL resolution', () => {
       },
     }
     const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-runtime-'))
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => clock,
       registerScheduledWorkSource: (source) => registeredSources.push(source),
@@ -337,6 +344,7 @@ describe('runtime provider URL resolution', () => {
     expect(source).toBeDefined()
     expect(await source!.nextDueAt()).toBe(clock.toISOString())
 
+    clock = new Date(clock.getTime() + 1)
     await source!.runDue()
 
     expect(resolve).toHaveBeenCalledWith(
@@ -351,9 +359,7 @@ describe('runtime provider URL resolution', () => {
       connectorInstanceId: 'jobright-one',
       limit: 10,
     })
-    const normalization = await client.sourcing.rawRecords.normalization.get(
-      captures.items[0]!.id,
-    )
+    const normalization = await getProviderResolutionNormalization(client, captures.items[0]!.id)
     const projection = await client.sourcing.rawRevisions.projection.get(
       captures.items[0]!.latestRevision.id,
     )
@@ -384,7 +390,7 @@ describe('runtime provider URL resolution', () => {
   })
 
   it('redacts resolver evidence and reasons before persisting terminal outcomes', async () => {
-    const clock = new Date('2026-07-16T12:00:00.000Z')
+    let clock = new Date('2026-07-16T12:00:00.000Z')
     const registeredSources: LocalScheduledWorkSource[] = []
     const secretCodec = {
       encrypt: (value: string) => `enc:${value}`,
@@ -400,6 +406,7 @@ describe('runtime provider URL resolution', () => {
       runtime: Pick<AppConnectorRuntime, 'auth' | 'cancellation'>,
     ): Promise<ProviderUrlResolverResult> => {
       const grant = await runtime.auth.resolve({ id: 'provider-key', mode: 'api_key' })
+      clock = new Date(clock.getTime() + 1)
       return {
         status: 'terminal',
         reason: `upstream_${grant.value ?? 'missing'}`,
@@ -458,7 +465,7 @@ describe('runtime provider URL resolution', () => {
       },
     }
     const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-redaction-'))
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => clock,
       registerScheduledWorkSource: (source) => registeredSources.push(source),
@@ -488,15 +495,14 @@ describe('runtime provider URL resolution', () => {
     expect(run.status).toBe('completed')
     const source = registeredSources.find(({ id }) => id === 'provider-url-resolution')
     expect(source).toBeDefined()
+    clock = new Date(clock.getTime() + 1)
     await source!.runDue()
 
     const captures = await client.sourcing.rawRecords.list({
       connectorInstanceId: 'jobright-secret',
       limit: 10,
     })
-    const normalization = await client.sourcing.rawRecords.normalization.get(
-      captures.items[0]!.id,
-    )
+    const normalization = await getProviderResolutionNormalization(client, captures.items[0]!.id)
     const terminalOutcome = normalization.fieldOutcomes.find(({ field }) => field === 'destinationUrl')
     expect(terminalOutcome).toMatchObject({
       status: 'blocked',
@@ -509,10 +515,9 @@ describe('runtime provider URL resolution', () => {
 
 async function createProviderRuntimeFixture(enabled: boolean) {
   const now = '2026-07-16T12:00:00.000Z'
-  const sqlite = createInMemoryDatabase()
-  migrateDatabase(sqlite)
-  const database = createDrizzleDatabase(sqlite)
-  const connectorRepository = createSqliteConnectorRepository(database)
+  const pglite = await createPgliteClient()
+  const database = await migratePgliteDatabase(pglite)
+  const connectorRepository = createPgliteConnectorRepository(database)
   const resolve = vi.fn(async (): Promise<ProviderUrlResolverResult> => ({
     status: 'resolved',
     url: 'https://jobs.lever.co/example/opening-1',
@@ -551,7 +556,7 @@ async function createProviderRuntimeFixture(enabled: boolean) {
     providerRecordId: 'jobright.public:provider-runtime', resolverId: 'jobright.provider-url',
     resolverVersion: 'jobright-provider-url@1', serverMinimumDelayMs: null, retryWorkId: 'runtime-work',
   }
-  return { database, governor, now, resolve, runtime, scopeId: instance.executionScopeId, sqlite, work }
+  return { database, governor, now, pglite, resolve, runtime, scopeId: instance.executionScopeId, work }
 }
 
 function requestUrl(input: RequestInfo | URL) {
@@ -560,4 +565,18 @@ function requestUrl(input: RequestInfo | URL) {
     : input instanceof URL
       ? input.href
       : input.url
+}
+
+async function getProviderResolutionNormalization(
+  client: Awaited<ReturnType<typeof createLocalValedictorianClient>>,
+  rawRecordId: string,
+) {
+  const repository = createPgliteNormalizationRepository(
+    getTestLocalValedictorianDatabase(client),
+  )
+  const history = await repository.listHistory(rawRecordId)
+  const resolved = history.find(({ fieldOutcomes }) =>
+    fieldOutcomes.some(({ resolverId }) => resolverId === 'jobright.provider-url'))
+  if (!resolved) throw new Error('Provider URL normalization was not persisted')
+  return resolved
 }

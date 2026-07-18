@@ -3,26 +3,56 @@ import os from 'node:os'
 import path from 'node:path'
 import { connectorRetirementResultSchema } from 'sparxie'
 import { describe, expect, it, vi } from 'vitest'
-import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
+import { sql } from 'drizzle-orm'
 import { retryWork, sourceExecutionScopes, sourceExecutionSessions } from '../db/schema'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import {
   createSourceExecutionGovernor,
 } from '../modules/source-execution/source-execution-governor'
-import { createLocalValedictorianClient } from './local-valedictorian-client'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
+import {
+  closeTestLocalValedictorianClient,
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
 
 function createTempDatabasePath() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-'))
 }
 
 describe('local connector instance retirement', () => {
+  it('signals scheduled work only after retirement succeeds', async () => {
+    const onScheduledWorkChanged = vi.fn()
+    const client = await createLocalValedictorianClient({
+      connectorRegistry: { get: () => null },
+      onScheduledWorkChanged,
+      pgliteDataPath: createTempDatabasePath(),
+    })
+    await createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client)).upsertInstance({
+      id: 'retirement-notification',
+      connectorId: 'removed.connector',
+      connectorVersion: '0.1.0',
+      displayName: 'Retirement notification',
+      enabled: true,
+    })
+
+    await expect(client.connectors.remove({ connectorInstanceId: 'missing-connector' }))
+      .rejects.toThrow(/not found/i)
+    expect(onScheduledWorkChanged).not.toHaveBeenCalled()
+
+    const retirement = client.connectors.remove({ connectorInstanceId: 'retirement-notification' })
+    expect(onScheduledWorkChanged).not.toHaveBeenCalled()
+    await expect(retirement)
+      .resolves.toMatchObject({ connectorInstanceId: 'retirement-notification' })
+    expect(onScheduledWorkChanged).toHaveBeenCalledOnce()
+  })
+
   it('retires an unregistered connector without loading its implementation or authentication', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const setup = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(setup)
-    await createSqliteConnectorRepository(createDrizzleDatabase(setup)).upsertInstance({
+    const setupClient = await createLocalValedictorianClient({ pgliteDataPath })
+    await createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(setupClient),
+    ).upsertInstance({
       id: 'stale-connector',
       connectorId: 'removed.connector',
       connectorVersion: '0.1.0',
@@ -37,14 +67,14 @@ describe('local connector instance retirement', () => {
       filters: { role: 'intern' },
       createdAt: '2026-07-13T12:00:00.000Z',
     })
-    setup.close()
+    await closeTestLocalValedictorianClient(setupClient)
     const getConnector = vi.fn(() => {
       throw new Error('retirement must not load connector implementations')
     })
     const decrypt = vi.fn(() => {
       throw new Error('retirement must not retrieve authentication')
     })
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: { get: getConnector },
       secretCodec: {
         decrypt,
@@ -79,14 +109,13 @@ describe('local connector instance retirement', () => {
 
   it('returns a typed conflict and preserves the instance when queued work is active', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
       pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({
       id: 'connector-with-active-work',
       connectorId: 'removed.connector',
@@ -113,12 +142,11 @@ describe('local connector instance retirement', () => {
     await expect(client.connectors.list()).resolves.toMatchObject({
       items: [expect.objectContaining({ id: 'connector-with-active-work' })],
     })
-    sqlite.close()
   })
 
   it('destroys connector-owned session credentials while preserving workspace secret administration', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       secretCodec: {
         decrypt: (value) => value.replace(/^encrypted:/, ''),
@@ -128,9 +156,8 @@ describe('local connector instance retirement', () => {
       pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const instance = await createSqliteConnectorRepository(database).upsertInstance({
+    const database = getTestLocalValedictorianDatabase(client)
+    const instance = await createPgliteConnectorRepository(database).upsertInstance({
       id: 'connector-with-session',
       connectorId: 'removed.connector',
       connectorVersion: '0.1.0',
@@ -139,12 +166,12 @@ describe('local connector instance retirement', () => {
       auth: [{ id: 'credential', mode: 'api_key', secretKey: 'connector-api-key' }],
       createdAt: '2026-07-13T12:00:00.000Z',
     })
-    database.insert(sourceExecutionSessions).values({
+    await database.insert(sourceExecutionSessions).values({
       executionScopeId: instance.executionScopeId,
       encryptedSession: 'encrypted:connector-runtime-session',
       authGeneration: 1,
       updatedAt: '2026-07-13T15:00:00.000Z',
-    }).run()
+    })
     await client.secrets.upsert({
       key: 'connector-api-key',
       kind: 'token',
@@ -154,29 +181,28 @@ describe('local connector instance retirement', () => {
 
     await client.connectors.remove({ connectorInstanceId: instance.id })
 
-    expect(sqlite.prepare(
-      'select encrypted_session from source_execution_sessions where execution_scope_id = ?',
-    ).get(instance.executionScopeId)).toBeUndefined()
+    expect((await database.execute(sql`
+      select encrypted_session from source_execution_sessions
+      where execution_scope_id = ${instance.executionScopeId}
+    `)).rows[0]).toBeUndefined()
     await expect(client.secrets.list()).resolves.toEqual({
       items: [expect.objectContaining({ key: 'connector_api_key' })],
     })
-    expect(sqlite.prepare(
-      'select auth_json as authJson from connector_instances where id = ?',
-    ).get(instance.id)).toEqual({ authJson: '[]' })
-    sqlite.close()
+    expect((await database.execute(sql`
+      select auth_json as "authJson" from connector_instances where id = ${instance.id}
+    `)).rows[0]).toEqual({ authJson: '[]' })
   })
 
   it('fences a late refresh completion from recreating a retired connector session', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
       pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const instance = await createSqliteConnectorRepository(database).upsertInstance({
+    const database = getTestLocalValedictorianDatabase(client)
+    const instance = await createPgliteConnectorRepository(database).upsertInstance({
       id: 'connector-refreshing-during-retirement',
       connectorId: 'removed.connector',
       connectorVersion: '0.1.0',
@@ -185,7 +211,7 @@ describe('local connector instance retirement', () => {
       createdAt: '2026-07-13T12:00:00.000Z',
     })
     const governor = createSourceExecutionGovernor(database)
-    const lease = governor.acquireRefreshLease(instance.executionScopeId, {
+    const lease = await governor.acquireRefreshLease(instance.executionScopeId, {
       leaseMs: 60_000,
       now: '2026-07-13T15:59:30.000Z',
       token: 'refresh-issued-before-retirement',
@@ -193,27 +219,25 @@ describe('local connector instance retirement', () => {
 
     await client.connectors.remove({ connectorInstanceId: instance.id })
 
-    expect(governor.completeRefresh(instance.executionScopeId, {
+    expect(await governor.completeRefresh(instance.executionScopeId, {
       encryptedSession: 'late-provider-session',
       now: '2026-07-13T16:00:01.000Z',
       token: lease.token,
     })).toBeNull()
-    expect(database.select().from(sourceExecutionSessions).all()).toEqual([])
-    sqlite.close()
+    expect(await database.select().from(sourceExecutionSessions)).toEqual([])
   })
 
   it('retires mutable execution state while preserving checkpoints and historical sourcing lineage', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const retiredAt = '2026-07-13T16:00:00.000Z'
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
       pgliteDataPath,
       now: () => new Date(retiredAt),
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const database = getTestLocalValedictorianDatabase(client)
+    const repository = createPgliteConnectorRepository(database)
     const instance = await repository.upsertInstance({
       id: 'connector-with-history',
       connectorId: 'removed.connector',
@@ -262,7 +286,7 @@ describe('local connector instance retirement', () => {
       },
       savedAt: '2026-07-13T13:30:00.000Z',
     })
-    const schedule = createConnectorScheduleRepository(database, () => new Date(
+    const schedule = await createConnectorScheduleRepository(database, () => new Date(
       '2026-07-13T14:00:00.000Z',
     )).create({
       connectorInstanceId: instance.id,
@@ -270,7 +294,7 @@ describe('local connector instance retirement', () => {
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'UTC',
     })
-    database.insert(retryWork).values({
+    await database.insert(retryWork).values({
       id: 'normalization-retry-after-retirement',
       executionScopeId: instance.executionScopeId,
       kind: 'normalization',
@@ -292,7 +316,7 @@ describe('local connector instance retirement', () => {
       createdAt: '2026-07-13T14:00:00.000Z',
       updatedAt: '2026-07-13T14:00:00.000Z',
       deletedAt: null,
-    }).run()
+    })
     await repository.markRunRunning({
       connectorRunId: run.id,
       startedAt: '2026-07-13T13:00:00.000Z',
@@ -317,37 +341,37 @@ describe('local connector instance retirement', () => {
       .resolves.toEqual(normalizationBefore)
     await expect(client.sourcing.rawRevisions.projection.get(rawRevisionId))
       .resolves.toEqual(projectionBefore)
-    expect(sqlite.prepare(`
-      select enabled, config_json as configJson, auth_json as authJson, filters_json as filtersJson,
-        earliest_backfill_date as earliestBackfillDate, deleted_at as deletedAt
-        from connector_instances where id = ?
-    `).get(instance.id)).toEqual({
-      enabled: 0,
+    expect((await database.execute(sql`
+      select enabled, config_json as "configJson", auth_json as "authJson",
+        filters_json as "filtersJson", earliest_backfill_date as "earliestBackfillDate",
+        deleted_at as "deletedAt" from connector_instances where id = ${instance.id}
+    `)).rows[0]).toEqual({
+      enabled: false,
       configJson: '{}',
       authJson: '[]',
       filtersJson: '{}',
       earliestBackfillDate: null,
       deletedAt: retiredAt,
     })
-    expect(sqlite.prepare(
-      'select deleted_at as deletedAt from connector_schedules where id = ?',
-    ).get(schedule.id)).toEqual({ deletedAt: retiredAt })
-    expect(sqlite.prepare(
-      'select deleted_at as deletedAt from retry_work where id = ?',
-    ).get('normalization-retry-after-retirement')).toEqual({ deletedAt: retiredAt })
-    expect(database.select().from(sourceExecutionScopes).all()).toEqual([
+    expect((await database.execute(sql`
+      select deleted_at as "deletedAt" from connector_schedules where id = ${schedule.id}
+    `)).rows[0]).toEqual({ deletedAt: retiredAt })
+    expect((await database.execute(sql`
+      select deleted_at as "deletedAt" from retry_work
+      where id = 'normalization-retry-after-retirement'
+    `)).rows[0]).toEqual({ deletedAt: retiredAt })
+    expect(await database.select().from(sourceExecutionScopes)).toEqual([
       expect.objectContaining({ id: instance.executionScopeId, deletedAt: null }),
     ])
-    expect(() => createConnectorScheduleRepository(database).create({
+    await expect(createConnectorScheduleRepository(database).create({
       connectorInstanceId: instance.id,
       state: 'active',
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'UTC',
-    })).toThrow(/connector instance not found/i)
+    })).rejects.toThrow(/connector instance not found/i)
     await expect(client.connectors.runs.trigger({
       connectorInstanceId: instance.id,
       mode: 'manual',
     })).rejects.toThrow()
-    sqlite.close()
   })
 })

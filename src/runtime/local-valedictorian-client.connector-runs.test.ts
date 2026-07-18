@@ -2,12 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 function createTempDatabasePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
@@ -34,7 +35,7 @@ describe('runtime local Valedictorian client', () => {
 
   it('creates and updates connector instances through the local client', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -115,7 +116,7 @@ describe('runtime local Valedictorian client', () => {
 
   it('does not reinterpret legacy connector observations as sourcing findings', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -129,9 +130,9 @@ describe('runtime local Valedictorian client', () => {
       pgliteDataPath,
       workspaceId: 'workspace-fixture',
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -201,7 +202,6 @@ describe('runtime local Valedictorian client', () => {
         },
       },
     ])
-    sqlite.close()
   })
 
   it('does not use legacy observation dedupe keys as sourcing identity', async () => {
@@ -253,14 +253,13 @@ describe('runtime local Valedictorian client', () => {
         }
       },
     }
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       seedDataMode: 'none',
       pgliteDataPath,
       workspaceId: 'workspace-fixture',
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({
       id: 'connector-instance-fixture',
       connectorId: 'fixture.jobs',
@@ -288,7 +287,6 @@ describe('runtime local Valedictorian client', () => {
       },
     })
     expect(findings).toMatchObject({ total: 0, items: [] })
-    sqlite.close()
   })
 
   it('persists two truthful non-terminal connector progress snapshots before completion', async () => {
@@ -342,14 +340,13 @@ describe('runtime local Valedictorian client', () => {
         return baseConnector.refresh(input, runtime)
       },
     }
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       seedDataMode: 'none',
       pgliteDataPath,
       workspaceId: 'workspace-fixture',
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({
       id: 'connector-instance-fixture',
       connectorId: 'fixture.jobs',
@@ -410,7 +407,6 @@ describe('runtime local Valedictorian client', () => {
       status: 'completed',
       stats: { lifecycleCounts: { source: 'frozen_terminal' } },
     })
-    sqlite.close()
   })
 
   it('persists one running row before refresh settles and completes that same run', async () => {
@@ -419,7 +415,7 @@ describe('runtime local Valedictorian client', () => {
     const refreshGate = new Promise<void>((resolve) => {
       releaseRefresh = resolve
     })
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -434,9 +430,9 @@ describe('runtime local Valedictorian client', () => {
       pgliteDataPath,
       workspaceId: 'workspace-fixture',
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -491,7 +487,6 @@ describe('runtime local Valedictorian client', () => {
       ],
       total: 1,
     })
-    sqlite.close()
   })
 
   it('returns one active run across clients when concurrent triggers target the same connector instance', async () => {
@@ -514,11 +509,14 @@ describe('runtime local Valedictorian client', () => {
       pgliteDataPath,
       workspaceId: 'workspace-fixture',
     } as const
-    const firstClient = createRuntimeLocalValedictorianClient(clientOptions)
-    const secondClient = createRuntimeLocalValedictorianClient(clientOptions)
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const firstClient = await createRuntimeLocalValedictorianClient(clientOptions)
+    const secondClient = await createRuntimeLocalValedictorianClient({
+      ...clientOptions,
+      database: getTestLocalValedictorianDatabase(firstClient),
+    })
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(firstClient),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -593,7 +591,6 @@ describe('runtime local Valedictorian client', () => {
     await expect(secondClient.connectors.runs.list({
       connectorInstanceId: 'connector-instance-fixture',
     })).resolves.toMatchObject({ total: 2 })
-    sqlite.close()
   })
 
   it('runs different connector instances independently in the same workspace', async () => {
@@ -618,15 +615,15 @@ describe('runtime local Valedictorian client', () => {
         return baseConnector.refresh(input, runtime)
       },
     }
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       seedDataMode: 'none',
       pgliteDataPath,
       workspaceId: 'workspace-fixture',
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     for (const [id, displayName] of [
       ['connector-instance-first', 'First fixture jobs'],
@@ -680,7 +677,6 @@ describe('runtime local Valedictorian client', () => {
       'connector-instance-first',
       'connector-instance-second',
     ])
-    sqlite.close()
   })
 
 })

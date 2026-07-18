@@ -2,13 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 function createTempDatabasePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-coverage-')), 'pglite')
@@ -53,15 +54,13 @@ describe('runtime connector coverage from earliest backfill date', () => {
         retryHints: null,
       }
     })
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date('2026-07-11T18:00:00.000Z'),
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const repository = createSqliteConnectorRepository(
-      createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))),
-    )
+    const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({
       id: 'coverage-instance',
       connectorId: 'fixture.coverage',
@@ -129,15 +128,13 @@ describe('runtime connector coverage from earliest backfill date', () => {
     const connector = createCoverageFixtureConnector(async () => {
       throw new Error('refresh exploded')
     })
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date('2026-07-11T18:00:00.000Z'),
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const repository = createSqliteConnectorRepository(
-      createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))),
-    )
+    const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({
       id: 'failed-coverage',
       connectorId: 'fixture.coverage',

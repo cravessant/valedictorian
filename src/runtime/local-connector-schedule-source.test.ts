@@ -3,7 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ConnectorScheduleSummary, ConnectorSchedulingCapability } from 'sparxie'
-import { createLocalValedictorianClient } from './local-valedictorian-client'
+import {
+  closeTestLocalValedictorianClient,
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+} from './local-valedictorian-client.test-harness'
 import { createLocalScheduler, type LocalScheduledWorkSource } from './local-scheduler'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
@@ -118,7 +121,7 @@ describe('local connector schedule source', () => {
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     let source: LocalScheduledWorkSource | undefined
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs' ? fixtureConnector(() => { refreshCalls += 1 }) : null
@@ -180,7 +183,7 @@ describe('local connector schedule source', () => {
       },
     })
     let source: LocalScheduledWorkSource | undefined
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -244,7 +247,7 @@ describe('local connector schedule source', () => {
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     const scheduler = createLocalScheduler({ now: () => clock })
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -305,7 +308,7 @@ describe('local connector schedule source', () => {
           : null
       },
     }
-    const initialClient = createLocalValedictorianClient({
+    const initialClient = await createLocalValedictorianClient({
       connectorRegistry,
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -331,9 +334,10 @@ describe('local connector schedule source', () => {
     expect(schedule.nextEligibleAt).toBe('2026-07-15T11:15:00.000Z')
 
     // The app remains closed while several configured intervals elapse.
+    await closeTestLocalValedictorianClient(initialClient)
     clock = new Date('2026-07-15T12:01:00.000Z')
     const scheduler = createLocalScheduler({ now: () => clock })
-    const reopenedClient = createLocalValedictorianClient({
+    const reopenedClient = await createLocalValedictorianClient({
       connectorRegistry,
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -385,7 +389,7 @@ describe('local connector schedule source', () => {
         // no-op deterministic timer cancellation
       },
     })
-    const client = createLocalValedictorianClient({
+    const client = await createLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           if (connectorId !== 'fixture.jobs') return null

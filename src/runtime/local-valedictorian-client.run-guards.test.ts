@@ -2,13 +2,15 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
-import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  closeTestLocalValedictorianClient,
+  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './local-valedictorian-client.test-harness'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 function createTempDatabasePath() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
@@ -57,26 +59,23 @@ describe('runtime local Valedictorian client', () => {
       },
     }
     const connectorRegistry = createStaticConnectorRegistry([connector])
-    const firstClient = createRuntimeLocalValedictorianClient({
+    const firstClient = await createRuntimeLocalValedictorianClient({
       connectorRegistry,
       seedDataMode: 'none',
       pgliteDataPath: firstPgliteDataPath,
       workspaceId: 'workspace-first',
     })
-    const secondClient = createRuntimeLocalValedictorianClient({
+    const secondClient = await createRuntimeLocalValedictorianClient({
       connectorRegistry,
       seedDataMode: 'none',
       pgliteDataPath: secondPgliteDataPath,
       workspaceId: 'workspace-second',
     })
-    const firstSqlite = createFileDatabase(resolveDatabaseFilePath(firstPgliteDataPath))
-    const secondSqlite = createFileDatabase(resolveDatabaseFilePath(secondPgliteDataPath))
-
     for (const database of [
-      createDrizzleDatabase(firstSqlite),
-      createDrizzleDatabase(secondSqlite),
+      getTestLocalValedictorianDatabase(firstClient),
+      getTestLocalValedictorianDatabase(secondClient),
     ]) {
-      await createSqliteConnectorRepository(database).upsertInstance({
+      await createPgliteConnectorRepository(database).upsertInstance({
         id: 'connector-instance-fixture',
         connectorId: 'fixture.jobs',
         connectorVersion: '0.0.0-fixture',
@@ -112,16 +111,14 @@ describe('runtime local Valedictorian client', () => {
     releaseFirstRefresh?.()
     await expect(firstRunPromise).resolves.toMatchObject({ status: 'completed' })
     expect(refreshedWorkspaces).toEqual(['workspace-first', 'workspace-second'])
-    firstSqlite.close()
-    secondSqlite.close()
   })
 
   it('recovers an interrupted running row as an explicit cancelled result on reopen', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const setupClient = await createRuntimeLocalValedictorianClient({ pgliteDataPath })
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(setupClient),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -177,9 +174,9 @@ describe('runtime local Valedictorian client', () => {
         status: 'failed',
       },
     })
-    sqlite.close()
+    await closeTestLocalValedictorianClient(setupClient)
 
-    const reopenedClient = createRuntimeLocalValedictorianClient({
+    const reopenedClient = await createRuntimeLocalValedictorianClient({
       connectorRunRecovery: createConnectorRunRecoveryLifecycle(),
       connectorRegistry: createStaticConnectorRegistry([
         fixtureConnector({ observedAt: '2026-07-08T19:00:00.000Z' }),
@@ -237,7 +234,7 @@ describe('runtime local Valedictorian client', () => {
 
   it('rejects unsupported connector run triggers instead of queueing them', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get() {
           return null
@@ -246,9 +243,9 @@ describe('runtime local Valedictorian client', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -274,12 +271,11 @@ describe('runtime local Valedictorian client', () => {
     ).resolves.toMatchObject({
       total: 0,
     })
-    sqlite.close()
   })
 
   it('rejects dry-run connector triggers before executing registered connectors', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -292,9 +288,9 @@ describe('runtime local Valedictorian client', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -321,13 +317,12 @@ describe('runtime local Valedictorian client', () => {
     ).resolves.toMatchObject({
       total: 0,
     })
-    sqlite.close()
   })
 
   it('derives ordinary manual coverage end from the injected clock when omitted', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const clock = '2026-07-08T18:30:00.000Z'
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -341,9 +336,9 @@ describe('runtime local Valedictorian client', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -382,12 +377,11 @@ describe('runtime local Valedictorian client', () => {
         },
       }],
     })
-    sqlite.close()
   })
 
   it('rejects per-run filter overrides before executing registered connectors', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -400,9 +394,9 @@ describe('runtime local Valedictorian client', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -429,12 +423,11 @@ describe('runtime local Valedictorian client', () => {
     ).resolves.toMatchObject({
       total: 0,
     })
-    sqlite.close()
   })
 
   it('records failed runs and allows a later trigger when registered connectors throw', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -448,9 +441,9 @@ describe('runtime local Valedictorian client', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -499,12 +492,11 @@ describe('runtime local Valedictorian client', () => {
       ],
       total: 2,
     })
-    sqlite.close()
   })
 
   it('does not fail a connector run by interpreting an invalid legacy observation', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -518,9 +510,9 @@ describe('runtime local Valedictorian client', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -595,12 +587,11 @@ describe('runtime local Valedictorian client', () => {
         },
       ],
     })
-    sqlite.close()
   })
 
   it('commits catch-up checkpoints independently of legacy observation projection', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -614,9 +605,9 @@ describe('runtime local Valedictorian client', () => {
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const connectorRepository = createPgliteConnectorRepository(
+      getTestLocalValedictorianDatabase(client),
+    )
 
     await connectorRepository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -703,7 +694,6 @@ describe('runtime local Valedictorian client', () => {
         },
       ],
     })
-    sqlite.close()
   })
 
 
@@ -722,12 +712,11 @@ describe('runtime local Valedictorian client', () => {
       },
     }))
     const connector: AppJobConnector = { ...base, refresh }
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date('2026-07-11T12:00:30.000Z'), seedDataMode: 'none', pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({
       id: 'retry-runtime', connectorId: connector.definition.id,
       connectorVersion: connector.definition.version, displayName: 'Retry runtime', enabled: true,
@@ -750,7 +739,6 @@ describe('runtime local Valedictorian client', () => {
     expect(refresh).toHaveBeenCalledTimes(1)
     expect(early).toMatchObject({ status: 'skipped', retryHints: { state: 'not_due', reason: 'rate_limit' } })
     expect(repeated.id).toBe(early.id)
-    sqlite.close()
   })
 
 
@@ -767,14 +755,13 @@ describe('runtime local Valedictorian client', () => {
       },
       refresh,
     } as AppJobConnector
-    const client = createRuntimeLocalValedictorianClient({
+    const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date('2026-07-11T12:00:30.000Z'),
       seedDataMode: 'none',
       pgliteDataPath,
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({
       id: 'jobright-capture-retry',
       connectorId: 'jobright.resolver',
@@ -833,7 +820,6 @@ describe('runtime local Valedictorian client', () => {
     })
     expect(repeated.id).toBe(direct.id)
     expect(refresh).not.toHaveBeenCalled()
-    sqlite.close()
   })
 
 
