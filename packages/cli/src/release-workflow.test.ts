@@ -22,6 +22,10 @@ describe('CLI release workflow', () => {
     expect(workflow).toContain('pnpm test')
     expect(workflow).toContain('pnpm lint')
     expect(workflow).toContain('pnpm build')
+    expect(workflow).toContain(
+      'types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]',
+    )
+    expect(workflow).toContain("github.event.pull_request.draft == false")
   })
 
   it('does not create a separate GitHub tarball release workflow', () => {
