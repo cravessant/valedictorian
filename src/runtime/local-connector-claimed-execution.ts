@@ -1,6 +1,6 @@
 import type { ConnectorRefreshMode } from '@sparxie/valedictorian-connectors-core'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
-import type { createSqliteConnectorRepository, ConnectorRunRecord } from '../modules/connectors/connector.repository'
+import type { createPgliteConnectorRepository, ConnectorRunRecord } from '../modules/connectors/connector.repository'
 import type { createConnectorRunner, AppConnectorRefreshRecord } from '../modules/connectors/connector.runner'
 import { finalizeDeferredConnectorRefreshRecord } from './local-connector-retry-dispatch'
 import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
@@ -20,7 +20,7 @@ export async function executeClaimedConnectorRun({
   startedAt,
 }: {
   connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   connectorRunId: string
   coverageEndedAt: string
@@ -56,7 +56,7 @@ export async function executeClaimedConnectorRun({
       replayConnectorUpgrade,
     })
 
-    const coverageStartedAt = persistedClaimedCoverageStart(
+    const coverageStartedAt = await persistedClaimedCoverageStart(
       connectorRepository,
       runRequest,
     )
@@ -104,14 +104,14 @@ export async function executeClaimedConnectorRun({
   }
 }
 
-function persistedClaimedCoverageStart(
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>,
+async function persistedClaimedCoverageStart(
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>,
   run: ConnectorRunRecord,
-): string {
+): Promise<string> {
   if (!run.coverageStartedAt || !Number.isFinite(Date.parse(run.coverageStartedAt))) {
     throw new Error(`Claimed connector run has invalid persisted coverage start: ${run.id}`)
   }
-  const snapshot = connectorRepository.getRunSynchronization(run.id)
+  const snapshot = await connectorRepository.getRunSynchronization(run.id)
   const synchronization = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
     ? snapshot as Record<string, unknown>
     : null
@@ -134,7 +134,7 @@ async function markClaimedRunFailedIfStillRunning({
   connectorRunId,
   now,
 }: {
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRunId: string
   now: () => Date
 }): Promise<void> {
