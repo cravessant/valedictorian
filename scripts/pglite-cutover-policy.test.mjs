@@ -68,6 +68,18 @@ packages:
   expect(violations).toEqual([])
 })
 
+it('requires the manifest PGlite version to match the packaged runtime asset contract exactly', () => {
+  const violations = auditPgliteCutoverFiles(new Map([
+    ['package.json', JSON.stringify({
+      dependencies: { '@electric-sql/pglite': '^0.5.4' },
+    })],
+  ]))
+
+  expect(violations).toEqual([
+    'package.json: @electric-sql/pglite must be pinned exactly to 0.5.4',
+  ])
+})
+
 it('rejects forbidden packages resolved in the lockfile while allowing optional peer metadata', () => {
   const lockfile = `lockfileVersion: '9.0'
 

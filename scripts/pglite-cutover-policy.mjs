@@ -10,6 +10,8 @@ const forbiddenDependencyNames = new Set([
   'prebuild-install',
 ])
 
+const requiredPgliteVersion = '0.5.4'
+
 const forbiddenSourcePatterns = [
   ['better-sqlite3', /better-sqlite3/],
   ['SQLite database helper', /createFileDatabase|createInMemoryDatabase/],
@@ -103,6 +105,11 @@ function auditManifest(contents, violations) {
         violations.push(`package.json: dependency ${dependencyName} is forbidden`)
       }
     }
+  }
+  if (manifest.dependencies?.['@electric-sql/pglite'] !== requiredPgliteVersion) {
+    violations.push(
+      `package.json: @electric-sql/pglite must be pinned exactly to ${requiredPgliteVersion}`,
+    )
   }
   for (const [scriptName, command] of Object.entries(manifest.scripts ?? {})) {
     if (/better-sqlite3|install-app-deps|rebuild:native|rebuild:node/.test(String(command))) {
