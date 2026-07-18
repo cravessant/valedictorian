@@ -48,7 +48,7 @@ describe('ConnectorSettingsPanel', () => {
     await connectorsApi.create({
       id: 'jobright-modal',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.15.0',
+      connectorVersion: '0.16.0',
       displayName: 'Jobright internslist',
       enabled: true,
       auth: [{

@@ -54,9 +54,9 @@ export function registerConnectorsIpc(
   })
   ipcMain.handle('connectors:runs:trigger', async (_event, input) => {
     assertConnectorsAvailable(connectors)
-    return publicConnectorRunSummary(
-      await connectors.runs.trigger(triggerConnectorRunInputSchema.parse(input)),
-    )
+    const parsed = triggerConnectorRunInputSchema.parse(input)
+    const run = await connectors.runs.trigger(parsed)
+    return publicConnectorRunSummary(run)
   })
   ipcMain.handle('connectors:status:reconnect', (_event, input) => {
     assertConnectorsAvailable(connectors)

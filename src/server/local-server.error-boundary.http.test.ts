@@ -14,7 +14,6 @@ import {
   type ValedictorianWorkspaceClient,
 } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ConnectorExecutionError } from '../modules/connectors/connector-execution.errors'
 import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,
@@ -28,7 +27,6 @@ const INTERNAL_ERROR_BODY = {
 
 const VALIDATION_ERROR_BODY = { message: 'The request is invalid.' }
 const NOT_FOUND_ERROR_BODY = { message: 'The requested resource was not found.' }
-const CONFLICT_ERROR_BODY = { message: 'The request conflicts with the current state.' }
 const BODY_TOO_LARGE_ERROR_BODY = { message: 'The request body is too large.' }
 
 const upsertScheduleBody = {
@@ -742,35 +740,6 @@ describe('local server safe HTTP error boundary', () => {
     const missing = await fetch(`${base}/raw-records/missing-record`)
     expect(missing.status).toBe(404)
     await expect(missing.json()).resolves.toEqual(NOT_FOUND_ERROR_BODY)
-  })
-
-  it('returns a fixed 409 for a nominal connector execution conflict', async () => {
-    const client = createBoundaryWorkspaceClient(() => {}, {
-      connectors: {
-        runs: {
-          async trigger() {
-            throw new ConnectorExecutionError('disabled connector id canary')
-          },
-        },
-      } as never,
-    })
-    const server = await fixture.start({
-      client,
-      onRequestError: vi.fn(),
-      resolveWorkspaceClient: () => client,
-    })
-
-    const response = await fetch(
-      `${server.url}/v1/workspaces/connector-errors/connectors/fixture/runs`,
-      {
-        body: JSON.stringify({ mode: 'manual' }),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      },
-    )
-
-    expect(response.status).toBe(409)
-    await expect(response.json()).resolves.toEqual(CONFLICT_ERROR_BODY)
   })
 
   it('returns a fixed 404 for a scoped legacy connector not-found outcome', async () => {

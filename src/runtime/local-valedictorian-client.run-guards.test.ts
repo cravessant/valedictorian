@@ -461,7 +461,7 @@ describe('runtime local Valedictorian client', () => {
         coverageEndedAt: '2026-07-08T18:00:00.000Z',
         mode: 'manual',
       }),
-    ).rejects.toThrow('Fixture connector refresh failed')
+    ).rejects.toThrow('Connector execution failed.')
 
     await expect(
       client.connectors.runs.trigger({
@@ -470,7 +470,7 @@ describe('runtime local Valedictorian client', () => {
         coverageEndedAt: '2026-07-08T19:00:00.000Z',
         mode: 'manual',
       }),
-    ).rejects.toThrow('Fixture connector refresh failed')
+    ).rejects.toThrow('Connector execution failed.')
     await expect(
       client.connectors.runs.list({
         connectorInstanceId: 'connector-instance-fixture',

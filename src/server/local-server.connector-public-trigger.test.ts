@@ -111,6 +111,118 @@ describe('public manual connector trigger parity', () => {
     })).resolves.toMatchObject({ items: [], total: 0 })
   })
 
+  it('keeps a secret-bearing refresh throw out of HTTP responses and diagnostic logging', async () => {
+    const canary = 'provider-secret-diagnostic-canary-89'
+    const events: unknown[] = []
+    const surfaces = await createPublicSurfaces({
+      onRequestError(event) {
+        events.push(event)
+      },
+      refresh() {
+        throw createHostileAdapterFailure(canary)
+      },
+    })
+    server = surfaces.server
+    const trigger = { connectorInstanceId: 'parity-fixture', mode: 'manual' as const }
+
+    const response = await fetch(
+      `${server.url}/v1/workspaces/${WORKSPACE_ID}/connectors/parity-fixture/runs`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-request-id': 'connector-refresh-canary-89',
+        },
+        body: JSON.stringify(trigger),
+      },
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(500)
+    expect(body).toEqual({
+      code: 'internal_error',
+      message: 'An unexpected error occurred.',
+      requestId: 'connector-refresh-canary-89',
+    })
+    expect(JSON.stringify(body)).not.toContain(canary)
+    expect(events).toHaveLength(1)
+    const logged = events[0] as { error: Error & { statusCode?: number } }
+    assertFreshFixedNominal(logged.error, canary)
+    await expect(surfaces.local.connectors.runs.list({
+      connectorInstanceId: 'parity-fixture',
+    })).resolves.toMatchObject({
+      total: 1,
+      items: [{ status: 'failed' }],
+    })
+  })
+
+  it('projects a secret-bearing refresh throw to a fixed IPC rejection', async () => {
+    const canary = 'provider-secret-diagnostic-canary-89'
+    const surfaces = await createPublicSurfaces({
+      refresh() {
+        throw createHostileAdapterFailure(canary)
+      },
+    })
+    server = surfaces.server
+    const trigger = { connectorInstanceId: 'parity-fixture', mode: 'manual' as const }
+
+    let caught: unknown
+    try {
+      await surfaces.ipc.runs.trigger(trigger)
+    } catch (error) {
+      caught = error
+    }
+
+    assertFreshFixedNominal(caught, canary)
+  })
+
+  it('strips hostile adapter diagnostics across direct runner, HTTP logging, and IPC', async () => {
+    const canary = 'provider-secret-diagnostic-canary-89'
+    const events: unknown[] = []
+    const surfaces = await createPublicSurfaces({
+      onRequestError(event) {
+        events.push(event)
+      },
+      refresh() {
+        throw createHostileAdapterFailure(canary)
+      },
+    })
+    server = surfaces.server
+    const trigger = { connectorInstanceId: 'parity-fixture', mode: 'manual' as const }
+
+    let direct: unknown
+    try {
+      await surfaces.local.connectors.runs.trigger(trigger)
+    } catch (error) {
+      direct = error
+    }
+    assertFreshFixedNominal(direct, canary)
+
+    const response = await fetch(
+      `${server.url}/v1/workspaces/${WORKSPACE_ID}/connectors/parity-fixture/runs`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-request-id': 'connector-integrated-canary-89',
+        },
+        body: JSON.stringify(trigger),
+      },
+    )
+    expect(response.status).toBe(500)
+    expect(JSON.stringify(await response.json())).not.toContain(canary)
+    expect(events).toHaveLength(1)
+    assertFreshFixedNominal((events[0] as { error: Error }).error, canary)
+
+    let ipcCaught: unknown
+    try {
+      await surfaces.ipc.runs.trigger(trigger)
+    } catch (error) {
+      ipcCaught = error
+    }
+    assertFreshFixedNominal(ipcCaught, canary)
+  })
+
   it('returns the same active run on concurrent public HTTP and IPC triggers', async () => {
     let releaseRefresh: (() => void) | undefined
     const refreshGate = new Promise<void>((resolve) => {
@@ -148,9 +260,14 @@ describe('public manual connector trigger parity', () => {
 
 async function createPublicSurfaces(options?: {
   enabled?: boolean
+  onRequestError?: (event: unknown) => void
+  refresh?: AppJobConnector['refresh']
   waitForRefresh?: Promise<void>
 }) {
-  const connector = createParityConnector(options?.waitForRefresh)
+  const connector = createParityConnector({
+    refresh: options?.refresh,
+    waitForRefresh: options?.waitForRefresh,
+  })
   const local = await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
     now: () => new Date(CLOCK),
@@ -171,6 +288,7 @@ async function createPublicSurfaces(options?: {
     client: local,
     host: '127.0.0.1',
     port: 0,
+    ...(options?.onRequestError ? { onRequestError: options.onRequestError } : {}),
     resolveWorkspaceClient: async () => local,
   })
   const http = createHttpValedictorianClient({ baseUrl: started.url })
@@ -191,12 +309,18 @@ async function createPublicSurfaces(options?: {
   return { http, ipc, local, server: started }
 }
 
-function createParityConnector(waitForRefresh?: Promise<void>): AppJobConnector {
+function createParityConnector(options?: {
+  refresh?: AppJobConnector['refresh']
+  waitForRefresh?: Promise<void>
+}): AppJobConnector {
   return {
     definition: { id: 'fixture.jobs', version: '1.0.0' },
-    async refresh(input) {
-      if (waitForRefresh) {
-        await waitForRefresh
+    async refresh(input, runtime) {
+      if (options?.refresh) {
+        return options.refresh(input, runtime)
+      }
+      if (options?.waitForRefresh) {
+        await options.waitForRefresh
       }
       return {
         observations: [],
@@ -219,4 +343,38 @@ function createParityConnector(waitForRefresh?: Promise<void>): AppJobConnector 
       }
     },
   }
+}
+
+function createHostileAdapterFailure(secret: string) {
+  const failure = new Error(secret, { cause: new Error(`nested-${secret}`) })
+  Object.assign(failure, {
+    detail: secret,
+    providerBody: { token: secret },
+    nested: { diagnostic: secret },
+  })
+  return failure
+}
+
+function assertFreshFixedNominal(caught: unknown, secret: string) {
+  expect(caught).toMatchObject({
+    name: 'ConnectorExecutionError',
+    message: 'Connector execution failed.',
+    statusCode: 500,
+  })
+  expect(caught).toBeInstanceOf(Error)
+  expect((caught as Error).cause).toBeUndefined()
+  expect(Object.getOwnPropertyNames(caught as object)).toEqual([
+    'stack',
+    'message',
+    'statusCode',
+    'name',
+  ])
+  expect(Reflect.ownKeys(caught as object)).toEqual([
+    'stack',
+    'message',
+    'statusCode',
+    'name',
+  ])
+  expect(JSON.stringify(caught, Object.getOwnPropertyNames(caught as object))).not.toContain(secret)
+  expect(String(caught)).not.toContain(secret)
 }

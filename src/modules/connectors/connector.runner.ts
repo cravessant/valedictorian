@@ -44,6 +44,8 @@ import {
 import type { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 import { createSourceSessionExecutor } from '../source-execution/source-session-executor'
 import { finalizeReconnectValidation } from './connector.auth-validation-finalization'
+import { unexpectedConnectorExecutionError } from './connector-execution.errors'
+import { sanitizeConnectorRefreshResult } from './connector.refresh-result-sanitizer'
 export type AppJobConnectorDefinition = ConnectorDefinition
 export type AppConnectorAuthMode = ConnectorAuthMode
 export type AppConnectorAuthRequirement = ConnectorAuthRequirement
@@ -228,7 +230,7 @@ export function createConnectorRunner({
           })
         : undefined,
     )
-    let result: AppConnectorRefreshResult
+    let result: ConnectorRefreshResultInput
     try {
       const refreshInput = {
         connectorInstanceId: input.connectorInstanceId,
@@ -245,8 +247,14 @@ export function createConnectorRunner({
             : {}),
         ...(input.observations ? { observations: input.observations } : {}),
       }
-      result = await connector.refresh(refreshInput, runRuntime)
-      assertConnectorRefreshResult(result, connectorInstance.executionScopeId)
+      try {
+        result = sanitizeConnectorRefreshResult(
+          await connector.refresh(refreshInput, runRuntime),
+        )
+        assertConnectorRefreshResult(result, connectorInstance.executionScopeId)
+      } catch {
+        throw unexpectedConnectorExecutionError()
+      }
       if (result.operationOutcome?.kind === 'scope_rate_limited') {
         if (result.operationOutcome.executionScopeId !== connectorInstance.executionScopeId) {
           throw new Error('Connector returned rate-limit evidence for a different execution scope')
@@ -261,9 +269,7 @@ export function createConnectorRunner({
         normalization?.release?.(input.connectorRunId)
       }
     }
-    const safeResult = withRunProgressStats(
-      dedupeRefreshWarnings(redactRefreshResult(result, sensitiveValues)),
-    )
+    const safeResult = withRunProgressStats(redactRefreshResult(result, sensitiveValues))
     const nextCheckpoint = input.restoreUnacquiredJobrightRetryEntries
       ? restoreUnacquiredJobrightV5RetryEntries({
           acquiredProviderRecordId: input.restoreUnacquiredJobrightRetryEntries.acquiredProviderRecordId,
@@ -486,18 +492,6 @@ export function createConnectorRunner({
     validateAuth,
   }
 }
-function dedupeRefreshWarnings(result: ConnectorRefreshResultInput): ConnectorRefreshResultInput {
-  const seen = new Set<string>()
-  return {
-    ...result,
-    warnings: result.warnings.filter((warning) => {
-      const identity = `${warning.code}\u0000${warning.message}`
-      if (seen.has(identity)) return false
-      seen.add(identity)
-      return true
-    }),
-  }
-}
 const allowedAuthValidationStatuses = new Set<ConnectorAuthValidationStatus>([
   'ready',
   'missing',
@@ -707,8 +701,6 @@ const connectorRunProgressMetricKeys = [
   'authRequired',
   'discovered',
   'eligible',
-  'failed',
-  'failures',
   'resolved',
 ] as const
 function withRunProgressStats(
@@ -718,7 +710,7 @@ function withRunProgressStats(
   const checkpointStats: Record<string, number> = {}
   for (const key of connectorRunProgressMetricKeys) {
     const value = checkpoint[key]
-    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
       checkpointStats[key] = value
     }
   }
@@ -919,7 +911,7 @@ async function resolveSecretGrant(
   }
 }
 function redactRefreshResult(
-  result: AppConnectorRefreshResult,
+  result: ConnectorRefreshResultInput,
   sensitiveValues: Set<string>,
 ): ConnectorRefreshResultInput {
   if (sensitiveValues.size === 0) {

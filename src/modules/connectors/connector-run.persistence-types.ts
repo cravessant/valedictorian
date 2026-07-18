@@ -1,5 +1,9 @@
 import type { RetryAdvice } from 'sparxie'
-import type { ConnectorRefreshResult } from '@sparxie/valedictorian-connectors-core'
+import type {
+  ConnectorRefreshResult,
+  ConnectorRefreshStats,
+  ConnectorRefreshWarning,
+} from '@sparxie/valedictorian-connectors-core'
 import type { JsonRecord } from './connector.persistence-json'
 import type { AcquiredRetryWork } from './connector-retry-work.identity-types'
 
@@ -18,7 +22,16 @@ export type ConnectorRunStatus =
 
 export type ConnectorRunTerminalStatus = Exclude<ConnectorRunStatus, 'queued' | 'running'>
 
-export type ConnectorRefreshResultInput = ConnectorRefreshResult
+export type SanitizedConnectorRefreshResult = Omit<
+  ConnectorRefreshResult,
+  'stats' | 'warnings' | 'synchronization'
+> & {
+  stats: ConnectorRefreshStats
+  warnings: ConnectorRefreshWarning[]
+  synchronization: ConnectorRefreshResult['synchronization']
+}
+
+export type ConnectorRefreshResultInput = SanitizedConnectorRefreshResult
 
 export interface RecordConnectorRefreshResultInput {
   connectorRunId?: string

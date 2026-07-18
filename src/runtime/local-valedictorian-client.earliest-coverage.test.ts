@@ -150,7 +150,7 @@ describe('runtime connector coverage from earliest backfill date', () => {
       mode: 'manual',
       coverageEndedAt: '2026-07-11T18:00:00.000Z',
       coverageStartedAt: '2026-07-11T17:00:00.000Z',
-    })).rejects.toThrow(/refresh exploded|Connector execution failed/i)
+    })).rejects.toThrow('Connector execution failed.')
 
     const runs = await client.connectors.runs.list({
       connectorInstanceId: 'failed-coverage',

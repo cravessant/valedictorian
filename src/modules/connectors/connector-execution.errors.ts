@@ -13,3 +13,7 @@ export function connectorDisabledExecutionError(
 ): ConnectorExecutionError {
   return new ConnectorExecutionError(`Connector instance is disabled: ${connectorInstanceId}`)
 }
+
+export function unexpectedConnectorExecutionError(): ConnectorExecutionError {
+  return new ConnectorExecutionError('Connector execution failed.', 500)
+}

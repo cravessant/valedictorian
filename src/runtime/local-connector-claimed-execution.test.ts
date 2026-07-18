@@ -206,14 +206,14 @@ describe('shared claimed connector run executor', () => {
       now,
       replayConnectorUpgrade: completedUpgradeReplay,
       startedAt: '2026-07-11T13:00:00.000Z',
-    })).rejects.toThrow(/refresh boom/)
+    })).rejects.toThrow('Connector execution failed.')
 
     const failed = await connectorRepository.getRun(queued.id)
     expect(failed).toMatchObject({
       id: queued.id,
       status: 'failed',
     })
-    expect(JSON.stringify(failed)).not.toMatch(/secret detail/)
+    expect(JSON.stringify(failed)).not.toMatch(/secret detail|refresh boom/)
   })
 })
 

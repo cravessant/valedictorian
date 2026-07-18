@@ -113,7 +113,13 @@ export function handleHttpRequestError({
   }
   if (knownFailure) {
     if (knownFailure.statusCode === 500) {
-      logUnexpectedRequestError({ error, onRequestError, pathname, request })
+      const requestId = logUnexpectedRequestError({ error, onRequestError, pathname, request })
+      writeJson(
+        response,
+        500,
+        knownFailure.body ?? createValedictorianInternalErrorBody(requestId),
+      )
+      return
     }
     writeJson(response, knownFailure.statusCode, knownFailure.body)
     return
@@ -246,6 +252,12 @@ function mapKnownHttpFailure(
     && error instanceof ConnectorExecutionError
     && error.statusCode === 409) {
     return { body: conflictErrorBody, statusCode: 409 }
+  }
+
+  if (isConnectorRunTriggerRoute(context.method, pathname)
+    && error instanceof ConnectorExecutionError
+    && error.statusCode === 500) {
+    return { body: null, statusCode: 500 }
   }
 
   const statusCode = readNumberProperty(error, 'statusCode')

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { unexpectedConnectorExecutionError } from '../modules/connectors/connector-execution.errors'
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { registerConnectorsIpc } from './connectors.ipc'
 
@@ -242,6 +243,84 @@ describe('connectors IPC registration', () => {
       },
     )).rejects.toThrow(/unrecognized_keys|Unrecognized key/i)
     expect(trigger).not.toHaveBeenCalled()
+  })
+
+  it('preserves an app-owned persistence rejection from trigger without relabeling it', async () => {
+    const persistenceFailure = new Error(
+      'recordRefreshResult failed: persistence-governor-canary-89',
+    )
+    const trigger = vi.fn(async () => {
+      throw persistenceFailure
+    })
+    const connectors = {
+      runs: { trigger },
+    } as unknown as LocalValedictorianClient['connectors']
+    const handlers = new Map<string, (_event: unknown, input?: unknown) => Promise<unknown>>()
+    registerConnectorsIpc(connectors, {
+      handle(channel, handler) {
+        handlers.set(channel, handler)
+      },
+    })
+
+    let caught: unknown
+    try {
+      await handlers.get('connectors:runs:trigger')?.(
+        {},
+        { connectorInstanceId: 'connector-1', mode: 'manual' },
+      )
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBe(persistenceFailure)
+    expect(caught).not.toMatchObject({ name: 'ConnectorExecutionError' })
+    expect(String(caught)).toContain('persistence-governor-canary-89')
+  })
+
+  it('preserves an app-owned governor rejection from trigger without relabeling it', async () => {
+    const governorFailure = new Error('blockScope failed: governor-canary-89')
+    const trigger = vi.fn(async () => {
+      throw governorFailure
+    })
+    const connectors = {
+      runs: { trigger },
+    } as unknown as LocalValedictorianClient['connectors']
+    const handlers = new Map<string, (_event: unknown, input?: unknown) => Promise<unknown>>()
+    registerConnectorsIpc(connectors, {
+      handle(channel, handler) {
+        handlers.set(channel, handler)
+      },
+    })
+
+    await expect(
+      handlers.get('connectors:runs:trigger')?.(
+        {},
+        { connectorInstanceId: 'connector-1', mode: 'manual' },
+      ),
+    ).rejects.toBe(governorFailure)
+  })
+
+  it('forwards a runner-produced fixed connector execution rejection unchanged', async () => {
+    const nominal = unexpectedConnectorExecutionError()
+    const trigger = vi.fn(async () => {
+      throw nominal
+    })
+    const connectors = {
+      runs: { trigger },
+    } as unknown as LocalValedictorianClient['connectors']
+    const handlers = new Map<string, (_event: unknown, input?: unknown) => Promise<unknown>>()
+    registerConnectorsIpc(connectors, {
+      handle(channel, handler) {
+        handlers.set(channel, handler)
+      },
+    })
+
+    await expect(
+      handlers.get('connectors:runs:trigger')?.(
+        {},
+        { connectorInstanceId: 'connector-1', mode: 'manual' },
+      ),
+    ).rejects.toBe(nominal)
   })
 
   it('publishes a strict skip result without local run fields or the caller reason', async () => {
