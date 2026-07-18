@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import path from 'node:path'
 import type { ValedictorianWorkspaceClient } from 'sparxie'
 import {
   createLocalValedictorianClient,
@@ -257,9 +258,24 @@ async function openWorkspace({
   const openedAt = now()
   let workspace = initializeWorkspace(input.path, { createId, now: openedAt })
   const currentRegistry = await registryStore.get()
+  const physicalWorkspace = Object.values(currentRegistry.workspaces).find(
+    (registered) => samePhysicalWorkspace(registered.path, workspace.rootPath),
+  )
+  if (physicalWorkspace) {
+    if (physicalWorkspace.id !== workspace.id) {
+      throw new LocalWorkspaceConflictError(
+        `Workspace path is already registered as ${physicalWorkspace.id}.`,
+      )
+    }
+    workspace = {
+      ...workspace,
+      name: physicalWorkspace.name,
+      rootPath: physicalWorkspace.path,
+    }
+  }
   const existingWorkspace = currentRegistry.workspaces[workspace.id]
 
-  if (existingWorkspace && existingWorkspace.path !== workspace.rootPath) {
+  if (!physicalWorkspace && existingWorkspace && existingWorkspace.path !== workspace.rootPath) {
     if (!input.rekey) {
       throw new LocalWorkspaceConflictError(
         `Workspace id ${workspace.id} is already registered to a different path. Re-key the workspace to register it here.`,
@@ -292,6 +308,14 @@ async function openWorkspace({
   )
 
   return toListItem(registry.workspaces[workspace.id])
+}
+
+function samePhysicalWorkspace(firstPath: string, secondPath: string) {
+  try {
+    return fs.realpathSync.native(firstPath) === fs.realpathSync.native(secondPath)
+  } catch {
+    return path.resolve(firstPath) === path.resolve(secondPath)
+  }
 }
 
 function rekeyWorkspaceManifest(rootPath: string, workspaceId: string) {

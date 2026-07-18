@@ -155,4 +155,60 @@ describe('local workspace profile capability lifecycle', () => {
     await closing
     expect(dispose).toHaveBeenCalledTimes(1)
   })
+
+  it('reuses one registration when a rekey request names the same physical workspace', async () => {
+    const registryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-alias-registry-'))
+    const workspace = initializeWorkspace(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-alias-real-')),
+      { createId: () => 'workspace-alias' },
+    )
+    const aliasParent = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-alias-link-'))
+    const aliasPath = path.join(aliasParent, 'workspace')
+    fs.symlinkSync(workspace.rootPath, aliasPath, 'dir')
+    cleanupPaths.push(registryRoot, workspace.rootPath, aliasParent)
+    const registryStore = createFileWorkspaceRegistryStore(path.join(registryRoot, 'workspaces.json'))
+    const createId = vi.fn(() => 'workspace-duplicate')
+    const manager = createLocalWorkspaceManager({ createId, registryStore })
+
+    await manager.open({ path: workspace.rootPath })
+    const reopened = await manager.open({ path: aliasPath, rekey: true })
+
+    expect(reopened).toMatchObject({ id: workspace.id, path: workspace.rootPath })
+    await expect(manager.list()).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: workspace.id, path: workspace.rootPath })],
+    })
+    expect(createId).not.toHaveBeenCalled()
+    await manager.close()
+  })
+
+  it('rejects a mismatched manifest id on an already registered physical workspace', async () => {
+    const registryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-alias-conflict-registry-'))
+    const workspace = initializeWorkspace(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-alias-conflict-real-')),
+      { createId: () => 'workspace-original' },
+    )
+    const aliasParent = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-alias-conflict-link-'))
+    const aliasPath = path.join(aliasParent, 'workspace')
+    fs.symlinkSync(workspace.rootPath, aliasPath, 'dir')
+    cleanupPaths.push(registryRoot, workspace.rootPath, aliasParent)
+    const registryStore = createFileWorkspaceRegistryStore(path.join(registryRoot, 'workspaces.json'))
+    const createId = vi.fn(() => 'workspace-rekeyed')
+    const manager = createLocalWorkspaceManager({ createId, registryStore })
+    await manager.open({ path: workspace.rootPath })
+    const manifest = JSON.parse(fs.readFileSync(workspace.manifestPath, 'utf8')) as Record<string, unknown>
+    fs.writeFileSync(
+      workspace.manifestPath,
+      `${JSON.stringify({ ...manifest, id: 'workspace-intruder' }, null, 2)}\n`,
+      'utf8',
+    )
+
+    await expect(manager.open({ path: aliasPath, rekey: true })).rejects.toThrow(
+      'Workspace path is already registered as workspace-original.',
+    )
+    expect(createId).not.toHaveBeenCalled()
+    await expect(manager.list()).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: 'workspace-original', path: workspace.rootPath })],
+    })
+    await manager.close()
+  })
 })
