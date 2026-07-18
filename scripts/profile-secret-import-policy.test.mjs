@@ -15,17 +15,17 @@ describe('profile/secret import policy', () => {
         },
         {
           path: 'src/modules/connectors/forbidden.ts',
-          source: "import { createSqliteSecretStore } from '../secrets/secret.sqlite.store'\n",
+          source: "import { createPgliteSecretStore } from '../secrets/secret.pglite.store'\n",
         },
         {
           path: 'src/ipc/forbidden-dynamic.ts',
           source:
-            "const load = () => import('../modules/secrets/secret.sqlite.store')\n",
+            "const load = () => import('../modules/secrets/secret.pglite.store')\n",
         },
         {
           path: 'electron/preload.forbidden.ts',
           source:
-            "export { createSqliteSecretStore } from '../src/modules/secrets/secret.sqlite.store'\n",
+            "export { createPgliteSecretStore } from '../src/modules/secrets/secret.pglite.store'\n",
         },
         {
           path: 'src/server/forbidden-json.ts',
@@ -82,25 +82,25 @@ describe('profile/secret import policy', () => {
     expect(
       findProfileSecretImportPolicyViolations([
         {
-          path: 'src/modules/secrets/secret.sqlite.store.ts',
+          path: 'src/modules/secrets/secret.pglite.store.ts',
           source: "import { createFileAppSecretStore } from '../../../settings/app-secret.store'\n",
         },
         {
-          path: 'src/modules/secrets/secret.sqlite.store.test.ts',
+          path: 'src/modules/secrets/secret.pglite.store.test.ts',
           source: "import { createFileAppSecretStore } from '../../../settings/app-secret.store'\n",
         },
         {
           path: 'src/modules/profile/profile.json.document.ts',
-          source: "import { createSqliteSecretStore } from '../secrets/secret.sqlite.store'\n",
+          source: "import { createPgliteSecretStore } from '../secrets/secret.pglite.store'\n",
         },
         {
           path: 'src/modules/profile/profile.json.atomic.ts',
-          source: "import { createSqliteSecretStore } from '../secrets/secret.sqlite.store'\n",
+          source: "import { createPgliteSecretStore } from '../secrets/secret.pglite.store'\n",
         },
       ]),
     ).toEqual([
-      'src/modules/secrets/secret.sqlite.store.ts: concrete profile/secret adapters may only be imported from approved composition modules',
-      'src/modules/secrets/secret.sqlite.store.test.ts: concrete profile/secret adapters may only be imported from approved composition modules',
+      'src/modules/secrets/secret.pglite.store.ts: concrete profile/secret adapters may only be imported from approved composition modules',
+      'src/modules/secrets/secret.pglite.store.test.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/modules/profile/profile.json.document.ts: concrete profile/secret adapters may only be imported from approved composition modules',
       'src/modules/profile/profile.json.atomic.ts: concrete profile/secret adapters may only be imported from approved composition modules',
     ])
@@ -127,7 +127,7 @@ describe('profile/secret import policy', () => {
         },
         {
           path: 'src/modules/secrets/secret.composition.ts',
-          source: "import { createSqliteSecretStore } from './secret.sqlite.store'\n",
+          source: "import { createPgliteSecretStore } from './secret.pglite.store'\n",
         },
         {
           path: 'src/settings/app-secret.composition.ts',
@@ -138,8 +138,8 @@ describe('profile/secret import policy', () => {
           source: "import { createFileAppSecretStore } from './app-secret.store'\n",
         },
         {
-          path: 'src/modules/secrets/secret.sqlite.store.test.ts',
-          source: "import { createSqliteSecretStore } from './secret.sqlite.store'\n",
+          path: 'src/modules/secrets/secret.pglite.store.test.ts',
+          source: "import { createPgliteSecretStore } from './secret.pglite.store'\n",
         },
         {
           path: 'src/modules/profile/profile.json.store.ts',

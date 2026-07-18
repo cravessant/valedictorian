@@ -1,1 +1,0 @@
-CREATE INDEX `idx_connector_runs_instance_latest` ON `connector_runs` (`connector_instance_id`,`started_at`,`created_at`);

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createInMemoryDatabase, migrateDatabase, type SqliteDatabase } from '../../db/sqlite'
 import type { SecretCodec } from '../secrets/secret.codec'
+import {
+  createInMemoryLegacyProfileSqliteDatabase,
+} from './profile.legacy-sqlite.fixture'
+import type { LegacySqliteDatabase } from './profile.legacy-sqlite'
 import { readLegacyProfileSource } from './profile.migration.source'
 
 const syntheticCodec: SecretCodec = {
@@ -10,16 +13,15 @@ const syntheticCodec: SecretCodec = {
 }
 
 describe('legacy profile migration source', () => {
-  const databases: SqliteDatabase[] = []
+  const databases: LegacySqliteDatabase[] = []
 
   afterEach(() => {
     for (const database of databases.splice(0)) database.close()
   })
 
   it('normalizes every legacy profile class and keeps identity material separate', () => {
-    const database = createInMemoryDatabase()
+    const database = createInMemoryLegacyProfileSqliteDatabase()
     databases.push(database)
-    migrateDatabase(database)
 
     database.prepare(`
       insert into user_profile (

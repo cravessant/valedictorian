@@ -5,8 +5,8 @@ import {
   type ProfileEducation,
   type UserProfile,
 } from 'sparxie'
-import type { SqliteDatabase } from '../../db/sqlite'
 import type { SecretCodec } from '../secrets/secret.codec'
+import type { LegacySqliteDatabase } from './profile.legacy-sqlite'
 import { mergeProfile, normalizeProfilePatch } from './profile.normalize'
 
 export interface LegacyProfileSource {
@@ -64,7 +64,7 @@ interface LegacySensitiveRow {
   veteranStatusEncrypted: string | null
 }
 
-export function legacyProfileSourceHasEncryptedMaterial(database: SqliteDatabase): boolean {
+export function legacyProfileSourceHasEncryptedMaterial(database: LegacySqliteDatabase): boolean {
   const row = database.prepare(`
     select exists(
       select 1 from profile_sensitive_details
@@ -86,7 +86,7 @@ export function legacyProfileSourceHasEncryptedMaterial(database: SqliteDatabase
 }
 
 export function readLegacyProfileSource(
-  database: SqliteDatabase,
+  database: LegacySqliteDatabase,
   secretCodec: SecretCodec,
 ): LegacyProfileSource {
   const profileRows = database.prepare(`

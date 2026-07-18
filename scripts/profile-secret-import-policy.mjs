@@ -8,16 +8,16 @@ const maintainedCodePathPattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 /** @typedef {{ path: string, source: string }} PolicyFile */
 
 const concreteAdapterBasenamePattern =
-  /(?:^|\/)(secret\.sqlite\.store|app-secret\.store|profile\.json\.(?:store|document|atomic|lock|watch|paths))(?:\.[cm]?[jt]sx?)?$/
+  /(?:^|\/)(secret\.pglite\.store|app-secret\.store|profile\.json\.(?:store|document|atomic|lock|watch|paths))(?:\.[cm]?[jt]sx?)?$/
 
-const sqliteOrSecretBasenamePattern =
-  /(?:^|\/)(secret\.sqlite\.store|app-secret\.store)(?:\.[cm]?[jt]sx?)?$/
+const secretOrAppSecretBasenamePattern =
+  /(?:^|\/)(secret\.pglite\.store|app-secret\.store)(?:\.[cm]?[jt]sx?)?$/
 
 const concreteAdapterFactoryImportPattern =
-  /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\b(?:createSqliteSecretStore|createFileAppSecretStore|createJsonProfileStore)\b[^}]*\}\s+from\s+['"][^'"]+['"]/s
+  /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\b(?:createPgliteSecretStore|createFileAppSecretStore|createJsonProfileStore)\b[^}]*\}\s+from\s+['"][^'"]+['"]/s
 
-const sqliteSubjectPattern =
-  /(?:^|\/)((?:secret\.sqlite\.store|app-secret\.store))\.test\.(?:[cm]?[jt]s|[jt]sx)$/
+const secretAdapterSubjectPattern =
+  /(?:^|\/)((?:secret\.pglite\.store|app-secret\.store))\.test\.(?:[cm]?[jt]s|[jt]sx)$/
 
 const jsonSubjectPattern =
   /(?:^|\/)((?:profile\.json\.(?:store|document|atomic|lock|watch|paths)))\.test\.(?:[cm]?[jt]s|[jt]sx)$/
@@ -31,8 +31,8 @@ const jsonConcreteModulePattern =
  */
 function subjectAdapterModuleBasename(filePath) {
   const normalized = filePath.replaceAll('\\', '/')
-  const sqliteMatch = normalized.match(sqliteSubjectPattern)
-  if (sqliteMatch?.[1]) return sqliteMatch[1]
+  const secretMatch = normalized.match(secretAdapterSubjectPattern)
+  if (secretMatch?.[1]) return secretMatch[1]
   const jsonMatch = normalized.match(jsonSubjectPattern)
   return jsonMatch?.[1] ?? null
 }
@@ -80,8 +80,8 @@ function isConcreteAdapterSpecifier(specifier) {
  * @param {string} specifier
  * @returns {boolean}
  */
-function isSqliteOrSecretSpecifier(specifier) {
-  return sqliteOrSecretBasenamePattern.test(moduleBasename(specifier))
+function isSecretOrAppSecretSpecifier(specifier) {
+  return secretOrAppSecretBasenamePattern.test(moduleBasename(specifier))
 }
 
 /**
@@ -116,20 +116,21 @@ function importsOnlySubjectAdapter(filePath, source) {
  * @param {string} source
  * @returns {boolean}
  */
-function importsSqliteOrSecretConcrete(source) {
-  if (extractModuleSpecifiers(source).some(isSqliteOrSecretSpecifier)) return true
-  return /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\b(?:createSqliteSecretStore|createFileAppSecretStore)\b[^}]*\}\s+from\s+['"][^'"]+['"]/s.test(
+function importsSecretOrAppSecretConcrete(source) {
+  if (extractModuleSpecifiers(source).some(isSecretOrAppSecretSpecifier)) return true
+  return /(?:^|[;\n])\s*(?:import|export)\s+(?:type\s+)?\{[^}]*\b(?:createPgliteSecretStore|createFileAppSecretStore)\b[^}]*\}\s+from\s+['"][^'"]+['"]/s.test(
     source,
   )
 }
 
 /**
- * JSON concrete modules may import sibling JSON helpers/ports, but never SQLite/secret adapters.
+ * JSON concrete modules may import sibling JSON helpers/ports, but never concrete
+ * workspace-secret or application-secret adapters.
  * @param {string} source
  * @returns {boolean}
  */
 function jsonConcreteModuleImportsAreAllowed(source) {
-  return !importsSqliteOrSecretConcrete(source)
+  return !importsSecretOrAppSecretConcrete(source)
 }
 
 /**

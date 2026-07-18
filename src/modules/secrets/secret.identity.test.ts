@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  createDrizzleDatabase,
-  createInMemoryDatabase,
-  migrateDatabase,
-} from '../../db/sqlite'
-import { createSqliteSecretService } from './secret.composition'
+import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { createPgliteSecretService } from './secret.composition'
 import type { SecretCodec } from './secret.codec'
 import { createWorkspaceSecretScope } from './secret.scope'
 import {
@@ -25,14 +21,19 @@ const testCodec: SecretCodec = {
   },
 }
 
-function createService() {
-  const sqlite = createInMemoryDatabase()
-  migrateDatabase(sqlite)
-  return createSqliteSecretService(
-    createDrizzleDatabase(sqlite),
-    testCodec,
-    createWorkspaceSecretScope('ws-identity'),
-  )
+async function createServiceFixture() {
+  const client = await createPgliteClient()
+  const database = await migratePgliteDatabase(client)
+  return {
+    service: createPgliteSecretService(
+      database,
+      testCodec,
+      createWorkspaceSecretScope('ws-identity'),
+    ),
+    async cleanup() {
+      await client.close()
+    },
+  }
 }
 
 describe('identity SSN last4 secret representation', () => {
@@ -46,103 +47,110 @@ describe('identity SSN last4 secret representation', () => {
   })
 
   it('blocks ordinary create, replace, and delete while trusted upsert returns no summary', async () => {
-    const service = createService()
+    const { service, cleanup } = await createServiceFixture()
+    try {
+      await expect(service.hasTrustedIdentitySsnLast4()).resolves.toBe(false)
 
-    await expect(service.hasTrustedIdentitySsnLast4()).resolves.toBe(false)
-
-    await service.upsert({
-      key: 'jobright',
-      kind: 'password',
-      label: 'Jobright',
-      value: 'visible-secret',
-    })
-
-    await expect(
-      service.upsert({
-        key: identitySsnLast4SecretKey,
-        kind: identitySecretKind,
-        label: 'SSN last four',
-        value: IDENTITY_CANARY,
-      }),
-    ).rejects.toMatchObject({
-      message: 'Identity secrets cannot be managed through ordinary secret administration',
-    })
-
-    await expect(
-      service.upsert({
-        key: identitySsnLast4SecretKey,
+      await service.upsert({
+        key: 'jobright',
         kind: 'password',
+        label: 'Jobright',
+        value: 'visible-secret',
+      })
+
+      await expect(
+        service.upsert({
+          key: identitySsnLast4SecretKey,
+          kind: identitySecretKind,
+          label: 'SSN last four',
+          value: IDENTITY_CANARY,
+        }),
+      ).rejects.toMatchObject({
+        message: 'Identity secrets cannot be managed through ordinary secret administration',
+      })
+
+      await expect(
+        service.upsert({
+          key: identitySsnLast4SecretKey,
+          kind: 'password',
+          label: 'SSN last four',
+          value: IDENTITY_CANARY,
+        }),
+      ).rejects.toMatchObject({
+        message: 'Identity secrets cannot be managed through ordinary secret administration',
+      })
+
+      await expect(service.delete(identitySsnLast4SecretKey)).rejects.toMatchObject({
+        message: 'Identity secrets cannot be managed through ordinary secret administration',
+      })
+
+      await expect(service.upsertTrustedIdentitySsnLast4('5125')).resolves.toBeUndefined()
+      await expect(service.hasTrustedIdentitySsnLast4()).resolves.toBe(true)
+
+      expect(await service.list()).toEqual([
+        expect.objectContaining({ key: 'jobright', kind: 'password' }),
+      ])
+      expect(await service.listResult()).toEqual({
+        items: [expect.objectContaining({ key: 'jobright', kind: 'password' })],
+      })
+      expect(JSON.stringify(await service.list())).not.toContain(identitySsnLast4SecretKey)
+      expect(JSON.stringify(await service.list())).not.toContain(IDENTITY_CANARY)
+      expect(JSON.stringify(await service.list())).not.toContain('5125')
+
+      await expect(service.resolve(identitySsnLast4SecretKey)).resolves.toEqual({
+        key: identitySsnLast4SecretKey,
+        kind: 'identity',
         label: 'SSN last four',
-        value: IDENTITY_CANARY,
-      }),
-    ).rejects.toMatchObject({
-      message: 'Identity secrets cannot be managed through ordinary secret administration',
-    })
+        updatedAt: expect.any(String),
+        value: '5125',
+      })
 
-    await expect(service.delete(identitySsnLast4SecretKey)).rejects.toMatchObject({
-      message: 'Identity secrets cannot be managed through ordinary secret administration',
-    })
-
-    await expect(service.upsertTrustedIdentitySsnLast4('5125')).resolves.toBeUndefined()
-    await expect(service.hasTrustedIdentitySsnLast4()).resolves.toBe(true)
-
-    expect(await service.list()).toEqual([
-      expect.objectContaining({ key: 'jobright', kind: 'password' }),
-    ])
-    expect(await service.listResult()).toEqual({
-      items: [expect.objectContaining({ key: 'jobright', kind: 'password' })],
-    })
-    expect(JSON.stringify(await service.list())).not.toContain(identitySsnLast4SecretKey)
-    expect(JSON.stringify(await service.list())).not.toContain(IDENTITY_CANARY)
-    expect(JSON.stringify(await service.list())).not.toContain('5125')
-
-    await expect(service.resolve(identitySsnLast4SecretKey)).resolves.toEqual({
-      key: identitySsnLast4SecretKey,
-      kind: 'identity',
-      label: 'SSN last four',
-      updatedAt: expect.any(String),
-      value: '5125',
-    })
-
-    await expect(service.delete(identitySsnLast4SecretKey)).rejects.toMatchObject({
-      message: 'Identity secrets cannot be managed through ordinary secret administration',
-    })
-    await expect(service.resolve(identitySsnLast4SecretKey)).resolves.toMatchObject({
-      value: '5125',
-    })
+      await expect(service.delete(identitySsnLast4SecretKey)).rejects.toMatchObject({
+        message: 'Identity secrets cannot be managed through ordinary secret administration',
+      })
+      await expect(service.resolve(identitySsnLast4SecretKey)).resolves.toMatchObject({
+        value: '5125',
+      })
+    } finally {
+      await cleanup()
+    }
   })
 
   it('rejects trusted SSN last4 values that are not exactly four ASCII digits', async () => {
-    const service = createService()
-    const rejected = [
-      '123-45-6789',
-      ' 5125',
-      '5125 ',
-      '51a5',
-      '512',
-      '51255',
-      IDENTITY_CANARY,
-    ]
+    const { service, cleanup } = await createServiceFixture()
+    try {
+      const rejected = [
+        '123-45-6789',
+        ' 5125',
+        '5125 ',
+        '51a5',
+        '512',
+        '51255',
+        IDENTITY_CANARY,
+      ]
 
-    for (const value of rejected) {
-      let caught: unknown
-      await expect(service.upsertTrustedIdentitySsnLast4(value)).rejects.toThrow()
-      try {
-        await service.upsertTrustedIdentitySsnLast4(value)
-      } catch (error) {
-        caught = error
+      for (const value of rejected) {
+        let caught: unknown
+        await expect(service.upsertTrustedIdentitySsnLast4(value)).rejects.toThrow()
+        try {
+          await service.upsertTrustedIdentitySsnLast4(value)
+        } catch (error) {
+          caught = error
+        }
+        expect(caught).toMatchObject({
+          message: 'Trusted identity SSN last4 must be exactly four ASCII digits',
+        })
+        expect(JSON.stringify(caught)).not.toContain(value)
+        expect(String(caught)).not.toContain(value)
+        expect(await service.resolve(identitySsnLast4SecretKey)).toBeNull()
       }
-      expect(caught).toMatchObject({
-        message: 'Trusted identity SSN last4 must be exactly four ASCII digits',
-      })
-      expect(JSON.stringify(caught)).not.toContain(value)
-      expect(String(caught)).not.toContain(value)
-      expect(await service.resolve(identitySsnLast4SecretKey)).toBeNull()
-    }
 
-    await expect(service.upsertTrustedIdentitySsnLast4('5125')).resolves.toBeUndefined()
-    await expect(service.resolve(identitySsnLast4SecretKey)).resolves.toMatchObject({
-      value: '5125',
-    })
+      await expect(service.upsertTrustedIdentitySsnLast4('5125')).resolves.toBeUndefined()
+      await expect(service.resolve(identitySsnLast4SecretKey)).resolves.toMatchObject({
+        value: '5125',
+      })
+    } finally {
+      await cleanup()
+    }
   })
 })
