@@ -204,7 +204,7 @@ describe('App connector schedules', () => {
 
     expect(await screen.findByText('Cadence: Every hour')).toBeInTheDocument()
     expect(screen.getByText(/Persisted:\s*Enabled/)).toBeInTheDocument()
-  }, 10_000)
+  })
 
   it('validates custom interval bounds and preserves draft after typed server errors', async () => {
     const connectorsApi = createConnectorsApi()
