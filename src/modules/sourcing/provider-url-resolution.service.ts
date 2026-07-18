@@ -1,7 +1,7 @@
 import type { BatchRawSourceRecordsInput } from 'sparxie'
 import type { PgliteDatabase } from '../../db/pglite'
 import type { LocalConnectorRegistry } from '../connectors/connector.registry'
-import type { createSqliteConnectorRepository } from '../connectors/connector.repository'
+import type { createPgliteConnectorRepository } from '../connectors/connector.repository'
 import type {
   AppConnectorAuthHost,
   AppConnectorRuntimePorts,
@@ -20,7 +20,7 @@ import type { RawSourceRepository } from './raw-source.repository'
 export async function createProviderUrlResolutionService(options: {
   authHost?: AppConnectorAuthHost
   connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRuntime?: AppConnectorRuntimePorts
   database: PgliteDatabase
   governor: ReturnType<typeof createSourceExecutionGovernor>

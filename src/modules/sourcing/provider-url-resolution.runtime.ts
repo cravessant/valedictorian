@@ -1,5 +1,5 @@
 import type { LocalConnectorRegistry } from '../connectors/connector.registry'
-import type { createSqliteConnectorRepository } from '../connectors/connector.repository'
+import type { createPgliteConnectorRepository } from '../connectors/connector.repository'
 import {
   createRunRuntime,
   redactSensitiveValue,
@@ -18,7 +18,7 @@ import type { ClaimedProviderUrlResolutionWork } from './provider-url-resolution
 export function createProviderUrlResolutionRuntime(options: {
   authHost?: AppConnectorAuthHost
   connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRuntime?: AppConnectorRuntimePorts
   governor: ReturnType<typeof createSourceExecutionGovernor>
   now: () => Date
