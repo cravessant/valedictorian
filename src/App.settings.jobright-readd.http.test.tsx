@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { sql } from 'drizzle-orm'
 import { createHttpValedictorianClient } from 'sparxie'
 import App from './App'
 import {
@@ -18,13 +19,16 @@ import {
   createSettingsApi,
   openConnectorEditor,
 } from './App.test-helpers'
-import { createFileDatabase } from './db/sqlite'
 import { createStaticConnectorRegistry } from './modules/connectors/connector.registry'
 import type { AppJobConnector } from './modules/connectors/connector.runner'
 import { JOBRIGHT_CONNECTOR_ID, JOBRIGHT_CONNECTOR_VERSION } from './modules/connectors/jobright.constants'
 import { deriveSourceExecutionScopeId } from './modules/source-execution/source-execution-governor'
-import { createLocalValedictorianClient } from './runtime/local-valedictorian-client'
-import { resolveDatabaseFilePath } from './workspace/workspace.paths'
+import {
+  closeTestLocalValedictorianClient,
+  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  getTestLocalValedictorianDatabase,
+} from './runtime/local-valedictorian-client.test-harness'
+import type { LocalValedictorianClient } from './runtime/local-connector-client.contract'
 import {
   createValedictorianHttpServer,
   type StartedValedictorianHttpServer,
@@ -43,12 +47,21 @@ afterEach(async () => {
   delete (window as Window & { connectors?: unknown }).connectors
   await activeServer?.close()
   activeServer = null
+  if (activeClient) {
+    await closeTestLocalValedictorianClient(activeClient)
+    activeClient = null
+  }
+  if (activePgliteDataPath) {
+    fs.rmSync(activePgliteDataPath, { force: true, recursive: true })
+    activePgliteDataPath = null
+  }
 })
 
 let activeServer: StartedValedictorianHttpServer | null = null
+let activeClient: LocalValedictorianClient | null = null
 let activePgliteDataPath: string | null = null
 
-describe('Jobright remove then re-add through renderer HTTP and SQLite', () => {
+describe('Jobright remove then re-add through renderer HTTP and PGlite', () => {
   it('adds a fresh connector-instance id after remove without resurrecting the retired tombstone', async () => {
     const { client } = await startFixtureServer()
 
@@ -96,28 +109,27 @@ describe('Jobright remove then re-add through renderer HTTP and SQLite', () => {
     expect(deriveSourceExecutionScopeId(replacement.id))
       .not.toBe(deriveSourceExecutionScopeId(retiredId))
 
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(activePgliteDataPath!))
-    expect(sqlite.prepare(
-      'select deleted_at as deletedAt from connector_instances where id = ?',
-    ).get(retiredId)).toEqual({ deletedAt: expect.any(String) })
-    expect(sqlite.prepare(
-      'select deleted_at as deletedAt from connector_instances where id = ?',
-    ).get(replacement.id)).toEqual({ deletedAt: null })
-    sqlite.close()
+    const database = getTestLocalValedictorianDatabase(client)
+    expect((await database.execute(sql`
+      select deleted_at as "deletedAt" from connector_instances where id = ${retiredId}
+    `)).rows[0]).toEqual({ deletedAt: expect.any(String) })
+    expect((await database.execute(sql`
+      select deleted_at as "deletedAt" from connector_instances where id = ${replacement.id}
+    `)).rows[0]).toEqual({ deletedAt: null })
   })
 })
 
 describe('active Jobright uniqueness after fresh-id create', () => {
   it('rejects a second active Jobright with a different instance id', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-active-dup-'))
-    const client = createLocalValedictorianClient({
+    activePgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-active-dup-'))
+    activeClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([createJobrightFixtureConnector()]),
       seedDataMode: 'none',
-      pgliteDataPath,
+      pgliteDataPath: activePgliteDataPath,
       workspaceId: WORKSPACE_ID,
     })
     activeServer = await createValedictorianHttpServer({
-      client,
+      client: activeClient,
       host: '127.0.0.1',
       port: 0,
     })
@@ -136,7 +148,7 @@ describe('active Jobright uniqueness after fresh-id create', () => {
 async function startFixtureServer() {
   activePgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-readd-'))
   const connector = createJobrightFixtureConnector()
-  const client = createLocalValedictorianClient({
+  activeClient = await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
     now: () => new Date(CLOCK),
     secretCodec: {
@@ -147,6 +159,7 @@ async function startFixtureServer() {
     pgliteDataPath: activePgliteDataPath,
     workspaceId: WORKSPACE_ID,
   })
+  const client = activeClient
   activeServer = await createValedictorianHttpServer({
     client,
     host: '127.0.0.1',

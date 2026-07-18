@@ -25,4 +25,10 @@ describe('workspace paths', () => {
       getDefaultWorkspaceRegistryPath('/Users/keni/Library/Application Support/Valedictorian'),
     ).toBe('/Users/keni/Library/Application Support/Valedictorian/workspaces.json')
   })
+
+  it('does not expose an operational SQLite database path helper', async () => {
+    const moduleExports = await import('./workspace.paths')
+    expect(moduleExports).not.toHaveProperty('resolveDatabaseFilePath')
+    expect(moduleExports).not.toHaveProperty('workspaceDatabaseFileName')
+  })
 })
