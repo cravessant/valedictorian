@@ -125,7 +125,7 @@ export function ConnectorProviderFilters({
     <section
       aria-label={regionLabel}
       aria-labelledby={regionLabel ? undefined : headingId}
-      className="grid gap-4 border-y border-border/70 py-4"
+      className="@container/connector-fields grid min-w-0 gap-4 border-y border-border/70 py-4"
     >
       <div className="grid gap-1">
         <h5 className="text-sm font-medium text-foreground" id={headingId}>Provider filters</h5>
@@ -201,7 +201,10 @@ export function ConnectorProviderFilters({
       ) : null}
 
       {presentationCompatibility.compatible ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div
+          className="grid min-w-0 gap-4 @md/connector-fields:grid-cols-2"
+          data-slot="connector-field-grid"
+        >
           {Object.entries(filterObjectSchema.properties).map(([property, schema]) => {
             const pointer = `/${escapePointer(property)}`
             const fieldPresentation = presentationFieldForPointer(filterDeclaration, pointer)
@@ -282,7 +285,7 @@ export function ConnectorSynchronizationConfiguration({
     <section
       aria-label={regionLabel}
       aria-labelledby={regionLabel ? undefined : headingId}
-      className="grid gap-4 border-y border-border/70 py-4"
+      className="@container/connector-fields grid min-w-0 gap-4 border-y border-border/70 py-4"
     >
       <div className="grid gap-1">
         <h5 className="text-sm font-medium text-foreground" id={headingId}>
@@ -319,7 +322,10 @@ export function ConnectorSynchronizationConfiguration({
         </Alert>
       ) : null}
       {presentationCompatibility.compatible ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div
+          className="grid min-w-0 gap-4 @md/connector-fields:grid-cols-2"
+          data-slot="connector-field-grid"
+        >
           {Object.entries(schema.properties).map(([property, propertySchema]) => {
             const pointer = `/${escapePointer(property)}`
             const fieldPresentation = presentationFieldForPointer(declaration, pointer)
@@ -721,9 +727,9 @@ function DynamicFilterControl({
   }
 
   return (
-    <div className={`grid gap-2 rounded-md border p-3 ${binding.intent === 'include' ? 'border-border' : 'border-dashed border-border'}`}>
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
+    <div className={`grid min-w-0 gap-2 rounded-md border p-3 ${binding.intent === 'include' ? 'border-border' : 'border-dashed border-border'}`}>
+      <label className="grid min-w-0 gap-1.5 text-sm">
+        <span className="min-w-0 break-words font-medium text-foreground">{label}</span>
         <Input
           aria-autocomplete="list"
           aria-controls={listboxId}
@@ -797,10 +803,10 @@ function DynamicFilterControl({
         </button>
       ) : null}
       {selectedValues.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex min-w-0 flex-wrap gap-2">
           {selectedValues.map((selected) => (
-            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs" key={valueKey(selected)}>
-              {labels[valueKey(selected)] ?? displayValue(selected)}
+            <span className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs" key={valueKey(selected)}>
+              <span className="min-w-0 break-words">{labels[valueKey(selected)] ?? displayValue(selected)}</span>
               <button
                 aria-label={`Remove ${labels[valueKey(selected)] ?? displayValue(selected)}`}
                 className="text-muted-foreground hover:text-foreground"
@@ -835,11 +841,15 @@ function DynamicFilterControl({
         </button>
       ) : null}
       {results.length > 0 ? (
-        <div className="grid gap-1 rounded-md border border-border bg-popover p-1" id={listboxId} role="listbox">
+        <div
+          className="grid max-w-full min-w-0 gap-1 rounded-md border border-border bg-popover p-1"
+          id={listboxId}
+          role="listbox"
+        >
           {results.map((option, index) => (
             <button
               aria-selected={activeIndex === index}
-              className="rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+              className="min-w-0 break-words rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
               id={`${listboxId}-option-${index}`}
               key={option.key}
               role="option"

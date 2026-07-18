@@ -9,8 +9,9 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { typography, typographyClass } from '@/components/ui/typography'
+import { cn } from '@/lib/utils'
 import { AlertCircle, Cable } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type {
@@ -19,6 +20,8 @@ import type {
   ConnectorStatusSeverity,
   ConnectorStatusView,
 } from './connector.status'
+
+const CONNECTOR_STATUS_SCROLL_HINT_ID = 'connector-status-scroll-hint'
 
 interface ConnectorStatusPageProps {
   contentColumnClass: string
@@ -89,14 +92,33 @@ function ConnectorStatusPage({
             Connector status is unavailable for this runtime.
           </section>
         ) : showTable ? (
-          <section className="flex min-h-72 flex-col rounded-md border border-border bg-card">
-            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <section
+            aria-label="Connector status"
+            className="flex min-h-72 min-w-0 max-w-full flex-col rounded-md border border-border bg-card"
+          >
+            <div className="flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
               <p className="text-sm font-medium text-foreground">
                 {result.items.length} connector{result.items.length === 1 ? '' : 's'}
               </p>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto">
-              <Table aria-label="Connector status" className="min-w-[1050px] table-fixed">
+            <p
+              className="border-b border-border px-4 py-2 text-xs text-muted-foreground"
+              id={CONNECTOR_STATUS_SCROLL_HINT_ID}
+            >
+              Narrow layout: focus this status table and scroll horizontally to review every column.
+            </p>
+            <div
+              aria-describedby={CONNECTOR_STATUS_SCROLL_HINT_ID}
+              aria-label="Connector status table"
+              className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              role="region"
+              tabIndex={0}
+            >
+              <table
+                aria-label="Connector status"
+                className="w-full min-w-[1050px] table-fixed caption-bottom text-sm"
+                data-slot="table"
+              >
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-48">Connector</TableHead>
@@ -112,7 +134,7 @@ function ConnectorStatusPage({
                     <ConnectorStatusRow key={item.id} item={item} onAction={onAction} />
                   ))}
                 </TableBody>
-              </Table>
+              </table>
             </div>
           </section>
         ) : !isLoading && !error ? (
@@ -147,28 +169,32 @@ function ConnectorStatusRow({
 }) {
   return (
     <TableRow>
-      <TableCell>
-        <span className="block truncate font-medium text-foreground" title={item.displayName}>
+      <TableCell className="min-w-0 align-top">
+        <span className="block min-w-0 break-words font-medium text-foreground">
           {item.displayName}
         </span>
-        <span className="block truncate text-xs text-muted-foreground" title={item.connectorId}>
+        <span className="block min-w-0 break-words text-xs text-muted-foreground">
           {item.connectorId}
         </span>
       </TableCell>
-      <TableCell>
+      <TableCell className="min-w-0 align-top">
         <Badge
-          className={`max-w-36 truncate whitespace-nowrap ${badgeClass(item.severity)}`}
+          aria-label={item.statusLabel}
+          className={cn(
+            'max-w-full whitespace-normal break-words',
+            badgeClass(item.severity),
+          )}
           variant={badgeVariant(item.severity)}
         >
           {item.statusLabel}
         </Badge>
       </TableCell>
-      <TableCell>
-        <span className="block truncate text-sm text-muted-foreground" title={item.summary}>
+      <TableCell className="min-w-0 align-top">
+        <span className="block min-w-0 break-words text-sm text-muted-foreground">
           {item.summary}
         </span>
         {item.nextAttemptAt ? (
-          <span className="block text-xs text-muted-foreground">
+          <span className="block min-w-0 break-words text-xs text-muted-foreground">
             Next attempt {new Date(item.nextAttemptAt).toLocaleString()}
           </span>
         ) : null}
@@ -176,17 +202,19 @@ function ConnectorStatusRow({
           {item.observationCount} observations
         </span>
       </TableCell>
-      <TableCell>
+      <TableCell className="min-w-0 align-top">
         {item.warnings.length > 0 ? (
-          <div className="flex max-w-full flex-wrap gap-1">
-            {item.warnings.slice(0, 3).map((warning) => (
+          <div className="flex min-w-0 max-w-full flex-wrap gap-1">
+            {item.warnings.map((warning) => (
               <Badge
                 key={`${item.id}:${warning.code}`}
-                className={`max-w-40 truncate whitespace-nowrap ${badgeClass(warning.severity)}`}
-                title={warning.message}
+                className={cn(
+                  'max-w-full whitespace-normal break-words',
+                  badgeClass(warning.severity),
+                )}
                 variant={badgeVariant(warning.severity)}
               >
-                {warning.label}
+                {warning.label}: {warning.message}
               </Badge>
             ))}
           </div>
@@ -194,19 +222,20 @@ function ConnectorStatusRow({
           <span className="text-sm text-muted-foreground">None</span>
         )}
       </TableCell>
-      <TableCell>
-        <span className="block truncate text-sm text-muted-foreground" title={item.lastRunAt ?? 'Never'}>
+      <TableCell className="min-w-0 align-top">
+        <span className="block min-w-0 break-words text-sm text-muted-foreground">
           {formatRunTime(item.lastRunAt)}
         </span>
       </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-1">
+      <TableCell className="min-w-0 align-top">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           {item.actions.length > 0 ? item.actions.map((action) => (
             <Button
               key={action.id}
               type="button"
               size="sm"
               variant={action.id === 'reconnect' ? 'default' : 'outline'}
+              className="max-w-full min-w-0 whitespace-normal"
               aria-label={`${action.label} ${action.id === 'skip' ? 'for ' : ''}${item.displayName}`}
               onClick={() => onAction(item, action)}
             >

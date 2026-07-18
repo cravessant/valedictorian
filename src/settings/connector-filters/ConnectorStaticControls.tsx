@@ -51,9 +51,9 @@ export function StaticFilterControl({
 
   if (schema.type === 'boolean') {
     return (
-      <div className="grid gap-1.5 rounded-md border border-border/70 p-3 text-sm">
-        <label className="flex items-center justify-between gap-3">
-          <span>{label}</span>
+      <div className="grid min-w-0 gap-1.5 rounded-md border border-border/70 p-3 text-sm">
+        <label className="flex min-w-0 items-center justify-between gap-3">
+          <span className="min-w-0 break-words">{label}</span>
           <Switch
             aria-describedby={descriptionId}
             aria-label={label}
@@ -70,8 +70,8 @@ export function StaticFilterControl({
   if (schema.type === 'string' && schema.enum) {
     const hasValidValue = typeof value === 'string' && schema.enum.includes(value)
     return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
+      <label className="grid min-w-0 gap-1.5 text-sm">
+        <span className="min-w-0 break-words font-medium text-foreground">{label}</span>
         <select
           aria-describedby={descriptionId}
           aria-label={label}
@@ -94,8 +94,8 @@ export function StaticFilterControl({
 
   if (schema.type === 'string') {
     return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
+      <label className="grid min-w-0 gap-1.5 text-sm">
+        <span className="min-w-0 break-words font-medium text-foreground">{label}</span>
         <Input
           aria-describedby={descriptionId}
           aria-label={label}
@@ -114,8 +114,8 @@ export function StaticFilterControl({
   if ((schema.type === 'number' || schema.type === 'integer') && schema.enum) {
     const hasValidValue = typeof value === 'number' && schema.enum.includes(value)
     return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
+      <label className="grid min-w-0 gap-1.5 text-sm">
+        <span className="min-w-0 break-words font-medium text-foreground">{label}</span>
         <select
           aria-describedby={descriptionId}
           aria-label={label}
@@ -149,8 +149,8 @@ export function StaticFilterControl({
       ? ''
       : durationStorageToDisplay(storageValue)
     return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
+      <label className="grid min-w-0 gap-1.5 text-sm">
+        <span className="min-w-0 break-words font-medium text-foreground">{label}</span>
         <InputGroup>
           <InputGroupInput
             aria-describedby={descriptionId}
@@ -184,8 +184,8 @@ export function StaticFilterControl({
 
   if (schema.type === 'number' || schema.type === 'integer') {
     return (
-      <label className="grid gap-1.5 text-sm">
-        <span className="font-medium text-foreground">{label}</span>
+      <label className="grid min-w-0 gap-1.5 text-sm">
+        <span className="min-w-0 break-words font-medium text-foreground">{label}</span>
         <Input
           aria-describedby={descriptionId}
           aria-label={label}
@@ -214,17 +214,18 @@ export function StaticFilterControl({
     return (
       <fieldset
         aria-describedby={describedBy}
-        className="grid grid-cols-2 gap-2 rounded-md border border-border/70 p-3"
+        className="grid min-w-0 grid-cols-2 gap-2 rounded-md border border-border/70 p-3"
         data-invalid={invalid ? true : undefined}
       >
-        <legend className="px-1 text-sm font-medium text-foreground">{rangeLabel}</legend>
+        <legend className="min-w-0 break-words px-1 text-sm font-medium text-foreground">{rangeLabel}</legend>
         {[0, 1].map((index) => (
-          <label className="grid gap-1 text-xs text-muted-foreground" key={index}>
+          <label className="grid min-w-0 gap-1 text-xs text-muted-foreground" key={index}>
             <span>{index === 0 ? 'Minimum' : 'Maximum'}</span>
             <Input
               aria-describedby={describedBy}
               aria-invalid={invalid}
               aria-label={`${index === 0 ? 'Minimum' : 'Maximum'} ${rangeLabel.toLowerCase()}`}
+              className="min-w-0"
               disabled={disabled}
               max={itemSchema.maximum}
               min={itemSchema.minimum}
@@ -260,9 +261,9 @@ export function StaticFilterControl({
     return (
       <fieldset
         aria-describedby={descriptionId}
-        className="grid gap-2 rounded-md border border-border/70 p-3"
+        className="grid min-w-0 gap-2 rounded-md border border-border/70 p-3"
       >
-        <legend className="px-1 text-sm font-medium text-foreground">{label}</legend>
+        <legend className="min-w-0 break-words px-1 text-sm font-medium text-foreground">{label}</legend>
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {enumValues.map((option) => {
             const checked = selected.includes(option)

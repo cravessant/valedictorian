@@ -582,12 +582,12 @@ export function ConnectorSettingsInstanceCard({
             </Button>
           </div>
           {latestRunStatus ? (
-            <div className="grid gap-2">
+            <div className="grid min-w-0 gap-2">
               <p
                 aria-atomic={!latestRun ? 'true' : undefined}
                 aria-label={!latestRun ? `${instance.displayName} run progress` : undefined}
                 aria-live={!latestRun ? 'polite' : undefined}
-                className="text-xs font-medium text-muted-foreground"
+                className="min-w-0 break-words text-xs font-medium text-muted-foreground"
                 role={!latestRun ? 'status' : undefined}
               >
                 Latest synchronization: {latestSynchronization?.label ?? 'Starting'}
@@ -602,7 +602,7 @@ export function ConnectorSettingsInstanceCard({
               {latestRun ? (
                 <Button
                   aria-label={`View ${latestRun.id} in Connector Runs`}
-                  className="w-fit"
+                  className="w-fit max-w-full min-w-0 whitespace-normal"
                   size="sm"
                   type="button"
                   variant="outline"

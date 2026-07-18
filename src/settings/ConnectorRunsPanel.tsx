@@ -289,31 +289,40 @@ export function ConnectorRunsPanel({
                 ref={isFocused ? focusedRunRef : undefined}
                 aria-current={isFocused ? 'true' : undefined}
                 aria-live={run.status === 'queued' || run.status === 'running' ? 'polite' : undefined}
-                className={`rounded-md ${isFocused ? 'ring-2 ring-primary' : ''}`}
+                className={`min-w-0 rounded-md ${isFocused ? 'ring-2 ring-primary' : ''}`}
                 data-connector-run-id={run.id}
                 id={`connector-run-${run.id}`}
                 tabIndex={isFocused ? -1 : undefined}
               >
-                <Card className="gap-3 rounded-md border-border p-4 shadow-none">
-                  <CardHeader className="gap-1 px-0">
-                    <CardTitle>
-                      <h3 className={typography.panelTitle}>{connectorName}</h3>
+                <Card className="@container/connector-run-card min-w-0 gap-3 rounded-md border-border p-4 shadow-none">
+                  <CardHeader className="min-w-0 gap-1 px-0 has-data-[slot=card-action]:grid-cols-1 @md/connector-run-card:has-data-[slot=card-action]:grid-cols-[minmax(0,1fr)_auto]">
+                    <CardTitle className="min-w-0">
+                      <h3 className={`${typography.panelTitle} min-w-0 break-words`}>{connectorName}</h3>
                     </CardTitle>
-                    <CardDescription className="text-xs">
+                    <CardDescription className="min-w-0 break-words text-xs">
                       {run.mode} · {run.startedAt}
                     </CardDescription>
-                    <CardAction>
-                      <Badge variant="outline">
+                    <CardAction
+                      className={
+                        'col-start-1 row-span-1 row-start-3 min-w-0 justify-self-start '
+                        + '@md/connector-run-card:col-start-2 '
+                        + '@md/connector-run-card:row-span-2 '
+                        + '@md/connector-run-card:row-start-1 '
+                        + '@md/connector-run-card:justify-self-end'
+                      }
+                    >
+                      <Badge className="max-w-full whitespace-normal" variant="outline">
                         {synchronization.label}
                       </Badge>
                     </CardAction>
                   </CardHeader>
-                  <CardContent className="space-y-3 px-0">
+                  <CardContent className="min-w-0 space-y-3 px-0">
                     <ConnectorRunSynchronizationDetails run={run} />
                     <ConnectorRunLifecycleDetails run={run} showDebugData={showDebugData} />
                     {onInspectNormalization ? (
                       <Button
                         type="button"
+                        className="max-w-full min-w-0 whitespace-normal"
                         size="sm"
                         variant="outline"
                         onClick={() => onInspectNormalization({
@@ -325,16 +334,22 @@ export function ConnectorRunsPanel({
                       </Button>
                     ) : null}
                     {warningLabels.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex min-w-0 flex-wrap gap-2">
                         {warningLabels.map((label) => (
-                          <Badge key={label} variant="secondary">
+                          <Badge
+                            key={label}
+                            className="max-w-full whitespace-normal"
+                            variant="secondary"
+                          >
                             {label}
                           </Badge>
                         ))}
                       </div>
                     ) : null}
                     {retryGuidance ? (
-                      <p className="text-xs font-medium text-muted-foreground">{retryGuidance}</p>
+                      <p className="min-w-0 break-words text-xs font-medium text-muted-foreground">
+                        {retryGuidance}
+                      </p>
                     ) : null}
                   </CardContent>
                 </Card>

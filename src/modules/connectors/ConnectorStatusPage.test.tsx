@@ -61,8 +61,12 @@ describe('ConnectorStatusPage', () => {
     expect(within(table).getByText('Fixture Jobs')).toBeInTheDocument()
     expect(within(table).getByText('Auth required')).toBeInTheDocument()
     expect(within(table).getByText('Reconnect the connector session to continue refreshes.')).toBeInTheDocument()
-    expect(within(table).getByText('Expired session')).toBeInTheDocument()
-    expect(within(table).getByText('Rate limited')).toBeInTheDocument()
+    expect(within(table).getByText(
+      'Expired session: Expired browser [redacted].',
+    )).toBeInTheDocument()
+    expect(within(table).getByText(
+      'Rate limited: Rate limited by Fixture Jobs for 10 minutes.',
+    )).toBeInTheDocument()
     expect(within(table).getByRole('button', { name: 'Reconnect Fixture Jobs' })).toBeInTheDocument()
     expect(within(table).getByRole('button', { name: 'Skip this run for Fixture Jobs' })).toBeInTheDocument()
     expect(screen.queryByText(/fixture-session-123/i)).not.toBeInTheDocument()
@@ -158,6 +162,94 @@ describe('ConnectorStatusPage', () => {
       'Yielded work is safely checkpointed for the next admitted manual or scheduled work opportunity.',
     )).toBeInTheDocument()
     expect(screen.queryByText(/failed|partial success|stuck/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps the wide status table in a named keyboard-focusable scroll region with inspectable values', () => {
+    const longSummary =
+      'Reconnect the connector session to continue refreshes after the provider paused requests for an extended cooldown window.'
+    const longDisplayName = 'Fixture Jobs Connector With A Very Long Display Name'
+    const lastRunAt = '2026-07-08T17:00:01.000Z'
+    const nextAttemptAt = '2026-07-12T12:02:00.000Z'
+    const warningMessage = 'Expired browser session must be refreshed before the next synchronization attempt.'
+
+    render(
+      <ConnectorStatusPage
+        contentColumnClass=""
+        error={null}
+        isLoading={false}
+        result={{
+          available: true,
+          items: [
+            createConnectorStatusView({
+              displayName: longDisplayName,
+              lastRunAt,
+              nextAttemptAt,
+              statusLabel: 'Auth required',
+              summary: longSummary,
+              actions: [
+                { id: 'reconnect', label: 'Reconnect' },
+                { id: 'skip', label: 'Skip this run' },
+              ],
+              warnings: [
+                {
+                  code: 'auth.expired_session',
+                  label: 'Expired session',
+                  message: warningMessage,
+                  severity: 'blocked',
+                },
+              ],
+            }),
+          ],
+        }}
+        onAction={vi.fn()}
+      />,
+    )
+
+    const statusSection = screen.getByRole('region', { name: 'Connector status' })
+    expect(statusSection).toHaveClass('min-w-0')
+
+    const scrollHint = screen.getByText(/scroll horizontally/i)
+    expect(scrollHint).toBeVisible()
+    expect(scrollHint).toHaveAttribute('id', 'connector-status-scroll-hint')
+
+    const scrollRegion = screen.getByRole('region', { name: 'Connector status table' })
+    expect(scrollRegion).toHaveAttribute('tabIndex', '0')
+    expect(scrollRegion).toHaveAttribute('aria-describedby', 'connector-status-scroll-hint')
+    expect(scrollRegion).toHaveClass('min-w-0', 'max-w-full', 'overflow-x-auto')
+    expect(scrollRegion.compareDocumentPosition(scrollHint) & Node.DOCUMENT_POSITION_PRECEDING)
+      .toBeTruthy()
+
+    const table = within(scrollRegion).getByRole('table', { name: 'Connector status' })
+    expect(table).toHaveClass('min-w-[1050px]')
+    expect(table.parentElement).toBe(scrollRegion)
+
+    expect(within(table).getByText(longDisplayName)).toBeInTheDocument()
+    expect(within(table).getByText(longDisplayName).className).not.toMatch(/\btruncate\b/)
+    expect(within(table).getByText('fixture.jobs').className).not.toMatch(/\btruncate\b/)
+
+    const statusBadge = within(table).getByText('Auth required')
+    expect(statusBadge.className).not.toMatch(/\btruncate\b/)
+    expect(statusBadge).toHaveAccessibleName(/Auth required/i)
+
+    expect(within(table).getByText(longSummary)).toBeInTheDocument()
+    expect(within(table).getByText(longSummary).className).not.toMatch(/\btruncate\b/)
+    expect(within(table).getByText(
+      `Next attempt ${new Date(nextAttemptAt).toLocaleString()}`,
+    )).toBeInTheDocument()
+
+    const warning = within(table).getByText(`Expired session: ${warningMessage}`)
+    expect(warning).toBeVisible()
+    expect(warning.className).not.toMatch(/\btruncate\b/)
+
+    const latestRun = within(table).getByText(lastRunAt)
+    expect(latestRun.className).not.toMatch(/\btruncate\b/)
+
+    const actions = within(table).getByRole('button', { name: `Reconnect ${longDisplayName}` })
+      .closest('div')
+    expect(actions).toHaveClass('flex-wrap', 'min-w-0')
+    expect(within(table).getByRole('button', {
+      name: `Skip this run for ${longDisplayName}`,
+    })).toBeInTheDocument()
   })
 })
 

@@ -15,30 +15,45 @@ export function ConnectorRunSynchronizationDetails({
   const presentation = connectorRunSynchronizationCopy(run)
   return (
     <section
-      className="grid gap-2 rounded-md border border-border/70 bg-background/35 p-3 text-xs"
+      className="@container/connector-run-sync grid min-w-0 gap-2 rounded-md border border-border/70 bg-background/35 p-3 text-xs"
     >
-      <div aria-atomic="true" aria-label={ariaLabel} aria-live="polite" role="status">
-        <div>
-          <p className="font-semibold text-foreground">{presentation.label}</p>
-          <p className="mt-1 text-muted-foreground">{presentation.summary}</p>
+      <div
+        aria-atomic="true"
+        aria-label={ariaLabel}
+        aria-live="polite"
+        className="min-w-0"
+        role="status"
+      >
+        <div className="min-w-0">
+          <p className="break-words font-semibold text-foreground">{presentation.label}</p>
+          <p className="mt-1 break-words text-muted-foreground">{presentation.summary}</p>
           {presentation.nextAttemptAt ? (
-            <p className="mt-1 text-muted-foreground">
+            <p className="mt-1 break-words text-muted-foreground">
               Next attempt {new Date(presentation.nextAttemptAt).toLocaleString()}
             </p>
           ) : null}
         </div>
-        <div className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-3">
-          <p><span className="font-medium text-foreground">Newest frontier:</span>{' '}
-            {formatNewestFrontier(run.newestFrontier.state)}</p>
-          <p><span className="font-medium text-foreground">Historical backfill:</span>{' '}
-            {formatHistoricalBackfill(run.historicalBackfill.state)}</p>
-          <p><span className="font-medium text-foreground">Pending link resolution:</span>{' '}
-            {run.pendingResolutionCount}</p>
+        <div
+          className="mt-2 grid min-w-0 gap-1 text-muted-foreground @md/connector-run-sync:grid-cols-3"
+          data-slot="connector-run-sync-stages"
+        >
+          <p className="min-w-0 break-words">
+            <span className="font-medium text-foreground">Newest frontier:</span>{' '}
+            {formatNewestFrontier(run.newestFrontier.state)}
+          </p>
+          <p className="min-w-0 break-words">
+            <span className="font-medium text-foreground">Historical backfill:</span>{' '}
+            {formatHistoricalBackfill(run.historicalBackfill.state)}
+          </p>
+          <p className="min-w-0 break-words">
+            <span className="font-medium text-foreground">Pending link resolution:</span>{' '}
+            {run.pendingResolutionCount}
+          </p>
         </div>
       </div>
       <Button
         aria-expanded={showExplanation}
-        className="w-fit"
+        className="w-fit max-w-full min-w-0 whitespace-normal"
         size="sm"
         type="button"
         variant="outline"
@@ -47,7 +62,7 @@ export function ConnectorRunSynchronizationDetails({
         How synchronization works
       </Button>
       {showExplanation ? (
-        <div className="grid gap-1 text-muted-foreground">
+        <div className="grid min-w-0 gap-1 break-words text-muted-foreground">
           <p>
             Each work opportunity checks the newest frontier first, then advances historical
             backfill toward the configured boundary, and resumes pending link resolution.
@@ -112,20 +127,23 @@ export function ConnectorRunLifecycleDetails({
     && hasExplicitUnclassifiedRows(lifecycle)
 
   return (
-    <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 text-xs">
+    <div className="@container/connector-run-lifecycle grid min-w-0 gap-3 rounded-md border border-border/70 bg-background/35 p-3 text-xs">
       {lifecycle ? (
         <>
-          <div>
-            <p className="font-semibold text-foreground">Stage-specific synchronization counts</p>
+          <div className="min-w-0">
+            <p className="break-words font-semibold text-foreground">Stage-specific synchronization counts</p>
             {showLifecycleDiagnostics ? (
-              <p className="mt-1 text-muted-foreground">
+              <p className="mt-1 break-words text-muted-foreground">
                 {lifecycle.source === 'frozen_terminal'
                   ? 'Frozen at terminal completion.'
                   : 'Live counts derived from current persisted lineage.'}
               </p>
             ) : null}
           </div>
-          <div className="grid gap-3 md:grid-cols-3" aria-label="Run lifecycle counts">
+          <div
+            className="grid min-w-0 gap-3 @md/connector-run-lifecycle:grid-cols-3"
+            aria-label="Run lifecycle counts"
+          >
             <RunCountStage title="Provider intake" values={[
               [
                 'Provider returned rows',
@@ -240,9 +258,9 @@ function RunCountStage({
   values: Array<readonly [string, number | string]>
 }) {
   return (
-    <section>
-      <h4 className="font-medium text-foreground">{title}</h4>
-      <div className="mt-1 grid gap-1 text-muted-foreground">
+    <section className="min-w-0">
+      <h4 className="break-words font-medium text-foreground">{title}</h4>
+      <div className="mt-1 grid min-w-0 gap-1 break-words text-muted-foreground">
         {values.map(([label, value]) => <span key={label}>{label}: {value}</span>)}
       </div>
     </section>
