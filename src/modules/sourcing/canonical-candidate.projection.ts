@@ -17,6 +17,9 @@ export const SOURCING_PROJECTION_POLICY_VERSION = 'canonical-sourcing-policy/v1'
 
 export function createCanonicalCandidateProjectionService(
   now: () => Date = () => new Date(),
+  hooks: {
+    beforeOpportunityLock?: (opportunityId: string) => Promise<void>
+  } = {},
 ) {
   const projectPersisted = async (
     transaction: Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0],
@@ -65,7 +68,7 @@ export function createCanonicalCandidateProjectionService(
         const identityKey = identityKeys[0]
         await lockProjectionIdentities(transaction, identityKeys)
         const sourceName = persisted.reportedOriginName?.trim() || persisted.adapterId
-        const identityMatches = (await transaction
+        const findIdentityMatches = async () => (await transaction
           .select()
           .from(opportunities)
           .orderBy(asc(opportunities.id)))
@@ -74,11 +77,32 @@ export function createCanonicalCandidateProjectionService(
             return identityKeys.some((key) =>
               finding.projectionIdentityKey === key || aliases.includes(key))
           })
-        const matchedFindingIds = [...new Set(identityMatches.map(({ id }) => id))]
+        let identityMatches = await findIdentityMatches()
+        let matchedFindingIds = [...new Set(identityMatches.map(({ id }) => id))]
         if (matchedFindingIds.length > 1) {
           throw new Error(`Conflicting sourcing findings own canonical identities: ${matchedFindingIds.join(', ')}`)
         }
-        const existing = identityMatches[0]
+        let existing = identityMatches[0]
+        if (existing) {
+          const lockedOpportunityId = existing.id
+          await hooks.beforeOpportunityLock?.(lockedOpportunityId)
+          const [locked] = await transaction
+            .select({ id: opportunities.id })
+            .from(opportunities)
+            .where(eq(opportunities.id, lockedOpportunityId))
+            .limit(1)
+            .for('update')
+          if (!locked) throw new Error(`Sourcing finding not found: ${lockedOpportunityId}`)
+          identityMatches = await findIdentityMatches()
+          matchedFindingIds = [...new Set(identityMatches.map(({ id }) => id))]
+          if (matchedFindingIds.length > 1) {
+            throw new Error(`Conflicting sourcing findings own canonical identities: ${matchedFindingIds.join(', ')}`)
+          }
+          existing = identityMatches[0]
+          if (!existing || existing.id !== lockedOpportunityId) {
+            throw new Error(`Sourcing finding identity owner changed while locking: ${lockedOpportunityId}`)
+          }
+        }
         const projectionAliasesJson = JSON.stringify([
           ...new Set([
             ...(existing ? parseProjectionAliases(existing.projectionAliasesJson) : []),

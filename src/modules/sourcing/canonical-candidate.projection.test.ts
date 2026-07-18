@@ -122,6 +122,58 @@ describe('canonical candidate projection', () => {
     expect(released?.count).toBe(0)
   })
 
+  it('re-reads one matched opportunity after disjoint aliases converge on it', async () => {
+    const database = await createTestDatabase()
+    const owner = await seedPassedCandidate(database, 'alias-owner')
+    const older = await seedPassedCandidate(database, 'alias-older', {
+      roleTitle: 'Older Software Intern',
+      observedAt: '2026-07-18T11:00:00.000Z',
+    })
+    const newest = await seedPassedCandidate(database, 'alias-newest', {
+      roleTitle: 'Newest Software Intern',
+      observedAt: '2026-07-18T12:00:00.000Z',
+    })
+    const plainService = createCanonicalCandidateProjectionService(() => new Date(NOW))
+    const opportunityId = await database.transaction((transaction) =>
+      plainService.projectPersisted(transaction, owner.candidateId, owner.rawRevisionId))
+    const [seeded] = await database.select().from(opportunities)
+    await database.update(opportunities).set({
+      projectionAliasesJson: JSON.stringify([
+        ...(JSON.parse(seeded?.projectionAliasesJson ?? '[]') as string[]),
+        'source_entity:job-alias-newest',
+        'source_entity:job-alias-older',
+      ].sort()),
+    }).where(eq(opportunities.id, opportunityId ?? ''))
+    let interleaved = false
+
+    await database.transaction(async (transaction) => {
+      const service = createCanonicalCandidateProjectionService(() => new Date(NOW), {
+        beforeOpportunityLock: async () => {
+          interleaved = true
+          await plainService.projectPersisted(
+            transaction,
+            newest.candidateId,
+            newest.rawRevisionId,
+          )
+        },
+      })
+      await service.projectPersisted(transaction, older.candidateId, older.rawRevisionId)
+    })
+    const [projected] = await database.select().from(opportunities)
+    const aliases = JSON.parse(projected?.projectionAliasesJson ?? '[]') as string[]
+
+    expect(interleaved).toBe(true)
+    expect(projected).toMatchObject({
+      id: opportunityId,
+      captureEvidenceVersionId: newest.rawRevisionId,
+      roleTitle: 'Newest Software Intern',
+    })
+    expect(aliases).toEqual(expect.arrayContaining([
+      'destination:employer_or_ats:https://jobs.example.test/alias-newest',
+      'destination:employer_or_ats:https://jobs.example.test/alias-older',
+    ]))
+  })
+
   it('keeps the first projection identity primary while accumulating later aliases', async () => {
     const database = await createTestDatabase()
     const destination = 'https://jobs.example.test/identity-alias'
