@@ -167,8 +167,8 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("The app bumps concrete connector packages directly")
     expect(readme).toContain("Do not release or bump `sparxie` for adapter ABI changes")
     expect(readme).toContain("HTTP/client exposure is a separate `sparxie` change")
-    expect(readme).toContain("The current breaking release tree is `0.15.0`")
-    expect(readme).toContain("exact `workspace:^0.15.0` internal compatibility ranges")
+    expect(readme).toContain("The current breaking release tree is `0.16.0`")
+    expect(readme).toContain("exact `workspace:^0.16.0` internal compatibility ranges")
     expect(readme).toContain("Packages publish publicly to npm under the `@sparxie` scope")
     expect(readme).toContain("CI publishes packages from `.github/workflows/publish.yml`")
     expect(readme).toContain("Workflow filename: `publish.yml`")
@@ -198,7 +198,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.15.0",
+      version: "0.16.0",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -214,7 +214,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.15.0",
+      version: "0.16.0",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -230,7 +230,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.15.0",
+      version: "0.16.0",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -251,14 +251,14 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(corePackage.dependencies).toEqual({
-      sparxie: "^0.24.0",
+      sparxie: "^0.26.0",
     })
     expect(harnessPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.15.0",
-      sparxie: "^0.24.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.16.0",
+      sparxie: "^0.26.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.15.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.16.0",
     })
     expect(Object.keys(jobrightPackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
@@ -272,7 +272,7 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(jobrightPackage.devDependencies).toMatchObject({
-      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.15.0",
+      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.16.0",
     })
   })
 
