@@ -1,7 +1,7 @@
 {
   "name": "valedictorian-app",
   "private": true,
-  "version": "0.1.0-alpha.44",
+  "version": "0.1.0-alpha.45",
   "description": "Local job application tracker and agent access app.",
   "author": "Keni",
   "type": "module",
