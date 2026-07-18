@@ -22,13 +22,10 @@ describe('raw source captured presentation HTTP boundary', () => {
   })
 
   it('aligns list and detail captured title/company for nested Jobright evidence', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-presentation-')),
-      'valedictorian.sqlite',
-    )
-    const capture = await createConnectorCaptureFixture(sqlitePath, 'jobright', '0.11.0')
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-presentation-'))
+    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'jobright', '0.11.0')
     const local = createLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date('2026-07-13T18:00:00.000Z'),
     })
     const nestedJobrightPayload = {
@@ -88,13 +85,10 @@ describe('raw source captured presentation HTTP boundary', () => {
   })
 
   it('aligns list and detail captured facts for a migrated nested Jobright revision', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-migrated-jobright-')),
-      'valedictorian.sqlite',
-    )
-    createLegacyRawSourceFixture(sqlitePath)
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-migrated-jobright-'))
+    createLegacyRawSourceFixture(pgliteDataPath)
     const local = createLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
       seedDataMode: 'none',
       now: () => new Date('2026-07-13T18:00:00.000Z'),
     })
@@ -126,12 +120,9 @@ describe('raw source captured presentation HTTP boundary', () => {
   })
 
   it('keeps sparse raw captures missing title and company without throwing', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-sparse-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-sparse-'))
     const local = createLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date('2026-07-13T18:00:00.000Z'),
     })
     const intake = await local.sourcing.rawRecords.ingestBatch({

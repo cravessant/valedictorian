@@ -17,10 +17,7 @@ describe('local connector overview HTTP route', () => {
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
-      sqlitePath: path.join(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-overview-')),
-        'valedictorian.sqlite',
-      ),
+      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-overview-')),
     })
     await localClient.connectors.create({
       id: 'http-overview', connectorId: 'fixture.overview', connectorVersion: '1.0.0',

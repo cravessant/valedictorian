@@ -8,7 +8,7 @@ import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempSqlitePath as createTempSqlitePath,
+  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
   createValedictorianHttpServer,
   readScheduleHttpJson as readJson,
@@ -27,13 +27,13 @@ describe('local server connector schedule occurrence history', () => {
     expect(MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT).toBe(200)
 
     const workspaceId = 'schedule-history-limit-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -73,8 +73,8 @@ describe('local server connector schedule occurrence history', () => {
   it('lists one admitted occurrence with pagination and workspace isolation', async () => {
     const workspaceA = 'schedule-occurrence-list-a'
     const workspaceB = 'schedule-occurrence-list-b'
-    const sqliteA = createTempSqlitePath()
-    const sqliteB = createTempSqlitePath()
+    const pgliteDataPathA = createTempDatabasePath()
+    const pgliteDataPathB = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const clientA = createLocalValedictorianClient({
@@ -82,7 +82,7 @@ describe('local server connector schedule occurrence history', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath: sqliteA,
+      pgliteDataPath: pgliteDataPathA,
       workspaceId: workspaceA,
     })
     const clientB = createLocalValedictorianClient({
@@ -90,7 +90,7 @@ describe('local server connector schedule occurrence history', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath: sqliteB,
+      pgliteDataPath: pgliteDataPathB,
       workspaceId: workspaceB,
     })
 
@@ -205,7 +205,7 @@ describe('local server connector schedule occurrence history', () => {
 
   it('lists two historical occurrences for the same connector instance across delete and recreate', async () => {
     const workspaceId = 'schedule-occurrence-history-recreate-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let refreshCalls = 0
 
@@ -232,7 +232,7 @@ describe('local server connector schedule occurrence history', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 

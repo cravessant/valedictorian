@@ -6,11 +6,8 @@ import { createStaticConnectorRegistry } from '../modules/connectors/connector.r
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
 
-function createTempSqlitePath() {
-  return path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-earliest-create-')),
-    'valedictorian.sqlite',
-  )
+function createTempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-earliest-create-'))
 }
 
 function createFixtureConnector(): AppJobConnector {
@@ -35,13 +32,13 @@ function createFixtureConnector(): AppJobConnector {
 
 describe('runtime connectors.create earliest backfill date', () => {
   it('defaults omitted dates from the create instant and rejects out-of-range explicit dates', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const createInstant = '2026-07-11T15:30:00.000Z'
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([createFixtureConnector()]),
       now: () => new Date(createInstant),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
     })
 
     const omitted = await client.connectors.create({

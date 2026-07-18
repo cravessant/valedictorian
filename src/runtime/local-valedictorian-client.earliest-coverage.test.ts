@@ -8,9 +8,10 @@ import { createSqliteConnectorRepository } from '../modules/connectors/connector
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
-function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-coverage-')), 'valedictorian.sqlite')
+function createTempDatabasePath() {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-coverage-')), 'pglite')
 }
 
 function createCoverageFixtureConnector(refresh: AppJobConnector['refresh']): AppJobConnector {
@@ -33,7 +34,7 @@ function createCoverageFixtureConnector(refresh: AppJobConnector['refresh']): Ap
 
 describe('runtime connector coverage from earliest backfill date', () => {
   it('records and invokes the same anchored coverage start for manual, catch-up, and edited dates', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const coverages: Array<{ mode: string; start: string | null; end: string | null }> = []
     const connector = createCoverageFixtureConnector(async (input) => {
       coverages.push({
@@ -56,10 +57,10 @@ describe('runtime connector coverage from earliest backfill date', () => {
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date('2026-07-11T18:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
     })
     const repository = createSqliteConnectorRepository(
-      createDrizzleDatabase(createFileDatabase(sqlitePath)),
+      createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))),
     )
     await repository.upsertInstance({
       id: 'coverage-instance',
@@ -124,7 +125,7 @@ describe('runtime connector coverage from earliest backfill date', () => {
   })
 
   it('retains anchored coverage start on queued and preflight-failed rows', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const connector = createCoverageFixtureConnector(async () => {
       throw new Error('refresh exploded')
     })
@@ -132,10 +133,10 @@ describe('runtime connector coverage from earliest backfill date', () => {
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date('2026-07-11T18:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
     })
     const repository = createSqliteConnectorRepository(
-      createDrizzleDatabase(createFileDatabase(sqlitePath)),
+      createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))),
     )
     await repository.upsertInstance({
       id: 'failed-coverage',

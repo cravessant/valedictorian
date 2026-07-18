@@ -10,6 +10,7 @@ import {
 } from 'sparxie'
 import { applications } from '../db/schema'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
   seedReferenceTrackerApplications,
   seedSampleApplications,
@@ -159,12 +160,12 @@ export function createLocalValedictorianClient({
   profilePath,
   profileService: preparedProfileService,
   secretService: preparedSecretService,
-  sqlitePath,
+  pgliteDataPath,
   workspaceId = 'local-workspace',
 }: LocalValedictorianClientOptions): LocalValedictorianClient {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
   const connectorScheduling = resolveConnectorSchedulingCapability(connectorSchedulingOption)
-  const sqlite = createFileDatabase(sqlitePath)
+  const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
   const applicationService = createApplicationServiceFromSqlite(sqlite)
   const database = createDrizzleDatabase(sqlite)
   seedLocalData(database, {
@@ -172,9 +173,8 @@ export function createLocalValedictorianClient({
     seedDataMode,
   })
   const scoringRepository = createSqliteScoringRepository(database)
-  const profileService = preparedProfileService ?? createJsonProfileService(
-    profilePath ?? path.join(path.dirname(sqlitePath), 'profile.json'),
-  )
+  const profileService = preparedProfileService
+    ?? createJsonProfileService(profilePath ?? path.join(path.dirname(pgliteDataPath), 'profile.json'))
   const secretService = preparedSecretService ?? createSqliteSecretService(
     database,
     secretCodec,
@@ -197,7 +197,7 @@ export function createLocalValedictorianClient({
     })
   }
   if (connectorRunRecovery) {
-    connectorRunRecovery.activate({ sqlitePath, workspaceId }, recoverInterruptedRuns)
+    connectorRunRecovery.activate({ pgliteDataPath, workspaceId }, recoverInterruptedRuns)
   } else {
     recoverInterruptedRuns()
   }

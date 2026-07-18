@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 export async function createConnectorCaptureFixture(
-  sqlitePath: string,
+  pgliteDataPath: string,
   connectorId: string,
   connectorVersion: string,
 ) {
-  const sqlite = createFileDatabase(sqlitePath)
+  const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
   try {
     migrateDatabase(sqlite)
     const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))

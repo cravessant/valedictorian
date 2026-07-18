@@ -9,7 +9,7 @@ import {
   seedHourlyScheduleWorkspace,
 } from './local-server.connector-schedules.delayed-recovery.helpers'
 import {
-  createScheduleHttpTempSqlitePath as createTempSqlitePath,
+  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
 } from './local-server.connector-schedules.http-fixture'
@@ -24,19 +24,19 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('reuses an admitted queued occurrence after later nominals become due instead of deferring forever', async () => {
     const workspaceId = 'schedule-delayed-due-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const { created } = await seedHourlyScheduleWorkspace({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
     expect(created.nextEligibleAt).toBe('2026-07-11T13:00:00.000Z')
 
     clock = new Date('2026-07-11T13:00:00.000Z')
     const admittedOnly = admitScheduleDueOnly({
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
       expectedRevision: created.revision,
     })
@@ -50,7 +50,7 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
     const reopened = createReopenedScheduleClient({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
 
@@ -142,22 +142,22 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('reconciles a cancelled interrupted schedule run occurrence and admits the next due after reopen', async () => {
     const workspaceId = 'schedule-delayed-running-cancel-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const { created } = await seedHourlyScheduleWorkspace({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
     const admittedOnly = admitScheduleDueOnly({
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
       expectedRevision: created.revision,
     })
-    const claimOpen = openScheduleSqlite(sqlitePath)
+    const claimOpen = openScheduleSqlite(pgliteDataPath)
     const claim = await createSqliteConnectorRepository(claimOpen.database).claimQueuedRunToRunning({
       connectorRunId: admittedOnly.run.id,
       startedAt: clock.toISOString(),
@@ -167,7 +167,7 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
     const reopened = createReopenedScheduleClient({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
 
@@ -247,18 +247,18 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('reuses an admitted queued occurrence after a revision-changing pause/resume instead of deferring forever', async () => {
     const workspaceId = 'schedule-delayed-revision-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const { created } = await seedHourlyScheduleWorkspace({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
     const admittedOnly = admitScheduleDueOnly({
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
       expectedRevision: created.revision,
     })
@@ -266,7 +266,7 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
     const reopened = createReopenedScheduleClient({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
 
@@ -374,23 +374,23 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('repairs an admitted occurrence whose linked run is already terminal across reopen before later dispatch', async () => {
     const workspaceId = 'schedule-delayed-stale-terminal-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const { created } = await seedHourlyScheduleWorkspace({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
     const admittedOnly = admitScheduleDueOnly({
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
       expectedRevision: created.revision,
     })
 
-    const open = openScheduleSqlite(sqlitePath)
+    const open = openScheduleSqlite(pgliteDataPath)
     const repository = createSqliteConnectorRepository(open.database)
     const claim = await repository.claimQueuedRunToRunning({
       connectorRunId: admittedOnly.run.id,
@@ -410,7 +410,7 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
     const reopened = createReopenedScheduleClient({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
 
@@ -491,23 +491,23 @@ describe('local server connector schedule delayed recovery and reconciliation', 
 
   it('reconciles a same-process admitted occurrence linked to a terminal run before admitting later due work', async () => {
     const workspaceId = 'schedule-delayed-same-process-terminal-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const { created, client } = await seedHourlyScheduleWorkspace({
       workspaceId,
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
     const admittedOnly = admitScheduleDueOnly({
-      sqlitePath,
+      pgliteDataPath,
       now: () => clock,
       expectedRevision: created.revision,
     })
 
-    const open = openScheduleSqlite(sqlitePath)
+    const open = openScheduleSqlite(pgliteDataPath)
     const repository = createSqliteConnectorRepository(open.database)
     const claim = await repository.claimQueuedRunToRunning({
       connectorRunId: admittedOnly.run.id,

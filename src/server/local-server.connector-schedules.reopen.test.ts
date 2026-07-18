@@ -5,11 +5,12 @@ import { admitConnectorScheduleDue } from '../modules/connectors/connector-sched
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempSqlitePath as createTempSqlitePath,
+  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
@@ -25,7 +26,7 @@ describe('local server connector schedule reopen recovery', () => {
 
   it('recovers an admitted queued schedule run across SQLite reopen through public dispatchDue', async () => {
     const workspaceId = 'schedule-reopen-recover-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const setupClient = createLocalValedictorianClient({
@@ -33,7 +34,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -56,7 +57,7 @@ describe('local server connector schedule reopen recovery', () => {
 
     clock = new Date('2026-07-11T13:00:00.000Z')
     // Narrow admission seam: durable queued occurrence before CAS claim / connector execution.
-    const admitSqlite = createFileDatabase(sqlitePath)
+    const admitSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const admittedOnly = admitConnectorScheduleDue({
       database: createDrizzleDatabase(admitSqlite),
       now: () => clock,
@@ -107,7 +108,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -184,7 +185,7 @@ describe('local server connector schedule reopen recovery', () => {
 
   it('cancels a schedule-linked running run on SQLite reopen and never re-executes it', async () => {
     const workspaceId = 'schedule-reopen-running-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const setupClient = createLocalValedictorianClient({
@@ -192,7 +193,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -213,7 +214,7 @@ describe('local server connector schedule reopen recovery', () => {
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admitSqlite = createFileDatabase(sqlitePath)
+    const admitSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const admitDb = createDrizzleDatabase(admitSqlite)
     const admittedOnly = admitConnectorScheduleDue({
       database: admitDb,
@@ -255,7 +256,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -306,7 +307,7 @@ describe('local server connector schedule reopen recovery', () => {
 
   it('does not revive a terminal failed scheduled occurrence across reopen', async () => {
     const workspaceId = 'schedule-reopen-failed-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const setupClient = createLocalValedictorianClient({
@@ -314,7 +315,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -335,7 +336,7 @@ describe('local server connector schedule reopen recovery', () => {
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admitSqlite = createFileDatabase(sqlitePath)
+    const admitSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const admitDb = createDrizzleDatabase(admitSqlite)
     const admittedOnly = admitConnectorScheduleDue({
       database: admitDb,
@@ -391,7 +392,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -431,7 +432,7 @@ describe('local server connector schedule reopen recovery', () => {
 
   it('terminalizes a claimed schedule run when reopened registry cannot provide the connector', async () => {
     const workspaceId = 'schedule-reopen-missing-connector-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
     const setupClient = createLocalValedictorianClient({
@@ -439,7 +440,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -460,7 +461,7 @@ describe('local server connector schedule reopen recovery', () => {
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admitSqlite = createFileDatabase(sqlitePath)
+    const admitSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const admittedOnly = admitConnectorScheduleDue({
       database: createDrizzleDatabase(admitSqlite),
       now: () => clock,
@@ -487,7 +488,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -559,7 +560,7 @@ describe('local server connector schedule reopen recovery', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 

@@ -5,7 +5,7 @@ import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defaultUserProfile, profileDocumentSchemaVersion } from 'sparxie'
 import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../../db/sqlite'
-import { resolveWorkspaceLayout } from '../../workspace/workspace.paths'
+import { resolveDatabaseFilePath, resolveWorkspaceLayout } from '../../workspace/workspace.paths'
 import { createSqliteSecretService } from '../secrets/secret.composition'
 import type { SecretCodec } from '../secrets/secret.codec'
 import { identitySsnLast4SecretKey } from '../secrets/secret.identity'
@@ -39,8 +39,8 @@ describe('profile JSON migration', () => {
     const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-migration-'))
     cleanupPaths.push(rootPath)
     const layout = resolveWorkspaceLayout(rootPath)
-    fs.mkdirSync(layout.dataPath, { recursive: true })
-    const sqlite = createFileDatabase(layout.sqlitePath)
+    fs.mkdirSync(layout.pgliteDataPath, { recursive: true })
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(layout.pgliteDataPath))
     migrateDatabase(sqlite)
     seedLegacyProfile(sqlite)
     const secretService = createSqliteSecretService(
@@ -55,7 +55,7 @@ describe('profile JSON migration', () => {
       profilePath: layout.profilePath,
       secretCodec: syntheticCodec,
       secretService,
-      sqlitePath: layout.sqlitePath,
+      databasePath: resolveDatabaseFilePath(layout.pgliteDataPath),
     })
 
     expect(result.status).toBe('migrated')
@@ -107,7 +107,7 @@ describe('profile JSON migration', () => {
       profilePath: layout.profilePath,
       secretCodec: syntheticCodec,
       secretService,
-      sqlitePath: layout.sqlitePath,
+      databasePath: resolveDatabaseFilePath(layout.pgliteDataPath),
     })).resolves.toMatchObject({ status: 'already_completed' })
 
     sqlite.close()
@@ -245,7 +245,7 @@ describe('profile JSON migration', () => {
       profilePath: fixture.layout.profilePath,
       secretCodec: fixture.codec,
       secretService: fixture.secretService,
-      sqlitePath: capacityProbe,
+      databasePath: capacityProbe,
     })).rejects.toMatchObject({
       code: 'profile_migration_backup_unavailable',
       retryable: true,
@@ -386,7 +386,7 @@ describe('profile JSON migration', () => {
       profilePath: fixture.layout.profilePath,
       secretCodec: fixture.codec,
       secretService: fixture.secretService,
-      sqlitePath: fixture.layout.sqlitePath,
+      databasePath: resolveDatabaseFilePath(fixture.layout.pgliteDataPath),
     })).rejects.toMatchObject({
       code: 'profile_migration_cleanup_failed',
       retryable: true,
@@ -422,7 +422,7 @@ describe('profile JSON migration', () => {
       profilePath: fixture.layout.profilePath,
       secretCodec: unavailableCodec,
       secretService: fixture.secretService,
-      sqlitePath: fixture.layout.sqlitePath,
+      databasePath: resolveDatabaseFilePath(fixture.layout.pgliteDataPath),
     })).resolves.toMatchObject({ status: 'already_completed' })
     fixture.sqlite.close()
   })
@@ -445,7 +445,7 @@ describe('profile JSON migration', () => {
       profilePath: fixture.layout.profilePath,
       secretCodec: unavailableCodec,
       secretService: fixture.secretService,
-      sqlitePath: fixture.layout.sqlitePath,
+      databasePath: resolveDatabaseFilePath(fixture.layout.pgliteDataPath),
     })).rejects.toMatchObject({
       code: 'profile_migration_secure_storage_unavailable',
       retryable: true,
@@ -532,8 +532,8 @@ function createLegacyFixture(cleanupPaths: string[], codec: SecretCodec = synthe
   const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-migration-case-'))
   cleanupPaths.push(rootPath)
   const layout = resolveWorkspaceLayout(rootPath)
-  fs.mkdirSync(layout.dataPath, { recursive: true })
-  const sqlite = createFileDatabase(layout.sqlitePath)
+  fs.mkdirSync(layout.pgliteDataPath, { recursive: true })
+  const sqlite = createFileDatabase(resolveDatabaseFilePath(layout.pgliteDataPath))
   migrateDatabase(sqlite)
   seedLegacyProfile(sqlite)
   const secretService = createSqliteSecretService(
@@ -551,7 +551,7 @@ function runMigration(fixture: ReturnType<typeof createLegacyFixture>) {
     profilePath: fixture.layout.profilePath,
     secretCodec: fixture.codec,
     secretService: fixture.secretService,
-    sqlitePath: fixture.layout.sqlitePath,
+    databasePath: resolveDatabaseFilePath(fixture.layout.pgliteDataPath),
   })
 }
 

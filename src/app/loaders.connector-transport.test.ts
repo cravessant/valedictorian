@@ -3,7 +3,7 @@ import type { RendererBackendState } from '../ipc/valedictorian-http.preload'
 import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/jobright.constants'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from '../server/local-server'
-import { createTempSqlitePath } from '../server/local-server.http-test-harness'
+import { createTempDatabasePath } from '../server/local-server.http-test-harness'
 import { defaultConnectorsApi } from './loaders'
 
 const activeServers = new Set<StartedValedictorianHttpServer>()
@@ -70,10 +70,10 @@ describe('renderer connector transport', () => {
   })
 
   it('atomically admits one of two concurrent same-id creates without losing the winner', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const clients = [
-      createLocalValedictorianClient({ sqlitePath }),
-      createLocalValedictorianClient({ sqlitePath }),
+      createLocalValedictorianClient({ pgliteDataPath }),
+      createLocalValedictorianClient({ pgliteDataPath }),
     ]
     const inputs = [
       jobrightCreateInput(),
@@ -129,6 +129,6 @@ function jobrightCreateInput() {
 }
 function createConnectorClient() {
   return createLocalValedictorianClient({
-    sqlitePath: createTempSqlitePath(),
+    pgliteDataPath: createTempDatabasePath(),
   })
 }

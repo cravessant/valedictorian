@@ -9,6 +9,7 @@ import { createDrizzleDatabase, createFileDatabase, createInMemoryDatabase, migr
 import { createSqliteConnectorRepository } from './connector.repository'
 import { completedConnectorRefreshContract } from './connector-refresh-result.test-helpers'
 import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
+import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 
 describe('SQLite connector repository retry ledger', () => {
   it('leaves provider URL lineage for the app-wide source instead of connector acquisition', async () => {
@@ -153,8 +154,8 @@ describe('SQLite connector repository retry ledger', () => {
     sqlite.close()
   })
   it('atomically blocks non-adjacent same-scope work while another scope proceeds across callers and restart', async () => {
-    const sqlitePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'scope-acquisition-')), 'workspace.sqlite')
-    const sqlite = createFileDatabase(sqlitePath); migrateDatabase(sqlite)
+    const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'scope-acquisition-')), 'pglite')
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)); migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
     for (const id of ['shared-a', 'other']) {
@@ -165,8 +166,8 @@ describe('SQLite connector repository retry ledger', () => {
     createSourceExecutionGovernor(database).blockScope(sharedScope, { now: '2026-07-11T12:02:00.000Z', retryAfter: '120' })
     sqlite.close()
 
-    const firstSqlite = createFileDatabase(sqlitePath)
-    const secondSqlite = createFileDatabase(sqlitePath)
+    const firstSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
+    const secondSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const first = createSqliteConnectorRepository(createDrizzleDatabase(firstSqlite))
     const second = createSqliteConnectorRepository(createDrizzleDatabase(secondSqlite))
     const [blockedA, allowed] = await Promise.all([
@@ -272,8 +273,8 @@ describe('SQLite connector repository retry ledger', () => {
   })
 
   it('allows one exact-due acquisition across independent SQLite clients', async () => {
-    const sqlitePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'retry-race-')), 'workspace.sqlite')
-    const firstSqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'retry-race-')), 'pglite')
+    const firstSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(firstSqlite)
     const first = createSqliteConnectorRepository(createDrizzleDatabase(firstSqlite))
     await first.upsertInstance({
@@ -296,7 +297,7 @@ describe('SQLite connector repository retry ledger', () => {
         },
       },
     })
-    const secondSqlite = createFileDatabase(sqlitePath)
+    const secondSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const second = createSqliteConnectorRepository(createDrizzleDatabase(secondSqlite))
 
     const results = await Promise.all([first, second].map((repository) => repository.recordRunRequest({
@@ -310,8 +311,8 @@ describe('SQLite connector repository retry ledger', () => {
   })
 
   it('allows one exact-due acquisition across independent worker processes', async () => {
-    const sqlitePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'retry-process-race-')), 'workspace.sqlite')
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'retry-process-race-')), 'pglite')
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
     await repository.upsertInstance({
@@ -338,8 +339,8 @@ describe('SQLite connector repository retry ledger', () => {
 
     const startEpoch = Date.now() + 400
     const results = await Promise.all([
-      runAcquisitionWorker(sqlitePath, startEpoch),
-      runAcquisitionWorker(sqlitePath, startEpoch),
+      runAcquisitionWorker(pgliteDataPath, startEpoch),
+      runAcquisitionWorker(pgliteDataPath, startEpoch),
     ])
 
     expect(results.filter(({ acquired }) => acquired)).toHaveLength(1)
@@ -349,8 +350,8 @@ describe('SQLite connector repository retry ledger', () => {
   it.each(['exhausted', 'cancelled'] as const)(
     'does not let persisted %s capture work block unrelated discovery after restart',
     async (state) => {
-      const sqlitePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `retry-${state}-`)), 'workspace.sqlite')
-      const sqlite = createFileDatabase(sqlitePath)
+      const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `retry-${state}-`)), 'pglite')
+      const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
       migrateDatabase(sqlite)
       const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
       await repository.upsertInstance({
@@ -374,7 +375,7 @@ describe('SQLite connector repository retry ledger', () => {
         },
       })
       sqlite.close()
-      const restartedSqlite = createFileDatabase(sqlitePath)
+      const restartedSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
       const restarted = createSqliteConnectorRepository(createDrizzleDatabase(restartedSqlite))
       await restarted.upsertInstance({
         id: `terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '2.0.0',
@@ -397,8 +398,8 @@ describe('SQLite connector repository retry ledger', () => {
   it.each(['exhausted', 'cancelled'] as const)(
     'does not let persisted normalization %s work block unrelated discovery after restart',
     async (state) => {
-      const sqlitePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `normalization-${state}-`)), 'workspace.sqlite')
-      const sqlite = createFileDatabase(sqlitePath)
+      const pgliteDataPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `normalization-${state}-`)), 'pglite')
+      const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
       migrateDatabase(sqlite)
       const database = createDrizzleDatabase(sqlite)
       const repository = createSqliteConnectorRepository(database)
@@ -407,7 +408,7 @@ describe('SQLite connector repository retry ledger', () => {
       database.update(retryWork).set({ state, nextAttemptAt: null }).where(eq(retryWork.id, `normalization-${state}`)).run()
       sqlite.close()
 
-      const restartedSqlite = createFileDatabase(sqlitePath)
+      const restartedSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
       const restarted = createSqliteConnectorRepository(createDrizzleDatabase(restartedSqlite))
       await restarted.upsertInstance({ id: `normalization-terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '2.0.0', displayName: 'Changed normalization terminal', enabled: true, filters: {}, config: { changed: true } })
       const first = await restarted.recordRunRequest({ connectorInstanceId: `normalization-terminal-${state}`, mode: 'catch_up', startedAt: '2026-07-11T14:00:00.000Z' })
@@ -852,16 +853,17 @@ describe('SQLite connector repository retry ledger', () => {
 
 })
 
-function runAcquisitionWorker(sqlitePath: string, startEpoch: number) {
+function runAcquisitionWorker(pgliteDataPath: string, startEpoch: number) {
   const workerDirectory = fs.mkdtempSync(path.join(process.cwd(), '.retry-acquisition-worker-'))
   const workerPath = path.join(workerDirectory, 'worker.ts')
   const script = `
     import { createDrizzleDatabase, createFileDatabase } from ${JSON.stringify(path.resolve('src/db/sqlite.ts'))};
     import { createSqliteConnectorRepository } from ${JSON.stringify(path.resolve('src/modules/connectors/connector.repository.ts'))};
+    import { resolveDatabaseFilePath } from ${JSON.stringify(path.resolve('src/workspace/workspace.paths.ts'))};
     (async () => {
       const delay = Number(process.env.RETRY_START_EPOCH) - Date.now();
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-      const sqlite = createFileDatabase(process.env.RETRY_DB_PATH);
+      const sqlite = createFileDatabase(resolveDatabaseFilePath(process.env.RETRY_DB_PATH));
       const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite));
       const result = await repository.recordRunRequest({
         connectorInstanceId: 'process-race', mode: 'catch_up', startedAt: '2026-07-11T12:01:00.000Z'
@@ -876,7 +878,7 @@ function runAcquisitionWorker(sqlitePath: string, startEpoch: number) {
       cwd: process.cwd(),
       env: {
         ...process.env,
-        RETRY_DB_PATH: sqlitePath,
+        RETRY_DB_PATH: pgliteDataPath,
         RETRY_START_EPOCH: String(startEpoch),
       },
       stdio: ['ignore', 'pipe', 'pipe'],

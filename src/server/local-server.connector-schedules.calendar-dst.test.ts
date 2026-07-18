@@ -6,7 +6,7 @@ import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempSqlitePath as createTempSqlitePath,
+  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
@@ -22,7 +22,7 @@ describe('local server connector schedule calendar DST', () => {
 
   it('coalesces missed daily nominals across a spring-forward gap using IANA local time', async () => {
     const workspaceId = 'schedule-daily-catch-up-dst-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     // 2026-03-06 12:00Z = 07:00 EST; daily 02:30 America/New_York.
     let clock = new Date('2026-03-06T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
@@ -30,7 +30,7 @@ describe('local server connector schedule calendar DST', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -107,7 +107,7 @@ describe('local server connector schedule calendar DST', () => {
 
   it('coalesces missed weekly nominals choosing the earlier fall-back overlap instant', async () => {
     const workspaceId = 'schedule-weekly-catch-up-dst-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     // Sunday 2026-10-25 12:00Z = 08:00 EDT; weekly Sunday 01:30 America/New_York.
     let clock = new Date('2026-10-25T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
@@ -115,7 +115,7 @@ describe('local server connector schedule calendar DST', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -178,14 +178,14 @@ describe('local server connector schedule calendar DST', () => {
 
   it('admits a daily spring-forward gap nominal at the first valid local instant after the gap', async () => {
     const workspaceId = 'schedule-daily-spring-forward-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-03-07T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -238,14 +238,14 @@ describe('local server connector schedule calendar DST', () => {
 
   it('admits a weekly fall-back overlap nominal at the earlier repeated local instant', async () => {
     const workspaceId = 'schedule-weekly-fall-back-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-10-25T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 

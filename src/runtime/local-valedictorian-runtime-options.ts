@@ -32,7 +32,7 @@ export interface LocalValedictorianClientOptions {
   profilePath?: string
   profileService?: ProfileService
   secretService?: SecretService
-  sqlitePath: string
+  pgliteDataPath: string
   workspaceId?: string
 }
 

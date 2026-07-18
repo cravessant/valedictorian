@@ -7,9 +7,10 @@ import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
-function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
+function createTempDatabasePath() {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
 }
 
 describe('runtime local Valedictorian client deferred refresh', () => {
@@ -31,7 +32,7 @@ describe('runtime local Valedictorian client deferred refresh', () => {
   })
 
   it('persists deferred_refresh work as public manual mode without schedule provenance or a startup scan API', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
@@ -40,9 +41,9 @@ describe('runtime local Valedictorian client deferred refresh', () => {
       },
       now: () => new Date('2026-07-09T16:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)
 

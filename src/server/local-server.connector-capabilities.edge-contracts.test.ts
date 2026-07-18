@@ -14,7 +14,7 @@ import {
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import {
-  createScheduleHttpTempSqlitePath,
+  createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
 } from './local-server.connector-schedules.http-fixture'
@@ -373,7 +373,7 @@ async function createHarness(options: {
   const local = createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
     seedDataMode: 'none',
-    sqlitePath: createScheduleHttpTempSqlitePath(),
+    pgliteDataPath: createScheduleHttpTempDatabasePath(),
     workspaceId: WORKSPACE_ID,
   })
   await local.connectors.create({

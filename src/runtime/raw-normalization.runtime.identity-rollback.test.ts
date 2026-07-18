@@ -15,6 +15,7 @@ import {
   createNormalizationResolverRegistry
 } from '../modules/sourcing/normalization.registry'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('local deterministic raw normalization', () => {
   it('fails normalization for an emitted required-field failure and suppresses every lower resolver', async () => {
@@ -27,7 +28,7 @@ describe('local deterministic raw normalization', () => {
     const blocked = fixtureResolver('fixture.blocked-after-failure', 900, ['network'], networkResolve)
     const notApplicable = fixtureResolver('fixture.not-applicable-after-failure', 800, ['pure'], notApplicableResolve)
     notApplicable.declaration.supportedAdapters = { ids: ['another-adapter'] }
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath(), normalizationRegistry: createNormalizationResolverRegistry([failed, blocked, notApplicable, ...createDefaultNormalizationResolverRegistry().resolvers]) })
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath(), normalizationRegistry: createNormalizationResolverRegistry([failed, blocked, notApplicable, ...createDefaultNormalizationResolverRegistry().resolvers]) })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' }, observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'Fallback must not win', title: 'Intern', url: 'https://jobs.lever.co/acme/job-1' },
@@ -56,7 +57,7 @@ describe('local deterministic raw normalization', () => {
         { resolverId: 'fixture.partial-failure', resolverVersion: '1.0.0', field: 'roleTitle', inputHash: context.hashInput('Intern'), status: 'resolved', value: 'Intern', confidence: 1 },
       ] },
     }
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath(), normalizationRegistry: createNormalizationResolverRegistry([partial, ...createDefaultNormalizationResolverRegistry().resolvers]) })
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath(), normalizationRegistry: createNormalizationResolverRegistry([partial, ...createDefaultNormalizationResolverRegistry().resolvers]) })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' }, observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'Fallback must not win', title: 'Intern', url: 'https://jobs.lever.co/acme/job-1' },
@@ -113,7 +114,7 @@ describe('local deterministic raw normalization', () => {
       declaration: { id, version: '1.0.0', requiredInputs: ['rawRevision'], outputFields: ['compensation'], capabilities: ['pure'], costClass: 'none', precedence: 1_000 },
       resolve(context) { return [{ resolverId: id, resolverVersion: '1.0.0', field: 'compensation', inputHash: context.hashInput(value), status: 'resolved', value, confidence: 1 }] },
     })
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath(), normalizationRegistry: createNormalizationResolverRegistry([
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath(), normalizationRegistry: createNormalizationResolverRegistry([
       compensationResolver('fixture.compensation-a', firstValue),
       compensationResolver('fixture.compensation-b', secondValue),
       ...createDefaultNormalizationResolverRegistry().resolvers,
@@ -128,11 +129,11 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('associates provider identities across adapters through one canonical destination without merging raw history', async () => {
-    const sqlitePath = tempDatabasePath()
-    const client = createLocalValedictorianClient({ sqlitePath })
+    const pgliteDataPath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ pgliteDataPath })
     const destination = 'https://jobs.lever.co/acme/shared-role'
-    const alphaCapture = await createConnectorCaptureFixture(sqlitePath, 'connector.alpha', '1.0.0')
-    const betaCapture = await createConnectorCaptureFixture(sqlitePath, 'connector.beta', '2.0.0')
+    const alphaCapture = await createConnectorCaptureFixture(pgliteDataPath, 'connector.alpha', '1.0.0')
+    const betaCapture = await createConnectorCaptureFixture(pgliteDataPath, 'connector.beta', '2.0.0')
     const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
       capture: alphaCapture,
@@ -153,7 +154,7 @@ describe('local deterministic raw normalization', () => {
       gate: { status: 'passed' },
       canonicalCandidate: { sourceEntityId: firstResult.canonicalCandidate?.sourceEntityId },
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(sqlite.prepare(`
       select identity_kind, identity_namespace, identity_value, provenance_kind, provenance_version
       from job_identities order by identity_kind, identity_namespace
@@ -174,9 +175,9 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('records incompatible strong destination evidence as an idempotent conflict without merging history', async () => {
-    const sqlitePath = tempDatabasePath()
-    const client = createLocalValedictorianClient({ sqlitePath })
-    const capture = await createConnectorCaptureFixture(sqlitePath, 'connector.alpha', '1.0.0')
+    const pgliteDataPath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ pgliteDataPath })
+    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'connector.alpha', '1.0.0')
     const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
       capture,
@@ -200,11 +201,11 @@ describe('local deterministic raw normalization', () => {
       gate: { status: 'needs_enrichment', conflictingFields: expect.arrayContaining(['canonicalIdentity']) },
       canonicalCandidate: null,
     })
-    const restarted = createLocalValedictorianClient({ sqlitePath })
+    const restarted = createLocalValedictorianClient({ pgliteDataPath })
     await expect(restarted.sourcing.rawRecords.normalization.get(conflicting.receipts[0].rawRecordId)).resolves.toMatchObject({
       gate: { status: 'needs_enrichment' }, canonicalCandidate: null,
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(sqlite.prepare(`
       select job_id, capture_evidence_version_id, identity_kind, identity_value, reason, provenance_version
       from job_identity_conflicts
@@ -222,7 +223,7 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('persists only canonical job destinations and explicit job-specific intermediaries as distinct aliases', async () => {
-    const sqlitePath = tempDatabasePath()
+    const pgliteDataPath = tempDatabasePath()
     const intermediaryResolver: NormalizationResolver = {
       declaration: {
         id: 'fixture.provider-destination', version: '3.2.1', requiredInputs: ['rawRevision'],
@@ -242,13 +243,13 @@ describe('local deterministic raw normalization', () => {
       },
     }
     const client = createLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
       normalizationRegistry: createNormalizationResolverRegistry([
         intermediaryResolver,
         ...createDefaultNormalizationResolverRegistry().resolvers,
       ]),
     })
-    const capture = await createConnectorCaptureFixture(sqlitePath, 'connector.jobright', '3.2.1')
+    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'connector.jobright', '3.2.1')
     const accepted = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.jobright', kind: 'connector', version: '3.2.1' },
       capture,
@@ -267,7 +268,7 @@ describe('local deterministic raw normalization', () => {
       observedAt: '2026-07-10T12:05:00.000Z', providerRecordId: 'jobright-1', providerSchema: 'jobs/v1',
       payload: { company: 'Acme', title: 'Intern', intermediaryUrl: 'https://jobright.ai/companies/acme' },
     }] })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(sqlite.prepare(`
       select identity_kind, identity_value from job_identities
       where identity_kind in ('canonical_destination','destination_alias','intermediary_alias')
@@ -282,8 +283,8 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('never turns weak descriptive fingerprints into identities or hard merges', async () => {
-    const sqlitePath = tempDatabasePath()
-    const client = createLocalValedictorianClient({ sqlitePath })
+    const pgliteDataPath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ pgliteDataPath })
     const input = {
       adapter: { id: 'manual.fixture', kind: 'manual' as const, version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -297,15 +298,15 @@ describe('local deterministic raw normalization', () => {
     await expect(client.sourcing.rawRecords.normalization.get(first.receipts[0].rawRecordId)).resolves.toMatchObject({
       gate: { status: 'needs_enrichment' }, canonicalCandidate: null,
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(sqlite.prepare('select count(*) as count from job_identities').get()).toEqual({ count: 0 })
     expect(sqlite.prepare('select count(*) as count from job_identity_conflicts').get()).toEqual({ count: 0 })
     sqlite.close()
   })
 
   it('does not partially attach destination identities when an intermediary alias is pre-owned', async () => {
-    const sqlitePath = tempDatabasePath()
-    const setup = createFileDatabase(sqlitePath)
+    const pgliteDataPath = tempDatabasePath()
+    const setup = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(setup)
     setup.exec(`
       insert into jobs (id, identity_kind, identity_namespace, identity_value, created_at)
@@ -322,13 +323,13 @@ describe('local deterministic raw normalization', () => {
     setup.close()
     const destinationResolver = fixedDestinationResolver('https://jobright.ai/jobs/info/shared-job')
     const client = createLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
       normalizationRegistry: createNormalizationResolverRegistry([
         destinationResolver,
         ...createDefaultNormalizationResolverRegistry().resolvers,
       ]),
     })
-    const capture = await createConnectorCaptureFixture(sqlitePath, 'connector.alpha', '1.0.0')
+    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'connector.alpha', '1.0.0')
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
       capture,
@@ -340,7 +341,7 @@ describe('local deterministic raw normalization', () => {
       gate: { status: 'needs_enrichment', conflictingFields: expect.arrayContaining(['canonicalIdentity']) },
       canonicalCandidate: null,
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(sqlite.prepare(`
       select identity_kind from job_identities
       where job_id = ? and identity_kind in ('canonical_destination','destination_alias')
@@ -356,7 +357,7 @@ describe('local deterministic raw normalization', () => {
     expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
     sqlite.close()
     const restarted = createLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
       normalizationRegistry: createNormalizationResolverRegistry([
         destinationResolver,
         ...createDefaultNormalizationResolverRegistry().resolvers,
@@ -368,8 +369,8 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('audits a provisional raw identity collision against its resolved destination owner', async () => {
-    const sqlitePath = tempDatabasePath()
-    const setup = createFileDatabase(sqlitePath)
+    const pgliteDataPath = tempDatabasePath()
+    const setup = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(setup)
     setup.exec(`
       insert into jobs (id, identity_kind, identity_namespace, identity_value, created_at)
@@ -389,7 +390,7 @@ describe('local deterministic raw normalization', () => {
       destinationResolver,
       ...createDefaultNormalizationResolverRegistry().resolvers,
     ])
-    const client = createLocalValedictorianClient({ sqlitePath, normalizationRegistry: registry })
+    const client = createLocalValedictorianClient({ pgliteDataPath, normalizationRegistry: registry })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -399,7 +400,7 @@ describe('local deterministic raw normalization', () => {
     await expect(client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)).resolves.toMatchObject({
       gate: { status: 'needs_enrichment' }, canonicalCandidate: null,
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const owner = sqlite.prepare(`
       select id from jobs
       where identity_kind = 'destination_url' and identity_value = 'https://jobs.lever.co/acme/target-role'
@@ -420,7 +421,7 @@ describe('local deterministic raw normalization', () => {
     }])
     expect(sqlite.prepare('pragma foreign_key_check').all()).toEqual([])
     sqlite.close()
-    const restarted = createLocalValedictorianClient({ sqlitePath, normalizationRegistry: registry })
+    const restarted = createLocalValedictorianClient({ pgliteDataPath, normalizationRegistry: registry })
     await expect(restarted.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)).resolves.toMatchObject({
       gate: { status: 'needs_enrichment' }, canonicalCandidate: null,
     })
@@ -428,7 +429,7 @@ describe('local deterministic raw normalization', () => {
       selector: { rawRevisionIds: [intake.receipts[0].revision.id] },
       invalidate: { canonicalSchemaVersions: ['canonical-source-candidate/v1'] },
     })).resolves.toMatchObject({ status: 'completed' })
-    const replayed = createFileDatabase(sqlitePath)
+    const replayed = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(replayed.prepare(`
       select count(*) as count from jobs
       where identity_kind = 'destination_url' and identity_value = 'https://jobs.lever.co/acme/target-role'
@@ -439,9 +440,9 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('does not partially attach a proposal that would cross the identity bound', async () => {
-    const sqlitePath = tempDatabasePath()
-    const client = createLocalValedictorianClient({ sqlitePath })
-    const capture = await createConnectorCaptureFixture(sqlitePath, 'connector.alpha', '1.0.0')
+    const pgliteDataPath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ pgliteDataPath })
+    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'connector.alpha', '1.0.0')
     const initial = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'connector.alpha', kind: 'connector', version: '1.0.0' },
       capture,
@@ -450,7 +451,7 @@ describe('local deterministic raw normalization', () => {
     }] })
     const sourceEntityId = initial.receipts[0].sourceEntityId
     if (!sourceEntityId) throw new Error('Fixture provider entity is missing')
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const insert = sqlite.prepare(`
       insert into job_identities (
         id, job_id, identity_kind, identity_namespace, identity_value,
@@ -472,7 +473,7 @@ describe('local deterministic raw normalization', () => {
     await expect(client.sourcing.rawRecords.normalization.get(completed.receipts[0].rawRecordId)).resolves.toMatchObject({
       gate: { status: 'needs_enrichment' }, canonicalCandidate: null,
     })
-    const inspected = createFileDatabase(sqlitePath)
+    const inspected = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(inspected.prepare(`
       select identity_kind from job_identities
       where job_id = ? and identity_value = 'https://jobs.lever.co/acme/overflow-role'
@@ -486,8 +487,8 @@ describe('local deterministic raw normalization', () => {
   })
 
   it('rolls back reconciliation when normalization run persistence fails', async () => {
-    const sqlitePath = tempDatabasePath()
-    const setup = createFileDatabase(sqlitePath)
+    const pgliteDataPath = tempDatabasePath()
+    const setup = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(setup)
     setup.exec(`
       create trigger fail_normalization_run
@@ -495,14 +496,14 @@ describe('local deterministic raw normalization', () => {
       begin select raise(abort, 'fixture normalization run failure'); end;
     `)
     setup.close()
-    const client = createLocalValedictorianClient({ sqlitePath })
+    const client = createLocalValedictorianClient({ pgliteDataPath })
 
     await expect(client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/atomic-role' },
     }] })).resolves.toMatchObject({ receipts: [expect.objectContaining({ sourceEntityId: null })] })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(normalizationPersistenceState(sqlite)).toEqual({
       jobs: 0,
       identities: 0,
@@ -641,4 +642,6 @@ function rawLedgerState(sqlite: ReturnType<typeof createInMemoryDatabase>) {
     occurrences: count('captures'),
   }
 }
-function tempDatabasePath() { return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'normalization-runtime-')), 'db.sqlite') }
+function tempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'normalization-runtime-'))
+}

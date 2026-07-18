@@ -9,6 +9,7 @@ import { createApplication, createListResult, createSettingsApi } from './App.te
 import { createFileDatabase, migrateDatabase } from './db/sqlite'
 import { createLocalValedictorianClient } from './runtime/local-valedictorian-client'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './server/local-server'
+import { resolveDatabaseFilePath } from './workspace/workspace.paths'
 import {
   createLegacyRawSourceFixture,
   LEGACY_MIXED_RAW_RECORD_ID,
@@ -31,18 +32,15 @@ afterEach(async () => {
 
 describe('migrated raw-source inspection through renderer HTTP', () => {
   it('renders facts, lineage, normalization, gate, and projection from a legacy connector record', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-inspect-')),
-      'valedictorian.sqlite',
-    )
-    createLegacyRawSourceFixture(sqlitePath)
-    const legacySqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-inspect-'))
+    createLegacyRawSourceFixture(pgliteDataPath)
+    const legacySqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(legacySqlite)
     legacySqlite.close()
 
     const client = createLocalValedictorianClient({
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: WORKSPACE_ID,
     })
     server = await createValedictorianHttpServer({ client, host: '127.0.0.1', port: 0 })

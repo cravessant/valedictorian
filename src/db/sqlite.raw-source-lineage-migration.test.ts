@@ -11,6 +11,7 @@ import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from './sq
 import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import { createSqliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
   createLegacyRawSourceFixture,
   LEGACY_INVALID_ONLY_RAW_RECORD_ID,
@@ -23,12 +24,9 @@ import {
 
 describe('legacy connector raw-source lineage migration', () => {
   it('drops every record whose occurrences disagree with its latest adapter contract', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-migration-')),
-      'valedictorian.sqlite',
-    )
-    createLegacyRawSourceFixture(sqlitePath, { includeInvalidOnly: true })
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-migration-'))
+    createLegacyRawSourceFixture(pgliteDataPath, { includeInvalidOnly: true })
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
 
     migrateDatabase(sqlite)
 
@@ -61,12 +59,9 @@ describe('legacy connector raw-source lineage migration', () => {
   })
 
   it('removes pending and failed replay items without normalization runs for a doomed record', () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-replay-migration-')),
-      'valedictorian.sqlite',
-    )
-    createLegacyRawSourceFixture(sqlitePath)
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-replay-migration-'))
+    createLegacyRawSourceFixture(pgliteDataPath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(sqlite.prepare(`select status, normalization_run_id from normalization_replay_items
       where id like 'legacy-%-replay-item' order by status`).all()).toEqual([
       { status: 'failed', normalization_run_id: null },
@@ -87,12 +82,9 @@ describe('legacy connector raw-source lineage migration', () => {
   })
 
   it('leaves every valid raw record row byte-for-byte unchanged', () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-valid-preservation-')),
-      'valedictorian.sqlite',
-    )
-    createLegacyRawSourceFixture(sqlitePath)
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-valid-preservation-'))
+    createLegacyRawSourceFixture(pgliteDataPath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const validIds = [
       LEGACY_VALID_CONNECTOR_RECORD_ID,
       LEGACY_NESTED_JOBRIGHT_RAW_RECORD_ID,
@@ -110,12 +102,9 @@ describe('legacy connector raw-source lineage migration', () => {
   })
 
   it('removes a referenced invalid occurrence with its entire dependent raw graph', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-referenced-migration-')),
-      'valedictorian.sqlite',
-    )
-    createLegacyRawSourceFixture(sqlitePath)
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-referenced-migration-'))
+    createLegacyRawSourceFixture(pgliteDataPath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     sqlite.prepare(`insert into raw_source_occurrences (
       id, raw_record_id, raw_revision_id, connector_instance_id, connector_run_id,
       execution_scope_id, observed_at, received_at
@@ -151,12 +140,9 @@ describe('legacy connector raw-source lineage migration', () => {
   })
 
   it('preserves a valid import graph that shares the doomed connector source entity', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-shared-entity-migration-')),
-      'valedictorian.sqlite',
-    )
-    createLegacyRawSourceFixture(sqlitePath)
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-lineage-shared-entity-migration-'))
+    createLegacyRawSourceFixture(pgliteDataPath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     seedSharedSurvivingGraph(sqlite)
 
     expect(() => migrateDatabase(sqlite)).not.toThrow()

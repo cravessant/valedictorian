@@ -14,10 +14,12 @@ import { createLocalValedictorianClient } from '../runtime/local-valedictorian-c
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
 import { createLocalWorkspaceManager } from './local-workspaces'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
   createLocalServerHttpTestFixture,
   createSeededLocalClient,
-  createTempSqlitePath,
+  createTempDatabasePath,
+  createTempFilePath,
   readJson,
 } from './local-server.http-test-harness'
 
@@ -42,15 +44,15 @@ describe('local secret resolution HTTP route', () => {
   afterEach(() => fixture.teardown())
 
   it('advertises and serves authenticated workspace-scoped resolution with no-store', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-resolve'
     const client = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
-    const database = createDrizzleDatabase(createFileDatabase(sqlitePath))
+    const database = createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)))
     const secretService = createSqliteSecretService(
       database,
       availableCodec,
@@ -103,16 +105,16 @@ describe('local secret resolution HTTP route', () => {
   })
 
   it('blocks reserved identity resolution from authenticated shared HTTP while ordinary secrets resolve', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-shared-identity-boundary'
     const client = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
     const secretService = createSqliteSecretService(
-      createDrizzleDatabase(createFileDatabase(sqlitePath)),
+      createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))),
       availableCodec,
       createWorkspaceSecretScope(workspaceId),
     )
@@ -161,12 +163,12 @@ describe('local secret resolution HTTP route', () => {
   })
 
   it('returns typed unauthorized and missing outcomes with no-store', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-resolve-errors'
     const enabledClient = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
     const server = await fixture.start({
@@ -218,7 +220,7 @@ describe('local secret resolution HTTP route', () => {
     const disabledClient = createSeededLocalClient({
       localSecretResolutionEnabled: false,
       secretCodec: availableCodec,
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId,
     })
     const server = await fixture.start({
@@ -282,7 +284,7 @@ describe('local secret resolution HTTP route', () => {
     const client = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId,
     })
     const server = await fixture.start({
@@ -317,7 +319,7 @@ describe('local secret resolution HTTP route', () => {
     const client = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId: 'workspace-root',
     })
     const server = await fixture.start({
@@ -347,7 +349,7 @@ describe('local secret resolution HTTP route', () => {
     const client = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId: 'workspace-active',
     })
     const server = await fixture.start({
@@ -385,7 +387,7 @@ describe('local secret resolution HTTP route', () => {
     const client = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId,
     })
     const server = await fixture.start({
@@ -419,7 +421,7 @@ describe('local secret resolution HTTP route', () => {
     const client = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId,
     })
     const server = await fixture.start({
@@ -453,7 +455,7 @@ describe('local secret resolution HTTP route', () => {
     const baseClient = createSeededLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId,
     })
     const resolveBody = {
@@ -538,7 +540,7 @@ describe('local secret resolution HTTP route', () => {
     const disabledClient = createSeededLocalClient({
       localSecretResolutionEnabled: false,
       secretCodec: availableCodec,
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId,
     })
     const disabledServer = await fixture.start({
@@ -575,7 +577,7 @@ describe('local secret resolution HTTP route', () => {
     const workspaceB = initializeWorkspace(rootB, { createId: () => 'secret-ws-b' })
     const manager = createLocalWorkspaceManager({
       createClient: (options) => createLocalValedictorianClient({ ...options, seedDataMode: 'none' }),
-      registryStore: createFileWorkspaceRegistryStore(createTempSqlitePath()),
+      registryStore: createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json')),
       secretCodec: availableCodec,
     })
     await manager.open({ path: workspaceA.rootPath })

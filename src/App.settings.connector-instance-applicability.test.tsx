@@ -125,7 +125,10 @@ describe('connector instance applicability', () => {
   })
 
   it('creates, configures, and runs the current Jobright connector through Settings', async () => {
-    const sqlitePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'settings-jobright-')), 'valedictorian.sqlite')
+    const pgliteDataPath = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'settings-jobright-')),
+      'pglite',
+    )
     const connector: AppJobConnector = {
       definition: {
         id: 'jobright.resolver',
@@ -173,7 +176,7 @@ describe('connector instance applicability', () => {
         encrypt: (value) => `enc:${value}`,
       },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-settings-jobright',
     })
 

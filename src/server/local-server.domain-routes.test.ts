@@ -5,7 +5,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
 import { createLocalWorkspaceManager } from './local-workspaces'
-import { createBoundaryWorkspaceClient as createBoundaryTestClient, createSeededLocalClient as createLocalValedictorianClient, createTempSqlitePath, readJson, createLocalServerHttpTestFixture } from './local-server.http-test-harness'
+import {
+  createBoundaryWorkspaceClient as createBoundaryTestClient,
+  createLocalServerHttpTestFixture,
+  createSeededLocalClient as createLocalValedictorianClient,
+  createTempDatabasePath,
+  createTempFilePath,
+  readJson,
+} from './local-server.http-test-harness'
 
 describe('local Valedictorian HTTP server', () => {
   const fixture = createLocalServerHttpTestFixture()
@@ -22,7 +29,7 @@ describe('local Valedictorian HTTP server', () => {
     initializeWorkspace(secondRoot, {
       createId: () => 'workspace-collision',
     })
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     await registryStore.markOpened({
       id: firstWorkspace.id,
       name: firstWorkspace.name,
@@ -73,7 +80,7 @@ describe('local Valedictorian HTTP server', () => {
       string,
       unknown
     >
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     await registryStore.markOpened({
       id: firstWorkspace.id,
       name: firstWorkspace.name,
@@ -120,7 +127,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('records and clears a workspace latest error around backend load attempts', async () => {
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-error-'))
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     const workspaceManager = createLocalWorkspaceManager({
       createId: () => 'workspace-error',
       now: () => new Date('2026-06-12T15:00:00.000Z'),
@@ -173,7 +180,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('exposes write-only workspace secrets without a legacy sensitive profile route', async () => {
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-secrets-'))
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     const workspaceManager = createLocalWorkspaceManager({
       createId: () => 'workspace-secrets',
       registryStore,
@@ -271,7 +278,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('lists and gets applications with auth, filters, and pagination', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -305,7 +312,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('lists action queue rows with auth, action bucket filtering, and pagination', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -331,7 +338,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves profile update, read, and non-secret agent context routes', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -408,7 +415,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves workflow runs and sourcing findings routes', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -704,7 +711,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('returns a bad request for invalid action queue buckets', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -725,7 +732,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves policy config, evidence, and scheduler-ready evaluation endpoints', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',

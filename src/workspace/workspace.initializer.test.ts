@@ -11,7 +11,7 @@ function createTempWorkspaceRoot() {
 }
 
 describe('workspace initializer', () => {
-  it('creates the workspace manifest, app settings, database folder, and editable folders', () => {
+  it('creates workspace metadata and editable folders while deferring local persistence', () => {
     const rootPath = createTempWorkspaceRoot()
 
     const workspace = initializeWorkspace(rootPath, {
@@ -26,7 +26,7 @@ describe('workspace initializer', () => {
       rootPath,
       dataPath: layout.dataPath,
       appSettingsPath: layout.appSettingsPath,
-      sqlitePath: layout.sqlitePath,
+      pgliteDataPath: layout.pgliteDataPath,
     })
     expect(JSON.parse(fs.readFileSync(layout.manifestPath, 'utf8'))).toEqual({
       app: 'valedictorian',
@@ -39,6 +39,7 @@ describe('workspace initializer', () => {
     expect(JSON.parse(fs.readFileSync(layout.appSettingsPath, 'utf8'))).toEqual(
       defaultAppSettings,
     )
+    expect(fs.existsSync(layout.pgliteDataPath)).toBe(false)
     expect(fs.existsSync(layout.automationsPath)).toBe(true)
     expect(fs.existsSync(layout.promptsPath)).toBe(true)
     expect(fs.existsSync(layout.templatesPath)).toBe(true)

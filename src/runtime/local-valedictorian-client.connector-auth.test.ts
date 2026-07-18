@@ -8,9 +8,10 @@ import { createSqliteConnectorRepository } from '../modules/connectors/connector
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createSqliteSecretService } from '../modules/secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
-function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
+function createTempDatabasePath() {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
 }
 
 
@@ -33,11 +34,11 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('runs connector status reconnect and skip actions through the local client', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const client = createRuntimeLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)
 
@@ -149,9 +150,9 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('returns unsupported reconnect when connector-owned validateAuth is unavailable', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const client = createRuntimeLocalValedictorianClient({ sqlitePath })
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = createTempDatabasePath()
+    const client = createRuntimeLocalValedictorianClient({ pgliteDataPath })
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)
 
@@ -188,7 +189,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('validates Jobright credentials through connector-owned validateAuth without plaintext', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const secretValue = JSON.stringify({
       username: 'demo@example.com',
       password: ' pass with spaces ',
@@ -236,9 +237,9 @@ describe('runtime local Valedictorian client', () => {
         createJobrightConnector({ fetch: fetchImpl }),
       ]),
       secretCodec,
-      sqlitePath,
+      pgliteDataPath,
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)
     const secretService = createSqliteSecretService(

@@ -8,7 +8,7 @@ import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempSqlitePath as createTempSqlitePath,
+  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
   createValedictorianHttpServer,
   readScheduleHttpJson as readJson,
@@ -25,14 +25,14 @@ describe('local server connector schedule management', () => {
 
   it('creates and reads an interval schedule when scheduling capability is injected', async () => {
     const workspaceId = 'schedule-create-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const now = () => new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -89,14 +89,14 @@ describe('local server connector schedule management', () => {
 
   it('reloads a persisted schedule from the same workspace sqlite file', async () => {
     const workspaceId = 'schedule-reload-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const now = () => new Date('2026-07-11T12:00:00.000Z')
     const options = {
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now,
       seedDataMode: 'none' as const,
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     }
     const writer = createLocalValedictorianClient(options)
@@ -130,7 +130,7 @@ describe('local server connector schedule management', () => {
       connectorScheduling: availableSchedulingCapability,
       now,
       seedDataMode: 'none',
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId: 'workspace-a',
     })
     const second = createLocalValedictorianClient({
@@ -138,7 +138,7 @@ describe('local server connector schedule management', () => {
       connectorScheduling: availableSchedulingCapability,
       now,
       seedDataMode: 'none',
-      sqlitePath: createTempSqlitePath(),
+      pgliteDataPath: createTempDatabasePath(),
       workspaceId: 'workspace-b',
     })
 
@@ -175,14 +175,14 @@ describe('local server connector schedule management', () => {
 
   it('updates a schedule only with the exact expected revision', async () => {
     const workspaceId = 'schedule-edit-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -249,14 +249,14 @@ describe('local server connector schedule management', () => {
 
   it('pauses a schedule with exact revision and appends a sanitized audit event', async () => {
     const workspaceId = 'schedule-pause-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -336,14 +336,14 @@ describe('local server connector schedule management', () => {
 
   it('resumes a paused schedule from resume time without catch-up replay', async () => {
     const workspaceId = 'schedule-resume-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -401,14 +401,14 @@ describe('local server connector schedule management', () => {
 
   it('deletes a schedule with exact revision and keeps sanitized delete audit history', async () => {
     const workspaceId = 'schedule-delete-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -468,13 +468,13 @@ describe('local server connector schedule management', () => {
 
   it('rejects invalid IANA timezones before persistence with no audit side effects', async () => {
     const workspaceId = 'schedule-invalid-zone-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -526,13 +526,13 @@ describe('local server connector schedule management', () => {
 
   it('rejects unsupported cadence discriminators with typed invalid_cadence and no persistence', async () => {
     const workspaceId = 'schedule-invalid-cadence-kind-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -583,13 +583,13 @@ describe('local server connector schedule management', () => {
 
   it('rejects intervals below the capability minimum before persistence', async () => {
     const workspaceId = 'schedule-too-frequent-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -629,13 +629,13 @@ describe('local server connector schedule management', () => {
 
   it('rejects client-supplied server-owned schedule fields before persistence', async () => {
     const workspaceId = 'schedule-spoof-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -685,7 +685,7 @@ describe('local server connector schedule management', () => {
 
   it('rejects cadence kinds outside the injected capability before persistence', async () => {
     const workspaceId = 'schedule-invalid-cadence-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const limitedCapability: Extract<ConnectorSchedulingCapability, { available: true }> = {
       ...availableSchedulingCapability,
       supportedCadences: ['interval'],
@@ -695,7 +695,7 @@ describe('local server connector schedule management', () => {
       connectorScheduling: limitedCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -735,14 +735,14 @@ describe('local server connector schedule management', () => {
 
   it('allows recreate after delete while preserving prior sanitized audit history', async () => {
     const workspaceId = 'schedule-delete-recreate-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 

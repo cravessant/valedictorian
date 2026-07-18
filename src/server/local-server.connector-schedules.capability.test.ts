@@ -7,7 +7,7 @@ import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempSqlitePath as createTempSqlitePath,
+  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
   createValedictorianHttpServer,
   readScheduleHttpJson as readJson,
@@ -24,7 +24,7 @@ describe('local server connector schedule capability', () => {
 
   it('reports connector scheduling unavailable by default', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -36,11 +36,11 @@ describe('local server connector schedule capability', () => {
 
   it('rejects schedule upsert with typed unavailable error and no persisted schedule', async () => {
     const workspaceId = 'schedule-unavailable-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -90,11 +90,11 @@ describe('local server connector schedule capability', () => {
 
   it('rejects schedule pause with typed unavailable error and no persisted schedule', async () => {
     const workspaceId = 'schedule-pause-unavailable-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -141,11 +141,11 @@ describe('local server connector schedule capability', () => {
 
   it('rejects schedule dispatchDue with typed unavailable error and no persisted schedule', async () => {
     const workspaceId = 'schedule-dispatch-unavailable-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -192,13 +192,13 @@ describe('local server connector schedule capability', () => {
 
   it('derives capability reporting from the workspace client so contradictory server injection cannot disagree', async () => {
     const workspaceId = 'schedule-capability-owner-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 

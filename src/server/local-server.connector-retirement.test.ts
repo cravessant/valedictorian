@@ -7,12 +7,10 @@ import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../d
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createLocalServerHttpTestFixture } from './local-server.http-test-harness'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
-function createTempSqlitePath() {
-  return path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-http-')),
-    'valedictorian.sqlite',
-  )
+function createTempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-http-'))
 }
 
 describe('local connector retirement HTTP contract', () => {
@@ -22,8 +20,8 @@ describe('local connector retirement HTTP contract', () => {
   afterEach(() => fixture.teardown())
 
   it('retires a stale connector through the typed workspace client and persists across restart', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const setup = createFileDatabase(sqlitePath)
+    const pgliteDataPath = createTempDatabasePath()
+    const setup = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(setup)
     await createSqliteConnectorRepository(createDrizzleDatabase(setup)).upsertInstance({
       id: 'stale-http-connector',
@@ -37,7 +35,7 @@ describe('local connector retirement HTTP contract', () => {
     const localClient = createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-retirement',
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
@@ -60,21 +58,21 @@ describe('local connector retirement HTTP contract', () => {
     const restarted = createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-retirement',
     })
     await expect(restarted.connectors.list()).resolves.toEqual({ items: [] })
   })
 
   it('returns the sanitized typed conflict for active work through HTTP', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const localClient = createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-retirement',
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
     await repository.upsertInstance({
       id: 'active-http-connector',

@@ -12,13 +12,14 @@ import {
 import { createSqliteConnectorRepository } from '../connectors/connector.repository'
 import { createSqliteRawSourceRepository } from './raw-source.repository'
 import { createProviderUrlResolutionRepository } from './provider-url-resolution.repository'
+import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 
 describe('provider URL resolution repository', () => {
   it('resumes a pending operation after reopen and atomically claims it once', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-work-'))
-    const sqlitePath = path.join(directory, 'workspace.sqlite')
+    const pgliteDataPath = path.join(directory, 'pglite')
     const clock = new Date('2026-07-16T12:00:00.000Z')
-    const firstSqlite = createFileDatabase(sqlitePath)
+    const firstSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(firstSqlite)
     const firstDatabase = createDrizzleDatabase(firstSqlite)
     const connectors = createSqliteConnectorRepository(firstDatabase)
@@ -97,7 +98,7 @@ describe('provider URL resolution repository', () => {
     expect(interruptedClaim).not.toBeNull()
     firstSqlite.close()
 
-    const reopenedSqlite = createFileDatabase(sqlitePath)
+    const reopenedSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const reopenedDatabase = createDrizzleDatabase(reopenedSqlite)
     const reopened = createProviderUrlResolutionRepository(
       reopenedDatabase,

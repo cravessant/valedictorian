@@ -21,12 +21,9 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('round-trips a sparse CLI record through the released workspace client', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath }),
+      client: createLocalValedictorianClient({ pgliteDataPath }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -70,12 +67,9 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('keeps repeated unbound imports as separate provisional records', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath }),
+      client: createLocalValedictorianClient({ pgliteDataPath }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -105,12 +99,9 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('does not infer revision ownership for changing unbound imports', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath }),
+      client: createLocalValedictorianClient({ pgliteDataPath }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -137,12 +128,9 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('keeps non-connector submissions provisional and separate', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath }),
+      client: createLocalValedictorianClient({ pgliteDataPath }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -170,12 +158,9 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('rolls back an invalid batch and preserves receipt order', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath }),
+      client: createLocalValedictorianClient({ pgliteDataPath }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -220,8 +205,8 @@ describe('raw source ledger HTTP API', () => {
 
   it('isolates workspaces and returns typed 404s for encoded raw ids', async () => {
     const workspaceClients = new Map([
-      ['workspace / one', createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })],
-      ['workspace two', createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })],
+      ['workspace / one', createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })],
+      ['workspace two', createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })],
     ])
     server = await createValedictorianHttpServer({
       client: workspaceClients.get('workspace / one')!,
@@ -257,7 +242,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('hashes canonical revision content independent of object key order', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -295,7 +280,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('enforces raw payload, evidence, and batch contract limits', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -340,7 +325,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('rejects recursive sensitive keys without leaking their values', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -377,7 +362,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('rejects credential-bearing HTTP URLs across raw envelopes atomically without echoing credentials', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -440,7 +425,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('rejects sensitive aliases and unknown properties across the raw envelope atomically', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -536,7 +521,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('rejects a declared raw batch body above 128 MiB before accumulation', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -567,7 +552,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('commits raw intake then exposes a passed deterministic normalization result', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -644,9 +629,9 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('persists needs-enrichment across restart and reuses an exact terminal run', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath }), host: '127.0.0.1', port: 0,
+      client: createLocalValedictorianClient({ pgliteDataPath }), host: '127.0.0.1', port: 0,
     })
     let rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-1').sourcing.rawRecords
@@ -672,7 +657,7 @@ describe('raw source ledger HTTP API', () => {
 
     await server.close()
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath }), host: '127.0.0.1', port: 0,
+      client: createLocalValedictorianClient({ pgliteDataPath }), host: '127.0.0.1', port: 0,
     })
     rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-1').sourcing.rawRecords
@@ -694,7 +679,7 @@ describe('raw source ledger HTTP API', () => {
       ...defaults.resolvers,
     ])
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), normalizationRegistry: registry }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath(), normalizationRegistry: registry }),
       host: '127.0.0.1', port: 0,
     })
     const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
@@ -765,7 +750,7 @@ describe('raw source ledger HTTP API', () => {
       ...defaultsWithoutCompany,
     ])
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), normalizationRegistry: registry }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath(), normalizationRegistry: registry }),
       host: '127.0.0.1', port: 0,
     })
     const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
@@ -792,8 +777,8 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('keeps persisted normalization isolated behind encoded workspace routes', async () => {
-    const firstClient = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), workspaceId: 'workspace / one' })
-    const secondClient = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), workspaceId: 'workspace / two' })
+    const firstClient = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath(), workspaceId: 'workspace / one' })
+    const secondClient = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath(), workspaceId: 'workspace / two' })
     server = await createValedictorianHttpServer({
       client: firstClient, host: '127.0.0.1', port: 0,
       resolveWorkspaceClient: (workspaceId) => workspaceId === 'workspace / one' ? firstClient : secondClient,
@@ -811,9 +796,9 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('persists exact replay history across restart without crossing workspace boundaries', async () => {
-    const firstPath = createTempSqlitePath()
-    const firstClient = createLocalValedictorianClient({ sqlitePath: firstPath, workspaceId: 'workspace / one' })
-    const secondClient = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath(), workspaceId: 'workspace / two' })
+    const firstPath = createTempDatabasePath()
+    const firstClient = createLocalValedictorianClient({ pgliteDataPath: firstPath, workspaceId: 'workspace / one' })
+    const secondClient = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath(), workspaceId: 'workspace / two' })
     server = await createValedictorianHttpServer({
       client: firstClient, host: '127.0.0.1', port: 0,
       resolveWorkspaceClient: (workspaceId) => workspaceId === 'workspace / one' ? firstClient : secondClient,
@@ -883,7 +868,7 @@ describe('raw source ledger HTTP API', () => {
     expect(replayed.attempts.map(({ id }) => id)).not.toEqual(before.attempts.map(({ id }) => id))
 
     await server.close()
-    const restarted = createLocalValedictorianClient({ sqlitePath: firstPath, workspaceId: 'workspace / one' })
+    const restarted = createLocalValedictorianClient({ pgliteDataPath: firstPath, workspaceId: 'workspace / one' })
     server = await createValedictorianHttpServer({ client: restarted, host: '127.0.0.1', port: 0 })
     root = createHttpValedictorianClient({ baseUrl: server.url })
     first = root.forWorkspace('workspace / one').sourcing.rawRecords
@@ -892,7 +877,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('bounds replay request bodies before parsing or persistence', async () => {
     server = await createValedictorianHttpServer({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -913,9 +898,6 @@ describe('raw source ledger HTTP API', () => {
   })
 })
 
-function createTempSqlitePath() {
-  return path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-')),
-    'valedictorian.sqlite',
-  )
+function createTempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
 }

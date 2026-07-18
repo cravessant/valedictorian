@@ -7,9 +7,10 @@ import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../d
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
-function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
+function createTempDatabasePath() {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
 }
 
 describe('runtime local Valedictorian client retry ownership dispatch', () => {
@@ -31,7 +32,7 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
   })
 
   it('dispatches acquired normalization work by trusted ownership and fails unavailable owners without refresh', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const refresh = vi.fn(async () => {
       throw new Error('Connector refresh must not run for untrusted normalization ownership')
     })
@@ -70,9 +71,9 @@ describe('runtime local Valedictorian client retry ownership dispatch', () => {
       normalizationRegistry: createNormalizationResolverRegistry([resolver, unaffectedResolver]),
       now: () => new Date('2026-07-11T12:01:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)

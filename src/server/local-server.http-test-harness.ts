@@ -9,8 +9,14 @@ import {
   type StartedValedictorianHttpServer,
 } from './local-server'
 
-export function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-')), 'valedictorian.sqlite')
+export function createTempDatabasePath() {
+  const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-'))
+  return path.join(rootPath, 'pglite')
+}
+
+export function createTempFilePath(fileName: string) {
+  const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-file-'))
+  return path.join(rootPath, fileName)
 }
 
 export function createSeededLocalClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {

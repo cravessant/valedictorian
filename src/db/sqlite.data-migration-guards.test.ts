@@ -616,7 +616,7 @@ describe('SQLite database', () => {
   it('enables local file database pragmas for agent access', () => {
     const databasePath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-pragmas-')),
-      'valedictorian.sqlite',
+      'database.sqlite',
     )
     const database = createFileDatabase(databasePath)
 

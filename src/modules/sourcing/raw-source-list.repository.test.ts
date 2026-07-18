@@ -6,6 +6,7 @@ import { rawSourceRecordsListResultSchema } from 'sparxie'
 import { createDrizzleDatabase, createFileDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createSqliteConnectorRepository } from '../connectors/connector.repository'
 import { createSqliteRawSourceRepository } from './raw-source.repository'
+import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 
 describe('raw source repository list', () => {
   const databases: ReturnType<typeof createInMemoryDatabase>[] = []
@@ -323,11 +324,8 @@ describe('raw source repository list', () => {
   })
 
   it('preserves deterministic pages after the workspace database reopens', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-list-reopen-')),
-      'valedictorian.sqlite',
-    )
-    let sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-list-reopen-'))
+    let sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     let repository = createSqliteRawSourceRepository(
       createDrizzleDatabase(sqlite),
@@ -338,7 +336,7 @@ describe('raw source repository list', () => {
     const before = await repository.list({ limit: 1 })
     sqlite.close()
 
-    sqlite = createFileDatabase(sqlitePath)
+    sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     repository = createSqliteRawSourceRepository(createDrizzleDatabase(sqlite))
     const after = await repository.list({ limit: 1 })
     const continuation = await repository.list({ limit: 1, cursor: after.nextCursor! })

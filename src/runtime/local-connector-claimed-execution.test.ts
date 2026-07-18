@@ -7,18 +7,16 @@ import { createSqliteConnectorRepository } from '../modules/connectors/connector
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createConnectorRunner } from '../modules/connectors/connector.runner'
 import { executeClaimedConnectorRun } from './local-connector-claimed-execution'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
-function createTempSqlitePath() {
-  return path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-claimed-exec-')),
-    'valedictorian.sqlite',
-  )
+function createTempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-claimed-exec-'))
 }
 
 describe('shared claimed connector run executor', () => {
   it('reconciles a trusted package upgrade before executing an already-claimed run', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = createTempDatabasePath()
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)
@@ -121,8 +119,8 @@ describe('shared claimed connector run executor', () => {
   })
 
   it('marks the claimed run failed when registry preflight cannot resolve the connector', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = createTempDatabasePath()
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)
@@ -179,8 +177,8 @@ describe('shared claimed connector run executor', () => {
   })
 
   it('marks the claimed run failed when connector refresh throws', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = createTempDatabasePath()
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)

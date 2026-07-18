@@ -11,18 +11,16 @@ import {
   createSourceExecutionGovernor,
 } from '../modules/source-execution/source-execution-governor'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
-function createTempSqlitePath() {
-  return path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-')),
-    'valedictorian.sqlite',
-  )
+function createTempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-'))
 }
 
 describe('local connector instance retirement', () => {
   it('retires an unregistered connector without loading its implementation or authentication', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const setup = createFileDatabase(sqlitePath)
+    const pgliteDataPath = createTempDatabasePath()
+    const setup = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(setup)
     await createSqliteConnectorRepository(createDrizzleDatabase(setup)).upsertInstance({
       id: 'stale-connector',
@@ -58,7 +56,7 @@ describe('local connector instance retirement', () => {
         })),
       },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-retirement',
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
@@ -80,14 +78,14 @@ describe('local connector instance retirement', () => {
   })
 
   it('returns a typed conflict and preserves the instance when queued work is active', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const client = createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
     await repository.upsertInstance({
       id: 'connector-with-active-work',
@@ -119,7 +117,7 @@ describe('local connector instance retirement', () => {
   })
 
   it('destroys connector-owned session credentials while preserving workspace secret administration', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const client = createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       secretCodec: {
@@ -127,10 +125,10 @@ describe('local connector instance retirement', () => {
         encrypt: (value) => `encrypted:${value}`,
       },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
     const instance = await createSqliteConnectorRepository(database).upsertInstance({
       id: 'connector-with-session',
@@ -169,14 +167,14 @@ describe('local connector instance retirement', () => {
   })
 
   it('fences a late refresh completion from recreating a retired connector session', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const client = createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
     const instance = await createSqliteConnectorRepository(database).upsertInstance({
       id: 'connector-refreshing-during-retirement',
@@ -205,15 +203,15 @@ describe('local connector instance retirement', () => {
   })
 
   it('retires mutable execution state while preserving checkpoints and historical sourcing lineage', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const retiredAt = '2026-07-13T16:00:00.000Z'
     const client = createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date(retiredAt),
     })
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
     const repository = createSqliteConnectorRepository(database)
     const instance = await repository.upsertInstance({

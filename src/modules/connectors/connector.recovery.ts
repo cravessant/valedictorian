@@ -1,8 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 
 export interface ConnectorRunRecoveryScope {
-  sqlitePath: string
+  pgliteDataPath: string
   workspaceId: string
 }
 
@@ -17,7 +18,7 @@ export function createConnectorRunRecoveryLifecycle(): ConnectorRunRecoveryLifec
     activate(scope, recover) {
       const key = JSON.stringify([
         scope.workspaceId,
-        ...resolvePhysicalDatabaseIdentity(scope.sqlitePath),
+        ...resolvePhysicalDatabaseIdentity(resolveDatabaseFilePath(scope.pgliteDataPath)),
       ])
 
       if (activeScopes.has(key)) {
@@ -31,9 +32,9 @@ export function createConnectorRunRecoveryLifecycle(): ConnectorRunRecoveryLifec
   }
 }
 
-function resolvePhysicalDatabaseIdentity(sqlitePath: string): string[] {
+function resolvePhysicalDatabaseIdentity(databasePath: string): string[] {
   try {
-    const stats = fs.statSync(sqlitePath, { bigint: true })
+    const stats = fs.statSync(databasePath, { bigint: true })
 
     return [
       'file',
@@ -42,7 +43,7 @@ function resolvePhysicalDatabaseIdentity(sqlitePath: string): string[] {
       stats.birthtimeNs.toString(),
     ]
   } catch {
-    const absolutePath = path.resolve(sqlitePath)
+    const absolutePath = path.resolve(databasePath)
     const parentPath = path.dirname(absolutePath)
     let physicalParentPath = parentPath
 

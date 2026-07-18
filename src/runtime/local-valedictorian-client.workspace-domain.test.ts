@@ -15,6 +15,7 @@ import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../d
 import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
   return createRuntimeLocalValedictorianClient({
@@ -23,8 +24,8 @@ function createLocalValedictorianClient(options: Parameters<typeof createRuntime
   })
 }
 
-function createTempSqlitePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'valedictorian.sqlite')
+function createTempDatabasePath() {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
 }
 
 
@@ -47,15 +48,15 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('starts with an empty application list by default', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const client = createRuntimeLocalValedictorianClient({ sqlitePath })
+    const pgliteDataPath = createTempDatabasePath()
+    const client = createRuntimeLocalValedictorianClient({ pgliteDataPath })
 
     await expect(client.applications.list()).resolves.toMatchObject({
       items: [],
       total: 0,
     })
 
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const migrationRows = sqlite
       .prepare('select created_at from __drizzle_migrations order by created_at')
       .all()
@@ -68,13 +69,13 @@ describe('runtime local Valedictorian client', () => {
     expect(() =>
       createRuntimeLocalValedictorianClient({
         seedDataMode: 'reference-tracker',
-        sqlitePath: createTempSqlitePath(),
+        pgliteDataPath: createTempDatabasePath(),
       }),
     ).toThrow('VALEDICTORIAN_REFERENCE_TRACKER_PATH')
   })
 
   it('lists seeded applications with query filters and pagination', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
 
     await expect(
       client.applications.list({
@@ -98,7 +99,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('gets and updates application status through the local client', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
 
     await expect(client.applications.get('application-astranis-backend')).resolves.toMatchObject({
       companyName: 'Astranis Space Technologies',
@@ -121,7 +122,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('starts and lists application attempts through the local client', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
 
     const attempt = await (client.applications as typeof client.applications & {
       attempts: {
@@ -161,8 +162,8 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('records scores and updates the current application score', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const client = createLocalValedictorianClient({ sqlitePath })
+    const pgliteDataPath = createTempDatabasePath()
+    const client = createLocalValedictorianClient({ pgliteDataPath })
 
     await expect(client.scores.record({
       applicationId: 'application-jobster-analytics',
@@ -195,7 +196,7 @@ describe('runtime local Valedictorian client', () => {
       currentPriorityScore: 7,
     })
 
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
 
     expect(database.select().from(applicationScores).all()).toHaveLength(4)
@@ -203,7 +204,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('persists profile data and returns non-secret agent context', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
 
     await client.profile.update({
       answers: [
@@ -254,7 +255,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('starts workflow runs and promotes sourcing findings through the local client', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
 
     const run = await client.runs.start({
       runType: 'sourcing',
@@ -287,7 +288,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('processes sourcing candidates through the local client', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
     const run = await client.runs.start({
       runType: 'sourcing',
       actorType: 'agent',
@@ -326,8 +327,8 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('does not seed sourcing findings when an existing local database already has applications', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = createTempDatabasePath()
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const now = '2026-06-04T16:00:00.000Z'
@@ -382,7 +383,7 @@ describe('runtime local Valedictorian client', () => {
       .run()
     sqlite.close()
 
-    const client = createLocalValedictorianClient({ sqlitePath })
+    const client = createLocalValedictorianClient({ pgliteDataPath })
 
     const findings = await client.sourcing.findings.list()
 
@@ -391,8 +392,8 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('does not backfill sample attempts into an existing local database', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const sqlite = createFileDatabase(sqlitePath)
+    const pgliteDataPath = createTempDatabasePath()
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const now = '2026-06-04T16:00:00.000Z'
@@ -447,12 +448,12 @@ describe('runtime local Valedictorian client', () => {
       .run()
     sqlite.close()
 
-    const client = createLocalValedictorianClient({ sqlitePath })
+    const client = createLocalValedictorianClient({ pgliteDataPath })
 
     const attempts = await client.applications.attempts.list({
       applicationId: 'application-astranis-backend',
     })
-    const seededSqlite = createFileDatabase(sqlitePath)
+    const seededSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const seededDatabase = createDrizzleDatabase(seededSqlite)
 
     expect(attempts).toMatchObject({
@@ -482,8 +483,8 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('lists connector status summaries through the local client', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const client = createRuntimeLocalValedictorianClient({ sqlitePath }) as ReturnType<
+    const pgliteDataPath = createTempDatabasePath()
+    const client = createRuntimeLocalValedictorianClient({ pgliteDataPath }) as ReturnType<
       typeof createRuntimeLocalValedictorianClient
     > & {
       connectors: {
@@ -527,7 +528,7 @@ describe('runtime local Valedictorian client', () => {
         }
       }
     }
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const database = createDrizzleDatabase(sqlite)
     const connectorRepository = createSqliteConnectorRepository(database)
 

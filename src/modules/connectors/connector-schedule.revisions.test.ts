@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
 import { createDrizzleDatabase, createFileDatabase } from '../../db/sqlite'
 import { createConnectorScheduleRepository } from '../connectors/connector-schedule.repository'
+import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempSqlitePath as createTempSqlitePath,
+  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
@@ -21,14 +22,14 @@ describe('connector schedule immutable revision snapshots', () => {
 
   it('retains immutable cadence/timezone/state snapshots across create, update, pause, resume, and delete', async () => {
     const workspaceId = 'schedule-revision-snapshots-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -96,7 +97,7 @@ describe('connector schedule immutable revision snapshots', () => {
       'upserted',
     ])
 
-    const inspectDb = createDrizzleDatabase(createFileDatabase(sqlitePath))
+    const inspectDb = createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)))
     const scheduleRepository = createConnectorScheduleRepository(inspectDb, () => clock)
     const snapshots = scheduleRepository.listRevisionSnapshots(created.id)
 

@@ -4,16 +4,17 @@ import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import {
   availableConnectorSchedulingCapability,
   createLocalValedictorianClient,
-  createScheduleHttpTempSqlitePath,
+  createScheduleHttpTempDatabasePath,
   createStaticConnectorRegistry,
 } from '../server/local-server.connector-schedules.http-fixture'
 import { createFileDatabase } from '../db/sqlite'
 import type { LocalScheduledWorkSource } from './local-scheduler'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('local connector capture retry guards', () => {
   it('does not advertise due retry work while its execution scope requires action', async () => {
     let clock = new Date('2026-07-15T12:00:00.000Z')
-    const sqlitePath = createScheduleHttpTempSqlitePath()
+    const pgliteDataPath = createScheduleHttpTempDatabasePath()
     const sources = new Map<string, LocalScheduledWorkSource>()
     const connector: AppJobConnector = {
       definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
@@ -50,7 +51,7 @@ describe('local connector capture retry guards', () => {
       connectorScheduling: availableConnectorSchedulingCapability,
       now: () => clock,
       registerScheduledWorkSource: (source) => sources.set(source.id, source),
-      seedDataMode: 'none', sqlitePath, workspaceId: 'retry-guard-workspace',
+      seedDataMode: 'none', pgliteDataPath, workspaceId: 'retry-guard-workspace',
     })
     await client.connectors.create({
       id: 'retry-guard-connector', connectorId: connector.definition.id,
@@ -63,7 +64,7 @@ describe('local connector capture retry guards', () => {
     clock = new Date(schedule.nextEligibleAt)
     await sources.get('connector-schedules')!.runDue()
 
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     sqlite.prepare(`update source_execution_scopes set status='cooldown', blocked_until='2026-07-15T12:20:00.000Z'`).run()
     await expect(sources.get('connector-capture-retries')!.nextDueAt())
       .resolves.toBe('2026-07-15T12:20:00.000Z')
@@ -76,7 +77,7 @@ describe('local connector capture retry guards', () => {
 
   it('blocks a due retry behind an active manual run without self-signalling a hot loop', async () => {
     let clock = new Date('2026-07-15T12:00:00.000Z')
-    const sqlitePath = createScheduleHttpTempSqlitePath()
+    const pgliteDataPath = createScheduleHttpTempDatabasePath()
     const sources = new Map<string, LocalScheduledWorkSource>()
     let signalCalls = 0
     let refreshCalls = 0
@@ -129,7 +130,7 @@ describe('local connector capture retry guards', () => {
         for (const source of sources.values()) source.onSignal?.()
       },
       registerScheduledWorkSource: (source) => sources.set(source.id, source),
-      seedDataMode: 'none', sqlitePath, workspaceId: 'retry-collision-workspace',
+      seedDataMode: 'none', pgliteDataPath, workspaceId: 'retry-collision-workspace',
     })
     await client.connectors.create({
       id: 'retry-collision-connector', connectorId: connector.definition.id,
@@ -141,7 +142,7 @@ describe('local connector capture retry guards', () => {
     })
     clock = new Date(schedule.nextEligibleAt)
     await sources.get('connector-schedules')!.runDue()
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     sqlite.prepare(`update retry_work set state='completed', next_attempt_at=null`).run()
 
     const manualRun = client.connectors.runs.trigger({

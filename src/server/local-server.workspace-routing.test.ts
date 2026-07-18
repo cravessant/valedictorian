@@ -11,7 +11,14 @@ import { createValedictorianRuntime } from '../runtime/valedictorian-runtime'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
 import { createLocalWorkspaceManager } from './local-workspaces'
-import { createBoundaryWorkspaceClient as createBoundaryTestClient, createSeededLocalClient as createLocalValedictorianClient, createTempSqlitePath, readJson, createLocalServerHttpTestFixture } from './local-server.http-test-harness'
+import {
+  createBoundaryWorkspaceClient as createBoundaryTestClient,
+  createLocalServerHttpTestFixture,
+  createSeededLocalClient as createLocalValedictorianClient,
+  createTempDatabasePath,
+  createTempFilePath,
+  readJson,
+} from './local-server.http-test-harness'
 
 describe('local Valedictorian HTTP server', () => {
   const fixture = createLocalServerHttpTestFixture()
@@ -21,7 +28,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves health and local capabilities', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ sqlitePath: createTempSqlitePath() }),
+      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -438,7 +445,7 @@ describe('local Valedictorian HTTP server', () => {
   })
 
   it('lists registered local workspaces from the registry', async () => {
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     await registryStore.markOpened(
       {
         id: 'workspace-1',
@@ -479,7 +486,7 @@ describe('local Valedictorian HTTP server', () => {
     const workspaceB = initializeWorkspace(rootB, { createId: () => 'projection-b' })
     const manager = createLocalWorkspaceManager({
       createClient: (options) => createRuntimeLocalValedictorianClient({ ...options, seedDataMode: 'none' }),
-      registryStore: createFileWorkspaceRegistryStore(createTempSqlitePath()),
+      registryStore: createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json')),
     })
     await manager.open({ path: workspaceA.rootPath }); await manager.open({ path: workspaceB.rootPath })
     const server = await fixture.start({
@@ -497,7 +504,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('opens an existing folder as a registered local workspace', async () => {
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-open-'))
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
 
     const server = await fixture.start({
       client: createBoundaryTestClient(() => {}),
@@ -539,7 +546,7 @@ describe('local Valedictorian HTTP server', () => {
   it('creates a workspace at a new path and registers it', async () => {
     const parentPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-create-parent-'))
     const workspaceRoot = path.join(parentPath, 'Created Search')
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
 
     const server = await fixture.start({
       client: createBoundaryTestClient(() => {}),
@@ -575,7 +582,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('auto-loads registered workspace data for workspace-scoped domain routes', async () => {
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-load-'))
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     const workspaceManager = createLocalWorkspaceManager({
       createId: () => 'workspace-loaded',
       now: () => new Date('2026-06-12T13:00:00.000Z'),
@@ -612,7 +619,7 @@ describe('local Valedictorian HTTP server', () => {
     const connectorInstanceId = 'connector-instance-surfaces'
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-surfaces-'))
     const workspace = initializeWorkspace(workspaceRoot, { createId: () => workspaceId })
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     let releaseRefresh: (() => void) | undefined
     const refreshGate = new Promise<void>((resolve) => {
       releaseRefresh = resolve
@@ -666,7 +673,7 @@ describe('local Valedictorian HTTP server', () => {
         apiUrl: 'http://127.0.0.1:0',
         mode: 'local-desktop',
         seedDataMode: 'none',
-        sqlitePath: workspace.sqlitePath,
+        pgliteDataPath: workspace.pgliteDataPath,
         workspaceId,
       },
       createLocalClient: createClient,
@@ -769,7 +776,7 @@ describe('local Valedictorian HTTP server', () => {
       fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-lifecycle-b-')),
       { createId: () => workspaceBId },
     )
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     let releaseRefresh: (() => void) | undefined
     const refreshGate = new Promise<void>((resolve) => {
       releaseRefresh = resolve
@@ -816,7 +823,7 @@ describe('local Valedictorian HTTP server', () => {
         apiUrl: 'http://127.0.0.1:0',
         mode: 'local-desktop',
         seedDataMode: 'none',
-        sqlitePath: workspace.sqlitePath,
+        pgliteDataPath: workspace.pgliteDataPath,
         workspaceId: workspace.id,
       },
       createLocalClient: createClient,
@@ -852,8 +859,8 @@ describe('local Valedictorian HTTP server', () => {
     await vi.waitFor(() => {
       expect(refreshCount).toBe(1)
     })
-    expect(fs.realpathSync(workspaceAAlias.sqlitePath)).toBe(
-      fs.realpathSync(workspaceAReal.sqlitePath),
+    expect(fs.realpathSync(workspaceAAlias.pgliteDataPath)).toBe(
+      fs.realpathSync(workspaceAReal.pgliteDataPath),
     )
     await firstRuntime.close()
 
@@ -915,7 +922,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('resolves local workspace clients without scheduling startup connector work', async () => {
     const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-client-'))
-    const registryStore = createFileWorkspaceRegistryStore(createTempSqlitePath())
+    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
     const clientOptions: Array<Parameters<typeof createRuntimeLocalValedictorianClient>[0]> = []
     const workspaceManager = createLocalWorkspaceManager({
       createClient(options) {

@@ -5,7 +5,7 @@ import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
-  createScheduleHttpTempSqlitePath as createTempSqlitePath,
+  createScheduleHttpTempDatabasePath as createTempDatabasePath,
   createStaticConnectorRegistry,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
@@ -21,7 +21,7 @@ describe('local server connector schedule dispatch', () => {
 
   it('executes an admitted due run exactly once through the shared connector path to a terminal result', async () => {
     const workspaceId = 'schedule-dispatch-execute-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let refreshCalls = 0
     const localClient = createLocalValedictorianClient({
@@ -47,7 +47,7 @@ describe('local server connector schedule dispatch', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -136,14 +136,14 @@ describe('local server connector schedule dispatch', () => {
 
   it('admits one due scheduled occurrence with exact run provenance and future eligibility', async () => {
     const workspaceId = 'schedule-dispatch-due-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -235,7 +235,7 @@ describe('local server connector schedule dispatch', () => {
 
   it('returns the same admitted occurrence for repeated dispatch of the same revision and nominal', async () => {
     const workspaceId = 'schedule-idempotent-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let refreshCalls = 0
     const localClient = createLocalValedictorianClient({
@@ -261,7 +261,7 @@ describe('local server connector schedule dispatch', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -329,7 +329,7 @@ describe('local server connector schedule dispatch', () => {
 
   it('defers due dispatch when an active connector run exists without consuming the occurrence', async () => {
     const workspaceId = 'schedule-deferred-active-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let releaseRefresh: (() => void) | undefined
     const refreshGate = new Promise<void>((resolve) => {
@@ -356,7 +356,7 @@ describe('local server connector schedule dispatch', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -421,14 +421,14 @@ describe('local server connector schedule dispatch', () => {
 
   it('coalesces multiple missed interval nominals into one catch_up admission', async () => {
     const workspaceId = 'schedule-catch-up-coalesce-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -523,7 +523,7 @@ describe('local server connector schedule dispatch', () => {
 
   it('advances eligibility without admitting when all missed nominals are outside the catch-up horizon', async () => {
     const workspaceId = 'schedule-horizon-expired-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const limitedHorizon: typeof availableSchedulingCapability = {
       ...availableSchedulingCapability,
@@ -534,7 +534,7 @@ describe('local server connector schedule dispatch', () => {
       connectorScheduling: limitedHorizon,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -593,14 +593,14 @@ describe('local server connector schedule dispatch', () => {
 
   it('returns paused without consuming a due occurrence or advancing eligibility', async () => {
     const workspaceId = 'schedule-dispatch-paused-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -660,14 +660,14 @@ describe('local server connector schedule dispatch', () => {
 
   it('returns connector_disabled without consuming a due occurrence or advancing eligibility', async () => {
     const workspaceId = 'schedule-dispatch-disabled-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 
@@ -726,7 +726,7 @@ describe('local server connector schedule dispatch', () => {
 
   it('preserves an already active connector run when the schedule is paused', async () => {
     const workspaceId = 'schedule-pause-preserves-active-ws'
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let releaseRefresh: (() => void) | undefined
     const refreshGate = new Promise<void>((resolve) => {
@@ -753,7 +753,7 @@ describe('local server connector schedule dispatch', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId,
     })
 

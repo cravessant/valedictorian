@@ -13,10 +13,11 @@ import { createWorkspaceProfileMethods } from '../runtime/local-profile-secret-c
 import { createConnectorSecretResolver } from '../modules/secrets/connector-secret-resolver'
 import { createSqliteSecretService } from '../modules/secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
   createBoundaryWorkspaceClient,
   createSeededLocalClient as createLocalValedictorianClient,
-  createTempSqlitePath,
+  createTempDatabasePath,
   readJson,
   createLocalServerHttpTestFixture,
 } from './local-server.http-test-harness'
@@ -37,10 +38,10 @@ describe('local server profile document routes', () => {
   afterEach(() => fixture.teardown())
 
   async function startWorkspaceServer(options: { token?: string } = {}) {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const client = createLocalValedictorianClient({
       secretCodec: testCodec,
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-profile',
     })
     const server = await fixture.start({
@@ -50,11 +51,11 @@ describe('local server profile document routes', () => {
       resolveWorkspaceClient: async () => client,
       ...(options.token === undefined ? {} : { token: options.token }),
     })
-    return { client, server, sqlitePath }
+    return { client, server, pgliteDataPath }
   }
 
-  function trustedReveal(sqlitePath: string) {
-    const database = createDrizzleDatabase(createFileDatabase(sqlitePath))
+  function trustedReveal(pgliteDataPath: string) {
+    const database = createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)))
     return createConnectorSecretResolver(createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('workspace-profile')))
   }
 
@@ -159,12 +160,12 @@ describe('local server profile document routes', () => {
   })
 
   it('rejects ordinary HTTP administration of the reserved identity secret', async () => {
-    const { server, sqlitePath } = await startWorkspaceServer()
+    const { server, pgliteDataPath } = await startWorkspaceServer()
     const base = `${server.url}/v1/workspaces/workspace-profile`
     const identityCanary = 'identity-http-canary-5125'
 
     const secretService = createSqliteSecretService(
-      createDrizzleDatabase(createFileDatabase(sqlitePath)),
+      createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))),
       testCodec,
       createWorkspaceSecretScope('workspace-profile'),
     )
@@ -205,9 +206,9 @@ describe('local server profile document routes', () => {
   })
 
   it('round-trips opaque secret values including whitespace and empty string through HTTP upsert', async () => {
-    const { server, sqlitePath } = await startWorkspaceServer()
+    const { server, pgliteDataPath } = await startWorkspaceServer()
     const base = `${server.url}/v1/workspaces/workspace-profile`
-    const reveal = trustedReveal(sqlitePath)
+    const reveal = trustedReveal(pgliteDataPath)
 
     const spaced = await fetch(`${base}/secrets/spaced_password`, {
       body: JSON.stringify({

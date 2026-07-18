@@ -10,8 +10,9 @@ import {
   createNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
-  createScheduleHttpTempSqlitePath,
+  createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
 } from './local-server.connector-schedules.http-fixture'
@@ -35,14 +36,14 @@ describe('persisted connector package upgrades', () => {
   })
 
   it('reconciles a trusted newer package and resumes its durable provider checkpoint through HTTP', async () => {
-    const sqlitePath = createScheduleHttpTempSqlitePath()
+    const pgliteDataPath = createScheduleHttpTempDatabasePath()
     const oldConnector = createUpgradeConnector(OLD_PACKAGE_VERSION)
     const oldClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([oldConnector]),
       normalizationRegistry: createUpgradeNormalizationRegistry(false),
       now: () => new Date(CLOCK),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: WORKSPACE_ID,
     })
     await oldClient.connectors.create({
@@ -96,7 +97,7 @@ describe('persisted connector package upgrades', () => {
     )
     expect(resolvedBeforeUpgrade.gate.status).toBe('passed')
 
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
     await repository.recordCheckpoint({
       connectorInstanceId: INSTANCE_ID,
@@ -126,7 +127,7 @@ describe('persisted connector package upgrades', () => {
       normalizationRegistry: createUpgradeNormalizationRegistry(true),
       now: () => new Date(CLOCK),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: WORKSPACE_ID,
     })
     server = await createValedictorianHttpServer({
@@ -222,11 +223,11 @@ describe('persisted connector package upgrades', () => {
   })
 
   it('resumes the same durable replay when version-marker persistence initially fails', async () => {
-    const sqlitePath = createScheduleHttpTempSqlitePath()
+    const pgliteDataPath = createScheduleHttpTempDatabasePath()
     const oldClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([createUpgradeConnector(OLD_PACKAGE_VERSION)]),
       normalizationRegistry: createUpgradeNormalizationRegistry(false),
-      now: () => new Date(CLOCK), seedDataMode: 'none', sqlitePath, workspaceId: WORKSPACE_ID,
+      now: () => new Date(CLOCK), seedDataMode: 'none', pgliteDataPath, workspaceId: WORKSPACE_ID,
     })
     await oldClient.connectors.create({
       id: INSTANCE_ID, connectorId: CONNECTOR_ID, connectorVersion: OLD_PACKAGE_VERSION,
@@ -252,14 +253,14 @@ describe('persisted connector package upgrades', () => {
     const upgradedClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([createUpgradeConnector(NEW_PACKAGE_VERSION)]),
       normalizationRegistry: createUpgradeNormalizationRegistry(true),
-      now: () => new Date(CLOCK), seedDataMode: 'none', sqlitePath, workspaceId: WORKSPACE_ID,
+      now: () => new Date(CLOCK), seedDataMode: 'none', pgliteDataPath, workspaceId: WORKSPACE_ID,
     })
     server = await createValedictorianHttpServer({
       client: upgradedClient, host: '127.0.0.1', port: 0,
       resolveWorkspaceClient: async () => upgradedClient,
     })
     const http = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(WORKSPACE_ID)
-    const failureDb = createFileDatabase(sqlitePath)
+    const failureDb = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     failureDb.exec(`
       create trigger fail_upgrade_version_marker
       before update of connector_version on connector_instances
@@ -275,7 +276,7 @@ describe('persisted connector package upgrades', () => {
     )
     expect(afterFailedMarker.gate.status).toBe('passed')
 
-    const recoveryDb = createFileDatabase(sqlitePath)
+    const recoveryDb = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     recoveryDb.exec('drop trigger fail_upgrade_version_marker')
     recoveryDb.close()
     await expect(http.connectors.runs.trigger({
@@ -289,7 +290,7 @@ describe('persisted connector package upgrades', () => {
     await expect(upgradedClient.connectors.list()).resolves.toMatchObject({
       items: [expect.objectContaining({ connectorVersion: NEW_PACKAGE_VERSION })],
     })
-    const verifyDb = createFileDatabase(sqlitePath)
+    const verifyDb = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(verifyDb.prepare(`
       select count(*) as count from normalization_replay_requests
       where id like 'connector-upgrade:%'

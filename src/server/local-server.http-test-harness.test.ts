@@ -3,17 +3,17 @@ import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,
   createSeededLocalClient,
-  createTempSqlitePath,
+  createTempDatabasePath,
   isolateReferenceTrackerEnvironment,
   readJson,
   startBoundaryServer,
 } from './local-server.http-test-harness'
 
 describe('local server HTTP test harness', () => {
-  it('provides a temporary SQLite path and seeded real local client', () => {
-    const sqlitePath = createTempSqlitePath()
-    expect(sqlitePath).toMatch(/valedictorian-server-.*valedictorian\.sqlite$/)
-    const client = createSeededLocalClient({ sqlitePath })
+  it('provides a temporary database path and seeded real local client', () => {
+    const pgliteDataPath = createTempDatabasePath()
+    expect(pgliteDataPath).toMatch(/valedictorian-server-/)
+    const client = createSeededLocalClient({ pgliteDataPath })
     expect(client.applications).toBeDefined()
   })
 

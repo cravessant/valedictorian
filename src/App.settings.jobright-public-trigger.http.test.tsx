@@ -149,10 +149,7 @@ describe('Jobright public trigger through default HTTP client', () => {
 })
 
 async function startFixtureServer() {
-  const sqlitePath = path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-public-trigger-')),
-    'valedictorian.sqlite',
-  )
+  const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-public-trigger-'))
   const connector = createJobrightFixtureConnector()
   const client = createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
@@ -162,7 +159,7 @@ async function startFixtureServer() {
       encrypt: (value) => `enc:${value}`,
     },
     seedDataMode: 'none',
-    sqlitePath,
+    pgliteDataPath,
     workspaceId: WORKSPACE_ID,
   })
   await client.connectors.create({

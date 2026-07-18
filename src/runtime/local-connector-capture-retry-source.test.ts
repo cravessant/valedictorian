@@ -4,7 +4,7 @@ import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import {
   availableConnectorSchedulingCapability,
   createLocalValedictorianClient,
-  createScheduleHttpTempSqlitePath,
+  createScheduleHttpTempDatabasePath,
   createStaticConnectorRegistry,
 } from '../server/local-server.connector-schedules.http-fixture'
 import { createLocalScheduler } from './local-scheduler'
@@ -72,7 +72,7 @@ describe('local connector capture retry scheduling', () => {
       onScheduledWorkChanged: () => scheduler.signal(),
       registerScheduledWorkSource: (source) => scheduler.register(source),
       seedDataMode: 'none',
-      sqlitePath: createScheduleHttpTempSqlitePath(),
+      pgliteDataPath: createScheduleHttpTempDatabasePath(),
       workspaceId: 'capture-retry-workspace',
     })
     await client.connectors.create({

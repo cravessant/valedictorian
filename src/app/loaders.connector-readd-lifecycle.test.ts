@@ -8,8 +8,9 @@ import { deriveSourceExecutionScopeId } from '../modules/source-execution/source
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import type { RendererBackendState } from '../ipc/valedictorian-http.preload'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from '../server/local-server'
-import { createTempSqlitePath } from '../server/local-server.http-test-harness'
+import { createTempDatabasePath } from '../server/local-server.http-test-harness'
 import { defaultConnectorsApi } from './loaders'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 const activeServers = new Set<StartedValedictorianHttpServer>()
 
@@ -21,8 +22,8 @@ afterEach(async () => {
 
 describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
   it('rejects resurrecting a retired connector-instance id as an immutable tombstone', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const client = createLocalValedictorianClient({ seedDataMode: 'none', sqlitePath })
+    const pgliteDataPath = createTempDatabasePath()
+    const client = createLocalValedictorianClient({ seedDataMode: 'none', pgliteDataPath })
     const server = await start(client)
     const workspace = createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-transport')
@@ -36,8 +37,8 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
   })
 
   it('creates a fresh Jobright instance after remove without reviving the retired id or scope', async () => {
-    const sqlitePath = createTempSqlitePath()
-    const client = createLocalValedictorianClient({ seedDataMode: 'none', sqlitePath })
+    const pgliteDataPath = createTempDatabasePath()
+    const client = createLocalValedictorianClient({ seedDataMode: 'none', pgliteDataPath })
     const server = await start(client)
     installRendererBinding(server.url, () => ({ origin: server.url, status: 'available' }))
 
@@ -53,7 +54,7 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
       items: [{ id: second.id, connectorId: 'jobright.resolver' }],
     })
 
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(sqlite.prepare(
       'select deleted_at as deletedAt from connector_instances where id = ?',
     ).get(first.id)).toEqual({ deletedAt: expect.any(String) })
@@ -74,11 +75,11 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
   })
 
   it('re-adds Jobright after process restart without copying retired schedule or retry state', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const retiredAt = '2026-07-13T16:00:00.000Z'
     const firstClient = createLocalValedictorianClient({
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date(retiredAt),
     })
     const firstServer = await start(firstClient)
@@ -86,7 +87,7 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
       .forWorkspace('workspace-transport')
 
     const first = await firstWorkspace.connectors.create(jobrightCreateInput('jobright-before-restart'))
-    const drizzle = createDrizzleDatabase(createFileDatabase(sqlitePath))
+    const drizzle = createDrizzleDatabase(createFileDatabase(resolveDatabaseFilePath(pgliteDataPath)))
     const schedule = createConnectorScheduleRepository(drizzle, () => new Date(retiredAt)).create({
       connectorInstanceId: first.id,
       state: 'active',
@@ -125,7 +126,7 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
 
     const restarted = createLocalValedictorianClient({
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date('2026-07-13T17:00:00.000Z'),
     })
     const restartedServer = await start(restarted)
@@ -137,7 +138,7 @@ describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
     expect(replacement.id).toBe('jobright-after-restart')
     expect(replacement.id).not.toBe(first.id)
 
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     expect(sqlite.prepare(
       'select deleted_at as deletedAt from connector_schedules where id = ?',
     ).get(schedule.id)).toEqual({ deletedAt: retiredAt })

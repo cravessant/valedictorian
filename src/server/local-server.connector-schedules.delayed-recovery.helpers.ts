@@ -2,6 +2,7 @@ import type { DispatchConnectorScheduleDueResult } from 'sparxie'
 import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
@@ -13,7 +14,7 @@ export const CONNECTOR_INSTANCE_ID = 'connector-instance-schedule'
 
 export async function seedHourlyScheduleWorkspace(input: {
   workspaceId: string
-  sqlitePath: string
+  pgliteDataPath: string
   now: () => Date
 }) {
   const client = createLocalValedictorianClient({
@@ -21,7 +22,7 @@ export async function seedHourlyScheduleWorkspace(input: {
     connectorScheduling: availableSchedulingCapability,
     now: input.now,
     seedDataMode: 'none',
-    sqlitePath: input.sqlitePath,
+    pgliteDataPath: input.pgliteDataPath,
     workspaceId: input.workspaceId,
   })
 
@@ -45,11 +46,11 @@ export async function seedHourlyScheduleWorkspace(input: {
 }
 
 export function admitScheduleDueOnly(input: {
-  sqlitePath: string
+  pgliteDataPath: string
   now: () => Date
   expectedRevision: string
 }): Extract<DispatchConnectorScheduleDueResult, { status: 'admitted' }> {
-  const sqlite = createFileDatabase(input.sqlitePath)
+  const sqlite = createFileDatabase(resolveDatabaseFilePath(input.pgliteDataPath))
   try {
     const admitted = admitConnectorScheduleDue({
       database: createDrizzleDatabase(sqlite),
@@ -69,8 +70,8 @@ export function admitScheduleDueOnly(input: {
   }
 }
 
-export function openScheduleSqlite(sqlitePath: string) {
-  const sqlite = createFileDatabase(sqlitePath)
+export function openScheduleSqlite(pgliteDataPath: string) {
+  const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
   const database = createDrizzleDatabase(sqlite)
   return {
     sqlite,
@@ -83,7 +84,7 @@ export function openScheduleSqlite(sqlitePath: string) {
 
 export function createReopenedScheduleClient(input: {
   workspaceId: string
-  sqlitePath: string
+  pgliteDataPath: string
   now: () => Date
   onRefresh?: AppJobConnector['refresh']
   connectorRegistry?: ReturnType<typeof createStaticConnectorRegistry>
@@ -122,7 +123,7 @@ export function createReopenedScheduleClient(input: {
     connectorScheduling: availableSchedulingCapability,
     now: input.now,
     seedDataMode: 'none',
-    sqlitePath: input.sqlitePath,
+    pgliteDataPath: input.pgliteDataPath,
     workspaceId: input.workspaceId,
   })
 

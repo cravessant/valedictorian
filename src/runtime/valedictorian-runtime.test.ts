@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ValedictorianClient, ValedictorianWorkspaceClient } from 'sparxie'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { createConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
+import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createValedictorianRuntime, resolveValedictorianRuntimeConfig } from './valedictorian-runtime'
 import type { LocalScheduler } from './local-scheduler'
 
@@ -67,12 +71,12 @@ describe('Valedictorian runtime config', () => {
       profilePath: '/Users/test/Library/Application Support/Valedictorian/profile.json',
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
-      sqlitePath: '/Users/test/Library/Application Support/Valedictorian/valedictorian.sqlite',
+      pgliteDataPath: '/Users/test/Library/Application Support/Valedictorian/pglite',
       workspaceId: undefined,
     })
   })
 
-  it('defaults the SQLite database path to the workspace data folder when present', () => {
+  it('defaults the PGlite data directory to the workspace data folder when present', () => {
     expect(
       resolveValedictorianRuntimeConfig({
         env: {},
@@ -81,7 +85,7 @@ describe('Valedictorian runtime config', () => {
       }),
     ).toMatchObject({
       profilePath: '/Users/test/Job Search/.valedictorian/profile.json',
-      sqlitePath: '/Users/test/Job Search/.valedictorian/valedictorian.sqlite',
+      pgliteDataPath: '/Users/test/Job Search/.valedictorian/pglite',
     })
   })
 
@@ -94,7 +98,7 @@ describe('Valedictorian runtime config', () => {
           VALEDICTORIAN_API_TOKEN: 'local-token',
           VALEDICTORIAN_MODE: 'local-shared',
           VALEDICTORIAN_SEED_DATA: 'sample',
-          VALEDICTORIAN_SQLITE_PATH: '/tmp/valedictorian.sqlite',
+          VALEDICTORIAN_PGLITE_DATA_PATH: '/tmp/valedictorian-pglite',
         },
         userDataPath: '/unused',
       }),
@@ -106,7 +110,7 @@ describe('Valedictorian runtime config', () => {
       mode: 'local-shared',
       referenceTrackerPath: undefined,
       seedDataMode: 'sample',
-      sqlitePath: '/tmp/valedictorian.sqlite',
+      pgliteDataPath: '/tmp/valedictorian-pglite',
     })
 
     expect(
@@ -150,7 +154,7 @@ describe('Valedictorian runtime config', () => {
       profilePath: '/Users/test/Library/Application Support/Valedictorian/profile.json',
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
-      sqlitePath: '/Users/test/Library/Application Support/Valedictorian/valedictorian.sqlite',
+      pgliteDataPath: '/Users/test/Library/Application Support/Valedictorian/pglite',
       workspaceId: undefined,
     })
 
@@ -335,7 +339,7 @@ describe('Valedictorian runtime creation', () => {
       },
       referenceTrackerPath: undefined,
       seedDataMode: 'none',
-      sqlitePath: '/tmp/valedictorian-user-data/valedictorian.sqlite',
+      pgliteDataPath: '/tmp/valedictorian-user-data/pglite',
     }))
     expect(createHttpClient).not.toHaveBeenCalled()
     expect(runtime.server).toBe(server)
@@ -477,6 +481,10 @@ describe('Valedictorian runtime creation', () => {
   })
 
   it('uses an HTTP client without SQLite or local server in remote mode', async () => {
+    const workspace = initializeWorkspace(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-remote-runtime-')),
+    )
+    expect(fs.existsSync(workspace.pgliteDataPath)).toBe(false)
     const workspaceClient = createWorkspaceClient('http')
     const forWorkspace = vi.fn(() => workspaceClient)
     const httpClient = createRootClient(workspaceClient, forWorkspace)
@@ -492,6 +500,7 @@ describe('Valedictorian runtime creation', () => {
           VALEDICTORIAN_MODE: 'remote',
         },
         userDataPath: '/tmp/valedictorian-user-data',
+        workspaceDataPath: workspace.dataPath,
         workspaceId: 'workspace-1',
       }),
       createHttpClient,
@@ -507,6 +516,7 @@ describe('Valedictorian runtime creation', () => {
     })
     expect(createLocalClient).not.toHaveBeenCalled()
     expect(startServer).not.toHaveBeenCalled()
+    expect(fs.existsSync(workspace.pgliteDataPath)).toBe(false)
     await runtime.close()
   })
 })

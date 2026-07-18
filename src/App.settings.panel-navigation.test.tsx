@@ -170,7 +170,7 @@ describe('settings panel navigation', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('Workspace path')).toHaveValue('/Users/keni/Job Search')
     })
-    expect(screen.getByLabelText('SQLite path')).toHaveValue('/Users/keni/Job Search/.valedictorian/valedictorian.sqlite')
+    expect(screen.getByLabelText('PGlite data path')).toHaveValue('/Users/keni/Job Search/.valedictorian/pglite')
     expect(screen.getByRole('button', { name: 'Choose workspace' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reveal workspace' })).toBeInTheDocument()
 

@@ -4,7 +4,7 @@ import { createStaticConnectorRegistry } from '../modules/connectors/connector.r
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import {
-  createScheduleHttpTempSqlitePath,
+  createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
 } from './local-server.connector-schedules.http-fixture'
@@ -48,7 +48,7 @@ describe('disabled connector execution', () => {
     const localClient = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       seedDataMode: 'none',
-      sqlitePath: createScheduleHttpTempSqlitePath(),
+      pgliteDataPath: createScheduleHttpTempDatabasePath(),
       workspaceId,
     })
     await localClient.connectors.create({

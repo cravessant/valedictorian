@@ -144,10 +144,7 @@ describe('runtime provider URL resolution', () => {
       nowMs: () => clock.getTime(),
       random: () => 0,
     })
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'published-provider-url-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'published-provider-url-'))
     const secretCodec = {
       encrypt: (value: string) => `enc:${value}`,
       decrypt: (value: string) => value.replace(/^enc:/, ''),
@@ -159,7 +156,7 @@ describe('runtime provider URL resolution', () => {
       registerScheduledWorkSource: (source) => registeredSources.push(source),
       secretCodec,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-published-provider-url',
     })
     await client.secrets.upsert({
@@ -310,16 +307,13 @@ describe('runtime provider URL resolution', () => {
         }
       },
     }
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-runtime-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-runtime-'))
     const client = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => clock,
       registerScheduledWorkSource: (source) => registeredSources.push(source),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-provider-url',
     })
     await client.connectors.create({
@@ -463,17 +457,14 @@ describe('runtime provider URL resolution', () => {
         }
       },
     }
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-redaction-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-redaction-'))
     const client = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => clock,
       registerScheduledWorkSource: (source) => registeredSources.push(source),
       secretCodec,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'workspace-provider-url-redaction',
     })
     await client.secrets.upsert({

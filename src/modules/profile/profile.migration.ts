@@ -100,7 +100,7 @@ export async function migrateLegacyProfileToJson(options: {
   profilePath: string
   secretCodec: SecretCodec
   secretService: Pick<SecretService, 'resolve' | 'upsertTrustedIdentitySsnLast4'>
-  sqlitePath: string
+  databasePath: string
 }): Promise<ProfileMigrationResult> {
   const now = options.now ?? (() => new Date())
   const migrationDirectory = path.join(path.dirname(options.profilePath), 'profile-migration')
@@ -139,7 +139,7 @@ export async function migrateLegacyProfileToJson(options: {
 
   await preflightIdentity(source.identitySsnLast4, options)
   preflightWriteability(options.profilePath, migrationDirectory)
-  preflightBackupCapacity(options.sqlitePath, migrationDirectory)
+  preflightBackupCapacity(options.databasePath, migrationDirectory)
 
   let backupSha256: string
   try {
@@ -296,9 +296,9 @@ function preflightWriteability(
   }
 }
 
-function preflightBackupCapacity(sqlitePath: string, migrationDirectory: string) {
+function preflightBackupCapacity(databasePath: string, migrationDirectory: string) {
   try {
-    const sourceSize = fs.statSync(sqlitePath).size
+    const sourceSize = fs.statSync(databasePath).size
     const filesystem = fs.statfsSync(migrationDirectory)
     const availableBytes = Number(filesystem.bavail) * Number(filesystem.bsize)
     if (!Number.isSafeInteger(availableBytes) || availableBytes < sourceSize) {

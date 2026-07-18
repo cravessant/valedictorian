@@ -12,12 +12,9 @@ import {
   type StartedValedictorianHttpServer,
 } from './local-server'
 
-/** Shared HTTP/sqlite fixtures for connector-schedule server tests. */
-export function createScheduleHttpTempSqlitePath() {
-  return path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-schedule-http-')),
-    'valedictorian.sqlite',
-  )
+/** Shared HTTP/database fixtures for connector-schedule server tests. */
+export function createScheduleHttpTempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-schedule-http-'))
 }
 
 export async function readScheduleHttpJson(response: Response) {

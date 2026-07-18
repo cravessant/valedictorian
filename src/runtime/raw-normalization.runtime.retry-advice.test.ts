@@ -12,10 +12,11 @@ import {
 import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import { createSqliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('local deterministic raw normalization', () => {
   it('persists exhausted normalization advice and suppresses lower-precedence fallback', async () => {
-    const sqlitePath = tempDatabasePath()
+    const pgliteDataPath = tempDatabasePath()
     const exhausted: NormalizationResolver = {
       declaration: { id: 'fixture.exhausted-company', version: '1.0.0', requiredInputs: ['rawRevision'], outputFields: ['companyName'], capabilities: ['pure'], costClass: 'none', precedence: 1_000 },
       resolve(context) { return [{
@@ -31,7 +32,7 @@ describe('local deterministic raw normalization', () => {
       exhausted,
       ...createDefaultNormalizationResolverRegistry().resolvers,
     ])
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const database = createDrizzleDatabase(sqlite)
     const intake = await createSqliteRawSourceRepository(database).ingestBatch({ records: [{
@@ -105,4 +106,6 @@ describe('local deterministic raw normalization', () => {
   })
 })
 
-function tempDatabasePath() { return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'normalization-runtime-')), 'db.sqlite') }
+function tempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'normalization-runtime-'))
+}

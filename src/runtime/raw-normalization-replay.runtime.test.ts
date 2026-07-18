@@ -11,10 +11,11 @@ import {
 } from '../modules/sourcing/normalization.registry'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
 import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('local raw normalization replay', () => {
   it('replays an exactly selected raw revision when its canonical schema is invalidated', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -53,7 +54,7 @@ describe('local raw normalization replay', () => {
   })
 
   it('materializes a user field lock and suppresses lower-precedence resolver work', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -120,7 +121,7 @@ describe('local raw normalization replay', () => {
     const defaultsWithoutCompany = createDefaultNormalizationResolverRegistry().resolvers
       .filter(({ declaration }) => declaration.id !== 'deterministic.explicit-company')
     const client = createLocalValedictorianClient({
-      sqlitePath: tempDatabasePath(),
+      pgliteDataPath: tempDatabasePath(),
       normalizationRegistry: createNormalizationResolverRegistry([
         companyResolver('fixture.company-a', 'Company A'),
         companyResolver('fixture.company-b', 'Company B'),
@@ -152,7 +153,7 @@ describe('local raw normalization replay', () => {
   })
 
   it('reports a truthful no-op when selected revisions do not match invalidated versions', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -178,7 +179,7 @@ describe('local raw normalization replay', () => {
   })
 
   it('rejects invalid directives atomically without appending normalization history', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -225,7 +226,7 @@ describe('local raw normalization replay', () => {
       },
     }
     const client = createLocalValedictorianClient({
-      sqlitePath: tempDatabasePath(),
+      pgliteDataPath: tempDatabasePath(),
       normalizationRegistry: createNormalizationResolverRegistry([
         selectivelyInvalid, ...createDefaultNormalizationResolverRegistry().resolvers,
       ]),
@@ -277,7 +278,7 @@ describe('local raw normalization replay', () => {
     const defaultsWithoutCompany = createDefaultNormalizationResolverRegistry().resolvers
       .filter(({ declaration }) => declaration.id !== 'deterministic.explicit-company')
     const client = createLocalValedictorianClient({
-      sqlitePath: tempDatabasePath(),
+      pgliteDataPath: tempDatabasePath(),
       normalizationRegistry: createNormalizationResolverRegistry([
         versioned('1.0.0', 'Old Company'), versioned('2.0.0', 'New Company'),
         ...defaultsWithoutCompany,
@@ -305,7 +306,7 @@ describe('local raw normalization replay', () => {
   })
 
   it('persists explicit suppression without canonical null and allows a later lock to supersede it', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -355,8 +356,8 @@ describe('local raw normalization replay', () => {
   })
 
   it('keeps prior normalization runs internally queryable while GET returns the latest replay', async () => {
-    const sqlitePath = tempDatabasePath()
-    const client = createLocalValedictorianClient({ sqlitePath })
+    const pgliteDataPath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ pgliteDataPath })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
       observedAt: '2026-07-10T12:00:00.000Z',
@@ -368,7 +369,7 @@ describe('local raw normalization replay', () => {
     })
     const latest = await client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)
 
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     const history = createSqliteNormalizationRepository(createDrizzleDatabase(sqlite))
       .listHistory(intake.receipts[0].rawRecordId)
     sqlite.close()
@@ -378,9 +379,9 @@ describe('local raw normalization replay', () => {
   })
 
   it('does not let an older raw revision replay roll back the current finding', async () => {
-    const sqlitePath = tempDatabasePath()
-    const client = createLocalValedictorianClient({ sqlitePath })
-    const capture = await createConnectorCaptureFixture(sqlitePath, 'fixture.connector', '1.0.0')
+    const pgliteDataPath = tempDatabasePath()
+    const client = createLocalValedictorianClient({ pgliteDataPath })
+    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'fixture.connector', '1.0.0')
     const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
       capture,
@@ -420,7 +421,7 @@ describe('local raw normalization replay', () => {
   })
 
   it('selects only the revision that owns a persisted resolver input hash', async () => {
-    const client = createLocalValedictorianClient({ sqlitePath: tempDatabasePath() })
+    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [
       {
         adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
@@ -450,5 +451,5 @@ describe('local raw normalization replay', () => {
 })
 
 function tempDatabasePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'normalization-replay-')), 'db.sqlite')
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'normalization-replay-'))
 }

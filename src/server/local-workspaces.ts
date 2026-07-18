@@ -154,7 +154,7 @@ export function createLocalWorkspaceManager({
           ? await prepareCapabilities({
               profilePath: layout.profilePath,
               secretCodec: secretCodec ?? unavailableWorkspaceSecretCodec,
-              sqlitePath: layout.sqlitePath,
+              pgliteDataPath: layout.pgliteDataPath,
               workspaceId,
             })
           : null
@@ -174,7 +174,7 @@ export function createLocalWorkspaceManager({
             referenceTrackerPath,
             seedDataMode,
             secretCodec,
-            sqlitePath: layout.sqlitePath,
+            pgliteDataPath: layout.pgliteDataPath,
             workspaceId,
           })
         } catch (error) {

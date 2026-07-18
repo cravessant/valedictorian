@@ -14,10 +14,7 @@ describe('runtime connector overview', () => {
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       now: () => new Date('2026-07-13T12:00:00.000Z'),
       seedDataMode: 'none',
-      sqlitePath: path.join(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-')),
-        'valedictorian.sqlite',
-      ),
+      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-')),
     })
     await client.connectors.create({
       id: 'overview-never-run', connectorId: 'fixture.overview', connectorVersion: '1.0.0',
@@ -47,10 +44,7 @@ describe('runtime connector overview', () => {
     const client = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
-      sqlitePath: path.join(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-page-')),
-        'valedictorian.sqlite',
-      ),
+      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-page-')),
     })
     for (const [id, enabled] of [
       ['é-overview', true], ['z-overview', true], ['a-overview', true], ['😀-overview', true],
@@ -86,10 +80,7 @@ describe('runtime connector overview', () => {
     const client = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
-      sqlitePath: path.join(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-filter-')),
-        'valedictorian.sqlite',
-      ),
+      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-filter-')),
     })
     for (const id of ['caught-up', 'never-run']) {
       await client.connectors.create({
@@ -116,10 +107,7 @@ describe('runtime connector overview', () => {
     const client = createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
-      sqlitePath: path.join(
-        fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-skip-')),
-        'valedictorian.sqlite',
-      ),
+      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-skip-')),
     })
     await client.connectors.create({
       id: 'user-skip', connectorId: 'fixture.overview', connectorVersion: '1.0.0',

@@ -1,8 +1,10 @@
+import fs from 'node:fs'
 import {
   createDrizzleDatabase,
   createFileDatabase,
   migrateDatabase,
 } from '../../db/sqlite'
+import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 import type { SecretCodec } from '../secrets/secret.codec'
 import { createSqliteSecretService } from '../secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../secrets/secret.scope'
@@ -23,10 +25,12 @@ export interface PreparedWorkspaceProfileCapabilities {
 export async function prepareWorkspaceProfileCapabilities(options: {
   profilePath: string
   secretCodec: SecretCodec
-  sqlitePath: string
+  pgliteDataPath: string
   workspaceId: string
 }): Promise<PreparedWorkspaceProfileCapabilities> {
-  const sqlite = createFileDatabase(options.sqlitePath)
+  const databaseFilePath = resolveDatabaseFilePath(options.pgliteDataPath)
+  fs.mkdirSync(options.pgliteDataPath, { recursive: true })
+  const sqlite = createFileDatabase(databaseFilePath)
   try {
     migrateDatabase(sqlite)
     const secretService = createSqliteSecretService(
@@ -39,7 +43,7 @@ export async function prepareWorkspaceProfileCapabilities(options: {
       profilePath: options.profilePath,
       secretCodec: options.secretCodec,
       secretService,
-      sqlitePath: options.sqlitePath,
+      databasePath: databaseFilePath,
     })
     const profileService = createJsonProfileService(options.profilePath)
     let disposed = false

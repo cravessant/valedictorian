@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createFileDatabase, migrateDatabase } from '../db/sqlite'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 export const LEGACY_MIXED_RAW_RECORD_ID = 'legacy-mixed-record'
 export const LEGACY_INVALID_ONLY_RAW_RECORD_ID = 'legacy-invalid-only-record'
@@ -28,10 +29,10 @@ export const LEGACY_NESTED_JOBRIGHT_PAYLOAD = {
 const AT = '2026-07-10T12:00:00.000Z'
 
 export function createLegacyRawSourceFixture(
-  sqlitePath: string,
+  pgliteDataPath: string,
   options: { includeInvalidOnly?: boolean } = {},
 ) {
-  const database = createFileDatabase(sqlitePath)
+  const database = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
   migrateDatabase(database, { migrationsFolder: migrationFolderThrough(25) })
   seedConnectorOwner(database)
   seedConnectorRecord(database, LEGACY_MIXED_RAW_RECORD_ID, true)

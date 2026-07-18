@@ -114,10 +114,7 @@ describe('local connector schedule source', () => {
   })
 
   it('discovers and executes a due persisted connector schedule through the existing dispatch path', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-source-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-source-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     let source: LocalScheduledWorkSource | undefined
@@ -133,7 +130,7 @@ describe('local connector schedule source', () => {
         if (candidate.id === 'connector-schedules') source = candidate
       },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'scheduler-source-workspace',
     })
 
@@ -160,10 +157,7 @@ describe('local connector schedule source', () => {
   })
 
   it('retries a due schedule after a concurrent manual run releases the single-flight guard', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-collision-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-collision-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     let releaseManual: (() => void) | undefined
@@ -208,7 +202,7 @@ describe('local connector schedule source', () => {
         scheduler.register(candidate)
       },
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'scheduler-collision-workspace',
     })
 
@@ -246,10 +240,7 @@ describe('local connector schedule source', () => {
   })
 
   it('wakes blocked due work when a disabled connector is re-enabled', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-reenable-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-reenable-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     const scheduler = createLocalScheduler({ now: () => clock })
@@ -266,7 +257,7 @@ describe('local connector schedule source', () => {
       onScheduledWorkChanged: () => scheduler.signal(),
       registerScheduledWorkSource: (candidate) => scheduler.register(candidate),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'scheduler-reenable-workspace',
     })
 
@@ -304,10 +295,7 @@ describe('local connector schedule source', () => {
   })
 
   it('coalesces missed cadence intervals into one catch-up run after reopening', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-reopen-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-reopen-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     const connectorRegistry = {
@@ -322,7 +310,7 @@ describe('local connector schedule source', () => {
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'scheduler-reopen-workspace',
     })
 
@@ -352,7 +340,7 @@ describe('local connector schedule source', () => {
       onScheduledWorkChanged: () => scheduler.signal(),
       registerScheduledWorkSource: (candidate) => scheduler.register(candidate),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'scheduler-reopen-workspace',
     })
 
@@ -382,10 +370,7 @@ describe('local connector schedule source', () => {
   })
 
   it('continues cadence after Capture backfill reaches the configured date without redoing checkpoint work', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-complete-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-complete-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     const checkpoints: unknown[] = []
@@ -451,7 +436,7 @@ describe('local connector schedule source', () => {
       onScheduledWorkChanged: () => scheduler.signal(),
       registerScheduledWorkSource: (candidate) => scheduler.register(candidate),
       seedDataMode: 'none',
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: 'scheduler-complete-workspace',
     })
 

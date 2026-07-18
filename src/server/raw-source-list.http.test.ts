@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createNormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('raw source list HTTP API', () => {
   let server: StartedValedictorianHttpServer | null = null
@@ -17,12 +18,9 @@ describe('raw source list HTTP API', () => {
   })
 
   it('round-trips the local sanitized result through the typed workspace client', async () => {
-    const sqlitePath = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-list-http-')),
-      'valedictorian.sqlite',
-    )
+    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-list-http-'))
     const local = createLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date('2026-07-10T14:00:00.000Z'),
     })
     await local.sourcing.rawRecords.ingestBatch({ records: [{
@@ -52,9 +50,9 @@ describe('raw source list HTTP API', () => {
   })
 
   it('exposes canonical facts and finding identity for projected records', async () => {
-    const sqlitePath = tempSqlitePath()
+    const pgliteDataPath = tempDatabasePath()
     const local = createLocalValedictorianClient({
-      sqlitePath,
+      pgliteDataPath,
       now: () => new Date('2026-07-10T14:00:00.000Z'),
     })
     const intake = await local.sourcing.rawRecords.ingestBatch({ records: [{
@@ -89,15 +87,15 @@ describe('raw source list HTTP API', () => {
   it.each(['pending', 'failed'] as const)(
     'reports %s projection state without a finding identity',
     async (projectionStatus) => {
-      const sqlitePath = tempSqlitePath()
+      const pgliteDataPath = tempDatabasePath()
       const local = createLocalValedictorianClient({
-        sqlitePath,
+        pgliteDataPath,
         projectCanonicalCandidate: projectionStatus === 'failed'
           ? () => { throw new Error('Fixture projection failure') }
           : undefined,
       })
       if (projectionStatus === 'pending') {
-        const sqlite = new Database(sqlitePath)
+        const sqlite = new Database(resolveDatabaseFilePath(pgliteDataPath))
         sqlite.exec(`
           create trigger keep_projection_pending before update on sourcing_projection_outcomes
           begin select raise(abort, 'fixture transition failure'); end;
@@ -130,7 +128,7 @@ describe('raw source list HTTP API', () => {
   it('reports failed normalization without eligible projection', async () => {
     const outcomeStatus = 'failed' as const
     const status = 'failed' as const
-    const sqlitePath = tempSqlitePath()
+    const pgliteDataPath = tempDatabasePath()
     const normalizationRegistry = createNormalizationResolverRegistry([{
       declaration: {
         id: `fixture.${outcomeStatus}`,
@@ -153,7 +151,7 @@ describe('raw source list HTTP API', () => {
         }]
       },
     }])
-    const local = createLocalValedictorianClient({ sqlitePath, normalizationRegistry })
+    const local = createLocalValedictorianClient({ pgliteDataPath, normalizationRegistry })
     const intake = await local.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'fixture.cli', kind: 'cli', version: '1.0.0' },
       observedAt: '2026-07-10T13:00:00.000Z',
@@ -173,7 +171,7 @@ describe('raw source list HTTP API', () => {
   })
 
   it('rejects malformed typed filters and HTTP cursors before repository results escape', async () => {
-    const local = createLocalValedictorianClient({ sqlitePath: tempSqlitePath() })
+    const local = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
     server = await createValedictorianHttpServer({ client: local, host: '127.0.0.1', port: 0 })
     const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
       .forWorkspace('workspace-1').sourcing.rawRecords
@@ -190,7 +188,7 @@ describe('raw source list HTTP API', () => {
   })
 
   it('rejects canonical cursor envelopes outside the timestamp and Unicode scalar domain', async () => {
-    const local = createLocalValedictorianClient({ sqlitePath: tempSqlitePath() })
+    const local = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
     server = await createValedictorianHttpServer({ client: local, host: '127.0.0.1', port: 0 })
     const cursors = [
       cursorFor('2026-02-31T12:00:00.000Z', 'raw-valid'),
@@ -205,11 +203,8 @@ describe('raw source list HTTP API', () => {
   })
 })
 
-function tempSqlitePath() {
-  return path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-list-http-')),
-    'valedictorian.sqlite',
-  )
+function tempDatabasePath() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'raw-source-list-http-'))
 }
 
 function cursorFor(lastReceivedAt: string, id: string) {

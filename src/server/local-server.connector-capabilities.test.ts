@@ -7,7 +7,7 @@ import {
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import {
-  createScheduleHttpTempSqlitePath,
+  createScheduleHttpTempDatabasePath,
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
 } from './local-server.connector-schedules.http-fixture'
@@ -31,7 +31,7 @@ describe('released connector capability boundary', () => {
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date(CLOCK),
       seedDataMode: 'none',
-      sqlitePath: createScheduleHttpTempSqlitePath(),
+      pgliteDataPath: createScheduleHttpTempDatabasePath(),
       workspaceId: WORKSPACE_ID,
     })
     await local.connectors.create({
@@ -145,7 +145,7 @@ describe('released connector capability boundary', () => {
   })
 
   it('round-trips installed Jobright internship [4] and full-time [1] include/exclude filters through HTTP and SQLite', async () => {
-    const sqlitePath = createScheduleHttpTempSqlitePath()
+    const pgliteDataPath = createScheduleHttpTempDatabasePath()
     const internshipFilters = {
       jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
       jobTypes: [4],
@@ -165,7 +165,7 @@ describe('released connector capability boundary', () => {
       connectorRegistry: createDefaultLocalConnectorRegistry(),
       now: () => new Date(CLOCK),
       seedDataMode: 'none' as const,
-      sqlitePath,
+      pgliteDataPath,
       workspaceId: WORKSPACE_ID,
     })
     let local = createLocal()

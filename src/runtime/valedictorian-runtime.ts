@@ -60,7 +60,7 @@ export interface ValedictorianRuntimeConfig {
   profilePath: string
   referenceTrackerPath?: string
   seedDataMode: ValedictorianSeedDataMode
-  sqlitePath: string
+  pgliteDataPath: string
   workspaceId?: string
 }
 
@@ -117,8 +117,8 @@ export function resolveValedictorianRuntimeConfig({
       env.VALEDICTORIAN_PROFILE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'profile.json'),
     referenceTrackerPath: env.VALEDICTORIAN_REFERENCE_TRACKER_PATH,
     seedDataMode: readSeedDataMode(env.VALEDICTORIAN_SEED_DATA),
-    sqlitePath:
-      env.VALEDICTORIAN_SQLITE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'valedictorian.sqlite'),
+    pgliteDataPath:
+      env.VALEDICTORIAN_PGLITE_DATA_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'pglite'),
     workspaceId,
   }
 }
@@ -174,7 +174,7 @@ export async function createValedictorianRuntime({
     preparedCapabilities = await prepareCapabilities({
       profilePath: config.profilePath,
       secretCodec: secretCodec ?? unavailableRuntimeSecretCodec,
-      sqlitePath: config.sqlitePath,
+      pgliteDataPath: config.pgliteDataPath,
       workspaceId: config.workspaceId ?? 'local-workspace',
     })
   }
@@ -207,7 +207,7 @@ export async function createValedictorianRuntime({
     referenceTrackerPath: config.referenceTrackerPath,
     seedDataMode: config.seedDataMode,
     ...(secretCodec === undefined ? {} : { secretCodec }),
-    sqlitePath: config.sqlitePath,
+    pgliteDataPath: config.pgliteDataPath,
     registerScheduledWorkSource: (source) => scheduler.register(source),
     ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
     })

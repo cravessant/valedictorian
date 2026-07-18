@@ -6,7 +6,8 @@ import { createSqliteConnectorRepository } from '../modules/connectors/connector
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import { createTempSqlitePath, readJson, createLocalServerHttpTestFixture } from './local-server.http-test-harness'
+import { createTempDatabasePath, readJson, createLocalServerHttpTestFixture } from './local-server.http-test-harness'
+import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('local Valedictorian HTTP server', () => {
   const fixture = createLocalServerHttpTestFixture()
@@ -15,14 +16,14 @@ describe('local Valedictorian HTTP server', () => {
   afterEach(() => fixture.teardown())
 
   it('returns the same persisted not-due run through HTTP manual trigger without invoking the connector', async () => {
-    const sqlitePath = createTempSqlitePath()
+    const pgliteDataPath = createTempDatabasePath()
     const clock = '2026-07-11T12:00:30.000Z'
     const refresh = vi.fn<AppJobConnector['refresh']>()
     const connector = {
       definition: { id: 'fixture.retry', version: '1.0.0' },
       refresh,
     } as AppJobConnector
-    const sqlite = createFileDatabase(sqlitePath)
+    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
     migrateDatabase(sqlite)
     const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
     await repository.upsertInstance({
@@ -46,7 +47,7 @@ describe('local Valedictorian HTTP server', () => {
     sqlite.close()
     const client = createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]), now: () => new Date(clock),
-      seedDataMode: 'none', sqlitePath,
+      seedDataMode: 'none', pgliteDataPath,
     })
     const server = await fixture.start({
       client, host: '127.0.0.1', port: 0,

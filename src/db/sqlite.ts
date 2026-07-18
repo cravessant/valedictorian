@@ -39,6 +39,7 @@ export function createInMemoryDatabase() {
 }
 
 export function createFileDatabase(databasePath: string) {
+  fs.mkdirSync(path.dirname(databasePath), { recursive: true })
   const database = new Database(databasePath)
   database.pragma('foreign_keys = on')
   database.pragma('journal_mode = wal')

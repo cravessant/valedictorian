@@ -420,7 +420,7 @@ function ConfigurationSettingsPanel({
           apiTokenConfigured={settings.apiTokenConfigured}
           onSettingsPatch={onSettingsPatch}
         />
-        <SettingsTextInput label="SQLite path" readOnly value="Managed by Electron userData" />
+        <SettingsTextInput label="PGlite data path" readOnly value="Managed by Electron userData" />
       </div>
     </section>
   )
@@ -511,9 +511,9 @@ function DataSettingsPanel({
           value={workspace?.dataPath ?? 'No workspace selected'}
         />
         <SettingsTextInput
-          label="SQLite path"
+          label="PGlite data path"
           readOnly
-          value={workspace?.sqlitePath ?? 'No workspace selected'}
+          value={workspace?.pgliteDataPath ?? 'No workspace selected'}
         />
       </div>
 
