@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import type { RawSourceProjectionResult, SourcingProjectionFindingReference } from 'sparxie'
 import {
   jobFactVersions,
@@ -9,19 +9,19 @@ import {
   opportunities,
   sourcingProjectionOutcomes,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 
-type Transaction = Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0]
+type Transaction = Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0]
 
-export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabase) {
+export function createPgliteProjectionOutcomeRepository(database: PgliteDatabase) {
   return {
-    stagePending(transaction: Transaction, input: {
+    async stagePending(transaction: Transaction, input: {
       rawRecordId: string
       rawRevisionId: string
       canonicalCandidateId: string
       now: string
     }) {
-      transaction.insert(sourcingProjectionOutcomes).values({
+      await transaction.insert(sourcingProjectionOutcomes).values({
         id: crypto.randomUUID(),
         captureLineageId: input.rawRecordId,
         captureEvidenceVersionId: input.rawRevisionId,
@@ -34,34 +34,43 @@ export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabas
         failedAt: null,
         createdAt: input.now,
         updatedAt: input.now,
-      }).onConflictDoNothing({ target: sourcingProjectionOutcomes.jobFactVersionId }).run()
+      }).onConflictDoNothing({ target: sourcingProjectionOutcomes.jobFactVersionId })
+        .returning({ id: sourcingProjectionOutcomes.id })
     },
-    markProjected(transaction: Transaction, canonicalCandidateId: string, findingId: string, projectedAt: string) {
-      const result = transaction.update(sourcingProjectionOutcomes).set({
+    async markProjected(
+      transaction: Transaction,
+      canonicalCandidateId: string,
+      findingId: string,
+      projectedAt: string,
+    ) {
+      const [updated] = await transaction.update(sourcingProjectionOutcomes).set({
         status: 'projected', opportunityId: findingId, projectedAt, updatedAt: projectedAt,
       }).where(and(
         eq(sourcingProjectionOutcomes.jobFactVersionId, canonicalCandidateId),
         eq(sourcingProjectionOutcomes.status, 'pending'),
-      )).run()
-      if (result.changes !== 1) throw new Error('Pending projection outcome was not found')
+      )).returning({ id: sourcingProjectionOutcomes.id })
+      if (!updated) throw new Error('Pending projection outcome was not found')
     },
-    markFailed(canonicalCandidateId: string, failedAt: string) {
-      const result = database.update(sourcingProjectionOutcomes).set({
+    async markFailed(canonicalCandidateId: string, failedAt: string) {
+      const [updated] = await database.update(sourcingProjectionOutcomes).set({
         status: 'failed', failureCode: 'projection_failed', failureRetryable: false,
         failedAt, updatedAt: failedAt,
       }).where(and(
         eq(sourcingProjectionOutcomes.jobFactVersionId, canonicalCandidateId),
         eq(sourcingProjectionOutcomes.status, 'pending'),
-      )).run()
-      if (result.changes !== 1) throw new Error('Pending projection outcome was not found')
+      )).returning({ id: sourcingProjectionOutcomes.id })
+      if (!updated) throw new Error('Pending projection outcome was not found')
     },
-    get(rawRevisionId: string): RawSourceProjectionResult | null {
-      const revision = database.select().from(captureEvidenceVersions)
-        .where(eq(captureEvidenceVersions.id, rawRevisionId)).get()
+    async get(rawRevisionId: string): Promise<RawSourceProjectionResult | null> {
+      const [revision] = await database.select().from(captureEvidenceVersions)
+        .where(eq(captureEvidenceVersions.id, rawRevisionId)).limit(1)
       if (!revision) return null
-      const outcome = database.select().from(sourcingProjectionOutcomes)
+      const [outcome] = await database.select().from(sourcingProjectionOutcomes)
         .where(eq(sourcingProjectionOutcomes.captureEvidenceVersionId, rawRevisionId))
-        .orderBy(desc(sourcingProjectionOutcomes.createdAt), sql`${sourcingProjectionOutcomes}.rowid desc`).get()
+        .orderBy(
+          desc(sourcingProjectionOutcomes.createdAt),
+          desc(sourcingProjectionOutcomes.id),
+        ).limit(1)
       if (outcome) {
         const base = {
           rawRecordId: outcome.captureLineageId,
@@ -76,11 +85,11 @@ export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabas
           ...base, status: 'failed', failedAt: outcome.failedAt!,
           failure: { code: outcome.failureCode as 'projection_failed', retryable: outcome.failureRetryable! },
         }
-        const finding = database.select({
+        const [finding] = await database.select({
           id: opportunities.id,
           mergeStatus: opportunities.mergeStatus,
           mergedApplicationId: opportunities.applicationId,
-        }).from(opportunities).where(eq(opportunities.id, outcome.opportunityId!)).get()
+        }).from(opportunities).where(eq(opportunities.id, outcome.opportunityId!)).limit(1)
         if (!finding) throw new Error('Projected finding reference is missing')
         return {
           ...base, status: 'projected', projectedAt: outcome.projectedAt!,
@@ -88,7 +97,7 @@ export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabas
         }
       }
 
-      const latest = database.select({
+      const [latest] = await database.select({
         status: normalizationRuns.status,
         updatedAt: normalizationRuns.updatedAt,
         candidateId: jobFactVersions.id,
@@ -97,7 +106,11 @@ export function createSqliteProjectionOutcomeRepository(database: DrizzleDatabas
         .leftJoin(jobFactVersions, eq(jobFactVersions.runId, normalizationRuns.id))
         .leftJoin(normalizationGates, eq(normalizationGates.runId, normalizationRuns.id))
         .where(eq(normalizationRuns.captureEvidenceVersionId, rawRevisionId))
-        .orderBy(desc(normalizationRuns.updatedAt), sql`${normalizationRuns}.rowid desc`).get()
+        .orderBy(
+          desc(normalizationRuns.updatedAt),
+          desc(normalizationRuns.createdAt),
+          desc(normalizationRuns.id),
+        ).limit(1)
       if (!latest) return {
         status: 'not_eligible', rawRecordId: revision.captureLineageId, rawRevisionId,
         normalizationStatus: null, canonicalCandidateId: null, gateStatus: null,
