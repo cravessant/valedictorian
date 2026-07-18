@@ -10,7 +10,7 @@ import type {
   WorkflowRunStep,
 } from 'sparxie'
 import { sources, workflowRuns, workflowRunSteps } from '../../db/schema'
-import type { PgliteDatabase } from '../../db/pglite'
+import type { PgliteDatabase, PgliteRepositoryDatabase } from '../../db/pglite'
 
 const DEFAULT_RUN_LIST_LIMIT = 50
 
@@ -63,7 +63,7 @@ const workflowRunSelection = {
   updatedAt: workflowRuns.updatedAt,
 }
 
-export function createPgliteWorkflowRunRepository(database: PgliteDatabase) {
+export function createPgliteWorkflowRunRepository(database: PgliteRepositoryDatabase) {
   return {
     async startRun(input: StartWorkflowRunInput): Promise<WorkflowRun> {
       const now = new Date().toISOString()

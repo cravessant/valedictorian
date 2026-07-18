@@ -29,7 +29,7 @@ import {
   opportunities,
   workflowRuns,
 } from '../../db/schema'
-import type { PgliteDatabase } from '../../db/pglite'
+import type { PgliteDatabase, PgliteRepositoryDatabase } from '../../db/pglite'
 import {
   canonicalizeApplicationUrl,
   isRoleKind,
@@ -94,7 +94,7 @@ const sourcingFindingSelection = {
   updatedAt: opportunities.updatedAt,
 }
 
-export function createPgliteSourcingRepository(database: PgliteDatabase) {
+export function createPgliteSourcingRepository(database: PgliteRepositoryDatabase) {
   return {
     async createFinding(input: CreateSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
@@ -847,7 +847,10 @@ function mapSourcingFinding(row: SourcingFindingRow): SourcingFinding {
   }
 }
 
-export async function findDuplicateApplication(database: PgliteDatabase, finding: SourcingFinding) {
+export async function findDuplicateApplication(
+  database: Pick<PgliteRepositoryDatabase, 'select'>,
+  finding: SourcingFinding,
+) {
   if (finding.officialUrl) {
     const [duplicate] = await database
       .select({ applicationId: applicationLinks.applicationId })

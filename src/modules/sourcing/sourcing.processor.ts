@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { ProcessSourcingCandidateInput, SourcingFinding } from 'sparxie'
 import { applicationEvents, applications, opportunities } from '../../db/schema'
-import type { PgliteDatabase } from '../../db/pglite'
+import type { PgliteDatabase, PgliteRepositoryDatabase } from '../../db/pglite'
 import { createPgliteApplicationRepository } from '../applications/application.repository'
 import { createPgliteScoringRepository } from '../scoring/scoring.repository'
 import { createPgliteWorkflowRunRepository } from '../workflow-runs/workflow-run.repository'
@@ -12,8 +12,6 @@ import {
 } from './sourcing.repository'
 
 export function createPgliteSourcingProcessor(database: PgliteDatabase) {
-  const applicationRepository = createPgliteApplicationRepository(database)
-  const scoringRepository = createPgliteScoringRepository(database)
   const sourcingRepository = createPgliteSourcingRepository(database)
   const workflowRunRepository = createPgliteWorkflowRunRepository(database)
 
@@ -75,30 +73,41 @@ export function createPgliteSourcingProcessor(database: PgliteDatabase) {
 
       const promoted = await sourcingRepository.promoteFinding({ findingId: finding.id })
 
-      if (promoted.mergedApplicationId && input.score) {
-        await scoringRepository.recordScore({
-          applicationId: promoted.mergedApplicationId,
-          ...input.score,
-        })
-        await insertScoreEvent(database, promoted.mergedApplicationId, input.score)
+      return database.transaction(async (transaction) => {
+        const transactionalApplicationRepository = createPgliteApplicationRepository(transaction)
+        const transactionalScoringRepository = createPgliteScoringRepository(transaction)
+        const transactionalWorkflowRunRepository = createPgliteWorkflowRunRepository(transaction)
 
-        if (
-          input.cutoffScore !== undefined &&
-          input.cutoffScore !== null &&
-          input.score.score < input.cutoffScore
-        ) {
-          await applicationRepository.updateApplicationStatus({
+        if (promoted.mergedApplicationId && input.score) {
+          await transactionalScoringRepository.recordScore({
             applicationId: promoted.mergedApplicationId,
-            status: 'not_fit',
-            notes: `Post-promotion score ${input.score.score} is below sourcing cutoff ${input.cutoffScore}.`,
+            ...input.score,
           })
+          await insertScoreEvent(transaction, promoted.mergedApplicationId, input.score)
+
+          if (
+            input.cutoffScore !== undefined &&
+            input.cutoffScore !== null &&
+            input.score.score < input.cutoffScore
+          ) {
+            await transactionalApplicationRepository.updateApplicationStatus({
+              applicationId: promoted.mergedApplicationId,
+              status: 'not_fit',
+              notes: `Post-promotion score ${input.score.score} is below sourcing cutoff ${input.cutoffScore}.`,
+            })
+          }
         }
-      }
 
-      const processed = await selectProcessedFinding(database, promoted.id)
-      await recordProcessingStep(workflowRunRepository, processed, 'merged', 'promoted')
+        const processed = await selectProcessedFinding(transaction, promoted.id)
+        await recordProcessingStep(
+          transactionalWorkflowRunRepository,
+          processed,
+          'merged',
+          'promoted',
+        )
 
-      return processed
+        return processed
+      })
     },
   }
 }
@@ -142,7 +151,7 @@ async function updateFindingDecision(
   return selectProcessedFinding(database, findingId)
 }
 
-async function selectProcessedFinding(database: PgliteDatabase, findingId: string) {
+async function selectProcessedFinding(database: PgliteRepositoryDatabase, findingId: string) {
   const result = await createPgliteSourcingRepository(database).listFindings()
   const finding = result.items.find((item) => item.id === findingId)
 
@@ -174,7 +183,7 @@ async function recordProcessingStep(
 }
 
 async function insertScoreEvent(
-  database: PgliteDatabase,
+  database: Pick<PgliteRepositoryDatabase, 'insert' | 'select'>,
   applicationId: string,
   score: NonNullable<ProcessSourcingCandidateInput['score']>,
 ) {
