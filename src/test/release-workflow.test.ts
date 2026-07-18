@@ -86,6 +86,55 @@ describe('Mac release workflow', () => {
     expect(workflow).toContain('Valedictorian $GITHUB_REF_NAME')
   })
 
+  it('serializes every alpha release across tag and manual refs', () => {
+    const workflow = readReleaseWorkflow()
+    const concurrency = sectionBetween(workflow, 'concurrency:', 'env:')
+
+    expect(concurrency).toContain('group: release-mac-alpha')
+    expect(concurrency).toContain('cancel-in-progress: false')
+    expect(concurrency).not.toContain('github.ref')
+  })
+
+  it('keeps manual runs dry by default and restricts explicit publishing to main', () => {
+    const workflow = readReleaseWorkflow()
+    const verifyJob = sectionBetween(workflow, 'verify:', 'build-mac:')
+    const buildMacJob = workflow.slice(workflow.indexOf('build-mac:'))
+
+    expect(workflow).toContain('publish_update_feed:')
+    expect(workflow).toContain('default: false')
+    expect(workflow).toContain('type: boolean')
+    expect(verifyJob).toContain('name: Resolve release mode')
+    expect(verifyJob).toContain('REQUESTED_PUBLISH: ${{ inputs.publish_update_feed }}')
+    expect(verifyJob).toContain('[[ "${GITHUB_REF}" == refs/tags/* ]]')
+    expect(verifyJob).toContain('[ "${REQUESTED_PUBLISH}" = "true" ]')
+    expect(verifyJob).toContain('[ "${GITHUB_REF}" != "refs/heads/main" ]')
+    expect(verifyJob).toContain('Manual update-feed publishing is restricted to the main branch')
+    expect(verifyJob).toContain('publish_update_feed=${publish_update_feed}')
+    expect(buildMacJob).toMatch(
+      /- name: Publish update feed\n\s+if: needs\.verify\.outputs\.publish_update_feed == 'true'/,
+    )
+  })
+
+  it('validates release configuration on Linux before allocating macOS', () => {
+    const workflow = readReleaseWorkflow()
+    const verifyJob = sectionBetween(workflow, 'verify:', 'build-mac:')
+    const buildMacJob = workflow.slice(workflow.indexOf('build-mac:'))
+
+    expect(verifyJob).toContain('name: Validate macOS signing secrets')
+    expect(verifyJob).toContain('name: Validate update feed publishing secrets')
+    expect(verifyJob).toMatch(
+      /- name: Validate update feed publishing secrets\n\s+if: steps\.release-mode\.outputs\.publish_update_feed == 'true'/,
+    )
+    expect(verifyJob.indexOf('Validate macOS signing secrets')).toBeLessThan(
+      verifyJob.indexOf('Set up pnpm'),
+    )
+    expect(verifyJob.indexOf('Validate update feed publishing secrets')).toBeLessThan(
+      verifyJob.indexOf('Set up pnpm'),
+    )
+    expect(buildMacJob).not.toContain('name: Validate macOS signing secrets')
+    expect(buildMacJob).not.toContain('name: Validate update feed publishing secrets')
+  })
+
   it('reuses an exact-SHA successful CI run on tags and fails safe into full verification', () => {
     const workflow = readReleaseWorkflow()
     const verifyJob = sectionBetween(workflow, 'verify:', 'build-mac:')
