@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import { migrate } from 'drizzle-orm/pglite/migrator'
+import { loadPgliteRuntimeAssets } from './pglite-runtime-assets'
 import { schema } from './schema'
 
 export type PgliteClient = PGlite
@@ -22,20 +23,41 @@ export interface MigratePgliteDatabaseOptions {
 }
 
 export async function createPgliteClient(options: CreatePgliteClientOptions = {}) {
+  const runtimeAssets = await loadPgliteRuntimeAssets()
+  const pgliteOptions = {
+    pgliteWasmModule: runtimeAssets.pgliteWasmModule,
+    initdbWasmModule: runtimeAssets.initdbWasmModule,
+    fsBundle: runtimeAssets.fsBundle,
+  }
+
   if (options.dataDir) {
     fs.mkdirSync(options.dataDir, { recursive: true })
-    return new PGlite(options.dataDir)
+    return new PGlite(options.dataDir, pgliteOptions)
   }
-  return new PGlite()
+  return new PGlite(pgliteOptions)
 }
 
 export function createPgliteDatabase(client: PgliteClient) {
   return drizzle(client, { schema })
 }
 
-export function resolvePgliteMigrationsFolder(migrationsFolder?: string) {
+export function resolvePgliteMigrationsFolder(
+  migrationsFolder?: string,
+  options: { moduleDirectory?: string } = {},
+) {
   if (migrationsFolder) return migrationsFolder
-  return path.resolve(__dirname, '../../drizzle')
+
+  const moduleDirectory = options.moduleDirectory ?? __dirname
+  const candidates = [
+    path.resolve(moduleDirectory, '../../drizzle'),
+    path.resolve(moduleDirectory, '../drizzle'),
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+
+  throw new Error('Unable to resolve the bundled PGlite migrations folder')
 }
 
 /**

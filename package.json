@@ -10,21 +10,20 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "electron-builder install-app-deps && tsx scripts/run-supervised.ts dev",
-    "validate:app": "electron-builder install-app-deps && tsx scripts/run-supervised.ts validation",
-    "build": "pnpm run typecheck && vite build && electron-builder && NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3",
-    "build:mac": "vite build && electron-builder --mac --publish never && NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3",
+    "dev": "tsx scripts/run-supervised.ts dev",
+    "validate:app": "tsx scripts/run-supervised.ts validation",
+    "build": "pnpm run typecheck && vite build && electron-builder",
+    "build:mac": "vite build && electron-builder --mac --publish never",
     "lint": "pnpm run typecheck && pnpm run lint:line-limit-policy && pnpm run lint:profile-secret-import-policy && oxlint . --react-plugin --type-aware --report-unused-disable-directives --deny-warnings",
     "lint:line-limit-policy": "node scripts/line-limit-policy.mjs",
     "lint:profile-secret-import-policy": "node scripts/profile-secret-import-policy.mjs",
+    "inspect:pglite-runtime": "node scripts/inspect-pglite-runtime-assets.mjs",
     "preview": "vite preview",
-    "test": "NODE_OPTIONS=\"--disable-warning=DEP0176 --disable-warning=DEP0205\" pnpm rebuild better-sqlite3 && NODE_OPTIONS=\"--disable-warning=DEP0176 --disable-warning=DEP0205\" vitest run",
+    "test": "NODE_OPTIONS=\"--disable-warning=DEP0176 --disable-warning=DEP0205\" vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "rebuild:native": "electron-builder install-app-deps",
-    "rebuild:node": "NODE_OPTIONS=--disable-warning=DEP0176 pnpm rebuild better-sqlite3"
+    "db:migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

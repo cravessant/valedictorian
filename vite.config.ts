@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 
-export const nativeMainExternals = ['better-sqlite3', 'undici']
+export const mainExternals = ['@electric-sql/pglite', 'undici']
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -30,7 +30,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: nativeMainExternals,
+              external: mainExternals,
             },
           },
         },
