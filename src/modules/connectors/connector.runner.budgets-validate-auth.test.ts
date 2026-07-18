@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteSecretService } from '../secrets/secret.composition'
+import { createPgliteSecretService } from '../secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../secrets/secret.scope'
 import { createConnectorSecretResolver } from '../secrets/connector-secret-resolver'
 import type { SecretCodec } from '../secrets/secret.codec'
 import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 import {
-  createSqliteConnectorRepository,
   type ConnectorCoverageWindow
 } from './connector.repository'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 
 const testCodec: SecretCodec = {
   decrypt(value) {
@@ -22,10 +21,7 @@ const testCodec: SecretCodec = {
 
 describe('connector runner', () => {
   it('anchors catch-up coverage at persisted earliest backfill midnight', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
     const fixtureConnector: AppJobConnector = {
@@ -83,10 +79,7 @@ describe('connector runner', () => {
   })
 
   it('does not add a host-owned budget during catch-up', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: unknown[] = []
     const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
@@ -110,10 +103,7 @@ describe('connector runner', () => {
   })
 
   it('does not add a host-owned budget during manual refresh', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: unknown[] = []
     const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
@@ -141,10 +131,7 @@ describe('connector runner', () => {
   })
 
   it('does not add a host-owned budget during scheduled deferred refresh', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: unknown[] = []
     const fixtureConnector = createBudgetCapturingConnector(receivedInputs)
@@ -172,11 +159,8 @@ describe('connector runner', () => {
   })
 
   it('validates username/password credentials without recording run artifacts', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const secretService = createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
+    const { database, repository } = await createConnectorRepositoryTestContext()
+    const secretService = createPgliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
     const runner = createConnectorRunner({
       repository,
       sourceExecutionGovernor: createSourceExecutionGovernor(database),
@@ -287,10 +271,7 @@ describe('connector runner', () => {
   })
 
   it('sanitizes validateAuth status and unknown reasons', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
@@ -377,10 +358,7 @@ describe('connector runner', () => {
   })
 
   it('returns secure_storage_unavailable when secret decrypt fails closed', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
@@ -471,10 +449,7 @@ describe('connector runner', () => {
   })
 
   it('returns unsupported when the connector omits validateAuth', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',

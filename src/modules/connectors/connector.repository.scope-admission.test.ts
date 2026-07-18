@@ -1,10 +1,40 @@
 import { eq } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/pglite'
 import { describe, expect, it } from 'vitest'
-import { sourceExecutionScopes } from '../../db/schema'
+import { schema, sourceExecutionScopes } from '../../db/schema'
 import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
 import { createPgliteConnectorRepository } from './connector.repository'
 
 describe('connector scope admission', () => {
+  it('locks the live instance row to serialize admission against retirement', async () => {
+    const client = await createPgliteClient()
+    try {
+      await migratePgliteDatabase(client)
+      const queries: string[] = []
+      const database = drizzle(client, {
+        schema,
+        logger: { logQuery(query) { queries.push(query) } },
+      })
+      const repository = createPgliteConnectorRepository(database)
+      const instance = await repository.upsertInstance({
+        id: 'retirement-admission-race', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
+        displayName: 'Retirement admission race', enabled: true,
+      })
+      queries.length = 0
+
+      await repository.recordRunRequest({
+        connectorInstanceId: instance.id,
+        mode: 'manual',
+        startedAt: '2026-07-12T12:00:00.000Z',
+      })
+
+      expect(queries.some((query) => /from "connector_instances"[\s\S]*for update/i.test(query)))
+        .toBe(true)
+    } finally {
+      await client.close()
+    }
+  })
+
   it('rolls back scope creation when connector instance persistence fails', async () => {
     const client = await createPgliteClient()
     try {

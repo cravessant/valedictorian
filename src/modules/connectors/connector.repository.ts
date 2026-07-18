@@ -328,6 +328,7 @@ export function createPgliteConnectorRepository(
             ),
           )
           .limit(1)
+          .for('update')
         if (!instanceRow) {
           throw new Error(`Connector instance not found: ${input.connectorInstanceId}`)
         }

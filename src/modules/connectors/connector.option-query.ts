@@ -11,7 +11,7 @@ import {
   connectorOptionQueryResultSchema,
 } from 'sparxie'
 import { parseConnectorOptionValue } from '@sparxie/valedictorian-connectors-core'
-import type { createSqliteConnectorRepository } from './connector.repository'
+import type { createPgliteConnectorRepository } from './connector.repository'
 import type { AppConnectorAuthHost } from './connector.runner'
 import { createConnectorOptionRuntime } from './connector.option-runtime'
 import type { LocalConnectorRegistry } from './connector.registry'
@@ -46,7 +46,7 @@ export function createConnectorOptionQueryService({
 }: {
   authHost?: AppConnectorAuthHost
   connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   workspaceId: string
 }) {
   return {
