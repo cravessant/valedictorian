@@ -12,7 +12,7 @@ import type {
   UpsertConnectorScheduleInput,
   ValedictorianWorkspaceClient,
 } from 'sparxie'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import { requireAvailableConnectorScheduling } from './connector-schedule.capability'
 import { admitConnectorScheduleDue } from './connector-schedule.dispatch'
 import { resolveAdmittedScheduleDispatch } from './connector-schedule.execution'
@@ -43,7 +43,7 @@ export function createConnectorScheduleService({
     startedAt: string
   }) => Promise<{ claimed: boolean; run: ConnectorRunRecord }>
   connectorScheduling: ConnectorSchedulingCapability
-  database: DrizzleDatabase
+  database: PgliteDatabase
   executeClaimedRun: (input: {
     connectorRunId: string
     mode: 'scheduled' | 'catch_up'
@@ -62,7 +62,7 @@ export function createConnectorScheduleService({
     signal?: AbortSignal,
   ): Promise<DispatchConnectorScheduleDueResult> => {
     const capability = requireAvailable()
-    const admitted = admitConnectorScheduleDue({
+    const admitted = await admitConnectorScheduleDue({
       database,
       now,
       maximumCatchUpAgeMinutes: capability.maximumCatchUpAgeMinutes,
@@ -92,7 +92,8 @@ export function createConnectorScheduleService({
         return null
       }
 
-      return repository.getByConnectorInstanceId(connectorInstanceId)
+      const schedule = await repository.getByConnectorInstanceId(connectorInstanceId)
+      return schedule
     },
     async upsert(input: UpsertConnectorScheduleInput): Promise<ConnectorScheduleSummary> {
       const capability = requireAvailable()
@@ -115,7 +116,7 @@ export function createConnectorScheduleService({
       }
 
       if (input.expectedRevision === null) {
-        const created = repository.create({
+        const created = await repository.create({
           connectorInstanceId: input.connectorInstanceId,
           state: input.state,
           cadence: input.cadence,
@@ -125,7 +126,7 @@ export function createConnectorScheduleService({
         return created
       }
 
-      const updated = repository.update({
+      const updated = await repository.update({
         connectorInstanceId: input.connectorInstanceId,
         expectedRevision: input.expectedRevision,
         state: input.state,
@@ -137,32 +138,34 @@ export function createConnectorScheduleService({
     },
     async pause(input: PauseConnectorScheduleInput): Promise<ConnectorScheduleSummary> {
       requireAvailable()
-      const paused = repository.pause(input)
+      const paused = await repository.pause(input)
       onScheduleChanged?.()
       return paused
     },
     async resume(input: ResumeConnectorScheduleInput): Promise<ConnectorScheduleSummary> {
       requireAvailable()
-      const resumed = repository.resume(input)
+      const resumed = await repository.resume(input)
       onScheduleChanged?.()
       return resumed
     },
     async delete(input: DeleteConnectorScheduleInput): Promise<void> {
       requireAvailable()
-      repository.delete(input)
+      await repository.delete(input)
       onScheduleChanged?.()
     },
     async listAudit(
       input: ConnectorScheduleHistoryListInput,
     ): Promise<ConnectorScheduleAuditListResult> {
       requireAvailable()
-      return repository.listAudit(input)
+      const audit = await repository.listAudit(input)
+      return audit
     },
     async listOccurrences(
       input: ConnectorScheduleHistoryListInput,
     ): Promise<ConnectorScheduleOccurrenceListResult> {
       requireAvailable()
-      return repository.listOccurrences(input)
+      const occurrences = await repository.listOccurrences(input)
+      return occurrences
     },
     async dispatchDue(
       input: DispatchConnectorScheduleDueInput,
