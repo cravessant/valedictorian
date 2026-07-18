@@ -44,7 +44,8 @@ async function createServiceFixture() {
 
 describe('SecretService', () => {
   it('lists summaries without values after normalized upsert', async () => {
-    const { database, service, cleanup } = await createServiceFixture()
+    const fixture = await createServiceFixture()
+    const { database, service } = fixture
     try {
       const summary = await service.upsert({
         key: ' Greenhouse Password ',
@@ -66,12 +67,13 @@ describe('SecretService', () => {
       expect(row?.encryptedValue).toBe('enc:correct horse battery staple')
       expect(row?.key).toBe('greenhouse_password')
     } finally {
-      await cleanup()
+      await fixture.cleanup()
     }
   })
 
   it('resolves plaintext immediately and returns null when missing', async () => {
-    const { service, cleanup } = await createServiceFixture()
+    const fixture = await createServiceFixture()
+    const { service } = fixture
     try {
       await service.upsert({
         key: 'greenhouse_password',
@@ -89,12 +91,13 @@ describe('SecretService', () => {
       })
       await expect(service.resolve('missing')).resolves.toBeNull()
     } finally {
-      await cleanup()
+      await fixture.cleanup()
     }
   })
 
   it('deletes secrets and propagates codec failures value-free', async () => {
-    const { service, cleanup } = await createServiceFixture()
+    const fixture = await createServiceFixture()
+    const { service } = fixture
     try {
       await service.upsert({
         key: 'greenhouse_password',
@@ -115,12 +118,13 @@ describe('SecretService', () => {
         }),
       ).rejects.toMatchObject({ code: 'secure_storage_unavailable' })
     } finally {
-      await cleanup()
+      await fixture.cleanup()
     }
   })
 
   it('preserves secret plaintext byte-for-byte including whitespace and empty string', async () => {
-    const { database, service, cleanup } = await createServiceFixture()
+    const fixture = await createServiceFixture()
+    const { database, service } = fixture
     try {
       const spaced = await service.upsert({
         key: 'spaced',
@@ -156,7 +160,7 @@ describe('SecretService', () => {
         value: '',
       })
     } finally {
-      await cleanup()
+      await fixture.cleanup()
     }
   })
 

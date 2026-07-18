@@ -47,7 +47,8 @@ describe('identity SSN last4 secret representation', () => {
   })
 
   it('blocks ordinary create, replace, and delete while trusted upsert returns no summary', async () => {
-    const { service, cleanup } = await createServiceFixture()
+    const fixture = await createServiceFixture()
+    const { service } = fixture
     try {
       await expect(service.hasTrustedIdentitySsnLast4()).resolves.toBe(false)
 
@@ -112,12 +113,13 @@ describe('identity SSN last4 secret representation', () => {
         value: '5125',
       })
     } finally {
-      await cleanup()
+      await fixture.cleanup()
     }
   })
 
   it('rejects trusted SSN last4 values that are not exactly four ASCII digits', async () => {
-    const { service, cleanup } = await createServiceFixture()
+    const fixture = await createServiceFixture()
+    const { service } = fixture
     try {
       const rejected = [
         '123-45-6789',
@@ -150,7 +152,7 @@ describe('identity SSN last4 secret representation', () => {
         value: '5125',
       })
     } finally {
-      await cleanup()
+      await fixture.cleanup()
     }
   })
 })

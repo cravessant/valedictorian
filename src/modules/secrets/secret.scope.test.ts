@@ -110,7 +110,8 @@ describe('secret scopes', () => {
   })
 
   it('does not accept a scope selector on service operations', async () => {
-    const { service, cleanup } = await createWorkspaceService('ws-a')
+    const fixture = await createWorkspaceService('ws-a')
+    const { service } = fixture
     try {
       await service.upsert({
         key: 'api_token',
@@ -124,7 +125,7 @@ describe('secret scopes', () => {
       expect(service.delete.length).toBe(1)
       expect(service.list.length).toBe(0)
     } finally {
-      await cleanup()
+      await fixture.cleanup()
     }
   })
 })
