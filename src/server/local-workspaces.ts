@@ -69,7 +69,9 @@ export interface LocalWorkspaceOpenInput {
 }
 
 export interface CreateLocalWorkspaceManagerOptions {
-  createClient?: (options: LocalValedictorianClientOptions) => ValedictorianWorkspaceClient
+  createClient?: (
+    options: LocalValedictorianClientOptions,
+  ) => Promise<ValedictorianWorkspaceClient> | ValedictorianWorkspaceClient
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createId?: () => string
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
@@ -96,6 +98,7 @@ export function createLocalWorkspaceManager({
   const clientCache = new Map<string, ValedictorianWorkspaceClient>()
   const clientInflight = new Map<string, Promise<ValedictorianWorkspaceClient>>()
   const capabilityCache = new Map<string, PreparedWorkspaceProfileCapabilities>()
+  let closeInflight: Promise<void> | null = null
   const prepareCapabilities = prepareWorkspaceCapabilities
     ?? (createClient === createLocalValedictorianClient
       ? prepareWorkspaceProfileCapabilities
@@ -103,12 +106,19 @@ export function createLocalWorkspaceManager({
 
   return {
     connectorRunRecovery,
-    async close() {
-      await Promise.allSettled(clientInflight.values())
-      for (const capabilities of capabilityCache.values()) capabilities.dispose()
-      clientInflight.clear()
-      capabilityCache.clear()
-      clientCache.clear()
+    close() {
+      if (closeInflight) return closeInflight
+      closeInflight = (async () => {
+        await Promise.allSettled(clientInflight.values())
+        const capabilities = [...capabilityCache.values()]
+        clientInflight.clear()
+        capabilityCache.clear()
+        clientCache.clear()
+        await Promise.allSettled(capabilities.map((prepared) => prepared.dispose()))
+      })().finally(() => {
+        closeInflight = null
+      })
+      return closeInflight
     },
     async create(input) {
       fs.mkdirSync(input.path, { recursive: true })
@@ -127,6 +137,7 @@ export function createLocalWorkspaceManager({
       return openWorkspace({ createId, input, now, registryStore })
     },
     async resolveClient(workspaceId) {
+      if (closeInflight) await closeInflight
       const cachedClient = clientCache.get(workspaceId)
       if (cachedClient) {
         await registryStore.clearError(workspaceId)
@@ -160,7 +171,8 @@ export function createLocalWorkspaceManager({
           : null
         let client: ValedictorianWorkspaceClient
         try {
-          client = createClient({
+          client = await createClient({
+            ...(prepared ? { database: prepared.database } : {}),
             connectorRunRecovery,
             connectorRuntime: connectorPorts.connectorRuntime,
             localSecretResolutionEnabled: isSecretCodecAvailable(secretCodec),
@@ -176,9 +188,9 @@ export function createLocalWorkspaceManager({
             secretCodec,
             pgliteDataPath: layout.pgliteDataPath,
             workspaceId,
-          })
+          } as LocalValedictorianClientOptions)
         } catch (error) {
-          prepared?.dispose()
+          await prepared?.dispose()
           throw error
         }
         if (prepared) capabilityCache.set(workspaceId, prepared)
@@ -188,7 +200,7 @@ export function createLocalWorkspaceManager({
         } catch (error) {
           await registryStore.recordError(
             workspaceId,
-            error instanceof Error ? error.message : String(error),
+            sanitizedWorkspaceInitializationError(error),
             now(),
           )
           throw error
@@ -200,6 +212,18 @@ export function createLocalWorkspaceManager({
       })
     },
   }
+}
+
+function sanitizedWorkspaceInitializationError(error: unknown) {
+  if (
+    error instanceof Error
+    && error.name === 'ProfileMigrationError'
+    && !error.message.includes('/')
+    && !error.message.includes('\\')
+  ) {
+    return error.message
+  }
+  return 'Workspace initialization failed. Retry opening this workspace.'
 }
 
 const unavailableWorkspaceSecretCodec: SecretCodec = {

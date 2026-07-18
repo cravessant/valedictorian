@@ -8,14 +8,17 @@ export interface ConnectorRunRecoveryScope {
 }
 
 export interface ConnectorRunRecoveryLifecycle {
-  activate(scope: ConnectorRunRecoveryScope, recover: () => void): boolean
+  activate(
+    scope: ConnectorRunRecoveryScope,
+    recover: () => Promise<void> | void,
+  ): Promise<boolean>
 }
 
 export function createConnectorRunRecoveryLifecycle(): ConnectorRunRecoveryLifecycle {
   const activeScopes = new Set<string>()
 
   return {
-    activate(scope, recover) {
+    async activate(scope, recover) {
       const key = JSON.stringify([
         scope.workspaceId,
         ...resolvePhysicalDatabaseIdentity(resolveDatabaseFilePath(scope.pgliteDataPath)),
@@ -25,9 +28,14 @@ export function createConnectorRunRecoveryLifecycle(): ConnectorRunRecoveryLifec
         return false
       }
 
-      recover()
       activeScopes.add(key)
-      return true
+      try {
+        await recover()
+        return true
+      } catch (error) {
+        activeScopes.delete(key)
+        throw error
+      }
     },
   }
 }

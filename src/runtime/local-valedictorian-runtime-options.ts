@@ -4,12 +4,14 @@ import type { LocalConnectorRegistry } from '../modules/connectors/connector.reg
 import type { AppConnectorRuntimePorts } from '../modules/connectors/connector.runner'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
 import type { NormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
-import type { DrizzleDatabase } from '../db/sqlite'
+import type { PgliteDatabase } from '../db/pglite'
 import type { ProfileService } from '../modules/profile/profile.service'
 import type { SecretService } from '../modules/secrets/secret.service'
 import type { LocalScheduledWorkSource } from './local-scheduler'
 
 export interface LocalValedictorianClientOptions {
+  /** Caller-owned, already-migrated shared workspace database. */
+  database: PgliteDatabase
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   connectorRegistry?: LocalConnectorRegistry
   connectorRuntime?: AppConnectorRuntimePorts
@@ -20,10 +22,10 @@ export interface LocalValedictorianClientOptions {
   registerScheduledWorkSource?: (source: LocalScheduledWorkSource) => void
   normalizationRegistry?: NormalizationResolverRegistry
   projectCanonicalCandidate?: (
-    transaction: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
+    transaction: Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0],
     candidateId: string,
     rawRevisionId: string,
-  ) => string
+  ) => Promise<string> | string
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: SecretCodec
@@ -32,7 +34,7 @@ export interface LocalValedictorianClientOptions {
   profilePath?: string
   profileService?: ProfileService
   secretService?: SecretService
-  pgliteDataPath: string
+  pgliteDataPath?: string
   workspaceId?: string
 }
 

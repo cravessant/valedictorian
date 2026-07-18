@@ -1,17 +1,16 @@
 import { randomUUID } from 'node:crypto'
-import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
+import { createPgliteClient, migratePgliteDatabase } from '../db/pglite'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 
 export async function createConnectorCaptureFixture(
   pgliteDataPath: string,
   connectorId: string,
   connectorVersion: string,
 ) {
-  const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
+  const client = await createPgliteClient({ dataDir: pgliteDataPath })
   try {
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const database = await migratePgliteDatabase(client)
+    const repository = createPgliteConnectorRepository(database)
     const suffix = randomUUID()
     const instance = await repository.upsertInstance({
       id: `fixture-instance-${suffix}`,
@@ -31,6 +30,6 @@ export async function createConnectorCaptureFixture(
       executionScopeId: instance.executionScopeId,
     }
   } finally {
-    sqlite.close()
+    await client.close()
   }
 }

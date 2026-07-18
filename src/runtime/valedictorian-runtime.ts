@@ -79,7 +79,9 @@ export interface CreateValedictorianRuntimeOptions {
   config: ValedictorianRuntimeConfig
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createHttpClient?: (options: HttpValedictorianClientOptions) => ValedictorianClient
-  createLocalClient?: (options: LocalValedictorianClientOptions) => LocalValedictorianClient
+  createLocalClient?: (
+    options: LocalValedictorianClientOptions,
+  ) => Promise<LocalValedictorianClient> | LocalValedictorianClient
   createScheduler?: (options?: LocalSchedulerOptions) => LocalScheduler
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
   deferServerStart?: boolean
@@ -180,14 +182,15 @@ export async function createValedictorianRuntime({
   }
 
   let capabilitiesDisposed = false
-  const disposePreparedCapabilities = () => {
+  const disposePreparedCapabilities = async () => {
     if (capabilitiesDisposed) return
     capabilitiesDisposed = true
-    preparedCapabilities?.dispose()
+    await preparedCapabilities?.dispose()
   }
   let client: LocalValedictorianClient
   try {
-    client = createLocalClient({
+    client = await createLocalClient({
+    ...(preparedCapabilities ? { database: preparedCapabilities.database } : {}),
     ...(effectiveConnectorRunRecovery === undefined
       ? {}
       : { connectorRunRecovery: effectiveConnectorRunRecovery }),
@@ -210,9 +213,9 @@ export async function createValedictorianRuntime({
     pgliteDataPath: config.pgliteDataPath,
     registerScheduledWorkSource: (source) => scheduler.register(source),
     ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
-    })
+    } as LocalValedictorianClientOptions)
   } catch (error) {
-    disposePreparedCapabilities()
+    await disposePreparedCapabilities()
     throw error
   }
 
@@ -241,7 +244,7 @@ export async function createValedictorianRuntime({
     server = deferServerStart ? null : await startServer(serverOptions)
   } catch (error) {
     await scheduler.stop()
-    disposePreparedCapabilities()
+    await disposePreparedCapabilities()
     throw error
   }
 
@@ -262,7 +265,7 @@ export async function createValedictorianRuntime({
         try {
           await workspaceManager?.close()
         } finally {
-          disposePreparedCapabilities()
+          await disposePreparedCapabilities()
         }
       }
     },

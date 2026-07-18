@@ -1,12 +1,14 @@
 import fs from 'node:fs'
+import { createFileDatabase } from '../../db/sqlite'
 import {
-  createDrizzleDatabase,
-  createFileDatabase,
-  migrateDatabase,
-} from '../../db/sqlite'
+  createPgliteClient,
+  migratePgliteDatabase,
+  type PgliteClient,
+  type PgliteDatabase,
+} from '../../db/pglite'
 import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 import type { SecretCodec } from '../secrets/secret.codec'
-import { createSqliteSecretService } from '../secrets/secret.composition'
+import { createPgliteSecretService } from '../secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../secrets/secret.scope'
 import type { SecretService } from '../secrets/secret.service'
 import { createProfileService, type ProfileService } from './profile.service'
@@ -17,7 +19,9 @@ import {
 import { migrateLegacyProfileToJson } from './profile.migration'
 
 export interface PreparedWorkspaceProfileCapabilities {
-  dispose(): void
+  database: PgliteDatabase
+  dispose(): Promise<void>
+  pgliteClient: PgliteClient
   profileService: ProfileService
   secretService: SecretService
 }
@@ -30,35 +34,44 @@ export async function prepareWorkspaceProfileCapabilities(options: {
 }): Promise<PreparedWorkspaceProfileCapabilities> {
   const databaseFilePath = resolveDatabaseFilePath(options.pgliteDataPath)
   fs.mkdirSync(options.pgliteDataPath, { recursive: true })
-  const sqlite = createFileDatabase(databaseFilePath)
+  const pgliteClient = await createPgliteClient({ dataDir: options.pgliteDataPath })
+  let sqlite: ReturnType<typeof createFileDatabase> | null = null
   try {
-    migrateDatabase(sqlite)
-    const secretService = createSqliteSecretService(
-      createDrizzleDatabase(sqlite),
+    const database = await migratePgliteDatabase(pgliteClient)
+    const secretService = createPgliteSecretService(
+      database,
       options.secretCodec,
       createWorkspaceSecretScope(options.workspaceId),
     )
-    await migrateLegacyProfileToJson({
-      database: sqlite,
-      profilePath: options.profilePath,
-      secretCodec: options.secretCodec,
-      secretService,
-      databasePath: databaseFilePath,
-    })
+    if (fs.existsSync(databaseFilePath)) {
+      sqlite = createFileDatabase(databaseFilePath)
+      await migrateLegacyProfileToJson({
+        database: sqlite,
+        profilePath: options.profilePath,
+        secretCodec: options.secretCodec,
+        secretService,
+        databasePath: databaseFilePath,
+      })
+      sqlite.close()
+      sqlite = null
+    }
     const profileService = createJsonProfileService(options.profilePath)
     let disposed = false
     return {
-      dispose() {
+      database,
+      async dispose() {
         if (disposed) return
         disposed = true
         profileService.dispose()
-        sqlite.close()
+        await pgliteClient.close()
       },
+      pgliteClient,
       profileService,
       secretService,
     }
   } catch (error) {
-    sqlite.close()
+    sqlite?.close()
+    await pgliteClient.close()
     throw error
   }
 }

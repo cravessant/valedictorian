@@ -1,10 +1,9 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import Database from 'better-sqlite3'
 import { afterEach, describe, expect, it } from 'vitest'
 import { profileDocumentSchemaVersion } from 'sparxie'
-import { resolveDatabaseFilePath, resolveWorkspaceLayout } from '../../workspace/workspace.paths'
+import { resolveWorkspaceLayout } from '../../workspace/workspace.paths'
 import type { SecretCodec } from '../secrets/secret.codec'
 import {
   createJsonProfileService,
@@ -46,7 +45,7 @@ describe('profile composition', () => {
     expect(prepared.secretService.scope.workspaceId).toBe('workspace-composition')
     expect(fs.existsSync(layout.profilePath)).toBe(true)
 
-    prepared.dispose()
+    await prepared.dispose()
     await expect(prepared.profileService.get()).rejects.toMatchObject({
       code: 'profile_document_unavailable',
     })
@@ -71,7 +70,7 @@ describe('profile composition', () => {
     })
     await prepared.secretService.upsertTrustedIdentitySsnLast4('5125')
 
-    expectOperationalDatabaseHasNoProfileTables(layout.pgliteDataPath)
+    await expectOperationalDatabaseHasNoProfileTables(prepared.pgliteClient)
     expect(JSON.stringify(profile).toLowerCase()).not.toContain('ssn')
     expect(JSON.stringify(await prepared.profileService.getAgentContext()).toLowerCase()).not.toContain('ssn')
 
@@ -97,30 +96,28 @@ describe('profile composition', () => {
       prepared.profileService.restoreDocument({ expectedRevision: null }),
     ).resolves.toMatchObject({ profile: { email: null } })
     await prepared.profileService.update({ email: 'restart@example.test' })
-    expectOperationalDatabaseHasNoProfileTables(layout.pgliteDataPath)
-    prepared.dispose()
+    await expectOperationalDatabaseHasNoProfileTables(prepared.pgliteClient)
+    await prepared.dispose()
 
     const restarted = await prepareWorkspaceProfileCapabilities(options)
     await expect(restarted.profileService.get()).resolves.toMatchObject({
       email: 'restart@example.test',
     })
     expect(JSON.stringify(await restarted.profileService.get()).toLowerCase()).not.toContain('ssn')
-    expectOperationalDatabaseHasNoProfileTables(layout.pgliteDataPath)
-    restarted.dispose()
+    await expectOperationalDatabaseHasNoProfileTables(restarted.pgliteClient)
+    await restarted.dispose()
   })
 })
 
-function expectOperationalDatabaseHasNoProfileTables(pgliteDataPath: string) {
-  const database = new Database(resolveDatabaseFilePath(pgliteDataPath), { readonly: true })
-  try {
-    const tables = database.prepare(
-      "select name from sqlite_master where type = 'table'",
-    ).all().map((row) => (row as { name: string }).name)
-    expect(tables).not.toContain('user_profile')
-    expect(tables).not.toContain('profile_education')
-    expect(tables).not.toContain('profile_answers')
-    expect(tables).not.toContain('profile_sensitive_details')
-  } finally {
-    database.close()
-  }
+async function expectOperationalDatabaseHasNoProfileTables(
+  pgliteClient: Awaited<ReturnType<typeof prepareWorkspaceProfileCapabilities>>['pgliteClient'],
+) {
+  const result = await pgliteClient.query<{ tablename: string }>(
+    "select tablename from pg_tables where schemaname = 'public'",
+  )
+  const tables = result.rows.map((row) => row.tablename)
+  expect(tables).not.toContain('user_profile')
+  expect(tables).not.toContain('profile_education')
+  expect(tables).not.toContain('profile_answers')
+  expect(tables).not.toContain('profile_sensitive_details')
 }
