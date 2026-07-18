@@ -2,21 +2,28 @@ import {
   applications,
 } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
 import { seedSampleApplications } from './application.fixtures'
-import { createSqliteApplicationRepository } from './application.repository'
+import { createPgliteApplicationRepository } from './application.repository'
 
-describe('SQLite application repository list queries', () => {
+async function createTestDatabase() {
+  const client = await createPgliteClient()
+  onTestFinished(() => client.close())
+  return migratePgliteDatabase(client)
+}
+
+describe('PGlite application repository list queries', () => {
   it('lists table-ready application rows ordered by priority score', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const client = await createPgliteClient()
 
-    const repository = createSqliteApplicationRepository(database)
-    const result = await repository.listApplications()
-    const rows = result.items
+    try {
+      const database = await migratePgliteDatabase(client)
+      await seedSampleApplications(database)
+
+      const repository = createPgliteApplicationRepository(database)
+      const result = await repository.listApplications()
+      const rows = result.items
 
     expect(result).toMatchObject({
       total: 3,
@@ -37,16 +44,17 @@ describe('SQLite application repository list queries', () => {
         url: 'https://jobs.example.test/remediated/f60a3102c158cd7c',
       },
     })
-    expect(rows.map((row) => row.currentPriorityScore)).toEqual([8, 6, 3])
+      expect(rows.map((row) => row.currentPriorityScore)).toEqual([8, 6, 3])
+    } finally {
+      await client.close()
+    }
   })
 
   it('sorts application rows by company name ascending', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const result = await repository.listApplications({ sort: 'company_asc' })
 
     expect(result.items.map((row) => row.companyName)).toEqual([
@@ -57,28 +65,26 @@ describe('SQLite application repository list queries', () => {
   })
 
   it('sorts application rows by supported list sort keys', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    database
+    await database
       .update(applications)
       .set({ updatedAt: '2026-06-04T16:02:00.000Z' })
       .where(eq(applications.id, 'application-astranis-backend'))
-      .run()
-    database
+
+    await database
       .update(applications)
       .set({ updatedAt: '2026-06-04T16:01:00.000Z' })
       .where(eq(applications.id, 'application-versant-platform'))
-      .run()
-    database
+
+    await database
       .update(applications)
       .set({ updatedAt: '2026-06-04T16:00:00.000Z' })
       .where(eq(applications.id, 'application-jobster-analytics'))
-      .run()
 
-    const repository = createSqliteApplicationRepository(database)
+
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(repository.listApplications({ sort: 'company_desc' })).resolves.toMatchObject({
       items: [
@@ -139,12 +145,10 @@ describe('SQLite application repository list queries', () => {
   })
 
   it('filters by company, role, and broad search text', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(repository.listApplications({ company: 'astranis' })).resolves.toMatchObject({
       total: 1,
@@ -161,12 +165,10 @@ describe('SQLite application repository list queries', () => {
   })
 
   it('returns application row timestamps', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(repository.listApplications({ company: 'astranis' })).resolves.toMatchObject({
       items: [
@@ -179,28 +181,26 @@ describe('SQLite application repository list queries', () => {
   })
 
   it('filters by created date range', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    database
+    await database
       .update(applications)
       .set({ createdAt: '2026-06-01T12:00:00.000Z' })
       .where(eq(applications.id, 'application-astranis-backend'))
-      .run()
-    database
+
+    await database
       .update(applications)
       .set({ createdAt: '2026-06-02T12:00:00.000Z' })
       .where(eq(applications.id, 'application-versant-platform'))
-      .run()
-    database
+
+    await database
       .update(applications)
       .set({ createdAt: '2026-06-03T12:00:00.000Z' })
       .where(eq(applications.id, 'application-jobster-analytics'))
-      .run()
 
-    const repository = createSqliteApplicationRepository(database)
+
+    const repository = createPgliteApplicationRepository(database)
     const result = await repository.listApplications({
       createdFrom: '2026-06-02T00:00:00.000Z',
       createdTo: '2026-06-02T23:59:59.999Z',
@@ -214,28 +214,26 @@ describe('SQLite application repository list queries', () => {
   })
 
   it('filters by updated date range', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    database
+    await database
       .update(applications)
       .set({ updatedAt: '2026-06-01T12:00:00.000Z' })
       .where(eq(applications.id, 'application-astranis-backend'))
-      .run()
-    database
+
+    await database
       .update(applications)
       .set({ updatedAt: '2026-06-02T12:00:00.000Z' })
       .where(eq(applications.id, 'application-versant-platform'))
-      .run()
-    database
+
+    await database
       .update(applications)
       .set({ updatedAt: '2026-06-03T12:00:00.000Z' })
       .where(eq(applications.id, 'application-jobster-analytics'))
-      .run()
 
-    const repository = createSqliteApplicationRepository(database)
+
+    const repository = createPgliteApplicationRepository(database)
     const result = await repository.listApplications({
       updatedFrom: '2026-06-03T00:00:00.000Z',
       updatedTo: '2026-06-03T23:59:59.999Z',
@@ -246,5 +244,38 @@ describe('SQLite application repository list queries', () => {
       id: 'application-jobster-analytics',
       updatedAt: '2026-06-03T12:00:00.000Z',
     })
+  })
+
+  it('preserves null priority ordering and stable ties', async () => {
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
+    const repository = createPgliteApplicationRepository(database)
+    const unscored = await repository.createApplication({
+      companyName: 'Null Score Labs',
+      roleTitle: 'Backend Intern',
+      sourceName: 'LinkedIn',
+      roleKind: 'internship',
+      country: 'US',
+      workMode: 'remote',
+      status: 'queued',
+      primaryLink: {
+        kind: 'official',
+        label: 'official',
+        url: 'https://jobs.example.com/null-score/backend-intern',
+      },
+    })
+
+    const ascending = await repository.listApplications({ sort: 'priority_asc' })
+    const descending = await repository.listApplications()
+    expect(ascending.items[0]?.id).toBe(unscored.id)
+    expect(descending.items.at(-1)?.id).toBe(unscored.id)
+
+    await database.update(applications).set({
+      currentPriorityScore: 5,
+      updatedAt: '2026-06-04T16:00:00.000Z',
+    })
+    const tied = await repository.listApplications()
+    const tiedIds = tied.items.map((item) => item.id)
+    expect(tiedIds).toEqual(tiedIds.toSorted())
   })
 })

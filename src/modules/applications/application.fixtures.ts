@@ -9,7 +9,7 @@ import {
   workflowRuns,
   workflowRunSteps,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 
 const createdAt = '2026-06-04T16:00:00.000Z'
 const referenceSeedCreatedAt = '2026-06-05T00:00:00.000Z'
@@ -60,8 +60,8 @@ interface ReferenceTrackerApplication {
   updatedAt: string
 }
 
-export function seedSampleApplications(database: DrizzleDatabase) {
-  database
+export async function seedSampleApplications(database: PgliteDatabase) {
+  await database
     .insert(companies)
     .values([
       {
@@ -93,9 +93,8 @@ export function seedSampleApplications(database: DrizzleDatabase) {
       },
     ])
     .onConflictDoNothing()
-    .run()
 
-  database
+  await database
     .insert(sources)
     .values([
       {
@@ -116,9 +115,8 @@ export function seedSampleApplications(database: DrizzleDatabase) {
       },
     ])
     .onConflictDoNothing()
-    .run()
 
-  database
+  await database
     .insert(applications)
     .values([
       {
@@ -189,9 +187,8 @@ export function seedSampleApplications(database: DrizzleDatabase) {
       },
     ])
     .onConflictDoNothing()
-    .run()
 
-  database
+  await database
     .insert(applicationLinks)
     .values([
       {
@@ -235,9 +232,8 @@ export function seedSampleApplications(database: DrizzleDatabase) {
       },
     ])
     .onConflictDoNothing()
-    .run()
 
-  database
+  await database
     .insert(applicationScores)
     .values([
       {
@@ -284,20 +280,19 @@ export function seedSampleApplications(database: DrizzleDatabase) {
       },
     ])
     .onConflictDoNothing()
-    .run()
 
-  seedSampleApplicationAttempts(database)
+  await seedSampleApplicationAttempts(database)
 }
 
-export function seedReferenceTrackerApplications(
-  database: DrizzleDatabase,
+export async function seedReferenceTrackerApplications(
+  database: PgliteDatabase,
   trackerMarkdown: string,
 ) {
   const trackerApplications = parseReferenceTrackerApplications(trackerMarkdown)
 
   if (trackerApplications.length === 0) {
-    seedSampleApplications(database)
-    seedSampleSourcingFindings(database)
+    await seedSampleApplications(database)
+    await seedSampleSourcingFindings(database)
     return
   }
 
@@ -329,9 +324,9 @@ export function seedReferenceTrackerApplications(
     ]),
   )
 
-  database.insert(companies).values([...companiesById.values()]).run()
-  database.insert(sources).values([...sourcesById.values()]).run()
-  database
+  await database.insert(companies).values([...companiesById.values()])
+  await database.insert(sources).values([...sourcesById.values()])
+  await database
     .insert(applications)
     .values(
       trackerApplications.map((application) => ({
@@ -357,8 +352,7 @@ export function seedReferenceTrackerApplications(
         deletedAt: null,
       })),
     )
-    .run()
-  database
+  await database
     .insert(applicationLinks)
     .values(
       trackerApplications.map((application) => ({
@@ -375,13 +369,12 @@ export function seedReferenceTrackerApplications(
         deletedAt: null,
       })),
     )
-    .run()
 
   const scoredApplications = trackerApplications.filter(
     (application) => application.currentPriorityScore !== null,
   )
   if (scoredApplications.length > 0) {
-    database
+    await database
       .insert(applicationScores)
       .values(
         scoredApplications.map((application) => ({
@@ -399,25 +392,24 @@ export function seedReferenceTrackerApplications(
           createdAt: application.createdAt,
         })),
       )
-      .run()
   }
 
-  seedSampleApplicationAttempts(database)
-  seedSampleSourcingFindings(database)
+  await seedSampleApplicationAttempts(database)
+  await seedSampleSourcingFindings(database)
 }
 
-export function seedSampleSourcingFindings(database: DrizzleDatabase) {
-  if (database.select().from(opportunities).limit(1).get()) {
+export async function seedSampleSourcingFindings(database: PgliteDatabase) {
+  if ((await database.select().from(opportunities).limit(1))[0]) {
     return
   }
 
-  ensureSeedSource(database)
+  await ensureSeedSource(database)
 
   const runId = 'workflow-run-sourcing-sample-linkedin'
-  const existingRun = database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).get()
+  const [existingRun] = await database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).limit(1)
 
   if (!existingRun) {
-    database
+    await database
       .insert(workflowRuns)
       .values({
         id: runId,
@@ -444,9 +436,8 @@ export function seedSampleSourcingFindings(database: DrizzleDatabase) {
         updatedAt: referenceSeedCreatedAt,
         deletedAt: null,
       })
-      .run()
 
-    database
+    await database
       .insert(workflowRunSteps)
       .values([
         {
@@ -480,10 +471,9 @@ export function seedSampleSourcingFindings(database: DrizzleDatabase) {
           createdAt: '2026-06-05T14:24:00.000Z',
         },
       ])
-      .run()
   }
 
-  database
+  await database
     .insert(opportunities)
     .values([
       {
@@ -574,24 +564,23 @@ export function seedSampleSourcingFindings(database: DrizzleDatabase) {
         deletedAt: null,
       },
     ])
-    .run()
 }
 
-export function seedSampleApplicationAttempts(database: DrizzleDatabase) {
-  const applicationId = selectAstranisAttemptSeedApplicationId(database)
+export async function seedSampleApplicationAttempts(database: PgliteDatabase) {
+  const applicationId = await selectAstranisAttemptSeedApplicationId(database)
 
   if (!applicationId) {
     return
   }
 
   const runId = 'workflow-run-application-attempt-astranis-verification'
-  const existingRun = database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).get()
+  const [existingRun] = await database.select().from(workflowRuns).where(eq(workflowRuns.id, runId)).limit(1)
 
   if (existingRun) {
     return
   }
 
-  database
+  await database
     .insert(workflowRuns)
     .values({
       id: runId,
@@ -625,9 +614,8 @@ export function seedSampleApplicationAttempts(database: DrizzleDatabase) {
       updatedAt: '2026-06-04T16:05:00.000Z',
       deletedAt: null,
     })
-    .run()
 
-  database
+  await database
     .insert(workflowRunSteps)
     .values([
       {
@@ -692,11 +680,10 @@ export function seedSampleApplicationAttempts(database: DrizzleDatabase) {
         createdAt: '2026-06-04T16:05:00.000Z',
       },
     ])
-    .run()
 }
 
-function selectAstranisAttemptSeedApplicationId(database: DrizzleDatabase) {
-  const application = database
+async function selectAstranisAttemptSeedApplicationId(database: PgliteDatabase) {
+  const application = (await database
     .select({
       id: applications.id,
       companyName: companies.name,
@@ -704,8 +691,7 @@ function selectAstranisAttemptSeedApplicationId(database: DrizzleDatabase) {
       status: applications.status,
     })
     .from(applications)
-    .innerJoin(companies, eq(applications.companyId, companies.id))
-    .all()
+    .innerJoin(companies, eq(applications.companyId, companies.id)))
     .find(
       (row) =>
         row.companyName === 'Astranis Space Technologies' &&
@@ -716,12 +702,12 @@ function selectAstranisAttemptSeedApplicationId(database: DrizzleDatabase) {
   return application?.id ?? null
 }
 
-function ensureSeedSource(database: DrizzleDatabase) {
-  if (database.select().from(sources).where(eq(sources.id, 'source-linkedin')).get()) {
+async function ensureSeedSource(database: PgliteDatabase) {
+  if ((await database.select().from(sources).where(eq(sources.id, 'source-linkedin')).limit(1))[0]) {
     return
   }
 
-  database
+  await database
     .insert(sources)
     .values({
       id: 'source-linkedin',
@@ -731,7 +717,6 @@ function ensureSeedSource(database: DrizzleDatabase) {
       updatedAt: referenceSeedCreatedAt,
       deletedAt: null,
     })
-    .run()
 }
 
 export function parseReferenceTrackerApplications(markdown: string): ReferenceTrackerApplication[] {
