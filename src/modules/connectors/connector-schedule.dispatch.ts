@@ -70,6 +70,7 @@ export function admitConnectorScheduleDue({
         isNull(connectorInstances.deletedAt),
       ))
       .limit(1)
+      .for('update')
 
     if (!instance) {
       throw Object.assign(new Error(`Connector instance not found: ${input.connectorInstanceId}`), {

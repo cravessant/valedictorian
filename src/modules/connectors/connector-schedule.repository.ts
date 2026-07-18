@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import type {
   ConnectorScheduleAuditEvent,
@@ -478,50 +478,27 @@ export function createConnectorScheduleRepository(
       limit: number
       offset: number
     }): Promise<ConnectorScheduleAuditListResult> {
-      const scheduleIds = (await database
-        .select({ id: connectorSchedules.id })
-        .from(connectorSchedules)
-        .where(eq(connectorSchedules.connectorInstanceId, input.connectorInstanceId))
-        .orderBy(asc(connectorSchedules.id)))
-        .map((row) => row.id)
-
-      if (scheduleIds.length === 0) {
-        return {
-          items: [],
-          total: 0,
-          limit: input.limit,
-          offset: input.offset,
-          hasMore: false,
-        }
-      }
-
-      const [totalRow] = await database
-        .select({ value: count() })
-        .from(connectorScheduleEvents)
-        .where(inArray(connectorScheduleEvents.scheduleId, scheduleIds))
-      const rows = await database
-        .select()
-        .from(connectorScheduleEvents)
-        .where(inArray(connectorScheduleEvents.scheduleId, scheduleIds))
-        .orderBy(desc(connectorScheduleEvents.at), desc(connectorScheduleEvents.id))
-        .limit(input.limit)
-        .offset(input.offset)
-
-      const items = rows.map((row) => ({
+      const result = await database.$client.query<ScheduleAuditPageRow>(AUDIT_PAGE_QUERY, [
+        input.connectorInstanceId,
+        input.limit,
+        input.offset,
+      ])
+      const total = Number(result.rows[0]?.total ?? 0)
+      const items = result.rows.flatMap((row) => row.id ? [{
         id: row.id,
-        scheduleId: row.scheduleId,
-        actorClass: row.actorClass as ConnectorScheduleAuditEvent['actorClass'],
+        scheduleId: row.schedule_id!,
+        actorClass: row.actor_class as ConnectorScheduleAuditEvent['actorClass'],
         action: row.action as ConnectorScheduleAuditEvent['action'],
-        revision: row.revision,
-        at: row.at,
-      }))
+        revision: row.revision!,
+        at: row.at!,
+      }] : [])
 
       return {
         items,
-        total: totalRow?.value ?? 0,
+        total,
         limit: input.limit,
         offset: input.offset,
-        hasMore: input.offset + items.length < (totalRow?.value ?? 0),
+        hasMore: input.offset + items.length < total,
       }
     },
 
@@ -557,50 +534,94 @@ export function createConnectorScheduleRepository(
       limit: number
       offset: number
     }): Promise<ConnectorScheduleOccurrenceListResult> {
-      const scheduleIds = (await database
-        .select({ id: connectorSchedules.id })
-        .from(connectorSchedules)
-        .where(eq(connectorSchedules.connectorInstanceId, input.connectorInstanceId))
-        .orderBy(asc(connectorSchedules.id)))
-        .map((row) => row.id)
-
-      if (scheduleIds.length === 0) {
-        return {
-          items: [],
-          total: 0,
-          limit: input.limit,
-          offset: input.offset,
-          hasMore: false,
-        }
-      }
-
-      const [totalRow] = await database
-        .select({ value: count() })
-        .from(connectorScheduleOccurrences)
-        .where(inArray(connectorScheduleOccurrences.scheduleId, scheduleIds))
-      const rows = await database
-        .select()
-        .from(connectorScheduleOccurrences)
-        .where(inArray(connectorScheduleOccurrences.scheduleId, scheduleIds))
-        .orderBy(
-          desc(connectorScheduleOccurrences.createdAt),
-          desc(connectorScheduleOccurrences.id),
-        )
-        .limit(input.limit)
-        .offset(input.offset)
-
-      const items = rows.map(mapOccurrenceSummary)
+      const result = await database.$client.query<ScheduleOccurrencePageRow>(
+        OCCURRENCE_PAGE_QUERY,
+        [input.connectorInstanceId, input.limit, input.offset],
+      )
+      const total = Number(result.rows[0]?.total ?? 0)
+      const items = result.rows.flatMap((row) => row.id ? [mapOccurrenceSummary({
+        id: row.id,
+        scheduleId: row.schedule_id!,
+        scheduleRevision: row.schedule_revision!,
+        nominalAt: row.nominal_at!,
+        idempotencyKey: row.idempotency_key!,
+        admittedMode: row.admitted_mode!,
+        outcome: row.outcome!,
+        connectorRunId: row.connector_run_id,
+        createdAt: row.created_at!,
+      })] : [])
 
       return {
         items,
-        total: totalRow?.value ?? 0,
+        total,
         limit: input.limit,
         offset: input.offset,
-        hasMore: input.offset + items.length < (totalRow?.value ?? 0),
+        hasMore: input.offset + items.length < total,
       }
     },
   }
 }
+
+interface ScheduleAuditPageRow {
+  total: number
+  id: string | null
+  schedule_id: string | null
+  actor_class: string | null
+  action: string | null
+  revision: string | null
+  at: string | null
+}
+
+interface ScheduleOccurrencePageRow {
+  total: number
+  id: string | null
+  schedule_id: string | null
+  schedule_revision: string | null
+  nominal_at: string | null
+  idempotency_key: string | null
+  admitted_mode: string | null
+  outcome: string | null
+  connector_run_id: string | null
+  created_at: string | null
+}
+
+const AUDIT_PAGE_QUERY = `
+with eligible as (
+  select event.*
+  from connector_schedule_events event
+  where event.schedule_id in (
+    select schedule.id from connector_schedules schedule
+    where schedule.connector_instance_id = $1
+  )
+), page as (
+  select * from eligible
+  order by at desc, id desc
+  limit $2 offset $3
+), total as (
+  select count(*)::integer as value from eligible
+)
+select total.value as total, page.*
+from total left join page on true
+order by page.at desc nulls last, page.id desc nulls last`
+
+const OCCURRENCE_PAGE_QUERY = `
+with eligible as (
+  select occurrence.*
+  from connector_schedule_occurrences occurrence
+  where occurrence.schedule_id in (
+    select schedule.id from connector_schedules schedule
+    where schedule.connector_instance_id = $1
+  )
+), page as (
+  select * from eligible
+  order by created_at desc, id desc
+  limit $2 offset $3
+), total as (
+  select count(*)::integer as value from eligible
+)
+select total.value as total, page.*
+from total left join page on true
+order by page.created_at desc nulls last, page.id desc nulls last`
 
 async function mapScheduleSummary(
   database: PgliteDatabase,

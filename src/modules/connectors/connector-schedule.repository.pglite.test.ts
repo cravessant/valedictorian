@@ -1,9 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
-import { sourceExecutionScopes } from '../../db/schema'
+import { drizzle } from 'drizzle-orm/pglite'
+import { schema, sourceExecutionScopes } from '../../db/schema'
 import {
   connectorInstances,
   connectorScheduleRevisions,
@@ -20,6 +21,35 @@ const NOW = '2026-07-18T10:00:00.000Z'
 const CADENCE = { kind: 'interval' as const, everyMinutes: 60 }
 
 describe('PGlite connector schedule repository', () => {
+  it('reads each page and total from one PostgreSQL snapshot', async () => {
+    const client = await createPgliteClient()
+    onTestFinished(() => client.close())
+    await migratePgliteDatabase(client)
+    const database = drizzle(client, { schema })
+    await seedConnectorInstance(database, 'connector-schedule-page-snapshot')
+    const repository = createConnectorScheduleRepository(database, () => new Date(NOW))
+    await repository.create({
+      connectorInstanceId: 'connector-schedule-page-snapshot',
+      state: 'enabled', cadence: CADENCE, timezone: 'UTC',
+    })
+
+    const query = vi.spyOn(client, 'query')
+    await repository.listAudit({
+      connectorInstanceId: 'connector-schedule-page-snapshot', limit: 10, offset: 0,
+    })
+    const auditQueries = query.mock.calls.filter(([statement]) =>
+      statement.includes('connector_schedule_events'))
+    expect(auditQueries).toHaveLength(1)
+
+    query.mockClear()
+    await repository.listOccurrences({
+      connectorInstanceId: 'connector-schedule-page-snapshot', limit: 10, offset: 0,
+    })
+    const occurrenceQueries = query.mock.calls.filter(([statement]) =>
+      statement.includes('connector_schedule_occurrences'))
+    expect(occurrenceQueries).toHaveLength(1)
+  })
+
   it('creates a schedule with an immutable revision snapshot', async () => {
     const database = await createTestDatabase()
     await seedConnectorInstance(database, 'connector-schedule-create')

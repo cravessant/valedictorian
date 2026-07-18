@@ -1,6 +1,7 @@
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { sql } from 'drizzle-orm'
-import { sourceExecutionScopes } from '../../db/schema'
+import { drizzle } from 'drizzle-orm/pglite'
+import { schema, sourceExecutionScopes } from '../../db/schema'
 import { connectorInstances, connectorRuns } from '../../db/schema.connectors'
 import {
   createPgliteClient,
@@ -15,6 +16,35 @@ const DUE_AT = '2026-07-18T11:00:00.000Z'
 const CADENCE = { kind: 'interval' as const, everyMinutes: 60 }
 
 describe('PGlite connector schedule dispatch', () => {
+  it('locks the connector identity shared with manual and retry admission', async () => {
+    const client = await createPgliteClient()
+    onTestFinished(() => client.close())
+    await migratePgliteDatabase(client)
+    const queries: string[] = []
+    const database = drizzle(client, {
+      schema,
+      logger: { logQuery(query) { queries.push(query) } },
+    })
+    await seedConnectorInstance(database, 'connector-dispatch-identity-lock')
+    const repository = createConnectorScheduleRepository(database, () => new Date(CREATED_AT))
+    const schedule = await repository.create({
+      connectorInstanceId: 'connector-dispatch-identity-lock',
+      state: 'enabled', cadence: CADENCE, timezone: 'UTC',
+    })
+    queries.length = 0
+
+    await admitConnectorScheduleDue({
+      database, now: () => new Date(DUE_AT), maximumCatchUpAgeMinutes: 180,
+      input: {
+        connectorInstanceId: schedule.connectorInstanceId,
+        expectedRevision: schedule.revision,
+      },
+    })
+
+    expect(queries.some((query) => /from "connector_instances"[\s\S]*for update/i.test(query)))
+      .toBe(true)
+  })
+
   it('converges concurrent duplicate admission on one queued run and occurrence', async () => {
     const database = await createTestDatabase()
     await seedConnectorInstance(database, 'connector-dispatch-concurrent')
