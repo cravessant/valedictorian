@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import type { CanonicalSourceCandidate, RoleKind } from 'sparxie'
 import {
   applicationLinks,
@@ -11,19 +11,19 @@ import {
   opportunities,
   workflowRuns,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 
 export const SOURCING_PROJECTION_POLICY_VERSION = 'canonical-sourcing-policy/v1'
 
 export function createCanonicalCandidateProjectionService(
   now: () => Date = () => new Date(),
 ) {
-  const projectPersisted = (
-    transaction: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
+  const projectPersisted = async (
+    transaction: Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0],
     candidateId: string,
     rawRevisionId: string,
   ) => {
-        const persisted = transaction
+        const [persisted] = await transaction
           .select({
             candidateJson: jobFactVersions.jobFactVersionJson,
             candidateId: jobFactVersions.id,
@@ -47,7 +47,7 @@ export function createCanonicalCandidateProjectionService(
             eq(jobFactVersions.id, candidateId),
             eq(jobFactVersions.captureEvidenceVersionId, rawRevisionId),
           ))
-          .get()
+          .limit(1)
 
         if (
           !persisted ||
@@ -64,10 +64,15 @@ export function createCanonicalCandidateProjectionService(
         const identityKeys = sourcingProjectionIdentityKeys(candidate)
         const identityKey = identityKeys[0]
         const sourceName = persisted.reportedOriginName?.trim() || persisted.adapterId
-        const identityMatches = transaction.select().from(opportunities).all().filter((finding) => {
-          const aliases = parseProjectionAliases(finding.projectionAliasesJson)
-          return identityKeys.some((key) => finding.projectionIdentityKey === key || aliases.includes(key))
-        })
+        const identityMatches = (await transaction
+          .select()
+          .from(opportunities)
+          .orderBy(asc(opportunities.id)))
+          .filter((finding) => {
+            const aliases = parseProjectionAliases(finding.projectionAliasesJson)
+            return identityKeys.some((key) =>
+              finding.projectionIdentityKey === key || aliases.includes(key))
+          })
         const matchedFindingIds = [...new Set(identityMatches.map(({ id }) => id))]
         if (matchedFindingIds.length > 1) {
           throw new Error(`Conflicting sourcing findings own canonical identities: ${matchedFindingIds.join(', ')}`)
@@ -81,21 +86,31 @@ export function createCanonicalCandidateProjectionService(
           ]),
         ].sort())
         if (existing?.captureEvidenceVersionId) {
-          const currentRevision = transaction.select({
+          const [currentRevision] = await transaction.select({
             id: captureEvidenceVersions.id,
             rawRecordId: captureEvidenceVersions.captureLineageId,
             revision: captureEvidenceVersions.revision,
             observedAt: captureEvidenceVersions.observedAt,
-          }).from(captureEvidenceVersions).where(eq(captureEvidenceVersions.id, existing.captureEvidenceVersionId)).get()
+          })
+            .from(captureEvidenceVersions)
+            .where(eq(captureEvidenceVersions.id, existing.captureEvidenceVersionId))
+            .limit(1)
           if (currentRevision && !isNewerSourceRevision(persisted, currentRevision)) {
-            transaction.update(opportunities).set({ projectionAliasesJson })
-              .where(eq(opportunities.id, existing.id)).run()
+            const [updated] = await transaction.update(opportunities).set({ projectionAliasesJson })
+              .where(eq(opportunities.id, existing.id))
+              .returning({ id: opportunities.id })
+            if (!updated) throw new Error(`Sourcing finding not found: ${existing.id}`)
             return existing.id
           }
         }
-        let source = transaction.select().from(sources).where(eq(sources.name, sourceName)).get()
+        let [source] = await transaction
+          .select()
+          .from(sources)
+          .where(eq(sources.name, sourceName))
+          .orderBy(asc(sources.id))
+          .limit(1)
         if (!source) {
-          source = {
+          const sourceValues = {
             id: randomUUID(),
             name: sourceName,
             accountHint: null,
@@ -103,12 +118,14 @@ export function createCanonicalCandidateProjectionService(
             updatedAt: timestamp,
             deletedAt: null,
           }
-          transaction.insert(sources).values(source).run()
+          const [insertedSource] = await transaction.insert(sources).values(sourceValues).returning()
+          if (!insertedSource) throw new Error('Canonical sourcing source was not created')
+          source = insertedSource
         }
         let workflowRunId = existing?.workflowRunId
         if (!workflowRunId) {
           workflowRunId = randomUUID()
-          transaction.insert(workflowRuns).values({
+          const [workflowRun] = await transaction.insert(workflowRuns).values({
             id: workflowRunId,
             runType: 'sourcing',
             status: 'completed',
@@ -132,26 +149,30 @@ export function createCanonicalCandidateProjectionService(
             createdAt: timestamp,
             updatedAt: timestamp,
             deletedAt: null,
-          }).run()
+          }).returning({ id: workflowRuns.id })
+          workflowRunId = workflowRun?.id
+          if (!workflowRunId) throw new Error('Canonical sourcing workflow run was not created')
         }
 
         const destination = candidate.destination
         const roleKind = canonicalRoleKind(candidate)
         const roleFit = roleKind === 'internship'
         const strongApplicationDuplicate = roleFit && destination.class === 'employer_or_ats'
-          ? transaction.select({ applicationId: applicationLinks.applicationId })
+          ? (await transaction.select({ applicationId: applicationLinks.applicationId })
               .from(applicationLinks)
               .where(and(
                 eq(applicationLinks.kind, 'official'),
                 eq(applicationLinks.url, destination.url),
                 isNull(applicationLinks.deletedAt),
-              )).get()
+              ))
+              .orderBy(asc(applicationLinks.applicationId))
+              .limit(1))[0]
           : null
         const officialUrl = destination.class === 'employer_or_ats' ? destination.url : null
         const sourceUrl = destination.class === 'third_party_job_posting'
           ? destination.url
           : candidate.sourceUrl
-        const possibleMatch = !roleFit || strongApplicationDuplicate ? null : transaction
+        const possibleMatch = !roleFit || strongApplicationDuplicate ? null : (await transaction
           .select({
             id: opportunities.id,
             companyName: opportunities.companyName,
@@ -161,7 +182,7 @@ export function createCanonicalCandidateProjectionService(
           })
           .from(opportunities)
           .where(isNull(opportunities.deletedAt))
-          .all()
+          .orderBy(asc(opportunities.id)))
           .find((finding) => finding.id !== existing?.id && weakCandidateFactsMatch(finding, candidate))
         const possibleMatchQuestion = possibleMatch
           ? `Possible match with sourcing finding ${possibleMatch.id}: are these the same job? Approve a merge or reject the match.`
@@ -269,18 +290,21 @@ export function createCanonicalCandidateProjectionService(
         } as const
 
         if (existing) {
-          transaction.update(opportunities).set(values)
-            .where(eq(opportunities.id, existing.id)).run()
-          return existing.id
+          const [updated] = await transaction.update(opportunities).set(values)
+            .where(eq(opportunities.id, existing.id))
+            .returning({ id: opportunities.id })
+          if (!updated) throw new Error(`Sourcing finding not found: ${existing.id}`)
+          return updated.id
         }
 
         const findingId = randomUUID()
-        transaction.insert(opportunities).values({
+        const [inserted] = await transaction.insert(opportunities).values({
           id: findingId,
           ...values,
           createdAt: timestamp,
-        }).run()
-        return findingId
+        }).returning({ id: opportunities.id })
+        if (!inserted) throw new Error('Canonical sourcing finding was not created')
+        return inserted.id
   }
 
   return {

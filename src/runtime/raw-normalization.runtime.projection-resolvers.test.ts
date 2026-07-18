@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { JsonValue } from 'sparxie'
 import { opportunities } from '../db/schema'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
+import { createPgliteClient, createPgliteDatabase } from '../db/pglite'
 import type { NormalizationResolver } from '../modules/sourcing/normalization.registry'
 import {
   createDefaultNormalizationResolverRegistry,
@@ -12,7 +12,6 @@ import {
 } from '../modules/sourcing/normalization.registry'
 import { createLocalValedictorianClient } from './local-valedictorian-client'
 import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 describe('local deterministic raw normalization', () => {
   it('blocks ineligible capabilities, permits fallback, and suppresses lower precedence after authority', async () => {
@@ -264,13 +263,18 @@ describe('local deterministic raw normalization', () => {
         }],
       })
     }
-    const persistedDatabase = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const persisted = persistedDatabase.prepare(
-      'select projection_aliases_json as aliases from opportunities',
-    ).get() as { aliases: string }
-    persistedDatabase.close()
-    expect(persisted.aliases).toContain('alpha-123')
-    expect(persisted.aliases).toContain('beta-987')
+    const persistedClient = await createPgliteClient({ dataDir: pgliteDataPath })
+    try {
+      const persistedDatabase = createPgliteDatabase(persistedClient)
+      const [persisted] = await persistedDatabase
+        .select({ aliases: opportunities.projectionAliasesJson })
+        .from(opportunities)
+        .limit(1)
+      expect(persisted?.aliases).toContain('alpha-123')
+      expect(persisted?.aliases).toContain('beta-987')
+    } finally {
+      await persistedClient.close()
+    }
 
     const concurrentPath = tempDatabasePath()
     const concurrentClient = createLocalValedictorianClient({ pgliteDataPath: concurrentPath })
@@ -293,15 +297,21 @@ describe('local deterministic raw normalization', () => {
   it('preserves a passed candidate and records failure when its finding cannot be projected', async () => {
     const pgliteDataPath = tempDatabasePath()
     const client = createLocalValedictorianClient({ pgliteDataPath })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    sqlite.exec(`
-      create trigger reject_sourcing_projection
-      before insert on opportunities
-      begin
-        select raise(abort, 'injected projection policy failure');
-      end
-    `)
-    sqlite.close()
+    const pglite = await createPgliteClient({ dataDir: pgliteDataPath })
+    try {
+      await pglite.exec(`
+        create function reject_sourcing_projection() returns trigger as $$
+        begin
+          raise exception 'injected projection policy failure';
+        end;
+        $$ language plpgsql;
+        create trigger reject_sourcing_projection
+        before insert on opportunities
+        for each row execute function reject_sourcing_projection();
+      `)
+    } finally {
+      await pglite.close()
+    }
 
     const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
       adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
@@ -467,15 +477,18 @@ describe('local deterministic raw normalization', () => {
     })
 
     await expect(client.sourcing.findings.list()).resolves.toMatchObject({ total: 3 })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const database = createDrizzleDatabase(sqlite)
-    expect(database.select({
-      adapterId: opportunities.adapterId,
-      adapterKind: opportunities.adapterKind,
-    }).from(opportunities).all()).toEqual(expect.arrayContaining(
-      adapterKinds.map((kind) => ({ adapterId: `fixture.${kind}`, adapterKind: kind })),
-    ))
-    sqlite.close()
+    const pglite = await createPgliteClient({ dataDir: pgliteDataPath })
+    try {
+      const database = createPgliteDatabase(pglite)
+      await expect(database.select({
+        adapterId: opportunities.adapterId,
+        adapterKind: opportunities.adapterKind,
+      }).from(opportunities)).resolves.toEqual(expect.arrayContaining(
+        adapterKinds.map((kind) => ({ adapterId: `fixture.${kind}`, adapterKind: kind })),
+      ))
+    } finally {
+      await pglite.close()
+    }
   })
 
   it('deduplicates a canonical employer destination across source adapters', async () => {
