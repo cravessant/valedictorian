@@ -29,16 +29,16 @@ import {
   jobs,
   jobIdentities,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import { listRawSourceRecords } from './raw-source-list.repository'
 
-export type RawSourceTransaction = Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0]
+export type RawSourceTransaction = Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0]
 
 export interface RawSourceIngestOptions {
   stage?: (transaction: RawSourceTransaction, input: {
     records: readonly RawSourceRecordInput[]
     receipts: readonly RawSourceIntakeReceipt[]
-  }) => void
+  }) => void | Promise<void>
 }
 
 const PROVIDER_JOB_IDENTITY_KIND = 'provider_job'
@@ -75,49 +75,52 @@ export interface RawSourceRepository {
   get(rawRecordId: string): Promise<RawSourceRecord | null>
 }
 
-export function createSqliteRawSourceRepository(
-  database: DrizzleDatabase,
+export function createPgliteRawSourceRepository(
+  database: PgliteDatabase,
   now: () => Date = () => new Date(),
 ): RawSourceRepository {
   return {
     async list(query) {
-      return listRawSourceRecords(database, query)
+      return listRawSourceRecords(database as never, query)
     },
 
     async ingestBatch(input, options) {
       const records = validateBatch(input)
       const receivedAt = now().toISOString()
 
-      return database.transaction((transaction) => {
-        const receipts = records.map((record) => ingestRecord(transaction, record, receivedAt))
-        options?.stage?.(transaction, { records, receipts })
+      return await database.transaction(async (transaction) => {
+        const receipts: RawSourceIntakeReceipt[] = []
+        for (const record of records) {
+          receipts.push(await ingestRecord(transaction, record, receivedAt))
+        }
+        await options?.stage?.(transaction, { records, receipts })
         return { receipts }
       })
     },
 
     async get(rawRecordId) {
-      const rawRecord = database
+      const [rawRecord] = await database
         .select()
         .from(captureLineages)
         .where(eq(captureLineages.id, rawRecordId))
-        .get()
+        .limit(1)
 
       if (!rawRecord) {
         return null
       }
 
-      const latestRevision = database
+      const [latestRevision] = await database
         .select()
         .from(captureEvidenceVersions)
         .where(eq(captureEvidenceVersions.captureLineageId, rawRecordId))
         .orderBy(desc(captureEvidenceVersions.revision))
-        .get()
+        .limit(1)
 
       if (!latestRevision) {
         throw new Error('Raw source record is missing its revision')
       }
 
-      const occurrences = database
+      const occurrences = await database
         .select()
         .from(captures)
         .where(eq(captures.captureLineageId, rawRecordId))
@@ -126,7 +129,6 @@ export function createSqliteRawSourceRepository(
           asc(captures.receivedAt),
           asc(captures.id),
         )
-        .all()
 
       const revision = mapRevision(latestRevision)
 
@@ -143,11 +145,11 @@ export function createSqliteRawSourceRepository(
   }
 }
 
-function ingestRecord(
-  database: Parameters<Parameters<DrizzleDatabase['transaction']>[0]>[0],
+async function ingestRecord(
+  database: RawSourceTransaction,
   record: RawSourceRecordInput,
   receivedAt: string,
-) {
+): Promise<RawSourceIntakeReceipt> {
   const strongIdentity =
     record.adapter.kind === 'connector' &&
     typeof record.providerRecordId === 'string' &&
@@ -162,7 +164,17 @@ function ingestRecord(
       record.adapter.id,
       record.providerSchema ?? null,
     )
-    const existingEntity = database
+    const proposedEntityId = crypto.randomUUID()
+    const [insertedEntity] = await database.insert(jobs).values({
+      id: proposedEntityId,
+      identityKind: PROVIDER_JOB_IDENTITY_KIND,
+      identityNamespace,
+      identityValue,
+      createdAt: receivedAt,
+    }).onConflictDoNothing({
+      target: [jobs.identityKind, jobs.identityNamespace, jobs.identityValue],
+    }).returning()
+    const [sourceEntity] = insertedEntity ? [insertedEntity] : await database
       .select()
       .from(jobs)
       .where(
@@ -172,40 +184,56 @@ function ingestRecord(
           eq(jobs.identityValue, identityValue),
         ),
       )
-      .get()
+      .limit(1)
 
-    if (existingEntity) {
-      sourceEntityId = existingEntity.id
-    } else {
-      sourceEntityId = crypto.randomUUID()
-      database.insert(jobs).values({
-        id: sourceEntityId,
-        identityKind: PROVIDER_JOB_IDENTITY_KIND,
-        identityNamespace,
-        identityValue,
-        createdAt: receivedAt,
-      }).run()
+    if (!sourceEntity) {
+      throw new Error('Raw source identity could not be reconciled')
+    }
+    sourceEntityId = sourceEntity.id
+    if (insertedEntity) {
       capturedIdentity = { namespace: identityNamespace, value: identityValue }
     }
 
-    rawRecordId = database
+    const proposedRawRecordId = crypto.randomUUID()
+    const [insertedRawRecord] = await database.insert(captureLineages).values({
+      id: proposedRawRecordId,
+      jobId: sourceEntityId,
+      createdAt: receivedAt,
+    }).onConflictDoNothing({ target: captureLineages.jobId }).returning({
+      id: captureLineages.id,
+    })
+    const [rawRecord] = insertedRawRecord ? [insertedRawRecord] : await database
       .select({ id: captureLineages.id })
       .from(captureLineages)
       .where(eq(captureLineages.jobId, sourceEntityId))
-      .get()?.id ?? null
+      .limit(1)
+
+    if (!rawRecord) {
+      throw new Error('Raw source record could not be reconciled')
+    }
+    rawRecordId = rawRecord.id
   }
 
   if (!rawRecordId) {
     rawRecordId = crypto.randomUUID()
-    database.insert(captureLineages).values({
+    const [rawRecord] = await database.insert(captureLineages).values({
       id: rawRecordId,
       jobId: sourceEntityId,
       createdAt: receivedAt,
-    }).run()
+    }).returning({ id: captureLineages.id })
+    if (!rawRecord) {
+      throw new Error('Raw source record could not be created')
+    }
   }
 
+  await database
+    .select({ id: captureLineages.id })
+    .from(captureLineages)
+    .where(eq(captureLineages.id, rawRecordId))
+    .for('update')
+
   const contentHash = hashRawSourceContent(record)
-  const existingRevision = database
+  const [existingRevision] = await database
     .select()
     .from(captureEvidenceVersions)
     .where(
@@ -214,21 +242,22 @@ function ingestRecord(
         eq(captureEvidenceVersions.contentHash, contentHash),
       ),
     )
-    .get()
+    .limit(1)
   let revision = existingRevision
+  let reused = Boolean(existingRevision)
 
   if (!revision) {
-    const latest = database
+    const [latest] = await database
       .select({ revision: captureEvidenceVersions.revision })
       .from(captureEvidenceVersions)
       .where(eq(captureEvidenceVersions.captureLineageId, rawRecordId))
       .orderBy(desc(captureEvidenceVersions.revision))
-      .get()
+      .limit(1)
     const revisionNumber = (latest?.revision ?? 0) + 1
     const revisionId = crypto.randomUUID()
     const origin = record.reportedOrigin ?? null
 
-    database.insert(captureEvidenceVersions).values({
+    const [insertedRevision] = await database.insert(captureEvidenceVersions).values({
       id: revisionId,
       captureLineageId: rawRecordId,
       revision: revisionNumber,
@@ -248,12 +277,28 @@ function ingestRecord(
         : JSON.stringify(record.payload),
       evidenceJson: JSON.stringify(record.evidence ?? []),
       createdAt: receivedAt,
-    }).run()
-    revision = database
-      .select()
-      .from(captureEvidenceVersions)
-      .where(eq(captureEvidenceVersions.id, revisionId))
-      .get()
+    }).onConflictDoNothing({
+      target: [
+        captureEvidenceVersions.captureLineageId,
+        captureEvidenceVersions.contentHash,
+      ],
+    }).returning()
+    revision = insertedRevision
+
+    if (!revision) {
+      const [reconciledRevision] = await database
+        .select()
+        .from(captureEvidenceVersions)
+        .where(
+          and(
+            eq(captureEvidenceVersions.captureLineageId, rawRecordId),
+            eq(captureEvidenceVersions.contentHash, contentHash),
+          ),
+        )
+        .limit(1)
+      revision = reconciledRevision
+      reused = Boolean(reconciledRevision)
+    }
   }
 
   if (!revision) {
@@ -261,7 +306,7 @@ function ingestRecord(
   }
 
   if (sourceEntityId && capturedIdentity) {
-    database.insert(jobIdentities).values({
+    await database.insert(jobIdentities).values({
       id: crypto.randomUUID(),
       jobId: sourceEntityId,
       identityKind: PROVIDER_JOB_IDENTITY_KIND,
@@ -276,7 +321,7 @@ function ingestRecord(
       }),
       captureEvidenceVersionId: revision.id,
       createdAt: receivedAt,
-    }).run()
+    })
   }
 
   const occurrence = {
@@ -289,7 +334,7 @@ function ingestRecord(
     observedAt: record.observedAt,
     receivedAt,
   }
-  database.insert(captures).values(occurrence).run()
+  await database.insert(captures).values(occurrence)
 
   return {
     intakeItemId: record.intakeItemId ?? crypto.randomUUID(),
@@ -300,7 +345,7 @@ function ingestRecord(
       rawRecordId,
       revision: revision.revision,
       contentHash: revision.contentHash,
-      reused: Boolean(existingRevision),
+      reused,
       createdAt: revision.createdAt,
     },
     occurrence: mapOccurrence(occurrence),
