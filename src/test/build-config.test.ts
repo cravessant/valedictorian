@@ -174,6 +174,9 @@ describe('build configuration', () => {
     expect(ciWorkflow).toContain('package-smoke:')
     expect(ciWorkflow).toContain('macos-latest')
     expect(ciWorkflow).toContain('windows-latest')
+    expect(ciWorkflow).toContain('pnpm exec electron-builder --win --publish never')
+    expect(ciWorkflow).not.toContain('electron-builder --win --dir')
+    expect(ciWorkflow).toContain('Verify Windows installer')
     expect(ciWorkflow).toContain('pnpm run smoke:pglite-package')
     expect(releaseWorkflow).toContain('pnpm run smoke:pglite-package')
   })
@@ -181,6 +184,7 @@ describe('build configuration', () => {
   it('keeps Electron main runtime-probed packages out of the Vite bundle', () => {
     const viteConfig = readViteConfig()
 
+    expect(viteConfig).toContain('testTimeout: process.env.CI ? 30_000 : 5_000')
     expect(viteConfig).toContain(
       "export const mainExternals = ['@electric-sql/pglite', 'undici']",
     )

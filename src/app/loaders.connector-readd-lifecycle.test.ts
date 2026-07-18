@@ -23,7 +23,7 @@ afterEach(async () => {
   activeServers.clear()
 })
 
-describe('connector re-add lifecycle through workspace HTTP and SQLite', () => {
+describe('connector re-add lifecycle through workspace HTTP and PGlite', () => {
   it('rejects resurrecting a retired connector-instance id as an immutable tombstone', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const client = await createLocalValedictorianClient({ seedDataMode: 'none', pgliteDataPath })

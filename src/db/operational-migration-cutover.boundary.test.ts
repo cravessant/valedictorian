@@ -38,19 +38,19 @@ const requiredProfileUpgradePolicy = [
 ] as const
 
 describe('operational migration cutover boundary', () => {
-  it('keeps exactly one PostgreSQL baseline and no historical operational SQLite migration surface', () => {
-    const sqlBaselines = fs
+  it('keeps the PostgreSQL baseline first while allowing later journaled migrations', () => {
+    const sqlMigrations = fs
       .readdirSync(drizzleDir)
       .filter((name) => name.endsWith('.sql'))
       .sort()
-    expect(sqlBaselines).toEqual(['0000_pglite_operational_baseline.sql'])
+    expect(sqlMigrations[0]).toBe('0000_pglite_operational_baseline.sql')
 
     const journal = JSON.parse(
       fs.readFileSync(path.join(drizzleDir, 'meta', '_journal.json'), 'utf8'),
     ) as { dialect: string; entries: Array<{ tag: string }> }
     expect(journal.dialect).toBe('postgresql')
-    expect(journal.entries).toHaveLength(1)
     expect(journal.entries[0]?.tag).toBe('0000_pglite_operational_baseline')
+    expect(journal.entries.map((entry) => `${entry.tag}.sql`).sort()).toEqual(sqlMigrations)
 
     for (const relativePath of forbiddenOperationalMigrationAssets) {
       expect(fs.existsSync(path.join(repoRoot, relativePath)), relativePath).toBe(false)

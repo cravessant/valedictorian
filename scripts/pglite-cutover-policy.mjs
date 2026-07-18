@@ -41,7 +41,7 @@ export const pgliteCutoverAllowedLegacyEvidenceFiles = new Set([
 export function auditPgliteCutoverFiles(files) {
   const violations = []
   for (const [filePath, contents] of files) {
-    if (isForbiddenFile(filePath)) violations.push(`${filePath}: forbidden file`)
+    if (isForbiddenFile(filePath, contents)) violations.push(`${filePath}: forbidden file`)
     if (filePath === 'package.json') auditManifest(contents, violations)
     if (filePath === 'pnpm-lock.yaml') auditLockfile(contents, violations)
     if (
@@ -78,11 +78,12 @@ function auditLockfile(contents, violations) {
   }
 }
 
-function isForbiddenFile(filePath) {
+function isForbiddenFile(filePath, contents) {
   if (filePath === 'src/db/sqlite.ts') return true
   if (filePath.startsWith('src/db/sqlite.')) return true
   if (/^drizzle\/.*\.sql$/.test(filePath)) {
-    return filePath !== 'drizzle/0000_pglite_operational_baseline.sql'
+    return /sqlite/i.test(filePath)
+      || /\b(?:PRAGMA|AUTOINCREMENT|WITHOUT\s+ROWID|sqlite_master)\b/i.test(contents)
   }
   return false
 }

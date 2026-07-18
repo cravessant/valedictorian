@@ -15,7 +15,7 @@ it('rejects operational SQLite dependencies, scripts, imports, paths, and migrat
     ['src/db/sqlite.ts', "import Database from 'better-sqlite3'\n"],
     ['src/runtime/bridge.ts', "import { createFileDatabase } from '../db/sqlite'\n"],
     ['src/workspace/paths.ts', "const sqlitePath = process.env.VALEDICTORIAN_SQLITE_PATH\n"],
-    ['drizzle/0001_legacy.sql', 'create table legacy(id text);\n'],
+    ['drizzle/0001_legacy_sqlite.sql', 'PRAGMA foreign_keys = OFF;\n'],
   ]))
 
   expect(violations.some((value) => value.includes('package.json: dependency better-sqlite3'))).toBe(true)
@@ -24,7 +24,7 @@ it('rejects operational SQLite dependencies, scripts, imports, paths, and migrat
   expect(violations.some((value) => value.includes('src/db/sqlite.ts: forbidden file'))).toBe(true)
   expect(violations.some((value) => value.includes('src/runtime/bridge.ts'))).toBe(true)
   expect(violations.some((value) => value.includes('VALEDICTORIAN_SQLITE_PATH'))).toBe(true)
-  expect(violations.some((value) => value.includes('drizzle/0001_legacy.sql'))).toBe(true)
+  expect(violations.some((value) => value.includes('drizzle/0001_legacy_sqlite.sql'))).toBe(true)
 })
 
 it('allows only the documented legacy profile evidence name after reader removal', () => {
@@ -43,7 +43,7 @@ it('allows only the documented legacy profile evidence name after reader removal
   )
 })
 
-it('accepts a PGlite-only manifest and fresh PostgreSQL baseline', () => {
+it('accepts a PGlite-only manifest and journaled PostgreSQL migrations after the baseline', () => {
   const violations = auditPgliteCutoverFiles(new Map([
     ['package.json', JSON.stringify({
       dependencies: { '@electric-sql/pglite': '0.5.4' },
@@ -62,6 +62,7 @@ packages:
     ['electron-builder.json5', '{ "extraResources": [{ "to": "pglite-runtime" }] }'],
     ['src/db/pglite.ts', "import { PGlite } from '@electric-sql/pglite'\n"],
     ['drizzle/0000_pglite_operational_baseline.sql', 'create table applications(id text);\n'],
+    ['drizzle/0001_lifecycle_corrections.sql', 'alter table applications add column opportunity_id uuid;\n'],
   ]))
 
   expect(violations).toEqual([])

@@ -155,6 +155,11 @@ describe('settings panel navigation', () => {
 
     expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Local desktop' })).toBeInTheDocument()
+    expect(screen.getByText('PGlite through Electron IPC, no local HTTP server.')).toBeInTheDocument()
+    expect(
+      screen.getByText('PGlite plus the embedded HTTP API for Tailscale or CLI access.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Use a hosted or remote HTTP API instead of local PGlite.')).toBeInTheDocument()
     expect(screen.getByLabelText('Show advanced filters')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Configuration' }))

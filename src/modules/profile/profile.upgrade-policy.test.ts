@@ -58,11 +58,16 @@ describe('profile upgrade policy', () => {
 
   it('documents the supported staged-upgrade floor and immutable evidence policy', () => {
     const guide = fs.readFileSync(path.resolve('UPGRADING.md'), 'utf8')
+    const readme = fs.readFileSync(path.resolve('README.md'), 'utf8')
 
     expect(guide).toContain('0.1.0-alpha.43')
     expect(guide).toContain('0.1.0-alpha.46')
     expect(guide).toContain('profile.json')
     expect(guide).toContain('never reads, moves, converts, or deletes')
+    expect(readme).toContain('See `UPGRADING.md`')
+    expect(readme).toContain('PGlite-only runtime never reads or migrates the legacy SQLite file')
+    expect(readme).not.toContain('On first startup after upgrading, Valedictorian validates the legacy SQLite profile')
+    expect(readme).not.toContain('A valid existing JSON document that conflicts with legacy data')
   })
 
   function createRoot() {

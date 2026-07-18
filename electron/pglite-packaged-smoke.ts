@@ -31,45 +31,46 @@ interface PackagedPgliteSmokeOwner {
 
 export interface RunPackagedPgliteSmokeOptions {
   dataDirectory: string
+  phase: 'verify' | 'write'
   openOwner?: (dataDirectory: string) => Promise<PackagedPgliteSmokeOwner>
 }
 
 export async function runPackagedPgliteSmoke({
   dataDirectory,
+  phase,
   openOwner = openPackagedPgliteSmokeOwner,
 }: RunPackagedPgliteSmokeOptions) {
-  const initialOwner = await openOwner(dataDirectory)
+  const owner = await openOwner(dataDirectory)
   try {
-    await initialOwner.repository.createApplication({
-      companyName: smokeCompanyName,
-      country: 'US',
-      primaryLink: {
-        kind: 'official',
-        label: 'Packaged smoke fixture',
-        url: 'https://example.test/packaged-pglite-smoke',
-      },
-      roleKind: 'internship',
-      roleTitle: 'Runtime Asset Verification',
-      sourceName: 'Packaged smoke',
-      status: 'queued',
-      workMode: 'remote',
-    })
-  } finally {
-    await initialOwner.close()
-  }
+    if (phase === 'write') {
+      await owner.repository.createApplication({
+        companyName: smokeCompanyName,
+        country: 'US',
+        primaryLink: {
+          kind: 'official',
+          label: 'Packaged smoke fixture',
+          url: 'https://example.test/packaged-pglite-smoke',
+        },
+        roleKind: 'internship',
+        roleTitle: 'Runtime Asset Verification',
+        sourceName: 'Packaged smoke',
+        status: 'queued',
+        workMode: 'remote',
+      })
+      return { phase }
+    }
 
-  const reopenedOwner = await openOwner(dataDirectory)
-  try {
-    const applications = await reopenedOwner.repository.listApplications()
+    const applications = await owner.repository.listApplications()
     if (!applications.items.some((item) => item.companyName === smokeCompanyName)) {
-      throw new Error('Packaged PGlite smoke record did not persist across owner restart')
+      throw new Error('Packaged PGlite smoke record did not persist across application restart')
     }
     return {
       companyName: smokeCompanyName,
       persistedApplications: applications.total,
+      phase,
     }
   } finally {
-    await reopenedOwner.close()
+    await owner.close()
   }
 }
 

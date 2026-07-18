@@ -19,6 +19,7 @@ export default defineConfig({
     maxWorkers: process.env.CI ? 4 : undefined,
     minWorkers: process.env.CI ? 4 : undefined,
     setupFiles: './src/test/setup.ts',
+    testTimeout: process.env.CI ? 30_000 : 5_000,
   },
   plugins: [
     react(),

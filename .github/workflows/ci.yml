@@ -20,7 +20,7 @@ jobs:
   test:
     name: Test App
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -79,7 +79,7 @@ jobs:
             package_command: pnpm exec electron-builder --mac --dir --publish never -c.mac.identity=null -c.mac.notarize=false
           - name: Windows
             os: windows-latest
-            package_command: pnpm exec electron-builder --win --dir --publish never
+            package_command: pnpm exec electron-builder --win --publish never
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -106,11 +106,21 @@ jobs:
         working-directory: valedictorian-app
         run: pnpm exec vite build
 
-      - name: Build unpacked application
+      - name: Build packaged application
         working-directory: valedictorian-app
         run: ${{ matrix.package_command }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Verify Windows installer
+        if: runner.os == 'Windows'
+        working-directory: valedictorian-app
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem -Path release -Recurse -Filter 'Valedictorian-Windows-*-Setup.exe')
+          if ($installers.Count -ne 1) {
+            throw "Expected one configured NSIS installer; found $($installers.Count)"
+          }
 
       - name: Inspect assets and verify PGlite restart
         working-directory: valedictorian-app

@@ -5,8 +5,6 @@ import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { inspectPgliteRuntimeArtifactLayout } from './inspect-pglite-runtime-assets.mjs'
 
-const successFileName = 'success.json'
-
 export function findPackagedAppExecutable(releaseRoot, platform = process.platform) {
   const expectedSuffix = platform === 'darwin'
     ? path.join('Valedictorian.app', 'Contents', 'MacOS', 'Valedictorian')
@@ -35,10 +33,11 @@ function collectFiles(root) {
   return files
 }
 
-export function packagedPgliteSmokeEnvironment(environment, resultDirectory) {
+export function packagedPgliteSmokeEnvironment(environment, resultDirectory, phase) {
   const result = {
     ...environment,
     VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PATH: resultDirectory,
+    VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PHASE: phase,
   }
   delete result.ELECTRON_RUN_AS_NODE
   return result
@@ -74,6 +73,47 @@ async function runPackagedApp(executablePath, environment, timeoutMs) {
   })
 }
 
+function readPhaseResult(resultDirectory, phase) {
+  const resultPath = path.join(resultDirectory, `${phase}.json`)
+  if (!fs.existsSync(resultPath)) {
+    throw new Error(`Packaged app did not create ${phase}.json`)
+  }
+  return JSON.parse(fs.readFileSync(resultPath, 'utf8'))
+}
+
+export async function runPackagedPgliteRestartSmoke({
+  environment,
+  executablePath,
+  resultDirectory,
+  spawnPackagedApp = runPackagedApp,
+  timeoutMs,
+}) {
+  await spawnPackagedApp(
+    executablePath,
+    packagedPgliteSmokeEnvironment(environment, resultDirectory, 'write'),
+    timeoutMs,
+  )
+  const writeResult = readPhaseResult(resultDirectory, 'write')
+  if (writeResult.phase !== 'write') {
+    throw new Error('Packaged app returned an invalid PGlite write result')
+  }
+
+  await spawnPackagedApp(
+    executablePath,
+    packagedPgliteSmokeEnvironment(environment, resultDirectory, 'verify'),
+    timeoutMs,
+  )
+  const verifyResult = readPhaseResult(resultDirectory, 'verify')
+  if (
+    verifyResult.phase !== 'verify'
+    || verifyResult.companyName !== 'Packaged PGlite Smoke'
+    || verifyResult.persistedApplications < 1
+  ) {
+    throw new Error('Packaged app returned an invalid PGlite verification result')
+  }
+  return verifyResult
+}
+
 function readArgument(name) {
   const index = process.argv.indexOf(name)
   return index === -1 ? undefined : process.argv[index + 1]
@@ -97,19 +137,12 @@ async function run() {
 
   const resultDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-packaged-smoke-'))
   try {
-    await runPackagedApp(
+    await runPackagedPgliteRestartSmoke({
+      environment: process.env,
       executablePath,
-      packagedPgliteSmokeEnvironment(process.env, resultDirectory),
+      resultDirectory,
       timeoutMs,
-    )
-    const successPath = path.join(resultDirectory, successFileName)
-    if (!fs.existsSync(successPath)) {
-      throw new Error(`Packaged app did not create ${successFileName}`)
-    }
-    const result = JSON.parse(fs.readFileSync(successPath, 'utf8'))
-    if (result.companyName !== 'Packaged PGlite Smoke' || result.persistedApplications < 1) {
-      throw new Error('Packaged app returned an invalid PGlite smoke result')
-    }
+    })
     process.stdout.write('Packaged PGlite restart smoke OK\n')
   } finally {
     fs.rmSync(resultDirectory, { force: true, recursive: true })

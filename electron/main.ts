@@ -614,12 +614,17 @@ app.whenReady().then(async () => {
   const packagedSmokePath = process.env.VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PATH
   if (packagedSmokePath) {
     try {
+      const packagedSmokePhase = process.env.VALEDICTORIAN_PGLITE_PACKAGE_SMOKE_PHASE
+      if (packagedSmokePhase !== 'write' && packagedSmokePhase !== 'verify') {
+        throw new Error('Packaged PGlite smoke phase must be write or verify')
+      }
       fs.mkdirSync(packagedSmokePath, { recursive: true })
       const result = await runPackagedPgliteSmoke({
         dataDirectory: path.join(packagedSmokePath, 'pglite'),
+        phase: packagedSmokePhase,
       })
       fs.writeFileSync(
-        path.join(packagedSmokePath, 'success.json'),
+        path.join(packagedSmokePath, `${packagedSmokePhase}.json`),
         `${JSON.stringify(result)}\n`,
         { mode: 0o600 },
       )
