@@ -14,6 +14,7 @@ import {
   readScheduleHttpJson as readJson,
   type ScheduleHttpServerHandle,
 } from './local-server.connector-schedules.http-fixture'
+import { closeLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 
 describe('local server connector schedule management', () => {
   let server: ScheduleHttpServerHandle | null = null
@@ -27,7 +28,7 @@ describe('local server connector schedule management', () => {
     const workspaceId = 'schedule-create-ws'
     const pgliteDataPath = createTempDatabasePath()
     const now = () => new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now,
@@ -87,7 +88,7 @@ describe('local server connector schedule management', () => {
     ).resolves.toEqual(created)
   })
 
-  it('reloads a persisted schedule from the same workspace sqlite file', async () => {
+  it('reloads a persisted schedule from the same workspace PGlite data directory', async () => {
     const workspaceId = 'schedule-reload-ws'
     const pgliteDataPath = createTempDatabasePath()
     const now = () => new Date('2026-07-11T12:00:00.000Z')
@@ -99,7 +100,7 @@ describe('local server connector schedule management', () => {
       pgliteDataPath,
       workspaceId,
     }
-    const writer = createLocalValedictorianClient(options)
+    const writer = await createLocalValedictorianClient(options)
 
     await writer.connectors.create({
       id: 'connector-instance-schedule',
@@ -116,16 +117,17 @@ describe('local server connector schedule management', () => {
       cadence: { kind: 'interval', everyMinutes: 30 },
       timezone: 'UTC',
     })
+    await closeLocalValedictorianClient(writer)
 
-    const reader = createLocalValedictorianClient(options)
+    const reader = await createLocalValedictorianClient(options)
     await expect(
       reader.connectors.schedules.get('connector-instance-schedule'),
     ).resolves.toEqual(created)
   })
 
-  it('isolates schedules across distinct workspace sqlite files', async () => {
+  it('isolates schedules across distinct workspace PGlite data directories', async () => {
     const now = () => new Date('2026-07-11T12:00:00.000Z')
-    const first = createLocalValedictorianClient({
+    const first = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now,
@@ -133,7 +135,7 @@ describe('local server connector schedule management', () => {
       pgliteDataPath: createTempDatabasePath(),
       workspaceId: 'workspace-a',
     })
-    const second = createLocalValedictorianClient({
+    const second = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now,
@@ -177,7 +179,7 @@ describe('local server connector schedule management', () => {
     const workspaceId = 'schedule-edit-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -251,7 +253,7 @@ describe('local server connector schedule management', () => {
     const workspaceId = 'schedule-pause-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -338,7 +340,7 @@ describe('local server connector schedule management', () => {
     const workspaceId = 'schedule-resume-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -403,7 +405,7 @@ describe('local server connector schedule management', () => {
     const workspaceId = 'schedule-delete-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -469,7 +471,7 @@ describe('local server connector schedule management', () => {
   it('rejects invalid IANA timezones before persistence with no audit side effects', async () => {
     const workspaceId = 'schedule-invalid-zone-ws'
     const pgliteDataPath = createTempDatabasePath()
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
@@ -527,7 +529,7 @@ describe('local server connector schedule management', () => {
   it('rejects unsupported cadence discriminators with typed invalid_cadence and no persistence', async () => {
     const workspaceId = 'schedule-invalid-cadence-kind-ws'
     const pgliteDataPath = createTempDatabasePath()
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
@@ -584,7 +586,7 @@ describe('local server connector schedule management', () => {
   it('rejects intervals below the capability minimum before persistence', async () => {
     const workspaceId = 'schedule-too-frequent-ws'
     const pgliteDataPath = createTempDatabasePath()
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
@@ -630,7 +632,7 @@ describe('local server connector schedule management', () => {
   it('rejects client-supplied server-owned schedule fields before persistence', async () => {
     const workspaceId = 'schedule-spoof-ws'
     const pgliteDataPath = createTempDatabasePath()
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
@@ -690,7 +692,7 @@ describe('local server connector schedule management', () => {
       ...availableSchedulingCapability,
       supportedCadences: ['interval'],
     }
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: limitedCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
@@ -737,7 +739,7 @@ describe('local server connector schedule management', () => {
     const workspaceId = 'schedule-delete-recreate-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,

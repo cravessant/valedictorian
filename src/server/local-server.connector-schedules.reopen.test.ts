@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
 import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,
@@ -15,6 +13,10 @@ import {
   createValedictorianHttpServer,
   type ScheduleHttpServerHandle,
 } from './local-server.connector-schedules.http-fixture'
+import {
+  closeLocalValedictorianClient,
+  getLocalValedictorianTestDatabase,
+} from './local-valedictorian-client.test-harness'
 
 describe('local server connector schedule reopen recovery', () => {
   let server: ScheduleHttpServerHandle | null = null
@@ -24,12 +26,12 @@ describe('local server connector schedule reopen recovery', () => {
     server = null
   })
 
-  it('recovers an admitted queued schedule run across SQLite reopen through public dispatchDue', async () => {
+  it('recovers an admitted queued schedule run across PGlite reopen through public dispatchDue', async () => {
     const workspaceId = 'schedule-reopen-recover-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
-    const setupClient = createLocalValedictorianClient({
+    const setupClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -57,9 +59,8 @@ describe('local server connector schedule reopen recovery', () => {
 
     clock = new Date('2026-07-11T13:00:00.000Z')
     // Narrow admission seam: durable queued occurrence before CAS claim / connector execution.
-    const admitSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const admittedOnly = admitConnectorScheduleDue({
-      database: createDrizzleDatabase(admitSqlite),
+    const admittedOnly = await admitConnectorScheduleDue({
+      database: getLocalValedictorianTestDatabase(setupClient),
       now: () => clock,
       maximumCatchUpAgeMinutes: availableSchedulingCapability.maximumCatchUpAgeMinutes,
       input: {
@@ -67,7 +68,6 @@ describe('local server connector schedule reopen recovery', () => {
         expectedRevision: created.revision,
       },
     })
-    admitSqlite.close()
     expect(admittedOnly).toMatchObject({
       status: 'admitted',
       occurrence: { outcome: 'admitted' },
@@ -80,11 +80,12 @@ describe('local server connector schedule reopen recovery', () => {
       connectorInstanceId: 'connector-instance-schedule',
       earliestBackfillDate: '2026-07-01',
     })
+    await closeLocalValedictorianClient(setupClient)
 
-    // Process boundary: reopen the same SQLite file with a new local client (startup recovery runs).
+    // Process boundary: reopen the same PGlite data directory with a new local client.
     let refreshCalls = 0
     let refreshCoverageStart: string | null = null
-    const reopenedClient = createLocalValedictorianClient({
+    const reopenedClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
@@ -183,12 +184,12 @@ describe('local server connector schedule reopen recovery', () => {
     })
   })
 
-  it('cancels a schedule-linked running run on SQLite reopen and never re-executes it', async () => {
+  it('cancels a schedule-linked running run on PGlite reopen and never re-executes it', async () => {
     const workspaceId = 'schedule-reopen-running-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
-    const setupClient = createLocalValedictorianClient({
+    const setupClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -214,9 +215,8 @@ describe('local server connector schedule reopen recovery', () => {
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admitSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const admitDb = createDrizzleDatabase(admitSqlite)
-    const admittedOnly = admitConnectorScheduleDue({
+    const admitDb = getLocalValedictorianTestDatabase(setupClient)
+    const admittedOnly = await admitConnectorScheduleDue({
       database: admitDb,
       now: () => clock,
       maximumCatchUpAgeMinutes: availableSchedulingCapability.maximumCatchUpAgeMinutes,
@@ -228,15 +228,15 @@ describe('local server connector schedule reopen recovery', () => {
     if (admittedOnly.status !== 'admitted') {
       throw new Error('expected admitted setup')
     }
-    const claim = await createSqliteConnectorRepository(admitDb).claimQueuedRunToRunning({
+    const claim = await createPgliteConnectorRepository(admitDb).claimQueuedRunToRunning({
       connectorRunId: admittedOnly.run.id,
       startedAt: clock.toISOString(),
     })
     expect(claim.claimed).toBe(true)
-    admitSqlite.close()
+    await closeLocalValedictorianClient(setupClient)
 
     let refreshCalls = 0
-    const reopenedClient = createLocalValedictorianClient({
+    const reopenedClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
@@ -310,7 +310,7 @@ describe('local server connector schedule reopen recovery', () => {
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
-    const setupClient = createLocalValedictorianClient({
+    const setupClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -336,9 +336,8 @@ describe('local server connector schedule reopen recovery', () => {
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admitSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const admitDb = createDrizzleDatabase(admitSqlite)
-    const admittedOnly = admitConnectorScheduleDue({
+    const admitDb = getLocalValedictorianTestDatabase(setupClient)
+    const admittedOnly = await admitConnectorScheduleDue({
       database: admitDb,
       now: () => clock,
       maximumCatchUpAgeMinutes: availableSchedulingCapability.maximumCatchUpAgeMinutes,
@@ -351,7 +350,7 @@ describe('local server connector schedule reopen recovery', () => {
       throw new Error('expected admitted setup')
     }
 
-    const connectorRepository = createSqliteConnectorRepository(admitDb)
+    const connectorRepository = createPgliteConnectorRepository(admitDb)
     await connectorRepository.claimQueuedRunToRunning({
       connectorRunId: admittedOnly.run.id,
       startedAt: clock.toISOString(),
@@ -365,14 +364,14 @@ describe('local server connector schedule reopen recovery', () => {
         message: 'Connector execution failed.',
       },
     })
-    createConnectorScheduleRepository(admitDb, () => clock).markOccurrenceOutcome({
+    await createConnectorScheduleRepository(admitDb, () => clock).markOccurrenceOutcome({
       occurrenceId: admittedOnly.occurrence.id,
       outcome: 'failed',
     })
-    admitSqlite.close()
+    await closeLocalValedictorianClient(setupClient)
 
     let refreshCalls = 0
-    const reopenedClient = createLocalValedictorianClient({
+    const reopenedClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },
@@ -435,7 +434,7 @@ describe('local server connector schedule reopen recovery', () => {
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
-    const setupClient = createLocalValedictorianClient({
+    const setupClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -461,9 +460,8 @@ describe('local server connector schedule reopen recovery', () => {
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admitSqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const admittedOnly = admitConnectorScheduleDue({
-      database: createDrizzleDatabase(admitSqlite),
+    const admittedOnly = await admitConnectorScheduleDue({
+      database: getLocalValedictorianTestDatabase(setupClient),
       now: () => clock,
       maximumCatchUpAgeMinutes: availableSchedulingCapability.maximumCatchUpAgeMinutes,
       input: {
@@ -471,7 +469,6 @@ describe('local server connector schedule reopen recovery', () => {
         expectedRevision: created.revision,
       },
     })
-    admitSqlite.close()
     expect(admittedOnly).toMatchObject({
       status: 'admitted',
       occurrence: { outcome: 'admitted' },
@@ -480,9 +477,10 @@ describe('local server connector schedule reopen recovery', () => {
     if (admittedOnly.status !== 'admitted') {
       throw new Error('expected admitted queued setup')
     }
+    await closeLocalValedictorianClient(setupClient)
 
     let refreshCalls = 0
-    const reopenedClient = createLocalValedictorianClient({
+    const reopenedClient = await createLocalValedictorianClient({
       // Registry cannot provide the persisted connector id/version.
       connectorRegistry: createStaticConnectorRegistry([]),
       connectorScheduling: availableSchedulingCapability,
@@ -538,9 +536,10 @@ describe('local server connector schedule reopen recovery', () => {
 
     await server.close()
     server = null
+    await closeLocalValedictorianClient(reopenedClient)
 
     // Later reopen with a valid connector must not revive the terminal failure.
-    const revivedClient = createLocalValedictorianClient({
+    const revivedClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },

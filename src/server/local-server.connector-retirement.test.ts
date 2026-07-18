@@ -3,11 +3,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { ConnectorRetirementConflictError, createHttpValedictorianClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
-import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
+import {
+  closeLocalValedictorianClient,
+  createLocalValedictorianClient,
+  getLocalValedictorianTestDatabase,
+  openPgliteTestDatabase,
+} from './local-valedictorian-client.test-harness'
 import { createLocalServerHttpTestFixture } from './local-server.http-test-harness'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
 
 function createTempDatabasePath() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-http-'))
@@ -21,9 +24,8 @@ describe('local connector retirement HTTP contract', () => {
 
   it('retires a stale connector through the typed workspace client and persists across restart', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const setup = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(setup)
-    await createSqliteConnectorRepository(createDrizzleDatabase(setup)).upsertInstance({
+    const setup = await openPgliteTestDatabase(pgliteDataPath)
+    await createPgliteConnectorRepository(setup.database).upsertInstance({
       id: 'stale-http-connector',
       connectorId: 'removed.connector',
       connectorVersion: '0.1.0',
@@ -31,8 +33,8 @@ describe('local connector retirement HTTP contract', () => {
       enabled: true,
       createdAt: '2026-07-13T12:00:00.000Z',
     })
-    setup.close()
-    const localClient = createLocalValedictorianClient({
+    await setup.close()
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
       pgliteDataPath,
@@ -54,8 +56,9 @@ describe('local connector retirement HTTP contract', () => {
       lifecycle: 'retired',
       retiredAt: '2026-07-13T16:00:00.000Z',
     })
+    await closeLocalValedictorianClient(localClient)
 
-    const restarted = createLocalValedictorianClient({
+    const restarted = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
       pgliteDataPath,
@@ -66,14 +69,15 @@ describe('local connector retirement HTTP contract', () => {
 
   it('returns the sanitized typed conflict for active work through HTTP', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
       pgliteDataPath,
       workspaceId: 'workspace-retirement',
     })
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const repository = createPgliteConnectorRepository(
+      getLocalValedictorianTestDatabase(localClient),
+    )
     await repository.upsertInstance({
       id: 'active-http-connector',
       connectorId: 'removed.connector',
@@ -107,6 +111,5 @@ describe('local connector retirement HTTP contract', () => {
         activeRuns: [{ connectorRunId: queued.id, status: 'queued' }],
       },
     })
-    sqlite.close()
   })
 })

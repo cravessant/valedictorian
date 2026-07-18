@@ -28,7 +28,7 @@ describe('local server connector schedule occurrence history', () => {
 
     const workspaceId = 'schedule-history-limit-ws'
     const pgliteDataPath = createTempDatabasePath()
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => new Date('2026-07-11T12:00:00.000Z'),
@@ -77,7 +77,7 @@ describe('local server connector schedule occurrence history', () => {
     const pgliteDataPathB = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
 
-    const clientA = createLocalValedictorianClient({
+    const clientA = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -85,7 +85,7 @@ describe('local server connector schedule occurrence history', () => {
       pgliteDataPath: pgliteDataPathA,
       workspaceId: workspaceA,
     })
-    const clientB = createLocalValedictorianClient({
+    const clientB = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector()]),
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -209,7 +209,7 @@ describe('local server connector schedule occurrence history', () => {
     let clock = new Date('2026-07-11T12:00:00.000Z')
     let refreshCalls = 0
 
-    const localClient = createLocalValedictorianClient({
+    const localClient = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([
         {
           definition: { id: 'fixture.jobs', version: '0.0.0-fixture' },

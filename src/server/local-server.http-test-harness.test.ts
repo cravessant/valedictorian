@@ -10,10 +10,10 @@ import {
 } from './local-server.http-test-harness'
 
 describe('local server HTTP test harness', () => {
-  it('provides a temporary database path and seeded real local client', () => {
+  it('provides a temporary database path and seeded real local client', async () => {
     const pgliteDataPath = createTempDatabasePath()
     expect(pgliteDataPath).toMatch(/valedictorian-server-/)
-    const client = createSeededLocalClient({ pgliteDataPath })
+    const client = await createSeededLocalClient({ pgliteDataPath })
     expect(client.applications).toBeDefined()
   })
 

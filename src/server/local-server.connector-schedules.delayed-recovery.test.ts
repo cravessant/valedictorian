@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {
   CONNECTOR_INSTANCE_ID,
   admitScheduleDueOnly,
   createReopenedScheduleClient,
-  openScheduleSqlite,
+  openScheduleDatabase,
   seedHourlyScheduleWorkspace,
 } from './local-server.connector-schedules.delayed-recovery.helpers'
 import {
@@ -26,17 +26,19 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     const workspaceId = 'schedule-delayed-due-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
+    const initialDatabase = await openScheduleDatabase(pgliteDataPath)
 
     const { created } = await seedHourlyScheduleWorkspace({
       workspaceId,
+      database: initialDatabase.database,
       pgliteDataPath,
       now: () => clock,
     })
     expect(created.nextEligibleAt).toBe('2026-07-11T13:00:00.000Z')
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admittedOnly = admitScheduleDueOnly({
-      pgliteDataPath,
+    const admittedOnly = await admitScheduleDueOnly({
+      database: initialDatabase.database,
       now: () => clock,
       expectedRevision: created.revision,
     })
@@ -48,8 +50,11 @@ describe('local server connector schedule delayed recovery and reconciliation', 
       run: { status: 'queued', mode: 'scheduled' },
     })
 
-    const reopened = createReopenedScheduleClient({
+    await initialDatabase.close()
+    const reopenedDatabase = await openScheduleDatabase(pgliteDataPath)
+    const reopened = await createReopenedScheduleClient({
       workspaceId,
+      database: reopenedDatabase.database,
       pgliteDataPath,
       now: () => clock,
     })
@@ -144,29 +149,32 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     const workspaceId = 'schedule-delayed-running-cancel-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
+    const initialDatabase = await openScheduleDatabase(pgliteDataPath)
 
     const { created } = await seedHourlyScheduleWorkspace({
       workspaceId,
+      database: initialDatabase.database,
       pgliteDataPath,
       now: () => clock,
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admittedOnly = admitScheduleDueOnly({
-      pgliteDataPath,
+    const admittedOnly = await admitScheduleDueOnly({
+      database: initialDatabase.database,
       now: () => clock,
       expectedRevision: created.revision,
     })
-    const claimOpen = openScheduleSqlite(pgliteDataPath)
-    const claim = await createSqliteConnectorRepository(claimOpen.database).claimQueuedRunToRunning({
+    const claim = await createPgliteConnectorRepository(initialDatabase.database).claimQueuedRunToRunning({
       connectorRunId: admittedOnly.run.id,
       startedAt: clock.toISOString(),
     })
     expect(claim.claimed).toBe(true)
-    claimOpen.close()
+    await initialDatabase.close()
 
-    const reopened = createReopenedScheduleClient({
+    const reopenedDatabase = await openScheduleDatabase(pgliteDataPath)
+    const reopened = await createReopenedScheduleClient({
       workspaceId,
+      database: reopenedDatabase.database,
       pgliteDataPath,
       now: () => clock,
     })
@@ -249,23 +257,28 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     const workspaceId = 'schedule-delayed-revision-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
+    const initialDatabase = await openScheduleDatabase(pgliteDataPath)
 
     const { created } = await seedHourlyScheduleWorkspace({
       workspaceId,
+      database: initialDatabase.database,
       pgliteDataPath,
       now: () => clock,
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admittedOnly = admitScheduleDueOnly({
-      pgliteDataPath,
+    const admittedOnly = await admitScheduleDueOnly({
+      database: initialDatabase.database,
       now: () => clock,
       expectedRevision: created.revision,
     })
     expect(admittedOnly.occurrence.scheduleRevision).toBe(created.revision)
 
-    const reopened = createReopenedScheduleClient({
+    await initialDatabase.close()
+    const reopenedDatabase = await openScheduleDatabase(pgliteDataPath)
+    const reopened = await createReopenedScheduleClient({
       workspaceId,
+      database: reopenedDatabase.database,
       pgliteDataPath,
       now: () => clock,
     })
@@ -376,22 +389,23 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     const workspaceId = 'schedule-delayed-stale-terminal-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
+    const initialDatabase = await openScheduleDatabase(pgliteDataPath)
 
     const { created } = await seedHourlyScheduleWorkspace({
       workspaceId,
+      database: initialDatabase.database,
       pgliteDataPath,
       now: () => clock,
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admittedOnly = admitScheduleDueOnly({
-      pgliteDataPath,
+    const admittedOnly = await admitScheduleDueOnly({
+      database: initialDatabase.database,
       now: () => clock,
       expectedRevision: created.revision,
     })
 
-    const open = openScheduleSqlite(pgliteDataPath)
-    const repository = createSqliteConnectorRepository(open.database)
+    const repository = createPgliteConnectorRepository(initialDatabase.database)
     const claim = await repository.claimQueuedRunToRunning({
       connectorRunId: admittedOnly.run.id,
       startedAt: clock.toISOString(),
@@ -406,10 +420,12 @@ describe('local server connector schedule delayed recovery and reconciliation', 
         message: 'Connector execution failed.',
       },
     })
-    open.close()
+    await initialDatabase.close()
 
-    const reopened = createReopenedScheduleClient({
+    const reopenedDatabase = await openScheduleDatabase(pgliteDataPath)
+    const reopened = await createReopenedScheduleClient({
       workspaceId,
+      database: reopenedDatabase.database,
       pgliteDataPath,
       now: () => clock,
     })
@@ -493,22 +509,23 @@ describe('local server connector schedule delayed recovery and reconciliation', 
     const workspaceId = 'schedule-delayed-same-process-terminal-ws'
     const pgliteDataPath = createTempDatabasePath()
     let clock = new Date('2026-07-11T12:00:00.000Z')
+    const databaseOwner = await openScheduleDatabase(pgliteDataPath)
 
     const { created, client } = await seedHourlyScheduleWorkspace({
       workspaceId,
+      database: databaseOwner.database,
       pgliteDataPath,
       now: () => clock,
     })
 
     clock = new Date('2026-07-11T13:00:00.000Z')
-    const admittedOnly = admitScheduleDueOnly({
-      pgliteDataPath,
+    const admittedOnly = await admitScheduleDueOnly({
+      database: databaseOwner.database,
       now: () => clock,
       expectedRevision: created.revision,
     })
 
-    const open = openScheduleSqlite(pgliteDataPath)
-    const repository = createSqliteConnectorRepository(open.database)
+    const repository = createPgliteConnectorRepository(databaseOwner.database)
     const claim = await repository.claimQueuedRunToRunning({
       connectorRunId: admittedOnly.run.id,
       startedAt: clock.toISOString(),
@@ -523,7 +540,6 @@ describe('local server connector schedule delayed recovery and reconciliation', 
         message: 'Connector execution failed.',
       },
     })
-    open.close()
 
     // Same process: no reopen/recovery. Dispatch must self-heal the stale admitted row.
     server = await createValedictorianHttpServer({

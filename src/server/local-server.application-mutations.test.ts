@@ -68,7 +68,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('updates application status and records scores through the API', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -132,7 +132,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('runs application mutation commands through the API', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -272,7 +272,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('runs application attempt commands through the API', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -357,7 +357,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('accepts verification receipt attempt steps and completes submitted attempts through the API', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -427,7 +427,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('returns useful HTTP statuses for unauthorized and missing resources', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',

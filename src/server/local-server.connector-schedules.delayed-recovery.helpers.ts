@@ -1,13 +1,14 @@
 import type { DispatchConnectorScheduleDueResult } from 'sparxie'
-import { createPgliteClient, migratePgliteDatabase, type PgliteDatabase } from '../db/pglite'
+import type { PgliteDatabase } from '../db/pglite'
+import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
-  createLocalValedictorianClient,
   createScheduleHttpFixtureConnector as fixtureConnector,
   createStaticConnectorRegistry,
 } from './local-server.connector-schedules.http-fixture'
+import { openPgliteTestDatabase } from './local-valedictorian-client.test-harness'
 
 export const CONNECTOR_INSTANCE_ID = 'connector-instance-schedule'
 
@@ -66,17 +67,7 @@ export async function admitScheduleDueOnly(input: {
   return admitted
 }
 
-export async function openScheduleDatabase(pgliteDataPath: string) {
-  const client = await createPgliteClient({ dataDir: pgliteDataPath })
-  const database = await migratePgliteDatabase(client)
-  return {
-    client,
-    database,
-    async close() {
-      await client.close()
-    },
-  }
-}
+export const openScheduleDatabase = openPgliteTestDatabase
 
 export async function createReopenedScheduleClient(input: {
   workspaceId: string

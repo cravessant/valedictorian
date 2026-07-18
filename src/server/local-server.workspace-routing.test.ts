@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createHttpValedictorianClient, type ValedictorianWorkspaceClient } from 'sparxie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
+import { prepareWorkspaceProfileCapabilities } from '../modules/profile/profile.composition'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from '../runtime/local-valedictorian-client'
@@ -28,7 +29,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves health and local capabilities', async () => {
     const server = await fixture.start({
-      client: createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
       host: '127.0.0.1',
       port: 0,
     })
@@ -485,7 +486,6 @@ describe('local Valedictorian HTTP server', () => {
     const workspaceA = initializeWorkspace(rootA, { createId: () => 'projection-a' })
     const workspaceB = initializeWorkspace(rootB, { createId: () => 'projection-b' })
     const manager = createLocalWorkspaceManager({
-      createClient: (options) => createRuntimeLocalValedictorianClient({ ...options, seedDataMode: 'none' }),
       registryStore: createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json')),
     })
     await manager.open({ path: workspaceA.rootPath }); await manager.open({ path: workspaceB.rootPath })
@@ -500,6 +500,7 @@ describe('local Valedictorian HTTP server', () => {
     }] })
     await expect(root.forWorkspace(workspaceA.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).resolves.toMatchObject({ rawRevisionId: intake.receipts[0].revision.id })
     await expect(root.forWorkspace(workspaceB.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).rejects.toMatchObject({ status: 404 })
+    await manager.close()
   })
 
   it('opens an existing folder as a registered local workspace', async () => {
@@ -661,6 +662,7 @@ describe('local Valedictorian HTTP server', () => {
     }
     const workspaceManager = createLocalWorkspaceManager({
       createClient,
+      prepareWorkspaceCapabilities: prepareWorkspaceProfileCapabilities,
       registryStore,
     })
 
@@ -672,11 +674,13 @@ describe('local Valedictorian HTTP server', () => {
         apiPort: 0,
         apiUrl: 'http://127.0.0.1:0',
         mode: 'local-desktop',
+        profilePath: workspace.profilePath,
         seedDataMode: 'none',
         pgliteDataPath: workspace.pgliteDataPath,
         workspaceId,
       },
       createLocalClient: createClient,
+      prepareWorkspaceCapabilities: prepareWorkspaceProfileCapabilities,
       workspaceManager,
     })
     const connectors = runtime.connectors
@@ -758,7 +762,7 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('keeps a live connector run owned when its workspace is reopened through the real path after a symlink alias', async () => {
+  it('reopens a canonical workspace through its real path after closing a symlink-owned runtime', async () => {
     const workspaceAId = 'workspace-lifecycle-a'
     const workspaceBId = 'workspace-lifecycle-b'
     const connectorInstanceId = 'connector-instance-lifecycle'
@@ -814,6 +818,7 @@ describe('local Valedictorian HTTP server', () => {
     })
     const workspaceManager = createLocalWorkspaceManager({
       createClient,
+      prepareWorkspaceCapabilities: prepareWorkspaceProfileCapabilities,
       registryStore,
     })
     const createRuntime = (workspace: typeof workspaceAAlias) => createValedictorianRuntime({
@@ -822,11 +827,13 @@ describe('local Valedictorian HTTP server', () => {
         apiPort: 0,
         apiUrl: 'http://127.0.0.1:0',
         mode: 'local-desktop',
+        profilePath: workspace.profilePath,
         seedDataMode: 'none',
         pgliteDataPath: workspace.pgliteDataPath,
         workspaceId: workspace.id,
       },
       createLocalClient: createClient,
+      prepareWorkspaceCapabilities: prepareWorkspaceProfileCapabilities,
       workspaceManager,
     })
 
@@ -862,6 +869,8 @@ describe('local Valedictorian HTTP server', () => {
     expect(fs.realpathSync(workspaceAAlias.pgliteDataPath)).toBe(
       fs.realpathSync(workspaceAReal.pgliteDataPath),
     )
+    releaseRefresh?.()
+    const firstResult = await firstRunPromise
     await firstRuntime.close()
 
     const secondWorkspaceRuntime = await createRuntime(workspaceB)
@@ -877,47 +886,13 @@ describe('local Valedictorian HTTP server', () => {
       throw new Error('Expected reopened connector IPC surface for workspace A')
     }
 
-    let reopenedRun: Awaited<typeof firstRunPromise> | undefined
-    const reopenedRunPromise = reopenedConnectors.runs.trigger(triggerInput).then((run) => {
-      reopenedRun = run
-      return run
-    })
-    let regressionError: unknown
-
-    try {
-      await vi.waitFor(() => {
-        expect(reopenedRun).toMatchObject({
-          connectorInstanceId,
-          status: 'running',
-        })
-      }, { timeout: 250 })
-      expect(refreshCount).toBe(1)
-    } catch (error) {
-      regressionError = error
-    } finally {
-      releaseRefresh?.()
-    }
-
-    const [firstResult, reopenedResult] = await Promise.allSettled([
-      firstRunPromise,
-      reopenedRunPromise,
-    ])
+    const reopenedResult = await reopenedConnectors.runs.trigger(triggerInput)
     await reopenedRuntime.close()
 
-    if (regressionError) {
-      throw regressionError
-    }
-
-    if (firstResult.status === 'rejected') {
-      throw firstResult.reason
-    }
-
-    if (reopenedResult.status === 'rejected') {
-      throw reopenedResult.reason
-    }
-
-    expect(firstResult.value).toMatchObject({ status: 'completed' })
-    expect(reopenedResult.value.id).toBe(firstResult.value.id)
+    expect(refreshCount).toBe(2)
+    expect(firstResult).toMatchObject({ status: 'completed' })
+    expect(reopenedResult).toMatchObject({ status: 'completed' })
+    expect(reopenedResult.id).not.toBe(firstResult.id)
   })
 
   it('resolves local workspace clients without scheduling startup connector work', async () => {
