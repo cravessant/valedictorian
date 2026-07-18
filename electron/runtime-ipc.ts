@@ -52,6 +52,7 @@ export const runtimeIpcChannels = [
   'sourcing:findings:decide',
   'sourcing:findings:promote',
   'valedictorian-http:request',
+  'valedictorian-http:cancel',
 ] as const
 
 export function removeRuntimeIpcHandlers(ipcMain: RuntimeIpcMain): void {

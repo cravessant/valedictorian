@@ -280,6 +280,47 @@ describe('Jobright credential secrecy', () => {
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
   })
 
+  it('reports that credentials were saved when validation could not start', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    vi.mocked(connectorsApi.status.reconnect).mockRejectedValueOnce(
+      new Error('Connector status actions are unavailable for demo@example.com secret-password.'),
+    )
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
+    fireEvent.change(await screen.findByLabelText('Jobright email'), {
+      target: { value: 'demo@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Jobright password'), {
+      target: { value: 'secret-password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
+
+    expect(await screen.findByText(
+      'Credentials were saved and linked, but validation could not start because the connector service is unavailable. Restart the app, then select Validate.',
+    )).toBeInTheDocument()
+    expect(screen.getByText('Jobright credential setup incomplete')).toBeInTheDocument()
+    expect(profileApi.secrets.upsert).toHaveBeenCalledOnce()
+    expect(connectorsApi.update).toHaveBeenCalledOnce()
+    expect(screen.queryByText('demo@example.com')).not.toBeInTheDocument()
+    expect(screen.queryByText('secret-password')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Jobright email')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+  })
+
   it('auto-validates configured Jobright credentials on settings load', async () => {
     const connectorsApi = createConnectorsApi()
     let resolveReconnect: ((value: Awaited<ReturnType<typeof connectorsApi.status.reconnect>>) => void) | undefined

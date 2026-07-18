@@ -26,7 +26,9 @@ import {
   jobrightSecretKeyForInstance,
   sanitizedConnectorAuthErrorMessage,
   sanitizedConnectorCreateErrorMessage,
+  sanitizedJobrightCredentialActionErrorMessage,
   shouldAutoValidateJobrightAuth,
+  type JobrightCredentialActionStage,
 } from './connector-settings.helpers'
 import {
   describeConnectorCredentialBlockReason,
@@ -412,6 +414,7 @@ export function ConnectorSettingsPanel({
     const password = credentials.password
     const secretKey = jobrightSecretKeyForInstance(instance.id)
     const credentialBlockReason = describeConnectorCredentialBlockReason(credentials)
+    let actionStage: JobrightCredentialActionStage = 'saving'
 
     if (!isConnectorCredentialDraftReady(credentials) || credentialBlockReason) {
       setAuthStates((currentStates) => ({
@@ -451,21 +454,27 @@ export function ConnectorSettingsPanel({
       label: 'Jobright username and password',
       value: JSON.stringify({ username: email, password }),
     })
-      .then(() => connectorsApi.update({
-        connectorInstanceId: instance.id,
-        auth: [
-          {
-            id: 'jobright',
-            label: 'Jobright username and password',
-            mode: 'username_password',
-            secretKey,
-          },
-        ],
-      }))
-      .then(async (updated) => ({
-        result: await connectorsApi.status.reconnect({ connectorInstanceId: updated.id }),
-        updated,
-      }))
+      .then(() => {
+        actionStage = 'attaching'
+        return connectorsApi.update({
+          connectorInstanceId: instance.id,
+          auth: [
+            {
+              id: 'jobright',
+              label: 'Jobright username and password',
+              mode: 'username_password',
+              secretKey,
+            },
+          ],
+        })
+      })
+      .then(async (updated) => {
+        actionStage = 'validating'
+        return {
+          result: await connectorsApi.status.reconnect({ connectorInstanceId: updated.id }),
+          updated,
+        }
+      })
       .then(async ({ result, updated }) => {
         if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
           return
@@ -503,7 +512,9 @@ export function ConnectorSettingsPanel({
             status: 'failed',
           },
         }))
-        setConnectorActionError('Jobright credentials could not be saved or validated.')
+        setConnectorActionError(
+          sanitizedJobrightCredentialActionErrorMessage(actionStage, error),
+        )
       })
       .finally(() => {
         if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
@@ -827,7 +838,11 @@ export function ConnectorSettingsPanel({
       {connectorActionError ? (
         <Alert variant="destructive">
           <AlertCircle aria-hidden="true" />
-          <AlertTitle>Connector action failed</AlertTitle>
+          <AlertTitle>
+            {connectorActionError.startsWith('Credentials ')
+              ? 'Jobright credential setup incomplete'
+              : 'Connector action failed'}
+          </AlertTitle>
           <AlertDescription>{connectorActionError}</AlertDescription>
         </Alert>
       ) : null}

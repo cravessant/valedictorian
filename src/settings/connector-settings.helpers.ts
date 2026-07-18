@@ -82,20 +82,42 @@ export function connectorAuthStatusMessage(state: ConnectorAuthUiState): string 
 }
 
 export function sanitizedConnectorAuthErrorMessage(error: unknown): string {
-  if (
-    error
-    && typeof error === 'object'
-    && 'code' in error
-    && (error as { code?: unknown }).code === 'secure_storage_unavailable'
-  ) {
+  if (isSecureStorageUnavailableError(error)) {
     return secureStorageUnavailableMessage
   }
 
-  if (error instanceof Error && error.message.includes('secure_storage_unavailable')) {
-    return secureStorageUnavailableMessage
+  if (isConnectorServiceUnavailableError(error)) {
+    return 'Jobright validation could not start because the connector service is unavailable. Restart the app, then try again.'
   }
 
-  return 'Jobright credentials could not be validated.'
+  return 'Jobright validation could not start. Try again; if it keeps failing, restart the app.'
+}
+
+export type JobrightCredentialActionStage = 'saving' | 'attaching' | 'validating'
+
+export function sanitizedJobrightCredentialActionErrorMessage(
+  stage: JobrightCredentialActionStage,
+  error: unknown,
+): string {
+  if (stage === 'saving') {
+    return isSecureStorageUnavailableError(error)
+      ? 'Credentials were not saved because secure storage is unavailable. Enable platform encryption, then try again.'
+      : 'Credentials were not saved. The secure credential store did not accept the update. Restart the app, then try again.'
+  }
+
+  if (stage === 'attaching') {
+    return 'Credentials were saved securely, but the connector could not be linked to them. Select Update credentials and try again.'
+  }
+
+  if (isSecureStorageUnavailableError(error)) {
+    return 'Credentials were saved and linked, but validation could not read them because secure storage is unavailable. Enable platform encryption, then select Validate.'
+  }
+
+  if (isConnectorServiceUnavailableError(error)) {
+    return 'Credentials were saved and linked, but validation could not start because the connector service is unavailable. Restart the app, then select Validate.'
+  }
+
+  return 'Credentials were saved and linked, but validation could not start. Select Validate to retry; if it fails again, restart the app.'
 }
 
 export function sanitizedConnectorCreateErrorMessage(error: unknown): string {
@@ -151,6 +173,45 @@ export function recordFromUnknown(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+function isSecureStorageUnavailableError(error: unknown): boolean {
+  if (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && (error as { code?: unknown }).code === 'secure_storage_unavailable'
+  ) {
+    return true
+  }
+
+  return error instanceof Error && error.message.includes('secure_storage_unavailable')
+}
+
+function isConnectorServiceUnavailableError(error: unknown): boolean {
+  if (error instanceof TypeError) {
+    return true
+  }
+
+  const candidate = error && typeof error === 'object'
+    ? error as { code?: unknown; status?: unknown; statusCode?: unknown }
+    : {}
+  const status = typeof candidate.status === 'number'
+    ? candidate.status
+    : candidate.statusCode
+  if (
+    status === 502
+    || status === 503
+    || status === 504
+    || candidate.code === 'backend_unavailable'
+  ) {
+    return true
+  }
+
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+  return message.includes('workspace backend unavailable')
+    || message.includes('connector status actions are unavailable')
+    || message.includes('connector reconnect is unavailable')
 }
 
 export function stringFromUnknown(value: unknown): string {
