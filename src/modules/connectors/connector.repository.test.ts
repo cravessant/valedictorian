@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { connectorRuns, sourceExecutionScopes, opportunities } from '../../db/schema'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from './connector.repository'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 
 const obsoleteBrowserMode = ['browser', '_session'].join('')
 const obsoleteSessionField = ['session', 'Key'].join('')
 
-describe('SQLite connector repository', () => {
+describe('PGlite connector repository', () => {
   it('rejects run admission when disable commits after an enabled preflight read', async () => {
-    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const input = {
       id: 'disable-admission-race',
       connectorId: 'fixture.jobs',
@@ -35,13 +32,10 @@ describe('SQLite connector repository', () => {
     })
     await expect(repository.listRuns({ connectorInstanceId: input.id }))
       .resolves.toMatchObject({ items: [], total: 0 })
-    sqlite.close()
   })
 
   it('omits ordinary legacy completed and running rows without synchronization snapshots', async () => {
-    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { database, repository } = await createConnectorRepositoryTestContext()
     const instance = await repository.upsertInstance({
       id: 'legacy-unsynchronized', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Legacy unsynchronized', enabled: true,
@@ -51,7 +45,7 @@ describe('SQLite connector repository', () => {
       ['legacy-completed', 'completed', '2026-07-02T00:00:01.000Z'],
       ['legacy-running', 'running', null],
     ] as const) {
-      database.insert(connectorRuns).values({
+      await database.insert(connectorRuns).values({
         id, executionScopeId: instance.executionScopeId, connectorInstanceId: instance.id,
         mode: 'manual', status, startedAt: '2026-07-02T00:00:00.000Z', completedAt,
         coverageStartedAt: null, coverageEndedAt: null, configJson: '{}', filtersJson: '{}',
@@ -59,31 +53,26 @@ describe('SQLite connector repository', () => {
         statsJson: '{}', warningsJson: '[]', retryHintsJson: 'null',
         createdAt: '2026-07-02T00:00:00.000Z', updatedAt: '2026-07-02T00:00:00.000Z',
         deletedAt: null,
-      }).run()
+      })
     }
 
     await expect(repository.listRuns({ connectorInstanceId: instance.id })).resolves.toMatchObject({
       items: [], total: 0,
     })
     await expect(repository.getStatusSummary(instance.id)).resolves.toMatchObject({ latestRun: null })
-    sqlite.close()
   })
   it('preserves scope cooldown and generation when auth references are edited', async () => {
-    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { database, repository } = await createConnectorRepositoryTestContext()
     const first = await repository.upsertInstance({ id: 'stable-scope', connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Stable', enabled: true, auth: [{ id: 'first', mode: 'api_key', secretKey: 'one' }] })
-    database.update(sourceExecutionScopes).set({ status: 'cooldown', blockedUntil: '2026-07-12T13:00:00.000Z', authGeneration: 4 }).where(eq(sourceExecutionScopes.id, first.executionScopeId)).run()
+    await database.update(sourceExecutionScopes).set({ status: 'cooldown', blockedUntil: '2026-07-12T13:00:00.000Z', authGeneration: 4 }).where(eq(sourceExecutionScopes.id, first.executionScopeId))
     const edited = await repository.upsertInstance({ id: 'stable-scope', connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Stable', enabled: true, auth: [{ id: 'second', mode: 'bearer_token', secretKey: 'two' }] })
     expect(edited.executionScopeId).toBe(first.executionScopeId)
-    expect(database.select().from(sourceExecutionScopes).where(eq(sourceExecutionScopes.id, first.executionScopeId)).get()).toMatchObject({ status: 'cooldown', blockedUntil: '2026-07-12T13:00:00.000Z', authGeneration: 4 })
-    sqlite.close()
+    await expect(database.select().from(sourceExecutionScopes).where(eq(sourceExecutionScopes.id, first.executionScopeId))).resolves.toEqual([
+      expect.objectContaining({ status: 'cooldown', blockedUntil: '2026-07-12T13:00:00.000Z', authGeneration: 4 }),
+    ])
   })
   it('records a fixture connector refresh into app-owned connector state', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { database, repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-fixture',
@@ -245,14 +234,11 @@ describe('SQLite connector repository', () => {
         ],
       }),
     ])
-    expect(database.select().from(opportunities).all()).toHaveLength(0)
+    await expect(database.select().from(opportunities)).resolves.toHaveLength(0)
   })
 
   it('keeps checkpoint scopes separate when filters change on the same connector instance', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-filtered',
@@ -334,10 +320,7 @@ describe('SQLite connector repository', () => {
   })
 
   it('can defer checkpoint persistence until a refresh run is accepted', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-deferred',
@@ -404,10 +387,7 @@ describe('SQLite connector repository', () => {
   })
 
   it('rejects browser-session auth references at the persistence boundary', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await expect(repository.upsertInstance({
       id: 'connector-instance-browser-auth',
@@ -421,10 +401,7 @@ describe('SQLite connector repository', () => {
   })
 
   it('normalizes connector auth references before persisting instance state', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-auth',
@@ -478,10 +455,7 @@ describe('SQLite connector repository', () => {
   })
 
   it('persists completed connector runs with retry hints', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-partial',
@@ -520,10 +494,7 @@ describe('SQLite connector repository', () => {
   })
 
   it('keeps an existing run non-terminal while deferred projection is pending', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-deferred',
@@ -583,10 +554,7 @@ describe('SQLite connector repository', () => {
   })
 
   it('returns the active run request until failure releases the connector instance', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-single-flight',
@@ -649,10 +617,7 @@ describe('SQLite connector repository', () => {
   })
 
   it('records failed connector run attempts without advancing checkpoints', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-failed',
@@ -709,10 +674,7 @@ describe('SQLite connector repository', () => {
   })
 
   it('lists enabled connector instances with their latest run status', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
 
     await repository.upsertInstance({
       id: 'connector-instance-fixture',

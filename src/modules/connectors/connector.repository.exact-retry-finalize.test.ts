@@ -8,8 +8,7 @@ import {
   captureEvidenceVersions,
   retryWork,
 } from '../../db/schema'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from './connector.repository'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 import { mapConnectorRunSummary, publicConnectorRunSummary } from '../../runtime/local-connector-public-run'
 import {
   finalizeInProgressConnectorSynchronization,
@@ -25,10 +24,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
   it.each(['failed', 'rejected', 'abstained'] as const)(
     'does not complete retry or remove checkpoint entry for exact destinationUrl %s',
     async (destinationStatus) => {
-      const sqlite = createInMemoryDatabase()
-      migrateDatabase(sqlite)
-      const database = createDrizzleDatabase(sqlite)
-      const repository = createSqliteConnectorRepository(database)
+      const { database, repository } = await createConnectorRepositoryTestContext()
       const now = '2026-07-11T12:00:00.000Z'
       const nextAttemptAt = '2026-07-11T12:00:30.000Z'
       const captureLineageId = 'raw-record-finalize-gate'
@@ -53,12 +49,11 @@ describe('exact acquired normalization retry finalization success gate', () => {
       })
       // Use the real acquired run id from the repository.
       const connectorRunId = acquisition.run.id
-
-      database.insert(captureLineages).values({
+await database.insert(captureLineages).values({
         id: captureLineageId,
         createdAt: now,
-      }).run()
-      database.insert(captureEvidenceVersions).values({
+      })
+await database.insert(captureEvidenceVersions).values({
         id: captureEvidenceVersionId,
         captureLineageId,
         revision: 1,
@@ -71,8 +66,8 @@ describe('exact acquired normalization retry finalization success gate', () => {
         evidenceJson: '[]',
         observedAt: now,
         createdAt: now,
-      }).run()
-      database.insert(normalizationRuns).values({
+      })
+await database.insert(normalizationRuns).values({
         id: 'normalization-run-finalize-gate',
         captureLineageId,
         captureEvidenceVersionId,
@@ -88,8 +83,8 @@ describe('exact acquired normalization retry finalization success gate', () => {
         status: 'completed',
         createdAt: now,
         updatedAt: now,
-      }).run()
-      database.insert(normalizationAttempts).values({
+      })
+await database.insert(normalizationAttempts).values({
         id: 'attempt-finalize-gate',
         runId: 'normalization-run-finalize-gate',
         captureEvidenceVersionId,
@@ -106,8 +101,8 @@ describe('exact acquired normalization retry finalization success gate', () => {
         status: 'completed',
         startedAt: now,
         completedAt: now,
-      }).run()
-      database.insert(normalizationFieldOutcomes).values({
+      })
+await database.insert(normalizationFieldOutcomes).values({
         id: 'outcome-finalize-gate',
         runId: 'normalization-run-finalize-gate',
         attemptId: 'attempt-finalize-gate',
@@ -127,7 +122,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
           status: destinationStatus,
           reason: `fixture ${destinationStatus}`,
         }),
-      }).run()
+      })
 
       const checkpointPayload = {
         schemaVersion: 'jobright-resolution-checkpoint@5',
@@ -170,8 +165,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
         coverage: { start: now, end: now },
         savedAt: now,
       })
-
-      database.insert(retryWork).values({
+await database.insert(retryWork).values({
         id: retryWorkId,
         executionScopeId: instance.executionScopeId,
         kind: 'normalization',
@@ -201,7 +195,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
-      }).run()
+      })
 
       const acquiredRetryWork = {
         retryWorkId,
@@ -227,7 +221,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
         terminalStatus: 'completed',
       })).rejects.toThrow(/exact successful normalization attempt was not found/i)
 
-      expect(database.select().from(retryWork).all()).toEqual([
+      await expect(database.select().from(retryWork)).resolves.toEqual([
         expect.objectContaining({
           id: retryWorkId,
           state: 'acquired',
@@ -240,7 +234,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
       }))!.checkpoint).toEqual(checkpointPayload.checkpoint)
 
       if (destinationStatus === 'failed') {
-        updateConnectorSynchronizationOutcome(
+        await updateConnectorSynchronizationOutcome(
           database,
           connectorRunId,
           { kind: 'failed', reason: 'connector_authored_normalization_failure' },
@@ -272,13 +266,13 @@ describe('exact acquired normalization retry finalization success gate', () => {
         outcome: { kind: 'failed', reason: expectedFailureReason },
         lifecycleCounts: { source: 'frozen_terminal' },
       })
-      finalizeInProgressConnectorSynchronization(
+      await finalizeInProgressConnectorSynchronization(
         database,
         connectorRunId,
         { kind: 'cancelled', reason: 'repeated_finalize_must_not_replace_terminal' },
         '2026-07-11T12:00:03.000Z',
       )
-      finalizeInProgressConnectorSynchronization(
+      await finalizeInProgressConnectorSynchronization(
         database,
         connectorRunId,
         { kind: 'yielded', reason: 'invocation_budget' },
@@ -292,7 +286,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
         outcome: { kind: 'failed', reason: expectedFailureReason },
       })
 
-      expect(database.select().from(retryWork).all()).toEqual([
+      await expect(database.select().from(retryWork)).resolves.toEqual([
         expect.objectContaining({
           id: retryWorkId,
           state: 'scheduled',
@@ -308,8 +302,7 @@ describe('exact acquired normalization retry finalization success gate', () => {
       expect((checkpoint!.checkpoint as { retryState: unknown[] }).retryState).toEqual([
         expect.objectContaining({ sourceId: 'jobright.public:job-finalize-gate' }),
       ])
-      expect(database.select().from(connectorCheckpoints).all()).toHaveLength(1)
-      sqlite.close()
+      await expect(database.select().from(connectorCheckpoints)).resolves.toHaveLength(1)
     },
   )
 })

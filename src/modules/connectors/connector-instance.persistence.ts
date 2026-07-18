@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { connectorInstances, sourceExecutionScopes } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import { assertPersistedEarliestBackfillDate, defaultEarliestBackfillDate } from './connector.earliest-backfill'
 import type { ConnectorAuthMode, ConnectorAuthReference, ConnectorInstanceRecord, UpsertConnectorInstanceInput } from './connector-instance.persistence-types'
 import { optionalNonEmptyString, requiredNonEmptyString, toJsonRecord } from './connector.persistence-json'
@@ -8,30 +8,30 @@ import { deriveSourceExecutionScopeId } from '../source-execution/source-executi
 import { JOBRIGHT_CONNECTOR_ID } from './jobright.constants'
 
 export function createConnectorInstance(
-  database: DrizzleDatabase,
+  database: PgliteDatabase,
   input: UpsertConnectorInstanceInput,
-): ConnectorInstanceRecord {
+): Promise<ConnectorInstanceRecord> {
   const now = new Date().toISOString()
   const createdAt = input.createdAt ?? now
   const executionScopeId = deriveSourceExecutionScopeId(input.id)
-  return database.transaction((transaction) => {
+  return database.transaction(async (transaction) => {
     if (input.connectorId === JOBRIGHT_CONNECTOR_ID) {
-      const activeJobright = transaction
+      const [activeJobright] = await transaction
         .select({ id: connectorInstances.id })
         .from(connectorInstances)
         .where(and(
           eq(connectorInstances.connectorId, JOBRIGHT_CONNECTOR_ID),
           isNull(connectorInstances.deletedAt),
         ))
-        .get()
+        .limit(1)
       if (activeJobright) {
         throw alreadyConfiguredError()
       }
     }
-    transaction.insert(sourceExecutionScopes).values({
+    await transaction.insert(sourceExecutionScopes).values({
       id: executionScopeId, createdAt, updatedAt: createdAt, deletedAt: null,
-    }).onConflictDoNothing().run()
-    const persisted = transaction.insert(connectorInstances).values({
+    }).onConflictDoNothing()
+    const [persisted] = await transaction.insert(connectorInstances).values({
       id: input.id, executionScopeId, connectorId: input.connectorId,
       connectorVersion: input.connectorVersion, displayName: input.displayName,
       enabled: input.enabled,
@@ -42,12 +42,12 @@ export function createConnectorInstance(
         ? defaultEarliestBackfillDate(createdAt)
         : assertPersistedEarliestBackfillDate(input.earliestBackfillDate),
       createdAt, updatedAt: now, deletedAt: null,
-    }).onConflictDoNothing().returning().get()
+    }).onConflictDoNothing().returning()
     if (!persisted) {
       throw alreadyConfiguredError()
     }
     return mapConnectorInstance(persisted)
-  }, { behavior: 'immediate' })
+  })
 }
 
 function alreadyConfiguredError() {
@@ -57,15 +57,15 @@ function alreadyConfiguredError() {
   )
 }
 
-export function selectConnectorInstance(
-  database: DrizzleDatabase,
+export async function selectConnectorInstance(
+  database: PgliteDatabase,
   connectorInstanceId: string,
-): ConnectorInstanceRecord {
-  const row = database
+): Promise<ConnectorInstanceRecord> {
+  const [row] = await database
     .select()
     .from(connectorInstances)
     .where(and(eq(connectorInstances.id, connectorInstanceId), isNull(connectorInstances.deletedAt)))
-    .get()
+    .limit(1)
 
   if (!row) {
     throw new Error(`Connector instance not found: ${connectorInstanceId}`)

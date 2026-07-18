@@ -1,6 +1,6 @@
 import { connectorRuns } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import {
   freezeConnectorRunLifecycleCounts,
   readConnectorRunLifecycleCounts,
@@ -74,10 +74,10 @@ function persistedConnectorRunStatus(value: string): ConnectorRunStatus {
   return value as ConnectorRunStatus
 }
 
-export function withConnectorRunLifecycleCounts(
-  database: DrizzleDatabase,
+export async function withConnectorRunLifecycleCounts(
+  database: Pick<PgliteDatabase, 'select'>,
   run: ConnectorRunRecord,
-): ConnectorRunRecord {
+): Promise<ConnectorRunRecord> {
   const stats = toJsonRecord(run.stats)
   const persisted = readConnectorRunLifecycleCounts(stats, run.id)
   if (persisted) {
@@ -88,27 +88,28 @@ export function withConnectorRunLifecycleCounts(
     ...run,
     stats: {
       ...stats,
-      lifecycleCounts: reconcileConnectorRunLifecycleCounts(database, run),
+      lifecycleCounts: await reconcileConnectorRunLifecycleCounts(database, run),
     },
   }
 }
 
-export function persistFrozenConnectorRunLifecycleCounts(
-  database: DrizzleDatabase,
+export async function persistFrozenConnectorRunLifecycleCounts(
+  database: Pick<PgliteDatabase, 'select' | 'update'>,
   connectorRunId: string,
   updatedAt: string,
-): ConnectorRunRecord {
-  const row = database.select().from(connectorRuns)
-    .where(eq(connectorRuns.id, connectorRunId)).get()
+): Promise<ConnectorRunRecord> {
+  const [row] = await database.select().from(connectorRuns)
+    .where(eq(connectorRuns.id, connectorRunId)).limit(1)
   const run = mapConnectorRun(row)
   const stats = toJsonRecord(run.stats)
-  database.update(connectorRuns).set({
+  await database.update(connectorRuns).set({
     statsJson: JSON.stringify({
       ...stats,
-      lifecycleCounts: freezeConnectorRunLifecycleCounts(database, run),
+      lifecycleCounts: await freezeConnectorRunLifecycleCounts(database, run),
     }),
     updatedAt,
-  }).where(eq(connectorRuns.id, connectorRunId)).run()
-  return mapConnectorRun(database.select().from(connectorRuns)
-    .where(eq(connectorRuns.id, connectorRunId)).get())
+  }).where(eq(connectorRuns.id, connectorRunId))
+  const [persisted] = await database.select().from(connectorRuns)
+    .where(eq(connectorRuns.id, connectorRunId)).limit(1)
+  return mapConnectorRun(persisted)
 }

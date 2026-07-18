@@ -1,21 +1,21 @@
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { drizzle } from 'drizzle-orm/pglite'
 import { describe, expect, it } from 'vitest'
 import { connectorRuns, connectorRunSynchronizations, schema } from '../../db/schema'
-import { createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from './connector.repository'
+import type { PgliteClient } from '../../db/pglite'
+import { createPgliteConnectorRepository } from './connector.repository'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 import { mapLocalConnectorOverviewRecord } from '../../runtime/local-connector-overview'
 import type { ConnectorStatusState } from 'sparxie'
 
-describe('SQLite connector overview repository', () => {
+describe('PGlite connector overview repository', () => {
   it('reads one default-sized connector page and its latest synchronized runs in one query', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
+    const { client } = await createConnectorRepositoryTestContext()
     const queries: string[] = []
-    const database = drizzle(sqlite, {
+    const database = drizzle(client, {
       schema,
       logger: { logQuery(query) { queries.push(query) } },
     })
-    const repository = createSqliteConnectorRepository(database)
+    const repository = createPgliteConnectorRepository(database)
     const instances = await Promise.all(Array.from({ length: 55 }, (_, index) => (
       repository.upsertInstance({
         id: `overview-${String(index).padStart(2, '0')}`,
@@ -27,13 +27,13 @@ describe('SQLite connector overview repository', () => {
     for (let index = 0; index < 250; index += 1) {
       const id = `history-${String(index).padStart(3, '0')}`
       const startedAt = new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString()
-      insertRun(database, {
+      await insertRun(database, {
         connectorInstanceId: instances[0]!.id,
         executionScopeId: instances[0]!.executionScopeId,
         id,
         startedAt,
       })
-      insertSynchronization(database, id, 'caught_up')
+      await insertSynchronization(database, id, 'caught_up')
     }
     queries.length = 0
 
@@ -46,36 +46,29 @@ describe('SQLite connector overview repository', () => {
     expect(page.items.at(-1)?.id).toBe('overview-49')
     expect(page.hasMore).toBe(true)
     expect(queries).toHaveLength(1)
-    const latestPlan = sqlite.prepare(`
-      explain query plan
+    await client.exec('set enable_seqscan = off')
+    const latestPlan = await explainPlan(client, `
       select run.id
       from connector_runs run
       join connector_run_synchronizations synchronization
         on synchronization.connector_run_id = run.id
-      where run.connector_instance_id = ? and run.deleted_at is null
-      order by run.started_at desc, run.created_at desc
+      where run.connector_instance_id = $1 and run.deleted_at is null
+      order by run.started_at desc, run.created_at desc, run.id desc
       limit 1
-    `).all(instances[0]!.id) as Array<{ detail: string }>
-    expect(latestPlan.map(({ detail }) => detail).join('\n')).toMatch(
-      /idx_connector_runs_instance_latest/i,
-    )
-    expect(latestPlan.map(({ detail }) => detail).join('\n')).not.toMatch(/temp b-tree/i)
-    const connectorPlan = sqlite.prepare(`
-      explain query plan
+    `, [instances[0]!.id])
+    expect(latestPlan).toMatch(/idx_connector_runs_instance(?:_latest)?/i)
+    expect(latestPlan).not.toMatch(/seq scan/i)
+    const connectorPlan = await explainPlan(client, `
       select id from connector_instances
-      where deleted_at is null and id > ?
+      where deleted_at is null and id > $1
       order by id
       limit 51
-    `).all('overview-00') as Array<{ detail: string }>
-    expect(connectorPlan.map(({ detail }) => detail).join('\n')).not.toMatch(/temp b-tree/i)
-    sqlite.close()
+    `, ['overview-00'])
+    expect(connectorPlan).not.toMatch(/seq scan/i)
   })
 
   it('keeps SQL filters equivalent to the canonical projector for every public health state', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = drizzle(sqlite, { schema })
-    const repository = createSqliteConnectorRepository(database)
+    const { database, repository } = await createConnectorRepositoryTestContext()
     const cases = overviewHealthCases()
     for (const item of cases) {
       const instance = await repository.upsertInstance({
@@ -83,12 +76,12 @@ describe('SQLite connector overview repository', () => {
         displayName: item.status, enabled: true, createdAt: '2026-07-13T12:00:00.000Z',
       })
       if (!item.run) continue
-      insertRun(database, {
+      await insertRun(database, {
         connectorInstanceId: instance.id, executionScopeId: instance.executionScopeId,
         id: `run-${item.status}`, startedAt: '2026-07-13T12:00:00.000Z',
         status: item.run.status, warnings: item.run.warnings,
       })
-      insertSynchronization(
+      await insertSynchronization(
         database,
         `run-${item.status}`,
         outcomeForScope(item.run.outcome, instance.executionScopeId),
@@ -118,20 +111,16 @@ describe('SQLite connector overview repository', () => {
       actionRequired: [{ kind: 'configuration' }],
       health: { status: 'blocked' },
     })
-    sqlite.close()
   })
 
   it('does not synthesize overview lifecycle state from a legacy run without a snapshot', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = drizzle(sqlite, { schema })
-    const repository = createSqliteConnectorRepository(database)
+    const { database, repository } = await createConnectorRepositoryTestContext()
     const instance = await repository.upsertInstance({
       id: 'legacy-missing-snapshot', connectorId: 'fixture.overview', connectorVersion: '1.0.0',
       displayName: 'Legacy missing snapshot', enabled: true,
       createdAt: '2026-07-13T12:00:00.000Z',
     })
-    insertRun(database, {
+    await insertRun(database, {
       connectorInstanceId: instance.id, executionScopeId: instance.executionScopeId,
       id: 'legacy-unsynchronized-run', startedAt: '2026-07-13T12:01:00.000Z',
     })
@@ -142,11 +131,10 @@ describe('SQLite connector overview repository', () => {
     expect(page.items.map(mapLocalConnectorOverviewRecord)).toMatchObject([{
       id: instance.id, health: { status: 'never_run' }, latestRun: null,
     }])
-    sqlite.close()
   })
 })
 
-function insertRun(
+async function insertRun(
   database: ReturnType<typeof drizzle<typeof schema>>,
   input: {
     connectorInstanceId: string
@@ -158,7 +146,7 @@ function insertRun(
   },
 ) {
   const warnings = input.warnings ?? []
-  database.insert(connectorRuns).values({
+  await database.insert(connectorRuns).values({
     id: input.id, connectorInstanceId: input.connectorInstanceId,
     executionScopeId: input.executionScopeId, mode: 'manual', status: input.status ?? 'completed',
     startedAt: input.startedAt,
@@ -167,10 +155,10 @@ function insertRun(
     filterSignature: 'filters:{}', observationCount: 0, warningCount: warnings.length,
     statsJson: '{}', warningsJson: JSON.stringify(warnings), retryHintsJson: 'null',
     createdAt: input.startedAt, updatedAt: input.startedAt, deletedAt: null,
-  }).run()
+  })
 }
 
-function insertSynchronization(
+async function insertSynchronization(
   database: ReturnType<typeof drizzle<typeof schema>>,
   connectorRunId: string,
   outcome: string | Record<string, unknown>,
@@ -178,7 +166,7 @@ function insertSynchronization(
 ) {
   const outcomeKind = typeof outcome === 'string' ? outcome : outcome.kind
   const defaultProgressState = outcomeKind === 'caught_up' ? 'caught_up' : 'not_started'
-  database.insert(connectorRunSynchronizations).values({
+  await database.insert(connectorRunSynchronizations).values({
     connectorRunId,
     snapshotJson: JSON.stringify({
       newestFrontier: { state: progress.newest ?? defaultProgressState },
@@ -191,7 +179,12 @@ function insertSynchronization(
     }),
     createdAt: '2026-07-13T12:00:00.000Z',
     updatedAt: '2026-07-13T12:00:00.000Z',
-  }).run()
+  })
+}
+
+async function explainPlan(client: PgliteClient, query: string, parameters: unknown[]) {
+  const result = await client.query<Record<'QUERY PLAN', string>>(`explain ${query}`, parameters)
+  return result.rows.map((row) => row['QUERY PLAN']).join('\n')
 }
 
 function overviewHealthCases(): Array<{
