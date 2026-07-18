@@ -7,6 +7,7 @@ import {
   createListResult,
   createProfileApi,
   createSettingsApi,
+  openConnectorEditor,
   openSettingsPage,
 } from './App.test-helpers'
 
@@ -140,4 +141,5 @@ async function openConnectors() {
   await openSettingsPage()
   const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
   fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+  await openConnectorEditor()
 }

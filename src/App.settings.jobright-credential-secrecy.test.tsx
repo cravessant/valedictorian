@@ -16,6 +16,8 @@ import {
   createProfileApi,
   createSettingsApi,
   lastCreatedConnectorInstanceId,
+  openConnectorDetails,
+  openConnectorEditor,
   openSettingsPage
 } from './App.test-helpers'
 import { jobrightSecretKeyForInstance } from './settings/connector-settings.helpers'
@@ -54,6 +56,7 @@ describe('Jobright credential secrecy', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
     const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
     const secretKey = jobrightSecretKeyForInstance(instanceId)
@@ -117,6 +120,7 @@ describe('Jobright credential secrecy', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(await screen.findByLabelText('Jobright email'), {
       target: { value: 'demo@example.com' },
@@ -183,6 +187,7 @@ describe('Jobright credential secrecy', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorEditor()
     expect(await screen.findByText('Auth verified')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
 
@@ -224,6 +229,7 @@ describe('Jobright credential secrecy', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
 
     const saveAndValidate = screen.getByRole('button', { name: 'Save and validate' })
@@ -260,6 +266,7 @@ describe('Jobright credential secrecy', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(await screen.findByLabelText('Jobright email'), {
       target: { value: 'demo@example.com' },
@@ -300,6 +307,7 @@ describe('Jobright credential secrecy', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(await screen.findByLabelText('Jobright email'), {
       target: { value: 'demo@example.com' },
@@ -360,6 +368,7 @@ describe('Jobright credential secrecy', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorDetails()
 
     expect(await screen.findByText('Checking auth...')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
@@ -431,6 +440,7 @@ describe('Jobright credential secrecy', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorEditor()
     expect(await screen.findByText('Checking auth...')).toBeInTheDocument()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Validate' }))
@@ -518,6 +528,7 @@ describe('Jobright credential secrecy', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorEditor()
     expect(await screen.findByText('Checking auth...')).toBeInTheDocument()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Update credentials' }))

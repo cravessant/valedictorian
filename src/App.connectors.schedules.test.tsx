@@ -22,6 +22,7 @@ import {
   createSettingsApi,
   createWorkspaceApi,
   createWorkspaceSummary,
+  openConnectorEditor,
   selectComboboxOption,
   stubCmdkEnvironment,
 } from './App.test-helpers'
@@ -199,6 +200,7 @@ describe('App connector schedules', () => {
     )
     await screen.findByRole('table', { name: 'Applications' })
     await openConnectorsOverview()
+    await openConnectorEditor()
 
     expect(await screen.findByText('Cadence: Every hour')).toBeInTheDocument()
     expect(screen.getByText(/Persisted:\s*Enabled/)).toBeInTheDocument()
@@ -631,6 +633,7 @@ describe('App connector schedules', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     await openConnectorsOverview()
+    await openConnectorEditor()
 
     expect(await screen.findByText(/Persisted:\s*Enabled/)).toBeInTheDocument()
     expect(screen.getByText('This connector is disabled.', { exact: false })).toBeInTheDocument()

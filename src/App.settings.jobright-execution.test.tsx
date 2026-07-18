@@ -18,6 +18,8 @@ import {
   createSettingsApi,
   createSourcingResult,
   lastCreatedConnectorInstanceId,
+  openConnectorDetails,
+  openConnectorEditor,
   openSettingsPage,
   selectSoftwareEngineeringTaxonomy,
 } from './App.test-helpers'
@@ -48,6 +50,7 @@ async function authenticateJobrightInSettings({
   email?: string
   password?: string
 }) {
+  await openConnectorEditor()
   const editButton = await screen.findByRole('button', {
     name: /^(Add credentials|Update credentials)$/,
   })
@@ -94,6 +97,7 @@ describe('Jobright execution', () => {
     await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
     const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
 
+    await openConnectorDetails()
     const runButtonBeforeAuth = await screen.findByRole('button', { name: 'Run Jobright now' })
     expect(runButtonBeforeAuth).toBeDisabled()
 
@@ -328,6 +332,8 @@ describe('Jobright execution', () => {
     await waitFor(() => expect(sourcingLoader).toHaveBeenCalledTimes(1))
     expect(connectorStatusLoader).not.toHaveBeenCalled()
 
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     fireEvent.click(screen.getByRole('button', { name: 'Back to app' }))
     fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
     fireEvent.click(screen.getByRole('button', { name: 'Overview' }))

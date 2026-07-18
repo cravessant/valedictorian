@@ -45,6 +45,7 @@ export function ConnectorScheduleControls({
   draft,
   isDirty,
   isLoading,
+  readOnly = false,
   isSaving,
   statusMessage,
   statusTone,
@@ -62,6 +63,7 @@ export function ConnectorScheduleControls({
   draft: ConnectorScheduleDraft
   isDirty: boolean
   isLoading: boolean
+  readOnly?: boolean
   isSaving: boolean
   statusMessage: string | null
   statusTone: 'idle' | 'success' | 'error'
@@ -102,7 +104,7 @@ export function ConnectorScheduleControls({
     return (
       <section
         aria-label={`${connectorDisplayName} schedule`}
-        className="grid gap-2 rounded-md border border-border bg-background/40 p-3"
+        className="grid gap-2 border-b border-border/70 py-5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
@@ -125,7 +127,7 @@ export function ConnectorScheduleControls({
     return (
       <section
         aria-label={`${connectorDisplayName} schedule`}
-        className="grid gap-2 rounded-md border border-border bg-background/40 p-3"
+        className="grid gap-2 border-b border-border/70 py-5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
@@ -139,7 +141,7 @@ export function ConnectorScheduleControls({
     return (
       <section
         aria-label={`${connectorDisplayName} schedule`}
-        className="grid gap-2 rounded-md border border-border bg-background/40 p-3"
+        className="grid gap-2 border-b border-border/70 py-5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
@@ -161,7 +163,7 @@ export function ConnectorScheduleControls({
     return (
       <section
         aria-label={`${connectorDisplayName} schedule`}
-        className="grid gap-2 rounded-md border border-border bg-background/40 p-3"
+        className="grid gap-2 border-b border-border/70 py-5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
@@ -200,7 +202,7 @@ export function ConnectorScheduleControls({
   return (
     <section
       aria-label={`${connectorDisplayName} schedule`}
-      className="grid gap-3 rounded-md border border-border bg-background/40 p-3"
+      className="grid gap-3 border-b border-border/70 py-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
@@ -212,13 +214,13 @@ export function ConnectorScheduleControls({
 
       <Field
         className="grid gap-1 text-xs font-medium text-muted-foreground"
-        data-disabled={isSaving ? true : undefined}
+        data-disabled={readOnly || isSaving ? true : undefined}
       >
         <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={modeId}>
           Schedule mode
         </FieldLabel>
         <NativeSelect
-          disabled={isSaving}
+          disabled={readOnly || isSaving}
           id={modeId}
           value={draft.mode}
           onChange={(event) => {
@@ -246,13 +248,13 @@ export function ConnectorScheduleControls({
       {draft.mode === 'preset' ? (
         <Field
           className="grid gap-1 text-xs font-medium text-muted-foreground"
-          data-disabled={isSaving ? true : undefined}
+          data-disabled={readOnly || isSaving ? true : undefined}
         >
           <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={presetId}>
             Preset
           </FieldLabel>
           <NativeSelect
-            disabled={isSaving}
+            disabled={readOnly || isSaving}
             id={presetId}
             value={draft.presetId ?? ''}
             onChange={(event) => onDraftChange({ presetId: event.target.value || null })}
@@ -267,13 +269,13 @@ export function ConnectorScheduleControls({
       {draft.mode === 'custom-interval' ? (
         <Field
           className="grid gap-1 text-xs font-medium text-muted-foreground"
-          data-disabled={isSaving ? true : undefined}
+          data-disabled={readOnly || isSaving ? true : undefined}
         >
           <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={intervalId}>
             Every minutes
           </FieldLabel>
           <Input
-            disabled={isSaving}
+            disabled={readOnly || isSaving}
             id={intervalId}
             inputMode="numeric"
             max={MAX_CONNECTOR_SCHEDULE_INTERVAL_MINUTES}
@@ -288,13 +290,13 @@ export function ConnectorScheduleControls({
       {draft.mode === 'custom-daily' ? (
         <Field
           className="grid gap-1 text-xs font-medium text-muted-foreground"
-          data-disabled={isSaving ? true : undefined}
+          data-disabled={readOnly || isSaving ? true : undefined}
         >
           <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={dailyTimeId}>
             Daily local time
           </FieldLabel>
           <Input
-            disabled={isSaving}
+            disabled={readOnly || isSaving}
             id={dailyTimeId}
             pattern="[0-2][0-9]:[0-5][0-9]"
             placeholder="HH:mm"
@@ -308,13 +310,13 @@ export function ConnectorScheduleControls({
         <div className="grid gap-3 sm:grid-cols-2">
           <Field
             className="grid gap-1 text-xs font-medium text-muted-foreground"
-            data-disabled={isSaving ? true : undefined}
+            data-disabled={readOnly || isSaving ? true : undefined}
           >
             <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={weeklyDayId}>
               Weekday
             </FieldLabel>
             <NativeSelect
-              disabled={isSaving}
+              disabled={readOnly || isSaving}
               id={weeklyDayId}
               value={draft.dayOfWeek}
               onChange={(event) => onDraftChange({ dayOfWeek: event.target.value })}
@@ -326,13 +328,13 @@ export function ConnectorScheduleControls({
           </Field>
           <Field
             className="grid gap-1 text-xs font-medium text-muted-foreground"
-            data-disabled={isSaving ? true : undefined}
+            data-disabled={readOnly || isSaving ? true : undefined}
           >
             <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={weeklyTimeId}>
               Weekly local time
             </FieldLabel>
             <Input
-              disabled={isSaving}
+              disabled={readOnly || isSaving}
               id={weeklyTimeId}
               pattern="[0-2][0-9]:[0-5][0-9]"
               placeholder="HH:mm"
@@ -346,13 +348,13 @@ export function ConnectorScheduleControls({
       {draft.mode !== 'manual' ? (
         <Field
           className="grid gap-1 text-xs font-medium text-muted-foreground"
-          data-disabled={isSaving ? true : undefined}
+          data-disabled={readOnly || isSaving ? true : undefined}
         >
           <FieldLabel className="text-xs font-medium text-muted-foreground" htmlFor={timezoneId}>
             Timezone
           </FieldLabel>
           <Combobox
-            disabled={isSaving}
+            disabled={readOnly || isSaving}
             emptyText="No timezone found."
             id={timezoneId}
             options={timezoneOptions}
@@ -394,7 +396,7 @@ export function ConnectorScheduleControls({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      {readOnly ? null : <div className="flex flex-wrap gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -442,7 +444,7 @@ export function ConnectorScheduleControls({
             Resume schedule
           </Button>
         ) : null}
-      </div>
+      </div>}
 
       <AlertDialog
         open={manualRemoveOpen}

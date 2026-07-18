@@ -33,7 +33,81 @@ function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
   }
 }
 
+async function openConnectorEditor(displayName: string, instanceId: string) {
+  fireEvent.click(await screen.findByRole('button', {
+    name: `View ${displayName} details`,
+  }))
+  const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
+  return screen.findByTestId(`connector-instance-card-${instanceId}`)
+}
+
 describe('ConnectorSettingsPanel', () => {
+  it('keeps the page compact and gates detailed editing behind a ShadCN dialog', async () => {
+    const connectorsApi = createConnectorsApiWithJobrightDescriptor()
+    await connectorsApi.create({
+      id: 'jobright-modal',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.15.0',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password',
+        label: 'Jobright username and password',
+        configured: true,
+      }],
+      config: { discoveryCount: 20 },
+      filters: { country: 'US' },
+      earliestBackfillDate: '2026-07-02',
+    })
+
+    render(
+      <ConnectorSettingsPanel
+        connectorsApi={connectorsApi}
+        connectorScheduleApi={createUnavailableScheduleApi()}
+        onRunSettled={vi.fn()}
+        profileApi={createProfileApi()}
+        workspaceId="workspace-1"
+      />,
+    )
+
+    const summary = await screen.findByTestId('connector-instance-summary-jobright-modal')
+    expect(within(summary).getByText('Jobright internslist')).toBeInTheDocument()
+    expect(within(summary).getByText('Enabled')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Provider filters' })).not.toBeInTheDocument()
+
+    const detailsTrigger = within(summary).getByRole('button', {
+      name: 'View Jobright internslist details',
+    })
+    fireEvent.click(detailsTrigger)
+
+    const dialog = await screen.findByRole('dialog', { name: 'Jobright internslist details' })
+    expect(dialog).toHaveAttribute('data-slot', 'dialog-content')
+    expect(within(dialog).getByRole('heading', { name: 'Provider filters' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('switch', { name: 'Jobright connector enabled' }))
+      .toBeDisabled()
+    expect(within(dialog).queryByRole('button', {
+      name: 'Save Jobright internslist connector settings',
+    })).not.toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
+    expect(within(dialog).getByRole('switch', { name: 'Jobright connector enabled' }))
+      .toBeEnabled()
+    expect(within(dialog).getByRole('button', {
+      name: 'Save Jobright internslist connector settings',
+    })).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel editing' }))
+    expect(within(dialog).getByRole('switch', { name: 'Jobright connector enabled' }))
+      .toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: 'Edit connector' })).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(detailsTrigger).toHaveFocus()
+  })
+
   it('keeps semantic region and heading order aligned within a connector card', async () => {
     const connectorsApi = createConnectorsApiWithJobrightDescriptor()
     await connectorsApi.create({
@@ -63,10 +137,10 @@ describe('ConnectorSettingsPanel', () => {
       />,
     )
 
-    const card = await screen.findByTestId('connector-instance-card-jobright-focus')
+    const card = await openConnectorEditor('Jobright internslist', 'jobright-focus')
     const headingNames = within(card).getAllByRole('heading').map((node) => node.textContent)
     expect(headingNames).toEqual([
-      'Jobright internslist',
+      'Jobright internslist details',
       'Credentials',
       'Connector settings',
       'Synchronization configuration',
@@ -76,8 +150,8 @@ describe('ConnectorSettingsPanel', () => {
       'Connector management',
     ])
     expect(within(card).getByRole('heading', {
-      level: 3,
-      name: 'Jobright internslist',
+      level: 2,
+      name: 'Jobright internslist details',
     })).toBeInTheDocument()
     for (const name of [
       'Credentials',
@@ -166,8 +240,9 @@ describe('ConnectorSettingsPanel', () => {
       />,
     )
 
-    const card = await screen.findByTestId('connector-instance-card-jobright-regions')
-    expect(within(card).getByRole('heading', { name: 'Jobright internslist' })).toBeInTheDocument()
+    const card = await openConnectorEditor('Jobright internslist', 'jobright-regions')
+    expect(within(card).getByRole('heading', { name: 'Jobright internslist details' }))
+      .toBeInTheDocument()
 
     const credentials = within(card).getByRole('region', {
       name: 'Jobright internslist Credentials',
@@ -287,7 +362,7 @@ describe('ConnectorSettingsPanel', () => {
       />,
     )
 
-    const card = await screen.findByTestId('connector-instance-card-jobright-isolation')
+    const card = await openConnectorEditor('Jobright internslist', 'jobright-isolation')
     const discovery = await within(card).findByLabelText('Discovery count')
     fireEvent.change(discovery, { target: { value: '35' } })
     fireEvent.change(within(card).getByLabelText('Schedule mode'), {
@@ -345,16 +420,22 @@ describe('ConnectorSettingsPanel', () => {
       />,
     )
 
-    const enabled = await screen.findByRole('switch', { name: 'Fixture jobs connector enabled' })
-    expect(screen.getByRole('region', { name: 'Fixture jobs Credentials' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Fixture backup Credentials' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Fixture jobs Connector settings' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Fixture backup Connector settings' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Fixture jobs Connector management' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Fixture backup Connector management' })).toBeInTheDocument()
+    expect(await screen.findByTestId('connector-instance-summary-fixture-connector'))
+      .toBeInTheDocument()
+    expect(screen.getByTestId('connector-instance-summary-fixture-backup')).toBeInTheDocument()
+    const card = await openConnectorEditor('Fixture jobs', 'fixture-connector')
+    const enabled = within(card).getByRole('switch', { name: 'Fixture jobs connector enabled' })
+    expect(within(card).getByRole('region', { name: 'Fixture jobs Credentials' }))
+      .toBeInTheDocument()
+    expect(within(card).getByRole('region', { name: 'Fixture jobs Connector settings' }))
+      .toBeInTheDocument()
+    expect(within(card).getByRole('region', { name: 'Fixture jobs Connector management' }))
+      .toBeInTheDocument()
     expect(enabled).toBeChecked()
     fireEvent.click(enabled)
-    fireEvent.click(screen.getByRole('button', { name: 'Save Fixture jobs connector settings' }))
+    fireEvent.click(within(card).getByRole('button', {
+      name: 'Save Fixture jobs connector settings',
+    }))
 
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: 'fixture-connector',
@@ -379,7 +460,8 @@ describe('ConnectorSettingsPanel', () => {
       />,
     )
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Fixture jobs' }))
+    const card = await openConnectorEditor('Fixture jobs', 'fixture-connector')
+    fireEvent.click(within(card).getByRole('button', { name: 'Remove Fixture jobs' }))
 
     const dialog = screen.getByRole('alertdialog')
     expect(within(dialog).getByRole('heading', { name: 'Remove Fixture jobs?' })).toBeInTheDocument()
@@ -417,7 +499,8 @@ describe('ConnectorSettingsPanel', () => {
       />,
     )
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Remove Fixture jobs' }))
+    const card = await openConnectorEditor('Fixture jobs', 'fixture-connector')
+    fireEvent.click(within(card).getByRole('button', { name: 'Remove Fixture jobs' }))
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', {
       name: 'Remove connector',
     }))

@@ -149,11 +149,15 @@ export function sanitizedConnectorCreateErrorMessage(error: unknown): string {
 export function defaultConnectorSettingsDraft(
   instance: ConnectorSettingsInstance | undefined,
 ): ConnectorSettingsDraft {
+  const filters = { ...recordFromUnknown(instance?.filters) }
+  if (instance?.connectorId === JOBRIGHT_CONNECTOR_ID && filters.country === undefined) {
+    filters.country = 'US'
+  }
   return {
     config: { ...recordFromUnknown(instance?.config) },
     enabled: instance?.enabled ?? true,
     earliestBackfillDate: instance?.earliestBackfillDate ?? '',
-    filters: { ...recordFromUnknown(instance?.filters) },
+    filters,
   }
 }
 

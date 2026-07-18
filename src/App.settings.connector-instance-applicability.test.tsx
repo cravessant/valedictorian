@@ -18,6 +18,7 @@ import {
   createProfileApi,
   createSettingsApi,
   lastCreatedConnectorInstanceId,
+  openConnectorEditor,
   openSettingsPage
 } from './App.test-helpers'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
@@ -69,6 +70,7 @@ describe('connector instance applicability', () => {
 
     expect(await screen.findByRole('heading', { name: 'Operate connectors' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
 
     expect(await screen.findByText('jobright.resolver')).toBeInTheDocument()
     const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
@@ -112,7 +114,9 @@ describe('connector instance applicability', () => {
     })
     expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'View connector runs' }))
+    fireEvent.click(screen.getByRole('button', {
+      name: 'View connector-run-1 in Connector Runs',
+    }))
 
     expect(await screen.findByRole('heading', { name: 'Connector Runs' })).toBeInTheDocument()
     expect(
@@ -198,6 +202,7 @@ describe('connector instance applicability', () => {
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(screen.getByLabelText('Jobright email'), {
       target: { value: 'settings@example.test' },
@@ -235,6 +240,7 @@ describe('connector instance applicability', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
 
     await waitFor(() => {
       expect(connectorsApi.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -250,7 +256,7 @@ describe('connector instance applicability', () => {
         connectorVersion: JOBRIGHT_CONNECTOR_VERSION,
         displayName: 'Jobright internslist',
         enabled: false,
-        filters: {},
+        filters: { country: 'US' },
       }))
     })
     const createdId = lastCreatedConnectorInstanceId(connectorsApi)
@@ -342,15 +348,18 @@ describe('connector instance applicability', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
 
-    const fixtureCard = await screen.findByTestId('connector-instance-card-fixture-default')
-    expect(within(fixtureCard).getByText('Fixture jobs')).toBeInTheDocument()
-    expect(within(fixtureCard).getByText('fixture.jobs')).toBeInTheDocument()
+    const fixtureCard = await openConnectorEditor('Fixture jobs')
+    expect(within(fixtureCard).getByRole('heading', { name: 'Fixture jobs details' }))
+      .toBeInTheDocument()
+    expect(fixtureCard).toHaveTextContent('fixture.jobs')
     expect(within(fixtureCard).queryByLabelText('Useful results target')).not.toBeInTheDocument()
     expect(within(fixtureCard).queryByText('Advanced connector limits')).not.toBeInTheDocument()
     expect(within(fixtureCard).queryByRole('button', { name: 'Save Jobright internslist connector settings' }))
       .not.toBeInTheDocument()
     expect(within(fixtureCard).queryByRole('button', { name: 'Run Jobright now' }))
       .not.toBeInTheDocument()
+    fireEvent.click(within(fixtureCard).getByRole('button', { name: 'Cancel editing' }))
+    fireEvent.click(within(fixtureCard).getByRole('button', { name: 'Close' }))
     expect(screen.getByRole('button', { name: 'Add Jobright connector' })).toBeInTheDocument()
   })
 
@@ -388,6 +397,7 @@ describe('connector instance applicability', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorEditor('Jobright public jobs')
 
     expect(await screen.findByText('jobright.resolver')).toBeInTheDocument()
     expect(screen.getByText('Auth required')).toBeInTheDocument()

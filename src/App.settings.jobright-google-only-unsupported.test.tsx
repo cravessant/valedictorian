@@ -14,6 +14,7 @@ import {
   createListResult,
   createSettingsApi,
   lastCreatedConnectorInstanceId,
+  openConnectorEditor,
   openSettingsPage
 } from './App.test-helpers'
 
@@ -48,6 +49,7 @@ describe('Jobright Google-only unsupported explanation', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
     const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
     const card = await screen.findByTestId(`connector-instance-card-${instanceId}`)

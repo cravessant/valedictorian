@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import type {
   ConnectorOptionQueryResult,
@@ -75,7 +75,7 @@ export async function createFixtureApi(
 }
 
 export function renderPanel(connectorsApi: Awaited<ReturnType<typeof createFixtureApi>>) {
-  return render(
+  const view = render(
     <ConnectorSettingsPanel
       connectorsApi={connectorsApi}
       connectorScheduleApi={unavailableScheduleApi()}
@@ -84,6 +84,15 @@ export function renderPanel(connectorsApi: Awaited<ReturnType<typeof createFixtu
       workspaceId="workspace-1"
     />,
   )
+  void screen.findByRole('button', { name: /^View .+ details$/ })
+    .then((trigger) => {
+      fireEvent.click(trigger)
+      return screen.findByRole('dialog')
+    })
+    .then((dialog) => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
+    })
+  return view
 }
 
 function unavailableScheduleApi(): ConnectorScheduleUiApi {

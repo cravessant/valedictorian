@@ -8,6 +8,7 @@ import type {
 } from 'sparxie'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { AlertTriangle, X } from 'lucide-react'
 import {
   validateConnectorConfigPersistenceValue,
@@ -31,6 +32,7 @@ import {
   valueKey,
 } from './connector-dynamic-clear'
 import { StaticFilterControl } from './ConnectorStaticControls'
+import { orderFilterProperties } from './connector-filter-ordering'
 
 type OptionsApi = ValedictorianWorkspaceClient['connectors']['options']
 type DynamicOptions = NonNullable<InstalledConnectorDescriptor['dynamicOptions']>
@@ -120,12 +122,16 @@ export function ConnectorProviderFilters({
   if (!filterObjectSchema || !filterDeclaration) return null
 
   const headingId = `connector-provider-filters-heading-${instanceId}`
+  const orderedProperties = orderFilterProperties(
+    filterObjectSchema.properties,
+    descriptor.dynamicOptions,
+  )
 
   return (
     <section
       aria-label={regionLabel}
       aria-labelledby={regionLabel ? undefined : headingId}
-      className="@container/connector-fields grid min-w-0 gap-4 border-y border-border/70 py-4"
+      className="@container/connector-fields grid min-w-0 gap-4 border-t border-border/70 pt-4"
     >
       <div className="grid gap-1">
         <h5 className="text-sm font-medium text-foreground" id={headingId}>Provider filters</h5>
@@ -205,7 +211,7 @@ export function ConnectorProviderFilters({
           className="grid min-w-0 gap-4 @md/connector-fields:grid-cols-2"
           data-slot="connector-field-grid"
         >
-          {Object.entries(filterObjectSchema.properties).map(([property, schema]) => {
+          {orderedProperties.map(([property, schema]) => {
             const pointer = `/${escapePointer(property)}`
             const fieldPresentation = presentationFieldForPointer(filterDeclaration, pointer)
             if (!fieldPresentation) return null
@@ -285,7 +291,7 @@ export function ConnectorSynchronizationConfiguration({
     <section
       aria-label={regionLabel}
       aria-labelledby={regionLabel ? undefined : headingId}
-      className="@container/connector-fields grid min-w-0 gap-4 border-y border-border/70 py-4"
+      className="@container/connector-fields grid min-w-0 gap-4"
     >
       <div className="grid gap-1">
         <h5 className="text-sm font-medium text-foreground" id={headingId}>
@@ -727,48 +733,82 @@ function DynamicFilterControl({
   }
 
   return (
-    <div className={`grid min-w-0 gap-2 rounded-md border p-3 ${binding.intent === 'include' ? 'border-border' : 'border-dashed border-border'}`}>
+    <div className="grid min-w-0 content-start gap-2">
       <label className="grid min-w-0 gap-1.5 text-sm">
         <span className="min-w-0 break-words font-medium text-foreground">{label}</span>
-        <Input
-          aria-autocomplete="list"
-          aria-controls={listboxId}
-          aria-describedby={descriptionId}
-          aria-activedescendant={activeIndex >= 0
-            ? `${listboxId}-option-${activeIndex}`
-            : undefined}
-          aria-expanded={results.length > 0}
-          aria-label={label}
-          disabled={disabled || !dependenciesReady}
-          role="combobox"
-          value={search}
-          onChange={(event) => runSearch(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault()
-              dismissResults()
-            } else if (event.key === 'Tab') {
-              dismissResults()
-            } else if (event.key === 'ArrowDown' && results.length > 0) {
-              event.preventDefault()
-              setActiveIndex((current) => {
-                const next = Math.min(current + 1, results.length - 1)
-                activeOption.current = results[next] ?? null
-                return next
-              })
-            } else if (event.key === 'ArrowUp' && results.length > 0) {
-              event.preventDefault()
-              setActiveIndex((current) => {
-                const next = Math.max(current - 1, 0)
-                activeOption.current = results[next] ?? null
-                return next
-              })
-            } else if (event.key === 'Enter' && (results[activeIndex] || activeOption.current)) {
-              event.preventDefault()
-              selectOption(results[activeIndex] ?? activeOption.current!)
-            }
+        <Popover
+          open={results.length > 0}
+          onOpenChange={(open) => {
+            if (!open) dismissResults()
           }}
-        />
+        >
+          <PopoverAnchor asChild>
+            <Input
+              aria-autocomplete="list"
+              aria-controls={listboxId}
+              aria-describedby={descriptionId}
+              aria-activedescendant={activeIndex >= 0
+                ? `${listboxId}-option-${activeIndex}`
+                : undefined}
+              aria-expanded={results.length > 0}
+              aria-label={label}
+              disabled={disabled || !dependenciesReady}
+              role="combobox"
+              value={search}
+              onChange={(event) => runSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  dismissResults()
+                } else if (event.key === 'Tab') {
+                  dismissResults()
+                } else if (event.key === 'ArrowDown' && results.length > 0) {
+                  event.preventDefault()
+                  setActiveIndex((current) => {
+                    const next = Math.min(current + 1, results.length - 1)
+                    activeOption.current = results[next] ?? null
+                    return next
+                  })
+                } else if (event.key === 'ArrowUp' && results.length > 0) {
+                  event.preventDefault()
+                  setActiveIndex((current) => {
+                    const next = Math.max(current - 1, 0)
+                    activeOption.current = results[next] ?? null
+                    return next
+                  })
+                } else if (event.key === 'Enter' && (results[activeIndex] || activeOption.current)) {
+                  event.preventDefault()
+                  selectOption(results[activeIndex] ?? activeOption.current!)
+                }
+              }}
+            />
+          </PopoverAnchor>
+          {results.length > 0 ? (
+            <PopoverContent
+              align="start"
+              className="max-h-72 w-[var(--radix-popover-trigger-width)] overflow-y-auto p-1"
+              id={listboxId}
+              onCloseAutoFocus={(event) => event.preventDefault()}
+              onOpenAutoFocus={(event) => event.preventDefault()}
+              role="listbox"
+            >
+              {results.map((option, index) => (
+                <button
+                  aria-selected={activeIndex === index}
+                  className="block w-full min-w-0 break-words rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                  id={`${listboxId}-option-${index}`}
+                  key={option.key}
+                  role="option"
+                  tabIndex={-1}
+                  type="button"
+                  onClick={() => selectOption(option)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </PopoverContent>
+          ) : null}
+        </Popover>
         <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
       </label>
       {!dependenciesReady ? <p className="text-xs text-muted-foreground">Complete the dependent filters first.</p> : null}
@@ -839,28 +879,6 @@ function DynamicFilterControl({
         >
           Retry
         </button>
-      ) : null}
-      {results.length > 0 ? (
-        <div
-          className="grid max-w-full min-w-0 gap-1 rounded-md border border-border bg-popover p-1"
-          id={listboxId}
-          role="listbox"
-        >
-          {results.map((option, index) => (
-            <button
-              aria-selected={activeIndex === index}
-              className="min-w-0 break-words rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-              id={`${listboxId}-option-${index}`}
-              key={option.key}
-              role="option"
-              tabIndex={-1}
-              type="button"
-              onClick={() => selectOption(option)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       ) : null}
     </div>
   )

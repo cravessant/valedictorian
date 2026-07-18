@@ -79,17 +79,17 @@ describe('connector provider filter responsive containment', () => {
 
     const skills = within(providerRegion).getByRole('combobox', { name: 'Include Skills' })
     fireEvent.change(skills, { target: { value: 'rea' } })
-    const option = await within(providerRegion).findByRole('option', { name: longOptionLabel })
-    const listbox = within(providerRegion).getByRole('listbox')
+    const option = await screen.findByRole('option', { name: longOptionLabel })
+    const listbox = screen.getByRole('listbox')
 
-    expect(listbox).toHaveClass('max-w-full', 'min-w-0')
+    expect(listbox).toHaveClass('max-h-72', 'overflow-y-auto')
     expect(listbox).not.toHaveClass('overflow-x-auto')
     expect(option).toHaveClass('min-w-0', 'break-words')
     expect(option).toHaveTextContent(longOptionLabel)
 
     fireEvent.click(option)
     await waitFor(() => {
-      expect(within(providerRegion).queryByRole('listbox')).not.toBeInTheDocument()
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
     })
     expect(within(providerRegion).getByText(longOptionLabel)).toBeInTheDocument()
   })

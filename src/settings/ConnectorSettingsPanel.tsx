@@ -323,7 +323,7 @@ export function ConnectorSettingsPanel({
         },
       ],
       config: {},
-      filters: {},
+      filters: { country: 'US' },
     })
       .then((created) => {
         invalidateAuthValidation(created.id)
@@ -918,9 +918,9 @@ export function ConnectorSettingsPanel({
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className={typographyClass('muted', 'min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4')}>
+        <div className={typographyClass('muted', 'min-w-0 space-y-3')}>
           <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
-          <div className="divide-y divide-border rounded-md border border-border">
+          <div className="grid gap-3">
             {instances.map((instance) => {
               const scheduleState = scheduleStates[instance.id] ?? createInitialInstanceScheduleState()
               const descriptor = selectInstalledConnectorDescriptor(

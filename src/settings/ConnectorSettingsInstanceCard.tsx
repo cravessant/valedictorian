@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -12,11 +13,24 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { fieldControlId } from '@/lib/field-control-id'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Pencil } from 'lucide-react'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import {
   ConnectorRunLifecycleDetails,
@@ -152,6 +166,9 @@ export function ConnectorSettingsInstanceCard({
   onResumeSchedule: (instance: ConnectorSettingsInstance) => void
 }) {
   const [providerFiltersCompatible, setProviderFiltersCompatible] = useState(true)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [summaryOpen, setSummaryOpen] = useState(true)
   const authConfigured = isJobrightCredentialsConfigured(instance)
   const authReady = isConnectorAuthReady(authState)
   const authLabel = connectorAuthStatusLabel(authState, authConfigured)
@@ -251,21 +268,124 @@ export function ConnectorSettingsInstanceCard({
   const saveButtonLabel = `Save ${instance.displayName} connector settings`
   const settingsActionsDescribedBy = saveBlockReason ? saveReasonId : undefined
   const executionActionsDescribedBy = runBlockReason ? runReasonId : undefined
+  const scheduleSummary = capabilityLoadError
+    ? 'Schedule unavailable'
+    : scheduleIsLoading
+      ? 'Schedule loading'
+      : scheduleCanonical?.state === 'paused'
+        ? 'Schedule paused'
+        : scheduleCanonical
+          ? 'Scheduled'
+          : 'Manual only'
+  const latestRunSummary = latestSynchronization?.label
+    ?? (latestRunStatus ? `Run ${latestRunStatus}` : 'No runs yet')
+  const interactionBusy = isSavingSettings || scheduleIsSaving
+
+  function cancelEditing() {
+    if (interactionBusy) return
+    onDiscardSettings(instance)
+    onDiscardSchedule(instance)
+    if (isEditingAuth) onCancelCredentialEdit(instance.id)
+    setEditing(false)
+  }
+
+  function handleDetailsOpenChange(open: boolean) {
+    if (!open && editing) return
+    setDetailsOpen(open)
+  }
 
   return (
-    <div
-      key={instance.id}
-      className="grid gap-4 p-3 text-sm"
-      data-testid={`connector-instance-card-${instance.id}`}
-    >
-      <div className="min-w-0">
-        <h3 className="font-medium text-foreground" id={cardHeadingId}>{instance.displayName}</h3>
-        <p className="text-xs text-muted-foreground">{instance.connectorId}</p>
-      </div>
+    <Dialog open={detailsOpen} onOpenChange={handleDetailsOpenChange}>
+      <Collapsible
+        className="rounded-md border border-border bg-card text-sm"
+        data-testid={`connector-instance-summary-${instance.id}`}
+        open={summaryOpen}
+        onOpenChange={setSummaryOpen}
+      >
+        <div className="flex min-w-0 items-center gap-3 p-3">
+          <CollapsibleTrigger asChild>
+            <Button
+              aria-label={`${summaryOpen ? 'Collapse' : 'Expand'} ${instance.displayName} summary`}
+              className="shrink-0"
+              size="icon"
+              type="button"
+              variant="ghost"
+            >
+              <ChevronDown
+                aria-hidden="true"
+                className={`size-4 transition-transform ${summaryOpen ? '' : '-rotate-90'}`}
+              />
+            </Button>
+          </CollapsibleTrigger>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate font-medium text-foreground" id={cardHeadingId}>
+              {instance.displayName}
+            </h3>
+            <p className="truncate text-xs text-muted-foreground">{instance.connectorId}</p>
+          </div>
+          <Badge variant={instance.enabled ? 'success' : 'secondary'}>
+            {instance.enabled ? 'Enabled' : 'Disabled'}
+          </Badge>
+        </div>
+        <CollapsibleContent>
+          <div className="grid gap-3 border-t border-border/70 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="flex min-w-0 flex-wrap gap-2">
+              <Badge variant={authSummaryVariant(authReady, authConfigured)}>{authLabel}</Badge>
+              <Badge variant="outline">{scheduleSummary}</Badge>
+              <Badge variant="outline">{latestRunSummary}</Badge>
+              {draftDirty || scheduleIsDirty ? <Badge variant="warning">Unsaved changes</Badge> : null}
+            </div>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline">
+                View {instance.displayName} details
+              </Button>
+            </DialogTrigger>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      <DialogContent
+        className="max-h-[calc(100vh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-5xl"
+        data-testid={editing ? `connector-instance-card-${instance.id}` : undefined}
+        onEscapeKeyDown={(event) => {
+          if (editing) event.preventDefault()
+        }}
+        onPointerDownOutside={(event) => {
+          if (editing) event.preventDefault()
+        }}
+        showCloseButton={!editing}
+      >
+        <DialogHeader className="border-b border-border px-6 py-5 pr-16">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <DialogTitle>{instance.displayName} details</DialogTitle>
+              <DialogDescription className="mt-1">
+                {instance.connectorId}. Review connector status and configuration.
+              </DialogDescription>
+            </div>
+            {editing ? (
+              <Button
+                disabled={interactionBusy}
+                onClick={cancelEditing}
+                type="button"
+                variant="outline"
+              >
+                Cancel editing
+              </Button>
+            ) : (
+              <Button onClick={() => setEditing(true)} type="button">
+                <Pencil aria-hidden="true" className="size-4" />
+                Edit connector
+              </Button>
+            )}
+          </div>
+        </DialogHeader>
+
+        <div className="grid min-h-0 gap-0 overflow-y-auto px-6 pb-6 text-sm">
 
       <section
         aria-labelledby={`${cardHeadingId} ${credentialsHeadingId}`}
-        className="grid gap-3 rounded-md border border-border bg-background/40 p-3"
+        className="grid gap-3 border-b border-border/70 py-5"
       >
         <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
@@ -285,9 +405,9 @@ export function ConnectorSettingsInstanceCard({
             data-testid={`connector-auth-actions-${instance.id}`}
           >
             <p className="text-xs font-medium text-muted-foreground">
-              {authLabel}
+              Status: {authLabel}
             </p>
-            {!isEditingAuth ? (
+            {editing && !isEditingAuth ? (
               <Button
                 type="button"
                 size="sm"
@@ -298,7 +418,7 @@ export function ConnectorSettingsInstanceCard({
                 {authConfigured ? 'Update credentials' : 'Add credentials'}
               </Button>
             ) : null}
-            {authConfigured && !isEditingAuth ? (
+            {editing && authConfigured && !isEditingAuth ? (
               <Button
                 type="button"
                 size="sm"
@@ -311,9 +431,9 @@ export function ConnectorSettingsInstanceCard({
           </div>
         </div>
 
-        {isEditingAuth ? (
+        {editing && isEditingAuth ? (
           <div
-            className="grid min-w-0 gap-3 rounded-md border border-border p-3 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
+            className="grid min-w-0 gap-3 border-t border-border/70 pt-4 lg:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto] xl:items-end"
             data-testid={`connector-credential-form-${instance.id}`}
           >
             <Field
@@ -416,7 +536,7 @@ export function ConnectorSettingsInstanceCard({
 
       <section
         aria-labelledby={`${cardHeadingId} ${connectorSettingsHeadingId}`}
-        className="grid gap-3 rounded-md border border-border bg-background/40 p-3"
+        className="grid gap-3 border-b border-border/70 py-5"
       >
         <div className="grid gap-1">
           <h4 className="text-sm font-semibold text-foreground" id={connectorSettingsHeadingId}>
@@ -443,7 +563,7 @@ export function ConnectorSettingsInstanceCard({
             allowMissingRootRequired={!draft.enabled}
             config={draft.config}
             declaration={descriptor.configSchema}
-            disabled={isSavingSettings}
+            disabled={!editing || isSavingSettings}
             instanceId={instance.id}
             regionLabel={`${instance.displayName} synchronization configuration`}
             onChange={(config) => onUpdateDraft(instance.id, { config })}
@@ -455,7 +575,7 @@ export function ConnectorSettingsInstanceCard({
             api={connectorsApi.options}
             allowMissingRootRequired={!draft.enabled}
             descriptor={descriptor}
-            disabled={isSavingSettings}
+            disabled={!editing || isSavingSettings}
             filters={draft.filters}
             instanceId={instance.id}
             regionLabel={`${instance.displayName} provider filters`}
@@ -465,7 +585,7 @@ export function ConnectorSettingsInstanceCard({
           />
         ) : null}
 
-        <div className="flex items-center justify-between gap-4 rounded-md border border-border bg-background/40 p-3">
+        <div className="flex items-center justify-between gap-4 border-t border-border/70 pt-4">
           <div>
             <p className="text-sm font-medium text-foreground">Connector enabled</p>
             <p className="text-xs text-muted-foreground">
@@ -479,7 +599,7 @@ export function ConnectorSettingsInstanceCard({
                 ? 'Enabled'
                 : `${instance.displayName} connector enabled`}
             checked={draft.enabled}
-            disabled={isSavingSettings || (!filtersValid && !draft.enabled)}
+            disabled={!editing || isSavingSettings || (!filtersValid && !draft.enabled)}
             onCheckedChange={(enabled) => onUpdateDraft(instance.id, { enabled })}
           />
         </div>
@@ -487,7 +607,7 @@ export function ConnectorSettingsInstanceCard({
         {isJobrightInstance ? (
           <ConnectorEarliestBackfillDateControl
             createdAt={instance.createdAt}
-            disabled={isSavingSettings}
+            disabled={!editing || isSavingSettings}
             instanceId={instance.id}
             value={draft.earliestBackfillDate}
             onChange={(earliestBackfillDate) =>
@@ -495,7 +615,7 @@ export function ConnectorSettingsInstanceCard({
           />
         ) : null}
 
-        <div
+        {editing ? <div
           aria-describedby={settingsActionsDescribedBy}
           aria-label={`${instance.displayName} connector settings actions`}
           className="flex flex-wrap items-center gap-2"
@@ -526,7 +646,7 @@ export function ConnectorSettingsInstanceCard({
               Discard unsaved connector settings
             </Button>
           ) : null}
-        </div>
+        </div> : null}
       </section>
 
       <ConnectorScheduleControls
@@ -541,6 +661,7 @@ export function ConnectorSettingsInstanceCard({
         isSaving={scheduleIsSaving}
         statusMessage={scheduleStatusMessage}
         statusTone={scheduleStatusTone}
+        readOnly={!editing}
         onDiscard={() => onDiscardSchedule(instance)}
         onDraftChange={(patch) => onScheduleDraftChange(instance.id, patch)}
         onPause={() => onPauseSchedule(instance)}
@@ -551,7 +672,7 @@ export function ConnectorSettingsInstanceCard({
       {isJobrightInstance ? (
         <section
           aria-labelledby={`${cardHeadingId} ${executionHeadingId}`}
-          className="grid gap-3 rounded-md border border-border bg-background/40 p-3"
+          className="grid gap-3 border-b border-border/70 py-5"
         >
           <h4 className="text-sm font-semibold text-foreground" id={executionHeadingId}>
             Execution and status
@@ -618,12 +739,12 @@ export function ConnectorSettingsInstanceCard({
 
       <section
         aria-labelledby={`${cardHeadingId} ${managementHeadingId}`}
-        className="grid gap-3 border-t border-border pt-3"
+        className="grid gap-3 pt-5"
       >
         <h4 className="text-sm font-semibold text-foreground" id={managementHeadingId}>
           Connector management
         </h4>
-        <div className="flex justify-end">
+        {editing ? <div className="flex justify-end">
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
@@ -654,8 +775,22 @@ export function ConnectorSettingsInstanceCard({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        </div>
+        </div> : (
+          <p className="text-xs text-muted-foreground">
+            Enter edit mode to remove this connector.
+          </p>
+        )}
       </section>
-    </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
+}
+
+function authSummaryVariant(
+  ready: boolean,
+  configured: boolean,
+): BadgeProps['variant'] {
+  if (ready) return 'success'
+  return configured ? 'warning' : 'secondary'
 }

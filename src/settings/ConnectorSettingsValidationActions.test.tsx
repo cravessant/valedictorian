@@ -169,7 +169,7 @@ describe('connector validation and action-state synchronization', () => {
 
     const taxonomy = within(card).getByRole('combobox', { name: /Include .*taxonomy/i })
     fireEvent.change(taxonomy, { target: { value: 'Prod' } })
-    fireEvent.click(await within(card).findByRole('option', { name: 'Product Manager' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Product Manager' }))
 
     expect(rangeFieldError(card, 'Minimum years of experience').control)
       .toHaveAttribute('aria-invalid', 'true')

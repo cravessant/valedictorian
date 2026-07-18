@@ -13,6 +13,7 @@ import {
   createListResult,
   createProfileApi,
   createSettingsApi,
+  openConnectorEditor,
   openSettingsPage
 } from './App.test-helpers'
 
@@ -79,6 +80,7 @@ describe('Jobright validation feedback', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorEditor()
 
     expect(await screen.findByText(
       'Secure storage is unavailable. Enable platform encryption, then try again.',
@@ -127,6 +129,7 @@ describe('Jobright validation feedback', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(await screen.findByLabelText('Jobright email'), {
       target: { value: 'demo@example.com' },

@@ -8,6 +8,7 @@ import {
   createConnectorsApiWithJobrightDescriptor as createConnectorsApi,
   createProfileApi,
   lastCreatedConnectorInstanceId,
+  openConnectorEditor,
   selectSoftwareEngineeringTaxonomy,
 } from './App.test-helpers'
 import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
@@ -145,6 +146,7 @@ export async function authenticateJobrightInConnectors({
   fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
   await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
   const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
+  await openConnectorEditor()
   fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
   fireEvent.change(await screen.findByLabelText('Jobright email'), {
     target: { value: 'demo@example.com' },

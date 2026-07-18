@@ -4,6 +4,7 @@ import type { InstalledConnectorDescriptor } from 'sparxie'
 import { projectInstalledConnectorDescriptor } from '../modules/connectors/connector.capabilities'
 import { createDefaultLocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import {
+  boundOptionResult,
   createFixtureApi,
   INSTANCE_ID,
   renderPanel,
@@ -15,6 +16,83 @@ afterEach(() => {
 })
 
 describe('declarative connector provider descriptor coverage', () => {
+  it('defaults the Jobright country and persists a selected location from the popover', async () => {
+    const descriptor = projectInstalledConnectorDescriptor(
+      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
+    )
+    const denver = {
+      type: 'city',
+      city: 'Denver',
+      state: 'CO',
+      radiusRange: 25,
+    }
+    const connectorsApi = await createFixtureApi(
+      {
+        jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
+      },
+      {
+        search: async (input) => ({
+          connectorInstanceId: input.connectorInstanceId,
+          ...input.expectedIdentity,
+          sourceId: input.body.sourceId,
+          status: 'search_ready',
+          options: [{ key: 'denver-co', label: 'Denver, CO', value: denver }],
+          truncated: false,
+        }),
+        resolve: async (input) => {
+          const values = input.body.operation.kind === 'resolve'
+            ? input.body.operation.values
+            : []
+          return boundOptionResult(input, {
+            status: 'resolve_ready',
+            options: input.body.sourceId === 'jobright.location'
+              ? [{ key: 'denver-co', label: 'Denver, CO', value: denver }]
+              : values.map((value) => ({
+                  key: JSON.stringify(value),
+                  label: 'Software Engineering',
+                  value,
+                })),
+            unknownValues: [],
+          })
+        },
+      },
+      { maxRunElapsedMs: 120_000 },
+      descriptor,
+    )
+    const first = renderPanel(connectorsApi)
+
+    let card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
+    const country = within(card).getByRole('combobox', { name: 'Country' })
+    const location = within(card).getByRole('combobox', { name: 'Include Locations' })
+    expect(country).toHaveValue('US')
+    expect(country.compareDocumentPosition(location) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(location).toBeEnabled()
+
+    fireEvent.change(location, { target: { value: 'Denver' } })
+    fireEvent.click(await screen.findByRole('option', { name: 'Denver, CO' }))
+    expect(within(card).getByRole('button', { name: 'Remove Denver, CO' })).toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: /Save .* settings/ }))
+    await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith(expect.objectContaining({
+      connectorInstanceId: INSTANCE_ID,
+      filters: expect.objectContaining({
+        country: 'US',
+        locations: [denver],
+      }),
+    })))
+
+    first.unmount()
+    renderPanel(connectorsApi)
+    card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
+    expect(within(card).getByRole('button', { name: 'Remove Denver, CO' })).toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Remove Denver, CO' }))
+    fireEvent.click(within(card).getByRole('button', { name: /Save .* settings/ }))
+    await waitFor(() => expect(connectorsApi.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      filters: expect.objectContaining({ locations: [] }),
+    })))
+  })
+
   it('renders every released Jobright bounded field through the provider-neutral descriptor path', async () => {
     const descriptor = projectInstalledConnectorDescriptor(
       createDefaultLocalConnectorRegistry().get('jobright.resolver')!,

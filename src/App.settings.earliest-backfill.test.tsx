@@ -13,6 +13,7 @@ import {
   createConnectorsApi,
   createListResult,
   createSettingsApi,
+  openConnectorEditor,
   openSettingsPage,
 } from './App.test-helpers'
 
@@ -77,10 +78,15 @@ describe('connector earliest backfill date UI', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
 
-    const cardA = await screen.findByTestId('connector-instance-card-jobright-a')
-    const cardB = screen.getByTestId('connector-instance-card-jobright-b')
-    expect(within(cardA).getByTestId('connector-earliest-backfill-value-jobright-a')).toHaveTextContent('2026-07-04')
-    expect(within(cardB).getByTestId('connector-earliest-backfill-value-jobright-b')).toHaveTextContent('2026-06-01')
+    const dialogB = await openConnectorEditor('Jobright B')
+    expect(within(dialogB).getByTestId('connector-earliest-backfill-value-jobright-b'))
+      .toHaveTextContent('2026-06-01')
+    fireEvent.click(within(dialogB).getByRole('button', { name: 'Cancel editing' }))
+    fireEvent.click(within(dialogB).getByRole('button', { name: 'Close' }))
+
+    const cardA = await openConnectorEditor('Jobright A')
+    expect(within(cardA).getByTestId('connector-earliest-backfill-value-jobright-a'))
+      .toHaveTextContent('2026-07-04')
     await waitFor(() => {
       expect(within(cardA).getAllByText('Auth verified').length).toBeGreaterThan(0)
     })
@@ -99,8 +105,6 @@ describe('connector earliest backfill date UI', () => {
       expect(within(cardA).getByTestId('connector-earliest-backfill-value-jobright-a'))
         .toHaveTextContent('2026-07-01')
     })
-    expect(within(cardB).getByTestId('connector-earliest-backfill-value-jobright-b'))
-      .toHaveTextContent('2026-06-01')
     expect(within(cardA).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
 
     fireEvent.click(within(cardA).getByRole('button', { name: 'Save Jobright A connector settings' }))

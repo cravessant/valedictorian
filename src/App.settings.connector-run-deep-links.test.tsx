@@ -15,6 +15,7 @@ import {
   createProfileApi,
   createSettingsApi,
   lastCreatedConnectorInstanceId,
+  openConnectorEditor,
   selectSoftwareEngineeringTaxonomy,
 } from './App.test-helpers'
 
@@ -53,6 +54,7 @@ async function authenticateJobrightInSettings({
   email?: string
   password?: string
 }) {
+  await openConnectorEditor()
   const editButton = await screen.findByRole('button', {
     name: /^(Add credentials|Update credentials)$/,
   })
@@ -151,7 +153,6 @@ describe('connector-run deep links', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'View connector runs' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', {
       name: 'View connector-run-focus in Connector Runs',
     }))

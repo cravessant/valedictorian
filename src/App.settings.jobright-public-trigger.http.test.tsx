@@ -14,6 +14,7 @@ import App from './App'
 import {
   createApplication,
   createListResult,
+  openConnectorEditor,
   createSettingsApi,
 } from './App.test-helpers'
 import {
@@ -65,6 +66,7 @@ describe('Jobright public trigger through default HTTP client', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
+    await openConnectorEditor()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(screen.getByLabelText('Jobright email'), {
@@ -125,6 +127,7 @@ describe('Jobright public trigger through default HTTP client', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     openConnectorsOverview()
+    await openConnectorEditor()
     fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
     fireEvent.change(screen.getByLabelText('Jobright email'), {
       target: { value: 'reject@example.test' },

@@ -7,6 +7,7 @@ import {
   createConnectorStatusResult,
   createListResult,
   createSettingsApi,
+  openConnectorEditor,
   openSettingsPage,
 } from './App.test-helpers'
 
@@ -139,6 +140,7 @@ describe('connector backend availability', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Jobright connector' }))
     await waitFor(() => expect(connectorsApi.create).toHaveBeenCalledOnce())
+    await openConnectorEditor()
     await act(async () => undefined)
     expect(connectorStatusLoader).toHaveBeenCalledTimes(2)
 
@@ -147,6 +149,8 @@ describe('connector backend availability', () => {
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledOnce())
     await act(async () => undefined)
     expect(connectorStatusLoader).toHaveBeenCalledTimes(3)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
 
     await act(async () => {
       pendingReloads[1]?.(createConnectorStatusResult([]))
@@ -172,6 +176,9 @@ async function openConnectors() {
   fireEvent.click(within(screen.getByRole('complementary', {
     name: 'Settings navigation',
   })).getByRole('button', { name: 'Connectors' }))
+  if (screen.queryByRole('button', { name: 'View Jobright internslist details' })) {
+    await openConnectorEditor()
+  }
 }
 function jobrightInstance() {
   return {

@@ -12,7 +12,12 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHttpValedictorianClient } from 'sparxie'
 import App from './App'
-import { createApplication, createListResult, createSettingsApi } from './App.test-helpers'
+import {
+  createApplication,
+  createListResult,
+  createSettingsApi,
+  openConnectorEditor,
+} from './App.test-helpers'
 import { createFileDatabase } from './db/sqlite'
 import { createStaticConnectorRegistry } from './modules/connectors/connector.registry'
 import type { AppJobConnector } from './modules/connectors/connector.runner'
@@ -57,6 +62,7 @@ describe('Jobright remove then re-add through renderer HTTP and SQLite', () => {
     openConnectorsOverview()
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    await openConnectorEditor()
     expect(await screen.findByText('1 connector instance configured.')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Remove Jobright internslist' }))
       .toBeInTheDocument()

@@ -15,6 +15,7 @@ import {
   createProfileApi,
   createSettingsApi,
   lastCreatedConnectorInstanceId,
+  openConnectorDetails,
   openSettingsPage
 } from './App.test-helpers'
 
@@ -108,6 +109,7 @@ describe('connector-run progress and history', () => {
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
+    await openConnectorDetails()
     fireEvent.click(await screen.findByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByRole('status', { name: 'Jobright internslist run progress' }))
@@ -174,6 +176,7 @@ describe('connector-run progress and history', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorDetails()
     fireEvent.click(await screen.findByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
@@ -205,6 +208,7 @@ describe('connector-run progress and history', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorDetails()
     fireEvent.click(await screen.findByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByText('Jobright run could not be completed.')).toBeInTheDocument()
@@ -430,6 +434,7 @@ describe('connector-run progress and history', () => {
     await openSettingsPage()
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
     fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
+    await openConnectorDetails()
     fireEvent.click(await screen.findByRole('button', { name: 'Run Jobright now' }))
 
     expect(await screen.findByText('Latest synchronization: Checking newest')).toBeInTheDocument()

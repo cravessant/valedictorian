@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
@@ -605,6 +605,23 @@ export async function openSettingsPage() {
   await screen.findByRole('table', { name: 'Applications' })
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
+}
+
+export async function openConnectorDetails(displayName = 'Jobright internslist') {
+  const existing = screen.queryByRole('dialog', { name: `${displayName} details` })
+  if (existing) return existing
+  fireEvent.click(await screen.findByRole('button', {
+    name: `View ${displayName} details`,
+  }))
+  return screen.findByRole('dialog', { name: `${displayName} details` })
+}
+
+export async function openConnectorEditor(displayName = 'Jobright internslist') {
+  const dialog = await openConnectorDetails(displayName)
+  const edit = within(dialog).queryByRole('button', { name: 'Edit connector' })
+  if (edit) fireEvent.click(edit)
+  await within(dialog).findByRole('button', { name: 'Cancel editing' })
+  return dialog
 }
 
 export function selectComboboxOption(label: string, optionName: string) {

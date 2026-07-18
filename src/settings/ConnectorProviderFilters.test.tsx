@@ -189,7 +189,7 @@ describe('declarative connector provider filters', () => {
     await waitFor(() => expect(searchSignals[0]?.aborted).toBe(true))
     staleSearch.resolve(searchResult('reason', 'ReasonML'))
     await waitFor(() => expect(
-      within(card).queryByRole('option', { name: 'ReasonML' }),
+      screen.queryByRole('option', { name: 'ReasonML' }),
     ).not.toBeInTheDocument())
   })
 
@@ -558,7 +558,7 @@ describe('declarative connector provider filters', () => {
     expect(include.getAttribute('aria-controls')).not.toBe(exclude.getAttribute('aria-controls'))
 
     fireEvent.change(include, { target: { value: 'rea' } })
-    const option = await within(card).findByRole('option', { name: 'React' })
+    const option = await screen.findByRole('option', { name: 'React' })
     expect(option).toHaveAttribute('tabindex', '-1')
     expect(option.parentElement).toHaveAttribute('id', include.getAttribute('aria-controls'))
     include.focus(); fireEvent.keyDown(include, { key: 'ArrowDown' })
@@ -568,12 +568,12 @@ describe('declarative connector provider filters', () => {
     expect(await within(card).findByRole('button', { name: 'Remove React' })).toBeInTheDocument()
     expect(document.activeElement).toBe(include)
     fireEvent.click(within(card).getByRole('button', { name: 'Remove React' })); fireEvent.change(include, { target: { value: 'rea' } })
-    const reopenedOption = await within(card).findByRole('option', { name: 'React' })
+    const reopenedOption = await screen.findByRole('option', { name: 'React' })
     include.focus(); fireEvent.keyDown(include, { key: 'ArrowDown' })
     expect(include).toHaveAttribute('aria-activedescendant', reopenedOption.id)
     await userEvent.tab()
     expect(document.activeElement).not.toBe(include); expect(document.activeElement).not.toBe(reopenedOption)
-    expect(within(card).queryByRole('option', { name: 'React' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'React' })).not.toBeInTheDocument()
     expect(include).not.toHaveAttribute('aria-activedescendant')
     include.focus(); fireEvent.keyDown(include, { key: 'Enter' })
     const staleSelection = within(card).queryByRole('button', { name: 'Remove React' })
@@ -583,10 +583,10 @@ describe('declarative connector provider filters', () => {
     fireEvent.change(include, { target: { value: 'react' } })
     await userEvent.tab(); await new Promise((resolve) => setTimeout(resolve, 200))
     expect.soft(connectorsApi.options.query).toHaveBeenCalledTimes(completedSearchCount)
-    expect.soft(within(card).queryByRole('option')).not.toBeInTheDocument()
+    expect.soft(screen.queryByRole('option')).not.toBeInTheDocument()
     include.focus(); fireEvent.change(include, { target: { value: 'rea' } })
-    await within(card).findByRole('option', { name: 'React' })
-    fireEvent.keyDown(include, { key: 'Escape' }); expect(within(card).queryByRole('option', { name: 'React' })).not.toBeInTheDocument()
+    await screen.findByRole('option', { name: 'React' })
+    fireEvent.keyDown(include, { key: 'Escape' }); expect(screen.queryByRole('option', { name: 'React' })).not.toBeInTheDocument()
   })
 
   it('rejects inverted fixed numeric ranges and preserves an empty endpoint instead of coercing it to zero', async () => {
@@ -771,7 +771,7 @@ describe('declarative connector provider filters', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     const skills = within(card).getByRole('combobox', { name: 'Include Skills' })
     fireEvent.change(skills, { target: { value: 'rea' } })
-    fireEvent.click(await within(card).findByRole('option', { name: 'React' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'React' }))
     fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
 
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
