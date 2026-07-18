@@ -18,11 +18,11 @@ export function createProviderUrlResolutionIntake(options: {
   repository: ReturnType<typeof createProviderUrlResolutionRepository>
 }) {
   return {
-    enqueue(
+    async enqueue(
       record: RawSourceRecordInput,
       receipt: RawSourceIntakeReceipt,
       transaction?: RawSourceTransaction,
-    ): boolean {
+    ): Promise<boolean> {
       if (!record.capture || !record.providerRecordId) return false
       const connector = typeof options.connectorRegistry.getVersion === 'function'
         ? options.connectorRegistry.getVersion(record.adapter.id, record.adapter.version)
@@ -37,7 +37,7 @@ export function createProviderUrlResolutionIntake(options: {
       )
       if (!resolver || !intermediaryUrl) return false
       const declaration = providerUrlNormalizationDeclaration(resolver)
-      const inserted = options.repository.enqueue({
+      const inserted = await options.repository.enqueue({
         captureEvidenceVersionId: receipt.revision.id,
         connectorInstanceId: record.capture.connectorInstanceId,
         executionScopeId: record.capture.executionScopeId,

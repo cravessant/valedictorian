@@ -1,17 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  connectorInstances,
   connectorRuns,
   normalizationFieldOutcomes,
   retryWork,
+  sourceExecutionScopes,
 } from '../../db/schema'
 import {
-  createDrizzleDatabase,
-  createInMemoryDatabase,
-  migrateDatabase,
-} from '../../db/sqlite'
-import { createSqliteConnectorRepository } from '../connectors/connector.repository'
+  createPgliteClient,
+  migratePgliteDatabase,
+  type PgliteDatabase,
+} from '../../db/pglite'
 import { createNormalizationOrchestrator } from './normalization.orchestrator'
-import { createSqliteNormalizationRepository } from './normalization.repository'
+import { createPgliteNormalizationRepository } from './normalization.repository'
 import {
   createNormalizationResolverRegistry,
   hashJson,
@@ -19,121 +20,113 @@ import {
 } from './normalization.registry'
 import { createProviderUrlResolutionExecutor } from './provider-url-resolution.executor'
 import { createProviderUrlResolutionRepository } from './provider-url-resolution.repository'
-import { createSqliteRawSourceRepository } from './raw-source.repository'
+import { createPgliteRawSourceRepository } from './raw-source.repository'
 
 describe('provider URL resolution executor', () => {
   it('records exact resolver success without invoking hosted resolution', async () => {
     const clock = new Date('2026-07-16T12:00:00.000Z')
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectors = createSqliteConnectorRepository(database)
-    const instance = await connectors.upsertInstance({
-      id: 'jobright-one', connectorId: 'jobright.resolver', connectorVersion: '0.14.0',
-      displayName: 'Jobright', enabled: true, createdAt: clock.toISOString(),
-    })
-    database.insert(connectorRuns).values({
-      id: 'run-one', executionScopeId: instance.executionScopeId,
-      connectorInstanceId: instance.id, mode: 'manual', status: 'running',
-      startedAt: clock.toISOString(), completedAt: null,
-      coverageStartedAt: null, coverageEndedAt: clock.toISOString(),
-      configJson: '{}', filtersJson: '{}', filterSignature: 'filters:{}',
-      observationCount: 0, warningCount: 0, statsJson: '{}', warningsJson: '[]',
-      retryHintsJson: 'null', createdAt: clock.toISOString(), updatedAt: clock.toISOString(), deletedAt: null,
-    }).run()
-    const intake = await createSqliteRawSourceRepository(database, () => clock).ingestBatch({
-      records: [{
-        adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.14.0' },
-        capture: { connectorInstanceId: instance.id, connectorRunId: 'run-one', executionScopeId: instance.executionScopeId },
-        observedAt: clock.toISOString(), providerRecordId: 'jobright.public:provider-one',
-        providerSchema: 'jobright-authenticated-search@1',
-        payload: { companyName: 'Example', roleTitle: 'Engineer' },
-      }],
-    })
-    const declaration = {
-      id: 'jobright.provider-url', version: 'jobright-provider-url@1',
-      requiredInputs: ['providerRecordId'] as const, outputFields: ['destinationUrl'] as const,
-      capabilities: ['network'] as const, costClass: 'high' as const,
-      precedence: 1_000, scopeRequirement: 'source' as const,
-    }
-    const repository = createProviderUrlResolutionRepository(database, () => clock)
-    repository.enqueue({
-      captureEvidenceVersionId: intake.receipts[0].revision.id,
-      connectorInstanceId: instance.id,
-      executionScopeId: instance.executionScopeId,
-      inputHash: hashJson({ raw: intake.receipts[0].revision.contentHash, resolver: declaration }),
-      intermediaryUrl: 'https://jobright.ai/jobs/info/provider-one',
-      providerRecordId: 'jobright.public:provider-one',
-      resolverId: declaration.id,
-      resolverVersion: declaration.version,
-    })
-    const claim = repository.claimDue(clock.toISOString())
-    expect(claim).not.toBeNull()
-    const hostedResolve = vi.fn(async (context: NormalizationResolverContext) => [{
-      resolverId: 'hosted.job-resolution',
-      resolverVersion: '1.0.0',
-      field: 'destinationUrl' as const,
-      inputHash: context.hashInput('hosted-input'),
-      status: 'resolved' as const,
-      value: {
-        class: 'employer_or_ats' as const,
-        intermediaryUrl: null,
-        url: 'https://jobs.lever.co/hosted/should-not-run',
-      },
-      confidence: 1,
-    }])
-    const hostedRegistry = createNormalizationResolverRegistry([{
-      declaration: {
-        id: 'hosted.job-resolution', version: '1.0.0',
-        requiredInputs: ['sourceUrl'], outputFields: ['destinationUrl'],
-        capabilities: ['network'], costClass: 'high', precedence: 500,
-        scopeRequirement: 'source',
-      },
-      resolve: hostedResolve,
-    }])
-    const resolve = vi.fn(async () => ({
-      status: 'resolved' as const,
-      url: 'https://jobs.lever.co/example/opening-1?utm_source=jobright&ref=a%2Bb',
-      method: 'jobright_api_detail',
-    }))
-    const normalizationRepository = createSqliteNormalizationRepository(database)
-    const execute = createProviderUrlResolutionExecutor({
-      normalizationOrchestrator: createNormalizationOrchestrator({
-        repository: normalizationRepository,
-        registry: hostedRegistry,
-        now: () => clock,
-      }),
-      normalizationRepository,
-      now: () => clock,
-      random: () => 0,
-      repository,
-      resolve,
-    })
-
-    await execute(claim!)
-
-    expect(resolve).toHaveBeenCalledTimes(1)
-    expect(hostedResolve).not.toHaveBeenCalled()
-    expect(database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({ state: 'completed', nextAttemptAt: null }),
-    ])
-    const outcomes = database.select().from(normalizationFieldOutcomes).all()
-      .map(({ outcomeJson }) => JSON.parse(outcomeJson))
-    expect(outcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        status: 'resolved',
-        value: expect.objectContaining({
-          intermediaryUrl: 'https://jobright.ai/jobs/info/provider-one',
-          url: 'https://jobs.lever.co/example/opening-1?utm_source=jobright&ref=a%2Bb',
+    const client = await createPgliteClient()
+    try {
+      const database = await migratePgliteDatabase(client)
+      const capture = await seedConnectorCapture(database, 'one', clock.toISOString())
+      const intake = await createPgliteRawSourceRepository(database, () => clock).ingestBatch({
+        records: [{
+          adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.14.0' },
+          capture,
+          observedAt: clock.toISOString(), providerRecordId: 'jobright.public:provider-one',
+          providerSchema: 'jobright-authenticated-search@1',
+          payload: { companyName: 'Example', roleTitle: 'Engineer' },
+        }],
+      })
+      const declaration = {
+        id: 'jobright.provider-url', version: 'jobright-provider-url@1',
+        requiredInputs: ['providerRecordId'] as const, outputFields: ['destinationUrl'] as const,
+        capabilities: ['network'] as const, costClass: 'high' as const,
+        precedence: 1_000, scopeRequirement: 'source' as const,
+      }
+      const repository = createProviderUrlResolutionRepository(database, () => clock)
+      await repository.enqueue({
+        captureEvidenceVersionId: intake.receipts[0].revision.id,
+        connectorInstanceId: capture.connectorInstanceId,
+        executionScopeId: capture.executionScopeId,
+        inputHash: hashJson({ raw: intake.receipts[0].revision.contentHash, resolver: declaration }),
+        intermediaryUrl: 'https://jobright.ai/jobs/info/provider-one',
+        providerRecordId: 'jobright.public:provider-one',
+        resolverId: declaration.id,
+        resolverVersion: declaration.version,
+      })
+      const claim = await repository.claimDue(clock.toISOString())
+      expect(claim).not.toBeNull()
+      const hostedResolve = vi.fn(async (context: NormalizationResolverContext) => [{
+        resolverId: 'hosted.job-resolution',
+        resolverVersion: '1.0.0',
+        field: 'destinationUrl' as const,
+        inputHash: context.hashInput('hosted-input'),
+        status: 'resolved' as const,
+        value: {
+          class: 'employer_or_ats' as const,
+          intermediaryUrl: null,
+          url: 'https://jobs.lever.co/hosted/should-not-run',
+        },
+        confidence: 1,
+      }])
+      const hostedRegistry = createNormalizationResolverRegistry([{
+        declaration: {
+          id: 'hosted.job-resolution', version: '1.0.0',
+          requiredInputs: ['sourceUrl'], outputFields: ['destinationUrl'],
+          capabilities: ['network'], costClass: 'high', precedence: 500,
+          scopeRequirement: 'source',
+        },
+        resolve: hostedResolve,
+      }])
+      const resolve = vi.fn(async () => ({
+        status: 'resolved' as const,
+        url: 'https://jobs.lever.co/example/opening-1?utm_source=jobright&ref=a%2Bb',
+        method: 'jobright_api_detail',
+      }))
+      const normalizationRepository = createPgliteNormalizationRepository(database)
+      const execute = createProviderUrlResolutionExecutor({
+        normalizationOrchestrator: createNormalizationOrchestrator({
+          repository: normalizationRepository,
+          registry: hostedRegistry,
+          now: () => clock,
         }),
-      }),
-    ]))
-    sqlite.close()
+        normalizationRepository,
+        now: () => clock,
+        random: () => 0,
+        repository,
+        resolve,
+      })
+
+      await execute(claim!)
+
+      expect(resolve).toHaveBeenCalledTimes(1)
+      expect(hostedResolve).not.toHaveBeenCalled()
+      await expect(database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({ state: 'completed', nextAttemptAt: null }),
+      ])
+      const outcomes = (await database.select().from(normalizationFieldOutcomes))
+        .map(({ outcomeJson }) => JSON.parse(outcomeJson))
+      expect(outcomes).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          status: 'resolved',
+          value: expect.objectContaining({
+            intermediaryUrl: 'https://jobright.ai/jobs/info/provider-one',
+            url: 'https://jobs.lever.co/example/opening-1?utm_source=jobright&ref=a%2Bb',
+          }),
+        }),
+      ]))
+    } finally {
+      await client.close()
+    }
   })
 
   it('persists an exact custom employer destination and projects its candidate', async () => {
     const exactUrl = 'https://careers.example.com/openings/software-engineer?source=jobright&ref=a%2Bb'
+    const base = new Date('2026-07-16T12:00:00.000Z')
+    let nowTick = 0
     const fixture = await createExecutorFixture({
+      now: () => new Date(base.getTime() + (nowTick++) * 1_000),
       pureNormalizationRegistry: createNormalizationResolverRegistry([{
         declaration: {
           id: 'jobright.pure-fields', version: '1.0.0',
@@ -175,108 +168,101 @@ describe('provider URL resolution executor', () => {
       }),
     })
 
-    await fixture.execute(fixture.claim)
+    try {
+      await fixture.execute(fixture.claim)
 
-    expect(fixture.database.select().from(retryWork).get()).toMatchObject({
-      state: 'completed',
-      nextAttemptAt: null,
-    })
-    expect(fixture.database.select().from(normalizationFieldOutcomes).all()
-      .map(({ outcomeJson }) => JSON.parse(outcomeJson)))
-      .toEqual(expect.arrayContaining([
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
         expect.objectContaining({
-          field: 'destinationUrl',
-          status: 'resolved',
-          value: {
-            class: 'employer_or_ats',
-            intermediaryUrl: 'https://jobright.ai/jobs/info/provider-fixture',
-            url: exactUrl,
-          },
+          state: 'completed',
+          nextAttemptAt: null,
         }),
-      ]))
-    expect(fixture.normalizationRepository.getLatestForRevision(
-      fixture.claim.captureEvidenceVersionId,
-    )).toMatchObject({
-      canonicalCandidate: expect.objectContaining({
-        destination: expect.objectContaining({ url: exactUrl }),
-      }),
-      gate: expect.objectContaining({ status: 'passed' }),
-    })
-
-    fixture.sqlite.close()
+      ])
+      expect((await fixture.database.select().from(normalizationFieldOutcomes))
+        .map(({ outcomeJson }) => JSON.parse(outcomeJson)))
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            field: 'destinationUrl',
+            status: 'resolved',
+            value: {
+              class: 'employer_or_ats',
+              intermediaryUrl: 'https://jobright.ai/jobs/info/provider-fixture',
+              url: exactUrl,
+            },
+          }),
+        ]))
+      await expect(fixture.normalizationRepository.getLatestForRevision(
+        fixture.claim.captureEvidenceVersionId,
+      )).resolves.toMatchObject({
+        canonicalCandidate: expect.objectContaining({
+          destination: expect.objectContaining({ url: exactUrl }),
+        }),
+        gate: expect.objectContaining({ status: 'passed' }),
+      })
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('advances the durable attempt number when retry work becomes due again', async () => {
     let clock = new Date('2026-07-16T12:00:00.000Z')
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectors = createSqliteConnectorRepository(database)
-    const instance = await connectors.upsertInstance({
-      id: 'jobright-retry', connectorId: 'jobright.resolver', connectorVersion: '0.14.0',
-      displayName: 'Jobright', enabled: true, createdAt: clock.toISOString(),
-    })
-    database.insert(connectorRuns).values({
-      id: 'run-retry', executionScopeId: instance.executionScopeId,
-      connectorInstanceId: instance.id, mode: 'manual', status: 'running',
-      startedAt: clock.toISOString(), completedAt: null,
-      coverageStartedAt: null, coverageEndedAt: clock.toISOString(),
-      configJson: '{}', filtersJson: '{}', filterSignature: 'filters:{}',
-      observationCount: 0, warningCount: 0, statsJson: '{}', warningsJson: '[]',
-      retryHintsJson: 'null', createdAt: clock.toISOString(), updatedAt: clock.toISOString(), deletedAt: null,
-    }).run()
-    const intake = await createSqliteRawSourceRepository(database, () => clock).ingestBatch({
-      records: [{
-        adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.14.0' },
-        capture: { connectorInstanceId: instance.id, connectorRunId: 'run-retry', executionScopeId: instance.executionScopeId },
-        observedAt: clock.toISOString(), providerRecordId: 'jobright.public:provider-retry',
-        providerSchema: 'jobright-authenticated-search@1',
-        payload: { companyName: 'Example', roleTitle: 'Engineer' },
-      }],
-    })
-    const declaration = {
-      id: 'jobright.provider-url', version: 'jobright-provider-url@1',
-      requiredInputs: ['providerRecordId'] as const, outputFields: ['destinationUrl'] as const,
-      capabilities: ['network'] as const, costClass: 'high' as const,
-      precedence: 1_000, scopeRequirement: 'source' as const,
-    }
-    const repository = createProviderUrlResolutionRepository(database, () => clock)
-    repository.enqueue({
-      captureEvidenceVersionId: intake.receipts[0].revision.id,
-      connectorInstanceId: instance.id,
-      executionScopeId: instance.executionScopeId,
-      inputHash: hashJson({ raw: intake.receipts[0].revision.contentHash, resolver: declaration }),
-      intermediaryUrl: 'https://jobright.ai/jobs/info/provider-retry',
-      providerRecordId: 'jobright.public:provider-retry',
-      resolverId: declaration.id,
-      resolverVersion: declaration.version,
-    })
-    const firstClaim = repository.claimDue(clock.toISOString())
-    expect(firstClaim?.attempt).toBe(1)
-    const normalizationRepository = createSqliteNormalizationRepository(database)
-    const execute = createProviderUrlResolutionExecutor({
-      normalizationOrchestrator: createNormalizationOrchestrator({
-        repository: normalizationRepository,
-        registry: { resolvers: [], resolverSetHash: 'sha256:empty' },
+    const client = await createPgliteClient()
+    try {
+      const database = await migratePgliteDatabase(client)
+      const capture = await seedConnectorCapture(database, 'retry', clock.toISOString())
+      const intake = await createPgliteRawSourceRepository(database, () => clock).ingestBatch({
+        records: [{
+          adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.14.0' },
+          capture,
+          observedAt: clock.toISOString(), providerRecordId: 'jobright.public:provider-retry',
+          providerSchema: 'jobright-authenticated-search@1',
+          payload: { companyName: 'Example', roleTitle: 'Engineer' },
+        }],
+      })
+      const declaration = {
+        id: 'jobright.provider-url', version: 'jobright-provider-url@1',
+        requiredInputs: ['providerRecordId'] as const, outputFields: ['destinationUrl'] as const,
+        capabilities: ['network'] as const, costClass: 'high' as const,
+        precedence: 1_000, scopeRequirement: 'source' as const,
+      }
+      const repository = createProviderUrlResolutionRepository(database, () => clock)
+      await repository.enqueue({
+        captureEvidenceVersionId: intake.receipts[0].revision.id,
+        connectorInstanceId: capture.connectorInstanceId,
+        executionScopeId: capture.executionScopeId,
+        inputHash: hashJson({ raw: intake.receipts[0].revision.contentHash, resolver: declaration }),
+        intermediaryUrl: 'https://jobright.ai/jobs/info/provider-retry',
+        providerRecordId: 'jobright.public:provider-retry',
+        resolverId: declaration.id,
+        resolverVersion: declaration.version,
+      })
+      const firstClaim = await repository.claimDue(clock.toISOString())
+      expect(firstClaim?.attempt).toBe(1)
+      const normalizationRepository = createPgliteNormalizationRepository(database)
+      const execute = createProviderUrlResolutionExecutor({
+        normalizationOrchestrator: createNormalizationOrchestrator({
+          repository: normalizationRepository,
+          registry: { resolvers: [], resolverSetHash: 'sha256:empty' },
+          now: () => clock,
+        }),
+        normalizationRepository,
         now: () => clock,
-      }),
-      normalizationRepository,
-      now: () => clock,
-      random: () => 0,
-      repository,
-      resolve: async () => ({
-        status: 'retryable', reason: 'provider temporarily unavailable',
-        retryReason: 'server_failure',
-      }),
-    })
+        random: () => 0,
+        repository,
+        resolve: async () => ({
+          status: 'retryable', reason: 'provider temporarily unavailable',
+          retryReason: 'server_failure',
+        }),
+      })
 
-    await execute(firstClaim!)
+      await execute(firstClaim!)
 
-    const nextDueAt = repository.nextDueAt()
-    expect(nextDueAt).not.toBeNull()
-    clock = new Date(nextDueAt!)
-    expect(repository.claimDue(nextDueAt!)?.attempt).toBe(2)
-    sqlite.close()
+      const nextDueAt = await repository.nextDueAt()
+      expect(nextDueAt).not.toBeNull()
+      clock = new Date(nextDueAt!)
+      expect((await repository.claimDue(nextDueAt!))?.attempt).toBe(2)
+    } finally {
+      await client.close()
+    }
   })
 
   it('persists bounded Retry-After evidence on the affected provider operation', async () => {
@@ -289,24 +275,26 @@ describe('provider URL resolution executor', () => {
       }),
     })
 
-    await fixture.execute(fixture.claim)
+    try {
+      await fixture.execute(fixture.claim)
 
-    expect(fixture.database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({
-        state: 'scheduled',
-        computedDelayMs: 120_001,
-        nextAttemptAt: '2026-07-16T12:02:00.001Z',
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({
+          state: 'scheduled',
+          computedDelayMs: 120_001,
+          nextAttemptAt: '2026-07-16T12:02:00.001Z',
+          serverMinimumDelayMs: 120_000,
+        }),
+      ])
+      const [row] = await fixture.database.select().from(retryWork).limit(1)
+      expect(JSON.parse(row!.lineageJson).failureEvidence).toEqual({
+        reason: 'jobright_rate_limited',
+        retryReason: 'rate_limit',
         serverMinimumDelayMs: 120_000,
-      }),
-    ])
-    const lineage = JSON.parse(fixture.database.select().from(retryWork).get()!.lineageJson)
-    expect(lineage.failureEvidence).toEqual({
-      reason: 'jobright_rate_limited',
-      retryReason: 'rate_limit',
-      serverMinimumDelayMs: 120_000,
-    })
-
-    fixture.sqlite.close()
+      })
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('does not rely on a post-normalization write for retryable failure evidence', async () => {
@@ -318,25 +306,27 @@ describe('provider URL resolution executor', () => {
         serverMinimumDelayMs: 120_000,
       }),
     })
-    vi.spyOn(fixture.repository, 'recordFailureEvidence').mockImplementation(() => {
-      throw new Error('simulated crash after normalization commit')
-    })
+    try {
+      vi.spyOn(fixture.repository, 'recordFailureEvidence').mockImplementation(async () => {
+        throw new Error('simulated crash after normalization commit')
+      })
 
-    await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
+      await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
 
-    const row = fixture.database.select().from(retryWork).get()!
-    expect(row).toMatchObject({
-      state: 'scheduled',
-      attempt: 1,
-      nextAttemptAt: '2026-07-16T12:02:00.001Z',
-    })
-    expect(JSON.parse(row.lineageJson).failureEvidence).toEqual({
-      reason: 'jobright_rate_limited',
-      retryReason: 'rate_limit',
-      serverMinimumDelayMs: 120_000,
-    })
-
-    fixture.sqlite.close()
+      const [row] = await fixture.database.select().from(retryWork).limit(1)
+      expect(row).toMatchObject({
+        state: 'scheduled',
+        attempt: 1,
+        nextAttemptAt: '2026-07-16T12:02:00.001Z',
+      })
+      expect(JSON.parse(row!.lineageJson).failureEvidence).toEqual({
+        reason: 'jobright_rate_limited',
+        retryReason: 'rate_limit',
+        serverMinimumDelayMs: 120_000,
+      })
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('exhausts only the claimed provider operation at the attempt limit', async () => {
@@ -349,28 +339,31 @@ describe('provider URL resolution executor', () => {
       attempt: 3,
     })
 
-    await fixture.execute(fixture.claim)
+    try {
+      await fixture.execute(fixture.claim)
 
-    expect(fixture.database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({
-        state: 'exhausted',
-        nextAttemptAt: null,
-        attempt: 3,
-      }),
-    ])
-    const outcomes = fixture.database.select().from(normalizationFieldOutcomes).all()
-      .map(({ outcomeJson }) => JSON.parse(outcomeJson))
-    expect(outcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ status: 'exhausted', field: 'destinationUrl' }),
-    ]))
-    expect(JSON.parse(fixture.database.select().from(retryWork).get()!.lineageJson).failureEvidence)
-      .toEqual({
-        reason: 'jobright_upstream_failed',
-        retryReason: 'server_failure',
-        serverMinimumDelayMs: null,
-      })
-
-    fixture.sqlite.close()
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({
+          state: 'exhausted',
+          nextAttemptAt: null,
+          attempt: 3,
+        }),
+      ])
+      const outcomes = (await fixture.database.select().from(normalizationFieldOutcomes))
+        .map(({ outcomeJson }) => JSON.parse(outcomeJson))
+      expect(outcomes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ status: 'exhausted', field: 'destinationUrl' }),
+      ]))
+      const [row] = await fixture.database.select().from(retryWork).limit(1)
+      expect(JSON.parse(row!.lineageJson).failureEvidence)
+        .toEqual({
+          reason: 'jobright_upstream_failed',
+          retryReason: 'server_failure',
+          serverMinimumDelayMs: null,
+        })
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('persists runtime-limit interruption as a bounded retry outcome', async () => {
@@ -378,20 +371,22 @@ describe('provider URL resolution executor', () => {
       resolve: async () => ({ status: 'interrupted' as const, reason: 'runtime_limit' as const }),
     })
 
-    await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
-    expect(fixture.database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({ state: 'scheduled', acquisitionToken: null, acquiredAt: null }),
-    ])
-    const outcomes = fixture.database.select().from(normalizationFieldOutcomes).all()
-      .map(({ outcomeJson }) => JSON.parse(outcomeJson))
-    expect(outcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        status: 'retry', field: 'destinationUrl',
-        retry: expect.objectContaining({ reason: 'operation_timeout', state: 'scheduled' }),
-      }),
-    ]))
-
-    fixture.sqlite.close()
+    try {
+      await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({ state: 'scheduled', acquisitionToken: null, acquiredAt: null }),
+      ])
+      const outcomes = (await fixture.database.select().from(normalizationFieldOutcomes))
+        .map(({ outcomeJson }) => JSON.parse(outcomeJson))
+      expect(outcomes).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          status: 'retry', field: 'destinationUrl',
+          retry: expect.objectContaining({ reason: 'operation_timeout', state: 'scheduled' }),
+        }),
+      ]))
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('persists non-cancellation resolver throws as a bounded retry outcome', async () => {
@@ -399,30 +394,36 @@ describe('provider URL resolution executor', () => {
       resolve: async () => { throw new Error('provider resolver crashed') },
     })
 
-    await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
-    expect(fixture.database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({ state: 'scheduled', acquisitionToken: null, acquiredAt: null }),
-    ])
-    const lineage = JSON.parse(fixture.database.select().from(retryWork).get()!.lineageJson)
-    expect(lineage.failureEvidence).toMatchObject({ reason: 'provider_url_resolver_exception' })
-
-    fixture.sqlite.close()
+    try {
+      await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({ state: 'scheduled', acquisitionToken: null, acquiredAt: null }),
+      ])
+      const [row] = await fixture.database.select().from(retryWork).limit(1)
+      expect(JSON.parse(row!.lineageJson).failureEvidence).toMatchObject({
+        reason: 'provider_url_resolver_exception',
+      })
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('releases unchanged only for an actual shutdown cancellation', async () => {
     const fixture = await createExecutorFixture({
       resolve: async () => { throw new Error('provider resolver aborted') },
     })
-    const controller = new AbortController()
-    controller.abort()
+    try {
+      const controller = new AbortController()
+      controller.abort()
 
-    await expect(fixture.execute(fixture.claim, controller.signal)).rejects.toThrow('provider resolver aborted')
-    expect(fixture.database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({ state: 'scheduled', acquisitionToken: null, acquiredAt: null, attempt: 1 }),
-    ])
-    expect(fixture.database.select().from(normalizationFieldOutcomes).all()).toHaveLength(0)
-
-    fixture.sqlite.close()
+      await expect(fixture.execute(fixture.claim, controller.signal)).rejects.toThrow('provider resolver aborted')
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({ state: 'scheduled', acquisitionToken: null, acquiredAt: null, attempt: 1 }),
+      ])
+      await expect(fixture.database.select().from(normalizationFieldOutcomes)).resolves.toHaveLength(0)
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('isolates terminal resolver outcomes and records the sanitized evidence', async () => {
@@ -435,33 +436,35 @@ describe('provider URL resolution executor', () => {
         evidence: [{ kind: 'auth_state' }],
       }),
     })
-    vi.spyOn(fixture.repository, 'recordFailureEvidence').mockImplementation(() => {
-      throw new Error('simulated crash after normalization commit')
-    })
+    try {
+      vi.spyOn(fixture.repository, 'recordFailureEvidence').mockImplementation(async () => {
+        throw new Error('simulated crash after normalization commit')
+      })
 
-    await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
+      await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
 
-    expect(fixture.database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({ state: 'cancelled', nextAttemptAt: null }),
-    ])
-    const lineage = JSON.parse(fixture.database.select().from(retryWork).get()!.lineageJson)
-    expect(lineage.failureEvidence).toEqual({
-      action: 'authenticate',
-      parserChanged: false,
-      reason: 'jobright_auth_required',
-    })
-    const outcomes = fixture.database.select().from(normalizationFieldOutcomes).all()
-      .map(({ outcomeJson }) => JSON.parse(outcomeJson))
-    expect(outcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        field: 'destinationUrl',
-        status: 'blocked',
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({ state: 'cancelled', nextAttemptAt: null }),
+      ])
+      const [row] = await fixture.database.select().from(retryWork).limit(1)
+      expect(JSON.parse(row!.lineageJson).failureEvidence).toEqual({
+        action: 'authenticate',
+        parserChanged: false,
         reason: 'jobright_auth_required',
-        evidence: [{ kind: 'auth_state', value: null }],
-      }),
-    ]))
-
-    fixture.sqlite.close()
+      })
+      const outcomes = (await fixture.database.select().from(normalizationFieldOutcomes))
+        .map(({ outcomeJson }) => JSON.parse(outcomeJson))
+      expect(outcomes).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          field: 'destinationUrl',
+          status: 'blocked',
+          reason: 'jobright_auth_required',
+          evidence: [{ kind: 'auth_state', value: null }],
+        }),
+      ]))
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('turns a non-cancellation resolver throw into a durable retry before normalization', async () => {
@@ -471,18 +474,22 @@ describe('provider URL resolution executor', () => {
       },
     })
 
-    await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
-    expect(fixture.database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({
-        state: 'scheduled',
-        acquisitionToken: null,
-        acquiredAt: null,
-      }),
-    ])
-    const lineage = JSON.parse(fixture.database.select().from(retryWork).get()!.lineageJson)
-    expect(lineage.failureEvidence).toMatchObject({ reason: 'provider_url_resolver_exception' })
-
-    fixture.sqlite.close()
+    try {
+      await expect(fixture.execute(fixture.claim)).resolves.toBeUndefined()
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({
+          state: 'scheduled',
+          acquisitionToken: null,
+          acquiredAt: null,
+        }),
+      ])
+      const [row] = await fixture.database.select().from(retryWork).limit(1)
+      expect(JSON.parse(row!.lineageJson).failureEvidence).toMatchObject({
+        reason: 'provider_url_resolver_exception',
+      })
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('releases a claim when normalization persistence throws before completion', async () => {
@@ -499,87 +506,107 @@ describe('provider URL resolution executor', () => {
       normalizationOrchestrator: { normalize } as unknown as ReturnType<typeof createNormalizationOrchestrator>,
     })
 
-    await expect(fixture.execute(fixture.claim)).rejects.toBe(normalizationError)
-    expect(normalize).toHaveBeenCalledTimes(1)
-    expect(fixture.database.select().from(retryWork).all()).toEqual([
-      expect.objectContaining({
-        state: 'scheduled',
-        acquisitionToken: null,
-        acquiredAt: null,
-      }),
-    ])
-
-    fixture.sqlite.close()
+    try {
+      await expect(fixture.execute(fixture.claim)).rejects.toBe(normalizationError)
+      expect(normalize).toHaveBeenCalledTimes(1)
+      await expect(fixture.database.select().from(retryWork)).resolves.toEqual([
+        expect.objectContaining({
+          state: 'scheduled',
+          acquisitionToken: null,
+          acquiredAt: null,
+        }),
+      ])
+    } finally {
+      await fixture.client.close()
+    }
   })
 })
 
 async function createExecutorFixture(options: {
   attempt?: number
   normalizationOrchestrator?: ReturnType<typeof createNormalizationOrchestrator>
+  now?: () => Date
   pureNormalizationRegistry?: ReturnType<typeof createNormalizationResolverRegistry>
   resolve: Parameters<typeof createProviderUrlResolutionExecutor>[0]['resolve']
 }) {
   const clock = new Date('2026-07-16T12:00:00.000Z')
-  const sqlite = createInMemoryDatabase()
-  migrateDatabase(sqlite)
-  const database = createDrizzleDatabase(sqlite)
-  const connectors = createSqliteConnectorRepository(database)
-  const instance = await connectors.upsertInstance({
-    id: 'jobright-fixture', connectorId: 'jobright.resolver', connectorVersion: '0.14.0',
-    displayName: 'Jobright', enabled: true, createdAt: clock.toISOString(),
-  })
-  database.insert(connectorRuns).values({
-    id: 'run-fixture', executionScopeId: instance.executionScopeId,
-    connectorInstanceId: instance.id, mode: 'manual', status: 'running',
-    startedAt: clock.toISOString(), completedAt: null,
-    coverageStartedAt: null, coverageEndedAt: clock.toISOString(),
-    configJson: '{}', filtersJson: '{}', filterSignature: 'filters:{}',
-    observationCount: 0, warningCount: 0, statsJson: '{}', warningsJson: '[]',
-    retryHintsJson: 'null', createdAt: clock.toISOString(), updatedAt: clock.toISOString(), deletedAt: null,
-  }).run()
-  const intake = await createSqliteRawSourceRepository(database, () => clock).ingestBatch({
-    records: [{
-      adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.14.0' },
-      capture: { connectorInstanceId: instance.id, connectorRunId: 'run-fixture', executionScopeId: instance.executionScopeId },
-      observedAt: clock.toISOString(), providerRecordId: 'jobright.public:provider-fixture',
-      providerSchema: 'jobright-authenticated-search@1', payload: { companyName: 'Example', roleTitle: 'Engineer' },
-    }],
-  })
-  const declaration = {
-    id: 'jobright.provider-url', version: 'jobright-provider-url@1',
-    requiredInputs: ['providerRecordId'] as const, outputFields: ['destinationUrl'] as const,
-    capabilities: ['network'] as const, costClass: 'high' as const,
-    precedence: 1_000, scopeRequirement: 'source' as const,
+  const now = options.now ?? (() => clock)
+  const client = await createPgliteClient()
+  try {
+    const database = await migratePgliteDatabase(client)
+    const capture = await seedConnectorCapture(database, 'fixture', clock.toISOString())
+    const intake = await createPgliteRawSourceRepository(database, () => clock).ingestBatch({
+      records: [{
+        adapter: { id: 'jobright.resolver', kind: 'connector', version: '0.14.0' },
+        capture,
+        observedAt: clock.toISOString(), providerRecordId: 'jobright.public:provider-fixture',
+        providerSchema: 'jobright-authenticated-search@1', payload: { companyName: 'Example', roleTitle: 'Engineer' },
+      }],
+    })
+    const declaration = {
+      id: 'jobright.provider-url', version: 'jobright-provider-url@1',
+      requiredInputs: ['providerRecordId'] as const, outputFields: ['destinationUrl'] as const,
+      capabilities: ['network'] as const, costClass: 'high' as const,
+      precedence: 1_000, scopeRequirement: 'source' as const,
+    }
+    const repository = createProviderUrlResolutionRepository(database, () => clock)
+    await repository.enqueue({
+      captureEvidenceVersionId: intake.receipts[0].revision.id,
+      connectorInstanceId: capture.connectorInstanceId,
+      executionScopeId: capture.executionScopeId,
+      inputHash: hashJson({ raw: intake.receipts[0].revision.contentHash, resolver: declaration }),
+      intermediaryUrl: 'https://jobright.ai/jobs/info/provider-fixture',
+      providerRecordId: 'jobright.public:provider-fixture',
+      resolverId: declaration.id,
+      resolverVersion: declaration.version,
+    })
+    if (options.attempt !== undefined) {
+      await database.update(retryWork).set({ attempt: options.attempt })
+    }
+    const claim = await repository.claimDue(clock.toISOString())
+    if (!claim) throw new Error('Provider URL fixture claim was not created')
+    const normalizationRepository = createPgliteNormalizationRepository(database)
+    const execute = createProviderUrlResolutionExecutor({
+      normalizationOrchestrator: options.normalizationOrchestrator ?? createNormalizationOrchestrator({
+        repository: normalizationRepository,
+        registry: { resolvers: [], resolverSetHash: 'sha256:empty' },
+        now,
+      }),
+      normalizationRepository,
+      pureNormalizationRegistry: options.pureNormalizationRegistry,
+      now,
+      random: () => 0,
+      repository,
+      resolve: options.resolve,
+    })
+    return { claim, client, database, execute, normalizationRepository, repository }
+  } catch (error) {
+    await client.close()
+    throw error
   }
-  const repository = createProviderUrlResolutionRepository(database, () => clock)
-  repository.enqueue({
-    captureEvidenceVersionId: intake.receipts[0].revision.id,
-    connectorInstanceId: instance.id,
-    executionScopeId: instance.executionScopeId,
-    inputHash: hashJson({ raw: intake.receipts[0].revision.contentHash, resolver: declaration }),
-    intermediaryUrl: 'https://jobright.ai/jobs/info/provider-fixture',
-    providerRecordId: 'jobright.public:provider-fixture',
-    resolverId: declaration.id,
-    resolverVersion: declaration.version,
+}
+
+async function seedConnectorCapture(
+  database: PgliteDatabase,
+  suffix: string,
+  timestamp: string,
+) {
+  const executionScopeId = `provider-scope-${suffix}`
+  const connectorInstanceId = `provider-instance-${suffix}`
+  const connectorRunId = `provider-run-${suffix}`
+  await database.insert(sourceExecutionScopes).values({
+    id: executionScopeId, createdAt: timestamp, updatedAt: timestamp,
   })
-  if (options.attempt !== undefined) {
-    database.update(retryWork).set({ attempt: options.attempt }).run()
-  }
-  const claim = repository.claimDue(clock.toISOString())
-  if (!claim) throw new Error('Provider URL fixture claim was not created')
-  const normalizationRepository = createSqliteNormalizationRepository(database)
-  const execute = createProviderUrlResolutionExecutor({
-    normalizationOrchestrator: options.normalizationOrchestrator ?? createNormalizationOrchestrator({
-      repository: normalizationRepository,
-      registry: { resolvers: [], resolverSetHash: 'sha256:empty' },
-      now: () => clock,
-    }),
-    normalizationRepository,
-    pureNormalizationRegistry: options.pureNormalizationRegistry,
-    now: () => clock,
-    random: () => 0,
-    repository,
-    resolve: options.resolve,
+  await database.insert(connectorInstances).values({
+    id: connectorInstanceId, executionScopeId, connectorId: 'jobright.resolver',
+    connectorVersion: '0.14.0', displayName: 'Jobright', enabled: true,
+    configJson: '{}', createdAt: timestamp, updatedAt: timestamp,
   })
-  return { claim, database, execute, normalizationRepository, repository, sqlite }
+  await database.insert(connectorRuns).values({
+    id: connectorRunId, executionScopeId, connectorInstanceId, mode: 'manual',
+    status: 'running', startedAt: timestamp, observationCount: 0, warningCount: 0,
+    statsJson: '{}', warningsJson: '[]', retryHintsJson: 'null',
+    createdAt: timestamp, updatedAt: timestamp,
+  })
+  return { connectorInstanceId, connectorRunId, executionScopeId }
 }
