@@ -1,10 +1,20 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { drizzle } from 'drizzle-orm/pglite'
 import { describe, expect, it } from 'vitest'
 import {
+  captureEvidenceVersions,
+  captureLineages,
+  captures,
   connectorRuns,
   connectorRunSynchronizations,
   schema,
 } from '../../db/schema'
+import {
+  createPgliteClient,
+  migratePgliteDatabase,
+} from '../../db/pglite'
 import { createPgliteConnectorRepository } from './connector.repository'
 import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 
@@ -77,8 +87,132 @@ describe('PGlite connector repository bounded history', () => {
       total: 1,
     })
     expect(page.items[0]!.stats).not.toHaveProperty('lifecycleCounts')
-    expect(queries.length).toBeLessThanOrEqual(2)
+    expect(queries.length).toBeLessThanOrEqual(3)
   })
+
+  it('returns page, live lifecycle counts, and total from one concurrent snapshot', async () => {
+    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'connector-run-list-snapshot-'))
+    const dataDir = path.join(temporaryRoot, 'pglite')
+    const writerClient = await createPgliteClient({ dataDir })
+    let readerClient: Awaited<ReturnType<typeof createPgliteClient>> | undefined
+
+    try {
+      const writerDatabase = await migratePgliteDatabase(writerClient)
+      const writerRepository = createPgliteConnectorRepository(writerDatabase)
+      const instance = await writerRepository.upsertInstance({
+        id: 'bounded-history',
+        connectorId: 'fixture.jobs',
+        connectorVersion: '1.0.0',
+        displayName: 'Snapshot history',
+        enabled: true,
+        createdAt: '2026-07-13T10:00:00.000Z',
+      })
+      await insertRun(writerDatabase, instance.executionScopeId, {
+        id: 'snapshot-running',
+        lifecycleCounts: false,
+        startedAt: '2026-07-13T11:00:00.000Z',
+        status: 'queued',
+      })
+      await insertSynchronization(writerDatabase, 'snapshot-running', 'in_progress')
+      await writerDatabase.insert(captureLineages).values({
+        id: 'snapshot-lineage', createdAt: '2026-07-13T11:00:00.000Z',
+      })
+      await writerDatabase.insert(captureEvidenceVersions).values({
+        id: 'snapshot-revision',
+        captureLineageId: 'snapshot-lineage',
+        revision: 1,
+        contentHash: 'sha256:snapshot-revision',
+        adapterId: 'fixture.jobs',
+        adapterKind: 'connector',
+        adapterVersion: '1.0.0',
+        observedAt: '2026-07-13T11:00:00.000Z',
+        providerRecordId: 'snapshot-provider-record',
+        evidenceJson: '[]',
+        createdAt: '2026-07-13T11:00:00.000Z',
+      })
+
+      readerClient = await createPgliteClient({ dataDir })
+      const statements: string[] = []
+      let pageObserved: (() => void) | undefined
+      const pageRead = new Promise<void>((resolve) => { pageObserved = resolve })
+      const readerDatabase = drizzle(readerClient, {
+        schema,
+        logger: {
+          logQuery(statement) {
+            statements.push(statement)
+            if (/from "connector_runs"/i.test(statement)
+              && /connector_run_synchronizations/i.test(statement)
+              && /limit/i.test(statement)) {
+              pageObserved?.()
+            }
+          },
+        },
+      })
+      const readerRepository = createPgliteConnectorRepository(readerDatabase)
+      const listing = readerRepository.listRuns({
+        connectorInstanceId: instance.id,
+        limit: 1,
+        offset: 0,
+      })
+      await pageRead
+
+      const concurrentWrite = (async () => {
+        await writerDatabase.insert(captures).values({
+          id: 'snapshot-occurrence',
+          captureLineageId: 'snapshot-lineage',
+          captureEvidenceVersionId: 'snapshot-revision',
+          connectorInstanceId: instance.id,
+          connectorRunId: 'snapshot-running',
+          executionScopeId: instance.executionScopeId,
+          observedAt: '2026-07-13T11:00:00.000Z',
+          receivedAt: '2026-07-13T11:00:01.000Z',
+        })
+        await insertRun(writerDatabase, instance.executionScopeId, {
+          id: 'snapshot-concurrent',
+          startedAt: '2026-07-13T12:00:00.000Z',
+        })
+        await insertSynchronization(writerDatabase, 'snapshot-concurrent', 'caught_up')
+      })()
+      const [page] = await Promise.all([listing, concurrentWrite])
+
+      expect(page).toMatchObject({
+        hasMore: false,
+        items: [{
+          id: 'snapshot-running',
+          stats: {
+            lifecycleCounts: {
+              provider: { capturedRecords: 0, occurrenceCount: 0 },
+              source: 'live_current',
+            },
+          },
+        }],
+        limit: 1,
+        offset: 0,
+        total: 1,
+      })
+      expect(statements.some((statement) => /transaction isolation level repeatable read/i.test(statement)))
+        .toBe(true)
+
+      await expect(writerRepository.listRuns({
+        connectorInstanceId: instance.id,
+        limit: 2,
+        offset: 0,
+      })).resolves.toMatchObject({
+        items: [
+          { id: 'snapshot-concurrent' },
+          {
+            id: 'snapshot-running',
+            stats: { lifecycleCounts: { provider: { capturedRecords: 1, occurrenceCount: 1 } } },
+          },
+        ],
+        total: 2,
+      })
+    } finally {
+      await readerClient?.close()
+      await writerClient.close()
+      await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 async function insertRun(

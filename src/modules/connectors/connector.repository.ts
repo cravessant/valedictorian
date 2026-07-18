@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, count, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm'
 import {
   connectorCheckpoints,
   connectorInstances,
@@ -22,7 +22,6 @@ import {
   mapConnectorRun,
   persistFrozenConnectorRunLifecycleCounts,
   readConnectorWarnings,
-  withConnectorRunLifecycleCounts,
 } from './connector-run.persistence'
 import { mapConnectorObservation } from './connector-observation.persistence'
 import { stableJsonStringify, toJsonRecord } from './connector.persistence-json'
@@ -57,11 +56,11 @@ import {
   finalizeInProgressConnectorSynchronization,
   latestSynchronizedConnectorRun,
   readConnectorRunSynchronization,
-  synchronizedConnectorRun,
   updateConnectorSynchronizationOutcome,
   writeConnectorRunSynchronization,
 } from './connector-synchronization.persistence'
 import { listConnectorOverviewStatusPage } from './connector-overview.persistence'
+import { listConnectorRunsSnapshot } from './connector-run-list.persistence'
 export function createPgliteConnectorRepository(
   database: PgliteDatabase,
 ) {
@@ -689,28 +688,33 @@ export function createPgliteConnectorRepository(
             eq(connectorRuns.id, input.connectorRunId),
             eq(connectorRuns.status, 'running'),
             isNull(connectorRuns.deletedAt),
-          )).limit(1)
+          )).limit(1).for('update')
         if (!row) {
           throw new Error(`Running connector run not found: ${input.connectorRunId}`)
         }
         const stats = toJsonRecord(JSON.parse(row.statsJson))
         const lifecycleCounts = await freezeConnectorRunLifecycleCounts(transaction, mapConnectorRun(row))
-        await transaction.update(connectorRuns).set({
+        const [persisted] = await transaction.update(connectorRuns).set({
           status: input.status,
           completedAt: input.completedAt,
           statsJson: JSON.stringify({
             ...stats, completed: true, lifecycleCounts, running: false,
           }),
           updatedAt: input.completedAt,
-        }).where(eq(connectorRuns.id, input.connectorRunId))
+        }).where(and(
+          eq(connectorRuns.id, input.connectorRunId),
+          eq(connectorRuns.status, 'running'),
+          isNull(connectorRuns.deletedAt),
+        )).returning()
+        if (!persisted) {
+          throw new Error(`Running connector run changed during completion: ${input.connectorRunId}`)
+        }
         await finalizeInProgressConnectorSynchronization(
           transaction,
           input.connectorRunId,
           genericTerminalSynchronizationOutcome(input.status),
           input.completedAt,
         )
-        const [persisted] = await transaction.select().from(connectorRuns)
-          .where(eq(connectorRuns.id, input.connectorRunId)).limit(1)
         return mapConnectorRun(persisted)
       })
     },
@@ -760,10 +764,15 @@ export function createPgliteConnectorRepository(
         const [row] = await transaction
           .select()
           .from(connectorRuns)
-          .where(and(eq(connectorRuns.id, input.connectorRunId), isNull(connectorRuns.deletedAt)))
+          .where(and(
+            eq(connectorRuns.id, input.connectorRunId),
+            inArray(connectorRuns.status, ['queued', 'running']),
+            isNull(connectorRuns.deletedAt),
+          ))
           .limit(1)
+          .for('update')
         if (!row) {
-          throw new Error(`Connector run not found: ${input.connectorRunId}`)
+          throw new Error(`Active connector run not found: ${input.connectorRunId}`)
         }
         const warnings = readConnectorWarnings(row.warningsJson)
         warnings.push(input.warning)
@@ -772,7 +781,7 @@ export function createPgliteConnectorRepository(
           : input.retryHints
         const stats = toJsonRecord(JSON.parse(row.statsJson))
         const recordedFailures = stats.failures
-        await transaction
+        const [failedRun] = await transaction
           .update(connectorRuns)
           .set({
             status: 'failed',
@@ -790,7 +799,15 @@ export function createPgliteConnectorRepository(
             retryHintsJson: JSON.stringify(retryHints),
             updatedAt: input.completedAt,
           })
-          .where(eq(connectorRuns.id, input.connectorRunId))
+          .where(and(
+            eq(connectorRuns.id, input.connectorRunId),
+            inArray(connectorRuns.status, ['queued', 'running']),
+            isNull(connectorRuns.deletedAt),
+          ))
+          .returning({ id: connectorRuns.id })
+        if (!failedRun) {
+          throw new Error(`Active connector run changed during failure: ${input.connectorRunId}`)
+        }
         await updateConnectorSynchronizationOutcome(transaction, row.id, {
           kind: 'failed', reason: input.warning.code,
         }, input.completedAt)
@@ -884,46 +901,7 @@ export function createPgliteConnectorRepository(
       return row ? mapConnectorCheckpoint(row) : null
     },
     async listRuns(input: ListConnectorRunsInput): Promise<ListConnectorRunsResult> {
-      const limit = input.limit ?? 50
-      const offset = input.offset ?? 0
-      const where = and(
-        eq(connectorRuns.connectorInstanceId, input.connectorInstanceId),
-        isNull(connectorRuns.deletedAt),
-        input.status === undefined ? undefined : eq(connectorRuns.status, input.status),
-        input.mode === undefined ? undefined : eq(connectorRuns.mode, input.mode),
-      )
-      const rows = await database
-        .select({
-          run: connectorRuns,
-          snapshotJson: connectorRunSynchronizations.snapshotJson,
-        })
-        .from(connectorRuns)
-        .innerJoin(
-          connectorRunSynchronizations,
-          eq(connectorRunSynchronizations.connectorRunId, connectorRuns.id),
-        )
-        .where(where)
-        .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt), desc(connectorRuns.id))
-        .limit(limit)
-        .offset(offset)
-      const items = await Promise.all(rows
-        .map(({ run, snapshotJson }) => synchronizedConnectorRun(run, snapshotJson))
-        .map((run) => withConnectorRunLifecycleCounts(database, run)))
-      const [totalRow] = await database.select({ value: count() })
-        .from(connectorRuns)
-        .innerJoin(
-          connectorRunSynchronizations,
-          eq(connectorRunSynchronizations.connectorRunId, connectorRuns.id),
-        )
-        .where(where)
-      const total = totalRow?.value ?? 0
-      return {
-        items,
-        total,
-        limit,
-        offset,
-        hasMore: offset + items.length < total,
-      }
+      return listConnectorRunsSnapshot(database, input)
     },
     async listCheckpoints(
       input: ListConnectorCheckpointsInput,

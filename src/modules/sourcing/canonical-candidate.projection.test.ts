@@ -59,6 +59,8 @@ describe('canonical candidate projection', () => {
     })
     const service = createCanonicalCandidateProjectionService(() => new Date(NOW))
 
+    // PGlite 0.5 has one backend connection; these lock addresses are what
+    // independent PostgreSQL transactions contend on in a server deployment.
     const results = await Promise.allSettled([first, newest].map((persisted) =>
       database.transaction((transaction) =>
         service.projectPersisted(transaction, persisted.candidateId, persisted.rawRevisionId))))
@@ -79,6 +81,96 @@ describe('canonical candidate projection', () => {
     expect(JSON.parse(rows[0]?.projectionAliasesJson ?? '[]')).toEqual(expect.arrayContaining([
       'source_entity:job-concurrent-a',
       'source_entity:job-concurrent-z',
+    ]))
+  })
+
+  it('serializes otherwise unrelated projections that share only a destination', async () => {
+    const database = await createTestDatabase()
+    const destination = 'https://jobs.example.test/identity-lock'
+    const first = await seedPassedCandidate(database, 'identity-lock-a', {
+      canonicalIdentity: { kind: 'provider_job', value: 'provider-a' },
+      destination: { class: 'employer_or_ats', url: destination },
+    })
+    const second = await seedPassedCandidate(database, 'identity-lock-b', {
+      canonicalIdentity: { kind: 'provider_job', value: 'provider-b' },
+      destination: { class: 'employer_or_ats', url: destination },
+    })
+    const service = createCanonicalCandidateProjectionService(() => new Date(NOW))
+    const projectAndReadLocks = (persisted: typeof first) => database.transaction(async (transaction) => {
+      await service.projectPersisted(transaction, persisted.candidateId, persisted.rawRevisionId)
+      const locks = await transaction
+        .select({
+          classId: sql<string>`classid::text`,
+          objectId: sql<string>`objid::text`,
+        })
+        .from(sql`pg_locks`)
+        .where(sql`locktype = 'advisory' and mode = 'ExclusiveLock' and granted`)
+      return locks.map(({ classId, objectId }) => `${classId}:${objectId}`)
+    })
+
+    const firstLocks = await projectAndReadLocks(first)
+    const secondLocks = await projectAndReadLocks(second)
+    const sharedLocks = firstLocks.filter((lock) => secondLocks.includes(lock))
+    const [released] = await database
+      .select({ count: sql<number>`count(*)::integer` })
+      .from(sql`pg_locks`)
+      .where(sql`locktype = 'advisory'`)
+
+    expect(firstLocks).toHaveLength(4)
+    expect(secondLocks).toHaveLength(4)
+    expect(sharedLocks).toHaveLength(1)
+    expect(released?.count).toBe(0)
+  })
+
+  it('re-reads one matched opportunity after disjoint aliases converge on it', async () => {
+    const database = await createTestDatabase()
+    const owner = await seedPassedCandidate(database, 'alias-owner')
+    const older = await seedPassedCandidate(database, 'alias-older', {
+      roleTitle: 'Older Software Intern',
+      observedAt: '2026-07-18T11:00:00.000Z',
+    })
+    const newest = await seedPassedCandidate(database, 'alias-newest', {
+      roleTitle: 'Newest Software Intern',
+      observedAt: '2026-07-18T12:00:00.000Z',
+    })
+    const plainService = createCanonicalCandidateProjectionService(() => new Date(NOW))
+    const opportunityId = await database.transaction((transaction) =>
+      plainService.projectPersisted(transaction, owner.candidateId, owner.rawRevisionId))
+    const [seeded] = await database.select().from(opportunities)
+    await database.update(opportunities).set({
+      projectionAliasesJson: JSON.stringify([
+        ...(JSON.parse(seeded?.projectionAliasesJson ?? '[]') as string[]),
+        'source_entity:job-alias-newest',
+        'source_entity:job-alias-older',
+      ].sort()),
+    }).where(eq(opportunities.id, opportunityId ?? ''))
+    let interleaved = false
+
+    await database.transaction(async (transaction) => {
+      const service = createCanonicalCandidateProjectionService(() => new Date(NOW), {
+        beforeOpportunityLock: async () => {
+          interleaved = true
+          await plainService.projectPersisted(
+            transaction,
+            newest.candidateId,
+            newest.rawRevisionId,
+          )
+        },
+      })
+      await service.projectPersisted(transaction, older.candidateId, older.rawRevisionId)
+    })
+    const [projected] = await database.select().from(opportunities)
+    const aliases = JSON.parse(projected?.projectionAliasesJson ?? '[]') as string[]
+
+    expect(interleaved).toBe(true)
+    expect(projected).toMatchObject({
+      id: opportunityId,
+      captureEvidenceVersionId: newest.rawRevisionId,
+      roleTitle: 'Newest Software Intern',
+    })
+    expect(aliases).toEqual(expect.arrayContaining([
+      'destination:employer_or_ats:https://jobs.example.test/alias-newest',
+      'destination:employer_or_ats:https://jobs.example.test/alias-older',
     ]))
   })
 
