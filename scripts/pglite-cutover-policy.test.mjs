@@ -1,11 +1,10 @@
-import assert from 'node:assert/strict'
-import test from 'node:test'
+import { expect, it } from 'vitest'
 import {
   auditPgliteCutoverFiles,
   pgliteCutoverAllowedLegacyEvidenceFiles,
 } from './pglite-cutover-policy.mjs'
 
-test('rejects operational SQLite dependencies, scripts, imports, paths, and migration assets', () => {
+it('rejects operational SQLite dependencies, scripts, imports, paths, and migration assets', () => {
   const violations = auditPgliteCutoverFiles(new Map([
     ['package.json', JSON.stringify({
       dependencies: { 'better-sqlite3': '1.0.0', bindings: '1.0.0' },
@@ -19,16 +18,16 @@ test('rejects operational SQLite dependencies, scripts, imports, paths, and migr
     ['drizzle/0001_legacy.sql', 'create table legacy(id text);\n'],
   ]))
 
-  assert.ok(violations.some((value) => value.includes('package.json: dependency better-sqlite3')))
-  assert.ok(violations.some((value) => value.includes('package.json: script test')))
-  assert.ok(violations.some((value) => value.includes('electron-builder.json5')))
-  assert.ok(violations.some((value) => value.includes('src/db/sqlite.ts: forbidden file')))
-  assert.ok(violations.some((value) => value.includes('src/runtime/bridge.ts')))
-  assert.ok(violations.some((value) => value.includes('VALEDICTORIAN_SQLITE_PATH')))
-  assert.ok(violations.some((value) => value.includes('drizzle/0001_legacy.sql')))
+  expect(violations.some((value) => value.includes('package.json: dependency better-sqlite3'))).toBe(true)
+  expect(violations.some((value) => value.includes('package.json: script test'))).toBe(true)
+  expect(violations.some((value) => value.includes('electron-builder.json5'))).toBe(true)
+  expect(violations.some((value) => value.includes('src/db/sqlite.ts: forbidden file'))).toBe(true)
+  expect(violations.some((value) => value.includes('src/runtime/bridge.ts'))).toBe(true)
+  expect(violations.some((value) => value.includes('VALEDICTORIAN_SQLITE_PATH'))).toBe(true)
+  expect(violations.some((value) => value.includes('drizzle/0001_legacy.sql'))).toBe(true)
 })
 
-test('allows only the documented legacy profile evidence name after reader removal', () => {
+it('allows only the documented legacy profile evidence name after reader removal', () => {
   const allowedFiles = new Map(
     [...pgliteCutoverAllowedLegacyEvidenceFiles].map((filePath) => [
       filePath,
@@ -36,16 +35,15 @@ test('allows only the documented legacy profile evidence name after reader remov
     ]),
   )
 
-  assert.deepEqual(auditPgliteCutoverFiles(allowedFiles), [])
-  assert.deepEqual(
-    auditPgliteCutoverFiles(new Map([
+  expect(auditPgliteCutoverFiles(allowedFiles)).toEqual([])
+  expect(auditPgliteCutoverFiles(new Map([
       ['src/runtime/legacy.ts', "const legacy = 'valedictorian.sqlite'\n"],
-    ])),
+    ]))).toEqual(
     ['src/runtime/legacy.ts: legacy SQLite file name is restricted to the staged profile upgrade policy'],
   )
 })
 
-test('accepts a PGlite-only manifest and fresh PostgreSQL baseline', () => {
+it('accepts a PGlite-only manifest and fresh PostgreSQL baseline', () => {
   const violations = auditPgliteCutoverFiles(new Map([
     ['package.json', JSON.stringify({
       dependencies: { '@electric-sql/pglite': '0.5.4' },
@@ -66,10 +64,10 @@ packages:
     ['drizzle/0000_pglite_operational_baseline.sql', 'create table applications(id text);\n'],
   ]))
 
-  assert.deepEqual(violations, [])
+  expect(violations).toEqual([])
 })
 
-test('rejects forbidden packages resolved in the lockfile while allowing optional peer metadata', () => {
+it('rejects forbidden packages resolved in the lockfile while allowing optional peer metadata', () => {
   const lockfile = `lockfileVersion: '9.0'
 
 importers:
@@ -86,7 +84,7 @@ packages:
   better-sqlite3@12.10.0: {}
 `
 
-  assert.deepEqual(auditPgliteCutoverFiles(new Map([['pnpm-lock.yaml', lockfile]])), [
+  expect(auditPgliteCutoverFiles(new Map([['pnpm-lock.yaml', lockfile]]))).toEqual([
     'pnpm-lock.yaml: resolved package better-sqlite3 is forbidden',
   ])
 })
