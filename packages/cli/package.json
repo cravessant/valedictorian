@@ -47,7 +47,7 @@
   "dependencies": {
     "@stricli/core": "1.2.7",
     "cosmiconfig": "9.0.2",
-    "sparxie": "0.23.0"
+    "sparxie": "0.26.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",

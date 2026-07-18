@@ -304,7 +304,7 @@ describe('secrets run spawn plan', () => {
     )
 
     expect(result.exitCode).toBe(1)
-    expect(result.stderr).toBe('secrets run spawn failed\n')
+    expect(result.stderr).toContain('secrets run spawn failed')
     expect(result.stderr).not.toContain('spawn-failure-canary')
     expect(result.stderr).not.toContain('ENOENT')
     expect(result.stderr).not.toContain('missing executable')
@@ -362,8 +362,8 @@ describe('secrets run spawn plan', () => {
       }
       if (asJson) {
         const body = JSON.parse(result.stderr)
-        expect(body.code).toBe('secrets_run_spawn_failed')
-        expect(body.message).toMatch(/secrets run spawn failed/i)
+        expect(body.error.code).toBe('secrets_run_spawn_failed')
+        expect(body.error.message).toMatch(/secrets run spawn failed/i)
         expect(JSON.stringify(body)).not.toContain('\\x00')
         expect(JSON.stringify(body)).not.toContain('nul-env-canary')
       }
@@ -481,8 +481,11 @@ describe('secrets run spawn plan', () => {
     expect(result.exitCode).toBe(1)
     const body = JSON.parse(result.stderr)
     expect(body).toEqual({
-      code: 'secrets_run_spawn_failed',
-      message: 'secrets run spawn failed',
+      error: {
+        code: 'secrets_run_spawn_failed',
+        kind: 'internal',
+        message: 'secrets run spawn failed',
+      },
     })
     expect(result.stderr).not.toContain('json-spawn-canary')
     expect(result.stderr).not.toContain('ENOENT')
@@ -553,10 +556,13 @@ describe('secrets run spawn plan', () => {
     expect(result.exitCode).toBe(1)
     const body = JSON.parse(result.stderr)
     expect(body).toEqual({
-      code: 'secrets_run_spawn_failed',
-      message: expect.stringMatching(/secrets run spawn failed/i),
+      error: {
+        code: 'secrets_run_spawn_failed',
+        kind: 'internal',
+        message: expect.stringMatching(/secrets run spawn failed/i),
+      },
     })
-    expect(body.code).not.toBe('hostile_code')
+    expect(body.error.code).not.toBe('hostile_code')
     expect(result.stderr).not.toContain(canary)
     expect(result.stderr).not.toContain('hostile_code')
     expect(JSON.stringify(body)).not.toContain(canary)
@@ -610,8 +616,11 @@ describe('secrets run spawn plan', () => {
       if (asJson) {
         const body = JSON.parse(result.stderr)
         expect(body).toEqual({
-          code: 'secrets_run_spawn_failed',
-          message: expect.stringMatching(/secrets run spawn failed/i),
+          error: {
+            code: 'secrets_run_spawn_failed',
+            kind: 'internal',
+            message: expect.stringMatching(/secrets run spawn failed/i),
+          },
         })
         expect(JSON.stringify(body)).not.toContain(canary)
       } else {
@@ -659,12 +668,15 @@ describe('secrets run spawn plan', () => {
       if (asJson) {
         const body = JSON.parse(result.stderr)
         expect(body).toEqual({
-          code: 'secrets_run_spawn_failed',
-          message: 'secrets run spawn failed',
+          error: {
+            code: 'secrets_run_spawn_failed',
+            kind: 'internal',
+            message: 'secrets run spawn failed',
+          },
         })
         expect(JSON.stringify(body)).not.toContain(canary)
       } else {
-        expect(result.stderr).toBe('secrets run spawn failed\n')
+        expect(result.stderr).toContain('secrets run spawn failed')
       }
     }
   })
@@ -706,13 +718,10 @@ describe('secrets run spawn plan', () => {
       expect(result.stderr, `json=${asJson}`).not.toContain('missing executable')
       if (asJson) {
         const body = JSON.parse(result.stderr)
-        expect(body).toEqual({
-          code: 'secrets_run_spawn_failed',
-          message: 'secrets run spawn failed',
-        })
+        expect(body).toEqual({ error: { code: 'secrets_run_spawn_failed', kind: 'internal', message: 'secrets run spawn failed' } })
         expect(JSON.stringify(body)).not.toContain(canary)
       } else {
-        expect(result.stderr).toBe('secrets run spawn failed\n')
+        expect(result.stderr).toContain('secrets run spawn failed')
       }
     }
   })
@@ -748,8 +757,11 @@ describe('secrets run spawn plan', () => {
     expect(result.exitCode).toBe(1)
     const body = JSON.parse(result.stderr)
     expect(body).toEqual({
-      code: 'secrets_run_spawn_failed',
-      message: 'secrets run spawn failed',
+      error: {
+        code: 'secrets_run_spawn_failed',
+        kind: 'internal',
+        message: 'secrets run spawn failed',
+      },
     })
     expect(result.stderr).not.toContain('ENOENT')
     expect(result.stderr).not.toContain('errno-detail-canary')

@@ -46,7 +46,7 @@ describe('secrets run local validation', () => {
       { secretsRunSpawn: adapter },
     )
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.stderr).toMatch(/executable after --|requires .*--/i)
     expect(fetchMock).not.toHaveBeenCalled()
     expect(calls).toHaveLength(0)
@@ -69,7 +69,7 @@ describe('secrets run local validation', () => {
       { secretsRunSpawn: adapter },
     )
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.stderr).toMatch(/executable after --|requires .*--|before --|escape marker/i)
     expect(fetchMock).not.toHaveBeenCalled()
     expect(calls).toHaveLength(0)
@@ -91,7 +91,7 @@ describe('secrets run local validation', () => {
       { secretsRunSpawn: adapter },
     )
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.stderr).toMatch(/executable|nonempty|non-empty|empty/i)
     expect(fetchMock).not.toHaveBeenCalled()
     expect(calls).toHaveLength(0)
@@ -122,14 +122,14 @@ describe('secrets run local validation', () => {
 
       if (testCase.expectOk) {
         // Local FD validation passed; capability fetch is attempted next.
-        expect(result.exitCode, `fd ${testCase.fd}`).toBe(1)
+        expect(result.exitCode, `fd ${testCase.fd}`).toBe(5)
         expect(fetchMock, `fd ${testCase.fd}`).toHaveBeenCalled()
         expect(String(fetchMock.mock.calls[0]?.[0]), `fd ${testCase.fd}`).toContain(
           '/v1/capabilities',
         )
         expect(calls, `fd ${testCase.fd}`).toHaveLength(0)
       } else {
-        expect(result.exitCode, `fd ${testCase.fd}`).toBe(1)
+        expect(result.exitCode, `fd ${testCase.fd}`).toBe(2)
         expect(result.stderr, `fd ${testCase.fd}`).toMatch(
           /file descriptor|3\.\.255|between 3 and 255|<= 255|at most 255/i,
         )
@@ -187,7 +187,7 @@ describe('secrets run local validation', () => {
 
     for (const testCase of cases) {
       const { fetchMock, result } = await runSecretsRun(testCase.argv)
-      expect(result.exitCode, testCase.argv.join(' ')).toBe(1)
+      expect(result.exitCode, testCase.argv.join(' ')).toBe(2)
       expect(result.stderr, testCase.argv.join(' ')).toMatch(testCase.match)
       expect(fetchMock, testCase.argv.join(' ')).not.toHaveBeenCalled()
       vi.unstubAllGlobals()
@@ -207,12 +207,15 @@ describe('secrets run local validation', () => {
       'process.exit(0)',
     ])
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(fetchMock).not.toHaveBeenCalled()
     const body = JSON.parse(result.stderr)
     expect(body).toEqual({
-      code: 'secrets_run_invalid_usage',
-      message: expect.stringMatching(/destination|injection|--env|--fd|--stdin-secret/i),
+      error: {
+        code: 'secrets_run_invalid_usage',
+        kind: 'validation',
+        message: expect.stringMatching(/destination|injection|--env|--fd|--stdin-secret/i),
+      },
     })
     expect(result.stderr).not.toContain('secret://')
   })
@@ -257,7 +260,7 @@ describe('secrets run local validation', () => {
 
     for (const argv of cases) {
       const { fetchMock, result } = await runSecretsRun(argv)
-      expect(result.exitCode, argv.join(' ')).toBe(1)
+      expect(result.exitCode, argv.join(' ')).toBe(2)
       expect(result.stderr, argv.join(' ')).toMatch(/--workspace is required/)
       expect(fetchMock, argv.join(' ')).not.toHaveBeenCalled()
       vi.unstubAllGlobals()
@@ -396,7 +399,7 @@ describe('secrets run local validation', () => {
 
     for (const testCase of cases) {
       const { fetchMock, result } = await runSecretsRun(testCase.argv)
-      expect(result.exitCode, testCase.argv.join(' ')).toBe(1)
+      expect(result.exitCode, testCase.argv.join(' ')).toBe(2)
       expect(result.stderr, testCase.argv.join(' ')).toMatch(testCase.match)
       expect(fetchMock, testCase.argv.join(' ')).not.toHaveBeenCalled()
       vi.unstubAllGlobals()

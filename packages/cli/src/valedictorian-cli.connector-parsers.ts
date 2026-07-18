@@ -2,6 +2,8 @@ import {
   assertKnownOptions,
   hasFlag,
   parseNullableStringOption,
+  parseStrictJsonObject,
+  parseStrictNonNegativeIntegerOption,
   readOption,
   setOptionalStringOption,
   validateLimit,
@@ -12,6 +14,8 @@ import {
   type TriggerConnectorRunInput,
   type UpdateConnectorInstanceInput,
 } from 'sparxie'
+
+import { CliUsageError } from './valedictorian-cli.failures.js'
 
 const connectorRunModes = new Set(['manual'])
 
@@ -37,7 +41,7 @@ export function parseConnectorConfiguration(
 
   if (enabled !== undefined) {
     if (enabled !== 'true' && enabled !== 'false') {
-      throw new Error('Invalid --enabled: expected true or false')
+      throw new CliUsageError('Invalid --enabled: expected true or false')
     }
     input.enabled = enabled === 'true'
   }
@@ -51,7 +55,7 @@ export function parseConnectorConfiguration(
   }
 
   if (Object.keys(input).length === 1) {
-    throw new Error('Connector configuration requires at least one field')
+    throw new CliUsageError('Connector configuration requires at least one field')
   }
 
   return input
@@ -59,21 +63,17 @@ export function parseConnectorConfiguration(
 
 function parseDateOnly(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error(`Invalid --earliest-backfill-date: ${value}`)
+    throw new CliUsageError(`Invalid --earliest-backfill-date: ${value}`)
   }
   const date = new Date(`${value}T00:00:00.000Z`)
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw new Error(`Invalid --earliest-backfill-date: ${value}`)
+    throw new CliUsageError(`Invalid --earliest-backfill-date: ${value}`)
   }
   return value
 }
 
 function parseJsonObject(value: string, option: string): Record<string, unknown> {
-  const parsed = JSON.parse(value) as unknown
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`${option} must be a JSON object`)
-  }
-  return parsed as Record<string, unknown>
+  return parseStrictJsonObject(value, option)
 }
 
 export type ConnectorRunTriggerInput = TriggerConnectorRunInput
@@ -104,7 +104,7 @@ export function parseConnectorRunTrigger(
 
   if (mode !== undefined) {
     if (!connectorRunModes.has(mode)) {
-      throw new Error(`Invalid connector run mode: ${mode}`)
+      throw new CliUsageError(`Invalid connector run mode: ${mode}`)
     }
 
     input.mode = mode as ConnectorRunTriggerInput['mode']
@@ -146,12 +146,12 @@ export function parseConnectorRunsList(
   setOptionalStringOption(input, argv, '--mode', 'mode')
 
   if (limit !== undefined) {
-    input.limit = Number(limit)
+    input.limit = parseStrictNonNegativeIntegerOption(limit, '--limit')
     validateLimit(input.limit)
   }
 
   if (offset !== undefined) {
-    input.offset = Number(offset)
+    input.offset = parseStrictNonNegativeIntegerOption(offset, '--offset')
   }
 
   return connectorRunsListInputSchema.parse(input)
@@ -169,12 +169,12 @@ export function parseConnectorObservationsList(
   setOptionalStringOption(input, argv, '--connector-run-id', 'connectorRunId')
 
   if (limit !== undefined) {
-    input.limit = Number(limit)
+    input.limit = parseStrictNonNegativeIntegerOption(limit, '--limit')
     validateLimit(input.limit)
   }
 
   if (offset !== undefined) {
-    input.offset = Number(offset)
+    input.offset = parseStrictNonNegativeIntegerOption(offset, '--offset')
   }
 
   return input

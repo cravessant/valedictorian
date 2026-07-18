@@ -17,6 +17,8 @@ import {
   type ValedictorianWorkspaceClient,
   type ActionQueueListQuery,
 } from 'sparxie'
+
+import { CliUsageError } from './valedictorian-cli.failures.js'
 import {
   assertKnownOptions,
   assertMutationPatch,
@@ -26,6 +28,11 @@ import {
   parseNullableDateStringOption,
   parseNullableStringOption,
   parseNullableTimestampOption,
+  asCliUsage,
+  parseStrictJsonArray,
+  parseStrictJsonValue,
+  parseStrictNonNegativeIntegerOption,
+  parseStrictNumberOption,
   readOption,
   readOptionalText,
   readRequiredArgument,
@@ -104,18 +111,18 @@ export function parseCreateApplication(argv: string[]): Parameters<Valedictorian
   const status = readRequiredOption(argv, '--status')
 
   if (!isApplicationStatus(status)) {
-    throw new Error(`Invalid application status: ${status}`)
+    throw new CliUsageError(`Invalid application status: ${status}`)
   }
 
   const roleKind = readRequiredOption(argv, '--role-kind')
   const workMode = readRequiredOption(argv, '--work-mode')
 
   if (!isRoleKind(roleKind)) {
-    throw new Error(`Invalid roleKind: ${roleKind}`)
+    throw new CliUsageError(`Invalid roleKind: ${roleKind}`)
   }
 
   if (!isWorkMode(workMode)) {
-    throw new Error(`Invalid workMode: ${workMode}`)
+    throw new CliUsageError(`Invalid workMode: ${workMode}`)
   }
 
   const input: Parameters<ValedictorianWorkspaceClient['applications']['create']>[0] = {
@@ -140,9 +147,11 @@ export function parseCreateApplication(argv: string[]): Parameters<Valedictorian
 
   if (primaryUrl) {
     input.primaryLink = {
-      kind: normalizeApplicationLinkKind(readOption(argv, '--primary-kind') ?? 'official'),
+      kind: asCliUsage(() =>
+        normalizeApplicationLinkKind(readOption(argv, '--primary-kind') ?? 'official'),
+      ),
       label: readOptionalText(readOption(argv, '--primary-label'), 'link label') ?? 'official',
-      url: canonicalizeApplicationUrl(primaryUrl),
+      url: asCliUsage(() => canonicalizeApplicationUrl(primaryUrl)),
       externalId: readOption(argv, '--primary-external-id'),
     }
   }
@@ -151,15 +160,17 @@ export function parseCreateApplication(argv: string[]): Parameters<Valedictorian
 
   if (sourceUrl) {
     input.sourceLink = {
-      kind: normalizeApplicationLinkKind(readOption(argv, '--source-kind') ?? 'source'),
+      kind: asCliUsage(() =>
+        normalizeApplicationLinkKind(readOption(argv, '--source-kind') ?? 'source'),
+      ),
       label: readOptionalText(readOption(argv, '--source-label'), 'link label') ?? 'source',
-      url: canonicalizeApplicationUrl(sourceUrl),
+      url: asCliUsage(() => canonicalizeApplicationUrl(sourceUrl)),
       externalId: readOption(argv, '--source-external-id'),
     }
   }
 
   if (!input.primaryLink && !input.sourceLink) {
-    throw new Error('Application creation requires a primaryLink or sourceLink')
+    throw new CliUsageError('Application creation requires a primaryLink or sourceLink')
   }
 
   setOptionalStringOption(input, argv, '--initial-note', 'initialNote')
@@ -202,11 +213,11 @@ export function parseUpdateApplication(
   setOptionalStringOption(input, argv, '--current-resume-variant', 'currentResumeVariant')
 
   if (input.roleKind !== undefined && !isRoleKind(input.roleKind)) {
-    throw new Error(`Invalid roleKind: ${input.roleKind}`)
+    throw new CliUsageError(`Invalid roleKind: ${input.roleKind}`)
   }
 
   if (input.workMode !== undefined && !isWorkMode(input.workMode)) {
-    throw new Error(`Invalid workMode: ${input.workMode}`)
+    throw new CliUsageError(`Invalid workMode: ${input.workMode}`)
   }
 
   assertMutationPatch(input, ['applicationId'], 'Application metadata update requires at least one field')
@@ -239,17 +250,12 @@ function setOptionalTimingOptions(
     input.startDate !== undefined ||
     input.endDate !== undefined
   ) {
-    normalizeJobTimingInput(input)
+    asCliUsage(() => normalizeJobTimingInput(input))
   }
 }
 
 function parseTermsJsonOption(value: string): JobTerm[] {
-  const parsed = JSON.parse(value) as unknown
-  if (!Array.isArray(parsed)) {
-    throw new Error('--terms-json must be a JSON array')
-  }
-
-  return parsed as JobTerm[]
+  return parseStrictJsonArray(value, '--terms-json') as JobTerm[]
 }
 
 export function parseWorkflowUpdate(
@@ -285,7 +291,7 @@ export function parseWorkflowUpdate(
     const parsedManualReviewKind = parseNullableStringOption(manualReviewKind, 'manualReviewKind')
 
     if (parsedManualReviewKind !== null && !isManualReviewKind(parsedManualReviewKind)) {
-      throw new Error(`Invalid manualReviewKind: ${parsedManualReviewKind}`)
+      throw new CliUsageError(`Invalid manualReviewKind: ${parsedManualReviewKind}`)
     }
 
     input.manualReviewKind = parsedManualReviewKind as typeof input.manualReviewKind
@@ -312,9 +318,9 @@ export function parseCreateApplicationLink(
 
   return {
     applicationId,
-    kind: normalizeApplicationLinkKind(readRequiredOption(argv, '--kind')),
+    kind: asCliUsage(() => normalizeApplicationLinkKind(readRequiredOption(argv, '--kind'))),
     label: readRequiredOption(argv, '--label'),
-    url: canonicalizeApplicationUrl(readRequiredOption(argv, '--url')),
+    url: asCliUsage(() => canonicalizeApplicationUrl(readRequiredOption(argv, '--url'))),
     externalId: readOption(argv, '--external-id'),
     ...(hasFlag(argv, '--primary') ? { isPrimary: true } : {}),
   }
@@ -344,13 +350,13 @@ export function parseUpdateApplicationLink(
   const url = readOption(argv, '--url')
 
   if (kind !== undefined) {
-    input.kind = normalizeApplicationLinkKind(kind)
+    input.kind = asCliUsage(() => normalizeApplicationLinkKind(kind))
   }
 
   setOptionalStringOption(input, argv, '--label', 'label')
 
   if (url !== undefined) {
-    input.url = canonicalizeApplicationUrl(url)
+    input.url = asCliUsage(() => canonicalizeApplicationUrl(url))
   }
 
   setOptionalStringOption(input, argv, '--external-id', 'externalId')
@@ -384,12 +390,12 @@ export function parseApplicationEventsQuery(
   const offset = readOption(argv, '--offset')
 
   if (limit !== undefined) {
-    query.limit = Number(limit)
+    query.limit = parseStrictNonNegativeIntegerOption(limit, '--limit')
     validateLimit(query.limit)
   }
 
   if (offset !== undefined) {
-    query.offset = Number(offset)
+    query.offset = parseStrictNonNegativeIntegerOption(offset, '--offset')
   }
 
   return query
@@ -405,12 +411,12 @@ export function parseApplicationAttemptsQuery(
   const offset = readOption(argv, '--offset')
 
   if (limit !== undefined) {
-    query.limit = Number(limit)
+    query.limit = parseStrictNonNegativeIntegerOption(limit, '--limit')
     validateLimit(query.limit)
   }
 
   if (offset !== undefined) {
-    query.offset = Number(offset)
+    query.offset = parseStrictNonNegativeIntegerOption(offset, '--offset')
   }
 
   return query
@@ -432,7 +438,7 @@ export function parseAttemptStart(
   const actorType = readRequiredOption(argv, '--actor-type')
 
   if (!isApplicationAttemptActorType(actorType)) {
-    throw new Error(`Invalid actorType: ${actorType}`)
+    throw new CliUsageError(`Invalid actorType: ${actorType}`)
   }
 
   const input: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['start']>[0] = {
@@ -458,7 +464,7 @@ export function parseAttemptStep(
   const type = readRequiredOption(argv, '--type')
 
   if (!isApplicationAttemptStepType(type)) {
-    throw new Error(`Invalid attempt step type: ${type}`)
+    throw new CliUsageError(`Invalid attempt step type: ${type}`)
   }
 
   const input: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['step']>[0] = {
@@ -473,7 +479,7 @@ export function parseAttemptStep(
   const payloadJson = readOption(argv, '--payload-json')
 
   if (payloadJson !== undefined) {
-    input.payload = JSON.parse(payloadJson) as unknown
+    input.payload = parseStrictJsonValue(payloadJson, '--payload-json')
   }
 
   return input
@@ -499,7 +505,7 @@ export function parseAttemptComplete(
   const outcome = readRequiredOption(argv, '--outcome')
 
   if (!isApplicationStatus(outcome)) {
-    throw new Error(`Invalid attempt outcome: ${outcome}`)
+    throw new CliUsageError(`Invalid attempt outcome: ${outcome}`)
   }
 
   const input: Parameters<ValedictorianWorkspaceClient['applications']['attempts']['complete']>[0] = {
@@ -526,7 +532,7 @@ export function parseAttemptComplete(
     const parsedManualReviewKind = parseNullableStringOption(manualReviewKind, 'manualReviewKind')
 
     if (parsedManualReviewKind !== null && !isManualReviewKind(parsedManualReviewKind)) {
-      throw new Error(`Invalid manualReviewKind: ${parsedManualReviewKind}`)
+      throw new CliUsageError(`Invalid manualReviewKind: ${parsedManualReviewKind}`)
     }
 
     input.manualReviewKind = parsedManualReviewKind as typeof input.manualReviewKind
@@ -534,20 +540,20 @@ export function parseAttemptComplete(
 
   if (outcome === 'ready_for_review') {
     if (!hasTextValue(input.holdStartedAt)) {
-      throw new Error('holdStartedAt is required for ready_for_review attempts')
+      throw new CliUsageError('holdStartedAt is required for ready_for_review attempts')
     }
 
     if (!hasTextValue(input.manualReviewKind)) {
-      throw new Error('manualReviewKind is required for ready_for_review attempts')
+      throw new CliUsageError('manualReviewKind is required for ready_for_review attempts')
     }
   }
 
   if (outcome === 'needs_user_info' && !hasTextValue(input.missingUserInfo)) {
-    throw new Error('missingUserInfo is required for needs_user_info attempts')
+    throw new CliUsageError('missingUserInfo is required for needs_user_info attempts')
   }
 
   if (attemptBlockerOutcomes.has(outcome) && !hasTextValue(input.blockerReason)) {
-    throw new Error(`blockerReason is required for ${outcome} attempts`)
+    throw new CliUsageError(`blockerReason is required for ${outcome} attempts`)
   }
 
   return input
@@ -563,7 +569,7 @@ export function parseActionQueueListQuery(argv: string[]): ActionQueueListQuery 
       const actionBucket = readRequiredArgument(argv[index + 1], '--action-bucket value')
 
       if (!isActionQueueBucket(actionBucket)) {
-        throw new Error(`Invalid action queue bucket: ${actionBucket}`)
+        throw new CliUsageError(`Invalid action queue bucket: ${actionBucket}`)
       }
 
       query.actionBucket = actionBucket
@@ -572,14 +578,14 @@ export function parseActionQueueListQuery(argv: string[]): ActionQueueListQuery 
     }
 
     if (token === '--limit') {
-      query.limit = Number(readRequiredArgument(argv[index + 1], '--limit value'))
+      query.limit = parseStrictNonNegativeIntegerOption(readRequiredArgument(argv[index + 1], '--limit value'), '--limit')
       validateLimit(query.limit)
       index += 1
       continue
     }
 
     if (token === '--offset') {
-      query.offset = Number(readRequiredArgument(argv[index + 1], '--offset value'))
+      query.offset = parseStrictNonNegativeIntegerOption(readRequiredArgument(argv[index + 1], '--offset value'), '--offset')
       index += 1
       continue
     }
@@ -588,7 +594,7 @@ export function parseActionQueueListQuery(argv: string[]): ActionQueueListQuery 
       continue
     }
 
-    throw new Error(`Unknown option: ${token}`)
+    throw new CliUsageError(`Unknown option: ${token}`)
   }
 
   return query
@@ -604,7 +610,7 @@ export function parseWorkflowRunsListQuery(argv: string[]): NonNullable<Paramete
       const runType = readRequiredArgument(argv[index + 1], '--run-type value')
 
       if (!isRunType(runType)) {
-        throw new Error(`Invalid run type: ${runType}`)
+        throw new CliUsageError(`Invalid run type: ${runType}`)
       }
 
       query.runType = runType
@@ -616,7 +622,7 @@ export function parseWorkflowRunsListQuery(argv: string[]): NonNullable<Paramete
       const status = readRequiredArgument(argv[index + 1], '--status value')
 
       if (!isRunStatus(status)) {
-        throw new Error(`Invalid run status: ${status}`)
+        throw new CliUsageError(`Invalid run status: ${status}`)
       }
 
       query.status = status
@@ -646,14 +652,14 @@ export function parseWorkflowRunsListQuery(argv: string[]): NonNullable<Paramete
     }
 
     if (token === '--limit') {
-      query.limit = Number(readRequiredArgument(argv[index + 1], '--limit value'))
+      query.limit = parseStrictNonNegativeIntegerOption(readRequiredArgument(argv[index + 1], '--limit value'), '--limit')
       validateLimit(query.limit)
       index += 1
       continue
     }
 
     if (token === '--offset') {
-      query.offset = Number(readRequiredArgument(argv[index + 1], '--offset value'))
+      query.offset = parseStrictNonNegativeIntegerOption(readRequiredArgument(argv[index + 1], '--offset value'), '--offset')
       index += 1
       continue
     }
@@ -662,7 +668,7 @@ export function parseWorkflowRunsListQuery(argv: string[]): NonNullable<Paramete
       continue
     }
 
-    throw new Error(`Unknown option: ${token}`)
+    throw new CliUsageError(`Unknown option: ${token}`)
   }
 
   return query
@@ -688,11 +694,11 @@ export function parseRunStart(argv: string[]): Parameters<ValedictorianWorkspace
   const actorType = readRequiredOption(argv, '--actor-type')
 
   if (!isRunType(runType)) {
-    throw new Error(`Invalid run type: ${runType}`)
+    throw new CliUsageError(`Invalid run type: ${runType}`)
   }
 
   if (!isApplicationAttemptActorType(actorType)) {
-    throw new Error(`Invalid actorType: ${actorType}`)
+    throw new CliUsageError(`Invalid actorType: ${actorType}`)
   }
 
   const input: Parameters<ValedictorianWorkspaceClient['runs']['start']>[0] = {
@@ -721,11 +727,11 @@ export function parseRunStart(argv: string[]): Parameters<ValedictorianWorkspace
   }
 
   if (inputJson !== undefined) {
-    input.input = JSON.parse(inputJson) as unknown
+    input.input = parseStrictJsonValue(inputJson, '--input-json')
   }
 
   if (metadataJson !== undefined) {
-    input.metadata = JSON.parse(metadataJson) as unknown
+    input.metadata = parseStrictJsonValue(metadataJson, '--metadata-json')
   }
 
   return input
@@ -747,7 +753,7 @@ export function parseRunStep(
   const payloadJson = readOption(argv, '--payload-json')
 
   if (payloadJson !== undefined) {
-    input.payload = JSON.parse(payloadJson) as unknown
+    input.payload = parseStrictJsonValue(payloadJson, '--payload-json')
   }
 
   return input
@@ -771,7 +777,7 @@ export function parseRunComplete(
 
   if (status !== undefined) {
     if (!isRunStatus(status)) {
-      throw new Error(`Invalid run status: ${status}`)
+      throw new CliUsageError(`Invalid run status: ${status}`)
     }
 
     input.status = status
@@ -782,7 +788,7 @@ export function parseRunComplete(
   setOptionalStringOption(input, argv, '--blocker', 'blocker')
 
   if (metadataJson !== undefined) {
-    input.metadata = JSON.parse(metadataJson) as unknown
+    input.metadata = parseStrictJsonValue(metadataJson, '--metadata-json')
   }
 
   return input
@@ -796,14 +802,14 @@ export function parseApplicationListQuery(argv: string[]): ApplicationListQuery 
     const token = argv[index]
 
     if (token === '--limit') {
-      query.limit = Number(readRequiredArgument(argv[index + 1], '--limit value'))
+      query.limit = parseStrictNonNegativeIntegerOption(readRequiredArgument(argv[index + 1], '--limit value'), '--limit')
       validateLimit(query.limit)
       index += 1
       continue
     }
 
     if (token === '--offset') {
-      query.offset = Number(readRequiredArgument(argv[index + 1], '--offset value'))
+      query.offset = parseStrictNonNegativeIntegerOption(readRequiredArgument(argv[index + 1], '--offset value'), '--offset')
       index += 1
       continue
     }
@@ -812,7 +818,7 @@ export function parseApplicationListQuery(argv: string[]): ApplicationListQuery 
       const status = readRequiredArgument(argv[index + 1], '--status value')
 
       if (!isApplicationStatus(status)) {
-        throw new Error(`Invalid application status: ${status}`)
+        throw new CliUsageError(`Invalid application status: ${status}`)
       }
 
       query.status = status
@@ -821,7 +827,7 @@ export function parseApplicationListQuery(argv: string[]): ApplicationListQuery 
     }
 
     if (token === '--min-score') {
-      query.minScore = Number(readRequiredArgument(argv[index + 1], '--min-score value'))
+      query.minScore = parseStrictNumberOption(readRequiredArgument(argv[index + 1], '--min-score value'), '--min-score')
       index += 1
       continue
     }
@@ -845,7 +851,7 @@ export function parseApplicationListQuery(argv: string[]): ApplicationListQuery 
     }
 
     if (token === '--name') {
-      throw new Error(
+      throw new CliUsageError(
         'The --name filter was removed. Use --search for broad text search or --role for role titles.',
       )
     }
@@ -857,7 +863,7 @@ export function parseApplicationListQuery(argv: string[]): ApplicationListQuery 
     }
 
     if (token === '--max-score') {
-      query.maxScore = Number(readRequiredArgument(argv[index + 1], '--max-score value'))
+      query.maxScore = parseStrictNumberOption(readRequiredArgument(argv[index + 1], '--max-score value'), '--max-score')
       index += 1
       continue
     }
@@ -887,7 +893,7 @@ export function parseApplicationListQuery(argv: string[]): ApplicationListQuery 
       const sort = readRequiredArgument(argv[index + 1], '--sort value')
 
       if (!isApplicationListSort(sort)) {
-        throw new Error(`Invalid application list sort: ${sort}`)
+        throw new CliUsageError(`Invalid application list sort: ${sort}`)
       }
 
       query.sort = sort
@@ -923,7 +929,7 @@ export function parseApplicationListQuery(argv: string[]): ApplicationListQuery 
       continue
     }
 
-    throw new Error(`Unknown option: ${token}`)
+    throw new CliUsageError(`Unknown option: ${token}`)
   }
 
   return query

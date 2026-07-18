@@ -4,6 +4,8 @@ import {
   normalizeApplicationUrlPreservingQuery,
 } from 'sparxie'
 
+import { CliUsageError } from './valedictorian-cli.failures.js'
+
 export function readOption(argv: string[], name: string) {
   const index = argv.indexOf(name)
   return index >= 0 ? argv[index + 1] : undefined
@@ -47,7 +49,7 @@ export function parseNullableStringOption(value: string, fieldName: string) {
   }
 
   if (!trimmed) {
-    throw new Error(`${fieldName} is required`)
+    throw new CliUsageError(`${fieldName} is required`)
   }
 
   return trimmed
@@ -63,7 +65,7 @@ export function parseNullableTimestampOption(value: string, fieldName: string) {
   const timestamp = trimmed === 'now' ? new Date().toISOString() : trimmed
 
   if (!/^\d{4}-\d{2}-\d{2}T/.test(timestamp) || Number.isNaN(new Date(timestamp).getTime())) {
-    throw new Error(`Invalid ${fieldName}: ${value}`)
+    throw new CliUsageError(`Invalid ${fieldName}: ${value}`)
   }
 
   return timestamp
@@ -77,12 +79,12 @@ export function parseNullableDateStringOption(value: string, fieldName: string) 
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    throw new Error(`Invalid ${fieldName}: ${value}`)
+    throw new CliUsageError(`Invalid ${fieldName}: ${value}`)
   }
 
   const date = new Date(`${trimmed}T00:00:00.000Z`)
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== trimmed) {
-    throw new Error(`Invalid ${fieldName}: ${value}`)
+    throw new CliUsageError(`Invalid ${fieldName}: ${value}`)
   }
 
   return trimmed
@@ -97,29 +99,87 @@ export function parseBooleanValue(value: string, optionName: string) {
     return false
   }
 
-  throw new Error(`Invalid ${optionName}: expected true or false`)
+  throw new CliUsageError(`Invalid ${optionName}: expected true or false`)
 }
 
 export function parseNumberOption(value: string, optionName: string) {
-  const number = Number(value)
+  return parseStrictNumberOption(value, optionName)
+}
 
-  if (!Number.isFinite(number)) {
-    throw new Error(`Invalid ${optionName}: ${value}`)
+export function parseStrictIntegerOption(value: string, optionName: string): number {
+  if (!/^(0|[1-9]\d*)$/.test(value) && !/^-(0|[1-9]\d*)$/.test(value)) {
+    throw new CliUsageError(`Invalid ${optionName}: ${value}`)
   }
 
+  const number = Number(value)
+  if (!Number.isSafeInteger(number)) {
+    throw new CliUsageError(`Invalid ${optionName}: ${value}`)
+  }
   return number
+}
+
+export function parseStrictNonNegativeIntegerOption(value: string, optionName: string): number {
+  if (!/^(0|[1-9]\d*)$/.test(value)) {
+    throw new CliUsageError(`Invalid ${optionName}: ${value}`)
+  }
+
+  const number = Number(value)
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new CliUsageError(`Invalid ${optionName}: ${value}`)
+  }
+  return number
+}
+
+export function parseStrictNumberOption(value: string, optionName: string): number {
+  if (!/^-?(0|[1-9]\d*)(\.\d+)?$/.test(value)) {
+    throw new CliUsageError(`Invalid ${optionName}: ${value}`)
+  }
+
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    throw new CliUsageError(`Invalid ${optionName}: ${value}`)
+  }
+  return number
+}
+
+export function parseStrictJsonValue(value: string, optionName: string): unknown {
+  if (value.trim().length === 0) {
+    throw new CliUsageError(`${optionName} must be valid JSON`)
+  }
+
+  try {
+    return JSON.parse(value) as unknown
+  } catch {
+    throw new CliUsageError(`${optionName} must be valid JSON`)
+  }
+}
+
+export function parseStrictJsonObject(value: string, optionName: string): Record<string, unknown> {
+  const parsed = parseStrictJsonValue(value, optionName)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new CliUsageError(`${optionName} must be a JSON object`)
+  }
+  return parsed as Record<string, unknown>
+}
+
+export function parseStrictJsonArray(value: string, optionName: string): unknown[] {
+  const parsed = parseStrictJsonValue(value, optionName)
+  if (!Array.isArray(parsed)) {
+    throw new CliUsageError(`${optionName} must be a JSON array`)
+  }
+  return parsed
 }
 
 export function parseNullableApplicationUrlOption(value: string, fieldName: string) {
   const parsed = parseNullableStringOption(value, fieldName)
 
-  return parsed === null ? null : canonicalizeApplicationUrl(parsed)
+  return parsed === null ? null : asCliUsage(() => canonicalizeApplicationUrl(parsed))
 }
 
 export function parseNullableSourceUrlOption(value: string, fieldName: string) {
   const parsed = parseNullableStringOption(value, fieldName)
 
-  return parsed === null ? null : normalizeApplicationUrlPreservingQuery(parsed)
+  return parsed === null ? null : asCliUsage(() => normalizeApplicationUrlPreservingQuery(parsed))
 }
 
 export function hasFlag(argv: string[], name: string) {
@@ -133,7 +193,7 @@ export function hasTextValue(value: string | null | undefined) {
 export function assertKnownOptions(argv: string[], allowedOptions: string[]) {
   for (const token of argv) {
     if (token.startsWith('--') && !allowedOptions.includes(token)) {
-      throw new Error(`Unknown option: ${token}`)
+      throw new CliUsageError(`Unknown option: ${token}`)
     }
   }
 }
@@ -142,7 +202,7 @@ export function assertMutationPatch(input: object, identityFields: string[], mes
   const patchKeys = Object.keys(input).filter((key) => !identityFields.includes(key))
 
   if (patchKeys.length === 0) {
-    throw new Error(message)
+    throw new CliUsageError(message)
   }
 }
 
@@ -150,7 +210,7 @@ export function readRequiredText(value: string | undefined, fieldName: string) {
   const trimmed = value?.trim()
 
   if (!trimmed) {
-    throw new Error(`${fieldName} is required`)
+    throw new CliUsageError(`${fieldName} is required`)
   }
 
   return trimmed
@@ -168,7 +228,7 @@ export function readRequiredArgument(value: string | undefined, label: string) {
   const trimmed = value?.trim()
 
   if (!trimmed) {
-    throw new Error(`Missing ${label}`)
+    throw new CliUsageError(`Missing ${label}`)
   }
 
   return trimmed
@@ -176,7 +236,17 @@ export function readRequiredArgument(value: string | undefined, label: string) {
 
 export function validateLimit(limit: number) {
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_APPLICATION_LIST_LIMIT) {
-    throw new Error(`Invalid --limit: must be between 1 and ${MAX_APPLICATION_LIST_LIMIT}`)
+    throw new CliUsageError(`Invalid --limit: must be between 1 and ${MAX_APPLICATION_LIST_LIMIT}`)
+  }
+}
+
+export function asCliUsage<T>(operation: () => T): T {
+  try {
+    return operation()
+  } catch (error) {
+    if (error instanceof CliUsageError) throw error
+    if (error instanceof Error) throw new CliUsageError(error.message)
+    throw new CliUsageError(String(error))
   }
 }
 
@@ -186,7 +256,7 @@ export function parseDateOption(
   boundary: 'start' | 'end',
 ) {
   if (!value) {
-    throw new Error(`Missing value for ${optionName}`)
+    throw new CliUsageError(`Missing value for ${optionName}`)
   }
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -196,7 +266,7 @@ export function parseDateOption(
   const parsed = new Date(value)
 
   if (Number.isNaN(parsed.getTime())) {
-    throw new Error(`Invalid date for ${optionName}: ${value}`)
+    throw new CliUsageError(`Invalid date for ${optionName}: ${value}`)
   }
 
   return parsed.toISOString()

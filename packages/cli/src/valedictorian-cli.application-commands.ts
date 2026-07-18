@@ -10,6 +10,7 @@ import {
   workspaceClient,
   writeJson,
 } from './valedictorian-cli.command-runtime.js'
+import { CliOwnedFailure, CliUsageError } from './valedictorian-cli.failures.js'
 import {
   parseApplicationAttemptsQuery,
   parseApplicationEventsQuery,
@@ -113,7 +114,12 @@ export function buildApplicationsRoute() {
           const applicationDetail = await client.applications.get(applicationId)
 
           if (!applicationDetail) {
-            throw new Error(`Application not found: ${applicationId}`)
+            throw new CliOwnedFailure({
+              code: 'application_not_found',
+              kind: 'not_found',
+              status: 404,
+              message: `Application not found: ${applicationId}`,
+            })
           }
 
           writeJson(context, applicationDetail)
@@ -172,7 +178,7 @@ export function buildApplicationsRoute() {
         positionalCount: 2,
         run: async (context, flags, applicationId, status) => {
           if (!isApplicationStatus(status)) {
-            throw new Error(`Invalid application status: ${status}`)
+            throw new CliUsageError(`Invalid application status: ${status}`)
           }
 
           const client = await workspaceClient(context, flags)

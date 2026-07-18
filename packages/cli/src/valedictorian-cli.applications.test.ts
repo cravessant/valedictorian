@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { jsonResponse, runCli } from './valedictorian-cli.test-helpers'
+import {
+  applicationAttempt,
+  applicationAttemptStep,
+  applicationDetail,
+  applicationLinkRecord,
+  jsonResponse,
+  parseCliError,
+  runCli,
+} from './valedictorian-cli.test-helpers'
 
 describe('valedictorian-cli npm package', () => {
   afterEach(() => {
@@ -8,16 +16,16 @@ describe('valedictorian-cli npm package', () => {
 
   it('runs application mutation commands over HTTP', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'application-1' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'application-1', hasApplied: true }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'application-1' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'application-1', notes: 'Reached review.' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'link-1' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'link-1', label: 'company site' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationDetail()))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationDetail({ hasApplied: true })))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationDetail()))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationDetail({ notes: 'Reached review.' })))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationLinkRecord()))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationLinkRecord({ label: 'company site' })))
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ items: [], total: 0, limit: 50, offset: 0, hasMore: false }),
     )
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationDetail()))
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(
@@ -240,11 +248,25 @@ describe('valedictorian-cli npm package', () => {
 
   it('runs application attempt commands over HTTP', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'attempt-1', status: 'in_progress' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'step-1', sequence: 2 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'attempt-1', status: 'completed' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationAttempt({ status: 'in_progress' })))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationAttemptStep({ sequence: 2 })))
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({ items: [{ id: 'attempt-1' }], total: 1, limit: 25, offset: 0, hasMore: false }),
+      jsonResponse(
+        applicationAttempt({
+          status: 'completed',
+          outcome: 'needs_user_info',
+          completedAt: '2026-07-11T15:00:00.000Z',
+        }),
+      ),
+    )
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [applicationAttempt()],
+        total: 1,
+        limit: 25,
+        offset: 0,
+        hasMore: false,
+      }),
     )
     vi.stubGlobal('fetch', fetchMock)
 
@@ -357,7 +379,9 @@ describe('valedictorian-cli npm package', () => {
 
   it('sends verification receipt attempt steps over HTTP with JSON payloads', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'step-1', sequence: 2 }))
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(applicationAttemptStep({ type: 'verification_receipt', sequence: 2 })),
+    )
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(
@@ -476,9 +500,9 @@ describe('valedictorian-cli npm package', () => {
       '--json',
     ])
 
-    expect(stopped.exitCode).toBe(1)
+    expect(stopped.exitCode).toBe(2)
     expect(stopped.stderr).toContain('Invalid attempt outcome: stopped')
-    expect(blocked.exitCode).toBe(1)
+    expect(blocked.exitCode).toBe(2)
     expect(blocked.stderr).toContain('Invalid attempt outcome: blocked')
   })
 
@@ -668,34 +692,85 @@ describe('valedictorian-cli npm package', () => {
       'needs_user_info',
     ])
 
-    expect(invalidSort.exitCode).toBe(1)
+    expect(invalidSort.exitCode).toBe(2)
     expect(invalidSort.stderr).toContain('Invalid application list sort: random_sort')
-    expect(removedName.exitCode).toBe(1)
+    expect(removedName.exitCode).toBe(2)
     expect(removedName.stderr).toContain('Use --search for broad text search or --role for role titles')
-    expect(invalidDate.exitCode).toBe(1)
+    expect(invalidDate.exitCode).toBe(2)
     expect(invalidDate.stderr).toContain('Invalid date for --created-from: tomorrow-ish')
-    expect(invalidRoleKind.exitCode).toBe(1)
+    expect(invalidRoleKind.exitCode).toBe(2)
     expect(invalidRoleKind.stderr).toContain('Invalid roleKind: intern')
-    expect(invalidWorkMode.exitCode).toBe(1)
+    expect(invalidWorkMode.exitCode).toBe(2)
     expect(invalidWorkMode.stderr).toContain('Invalid workMode: distributed')
-    expect(missingLink.exitCode).toBe(1)
+    expect(missingLink.exitCode).toBe(2)
     expect(missingLink.stderr).toContain('Application creation requires a primaryLink or sourceLink')
-    expect(malformedUrl.exitCode).toBe(1)
+    expect(malformedUrl.exitCode).toBe(2)
     expect(malformedUrl.stderr).toContain('Invalid application URL: ftp://jobs.example.com/delta')
-    expect(mixedTiming.exitCode).toBe(1)
+    expect(mixedTiming.exitCode).toBe(2)
     expect(mixedTiming.stderr).toContain('Date-based timing cannot include term or terms input')
-    expect(invalidManualKind.exitCode).toBe(1)
+    expect(invalidManualKind.exitCode).toBe(2)
     expect(invalidManualKind.stderr).toContain('Invalid manualReviewKind: manual')
-    expect(invalidWorkflowTimestamp.exitCode).toBe(1)
+    expect(invalidWorkflowTimestamp.exitCode).toBe(2)
     expect(invalidWorkflowTimestamp.stderr).toContain('Invalid lockStartedAt: tomorrow-ish')
-    expect(emptyUpdate.exitCode).toBe(1)
+    expect(emptyUpdate.exitCode).toBe(2)
     expect(emptyUpdate.stderr).toContain('Application metadata update requires at least one field')
-    expect(blankNote.exitCode).toBe(1)
+    expect(blankNote.exitCode).toBe(2)
     expect(blankNote.stderr).toContain('note message is required')
-    expect(invalidAttemptCompletion.exitCode).toBe(1)
+    expect(invalidAttemptCompletion.exitCode).toBe(2)
     expect(invalidAttemptCompletion.stderr).toContain(
       'missingUserInfo is required for needs_user_info attempts',
     )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('maps applications get null to stable not_found exit 4 with structured JSON', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ message: 'hostile upstream application canary' }, { status: 404 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli([
+      'applications',
+      'get',
+      'missing-application',
+      '--workspace',
+      'workspace-1',
+      '--json',
+    ])
+
+    expect(result.exitCode).toBe(4)
+    expect(result.stdout).toBe('')
+    expect(parseCliError(result.stderr)).toEqual({
+      code: 'application_not_found',
+      kind: 'not_found',
+      status: 404,
+      message: 'Application not found: missing-application',
+    })
+    expect(result.stderr).not.toContain('hostile upstream application canary')
+  })
+
+  it('maps invalid application status to usage exit 2 with structured JSON', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli([
+      'applications',
+      'status',
+      'application-1',
+      'not-a-real-status',
+      '--workspace',
+      'workspace-1',
+      '--json',
+    ])
+
+    expect(result.exitCode).toBe(2)
+    expect(result.stdout).toBe('')
+    expect(parseCliError(result.stderr)).toEqual({
+      code: 'usage_error',
+      kind: 'validation',
+      message: 'Invalid application status: not-a-real-status',
+    })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

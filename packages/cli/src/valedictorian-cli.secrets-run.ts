@@ -6,6 +6,8 @@ import {
   localSecretResolutionErrorStatusByCode,
   parseSecretReferenceUri,
   ValedictorianHttpError,
+  ValedictorianProtocolError,
+  ValedictorianTransportError,
   type SecretReference,
 } from 'sparxie'
 
@@ -15,6 +17,8 @@ import {
   type RawFlags,
   type ValedictorianCliContext,
 } from './valedictorian-cli.command-runtime.js'
+import { CliOwnedFailure, CliUsageError } from './valedictorian-cli.failures.js'
+import { parseStrictNonNegativeIntegerOption } from './valedictorian-cli.parser-options.js'
 import { readRequiredText } from './valedictorian-cli.parsers.js'
 import { redactExactValues } from './valedictorian-cli.secrets-redact.js'
 import {
@@ -60,7 +64,6 @@ export async function runSecretsRunCommand(
   flags: RawFlags,
   commandArgv: readonly string[],
 ): Promise<void> {
-  const asJson = context.outputJson === true
   const resolvedValues: string[] = []
   let spawnRequest: SecretsRunSpawnRequest | undefined
   let injectedEnvNames: string[] = []
@@ -75,9 +78,9 @@ export async function runSecretsRunCommand(
     phase = 'remote'
     const capabilities = await context.client.capabilities.get()
     if (!capabilities.localSecretResolution) {
-      throw formatSecretsRunError(
+      throw new LocalSecretResolutionHttpError(
         localSecretResolutionErrorBodies.local_secret_resolution_unsupported,
-        asJson,
+        localSecretResolutionErrorStatusByCode.local_secret_resolution_unsupported,
       )
     }
 
@@ -108,7 +111,7 @@ export async function runSecretsRunCommand(
     const result = await spawn(spawnRequest)
     context.process.exitCode = result.exitCode
   } catch (error) {
-    throw redactAndFormatError(error, resolvedValues, asJson, phase)
+    throw redactAndRethrowError(error, resolvedValues, phase)
   } finally {
     if (spawnRequest) {
       scrubSpawnRequest(spawnRequest, injectedEnvNames)
@@ -151,7 +154,7 @@ function buildSpawnRequest(
   for (const injection of plan.injections) {
     const value = resolvedByUri.get(injection.referenceUri)
     if (value === undefined) {
-      throw new Error(`secrets run missing resolved value for ${injection.referenceUri}`)
+      throw new CliUsageError(`secrets run missing resolved value for ${injection.referenceUri}`)
     }
 
     if (injection.kind === 'env') {
@@ -187,12 +190,7 @@ function removeCaseInsensitiveEnvKeys(env: NodeJS.ProcessEnv, name: string): voi
   }
 }
 
-class SecretsRunFormattedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'SecretsRunFormattedError'
-  }
-}
+class SecretsRunOwnedError extends CliOwnedFailure {}
 
 function assertSpawnableEnvironment(env: NodeJS.ProcessEnv): void {
   for (const value of Object.values(env)) {
@@ -204,61 +202,61 @@ function assertSpawnableEnvironment(env: NodeJS.ProcessEnv): void {
   }
 }
 
-function redactAndFormatError(
+function redactAndRethrowError(
   error: unknown,
   resolvedValues: readonly string[],
-  asJson: boolean,
   phase: 'local' | 'remote' | 'spawn',
-): Error {
-  if (error instanceof SecretsRunFormattedError) {
-    return error
+): never {
+  if (error instanceof CliOwnedFailure) {
+    throw error
+  }
+
+  if (error instanceof CliUsageError) {
+    throw new CliOwnedFailure({
+      code: 'secrets_run_invalid_usage',
+      kind: 'validation',
+      message: error.message,
+    })
   }
 
   if (phase === 'spawn') {
-    return formatWrapperOwnedError(
-      { code: 'secrets_run_spawn_failed', message: spawnPhaseDiagnosticMessage(error) },
-      asJson,
-    )
+    throw new SecretsRunOwnedError({
+      code: 'secrets_run_spawn_failed',
+      kind: 'internal',
+      message: 'secrets run spawn failed',
+    })
   }
 
   const typed = asLocalSecretResolutionError(error)
   if (typed) {
-    return formatSecretsRunError(typed.body, asJson)
+    throw typed
+  }
+
+  if (phase === 'remote') {
+    if (
+      error instanceof ValedictorianTransportError
+      || error instanceof ValedictorianProtocolError
+      || error instanceof ValedictorianHttpError
+    ) {
+      throw error
+    }
+
+    throw new SecretsRunOwnedError({
+      code: 'secrets_run_remote_failed',
+      kind: 'unavailable',
+      message: 'Remote secrets run request failed',
+    })
   }
 
   const message = redactExactValues(
     error instanceof Error ? error.message : String(error),
     resolvedValues,
   )
-
-  if (phase === 'local') {
-    return formatWrapperOwnedError(
-      { code: 'secrets_run_invalid_usage', message },
-      asJson,
-    )
-  }
-
-  return formatWrapperOwnedError(
-    {
-      code: 'secrets_run_remote_failed',
-      message: 'Remote secrets run request failed',
-    },
-    asJson,
-  )
-}
-
-function spawnPhaseDiagnosticMessage(_error: unknown): string {
-  return 'secrets run spawn failed'
-}
-
-function formatWrapperOwnedError(
-  body: { code: string; message: string },
-  asJson: boolean,
-): Error {
-  if (asJson) {
-    return new SecretsRunFormattedError(JSON.stringify(body, null, 2))
-  }
-  return new SecretsRunFormattedError(body.message)
+  throw new CliOwnedFailure({
+    code: 'secrets_run_invalid_usage',
+    kind: 'validation',
+    message,
+  })
 }
 
 function asLocalSecretResolutionError(error: unknown): LocalSecretResolutionHttpError | null {
@@ -282,16 +280,6 @@ function asLocalSecretResolutionError(error: unknown): LocalSecretResolutionHttp
   return new LocalSecretResolutionHttpError(parsed.data, error.status)
 }
 
-function formatSecretsRunError(
-  body: { code: string; message: string },
-  asJson: boolean,
-): Error {
-  if (asJson) {
-    return new SecretsRunFormattedError(JSON.stringify(body, null, 2))
-  }
-  return new SecretsRunFormattedError(`${body.code}: ${body.message}`)
-}
-
 export function parseSecretsRunPlan(
   flags: RawFlags,
   commandArgv: readonly string[],
@@ -304,7 +292,7 @@ export function parseSecretsRunPlan(
   const stdinRaw = optionValue(flags, 'stdin-secret')
   if (stdinRaw !== undefined) {
     if (Array.isArray(flags['stdin-secret'])) {
-      throw new Error('secrets run accepts at most one --stdin-secret')
+      throw new CliUsageError('secrets run accepts at most one --stdin-secret')
     }
     const referenceUri = readRequiredSecretUri(stdinRaw, '--stdin-secret')
     injections.push({
@@ -319,7 +307,7 @@ export function parseSecretsRunPlan(
     const portableName = requirePortableEnvironmentName(parsed.name)
     const duplicateKey = portableName.toLowerCase()
     if (envNames.has(duplicateKey)) {
-      throw new Error(`secrets run duplicate environment name: ${parsed.name}`)
+      throw new CliUsageError(`secrets run duplicate environment name: ${parsed.name}`)
     }
     envNames.add(duplicateKey)
     injections.push({
@@ -333,7 +321,7 @@ export function parseSecretsRunPlan(
   for (const assignment of readStringList(flags.fd)) {
     const parsed = parseFdAssignment(assignment)
     if (fdNumbers.has(parsed.fd)) {
-      throw new Error(`secrets run duplicate file descriptor: ${parsed.fd}`)
+      throw new CliUsageError(`secrets run duplicate file descriptor: ${parsed.fd}`)
     }
     fdNumbers.add(parsed.fd)
     injections.push({
@@ -345,7 +333,7 @@ export function parseSecretsRunPlan(
   }
 
   if (injections.length === 0) {
-    throw new Error(
+    throw new CliUsageError(
       'secrets run requires at least one injection destination (--env, --fd, or --stdin-secret)',
     )
   }
@@ -353,12 +341,12 @@ export function parseSecretsRunPlan(
   requireExactEscapeSuffix(commandArgv, options.argvEscapeSuffix)
 
   if (commandArgv.length === 0) {
-    throw new Error('secrets run requires an executable after --')
+    throw new CliUsageError('secrets run requires an executable after --')
   }
 
   const [executable, ...argv] = commandArgv
   if (executable === undefined || executable.length === 0) {
-    throw new Error('secrets run requires a nonempty executable after --')
+    throw new CliUsageError('secrets run requires a nonempty executable after --')
   }
 
   const uniqueReferenceUris = [...new Set(injections.map((item) => item.referenceUri))]
@@ -376,14 +364,14 @@ function requireExactEscapeSuffix(
   argvEscapeSuffix: readonly string[] | null | undefined,
 ): void {
   if (argvEscapeSuffix == null) {
-    throw new Error('secrets run requires an executable after --')
+    throw new CliUsageError('secrets run requires an executable after --')
   }
 
   if (
     commandArgv.length !== argvEscapeSuffix.length ||
     commandArgv.some((token, index) => token !== argvEscapeSuffix[index])
   ) {
-    throw new Error(
+    throw new CliUsageError(
       'secrets run requires the child executable and argv immediately after -- with no positional tokens before the escape marker',
     )
   }
@@ -402,13 +390,13 @@ function readStringList(value: unknown): string[] {
 function parseNamedAssignment(assignment: string, flagName: string) {
   const separator = assignment.indexOf('=')
   if (separator <= 0) {
-    throw new Error(`${flagName} requires NAME=secret://key assignment`)
+    throw new CliUsageError(`${flagName} requires NAME=secret://key assignment`)
   }
 
   const name = assignment.slice(0, separator)
   const referenceUri = assignment.slice(separator + 1)
   if (!name || !referenceUri) {
-    throw new Error(`${flagName} requires NAME=secret://key assignment`)
+    throw new CliUsageError(`${flagName} requires NAME=secret://key assignment`)
   }
 
   return {
@@ -421,7 +409,7 @@ const PORTABLE_ENVIRONMENT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 function requirePortableEnvironmentName(name: string): string {
   if (!PORTABLE_ENVIRONMENT_NAME.test(name)) {
-    throw new Error(
+    throw new CliUsageError(
       'secrets run environment names must be portable ([A-Za-z_][A-Za-z0-9_]*)',
     )
   }
@@ -434,7 +422,7 @@ const SECRETS_RUN_MAX_DEDICATED_FD = 255
 function parseFdAssignment(assignment: string) {
   const separator = assignment.indexOf('=')
   if (separator <= 0) {
-    throw new Error(
+    throw new CliUsageError(
       `--fd requires N=secret://key assignment where N is an integer ${SECRETS_RUN_MIN_DEDICATED_FD}..${SECRETS_RUN_MAX_DEDICATED_FD}`,
     )
   }
@@ -442,18 +430,18 @@ function parseFdAssignment(assignment: string) {
   const fdRaw = assignment.slice(0, separator)
   const referenceUri = assignment.slice(separator + 1)
   if (!/^[0-9]+$/.test(fdRaw)) {
-    throw new Error(
+    throw new CliUsageError(
       `--fd requires N=secret://key assignment where N is an integer ${SECRETS_RUN_MIN_DEDICATED_FD}..${SECRETS_RUN_MAX_DEDICATED_FD}`,
     )
   }
 
-  const fd = Number(fdRaw)
+  const fd = parseStrictNonNegativeIntegerOption(fdRaw, '--fd')
   if (
     !Number.isInteger(fd) ||
     fd < SECRETS_RUN_MIN_DEDICATED_FD ||
     fd > SECRETS_RUN_MAX_DEDICATED_FD
   ) {
-    throw new Error(
+    throw new CliUsageError(
       `secrets run file descriptors must be integers ${SECRETS_RUN_MIN_DEDICATED_FD}..${SECRETS_RUN_MAX_DEDICATED_FD}`,
     )
   }
@@ -469,7 +457,7 @@ function readRequiredSecretUri(value: string, label: string): string {
     parseSecretReferenceUri(value)
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
-    throw new Error(`malformed secret reference for ${label}: ${detail}`)
+    throw new CliUsageError(`malformed secret reference for ${label}: ${detail}`)
   }
   return value
 }

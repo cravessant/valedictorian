@@ -9,6 +9,8 @@ import {
   type ProfileUpdateInput,
 } from 'sparxie'
 
+import { CliUsageError } from './valedictorian-cli.failures.js'
+
 import {
   booleanFlags,
   makeCommand,
@@ -78,7 +80,7 @@ export function buildProfileRoute() {
         },
         run: async (context, flags) => {
           if (flags.confirm !== true) {
-            throw new Error('profile restore requires --confirm')
+            throw new CliUsageError('profile restore requires --confirm')
           }
 
           const client = await workspaceClient(context, flags)
@@ -140,7 +142,7 @@ function parseRestoreExpectedRevision(flags: RawFlags): string | null {
 }
 
 async function withProfileDocumentErrors(
-  context: ValedictorianCliContext,
+  _context: ValedictorianCliContext,
   operation: () => Promise<void>,
 ) {
   try {
@@ -148,7 +150,7 @@ async function withProfileDocumentErrors(
   } catch (error) {
     const documentError = asProfileDocumentCliError(error)
     if (documentError) {
-      throw new Error(formatProfileDocumentError(documentError, context.outputJson === true))
+      throw documentError
     }
     throw error
   }
@@ -173,78 +175,6 @@ function asProfileDocumentCliError(error: unknown): ProfileDocumentHttpError | n
   }
 
   return new ProfileDocumentHttpError(parsed.data, error.status)
-}
-
-export function formatProfileDocumentError(
-  error: ProfileDocumentHttpError,
-  asJson: boolean,
-): string {
-  const payload = profileDocumentErrorPayload(error)
-
-  if (asJson) {
-    return JSON.stringify(payload, null, 2)
-  }
-
-  if (payload.code === 'invalid_profile_document') {
-    const parts = [`${payload.code}: ${payload.message}`, `path=${formatErrorPath(payload.path)}`]
-    if (payload.line !== undefined) {
-      parts.push(`line=${payload.line}`)
-    }
-    if (payload.column !== undefined) {
-      parts.push(`column=${payload.column}`)
-    }
-    return parts.join(' ')
-  }
-
-  return `${payload.code}: ${payload.message}`
-}
-
-type ProfileDocumentCliErrorPayload =
-  | {
-      code: 'invalid_profile_document'
-      message: string
-      path: ReadonlyArray<string | number>
-      line?: number
-      column?: number
-    }
-  | {
-      code:
-        | 'unsupported_profile_schema_version'
-        | 'profile_revision_conflict'
-        | 'profile_document_unavailable'
-        | 'profile_backup_unavailable'
-      message: string
-    }
-
-function profileDocumentErrorPayload(
-  error: ProfileDocumentHttpError,
-): ProfileDocumentCliErrorPayload {
-  const body = error.body
-  if (body.code === 'invalid_profile_document') {
-    return {
-      code: body.code,
-      message: body.message,
-      path: body.path,
-      ...(body.line !== undefined ? { line: body.line } : {}),
-      ...(body.column !== undefined ? { column: body.column } : {}),
-    }
-  }
-
-  return {
-    code: body.code,
-    message: body.message,
-  }
-}
-
-function formatErrorPath(path: ReadonlyArray<string | number>) {
-  return path
-    .map((segment) => {
-      if (typeof segment === 'number') {
-        return `[${segment}]`
-      }
-      return `[${JSON.stringify(segment)}]`
-    })
-    .join('')
 }
 
 function writeProfileDocument(context: ValedictorianCliContext, document: ProfileDocument) {

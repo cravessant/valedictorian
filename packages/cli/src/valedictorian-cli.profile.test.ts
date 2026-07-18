@@ -9,7 +9,7 @@ import {
   profileDocumentSchemaVersion,
 } from 'sparxie'
 
-import { jsonResponse, runCli } from './valedictorian-cli.test-helpers'
+import { jsonResponse, parseCliError, runCli } from './valedictorian-cli.test-helpers'
 
 function profileDocument(overrides: {
   revision?: string
@@ -194,7 +194,7 @@ describe('profile document commands', () => {
       '--json',
     ])
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.stderr).toMatch(/expected-revision/i)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -248,14 +248,16 @@ describe('profile document commands', () => {
 
     const result = await runCli(['profile', 'agent-context', '--workspace', 'workspace-1', '--json'])
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(JSON.parse(result.stderr)).toEqual({
-      code: 'invalid_profile_document',
-      message: profileDocumentErrorBodies.invalid_profile_document.message,
-      path: ['profile', 'dateOfBirth'],
-      line: 12,
-      column: 5,
+      error: {
+        code: 'validation_error',
+        kind: 'validation',
+        status: 422,
+      },
     })
+    expect(result.stderr).not.toContain('"path"')
+    expect(result.stderr).not.toContain('dateOfBirth')
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/profile/agent-context')
     expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/profile'))).toBe(false)
@@ -271,10 +273,13 @@ describe('profile document commands', () => {
 
     const result = await runCli(['profile', 'agent-context', '--workspace', 'workspace-1', '--json'])
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(4)
     expect(JSON.parse(result.stderr)).toEqual({
-      code: 'profile_document_unavailable',
-      message: profileDocumentErrorBodies.profile_document_unavailable.message,
+      error: {
+        code: 'not_found',
+        kind: 'not_found',
+        status: 404,
+      },
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/profile/agent-context')
@@ -306,7 +311,9 @@ describe('profile document commands', () => {
       '--json',
     ])
     expect(wrongStatus.exitCode).toBe(1)
-    expect(() => JSON.parse(wrongStatus.stderr)).toThrow()
+    expect(JSON.parse(wrongStatus.stderr)).toEqual({
+      error: { code: 'internal_error', kind: 'internal', status: 500 },
+    })
     expect(wrongStatus.stderr).not.toContain('"path"')
     expect(wrongStatus.stderr).not.toContain('profile.email')
     expect(wrongStatus.stderr).not.toContain('"line": 3')
@@ -331,12 +338,15 @@ describe('profile document commands', () => {
       'workspace-1',
       '--json',
     ])
-    expect(malformed.exitCode).toBe(1)
-    expect(() => JSON.parse(malformed.stderr)).toThrow()
+    expect(malformed.exitCode).toBe(2)
+    expect(JSON.parse(malformed.stderr)).toEqual({
+      error: { code: 'validation_error', kind: 'validation', status: 422 },
+    })
     expect(malformed.stderr).not.toContain('"code": "invalid_profile_document"')
     expect(malformed.stderr).not.toContain('"path"')
     expect(malformed.stderr).not.toContain('"line": 9')
     expect(malformed.stderr).not.toContain('"column": 1')
+    expect(malformed.stderr).not.toContain('hostile non-canonical')
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(
@@ -411,7 +421,7 @@ describe('profile document commands', () => {
       'null',
       '--json',
     ])
-    expect(withoutConfirm.exitCode).toBe(1)
+    expect(withoutConfirm.exitCode).toBe(2)
     expect(withoutConfirm.stderr).toContain('--confirm')
     expect(fetchMock).not.toHaveBeenCalled()
 
@@ -477,7 +487,7 @@ describe('profile document commands', () => {
 
     const result = await runCli(['profile', 'get', '--workspace', 'workspace-1'])
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(result.stderr).toContain('invalid_profile_document')
     expect(result.stderr).toContain(
       `path=["profile"][0][${JSON.stringify(hostileSegment)}]`,
@@ -487,10 +497,9 @@ describe('profile document commands', () => {
     expect(result.stderr.includes(String.fromCharCode(0x1b))).toBe(false)
     expect(result.stderr.includes('\r')).toBe(false)
     expect(result.stderr.includes('\t')).toBe(false)
-    const diagnosticLines = result.stderr.trimEnd().split('\n')
-    expect(diagnosticLines).toHaveLength(1)
-    expect(diagnosticLines[0]).toContain('line=4')
-    expect(diagnosticLines[0]).toContain('column=2')
+    expect(result.stderr).toContain('line=4')
+    expect(result.stderr).toContain('column=2')
+    expect(result.stderr).toMatch(/recovery:/i)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -506,11 +515,12 @@ describe('profile document commands', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const human = await runCli(['profile', 'get', '--workspace', 'workspace-1'])
-    expect(human.exitCode).toBe(1)
+    expect(human.exitCode).toBe(2)
     expect(human.stderr).toContain('invalid_profile_document')
     expect(human.stderr).toContain('path=["profile"]["dateOfBirth"]')
     expect(human.stderr).toContain('line=12')
     expect(human.stderr).toContain('column=5')
+    expect(human.stderr).toMatch(/recovery:/i)
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     fetchMock.mockResolvedValueOnce(
@@ -521,14 +531,17 @@ describe('profile document commands', () => {
       }),
     )
     const json = await runCli(['profile', 'get', '--workspace', 'workspace-1', '--json'])
-    expect(json.exitCode).toBe(1)
-    const payload = JSON.parse(json.stderr)
-    expect(payload).toEqual({
-      code: 'invalid_profile_document',
-      message: profileDocumentErrorBodies.invalid_profile_document.message,
-      path: ['profile', 'email'],
-      line: 3,
-      column: 8,
+    expect(json.exitCode).toBe(2)
+    expect(JSON.parse(json.stderr)).toEqual({
+      error: {
+        code: 'invalid_profile_document',
+        kind: 'validation',
+        status: 422,
+        message: profileDocumentErrorBodies.invalid_profile_document.message,
+        path: ['profile', 'email'],
+        line: 3,
+        column: 8,
+      },
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
@@ -561,10 +574,27 @@ describe('profile document commands', () => {
           : (['profile', 'get', '--workspace', 'workspace-1', '--json'] as string[])
 
       const result = await runCli(command)
-      expect(result.exitCode).toBe(1)
+      const kindByCode = {
+        unsupported_profile_schema_version: 'conflict',
+        profile_revision_conflict: 'conflict',
+        profile_document_unavailable: 'not_found',
+        profile_backup_unavailable: 'not_found',
+      } as const
+      const statusByCode = {
+        unsupported_profile_schema_version: 409,
+        profile_revision_conflict: 409,
+        profile_document_unavailable: 404,
+        profile_backup_unavailable: 404,
+      } as const
+      const exitByKind = { conflict: 4, not_found: 4 } as const
+      expect(result.exitCode).toBe(exitByKind[kindByCode[code]])
       expect(JSON.parse(result.stderr)).toEqual({
-        code,
-        message: profileDocumentErrorBodies[code].message,
+        error: {
+          code,
+          kind: kindByCode[code],
+          status: statusByCode[code],
+          message: profileDocumentErrorBodies[code].message,
+        },
       })
       expect(fetchMock).toHaveBeenCalledTimes(1)
       expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/profile'))).toBe(false)
@@ -592,10 +622,14 @@ describe('profile document commands', () => {
       '--json',
     ])
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(4)
     expect(JSON.parse(result.stderr)).toEqual({
-      code: 'profile_revision_conflict',
-      message: profileDocumentErrorBodies.profile_revision_conflict.message,
+      error: {
+        code: 'profile_revision_conflict',
+        kind: 'conflict',
+        status: 409,
+        message: profileDocumentErrorBodies.profile_revision_conflict.message,
+      },
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -611,8 +645,8 @@ describe('profile document commands', () => {
       vi.stubGlobal('fetch', fetchMock)
 
       const result = await runCli(['profile', 'get', '--workspace', 'workspace-1', '--json'])
-      expect(result.exitCode).toBe(1)
-      expect(JSON.parse(result.stderr).code).toBe(code)
+      expect([2, 4]).toContain(result.exitCode)
+      expect(parseCliError(result.stderr).code).toBe(code)
       expect(fetchMock).toHaveBeenCalledTimes(1)
       expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/profile/document')
       expect(String(fetchMock.mock.calls[0]?.[0])).not.toMatch(/\/profile$/)
@@ -629,7 +663,7 @@ describe('profile document commands', () => {
     expect(help.stdout).not.toContain('secrets')
 
     const obsolete = await runCli(['profile', 'sensitive', 'summary', '--workspace', 'workspace-1'])
-    expect(obsolete.exitCode).toBe(1)
+    expect(obsolete.exitCode).toBe(2)
     expect(obsolete.stderr.toLowerCase()).toMatch(/sensitive|no command|unknown|not found|unrecognized/)
   })
 })

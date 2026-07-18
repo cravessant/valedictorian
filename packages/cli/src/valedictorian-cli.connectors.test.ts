@@ -337,7 +337,7 @@ describe('continuous connector synchronization', () => {
     expect(help.stdout).not.toMatch(
       /coverage-(started|ended)-at|useful.?target|requested.?job|max.?links|remaining.?target/i,
     )
-    expect(obsolete.exitCode).toBe(1)
+    expect(obsolete.exitCode).toBe(2)
     expect(obsolete.stderr).toContain('No flag registered for --coverage-started-at')
   })
 })

@@ -67,7 +67,7 @@ describe('raw sourcing intake', () => {
         observedAt: '2026-07-12T12:00:00.000Z', payload: { url: 'https://example.com/1' },
       }]), '--json',
     ])
-    expect(invalid.exitCode).toBe(1)
+    expect(invalid.exitCode).toBe(2)
     expect(fetchMock).not.toHaveBeenCalled()
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ receipts: [receipt] }))
@@ -160,11 +160,45 @@ describe('raw sourcing intake', () => {
     ])
   })
 
+  it('preserves ValedictorianProtocolError from ingest as protocol exit 6', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(
+      new Response('{not-json', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli([
+      'sourcing',
+      'ingest',
+      '--workspace',
+      'workspace-1',
+      '--url',
+      'https://example.com/1',
+      '--observed-at',
+      '2026-07-12T12:00:00.000Z',
+      '--json',
+    ])
+
+    expect(result.exitCode).toBe(6)
+    expect(result.stdout).toBe('')
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: {
+        code: 'protocol_error',
+        kind: 'integrity',
+      },
+    })
+    expect(result.stderr).not.toContain('raw_sourcing_correlation_failed')
+    expect(result.stderr).not.toContain('{not-json')
+  })
+
   it.each([
     ['missing', [receipt]],
     ['duplicate', [receipt, receipt]],
     ['unexpected', [{ ...receipt, intakeItemId: 'private-correlation-canary' }, receipt]],
-  ])('fails safely on %s receipt correlations', async (_kind, receipts) => {
+  ])('maps Sparxie-bound %s receipt mismatches to protocol exit 6', async (_kind, receipts) => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValueOnce(jsonResponse({ receipts }))
     vi.stubGlobal('fetch', fetchMock)
@@ -178,10 +212,16 @@ describe('raw sourcing intake', () => {
       '--batch-json', JSON.stringify(batch), '--json',
     ])
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(6)
     expect(result.stdout).toBe('')
-    expect(result.stderr).toContain('Raw sourcing receipt correlation failed')
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: {
+        code: 'protocol_error',
+        kind: 'integrity',
+      },
+    })
     expect(result.stderr).not.toContain('private-correlation-canary')
+    expect(result.stderr).not.toContain('raw_sourcing_correlation_failed')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -352,15 +392,15 @@ describe('raw sourcing intake', () => {
       { observedAt: '2026-07-12T12:00:00.000Z', payload: { url: 'https://example.com/1' } },
       { observedAt: 'not-a-time', payload: { url: 'https://example.com/2' } },
     ]), '--json'])
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('validates origin and URL before workspace discovery', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    expect((await runCli(['sourcing', 'ingest', '--workspace', 'Example Workspace', '--url', 'javascript:bad'])).exitCode).toBe(1)
-    expect((await runCli(['sourcing', 'ingest', '--workspace', 'Example Workspace', '--url', 'https://example.com', '--origin-kind', 'provider'])).exitCode).toBe(1)
+    expect((await runCli(['sourcing', 'ingest', '--workspace', 'Example Workspace', '--url', 'javascript:bad'])).exitCode).toBe(2)
+    expect((await runCli(['sourcing', 'ingest', '--workspace', 'Example Workspace', '--url', 'https://example.com', '--origin-kind', 'provider'])).exitCode).toBe(2)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

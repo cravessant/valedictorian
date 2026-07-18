@@ -2,8 +2,10 @@ import {
   upsertConnectorScheduleInputSchema,
   type UpsertConnectorScheduleInput,
 } from 'sparxie'
+
 import {
   assertKnownOptions,
+  parseStrictJsonValue,
   readRequiredOption,
 } from './valedictorian-cli.parser-options.js'
 
@@ -24,7 +26,7 @@ export function parseConnectorScheduleUpsert(
     connectorInstanceId,
     expectedRevision: expectedRevision === 'null' ? null : expectedRevision,
     state: readRequiredOption(argv, '--state'),
-    cadence: JSON.parse(readRequiredOption(argv, '--cadence-json')) as unknown,
+    cadence: parseStrictJsonValue(readRequiredOption(argv, '--cadence-json'), '--cadence-json'),
     timezone: readRequiredOption(argv, '--timezone'),
   })
 }

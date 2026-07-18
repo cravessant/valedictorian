@@ -2,13 +2,16 @@ import {
   batchRawSourceRecordsInputSchema,
   isReportedOriginKind,
   ValedictorianHttpError,
+  ValedictorianProtocolError,
   type BatchRawSourceRecordsResult,
   type JsonObject,
   type RawSourceRecordInput,
   type ReportedSourceOrigin,
   type ValedictorianWorkspaceClient,
 } from 'sparxie'
-import { assertKnownOptions, readOption, readRequiredOption } from './valedictorian-cli.parser-options.js'
+
+import { CliOwnedFailure, CliUsageError } from './valedictorian-cli.failures.js'
+import { assertKnownOptions, parseStrictJsonArray, parseStrictJsonObject, readOption, readRequiredOption } from './valedictorian-cli.parser-options.js'
 
 const allowedOptions = [
   '--batch-json', '--json', '--observed-at', '--origin-kind', '--origin-name',
@@ -25,19 +28,15 @@ export function parseRawSourcingIntake(argv: string[], adapterVersion: string): 
 
   if (batchJson !== undefined) {
     if (argv.some((token) => token !== '--json' && token !== '--batch-json' && token !== batchJson)) {
-      throw new Error('--batch-json cannot be combined with single-record options')
+      throw new CliUsageError('--batch-json cannot be combined with single-record options')
     }
 
-    const parsed = JSON.parse(batchJson) as unknown
-
-    if (!Array.isArray(parsed)) {
-      throw new Error('--batch-json must be a JSON array')
-    }
+    const parsed = parseStrictJsonArray(batchJson, '--batch-json')
 
     for (const [index, item] of parsed.entries()) {
-      if (!isRecord(item)) throw new Error(`Batch record ${index} must be a JSON object`)
+      if (!isRecord(item)) throw new CliUsageError(`Batch record ${index} must be a JSON object`)
       if ('adapter' in item || 'capture' in item || 'intakeItemId' in item) {
-        throw new Error(`Batch record ${index} cannot supply adapter, capture, or intake identity`)
+        throw new CliUsageError(`Batch record ${index} cannot supply adapter, capture, or intake identity`)
       }
     }
 
@@ -107,12 +106,7 @@ async function ingestCorrelatedBatch(
   client: ValedictorianWorkspaceClient,
   records: RawSourceRecordInput[],
 ) {
-  try {
-    return await client.sourcing.rawRecords.ingestBatch({ records })
-  } catch (error) {
-    if (error instanceof Error && error.name === 'ZodError') throw correlationError()
-    throw error
-  }
+  return await client.sourcing.rawRecords.ingestBatch({ records })
 }
 
 function correlateReceipts(
@@ -121,23 +115,27 @@ function correlateReceipts(
 ) {
   const submittedById = new Map<string, RawSourceRecordInput>()
   for (const record of records) {
-    if (submittedById.has(record.intakeItemId)) throw correlationError()
+    if (submittedById.has(record.intakeItemId)) throw correlationFailure()
     submittedById.set(record.intakeItemId, record)
   }
 
   const correlated = receipts.map((receipt) => {
     const submitted = submittedById.get(receipt.intakeItemId)
-    if (!submitted) throw correlationError()
+    if (!submitted) throw correlationFailure()
     submittedById.delete(receipt.intakeItemId)
     return { receipt, submitted }
   })
 
-  if (submittedById.size > 0) throw correlationError()
+  if (submittedById.size > 0) throw correlationFailure()
   return correlated
 }
 
-function correlationError() {
-  return new Error('Raw sourcing receipt correlation failed')
+function correlationFailure(): CliOwnedFailure {
+  return new CliOwnedFailure({
+    code: 'raw_sourcing_correlation_failed',
+    kind: 'internal',
+    message: 'Raw sourcing receipt correlation failed',
+  })
 }
 
 async function inspect<T>(stage: 'normalization' | 'projection', lookup: () => Promise<T>) {
@@ -152,6 +150,9 @@ function safeInspectionError(stage: 'normalization' | 'projection', error: unkno
   if (error instanceof ValedictorianHttpError) {
     return { stage, code: 'http_error', httpStatus: error.status }
   }
+  if (error instanceof ValedictorianProtocolError) {
+    return { stage, code: 'invalid_response' }
+  }
   if (error instanceof Error && error.name === 'ZodError') {
     return { stage, code: 'invalid_response' }
   }
@@ -165,31 +166,29 @@ function parseReportedOrigin(argv: string[]): ReportedSourceOrigin | undefined {
   const url = readOption(argv, '--origin-url')
   if (kind === undefined && name === undefined && providerId === undefined && url === undefined) return
   if (kind === undefined || !isReportedOriginKind(kind)) {
-    throw new Error('Invalid or missing --origin-kind; expected employer, ats, job_board, aggregator, referral, or other')
+    throw new CliUsageError('Invalid or missing --origin-kind; expected employer, ats, job_board, aggregator, referral, or other')
   }
-  if (!name) throw new Error('--origin-name is required when reporting an origin')
+  if (!name) throw new CliUsageError('--origin-name is required when reporting an origin')
   return { kind, name, ...(providerId ? { providerId } : {}), ...(url ? { url } : {}) }
 }
 
 function validateBatch(records: RawSourceRecordInput[]) {
   const result = batchRawSourceRecordsInputSchema.safeParse({ records })
-  if (!result.success) throw new Error(`Invalid raw sourcing batch: ${result.error.message}`)
+  if (!result.success) throw new CliUsageError('Invalid raw sourcing batch')
   return records
 }
 
 function parseJsonObject(text: string, option: string): JsonObject {
-  const parsed = JSON.parse(text) as unknown
-  if (!isRecord(parsed)) throw new Error(`${option} must be a JSON object`)
-  return parsed as JsonObject
+  return parseStrictJsonObject(text, option) as JsonObject
 }
 
 function validateSourceUrl(value: string) {
   try {
     const url = new URL(value)
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error()
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new CliUsageError('--url must be an absolute HTTP or HTTPS URL')
     return value
   } catch {
-    throw new Error('--url must be an absolute HTTP or HTTPS URL')
+    throw new CliUsageError('--url must be an absolute HTTP or HTTPS URL')
   }
 }
 

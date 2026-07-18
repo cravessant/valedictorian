@@ -2,7 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { jsonResponse, runCli } from './valedictorian-cli.test-helpers'
+import {
+  actionQueueListResult,
+  applicationDetail,
+  applicationListResult,
+  jsonResponse,
+  runCli,
+} from './valedictorian-cli.test-helpers'
 
 describe('valedictorian-cli npm package', () => {
   afterEach(() => {
@@ -80,7 +86,7 @@ describe('valedictorian-cli npm package', () => {
       '25',
     ])
 
-    expect(missingWorkspace.exitCode).toBe(1)
+    expect(missingWorkspace.exitCode).toBe(2)
     expect(missingWorkspace.stderr).toContain('--workspace is required')
     expect(scoped.exitCode).toBe(0)
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -130,7 +136,7 @@ describe('valedictorian-cli npm package', () => {
       '--json',
     ])
 
-    expect(missingWorkspace.exitCode).toBe(1)
+    expect(missingWorkspace.exitCode).toBe(2)
     expect(missingWorkspace.stderr).toContain('--workspace is required')
     expect(result.exitCode).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual(payload)
@@ -346,30 +352,57 @@ describe('valedictorian-cli npm package', () => {
       'https://valedictorian.test/v1/workspaces/workspace-alpha/applications?limit=10',
       expect.objectContaining({ method: 'GET' }),
     )
-    expect(ambiguous.exitCode).toBe(1)
+    expect(ambiguous.exitCode).toBe(2)
     expect(ambiguous.stderr).toContain('Workspace name is ambiguous: Example Workspace')
     expect(ambiguous.stderr).toContain('workspace-one')
     expect(ambiguous.stderr).toContain('workspace-two')
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
+  it('maps unresolved workspace name selectors to not_found exit 4', async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [{ id: 'workspace-alpha', name: 'Example Workspace', open: true, source: 'local' }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await runCli([
+      'applications',
+      'list',
+      '--workspace',
+      'Missing Workspace',
+      '--limit',
+      '10',
+      '--json',
+    ])
+
+    expect(result.exitCode).toBe(4)
+    expect(result.stdout).toBe('')
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: {
+        code: 'workspace_not_found',
+        kind: 'not_found',
+        message: 'Workspace not found: Missing Workspace',
+      },
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('formats resource commands as human text by default and supports leading --json', async () => {
-    const payload = {
-      items: [
-        {
-          id: 'application-1',
+    const payload = applicationListResult(
+      [
+        applicationDetail({
           companyName: 'Delta Labs',
           roleTitle: 'Software Engineering Intern',
           status: 'queued',
-          priorityScore: 7,
-          priorityBand: 'high',
-        },
+          currentPriorityScore: 7,
+          currentPriorityBand: 'high',
+        }),
       ],
-      total: 1,
-      limit: 1,
-      offset: 0,
-      hasMore: false,
-    }
+      { total: 1, limit: 1, offset: 0, hasMore: false },
+    )
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValueOnce(jsonResponse(payload))
     fetchMock.mockResolvedValueOnce(jsonResponse(payload))
@@ -411,14 +444,11 @@ describe('valedictorian-cli npm package', () => {
   })
 
   it('lists action queue rows over HTTP with action bucket filtering, pagination, and token auth', async () => {
-    const payload = {
-      items: [],
-      total: 0,
+    const payload = actionQueueListResult({
       limit: 25,
       offset: 5,
       hasMore: false,
-      actionBucketCounts: { apply_now: 0 },
-    }
+    })
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValue(jsonResponse(payload))
     vi.stubGlobal('fetch', fetchMock)
@@ -470,8 +500,8 @@ describe('valedictorian-cli npm package', () => {
       id: 'score-1',
       createdAt: '2026-06-30T00:00:00.000Z',
     }
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'application-1' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'application-1', status: 'submitted' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationDetail()))
+    fetchMock.mockResolvedValueOnce(jsonResponse(applicationDetail({ status: 'submitted' })))
     fetchMock.mockResolvedValueOnce(jsonResponse(scoreRecord))
     vi.stubGlobal('fetch', fetchMock)
 

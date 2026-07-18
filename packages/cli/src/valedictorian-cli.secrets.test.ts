@@ -17,7 +17,7 @@ describe('top-level secrets administration', () => {
     expect(help.stdout).not.toContain('secrets')
 
     const obsolete = await runCli(['profile', 'secrets', 'list', '--workspace', 'workspace-1'])
-    expect(obsolete.exitCode).toBe(1)
+    expect(obsolete.exitCode).toBe(2)
     expect(obsolete.stderr.toLowerCase()).toMatch(/secrets|no command|unknown|not found|unrecognized/)
   })
 

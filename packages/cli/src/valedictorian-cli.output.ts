@@ -259,8 +259,10 @@ function summarizeItem(value: unknown): string {
   const message = primitiveString(value.message)
   const label = primitiveString(value.label)
   const url = primitiveString(value.url)
-  const priorityScore = primitiveString(value.priorityScore)
-  const priorityBand = primitiveString(value.priorityBand)
+  const priorityScore =
+    primitiveString(value.priorityScore) ?? primitiveString(value.currentPriorityScore)
+  const priorityBand =
+    primitiveString(value.priorityBand) ?? primitiveString(value.currentPriorityBand)
   const applicationId = primitiveString(value.applicationId)
   const mergedApplicationId = primitiveString(value.mergedApplicationId)
   const parts: string[] = []

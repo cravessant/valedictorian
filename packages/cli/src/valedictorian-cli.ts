@@ -34,6 +34,14 @@ import {
   writeJson,
   type ValedictorianCliContext,
 } from './valedictorian-cli.command-runtime.js'
+import {
+  argvRequestsJson,
+  CliUsageError,
+  isStricliUsageExitCode,
+  mapStricliExitCode,
+  presentCliFailure,
+} from './valedictorian-cli.failures.js'
+import { parseStrictNumberOption } from './valedictorian-cli.parser-options.js'
 import { buildProfileRoute } from './valedictorian-cli.profile-commands.js'
 import { buildSecretsRoute } from './valedictorian-cli.secrets-commands.js'
 import {
@@ -70,10 +78,16 @@ export async function runValedictorianCli({
   secretsRunSpawn,
 }: RunValedictorianCliOptions): Promise<number> {
   const normalizedArgv = normalizeArgv(argv)
+  const asJson = argvRequestsJson(normalizedArgv)
+  const stderrChunks: string[] = []
   const processLike: StricliProcess = {
     env: definedEnv(env),
     stdout: { write: stdout },
-    stderr: { write: stderr },
+    stderr: {
+      write: (value: string) => {
+        stderrChunks.push(value)
+      },
+    },
   }
   const apiBaseUrl = env.VALEDICTORIAN_API_URL ?? defaultValedictorianApiBaseUrl
   const context: ValedictorianCliContext = {
@@ -89,8 +103,18 @@ export async function runValedictorianCli({
 
   await runValedictorianApp(normalizedArgv, context)
 
-  const exitCode = Number(processLike.exitCode ?? 0)
-  return exitCode < 0 ? 1 : exitCode
+  const rawExitCode = Number(processLike.exitCode ?? 0)
+  if (isStricliUsageExitCode(rawExitCode)) {
+    const message = stderrChunks.join('').replace(/\n$/, '') || 'Invalid command usage.'
+    const presented = presentCliFailure(new CliUsageError(message), { asJson })
+    stderr(presented.text)
+    return presented.exitCode
+  }
+
+  for (const chunk of stderrChunks) {
+    stderr(chunk)
+  }
+  return mapStricliExitCode(rawExitCode)
 }
 
 function createClient(env: Record<string, string | undefined>): ValedictorianClient {
@@ -223,13 +247,23 @@ const application = buildApplication(
 
               const score = await client.scores.record({
                 applicationId,
-                score: Number(requiredOption(flags, 'score', '--score value')),
+                score: parseStrictNumberOption(requiredOption(flags, 'score', '--score value'), '--score'),
                 band: requiredOption(flags, 'band', '--band value'),
-                roleRelevance: Number(requiredOption(flags, 'role-relevance', '--role-relevance value')),
-                careerSignal: Number(requiredOption(flags, 'career-signal', '--career-signal value')),
-                cityWorkMode: Number(requiredOption(flags, 'city-work-mode', '--city-work-mode value')),
-                compensationLogistics: Number(
+                roleRelevance: parseStrictNumberOption(
+                  requiredOption(flags, 'role-relevance', '--role-relevance value'),
+                  '--role-relevance',
+                ),
+                careerSignal: parseStrictNumberOption(
+                  requiredOption(flags, 'career-signal', '--career-signal value'),
+                  '--career-signal',
+                ),
+                cityWorkMode: parseStrictNumberOption(
+                  requiredOption(flags, 'city-work-mode', '--city-work-mode value'),
+                  '--city-work-mode',
+                ),
+                compensationLogistics: parseStrictNumberOption(
                   requiredOption(flags, 'compensation-logistics', '--compensation-logistics value'),
+                  '--compensation-logistics',
                 ),
                 penalties: [],
                 rationale: requiredOption(flags, 'rationale', '--rationale value'),
@@ -621,7 +655,7 @@ function buildAttemptCompleteExample(outcome: string | undefined) {
   const normalizedOutcome = outcome ?? 'submitted'
 
   if (!isApplicationStatus(normalizedOutcome)) {
-    throw new Error(
+    throw new CliUsageError(
       `Invalid attempt outcome: ${normalizedOutcome}. Valid outcomes: ${applicationStatuses.join(', ')}`,
     )
   }

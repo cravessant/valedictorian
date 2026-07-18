@@ -15,8 +15,8 @@ importers:
         specifier: 9.0.2
         version: 9.0.2(typescript@7.0.2)
       sparxie:
-        specifier: 0.23.0
-        version: 0.23.0
+        specifier: 0.26.0
+        version: 0.26.0
     devDependencies:
       '@types/node':
         specifier: ^26.1.1
@@ -814,8 +814,8 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
-  sparxie@0.23.0:
-    resolution: {integrity: sha512-cvPHiBrnEmMEyWX8bo4qF15jP1vPuvh4X33F9oZy9AC57wsc9TuQazqnyB+DLtSGOWK5unZvxhjTjvJc4iClug==}
+  sparxie@0.26.0:
+    resolution: {integrity: sha512-uwxsg03yofYDTg3ot6q1agA/fKRG+7FMT+eI6n1ZGVy0Frut7pN25tKmZMAro0HKjhIHgFLiwhMChpk7OQmM5A==}
     engines: {node: '>=22.12.0'}
 
   stackback@0.0.2:
@@ -1468,7 +1468,7 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  sparxie@0.23.0:
+  sparxie@0.26.0:
     dependencies:
       zod: 4.4.3
 

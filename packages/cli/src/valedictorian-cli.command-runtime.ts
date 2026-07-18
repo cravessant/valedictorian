@@ -7,16 +7,31 @@ import {
   type StricliProcess,
 } from '@stricli/core'
 import {
+  parseValedictorianContractValue,
   profileSecretKinds,
+  workspaceListItemSchema,
+  workspaceListResultSchema,
   type ProfileSecretKind,
   type ValedictorianClient,
   type ValedictorianWorkspaceClient,
 } from 'sparxie'
 
+import {
+  CliOwnedFailure,
+  CliUsageError,
+  presentCliFailure,
+} from './valedictorian-cli.failures.js'
 import { formatHumanOutput } from './valedictorian-cli.output.js'
+import {
+  parseStrictIntegerOption,
+  parseStrictJsonObject,
+} from './valedictorian-cli.parser-options.js'
 import { readRequiredText } from './valedictorian-cli.parsers.js'
+import { requestValedictorianJson } from './valedictorian-cli.request.js'
 import type { SecretsRunSpawnAdapter } from './valedictorian-cli.secrets-run-spawn.js'
 import { isLocalApiUrl, readLocalWorkspaceList } from './valedictorian-cli.workspaces.js'
+
+export { mapStricliExitCode } from './valedictorian-cli.failures.js'
 
 export interface ValedictorianCliContext extends CommandContext {
   readonly apiBaseUrl: string
@@ -103,7 +118,12 @@ export function makeCommand({
       try {
         await run(this, flags, ...args)
       } catch (error) {
-        return toError(error)
+        const presented = presentCliFailure(error, {
+          asJson: this.outputJson === true,
+          operation: docs.brief,
+        })
+        this.process.stderr.write(presented.text)
+        this.process.exitCode = presented.exitCode
       }
     } satisfies CommandFunction<RawFlags, string[], ValedictorianCliContext>,
   } as unknown as CommandBuilderArguments<RawFlags, string[], ValedictorianCliContext>)
@@ -219,7 +239,7 @@ async function resolveWorkspaceId(context: ValedictorianCliContext, selector: st
   }
 
   if (exactNameMatches.length > 1) {
-    throw new Error(formatAmbiguousWorkspaceError(selector, exactNameMatches))
+    throw new CliUsageError(formatAmbiguousWorkspaceError(selector, exactNameMatches))
   }
 
   const lowerSelector = selector.toLocaleLowerCase()
@@ -232,10 +252,14 @@ async function resolveWorkspaceId(context: ValedictorianCliContext, selector: st
   }
 
   if (caseInsensitiveMatches.length > 1) {
-    throw new Error(formatAmbiguousWorkspaceError(selector, caseInsensitiveMatches))
+    throw new CliUsageError(formatAmbiguousWorkspaceError(selector, caseInsensitiveMatches))
   }
 
-  throw new Error(`Workspace not found: ${selector}`)
+  throw new CliOwnedFailure({
+    code: 'workspace_not_found',
+    kind: 'not_found',
+    message: `Workspace not found: ${selector}`,
+  })
 }
 
 function looksLikeWorkspaceId(selector: string) {
@@ -258,18 +282,11 @@ function formatAmbiguousWorkspaceError(
 }
 
 export async function listWorkspaces(context: ValedictorianCliContext) {
-  const clientWithWorkspaces = context.client as ValedictorianClient & {
-    workspaces?: {
-      list(): Promise<unknown>
-    }
-  }
-
   try {
-    if (clientWithWorkspaces.workspaces) {
-      return await clientWithWorkspaces.workspaces.list()
-    }
-
-    return await requestJson(context, '/v1/workspaces')
+    return parseValedictorianContractValue(
+      workspaceListResultSchema,
+      await requestJson(context, '/v1/workspaces'),
+    )
   } catch (error) {
     const localWorkspaces = isLocalApiUrl(context.apiBaseUrl)
       ? readLocalWorkspaceList(context.env)
@@ -284,39 +301,24 @@ export async function listWorkspaces(context: ValedictorianCliContext) {
 }
 
 export async function openWorkspace(context: ValedictorianCliContext, path: string, rekey: boolean) {
-  const clientWithWorkspaces = context.client as ValedictorianClient & {
-    workspaces?: {
-      open(input: { path: string; rekey?: boolean }): Promise<unknown>
-    }
-  }
   const input = rekey ? { path, rekey } : { path }
-
-  if (clientWithWorkspaces.workspaces) {
-    return clientWithWorkspaces.workspaces.open(input)
-  }
-
-  return requestJson(context, '/v1/workspaces/open', {
-    body: input,
-    method: 'POST',
-  })
+  return parseValedictorianContractValue(
+    workspaceListItemSchema,
+    await requestJson(context, '/v1/workspaces/open', {
+      body: input,
+      method: 'POST',
+    }),
+  )
 }
 
 export async function createWorkspace(context: ValedictorianCliContext, path: string) {
-  const clientWithWorkspaces = context.client as ValedictorianClient & {
-    workspaces?: {
-      create(input: { path: string }): Promise<unknown>
-    }
-  }
-  const input = { path }
-
-  if (clientWithWorkspaces.workspaces) {
-    return clientWithWorkspaces.workspaces.create(input)
-  }
-
-  return requestJson(context, '/v1/workspaces/create', {
-    body: input,
-    method: 'POST',
-  })
+  return parseValedictorianContractValue(
+    workspaceListItemSchema,
+    await requestJson(context, '/v1/workspaces/create', {
+      body: { path },
+      method: 'POST',
+    }),
+  )
 }
 
 async function requestJson(
@@ -324,43 +326,15 @@ async function requestJson(
   path: string,
   options: { body?: unknown; method?: 'GET' | 'POST' } = {},
 ) {
-  const url = new URL(path, context.apiBaseUrl)
-  const headers: Record<string, string> = {
-    accept: 'application/json',
-  }
-
-  if (context.apiToken) {
-    headers.authorization = `Bearer ${context.apiToken}`
-  }
-
-  const init: RequestInit = {
-    headers,
-    method: options.method ?? 'GET',
-  }
-
-  if (options.body !== undefined) {
-    headers['content-type'] = 'application/json'
-    init.body = JSON.stringify(options.body)
-  }
-
-  const response = await fetch(url.toString(), init)
-  const body = await response.json().catch(() => undefined)
-
-  if (!response.ok) {
-    throw new Error(readResponseMessage(body, response.statusText))
-  }
-
-  return body
+  return requestValedictorianJson({
+    apiBaseUrl: context.apiBaseUrl,
+    apiToken: context.apiToken,
+    path,
+    body: options.body,
+    method: options.method,
+    errorSurface: 'workspace',
+  })
 }
-
-function readResponseMessage(body: unknown, fallback: string) {
-  if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
-    return body.message
-  }
-
-  return fallback || 'Valedictorian request failed'
-}
-
 
 export function optionValue(flags: RawFlags, name: string) {
   const value = flags[name]
@@ -376,17 +350,18 @@ export function parseProfileSecretKind(value: string): ProfileSecretKind {
     return value as ProfileSecretKind
   }
 
-  throw new Error(`Invalid profile secret kind: ${value}`)
+  throw new CliUsageError(`Invalid profile secret kind: ${value}`)
 }
 
 export function readJsonObjectFile<T extends object>(path: string, label: string): T {
-  const parsed = JSON.parse(fs.readFileSync(path, 'utf8')) as unknown
-
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${label} must be a JSON object`)
+  let text: string
+  try {
+    text = fs.readFileSync(path, 'utf8')
+  } catch {
+    throw new CliUsageError(`${label} could not be read`)
   }
 
-  return parsed as T
+  return parseStrictJsonObject(text, label) as T
 }
 
 export function writeJson(context: ValedictorianCliContext, value: unknown, pretty = true) {
@@ -527,17 +502,13 @@ export function parseTimeoutMs(value: string | undefined) {
     return 3000
   }
 
-  const timeoutMs = Number(value)
+  const timeoutMs = parseStrictIntegerOption(value, '--timeout-ms')
 
-  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-    throw new Error(`Invalid --timeout-ms value: ${value}`)
+  if (timeoutMs <= 0) {
+    throw new CliUsageError(`Invalid --timeout-ms value: ${value}`)
   }
 
   return timeoutMs
-}
-
-function toError(error: unknown) {
-  return error instanceof Error ? error : new Error(String(error))
 }
 
 function readableOptionName(name: string) {

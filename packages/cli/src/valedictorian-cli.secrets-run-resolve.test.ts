@@ -96,7 +96,7 @@ describe('secrets run capability and resolution', () => {
       { secretsRunSpawn: adapter },
     )
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(4)
     expect(result.stderr).toMatch(/local_secret_resolution_unsupported|unsupported/i)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/v1/capabilities')
@@ -266,15 +266,28 @@ describe('secrets run capability and resolution', () => {
         { secretsRunSpawn: adapter },
       )
 
-      expect(result.exitCode, code).toBe(1)
-      expect(JSON.parse(result.stderr), code).toEqual(localSecretResolutionErrorBodies[code])
+      const kindByCode = {
+        secret_not_found: 'not_found',
+        local_secret_resolution_unauthorized: 'authorization',
+        local_secret_resolution_unsupported: 'conflict',
+        secure_storage_unavailable: 'unavailable',
+      } as const
+      const exitByKind = { not_found: 4, authorization: 3, conflict: 4, unavailable: 5 } as const
+      expect(result.exitCode, code).toBe(exitByKind[kindByCode[code]])
+      expect(JSON.parse(result.stderr), code).toEqual({
+        error: {
+          ...localSecretResolutionErrorBodies[code],
+          kind: kindByCode[code],
+          status: localSecretResolutionErrorStatusByCode[code],
+        },
+      })
       expect(result.stderr, code).not.toContain('greenhouse_password-value')
       expect(calls, code).toHaveLength(0)
       vi.unstubAllGlobals()
     }
   })
 
-  it('maps non-canonical remote JSON failures to secrets_run_remote_failed without spawning', async () => {
+  it('maps non-canonical remote JSON failures to unavailable without spawning', async () => {
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValueOnce(
       jsonResponse(
@@ -306,15 +319,18 @@ describe('secrets run capability and resolution', () => {
       { secretsRunSpawn: adapter },
     )
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(5)
     expect(calls).toHaveLength(0)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const body = JSON.parse(result.stderr)
     expect(body).toEqual({
-      code: 'secrets_run_remote_failed',
-      message: expect.any(String),
+      error: {
+        code: 'unavailable',
+        kind: 'unavailable',
+        status: 503,
+      },
     })
-    expect(body.code).not.toBe('secrets_run_spawn_failed')
+    expect(body.error.code).not.toBe('secrets_run_spawn_failed')
     expect(result.stderr).not.toContain('remote-body-canary')
     expect(result.stderr).not.toContain('do-not-echo-remote-body')
     expect(result.stderr).not.toContain('greenhouse_password')
@@ -354,10 +370,11 @@ describe('secrets run capability and resolution', () => {
       { secretsRunSpawn: adapter },
     )
 
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(5)
     expect(calls).toHaveLength(0)
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(result.stderr).toBe('Remote secrets run request failed\n')
+    expect(result.stderr).toContain('temporarily unavailable')
+    expect(result.stderr).toMatch(/recovery:/i)
     expect(result.stderr).not.toMatch(/secrets_run_spawn_failed/i)
     expect(result.stderr).not.toContain(hostile)
     expect(result.stderr).not.toContain('LEAKED')
@@ -365,6 +382,130 @@ describe('secrets run capability and resolution', () => {
     expect(result.stderr).not.toContain('do-not-echo-remote-body')
     expect(result.stderr).not.toContain('\u0001')
     expect(result.stderr).not.toContain('\u001b')
+  })
+
+  it('preserves remote transport failures as transport_error exit 5 without secret leakage', async () => {
+    const canary = 'transport-secrets-run-canary-ECONNREFUSED'
+    const secretValue = 'super-secret-password-value'
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockRejectedValueOnce(new Error(`${canary}:${secretValue}`))
+    vi.stubGlobal('fetch', fetchMock)
+    const { adapter, calls } = createRecordingSpawn()
+
+    const result = await runCli(
+      [
+        '--json',
+        'secrets',
+        'run',
+        '--workspace',
+        'workspace-1',
+        '--env',
+        'TOKEN=secret://greenhouse_password',
+        '--',
+        'node',
+        '-e',
+        'process.exit(0)',
+      ],
+      {},
+      { secretsRunSpawn: adapter },
+    )
+
+    expect(result.exitCode).toBe(5)
+    expect(calls).toHaveLength(0)
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: {
+        code: 'transport_error',
+        kind: 'unavailable',
+      },
+    })
+    expect(result.stderr).not.toContain(canary)
+    expect(result.stderr).not.toContain(secretValue)
+    expect(result.stderr).not.toContain('secrets_run_remote_failed')
+  })
+
+  it('preserves remote protocol mismatches as protocol_error exit 6 without secret leakage', async () => {
+    const canary = 'protocol-secrets-run-message-canary'
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(capabilitiesResponse(true))
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          ...localSecretResolutionErrorBodies.secret_not_found,
+          message: canary,
+        },
+        { status: localSecretResolutionErrorStatusByCode.secret_not_found },
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const { adapter, calls } = createRecordingSpawn()
+
+    const result = await runCli(
+      [
+        '--json',
+        'secrets',
+        'run',
+        '--workspace',
+        'workspace-1',
+        '--env',
+        'TOKEN=secret://greenhouse_password',
+        '--',
+        'node',
+        '-e',
+        'process.exit(0)',
+      ],
+      {},
+      { secretsRunSpawn: adapter },
+    )
+
+    expect(result.exitCode).toBe(6)
+    expect(calls).toHaveLength(0)
+    expect(JSON.parse(result.stderr)).toEqual({
+      error: {
+        code: 'protocol_error',
+        kind: 'integrity',
+      },
+    })
+    expect(result.stderr).not.toContain(canary)
+    expect(result.stderr).not.toContain('secret_not_found')
+    expect(result.stderr).not.toContain('secrets_run_remote_failed')
+  })
+
+  it('preserves remote authentication failures as authentication exit 3', async () => {
+    const { sourceAccessErrorBodies, sourceAccessErrorStatusByCode } = await import('sparxie')
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    fetchMock.mockResolvedValueOnce(capabilitiesResponse(true))
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(sourceAccessErrorBodies.unauthorized, {
+        status: sourceAccessErrorStatusByCode.unauthorized,
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const { adapter, calls } = createRecordingSpawn()
+
+    const result = await runCli(
+      [
+        '--json',
+        'secrets',
+        'run',
+        '--workspace',
+        'workspace-1',
+        '--env',
+        'TOKEN=secret://greenhouse_password',
+        '--',
+        'node',
+        '-e',
+        'process.exit(0)',
+      ],
+      {},
+      { secretsRunSpawn: adapter },
+    )
+
+    expect(result.exitCode).toBe(3)
+    expect(calls).toHaveLength(0)
+    const body = JSON.parse(result.stderr)
+    expect(body.error.kind).toBe('authentication')
+    expect(body.error.code).toBe('authentication_error')
+    expect(result.stderr).not.toContain('secrets_run_remote_failed')
   })
 
   it('fails closed when a direct LocalSecretResolutionHttpError body or status is non-canonical', async () => {
@@ -417,12 +558,14 @@ describe('secrets run capability and resolution', () => {
         { secretsRunSpawn: adapter },
       )
 
-      expect(result.exitCode, testCase.label).toBe(1)
+      expect(result.exitCode, testCase.label).toBe(5)
       expect(calls, testCase.label).toHaveLength(0)
       const body = JSON.parse(result.stderr)
       expect(body, testCase.label).toEqual({
-        code: 'secrets_run_remote_failed',
-        message: 'Remote secrets run request failed',
+        error: {
+          code: 'transport_error',
+          kind: 'unavailable',
+        },
       })
       expect(result.stderr, testCase.label).not.toContain(canary)
       expect(result.stderr, testCase.label).not.toContain('secret_not_found')

@@ -36,7 +36,7 @@ describe('sourcing queue commands', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const result = await runCli(['sourcing', ...args, '--workspace', 'workspace-1'])
-    expect(result.exitCode).toBe(1)
+    expect(result.exitCode).toBe(2)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
