@@ -204,7 +204,7 @@ export function createLocalWorkspaceManager({
           capabilityCache.delete(workspaceId)
           if (recoveryScope) connectorRunRecovery.deactivate(recoveryScope)
           recoveryScopeCache.delete(workspaceId)
-          await prepared?.dispose()
+          if (prepared) await Promise.allSettled([prepared.dispose()])
           await registryStore.recordError(
             workspaceId,
             sanitizedWorkspaceInitializationError(error),

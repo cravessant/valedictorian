@@ -34,7 +34,8 @@ export interface LocalValedictorianClientOptions {
   profilePath?: string
   profileService?: ProfileService
   secretService?: SecretService
-  pgliteDataPath?: string
+  /** Physical workspace identity used by the recovery lifecycle. */
+  pgliteDataPath: string
   workspaceId?: string
 }
 

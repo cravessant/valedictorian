@@ -56,14 +56,19 @@ export async function prepareWorkspaceProfileCapabilities(options: {
       sqlite = null
     }
     const profileService = createJsonProfileService(options.profilePath)
-    let disposed = false
+    let disposeInflight: Promise<void> | null = null
     return {
       database,
-      async dispose() {
-        if (disposed) return
-        disposed = true
-        profileService.dispose()
-        await pgliteClient.close()
+      dispose() {
+        if (disposeInflight) return disposeInflight
+        disposeInflight = (async () => {
+          try {
+            profileService.dispose()
+          } finally {
+            await pgliteClient.close()
+          }
+        })()
+        return disposeInflight
       },
       pgliteClient,
       profileService,

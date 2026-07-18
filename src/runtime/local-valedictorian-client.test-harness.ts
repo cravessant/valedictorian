@@ -33,8 +33,8 @@ afterEach(async () => {
 
 export type TestLocalValedictorianClientOptions = Omit<
   LocalValedictorianClientOptions,
-  'database'
-> & { database?: PgliteDatabase }
+  'database' | 'pgliteDataPath'
+> & { database?: PgliteDatabase; pgliteDataPath?: string }
 
 export async function createTestLocalValedictorianClient(
   options: TestLocalValedictorianClientOptions = {},
