@@ -1,25 +1,12 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createFileDatabase, migrateDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createConnectorRunner } from '../modules/connectors/connector.runner'
+import { createConnectorRepositoryTestContext } from '../modules/connectors/connector.repository.pglite-test-helpers'
 import { executeClaimedConnectorRun } from './local-connector-claimed-execution'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
-
-function createTempDatabasePath() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-claimed-exec-'))
-}
 
 describe('shared claimed connector run executor', () => {
   it('reconciles a trusted package upgrade before executing an already-claimed run', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const { repository: connectorRepository } = await createConnectorRepositoryTestContext()
     const now = () => new Date('2026-07-13T16:00:00.000Z')
     await connectorRepository.upsertInstance({
       id: 'claimed-upgrade',
@@ -115,15 +102,10 @@ describe('shared claimed connector run executor', () => {
       filters: { role: 'intern' },
       earliestBackfillDate: '2026-07-01',
     })
-    sqlite.close()
   })
 
   it('marks the claimed run failed when registry preflight cannot resolve the connector', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const { repository: connectorRepository } = await createConnectorRepositoryTestContext()
     const now = () => new Date('2026-07-11T13:00:00.000Z')
 
     await connectorRepository.upsertInstance({
@@ -173,15 +155,10 @@ describe('shared claimed connector run executor', () => {
       status: 'failed',
     })
     expect(JSON.stringify(failed?.warnings ?? [])).not.toMatch(/Unsupported connector/i)
-    sqlite.close()
   })
 
   it('marks the claimed run failed when connector refresh throws', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const connectorRepository = createSqliteConnectorRepository(database)
+    const { repository: connectorRepository } = await createConnectorRepositoryTestContext()
     const now = () => new Date('2026-07-11T13:00:00.000Z')
 
     await connectorRepository.upsertInstance({
@@ -237,7 +214,6 @@ describe('shared claimed connector run executor', () => {
       status: 'failed',
     })
     expect(JSON.stringify(failed)).not.toMatch(/secret detail/)
-    sqlite.close()
   })
 })
 

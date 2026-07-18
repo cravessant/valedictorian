@@ -1,5 +1,5 @@
 import type { createNormalizationOrchestrator } from './normalization.orchestrator'
-import type { createSqliteNormalizationRepository } from './normalization.repository'
+import type { createPgliteNormalizationRepository } from './normalization.repository'
 import {
   createNormalizationResolverRegistry,
   type NormalizationResolver,
@@ -16,7 +16,7 @@ import type { NormalizationResolverRegistry } from './normalization.registry'
 
 export function createProviderUrlResolutionExecutor(options: {
   normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
-  normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
+  normalizationRepository: ReturnType<typeof createPgliteNormalizationRepository>
   pureNormalizationRegistry?: NormalizationResolverRegistry
   now: () => Date
   random: () => number
@@ -30,11 +30,11 @@ export function createProviderUrlResolutionExecutor(options: {
     work: ClaimedProviderUrlResolutionWork,
     signal?: AbortSignal,
   ): Promise<void> {
-    const raw = options.normalizationRepository.getRawContext(
+    const raw = await options.normalizationRepository.getRawContext(
       work.captureEvidenceVersionId,
     )
     if (!raw) {
-      options.repository.recordFailureEvidence({
+      await options.repository.recordFailureEvidence({
         ...work,
         evidence: { reason: 'provider_url_capture_missing' },
         terminal: true,
@@ -60,11 +60,11 @@ export function createProviderUrlResolutionExecutor(options: {
           },
         )
       } catch (error) {
-        options.repository.release(work)
+        await options.repository.release(work)
         throw error
       }
       if (signal?.aborted) {
-        options.repository.release(work)
+        await options.repository.release(work)
         return
       }
     }
@@ -74,7 +74,7 @@ export function createProviderUrlResolutionExecutor(options: {
       result = await options.resolve(work, signal)
     } catch (error) {
       if (isCancellation(error, signal)) {
-        options.repository.release(work)
+        await options.repository.release(work)
         throw error
       }
       result = {
@@ -84,14 +84,14 @@ export function createProviderUrlResolutionExecutor(options: {
       }
     }
     if (signal?.aborted) {
-      options.repository.release(work)
+      await options.repository.release(work)
       return
     }
     if (!validateProviderUrlResolverResult(result)) {
       result = { status: 'terminal', reason: 'provider_url_invalid_result' }
     }
     if (result.status === 'interrupted' && result.reason === 'cancelled') {
-      options.repository.release(work)
+      await options.repository.release(work)
       return
     }
     if (result.status === 'interrupted' && result.reason === 'runtime_limit') {
@@ -121,8 +121,8 @@ export function createProviderUrlResolutionExecutor(options: {
           }
         : undefined
     const currentFields = new Set(resolver.declaration.outputFields)
-    const baselineOutcomes = options.normalizationRepository
-      .getLatestForRevision(raw.revision.id)
+    const latest = await options.normalizationRepository.getLatestForRevision(raw.revision.id)
+    const baselineOutcomes = latest
       ?.fieldOutcomes.filter(({ field }) => !currentFields.has(field)) ?? []
 
     try {
@@ -152,7 +152,7 @@ export function createProviderUrlResolutionExecutor(options: {
         },
       )
     } catch (error) {
-      options.repository.release(work)
+      await options.repository.release(work)
       throw error
     }
 

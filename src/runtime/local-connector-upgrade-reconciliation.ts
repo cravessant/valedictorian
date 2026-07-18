@@ -1,5 +1,5 @@
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
-import type { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import type { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
 import { assertSupportedConnectorSettings } from '../modules/connectors/connector.settings-validation'
 import type { ConnectorInstanceRecord } from '../modules/connectors/connector-instance.persistence-types'
@@ -12,7 +12,7 @@ export async function reconcileConnectorPackageUpgrade({
   replayConnectorUpgrade,
 }: {
   connector: AppJobConnector
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   instance: ConnectorInstanceRecord
   replayConnectorUpgrade: ReturnType<typeof createNormalizationReplayService>['replayConnectorUpgrade']
 }): Promise<ConnectorInstanceRecord> {
@@ -21,7 +21,7 @@ export async function reconcileConnectorPackageUpgrade({
   }
 
   assertSupportedConnectorSettings(connector, instance.config, instance.filters)
-  preserveCompatibleProviderCheckpoint({ connector, connectorRepository, instance })
+  await preserveCompatibleProviderCheckpoint({ connector, connectorRepository, instance })
   await replayConnectorUpgrade({
     connectorInstanceId: instance.id,
     fromConnectorVersion: instance.connectorVersion,
@@ -43,13 +43,13 @@ export async function reconcileConnectorPackageUpgrade({
   })
 }
 
-function preserveCompatibleProviderCheckpoint({
+async function preserveCompatibleProviderCheckpoint({
   connector,
   connectorRepository,
   instance,
 }: {
   connector: AppJobConnector
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   instance: ConnectorInstanceRecord
 }) {
   const filters = jsonRecord(instance.filters)
@@ -64,7 +64,7 @@ function preserveCompatibleProviderCheckpoint({
   const providerStatePrefix = targetSignature.slice(0, targetSignature.lastIndexOf('@') + 1)
   const expectedSchemaVersion = connector.definition.checkpoint?.schemaVersion
   if (!expectedSchemaVersion) return
-  connectorRepository.copyCheckpointIfAbsent({
+  await connectorRepository.copyCheckpointIfAbsent({
     connectorInstanceId: instance.id,
     expectedSchemaVersion,
     sourceFilterSignature: `${providerStatePrefix}${instance.connectorVersion}`,

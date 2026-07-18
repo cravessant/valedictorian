@@ -7,7 +7,7 @@ import {
   type RawSourceRecordsListQuery,
   type RawSourceRecordsListResult,
 } from 'sparxie'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import { presentCapturedRawFacts } from './raw-captured-presentation'
 
 const DEFAULT_LIMIT = 50
@@ -49,19 +49,22 @@ interface RawSummaryRow {
   findingId: string | null
 }
 
-export function listRawSourceRecords(
-  database: DrizzleDatabase,
+export async function listRawSourceRecords(
+  database: PgliteDatabase,
   input: RawSourceRecordsListQuery = {},
-): RawSourceRecordsListResult {
+): Promise<RawSourceRecordsListResult> {
   const query = rawSourceRecordsListQuerySchema.parse(input)
   const cursor = query.cursor ? decodeCursor(query.cursor) : null
   const { parameters, where } = buildWhere(query, cursor)
   const limit = query.limit ?? DEFAULT_LIMIT
   parameters.push(limit + 1)
-  const rows = database.$client.prepare(`${SUMMARY_QUERY}\n${where}\n${PAGE_QUERY}`)
-    .all(...parameters) as unknown as RawSummaryRow[]
-  const hasMore = rows.length > limit
-  const items = rows.slice(0, limit).map(mapSummary)
+  const limitParameter = `$${parameters.length}`
+  const result = await database.$client.query<RawSummaryRow>(
+    `${SUMMARY_QUERY}\n${where}\n${pageQuery(limitParameter)}`,
+    parameters,
+  )
+  const hasMore = result.rows.length > limit
+  const items = result.rows.slice(0, limit).map(mapSummary)
   const nextCursor = hasMore ? encodeCursor(items.at(-1)!) : null
 
   return rawSourceRecordsListResultSchema.parse({ items, nextCursor })
@@ -70,41 +73,52 @@ export function listRawSourceRecords(
 function buildWhere(query: RawSourceRecordsListQuery, cursor: CursorValue | null) {
   const clauses: string[] = []
   const parameters: Array<string | number> = []
-  const add = (clause: string, ...values: Array<string | number>) => {
-    clauses.push(clause)
-    parameters.push(...values)
+  const bind = (value: string | number) => {
+    parameters.push(value)
+    return `$${parameters.length}`
   }
 
-  if (query.adapterId !== undefined) add('adapter_id = ?', query.adapterId)
-  if (query.adapterKind !== undefined) add('adapter_kind = ?', query.adapterKind)
+  if (query.adapterId !== undefined) clauses.push(`adapter_id = ${bind(query.adapterId)}`)
+  if (query.adapterKind !== undefined) clauses.push(`adapter_kind = ${bind(query.adapterKind)}`)
   if (query.connectorInstanceId !== undefined) {
-    add(`exists (
+    clauses.push(`exists (
       select 1 from captures filtered_capture
       where filtered_capture.capture_lineage_id = eligible.capture_lineage_id
-        and filtered_capture.connector_instance_id = ?
-    )`, query.connectorInstanceId)
+        and filtered_capture.connector_instance_id = ${bind(query.connectorInstanceId)}
+    )`)
   }
   if (query.connectorRunId !== undefined) {
-    add(`exists (
+    clauses.push(`exists (
       select 1 from captures filtered_capture
       where filtered_capture.capture_lineage_id = eligible.capture_lineage_id
-        and filtered_capture.connector_run_id = ?
-    )`, query.connectorRunId)
+        and filtered_capture.connector_run_id = ${bind(query.connectorRunId)}
+    )`)
   }
-  if (query.receivedFrom !== undefined) add('last_received_at >= ?', receivedFromKey(query.receivedFrom))
-  if (query.receivedTo !== undefined) add('last_received_at <= ?', receivedToKey(query.receivedTo))
+  if (query.receivedFrom !== undefined) {
+    clauses.push(`last_received_at >= ${bind(receivedFromKey(query.receivedFrom))}`)
+  }
+  if (query.receivedTo !== undefined) {
+    clauses.push(`last_received_at <= ${bind(receivedToKey(query.receivedTo))}`)
+  }
   if (query.normalizationStatus !== undefined) {
-    add('normalization_status = ?', query.normalizationStatus)
+    clauses.push(`normalization_status = ${bind(query.normalizationStatus)}`)
   }
-  if (query.gateStatus !== undefined) add('gate_status = ?', query.gateStatus)
-  if (query.projectionStatus !== undefined) add('projection_status = ?', query.projectionStatus)
+  if (query.gateStatus !== undefined) {
+    clauses.push(`gate_status = ${bind(query.gateStatus)}`)
+  }
+  if (query.projectionStatus !== undefined) {
+    clauses.push(`projection_status = ${bind(query.projectionStatus)}`)
+  }
   if (cursor) {
-    add(
-      '(last_received_at < ? or (last_received_at = ? and capture_lineage_id collate binary < ?))',
-      cursor.lastReceivedAt,
-      cursor.lastReceivedAt,
-      cursor.id,
-    )
+    const receivedAtParameter = bind(cursor.lastReceivedAt)
+    const idParameter = bind(cursor.id)
+    clauses.push(`(
+      last_received_at < ${receivedAtParameter}
+      or (
+        last_received_at = ${receivedAtParameter}
+        and capture_lineage_id collate "C" < ${idParameter} collate "C"
+      )
+    )`)
   }
 
   return {
@@ -119,9 +133,17 @@ with latest_normalization as materialized (
     normalization.*,
     row_number() over (
       partition by normalization.capture_evidence_version_id
-      order by normalization.created_at desc, normalization.rowid desc
+      order by normalization.created_at desc, normalization.id collate "C" desc
     ) as normalization_rank
   from normalization_runs normalization
+), latest_revision as materialized (
+  select
+    revision.*,
+    row_number() over (
+      partition by revision.capture_lineage_id
+      order by revision.revision desc, revision.id collate "C" desc
+    ) as revision_rank
+  from capture_evidence_versions revision
 ), eligible as (
   select
     record.id as capture_lineage_id,
@@ -153,20 +175,18 @@ with latest_normalization as materialized (
     end as gate_status,
     case when normalization.status = 'completed' and gate.status = 'passed'
       then candidate.id else null end as job_fact_version_id,
-    revision.payload_json as payload_json,
+    revision.payload_json,
     case when normalization.status = 'completed' and gate.status = 'passed'
       then coalesce(projection.status, 'not_eligible') else 'not_eligible'
     end as projection_status,
-    case when projection.status = 'projected' then projection.opportunity_id else null end as opportunity_id
+    case when projection.status = 'projected' then projection.opportunity_id else null end
+      as opportunity_id
   from capture_lineages record
-  join capture_evidence_versions revision on revision.capture_lineage_id = record.id
-    and not exists (
-      select 1 from capture_evidence_versions newer_revision
-      where newer_revision.capture_lineage_id = record.id
-        and newer_revision.revision > revision.revision
-    )
+  join latest_revision revision
+    on revision.capture_lineage_id = record.id and revision.revision_rank = 1
   left join latest_normalization normalization
-    on normalization.capture_evidence_version_id = revision.id and normalization.normalization_rank = 1
+    on normalization.capture_evidence_version_id = revision.id
+      and normalization.normalization_rank = 1
   left join normalization_gates gate on gate.run_id = normalization.id
   left join job_fact_versions candidate on candidate.run_id = normalization.id
   left join sourcing_projection_outcomes projection
@@ -174,9 +194,10 @@ with latest_normalization as materialized (
 ), page as (
 select * from eligible`
 
-const PAGE_QUERY = `
-order by last_received_at desc, capture_lineage_id collate binary desc
-limit ?
+function pageQuery(limitParameter: string) {
+  return `
+order by last_received_at desc, capture_lineage_id collate "C" desc
+limit ${limitParameter}
 )
 select
   page.capture_lineage_id as "rawRecordId",
@@ -194,11 +215,14 @@ select
   page.revision_observed_at as "revisionObservedAt",
   page.revision_created_at as "revisionCreatedAt",
   (
-    select count(*) from capture_evidence_versions counted_revision
+    select count(*)::integer from capture_evidence_versions counted_revision
     where counted_revision.capture_lineage_id = page.capture_lineage_id
   ) as "revisionCount",
   (
-    select json_group_array(observed.observed_at)
+    select json_agg(
+      observed.observed_at
+      order by observed.observed_at, observed.received_at, observed.id collate "C"
+    )::text
     from captures observed
     where observed.capture_lineage_id = page.capture_lineage_id
   ) as "observedTimesJson",
@@ -209,7 +233,7 @@ select
   ) as "firstReceivedAt",
   page.last_received_at as "lastReceivedAt",
   (
-    select count(*) from captures counted_capture
+    select count(*)::integer from captures counted_capture
     where counted_capture.capture_lineage_id = page.capture_lineage_id
   ) as "occurrenceCount",
   latest_occurrence.connector_instance_id as "connectorInstanceId",
@@ -223,14 +247,15 @@ select
   page.projection_status as "projectionStatus",
   page.opportunity_id as "findingId"
 from page
-left join captures latest_occurrence on latest_occurrence.id = (
-  select selected_occurrence.id
+left join lateral (
+  select selected_occurrence.connector_instance_id, selected_occurrence.connector_run_id
   from captures selected_occurrence
   where selected_occurrence.capture_lineage_id = page.capture_lineage_id
-  order by selected_occurrence.received_at desc, selected_occurrence.id collate binary desc
+  order by selected_occurrence.received_at desc, selected_occurrence.id collate "C" desc
   limit 1
-)
-order by page.last_received_at desc, page.capture_lineage_id collate binary desc`
+) latest_occurrence on true
+order by page.last_received_at desc, page.capture_lineage_id collate "C" desc`
+}
 
 function mapSummary(row: RawSummaryRow): RawSourceRecordSummary {
   const observedTimes = JSON.parse(row.observedTimesJson) as string[]

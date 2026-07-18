@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteSecretService } from '../secrets/secret.composition'
+import { createPgliteSecretService } from '../secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../secrets/secret.scope'
 import { createConnectorSecretResolver } from '../secrets/connector-secret-resolver'
 import type { SecretCodec } from '../secrets/secret.codec'
 import {
-  createSqliteConnectorRepository,
   type ConnectorCoverageWindow,
   type ConnectorObservationInput
 } from './connector.repository'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 
 const testCodec: SecretCodec = {
   decrypt(value) {
@@ -22,10 +21,7 @@ const testCodec: SecretCodec = {
 
 describe('connector runner', () => {
   it('invokes a fixture connector through the app host and stores its refresh result', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const delayInputs: unknown[] = []
     const runner = createConnectorRunner({
       repository,
@@ -246,10 +242,7 @@ describe('connector runner', () => {
   })
 
   it('provides a ready no-auth grant through the connector runtime', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedGrants: unknown[] = []
     const fixtureConnector: AppJobConnector = {
@@ -307,10 +300,7 @@ describe('connector runner', () => {
   })
 
   it('passes the current Jobright checkpoint payload without legacy observation seeds', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: unknown[] = []
     const connector: AppJobConnector = {
@@ -412,11 +402,8 @@ describe('connector runner', () => {
   })
 
   it('resolves secret-backed auth grants from app-owned encrypted profile secrets', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const secretService = createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
+    const { database, repository } = await createConnectorRepositoryTestContext()
+    const secretService = createPgliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
@@ -561,11 +548,8 @@ describe('connector runner', () => {
   })
 
   it('redacts overlapping secret values longest-first before persisting connector results', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const secretService = createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
+    const { database, repository } = await createConnectorRepositoryTestContext()
+    const secretService = createPgliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
@@ -692,11 +676,8 @@ describe('connector runner', () => {
   })
 
   it('returns missing secret-backed grants without exposing persistence to connectors', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
-    const secretService = createSqliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
+    const { database, repository } = await createConnectorRepositoryTestContext()
+    const secretService = createPgliteSecretService(database, testCodec, createWorkspaceSecretScope('test-workspace'))
     const runner = createConnectorRunner({
       repository,
       workspaceId: 'workspace-fixture',
@@ -764,10 +745,7 @@ describe('connector runner', () => {
   })
 
   it('computes first catch-up coverage from persisted earliest backfill midnight', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
     const fixtureConnector: AppJobConnector = {
@@ -823,10 +801,7 @@ describe('connector runner', () => {
   })
 
   it('keeps missed-run catch-up coverage anchored at the persisted earliest backfill midnight', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { repository } = await createConnectorRepositoryTestContext()
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
     const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
     const fixtureConnector: AppJobConnector = {

@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import {
   jobFactVersions,
   normalizationFieldOutcomes,
@@ -8,7 +8,7 @@ import {
   captureEvidenceVersions,
   opportunities,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { ConnectorRunRecord } from './connector-run.persistence-types'
 
 export const CONNECTOR_RUN_LIFECYCLE_COUNTS_VERSION = 'connector-run-lifecycle-counts/v1'
@@ -70,12 +70,12 @@ export interface ConnectorRunLifecycleCounts {
   }
 }
 
-export function reconcileConnectorRunLifecycleCounts(
-  database: DrizzleDatabase,
+export async function reconcileConnectorRunLifecycleCounts(
+  database: Pick<PgliteDatabase, 'select'>,
   run: ConnectorRunRecord,
-): ConnectorRunLifecycleCounts {
+): Promise<ConnectorRunLifecycleCounts> {
   const stats = recordFromUnknown(run.stats)
-  const occurrences = database
+  const occurrences = await database
     .select({
       rawRecordId: captures.captureLineageId,
       rawRevisionId: captures.captureEvidenceVersionId,
@@ -85,7 +85,6 @@ export function reconcileConnectorRunLifecycleCounts(
     .from(captures)
     .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, captures.captureEvidenceVersionId))
     .where(eq(captures.connectorRunId, run.id))
-    .all()
   const capturedRecords = new Set(occurrences.map(({ rawRecordId }) => rawRecordId)).size
   const capturedValidRecords = new Set(
     occurrences
@@ -160,7 +159,7 @@ export function reconcileConnectorRunLifecycleCounts(
     sourceEntityId: string
   }> = []
   for (const revision of scopedRevisions.values()) {
-    const normalization = database
+    const [normalization] = await database
       .select({
         runId: normalizationRuns.id,
         ownerConnectorRunId: normalizationRuns.triggerConnectorRunId,
@@ -181,9 +180,9 @@ export function reconcileConnectorRunLifecycleCounts(
       ))
       .orderBy(
         desc(normalizationRuns.createdAt),
-        sql`${normalizationRuns}.rowid desc`,
+        desc(normalizationRuns.id),
       )
-      .get()
+      .limit(1)
     if (!normalization) {
       destination.pending += 1
       continue
@@ -213,7 +212,7 @@ export function reconcileConnectorRunLifecycleCounts(
       destination.gateRejected += 1
       continue
     }
-    const destinationOutcomes = database
+    const destinationOutcomes = await database
       .select({
         resolverId: normalizationFieldOutcomes.resolverId,
         status: normalizationFieldOutcomes.status,
@@ -223,8 +222,10 @@ export function reconcileConnectorRunLifecycleCounts(
         eq(normalizationFieldOutcomes.runId, normalization.runId),
         eq(normalizationFieldOutcomes.field, 'destinationUrl'),
       ))
-      .orderBy(desc(normalizationFieldOutcomes.sequence))
-      .all()
+      .orderBy(
+        desc(normalizationFieldOutcomes.sequence),
+        desc(normalizationFieldOutcomes.id),
+      )
     const destinationStatuses = new Set(destinationOutcomes.map(({ status }) => status))
     const connectorDestinationAttempted = destinationOutcomes.some(({ resolverId }) =>
       resolverId === 'jobright.authenticated-destination')
@@ -262,7 +263,7 @@ export function reconcileConnectorRunLifecycleCounts(
   }
   const seenFindingIds = new Set<string>()
   for (const job of normalizedJobs) {
-    const finding = database
+    const [finding] = await database
       .select({
         id: opportunities.id,
         blocker: opportunities.blocker,
@@ -272,7 +273,8 @@ export function reconcileConnectorRunLifecycleCounts(
       })
       .from(opportunities)
       .where(eq(opportunities.jobId, job.sourceEntityId))
-      .get()
+      .orderBy(desc(opportunities.createdAt), desc(opportunities.id))
+      .limit(1)
     if (!finding) {
       sourcing.unclassified += 1
       continue
@@ -345,12 +347,12 @@ export function reconcileConnectorRunLifecycleCounts(
   }
 }
 
-export function freezeConnectorRunLifecycleCounts(
-  database: DrizzleDatabase,
+export async function freezeConnectorRunLifecycleCounts(
+  database: Pick<PgliteDatabase, 'select'>,
   run: ConnectorRunRecord,
-): ConnectorRunLifecycleCounts {
+): Promise<ConnectorRunLifecycleCounts> {
   return {
-    ...reconcileConnectorRunLifecycleCounts(database, run),
+    ...await reconcileConnectorRunLifecycleCounts(database, run),
     source: 'frozen_terminal',
   }
 }

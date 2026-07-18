@@ -1,19 +1,33 @@
-import { describe, expect, it, vi } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { eq } from 'drizzle-orm'
+import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from '../../db/pglite'
+import { sourceExecutionSessions } from '../../db/schema'
 import { createSourceExecutionGovernor, deriveSourceExecutionScopeId } from './source-execution-governor'
 import { createSourceSessionExecutor } from './source-session-executor'
 
-function fixture() {
-  const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
+const clients: PgliteClient[] = []
+
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((client) => client.close()))
+})
+
+async function createTestDatabase() {
+  const client = await createPgliteClient()
+  clients.push(client)
+  return migratePgliteDatabase(client)
+}
+
+async function fixture() {
+  const database = await createTestDatabase()
   const scopeId = deriveSourceExecutionScopeId(crypto.randomUUID())
-  const governor = createSourceExecutionGovernor(createDrizzleDatabase(sqlite))
-  governor.ensureScope(scopeId, '2026-07-12T12:00:00.000Z')
-  return { sqlite, scopeId, governor }
+  const governor = createSourceExecutionGovernor(database)
+  await governor.ensureScope(scopeId, '2026-07-12T12:00:00.000Z')
+  return { database, scopeId, governor }
 }
 
 describe('source session executor', () => {
   it('singleflights connector-owned establishment and returns one canonical generation', async () => {
-    const { sqlite, scopeId, governor } = fixture()
+    const { scopeId, governor } = await fixture()
     let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
     const establish = vi.fn(async () => { await gate; return { status: 'ready' as const, sessionId: 'fresh' } })
@@ -25,18 +39,17 @@ describe('source session executor', () => {
       { status: 'ready', sessionId: 'fresh' }, { status: 'ready', sessionId: 'fresh' },
     ])
     expect(establish).toHaveBeenCalledTimes(1)
-    expect(governor.getScope(scopeId).authGeneration).toBe(1)
-    sqlite.close()
+    expect((await governor.getScope(scopeId)).authGeneration).toBe(1)
   })
 
   it('reuses a generation persisted by another host process', async () => {
-    const { sqlite, scopeId, governor } = fixture()
-    const other = createSourceExecutionGovernor(createDrizzleDatabase(sqlite))
+    const { database, scopeId, governor } = await fixture()
+    const other = createSourceExecutionGovernor(database)
     let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
     const establish = vi.fn(async () => { await gate; return { status: 'ready' as const, sessionId: 'shared' } })
     const first = createSourceSessionExecutor({ governor, refreshWaitMs: 5 }).refresh(scopeId, establish)
-    await vi.waitFor(() => expect(governor.getScope(scopeId).status).toBe('refreshing'))
+    await vi.waitFor(async () => expect((await governor.getScope(scopeId)).status).toBe('refreshing'))
     const secondEstablish = vi.fn()
     const second = createSourceSessionExecutor({ governor: other, refreshWaitMs: 5 }).refresh(scopeId, secondEstablish)
     release()
@@ -44,24 +57,22 @@ describe('source session executor', () => {
       { status: 'ready', sessionId: 'shared' }, { status: 'ready', sessionId: 'shared' },
     ])
     expect(secondEstablish).not.toHaveBeenCalled()
-    sqlite.close()
   })
 
   it('fences an expired establishment lease from replacing the newer generation', async () => {
-    const { sqlite, scopeId, governor } = fixture()
-    const other = createSourceExecutionGovernor(createDrizzleDatabase(sqlite))
+    const { database, scopeId, governor } = await fixture()
+    const other = createSourceExecutionGovernor(database)
     let clock = new Date('2026-07-12T12:00:00.000Z'); let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
     const stale = createSourceSessionExecutor({ governor, now: () => clock, refreshLeaseMs: 10 })
       .refresh(scopeId, async () => { await gate; return { status: 'ready', sessionId: 'stale' } })
-    await vi.waitFor(() => expect(governor.getScope(scopeId).status).toBe('refreshing'))
+    await vi.waitFor(async () => expect((await governor.getScope(scopeId)).status).toBe('refreshing'))
     clock = new Date('2026-07-12T12:00:00.020Z')
     await expect(createSourceSessionExecutor({ governor: other, now: () => clock, refreshLeaseMs: 10 })
       .refresh(scopeId, async () => ({ status: 'ready', sessionId: 'winner' }))).resolves.toEqual({ status: 'ready', sessionId: 'winner' })
     release()
     await expect(stale).resolves.toEqual({ status: 'ready', sessionId: 'winner' })
-    expect(governor.loadActiveSession(scopeId)?.encryptedSession).toBe('winner')
-    sqlite.close()
+    expect((await governor.loadActiveSession(scopeId))?.encryptedSession).toBe('winner')
   })
 
   it.each([
@@ -72,47 +83,52 @@ describe('source session executor', () => {
     { status: 'cancelled' as const, reason: 'old_cancel' },
     { status: 'invocation_timeout' as const, reason: 'old_timeout' },
   ])('returns the newer canonical generation when a stale owner finishes with $status', async (staleResult) => {
-    const { sqlite, scopeId, governor } = fixture()
-    const other = createSourceExecutionGovernor(createDrizzleDatabase(sqlite))
+    const { database, scopeId, governor } = await fixture()
+    const other = createSourceExecutionGovernor(database)
     let clock = new Date('2026-07-12T12:00:00.000Z'); let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
     const stale = createSourceSessionExecutor({ governor, now: () => clock, refreshLeaseMs: 10 })
       .refresh(scopeId, async () => { await gate; return staleResult })
-    await vi.waitFor(() => expect(governor.getScope(scopeId).status).toBe('refreshing'))
+    await vi.waitFor(async () => expect((await governor.getScope(scopeId)).status).toBe('refreshing'))
     clock = new Date('2026-07-12T12:00:00.020Z')
     await createSourceSessionExecutor({ governor: other, now: () => clock, refreshLeaseMs: 10 })
       .refresh(scopeId, async () => ({ status: 'ready', sessionId: 'winner' }))
     release()
     await expect(stale).resolves.toEqual({ status: 'ready', sessionId: 'winner' })
-    expect(governor.getScope(scopeId)).toMatchObject({ status: 'available', authGeneration: 1 })
-    sqlite.close()
+    expect(await governor.getScope(scopeId)).toMatchObject({ status: 'available', authGeneration: 1 })
   })
 
   it('fences an expired explicit reconnect from a newer-generation winner', async () => {
-    const { sqlite, scopeId, governor } = fixture()
-    const other = createSourceExecutionGovernor(createDrizzleDatabase(sqlite))
+    const { database, scopeId, governor } = await fixture()
+    const other = createSourceExecutionGovernor(database)
     let clock = new Date('2026-07-12T12:00:00.000Z'); let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
-    const lease = governor.acquireReconnectLease(scopeId, {
+    let markStarted!: () => void
+    const started = new Promise<void>((resolve) => { markStarted = resolve })
+    const lease = await governor.acquireReconnectLease(scopeId, {
       now: clock.toISOString(), leaseMs: 10, token: 'stale-reconnect',
     })!
     const stale = createSourceSessionExecutor({ governor, now: () => clock })
-      .reconnect(scopeId, async () => { await gate; return { status: 'ready', sessionId: 'stale' } }, lease.token)
+      .reconnect(scopeId, async () => {
+        markStarted()
+        await gate
+        return { status: 'ready', sessionId: 'stale' }
+      }, lease.token)
+    await started
     clock = new Date('2026-07-12T12:00:00.020Z')
     await expect(createSourceSessionExecutor({ governor: other, now: () => clock, refreshLeaseMs: 10 })
       .refresh(scopeId, async () => ({ status: 'ready', sessionId: 'winner' })))
       .resolves.toEqual({ status: 'ready', sessionId: 'winner' })
     release()
     await expect(stale).resolves.toEqual({ status: 'ready', sessionId: 'winner' })
-    expect(governor.loadActiveSession(scopeId)?.encryptedSession).toBe('winner')
-    sqlite.close()
+    expect((await governor.loadActiveSession(scopeId))?.encryptedSession).toBe('winner')
   })
 
   it('does not establish after an explicit reconnect token has already lost its lease', async () => {
-    const { sqlite, scopeId, governor } = fixture()
-    const other = createSourceExecutionGovernor(createDrizzleDatabase(sqlite))
+    const { database, scopeId, governor } = await fixture()
+    const other = createSourceExecutionGovernor(database)
     let clock = new Date('2026-07-12T12:00:00.000Z')
-    const lease = governor.acquireReconnectLease(scopeId, {
+    const lease = await governor.acquireReconnectLease(scopeId, {
       now: clock.toISOString(), leaseMs: 10, token: 'expired-reconnect',
     })!
     clock = new Date('2026-07-12T12:00:00.020Z')
@@ -123,7 +139,6 @@ describe('source session executor', () => {
       .reconnect(scopeId, establish, lease.token))
       .resolves.toEqual({ status: 'ready', sessionId: 'winner' })
     expect(establish).not.toHaveBeenCalled()
-    sqlite.close()
   })
 
   it.each([
@@ -135,20 +150,19 @@ describe('source session executor', () => {
     [{ status: 'cancelled' as const, reason: 'cancel' }, 'action_required'],
     [{ status: 'invocation_timeout' as const, reason: 'timeout' }, 'action_required'],
   ])('persists explicit $status validation and gates subsequent ordinary admission', async (result, expectedStatus) => {
-    const { sqlite, scopeId, governor } = fixture()
-    const lease = governor.acquireReconnectLease(scopeId, {
+    const { scopeId, governor } = await fixture()
+    const lease = await governor.acquireReconnectLease(scopeId, {
       now: '2026-07-12T12:00:00.000Z', leaseMs: 60_000, token: 'matrix',
     })!
     await createSourceSessionExecutor({ governor, now: () => new Date('2026-07-12T12:00:00.250Z') })
       .reconnect(scopeId, async () => result, lease.token)
-    expect(governor.getScope(scopeId).status).toBe(expectedStatus)
-    expect(governor.isAvailable(scopeId, '2026-07-12T12:00:00.250Z')).toBe(expectedStatus === 'available')
-    sqlite.close()
+    expect((await governor.getScope(scopeId)).status).toBe(expectedStatus)
+    expect(await governor.isAvailable(scopeId, '2026-07-12T12:00:00.250Z')).toBe(expectedStatus === 'available')
   })
 
   it('persists a thrown explicit validation as action-required', async () => {
-    const { sqlite, scopeId, governor } = fixture()
-    const lease = governor.acquireReconnectLease(scopeId, {
+    const { scopeId, governor } = await fixture()
+    const lease = await governor.acquireReconnectLease(scopeId, {
       now: '2026-07-12T12:00:00.000Z', leaseMs: 60_000, token: 'throw',
     })!
     await expect(createSourceSessionExecutor({
@@ -156,8 +170,7 @@ describe('source session executor', () => {
     }).reconnect(scopeId, async () => {
       throw new Error('sensitive failure')
     }, lease.token)).resolves.toEqual({ status: 'failed', reason: 'session_refresh_failed' })
-    expect(governor.getScope(scopeId)).toMatchObject({ status: 'action_required', actionReason: 'session_refresh_failed' })
-    sqlite.close()
+    expect(await governor.getScope(scopeId)).toMatchObject({ status: 'action_required', actionReason: 'session_refresh_failed' })
   })
 
   it.each([
@@ -165,42 +178,42 @@ describe('source session executor', () => {
     { status: 'cancelled' as const, reason: 'cancel' },
     { status: 'invocation_timeout' as const, reason: 'timeout' },
   ])('keeps $status closed to ordinary admission after explicit establishment', async (result) => {
-    const { sqlite, scopeId, governor } = fixture()
-    const lease = governor.acquireReconnectLease(scopeId, {
+    const { scopeId, governor } = await fixture()
+    const lease = await governor.acquireReconnectLease(scopeId, {
       now: '2026-07-12T12:00:00.000Z', leaseMs: 60_000, token: 'reconnect',
     })!
     const executor = createSourceSessionExecutor({
       governor, now: () => new Date('2026-07-12T12:00:00.500Z'),
     })
     await expect(executor.reconnect(scopeId, async () => result, lease.token)).resolves.toEqual(result)
-    expect(governor.getScope(scopeId)).toMatchObject({
+    expect(await governor.getScope(scopeId)).toMatchObject({
       status: 'action_required', actionReason: `source_validation_${result.status}`,
     })
-    expect(governor.acquireRefreshLease(scopeId, {
+    expect(await governor.acquireRefreshLease(scopeId, {
       now: '2026-07-12T12:01:00.000Z', leaseMs: 1000,
     })).toBeNull()
-    sqlite.close()
   })
 
   it('persists action-required establishment without retry loops', async () => {
-    const { sqlite, scopeId, governor } = fixture()
+    const { scopeId, governor } = await fixture()
     const establish = vi.fn(async () => ({ status: 'action_required' as const, reason: 'login_rejected' }))
     await expect(createSourceSessionExecutor({ governor }).refresh(scopeId, establish))
       .resolves.toEqual({ status: 'action_required', reason: 'login_rejected' })
-    expect(governor.getScope(scopeId)).toMatchObject({ status: 'action_required', actionReason: 'login_rejected' })
+    expect(await governor.getScope(scopeId)).toMatchObject({ status: 'action_required', actionReason: 'login_rejected' })
     expect(establish).toHaveBeenCalledTimes(1)
-    sqlite.close()
   })
 
   it('encrypts the canonical session at rest and decrypts it for connectors', async () => {
-    const sqlite = createInMemoryDatabase(); migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase()
     const scopeId = deriveSourceExecutionScopeId('encrypted')
     const governor = createSourceExecutionGovernor(database, { encrypt: (v) => `enc:${v}`, decrypt: (v) => v.slice(4) })
-    governor.ensureScope(scopeId, '2026-07-12T12:00:00.000Z')
+    await governor.ensureScope(scopeId, '2026-07-12T12:00:00.000Z')
     await createSourceSessionExecutor({ governor }).refresh(scopeId, async () => ({ status: 'ready', sessionId: 'secret-session' }))
-    expect(governor.loadActiveSession(scopeId)?.encryptedSession).toBe('secret-session')
-    expect(sqlite.prepare('select encrypted_session from source_execution_sessions').get()).toEqual({ encrypted_session: 'enc:secret-session' })
-    sqlite.close()
+    expect((await governor.loadActiveSession(scopeId))?.encryptedSession).toBe('secret-session')
+    const [stored] = await database.select({ encryptedSession: sourceExecutionSessions.encryptedSession })
+      .from(sourceExecutionSessions)
+      .where(eq(sourceExecutionSessions.executionScopeId, scopeId))
+      .limit(1)
+    expect(stored).toEqual({ encryptedSession: 'enc:secret-session' })
   })
 })

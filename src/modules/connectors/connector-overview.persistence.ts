@@ -4,7 +4,7 @@ import {
   connectorRuns,
   connectorRunSynchronizations,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { ConnectorStatusSeverity, ConnectorStatusState } from 'sparxie'
 import { mapConnectorInstance } from './connector-instance.persistence'
 import { synchronizedConnectorRun } from './connector-synchronization.persistence'
@@ -23,10 +23,10 @@ export interface ConnectorOverviewStatusPage {
   hasMore: boolean
 }
 
-export function listConnectorOverviewStatusPage(
-  database: DrizzleDatabase,
+export async function listConnectorOverviewStatusPage(
+  database: PgliteDatabase,
   input: ConnectorOverviewStatusPageInput,
-): ConnectorOverviewStatusPage {
+): Promise<ConnectorOverviewStatusPage> {
   const latestRunId = database.select({ id: connectorRuns.id })
     .from(connectorRuns)
     .innerJoin(
@@ -37,11 +37,11 @@ export function listConnectorOverviewStatusPage(
       eq(connectorRuns.connectorInstanceId, connectorInstances.id),
       isNull(connectorRuns.deletedAt),
     ))
-    .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt))
+    .orderBy(desc(connectorRuns.startedAt), desc(connectorRuns.createdAt), desc(connectorRuns.id))
     .limit(1)
   const healthStatus = connectorOverviewHealthStatusSql()
   const healthSeverity = connectorOverviewHealthSeveritySql(healthStatus)
-  const rows = database.select({
+  const rows = await database.select({
     instance: connectorInstances,
     run: connectorRuns,
     snapshotJson: connectorRunSynchronizations.snapshotJson,
@@ -62,7 +62,6 @@ export function listConnectorOverviewStatusPage(
     ))
     .orderBy(asc(connectorInstances.id))
     .limit(input.limit + 1)
-    .all()
   return {
     items: rows.slice(0, input.limit).map(({ instance, run, snapshotJson }) => ({
       ...mapConnectorInstance(instance),
@@ -73,19 +72,19 @@ export function listConnectorOverviewStatusPage(
 }
 
 function connectorOverviewHealthStatusSql() {
-  const outcome = sql`json_extract(${connectorRunSynchronizations.snapshotJson}, '$.outcome.kind')`
-  const reason = sql`json_extract(${connectorRunSynchronizations.snapshotJson}, '$.outcome.reason')`
-  const newest = sql`json_extract(${connectorRunSynchronizations.snapshotJson}, '$.newestFrontier.state')`
-  const backfill = sql`json_extract(${connectorRunSynchronizations.snapshotJson}, '$.historicalBackfill.state')`
-  const pending = sql`coalesce(json_extract(${connectorRunSynchronizations.snapshotJson}, '$.pendingResolutionCount'), 0)`
+  const outcome = sql`(${connectorRunSynchronizations.snapshotJson}::jsonb #>> '{outcome,kind}')`
+  const reason = sql`(${connectorRunSynchronizations.snapshotJson}::jsonb #>> '{outcome,reason}')`
+  const newest = sql`(${connectorRunSynchronizations.snapshotJson}::jsonb #>> '{newestFrontier,state}')`
+  const backfill = sql`(${connectorRunSynchronizations.snapshotJson}::jsonb #>> '{historicalBackfill,state}')`
+  const pending = sql`coalesce((${connectorRunSynchronizations.snapshotJson}::jsonb #>> '{pendingResolutionCount}')::integer, 0)`
   const authWarning = sql`exists (
-    select 1 from json_each(${connectorRuns.warningsJson}) warning
-    where json_extract(warning.value, '$.code') like 'auth.%'
-       or json_extract(warning.value, '$.code') = 'jobright_auth_required'
+    select 1 from jsonb_array_elements(${connectorRuns.warningsJson}::jsonb) warning
+    where warning ->> 'code' like 'auth.%'
+       or warning ->> 'code' = 'jobright_auth_required'
   )`
   const blockedWarning = sql`exists (
-    select 1 from json_each(${connectorRuns.warningsJson}) warning
-    where json_extract(warning.value, '$.code') in (
+    select 1 from jsonb_array_elements(${connectorRuns.warningsJson}::jsonb) warning
+    where warning ->> 'code' in (
       'source.captcha', 'jobright_auth_failed', 'jobright_challenge_blocked',
       'jobright_raw_intake_unavailable', 'jobright_normalization_unavailable'
     )

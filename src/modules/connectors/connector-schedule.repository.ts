@@ -19,17 +19,17 @@ import {
   connectorSchedules,
 } from '../../db/schema.connectors'
 import { retryWork, sourceExecutionScopes } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import { computeNextEligibleAt } from './connector-schedule.eligibility'
 import { createConnectorScheduleError } from './connector-schedule.errors'
 
 export function createConnectorScheduleRepository(
-  database: DrizzleDatabase,
+  database: PgliteDatabase,
   now: () => Date = () => new Date(),
 ) {
   return {
-    listEnabled(): ConnectorScheduleSummary[] {
-      return database
+    async listEnabled(): Promise<ConnectorScheduleSummary[]> {
+      const rows = await database
         .select()
         .from(connectorSchedules)
         .where(and(
@@ -37,15 +37,14 @@ export function createConnectorScheduleRepository(
           isNull(connectorSchedules.deletedAt),
         ))
         .orderBy(asc(connectorSchedules.nextEligibleAt), asc(connectorSchedules.connectorInstanceId))
-        .all()
-        .map((row) => mapScheduleSummary(database, row))
+      return Promise.all(rows.map((row) => mapScheduleSummary(database, row)))
     },
 
-    listScheduledCaptureRetries(): Array<{
+    async listScheduledCaptureRetries(): Promise<Array<{
       connectorInstanceId: string
       nextAttemptAt: string
-    }> {
-      return database
+    }>> {
+      const rows = await database
         .select({
           connectorInstanceId: retryWork.connectorInstanceId,
           nextAttemptAt: retryWork.nextAttemptAt,
@@ -76,8 +75,7 @@ export function createConnectorScheduleRepository(
           inArray(sourceExecutionScopes.status, ['available', 'cooldown']),
         ))
         .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.connectorInstanceId))
-        .all()
-        .flatMap((row) => row.connectorInstanceId && row.nextAttemptAt ? [{
+      return rows.flatMap((row) => row.connectorInstanceId && row.nextAttemptAt ? [{
           connectorInstanceId: row.connectorInstanceId,
           nextAttemptAt: row.scopeBlockedUntil && row.scopeBlockedUntil > row.nextAttemptAt
             ? row.scopeBlockedUntil
@@ -85,15 +83,15 @@ export function createConnectorScheduleRepository(
         }] : [])
     },
 
-    getByConnectorInstanceId(connectorInstanceId: string): ConnectorScheduleSummary | null {
-      const row = database
+    async getByConnectorInstanceId(connectorInstanceId: string): Promise<ConnectorScheduleSummary | null> {
+      const [row] = await database
         .select()
         .from(connectorSchedules)
         .where(and(
           eq(connectorSchedules.connectorInstanceId, connectorInstanceId),
           isNull(connectorSchedules.deletedAt),
         ))
-        .get()
+        .limit(1)
 
       if (!row) {
         return null
@@ -102,54 +100,51 @@ export function createConnectorScheduleRepository(
       return mapScheduleSummary(database, row)
     },
 
-    getOccurrenceLinkForRun(connectorRunId: string): ConnectorScheduleOccurrenceSummary | null {
-      const row = database
+    async getOccurrenceLinkForRun(connectorRunId: string): Promise<ConnectorScheduleOccurrenceSummary | null> {
+      const [row] = await database
         .select()
         .from(connectorScheduleOccurrences)
         .where(eq(connectorScheduleOccurrences.connectorRunId, connectorRunId))
-        .get()
+        .orderBy(desc(connectorScheduleOccurrences.createdAt), desc(connectorScheduleOccurrences.id))
+        .limit(1)
       if (!row) {
         return null
       }
       return mapOccurrenceSummary(row)
     },
 
-    getRevisionSnapshot(revision: string): ConnectorScheduleRevisionSnapshot | null {
-      const row = database
+    async getRevisionSnapshot(revision: string): Promise<ConnectorScheduleRevisionSnapshot | null> {
+      const [row] = await database
         .select()
         .from(connectorScheduleRevisions)
         .where(eq(connectorScheduleRevisions.revision, revision))
-        .get()
+        .limit(1)
       return row ? mapRevisionSnapshot(row) : null
     },
 
-    listRevisionSnapshots(scheduleId: string): ConnectorScheduleRevisionSnapshot[] {
-      return database
+    async listRevisionSnapshots(scheduleId: string): Promise<ConnectorScheduleRevisionSnapshot[]> {
+      const rows = await database
         .select()
         .from(connectorScheduleRevisions)
         .where(eq(connectorScheduleRevisions.scheduleId, scheduleId))
-        .all()
-        .sort((left, right) => (
-          left.createdAt.localeCompare(right.createdAt)
-          || left.revision.localeCompare(right.revision)
-        ))
-        .map(mapRevisionSnapshot)
+        .orderBy(asc(connectorScheduleRevisions.createdAt), asc(connectorScheduleRevisions.revision))
+      return rows.map(mapRevisionSnapshot)
     },
 
-    create(input: {
+    async create(input: {
       connectorInstanceId: string
       state: ConnectorScheduleState
       cadence: ConnectorScheduleCadence
       timezone: string
-    }): ConnectorScheduleSummary {
-      const instance = database
+    }): Promise<ConnectorScheduleSummary> {
+      const [instance] = await database
         .select({ id: connectorInstances.id })
         .from(connectorInstances)
         .where(and(
           eq(connectorInstances.id, input.connectorInstanceId),
           isNull(connectorInstances.deletedAt),
         ))
-        .get()
+        .limit(1)
 
       if (!instance) {
         throw Object.assign(new Error(`Connector instance not found: ${input.connectorInstanceId}`), {
@@ -157,7 +152,7 @@ export function createConnectorScheduleRepository(
         })
       }
 
-      const existing = this.getByConnectorInstanceId(input.connectorInstanceId)
+      const existing = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (existing) {
         throw createConnectorScheduleError(
           'stale_schedule_revision',
@@ -176,54 +171,65 @@ export function createConnectorScheduleRepository(
       })
       const eventId = randomUUID()
 
-      database.transaction((tx) => {
-        tx.insert(connectorSchedules).values({
-          id: scheduleId,
-          connectorInstanceId: input.connectorInstanceId,
-          revision,
-          state: input.state,
-          cadenceJson: JSON.stringify(input.cadence),
-          timezone: input.timezone,
-          nextEligibleAt,
-          createdAt,
-          updatedAt: createdAt,
-          deletedAt: null,
-        }).run()
+      try {
+        await database.transaction(async (tx) => {
+          const [inserted] = await tx.insert(connectorSchedules).values({
+            id: scheduleId,
+            connectorInstanceId: input.connectorInstanceId,
+            revision,
+            state: input.state,
+            cadenceJson: JSON.stringify(input.cadence),
+            timezone: input.timezone,
+            nextEligibleAt,
+            createdAt,
+            updatedAt: createdAt,
+            deletedAt: null,
+          }).returning({ id: connectorSchedules.id })
+          if (!inserted) throw new Error('Failed to create connector schedule')
 
-        insertRevisionSnapshot(tx, {
-          revision,
-          scheduleId,
-          state: input.state,
-          cadence: input.cadence,
-          timezone: input.timezone,
-          createdAt,
+          await insertRevisionSnapshot(tx, {
+            revision,
+            scheduleId,
+            state: input.state,
+            cadence: input.cadence,
+            timezone: input.timezone,
+            createdAt,
+          })
+
+          await tx.insert(connectorScheduleEvents).values({
+            id: eventId,
+            scheduleId,
+            actorClass: 'user',
+            action: 'upserted',
+            revision,
+            at: createdAt,
+          })
         })
+      } catch (error) {
+        if (isPostgresUniqueViolation(error)) {
+          throw createConnectorScheduleError(
+            'stale_schedule_revision',
+            'A schedule already exists for this connector instance',
+          )
+        }
+        throw error
+      }
 
-        tx.insert(connectorScheduleEvents).values({
-          id: eventId,
-          scheduleId,
-          actorClass: 'user',
-          action: 'upserted',
-          revision,
-          at: createdAt,
-        }).run()
-      })
-
-      const created = this.getByConnectorInstanceId(input.connectorInstanceId)
+      const created = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (!created) {
         throw new Error('Failed to read created connector schedule')
       }
       return created
     },
 
-    update(input: {
+    async update(input: {
       connectorInstanceId: string
       expectedRevision: string
       state: ConnectorScheduleState
       cadence: ConnectorScheduleCadence
       timezone: string
-    }): ConnectorScheduleSummary {
-      const existing = this.getByConnectorInstanceId(input.connectorInstanceId)
+    }): Promise<ConnectorScheduleSummary> {
+      const existing = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (!existing || existing.revision !== input.expectedRevision) {
         throw createConnectorScheduleError(
           'stale_schedule_revision',
@@ -240,8 +246,8 @@ export function createConnectorScheduleRepository(
         timezone: input.timezone,
       })
 
-      database.transaction((tx) => {
-        const updated = tx.update(connectorSchedules).set({
+      await database.transaction(async (tx) => {
+        const [updated] = await tx.update(connectorSchedules).set({
           revision,
           state: input.state,
           cadenceJson: JSON.stringify(input.cadence),
@@ -252,25 +258,25 @@ export function createConnectorScheduleRepository(
           eq(connectorSchedules.id, existing.id),
           eq(connectorSchedules.revision, input.expectedRevision),
           isNull(connectorSchedules.deletedAt),
-        )).run()
+        )).returning({ id: connectorSchedules.id })
 
-        if (updated.changes !== 1) {
+        if (!updated) {
           throw createConnectorScheduleError(
             'stale_schedule_revision',
             'Schedule revision does not match the expected revision',
           )
         }
 
-        tx.insert(connectorScheduleEvents).values({
+        await tx.insert(connectorScheduleEvents).values({
           id: randomUUID(),
           scheduleId: existing.id,
           actorClass: 'user',
           action: 'upserted',
           revision,
           at: updatedAt,
-        }).run()
+        })
 
-        insertRevisionSnapshot(tx, {
+        await insertRevisionSnapshot(tx, {
           revision,
           scheduleId: existing.id,
           state: input.state,
@@ -280,18 +286,18 @@ export function createConnectorScheduleRepository(
         })
       })
 
-      const summary = this.getByConnectorInstanceId(input.connectorInstanceId)
+      const summary = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (!summary) {
         throw new Error('Failed to read updated connector schedule')
       }
       return summary
     },
 
-    pause(input: {
+    async pause(input: {
       connectorInstanceId: string
       expectedRevision: string
-    }): ConnectorScheduleSummary {
-      const existing = this.getByConnectorInstanceId(input.connectorInstanceId)
+    }): Promise<ConnectorScheduleSummary> {
+      const existing = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (!existing || existing.revision !== input.expectedRevision) {
         throw createConnectorScheduleError(
           'stale_schedule_revision',
@@ -303,8 +309,8 @@ export function createConnectorScheduleRepository(
       const updatedAt = clock.toISOString()
       const revision = randomUUID()
 
-      database.transaction((tx) => {
-        const updated = tx.update(connectorSchedules).set({
+      await database.transaction(async (tx) => {
+        const [updated] = await tx.update(connectorSchedules).set({
           revision,
           state: 'paused',
           updatedAt,
@@ -312,16 +318,16 @@ export function createConnectorScheduleRepository(
           eq(connectorSchedules.id, existing.id),
           eq(connectorSchedules.revision, input.expectedRevision),
           isNull(connectorSchedules.deletedAt),
-        )).run()
+        )).returning({ id: connectorSchedules.id })
 
-        if (updated.changes !== 1) {
+        if (!updated) {
           throw createConnectorScheduleError(
             'stale_schedule_revision',
             'Schedule revision does not match the expected revision',
           )
         }
 
-        insertRevisionSnapshot(tx, {
+        await insertRevisionSnapshot(tx, {
           revision,
           scheduleId: existing.id,
           state: 'paused',
@@ -330,28 +336,28 @@ export function createConnectorScheduleRepository(
           createdAt: updatedAt,
         })
 
-        tx.insert(connectorScheduleEvents).values({
+        await tx.insert(connectorScheduleEvents).values({
           id: randomUUID(),
           scheduleId: existing.id,
           actorClass: 'user',
           action: 'paused',
           revision,
           at: updatedAt,
-        }).run()
+        })
       })
 
-      const summary = this.getByConnectorInstanceId(input.connectorInstanceId)
+      const summary = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (!summary) {
         throw new Error('Failed to read paused connector schedule')
       }
       return summary
     },
 
-    resume(input: {
+    async resume(input: {
       connectorInstanceId: string
       expectedRevision: string
-    }): ConnectorScheduleSummary {
-      const existing = this.getByConnectorInstanceId(input.connectorInstanceId)
+    }): Promise<ConnectorScheduleSummary> {
+      const existing = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (!existing || existing.revision !== input.expectedRevision) {
         throw createConnectorScheduleError(
           'stale_schedule_revision',
@@ -368,8 +374,8 @@ export function createConnectorScheduleRepository(
         timezone: existing.timezone,
       })
 
-      database.transaction((tx) => {
-        const updated = tx.update(connectorSchedules).set({
+      await database.transaction(async (tx) => {
+        const [updated] = await tx.update(connectorSchedules).set({
           revision,
           state: 'enabled',
           nextEligibleAt,
@@ -378,16 +384,16 @@ export function createConnectorScheduleRepository(
           eq(connectorSchedules.id, existing.id),
           eq(connectorSchedules.revision, input.expectedRevision),
           isNull(connectorSchedules.deletedAt),
-        )).run()
+        )).returning({ id: connectorSchedules.id })
 
-        if (updated.changes !== 1) {
+        if (!updated) {
           throw createConnectorScheduleError(
             'stale_schedule_revision',
             'Schedule revision does not match the expected revision',
           )
         }
 
-        insertRevisionSnapshot(tx, {
+        await insertRevisionSnapshot(tx, {
           revision,
           scheduleId: existing.id,
           state: 'enabled',
@@ -396,28 +402,28 @@ export function createConnectorScheduleRepository(
           createdAt: updatedAt,
         })
 
-        tx.insert(connectorScheduleEvents).values({
+        await tx.insert(connectorScheduleEvents).values({
           id: randomUUID(),
           scheduleId: existing.id,
           actorClass: 'user',
           action: 'resumed',
           revision,
           at: updatedAt,
-        }).run()
+        })
       })
 
-      const summary = this.getByConnectorInstanceId(input.connectorInstanceId)
+      const summary = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (!summary) {
         throw new Error('Failed to read resumed connector schedule')
       }
       return summary
     },
 
-    delete(input: {
+    async delete(input: {
       connectorInstanceId: string
       expectedRevision: string
-    }): void {
-      const existing = this.getByConnectorInstanceId(input.connectorInstanceId)
+    }): Promise<void> {
+      const existing = await this.getByConnectorInstanceId(input.connectorInstanceId)
       if (!existing || existing.revision !== input.expectedRevision) {
         throw createConnectorScheduleError(
           'stale_schedule_revision',
@@ -429,8 +435,8 @@ export function createConnectorScheduleRepository(
       const deletedAt = clock.toISOString()
       const revision = randomUUID()
 
-      database.transaction((tx) => {
-        const updated = tx.update(connectorSchedules).set({
+      await database.transaction(async (tx) => {
+        const [updated] = await tx.update(connectorSchedules).set({
           revision,
           updatedAt: deletedAt,
           deletedAt,
@@ -438,16 +444,16 @@ export function createConnectorScheduleRepository(
           eq(connectorSchedules.id, existing.id),
           eq(connectorSchedules.revision, input.expectedRevision),
           isNull(connectorSchedules.deletedAt),
-        )).run()
+        )).returning({ id: connectorSchedules.id })
 
-        if (updated.changes !== 1) {
+        if (!updated) {
           throw createConnectorScheduleError(
             'stale_schedule_revision',
             'Schedule revision does not match the expected revision',
           )
         }
 
-        insertRevisionSnapshot(tx, {
+        await insertRevisionSnapshot(tx, {
           revision,
           scheduleId: existing.id,
           state: existing.state,
@@ -456,144 +462,169 @@ export function createConnectorScheduleRepository(
           createdAt: deletedAt,
         })
 
-        tx.insert(connectorScheduleEvents).values({
+        await tx.insert(connectorScheduleEvents).values({
           id: randomUUID(),
           scheduleId: existing.id,
           actorClass: 'user',
           action: 'deleted',
           revision,
           at: deletedAt,
-        }).run()
+        })
       })
     },
 
-    listAudit(input: {
+    async listAudit(input: {
       connectorInstanceId: string
       limit: number
       offset: number
-    }): ConnectorScheduleAuditListResult {
-      const scheduleIds = database
-        .select({ id: connectorSchedules.id })
-        .from(connectorSchedules)
-        .where(eq(connectorSchedules.connectorInstanceId, input.connectorInstanceId))
-        .all()
-        .map((row) => row.id)
-
-      if (scheduleIds.length === 0) {
-        return {
-          items: [],
-          total: 0,
-          limit: input.limit,
-          offset: input.offset,
-          hasMore: false,
-        }
-      }
-
-      const rows = database
-        .select()
-        .from(connectorScheduleEvents)
-        .all()
-        .filter((row) => scheduleIds.includes(row.scheduleId))
-        .sort((left, right) => right.at.localeCompare(left.at) || right.id.localeCompare(left.id))
-
-      const items = rows.slice(input.offset, input.offset + input.limit).map((row) => ({
+    }): Promise<ConnectorScheduleAuditListResult> {
+      const result = await database.$client.query<ScheduleAuditPageRow>(AUDIT_PAGE_QUERY, [
+        input.connectorInstanceId,
+        input.limit,
+        input.offset,
+      ])
+      const total = Number(result.rows[0]?.total ?? 0)
+      const items = result.rows.flatMap((row) => row.id ? [{
         id: row.id,
-        scheduleId: row.scheduleId,
-        actorClass: row.actorClass as ConnectorScheduleAuditEvent['actorClass'],
+        scheduleId: row.schedule_id!,
+        actorClass: row.actor_class as ConnectorScheduleAuditEvent['actorClass'],
         action: row.action as ConnectorScheduleAuditEvent['action'],
-        revision: row.revision,
-        at: row.at,
-      }))
+        revision: row.revision!,
+        at: row.at!,
+      }] : [])
 
       return {
         items,
-        total: rows.length,
+        total,
         limit: input.limit,
         offset: input.offset,
-        hasMore: input.offset + items.length < rows.length,
+        hasMore: input.offset + items.length < total,
       }
     },
 
-    markOccurrenceOutcome(input: {
+    async markOccurrenceOutcome(input: {
       occurrenceId: string
       outcome: ConnectorScheduleOccurrenceSummary['outcome']
-    }): ConnectorScheduleOccurrenceSummary {
-      const existing = database
+    }): Promise<ConnectorScheduleOccurrenceSummary> {
+      const [existing] = await database
         .select()
         .from(connectorScheduleOccurrences)
         .where(eq(connectorScheduleOccurrences.id, input.occurrenceId))
-        .get()
+        .limit(1)
 
       if (!existing) {
         throw new Error(`Schedule occurrence not found: ${input.occurrenceId}`)
       }
 
       if (existing.outcome !== input.outcome) {
-        database
+        const [updated] = await database
           .update(connectorScheduleOccurrences)
           .set({ outcome: input.outcome })
           .where(eq(connectorScheduleOccurrences.id, input.occurrenceId))
-          .run()
+          .returning()
+        if (!updated) throw new Error(`Schedule occurrence not found: ${input.occurrenceId}`)
+        return mapOccurrenceSummary(updated)
       }
 
-      return mapOccurrenceSummary(
-        database
-          .select()
-          .from(connectorScheduleOccurrences)
-          .where(eq(connectorScheduleOccurrences.id, input.occurrenceId))
-          .get()!,
-      )
+      return mapOccurrenceSummary(existing)
     },
 
-    listOccurrences(input: {
+    async listOccurrences(input: {
       connectorInstanceId: string
       limit: number
       offset: number
-    }): ConnectorScheduleOccurrenceListResult {
-      const scheduleIds = database
-        .select({ id: connectorSchedules.id })
-        .from(connectorSchedules)
-        .where(eq(connectorSchedules.connectorInstanceId, input.connectorInstanceId))
-        .all()
-        .map((row) => row.id)
-
-      if (scheduleIds.length === 0) {
-        return {
-          items: [],
-          total: 0,
-          limit: input.limit,
-          offset: input.offset,
-          hasMore: false,
-        }
-      }
-
-      const rows = database
-        .select()
-        .from(connectorScheduleOccurrences)
-        .all()
-        .filter((row) => scheduleIds.includes(row.scheduleId))
-        .sort((left, right) => (
-          right.createdAt.localeCompare(left.createdAt)
-          || right.id.localeCompare(left.id)
-        ))
-
-      const items = rows
-        .slice(input.offset, input.offset + input.limit)
-        .map(mapOccurrenceSummary)
+    }): Promise<ConnectorScheduleOccurrenceListResult> {
+      const result = await database.$client.query<ScheduleOccurrencePageRow>(
+        OCCURRENCE_PAGE_QUERY,
+        [input.connectorInstanceId, input.limit, input.offset],
+      )
+      const total = Number(result.rows[0]?.total ?? 0)
+      const items = result.rows.flatMap((row) => row.id ? [mapOccurrenceSummary({
+        id: row.id,
+        scheduleId: row.schedule_id!,
+        scheduleRevision: row.schedule_revision!,
+        nominalAt: row.nominal_at!,
+        idempotencyKey: row.idempotency_key!,
+        admittedMode: row.admitted_mode!,
+        outcome: row.outcome!,
+        connectorRunId: row.connector_run_id,
+        createdAt: row.created_at!,
+      })] : [])
 
       return {
         items,
-        total: rows.length,
+        total,
         limit: input.limit,
         offset: input.offset,
-        hasMore: input.offset + items.length < rows.length,
+        hasMore: input.offset + items.length < total,
       }
     },
   }
 }
 
-function mapScheduleSummary(
-  database: DrizzleDatabase,
+interface ScheduleAuditPageRow {
+  total: number
+  id: string | null
+  schedule_id: string | null
+  actor_class: string | null
+  action: string | null
+  revision: string | null
+  at: string | null
+}
+
+interface ScheduleOccurrencePageRow {
+  total: number
+  id: string | null
+  schedule_id: string | null
+  schedule_revision: string | null
+  nominal_at: string | null
+  idempotency_key: string | null
+  admitted_mode: string | null
+  outcome: string | null
+  connector_run_id: string | null
+  created_at: string | null
+}
+
+const AUDIT_PAGE_QUERY = `
+with eligible as (
+  select event.*
+  from connector_schedule_events event
+  where event.schedule_id in (
+    select schedule.id from connector_schedules schedule
+    where schedule.connector_instance_id = $1
+  )
+), page as (
+  select * from eligible
+  order by at desc, id desc
+  limit $2 offset $3
+), total as (
+  select count(*)::integer as value from eligible
+)
+select total.value as total, page.*
+from total left join page on true
+order by page.at desc nulls last, page.id desc nulls last`
+
+const OCCURRENCE_PAGE_QUERY = `
+with eligible as (
+  select occurrence.*
+  from connector_schedule_occurrences occurrence
+  where occurrence.schedule_id in (
+    select schedule.id from connector_schedules schedule
+    where schedule.connector_instance_id = $1
+  )
+), page as (
+  select * from eligible
+  order by created_at desc, id desc
+  limit $2 offset $3
+), total as (
+  select count(*)::integer as value from eligible
+)
+select total.value as total, page.*
+from total left join page on true
+order by page.created_at desc nulls last, page.id desc nulls last`
+
+async function mapScheduleSummary(
+  database: PgliteDatabase,
   row: {
     id: string
     connectorInstanceId: string
@@ -605,21 +636,21 @@ function mapScheduleSummary(
     createdAt: string
     updatedAt: string
   },
-): ConnectorScheduleSummary {
-  const lastOccurrenceRow = database
+): Promise<ConnectorScheduleSummary> {
+  const [lastOccurrenceRow] = await database
     .select()
     .from(connectorScheduleOccurrences)
     .where(eq(connectorScheduleOccurrences.scheduleId, row.id))
-    .orderBy(desc(connectorScheduleOccurrences.createdAt))
-    .get()
+    .orderBy(desc(connectorScheduleOccurrences.createdAt), desc(connectorScheduleOccurrences.id))
+    .limit(1)
 
   const lastOccurrence = lastOccurrenceRow ? mapOccurrenceSummary(lastOccurrenceRow) : null
   const lastRunRow = lastOccurrenceRow?.connectorRunId
-    ? database
+    ? (await database
       .select()
       .from(connectorRuns)
       .where(eq(connectorRuns.id, lastOccurrenceRow.connectorRunId))
-      .get()
+      .limit(1))[0]
     : null
 
   return {
@@ -696,9 +727,9 @@ function mapRevisionSnapshot(row: {
   }
 }
 
-function insertRevisionSnapshot(
+async function insertRevisionSnapshot(
   tx: {
-    insert: DrizzleDatabase['insert']
+    insert: PgliteDatabase['insert']
   },
   input: {
     revision: string
@@ -708,13 +739,26 @@ function insertRevisionSnapshot(
     timezone: string
     createdAt: string
   },
-): void {
-  tx.insert(connectorScheduleRevisions).values({
+): Promise<void> {
+  await tx.insert(connectorScheduleRevisions).values({
     revision: input.revision,
     scheduleId: input.scheduleId,
     state: input.state,
     cadenceJson: JSON.stringify(input.cadence),
     timezone: input.timezone,
     createdAt: input.createdAt,
-  }).run()
+  })
+}
+
+function isPostgresUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const cause = 'cause' in error ? error.cause : null
+  return Boolean(
+    cause
+    && typeof cause === 'object'
+    && 'code' in cause
+    && cause.code === '23505'
+    && 'constraint' in cause
+    && cause.constraint === 'idx_connector_schedules_instance',
+  )
 }

@@ -7,11 +7,11 @@ import {
   type NormalizationResolver,
   type NormalizationResolverRegistry,
 } from '../sourcing/normalization.registry'
-import type { createSqliteNormalizationRepository } from '../sourcing/normalization.repository'
+import type { createPgliteNormalizationRepository } from '../sourcing/normalization.repository'
 import type { AppConnectorNormalizationHost } from './connector.runner'
 
 export function createConnectorNormalizationHost(options: {
-  repository: ReturnType<typeof createSqliteNormalizationRepository>
+  repository: ReturnType<typeof createPgliteNormalizationRepository>
   registry: NormalizationResolverRegistry
   now?: () => Date
   onNormalized?: (result: RawSourceNormalizationResult) => Promise<unknown>
@@ -40,7 +40,8 @@ export function createConnectorNormalizationHost(options: {
         }),
       }
       const currentFields = new Set<CanonicalCandidateField>(input.resolver.outputFields)
-      const baselineOutcomes = options.repository.getLatestForRevision(input.rawRevision.id)
+      const baseline = await options.repository.getLatestForRevision(input.rawRevision.id)
+      const baselineOutcomes = baseline
         ?.fieldOutcomes.filter(({ field }) => !currentFields.has(field)) ?? []
       const exactReplay = context.acquiredRetryWork
       const result = await orchestrator.normalize(

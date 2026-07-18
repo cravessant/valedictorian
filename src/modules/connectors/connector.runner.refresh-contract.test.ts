@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
-import { createSqliteConnectorRepository } from './connector.repository'
 import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 
 const coverage = {
   start: '2026-07-01T00:00:00.000Z',
@@ -70,10 +69,7 @@ describe('connector refresh result contract', () => {
   })
 
   it('rejects malformed cooldown evidence before mutating the execution scope', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { database, repository } = await createConnectorRepositoryTestContext()
     const governor = createSourceExecutionGovernor(database)
     const connector = adversarialConnector({
       ...validRefreshResult(),
@@ -88,16 +84,12 @@ describe('connector refresh result contract', () => {
     await expect(runner.refresh(connector, {
       connectorInstanceId: instance.id, mode: 'manual', coverage,
     })).rejects.toThrow(/invalid connector refresh operation outcome/i)
-    expect(governor.getScope(instance.executionScopeId)).toMatchObject({ status: 'available', blockedUntil: null })
+    expect(await governor.getScope(instance.executionScopeId)).toMatchObject({ status: 'available', blockedUntil: null })
     await expect(repository.listRuns({ connectorInstanceId: instance.id })).resolves.toMatchObject({ items: [], total: 0 })
-    sqlite.close()
   })
 
   it('rejects scope cooldown evidence paired with a caught-up synchronization outcome before mutation', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(database)
+    const { database, repository } = await createConnectorRepositoryTestContext()
     const governor = createSourceExecutionGovernor(database)
     const connector = {
       definition: { id: 'fixture.contract', version: '1.0.0' },
@@ -117,15 +109,12 @@ describe('connector refresh result contract', () => {
     await expect(runner.refresh(connector, {
       connectorInstanceId: instance.id, mode: 'manual', coverage,
     })).rejects.toThrow(/inconsistent connector refresh operation outcome/i)
-    expect(governor.getScope(instance.executionScopeId)).toMatchObject({ status: 'available', blockedUntil: null })
+    expect(await governor.getScope(instance.executionScopeId)).toMatchObject({ status: 'available', blockedUntil: null })
     await expect(repository.listRuns({ connectorInstanceId: instance.id })).resolves.toMatchObject({ items: [], total: 0 })
-    sqlite.close()
   })
 
   it('rejects a cooling-down synchronization outcome without matching scope evidence before persistence', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const { repository } = await createConnectorRepositoryTestContext()
     const connector = {
       definition: { id: 'fixture.contract', version: '1.0.0' },
       async refresh(input) {
@@ -146,7 +135,6 @@ describe('connector refresh result contract', () => {
       connectorInstanceId: instance.id, mode: 'manual', coverage,
     })).rejects.toThrow(/inconsistent connector refresh operation outcome/i)
     await expect(repository.listRuns({ connectorInstanceId: instance.id })).resolves.toMatchObject({ items: [], total: 0 })
-    sqlite.close()
   })
 
   it.each([
@@ -191,9 +179,7 @@ describe('connector refresh result contract', () => {
     ['cancelled', { kind: 'cancelled', reason: 'cancelled' }],
     ['skipped', { kind: 'yielded', reason: 'invocation_budget' }],
   ] as const)('persists released %s semantics with explicit synchronization', async (status, outcome) => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const { repository } = await createConnectorRepositoryTestContext()
     const connector = adversarialConnector({
       ...validRefreshResult(), status,
       synchronization: synchronizationForOutcome(outcome),
@@ -205,8 +191,7 @@ describe('connector refresh result contract', () => {
       connectorInstanceId: 'contract-instance', mode: 'manual', coverage,
     })).resolves.toMatchObject({ status })
     const runs = await repository.listRuns({ connectorInstanceId: 'contract-instance' })
-    expect(repository.getRunSynchronization(runs.items[0]!.id)).toMatchObject({ outcome })
-    sqlite.close()
+    expect(await repository.getRunSynchronization(runs.items[0]!.id)).toMatchObject({ outcome })
   })
 })
 
@@ -247,9 +232,7 @@ function adversarialConnector(result: unknown): AppJobConnector {
 }
 
 async function expectRejectedResult(result: unknown, message: RegExp) {
-  const sqlite = createInMemoryDatabase()
-  migrateDatabase(sqlite)
-  const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+  const { repository } = await createConnectorRepositoryTestContext()
   const connector = adversarialConnector(result)
   const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
   await runner.registerInstance({ id: 'contract-instance', connector, displayName: 'Contract', enabled: true })
@@ -262,5 +245,4 @@ async function expectRejectedResult(result: unknown, message: RegExp) {
   await expect(repository.getCheckpoint({
     connectorInstanceId: 'contract-instance', filterSignature: 'filters:{}',
   })).resolves.toBeNull()
-  sqlite.close()
 }

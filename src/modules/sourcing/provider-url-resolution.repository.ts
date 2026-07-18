@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm'
 import { captureEvidenceVersions, retryWork } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { RawSourceTransaction } from './raw-source.repository'
 import type { ClaimedProviderUrlResolutionWork } from './provider-url-resolution.source'
 
@@ -31,14 +31,14 @@ interface ProviderUrlLineage {
 }
 
 export function createProviderUrlResolutionRepository(
-  database: DrizzleDatabase,
+  database: PgliteDatabase,
   now: () => Date = () => new Date(),
 ) {
   return {
-    enqueue(input: EnqueueProviderUrlResolutionInput, transaction?: RawSourceTransaction) {
+    async enqueue(input: EnqueueProviderUrlResolutionInput, transaction?: RawSourceTransaction) {
       const target = transaction ?? database
       const createdAt = now().toISOString()
-      return target.insert(retryWork).values({
+      const [inserted] = await target.insert(retryWork).values({
         id: crypto.randomUUID(),
         executionScopeId: input.executionScopeId,
         kind: 'normalization',
@@ -73,47 +73,52 @@ export function createProviderUrlResolutionRepository(
         createdAt,
         updatedAt: createdAt,
         deletedAt: null,
-      }).onConflictDoNothing().run().changes > 0
+      }).onConflictDoNothing().returning({ id: retryWork.id })
+      return Boolean(inserted)
     },
 
-    nextDueAt(): string | null {
-      return scheduledProviderWork(database)
+    async nextDueAt(): Promise<string | null> {
+      return (await scheduledProviderWork(database))
         .map(({ nextAttemptAt }) => nextAttemptAt)
         .filter((value): value is string => value !== null)
         .sort((left, right) => left.localeCompare(right))[0] ?? null
     },
 
-    recoverAcquired(recoveredAt = now().toISOString()): number {
-      const result = database.update(retryWork).set({
+    async recoverAcquired(recoveredAt = now().toISOString()): Promise<number> {
+      const recovered = await database.update(retryWork).set({
         acquiredAt: null,
         acquisitionToken: null,
         acquisitionRunId: null,
-        lineageJson: sql`json_remove(${retryWork.lineageJson}, '$.acquisitionToken')`,
+        lineageJson: sql`((${retryWork.lineageJson})::jsonb - 'acquisitionToken')::text`,
         state: 'scheduled',
         updatedAt: recoveredAt,
       }).where(and(
         eq(retryWork.kind, 'normalization'),
         eq(retryWork.state, 'acquired'),
         isNull(retryWork.deletedAt),
-        sql`json_extract(${retryWork.lineageJson}, '$.workKind') = ${PROVIDER_URL_WORK_KIND}`,
-      )).run()
-      return result.changes
+        sql`(${retryWork.lineageJson})::jsonb ->> 'workKind' = ${PROVIDER_URL_WORK_KIND}`,
+      )).returning({ id: retryWork.id })
+      return recovered.length
     },
 
-    claimDue(dueAt: string): ClaimedProviderUrlResolutionWork | null {
-      return database.transaction((transaction) => {
-        const candidates = transaction.select().from(retryWork).where(and(
+    async claimDue(dueAt: string): Promise<ClaimedProviderUrlResolutionWork | null> {
+      return database.transaction(async (transaction) => {
+        const [candidate] = await transaction.select().from(retryWork).where(and(
           eq(retryWork.kind, 'normalization'),
           eq(retryWork.state, 'scheduled'),
           lte(retryWork.nextAttemptAt, dueAt),
           isNull(retryWork.deletedAt),
-        )).orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt)).all()
-        const candidate = candidates.find((row) => providerLineage(row.lineageJson))
+          sql`(${retryWork.lineageJson})::jsonb ->> 'workKind' = ${PROVIDER_URL_WORK_KIND}`,
+        )).orderBy(
+          asc(retryWork.nextAttemptAt),
+          asc(retryWork.createdAt),
+          asc(retryWork.id),
+        ).limit(1).for('update', { skipLocked: true })
         if (!candidate) return null
         const candidateLineage = providerLineage(candidate.lineageJson)
         if (!candidateLineage) return null
         const acquisitionToken = crypto.randomUUID()
-        const claimed = transaction.update(retryWork).set({
+        const [claimed] = await transaction.update(retryWork).set({
           acquiredAt: dueAt,
           acquisitionToken,
           lineageJson: JSON.stringify({ ...candidateLineage, acquisitionToken }),
@@ -123,12 +128,12 @@ export function createProviderUrlResolutionRepository(
           eq(retryWork.id, candidate.id),
           eq(retryWork.state, 'scheduled'),
           isNull(retryWork.deletedAt),
-        )).returning().get()
+        )).returning()
         if (!claimed) return null
         const lineage = providerLineage(claimed.lineageJson)
         const revision = claimed.captureEvidenceVersionId
-          ? transaction.select().from(captureEvidenceVersions)
-              .where(eq(captureEvidenceVersions.id, claimed.captureEvidenceVersionId)).get()
+          ? (await transaction.select().from(captureEvidenceVersions)
+              .where(eq(captureEvidenceVersions.id, claimed.captureEvidenceVersionId)).limit(1))[0]
           : null
         if (!lineage || !revision?.providerRecordId || lineage.providerRecordId !== revision.providerRecordId
           || !claimed.captureEvidenceVersionId
@@ -156,9 +161,9 @@ export function createProviderUrlResolutionRepository(
       })
     },
 
-    release(work: Pick<ClaimedProviderUrlResolutionWork, 'acquisitionToken' | 'retryWorkId'>) {
+    async release(work: Pick<ClaimedProviderUrlResolutionWork, 'acquisitionToken' | 'retryWorkId'>) {
       const updatedAt = now().toISOString()
-      database.update(retryWork).set({
+      await database.update(retryWork).set({
         acquiredAt: null,
         acquisitionToken: null,
         state: 'scheduled',
@@ -168,7 +173,7 @@ export function createProviderUrlResolutionRepository(
         eq(retryWork.state, 'acquired'),
         eq(retryWork.acquisitionToken, work.acquisitionToken),
         isNull(retryWork.deletedAt),
-      )).run()
+      ))
     },
 
     recordFailureEvidence(input: {
@@ -176,10 +181,10 @@ export function createProviderUrlResolutionRepository(
       retryWorkId: string
       evidence: unknown
       terminal?: boolean
-    }): boolean {
-      return database.transaction((transaction) => {
-        const row = transaction.select().from(retryWork)
-          .where(eq(retryWork.id, input.retryWorkId)).get()
+    }): Promise<boolean> {
+      return database.transaction(async (transaction) => {
+        const [row] = await transaction.select().from(retryWork)
+          .where(eq(retryWork.id, input.retryWorkId)).limit(1).for('update')
         if (!row) throw new Error('Provider URL work not found')
         const lineage = providerLineage(row.lineageJson)
         if (!lineage) throw new Error('Provider URL work lineage is invalid')
@@ -197,10 +202,10 @@ export function createProviderUrlResolutionRepository(
         )
         const persistedReplay = and(
           sql`${retryWork.state} <> 'acquired'`,
-          sql`json_extract(${retryWork.lineageJson}, '$.normalizationRunId') IS NOT NULL`,
-          sql`json_extract(${retryWork.lineageJson}, '$.acquisitionToken') = ${input.acquisitionToken}`,
+          sql`(${retryWork.lineageJson})::jsonb ->> 'normalizationRunId' IS NOT NULL`,
+          sql`(${retryWork.lineageJson})::jsonb ->> 'acquisitionToken' = ${input.acquisitionToken}`,
         )
-        const result = transaction.update(retryWork).set({
+        const updated = await transaction.update(retryWork).set({
           ...(input.terminal
             ? { state: 'cancelled' as const, nextAttemptAt: null }
             : {}),
@@ -212,19 +217,20 @@ export function createProviderUrlResolutionRepository(
           eq(retryWork.id, input.retryWorkId),
           isNull(retryWork.deletedAt),
           or(currentClaim, persistedReplay),
-        )).run()
-        return result.changes > 0
+        )).returning({ id: retryWork.id })
+        return updated.length > 0
       })
     },
   }
 }
 
-function scheduledProviderWork(database: DrizzleDatabase) {
+async function scheduledProviderWork(database: PgliteDatabase) {
   return database.select().from(retryWork).where(and(
     eq(retryWork.kind, 'normalization'),
     eq(retryWork.state, 'scheduled'),
     isNull(retryWork.deletedAt),
-  )).all().filter((row) => providerLineage(row.lineageJson))
+    sql`(${retryWork.lineageJson})::jsonb ->> 'workKind' = ${PROVIDER_URL_WORK_KIND}`,
+  ))
 }
 
 function providerLineage(value: string): ProviderUrlLineage | null {

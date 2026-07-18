@@ -1,6 +1,6 @@
 import { jobObservationSchemaVersion } from '@sparxie/valedictorian-connectors-core'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import type { createConnectorRunner } from '../modules/connectors/connector.runner'
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
 import {
@@ -15,7 +15,7 @@ import {
   createNormalizationResolverRegistry,
   type NormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
-import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
+import { createPgliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
 import type { ConnectorRunRecord } from '../modules/connectors/connector.repository'
 
 const JOBRIGHT_PUBLIC_SOURCE_PREFIX = 'jobright.public:'
@@ -35,14 +35,14 @@ export async function dispatchAcquiredNormalizationWork({
   startedAt,
   coverageEndedAt,
 }: {
-  acquiredWork: Extract<NonNullable<Awaited<ReturnType<ReturnType<typeof createSqliteConnectorRepository>['recordRunRequest']>>['acquiredWork']>, { kind: 'normalization' }>
+  acquiredWork: Extract<NonNullable<Awaited<ReturnType<ReturnType<typeof createPgliteConnectorRepository>['recordRunRequest']>>['acquiredWork']>, { kind: 'normalization' }>
   connector: NonNullable<ReturnType<LocalConnectorRegistry['get']>>
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   instanceId: string
   normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
   normalizationRegistry: NormalizationResolverRegistry
-  normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
+  normalizationRepository: ReturnType<typeof createPgliteNormalizationRepository>
   now: () => Date
   runRequest: ConnectorRunRecord
   startedAt: string
@@ -86,25 +86,19 @@ export async function dispatchAcquiredNormalizationWork({
     )
   }
 
-  const raw = normalizationRepository.getRawContext(acquiredWork.rawRevisionId)
-  if (!raw) {
-    await connectorRepository.markRunFailed({
-      connectorRunId: runRequest.id,
-      completedAt: now().toISOString(),
-      retryHints: null,
-      warning: {
-        code: 'connector.normalization_revision_missing',
-        message: `Raw revision missing for normalization retry: ${acquiredWork.rawRevisionId}`,
-      },
-    })
-    throw new Error(`Raw revision missing for normalization retry: ${acquiredWork.rawRevisionId}`)
-  }
-
-  const latest = normalizationRepository.getLatestForRevision(raw.revision.id)
-  const resolverFields = new Set(resolver.declaration.outputFields)
-  const baselineOutcomes = latest?.fieldOutcomes.filter(({ field }) => !resolverFields.has(field)) ?? []
-
   try {
+    const raw = await normalizationRepository.getRawContext(acquiredWork.rawRevisionId)
+    if (!raw) {
+      throw new NormalizationDispatchFailure(
+        'connector.normalization_revision_missing',
+        `Raw revision missing for normalization retry: ${acquiredWork.rawRevisionId}`,
+      )
+    }
+
+    const latest = await normalizationRepository.getLatestForRevision(raw.revision.id)
+    const resolverFields = new Set(resolver.declaration.outputFields)
+    const baselineOutcomes = latest?.fieldOutcomes.filter(({ field }) => !resolverFields.has(field)) ?? []
+
     // Direct resolver replay does not rediscover or recapture the job. Use
     // truthful no-capture lineage (null trigger occurrence) and complete the
     // acquired retry row by its exact persisted identity.
@@ -129,33 +123,45 @@ export async function dispatchAcquiredNormalizationWork({
         registry: createNormalizationResolverRegistry([resolver]),
       },
     )
+
+    return await connectorRepository.completeRun({
+      completedAt: now().toISOString(),
+      connectorRunId: runRequest.id,
+      status: 'completed',
+    })
   } catch (error) {
+    const failure = error instanceof NormalizationDispatchFailure
+      ? error
+      : new NormalizationDispatchFailure(
+          'connector.normalization_replay_failed',
+          'Normalization retry replay failed.',
+        )
     await connectorRepository.markRunFailed({
       connectorRunId: runRequest.id,
       completedAt: now().toISOString(),
       retryHints: null,
-      warning: {
-        code: 'connector.normalization_replay_failed',
-        message: 'Normalization retry replay failed.',
-      },
+      warning: { code: failure.code, message: failure.message },
     })
     throw error
   }
+}
 
-  return connectorRepository.completeRun({
-    completedAt: now().toISOString(),
-    connectorRunId: runRequest.id,
-    status: 'completed',
-  })
+class NormalizationDispatchFailure extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message)
+  }
 }
 
 async function dispatchJobrightAuthenticatedDestinationRetry(input: {
-  acquiredWork: Extract<NonNullable<Awaited<ReturnType<ReturnType<typeof createSqliteConnectorRepository>['recordRunRequest']>>['acquiredWork']>, { kind: 'normalization' }>
+  acquiredWork: Extract<NonNullable<Awaited<ReturnType<ReturnType<typeof createPgliteConnectorRepository>['recordRunRequest']>>['acquiredWork']>, { kind: 'normalization' }>
   connector: NonNullable<ReturnType<LocalConnectorRegistry['get']>>
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRunner: ReturnType<typeof createConnectorRunner>
   instanceId: string
-  normalizationRepository: ReturnType<typeof createSqliteNormalizationRepository>
+  normalizationRepository: ReturnType<typeof createPgliteNormalizationRepository>
   now: () => Date
   runRequest: ConnectorRunRecord
   startedAt: string
@@ -174,18 +180,13 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
     coverageEndedAt,
   } = input
 
-  const raw = normalizationRepository.getRawContext(acquiredWork.rawRevisionId)
+  try {
+  const raw = await normalizationRepository.getRawContext(acquiredWork.rawRevisionId)
   if (!raw?.revision.providerRecordId) {
-    await connectorRepository.markRunFailed({
-      connectorRunId: runRequest.id,
-      completedAt: now().toISOString(),
-      retryHints: null,
-      warning: {
-        code: 'connector.normalization_revision_missing',
-        message: `Raw revision missing provider identity for normalization retry: ${acquiredWork.rawRevisionId}`,
-      },
-    })
-    throw new Error(`Raw revision missing provider identity for normalization retry: ${acquiredWork.rawRevisionId}`)
+    throw new NormalizationDispatchFailure(
+      'connector.normalization_revision_missing',
+      `Raw revision missing provider identity for normalization retry: ${acquiredWork.rawRevisionId}`,
+    )
   }
 
   const instance = await connectorRepository.getInstance(instanceId)
@@ -206,16 +207,10 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
     filterSignature,
   })
   if (!storedCheckpoint || storedCheckpoint.schemaVersion !== JOBRIGHT_CHECKPOINT_SCHEMA_V5) {
-    await connectorRepository.markRunFailed({
-      connectorRunId: runRequest.id,
-      completedAt: now().toISOString(),
-      retryHints: null,
-      warning: {
-        code: 'connector.jobright_checkpoint_missing',
-        message: 'Jobright v5 checkpoint is required for authenticated-destination retry dispatch.',
-      },
-    })
-    throw new Error('Jobright v5 checkpoint is required for authenticated-destination retry dispatch.')
+    throw new NormalizationDispatchFailure(
+      'connector.jobright_checkpoint_missing',
+      'Jobright v5 checkpoint is required for authenticated-destination retry dispatch.',
+    )
   }
 
   const providerRecordId = raw.revision.providerRecordId
@@ -226,16 +221,10 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
     || acquiredWork.resolverId !== JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID
     || acquiredWork.resolverVersion !== JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION
   ) {
-    await connectorRepository.markRunFailed({
-      connectorRunId: runRequest.id,
-      completedAt: now().toISOString(),
-      retryHints: null,
-      warning: {
-        code: 'connector.normalization_retry_identity_invalid',
-        message: 'Acquired Jobright normalization retry identity is incomplete or mismatched.',
-      },
-    })
-    throw new Error('Acquired Jobright normalization retry identity is incomplete or mismatched.')
+    throw new NormalizationDispatchFailure(
+      'connector.normalization_retry_identity_invalid',
+      'Acquired Jobright normalization retry identity is incomplete or mismatched.',
+    )
   }
 
   const exactIdentity = {
@@ -248,8 +237,7 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
     executionScopeId: acquiredWork.executionScopeId,
   }
 
-  try {
-    const exactSuccessAlreadyPersisted = normalizationRepository.hasExactSuccessfulNormalizationAttempt({
+    const exactSuccessAlreadyPersisted = await normalizationRepository.hasExactSuccessfulNormalizationAttempt({
       rawRevisionId: exactIdentity.rawRevisionId,
       resolverId: exactIdentity.resolverId,
       resolverVersion: exactIdentity.resolverVersion,
@@ -330,14 +318,20 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
     })
   } catch (error) {
     const completedAt = now().toISOString()
+    const failure = error instanceof NormalizationDispatchFailure
+      ? error
+      : new NormalizationDispatchFailure(
+          'connector.execution_failed',
+          'Connector execution failed.',
+        )
     try {
       await connectorRepository.markRunFailed({
         connectorRunId: runRequest.id,
         completedAt,
         retryHints: null,
         warning: {
-          code: 'connector.execution_failed',
-          message: 'Connector execution failed.',
+          code: failure.code,
+          message: failure.message,
         },
       })
     } catch {
@@ -346,10 +340,6 @@ async function dispatchJobrightAuthenticatedDestinationRetry(input: {
         completedAt,
       })
     }
-    await connectorRepository.releaseAcquiredNormalizationWorkForRun({
-      connectorRunId: runRequest.id,
-      completedAt,
-    })
     throw error
   }
 }
@@ -521,11 +511,11 @@ export async function finalizeDeferredConnectorRefreshRecord({
   run,
   terminalStatus,
 }: {
-  checkpoint: Parameters<ReturnType<typeof createSqliteConnectorRepository>['recordCheckpoint']>[0]
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  checkpoint: Parameters<ReturnType<typeof createPgliteConnectorRepository>['recordCheckpoint']>[0]
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   now: () => Date
   run: ConnectorRunRecord
-  terminalStatus: Parameters<ReturnType<typeof createSqliteConnectorRepository>['completeRun']>[0]['status']
+  terminalStatus: Parameters<ReturnType<typeof createPgliteConnectorRepository>['completeRun']>[0]['status']
 }): Promise<ConnectorRunRecord> {
   let projectedRun = run
   try {

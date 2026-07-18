@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq, lte, or, sql } from 'drizzle-orm'
 import type { SourceExecutionScopeId } from 'sparxie'
+import type { PgliteDatabase } from '../../db/pglite'
 import { sourceExecutionScopes, sourceExecutionSessions } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
 
 export interface SourceSessionCodec {
   decrypt(value: string): string
@@ -30,38 +30,38 @@ const BASE_BACKOFF_MS = 30_000
 const MAX_BACKOFF_MS = 60 * 60_000
 
 export function createSourceExecutionGovernor(
-  database: DrizzleDatabase,
+  database: PgliteDatabase,
   sessionCodec: SourceSessionCodec = { decrypt: (value) => value, encrypt: (value) => value },
 ) {
   return {
-    getScope(scopeId: SourceExecutionScopeId) {
+    async getScope(scopeId: SourceExecutionScopeId) {
       return readScope(database, scopeId)
     },
-    loadActiveSession(scopeId: SourceExecutionScopeId) {
-      const session = database.select().from(sourceExecutionSessions)
-        .where(eq(sourceExecutionSessions.executionScopeId, scopeId)).get()
+    async loadActiveSession(scopeId: SourceExecutionScopeId) {
+      const [session] = await database.select().from(sourceExecutionSessions)
+        .where(eq(sourceExecutionSessions.executionScopeId, scopeId)).limit(1)
       return session ? { ...session, encryptedSession: sessionCodec.decrypt(session.encryptedSession) } : null
     },
-    ensureScope(scopeId: SourceExecutionScopeId, now: string) {
-      database.insert(sourceExecutionScopes).values({
+    async ensureScope(scopeId: SourceExecutionScopeId, now: string) {
+      await database.insert(sourceExecutionScopes).values({
         id: scopeId,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
-      }).onConflictDoNothing().run()
+      }).onConflictDoNothing()
       return readScope(database, scopeId)
     },
 
-    isAvailable(scopeId: SourceExecutionScopeId, now: string) {
-      const scope = readScope(database, scopeId)
+    async isAvailable(scopeId: SourceExecutionScopeId, now: string) {
+      const scope = await readScope(database, scopeId)
       if (scope.status === 'action_required' || scope.status === 'refreshing') return false
       return scope.blockedUntil === null || scope.blockedUntil <= now
     },
 
-    acquireReconnectLease(scopeId: SourceExecutionScopeId, input: { leaseMs: number; now: string; token?: string }) {
+    async acquireReconnectLease(scopeId: SourceExecutionScopeId, input: { leaseMs: number; now: string; token?: string }) {
       const token = input.token ?? randomUUID()
       const expiresAt = new Date(Date.parse(input.now) + input.leaseMs).toISOString()
-      const result = database.update(sourceExecutionScopes).set({
+      const updated = await database.update(sourceExecutionScopes).set({
         status: 'refreshing', blockedUntil: null, refreshLeaseToken: token,
         refreshLeaseExpiresAt: expiresAt, actionReason: 'source_reconnect_validation', updatedAt: input.now,
       }).where(and(
@@ -72,17 +72,17 @@ export function createSourceExecutionGovernor(
           and(eq(sourceExecutionScopes.status, 'cooldown'), lte(sourceExecutionScopes.blockedUntil, input.now)),
           and(eq(sourceExecutionScopes.status, 'refreshing'), lte(sourceExecutionScopes.refreshLeaseExpiresAt, input.now)),
         ),
-      )).run()
-      return result.changes === 1 ? { expiresAt, token } : null
+      )).returning({ id: sourceExecutionScopes.id })
+      return updated.length === 1 ? { expiresAt, token } : null
     },
 
-    finishReconnectValidation(scopeId: SourceExecutionScopeId, input: {
+    async finishReconnectValidation(scopeId: SourceExecutionScopeId, input: {
       now: string
       reason: string
       status: 'action_required' | 'available'
       token: string
     }) {
-      const result = database.update(sourceExecutionScopes).set({
+      const updated = await database.update(sourceExecutionScopes).set({
         status: input.status,
         actionReason: input.status === 'available' ? null : sanitizeActionReason(input.reason),
         refreshLeaseToken: null,
@@ -92,24 +92,25 @@ export function createSourceExecutionGovernor(
         eq(sourceExecutionScopes.id, scopeId),
         eq(sourceExecutionScopes.status, 'refreshing'),
         eq(sourceExecutionScopes.refreshLeaseToken, input.token),
-      )).run()
-      return result.changes === 1 ? readScope(database, scopeId) : null
+      )).returning()
+      return updated[0] ?? null
     },
 
-    blockScope(scopeId: SourceExecutionScopeId, input: BlockScopeInput) {
-      return database.transaction((transaction) => {
-        const scope = readScope(transaction, scopeId)
+    async blockScope(scopeId: SourceExecutionScopeId, input: BlockScopeInput) {
+      return database.transaction(async (transaction) => {
+        const scope = await readScopeForUpdate(transaction, scopeId)
         const cooldown = cooldownValues(scope, input)
-        transaction.update(sourceExecutionScopes).set({
+        const [updated] = await transaction.update(sourceExecutionScopes).set({
           ...cooldown,
           status: 'cooldown',
           updatedAt: input.now,
-        }).where(eq(sourceExecutionScopes.id, scopeId)).run()
-        return readScope(transaction, scopeId)
+        }).where(eq(sourceExecutionScopes.id, scopeId)).returning()
+        if (!updated) throw new Error(`Source execution scope not found: ${scopeId}`)
+        return updated
       })
     },
 
-    acquireRefreshLease(scopeId: SourceExecutionScopeId, input: {
+    async acquireRefreshLease(scopeId: SourceExecutionScopeId, input: {
       allowActionRequired?: boolean
       leaseMs: number
       now: string
@@ -117,7 +118,7 @@ export function createSourceExecutionGovernor(
     }) {
       const token = input.token ?? randomUUID()
       const expiresAt = new Date(Date.parse(input.now) + input.leaseMs).toISOString()
-      const result = database.update(sourceExecutionScopes).set({
+      const updated = await database.update(sourceExecutionScopes).set({
         status: 'refreshing',
         blockedUntil: null,
         refreshLeaseToken: token,
@@ -138,44 +139,44 @@ export function createSourceExecutionGovernor(
           ),
           ...(input.allowActionRequired ? [eq(sourceExecutionScopes.status, 'action_required')] : []),
         ),
-      )).run()
-      return result.changes === 1 ? { expiresAt, token } : null
+      )).returning({ id: sourceExecutionScopes.id })
+      return updated.length === 1 ? { expiresAt, token } : null
     },
 
-    completeRefresh(scopeId: SourceExecutionScopeId, input: { encryptedSession?: string; now: string; token: string }) {
-      return database.transaction((transaction) => {
-      const result = transaction.update(sourceExecutionScopes).set({
-        status: 'available',
-        blockedUntil: null,
-        backoffAttempt: 0,
-        authGeneration: sql`${sourceExecutionScopes.authGeneration} + 1`,
-        refreshLeaseToken: null,
-        refreshLeaseExpiresAt: null,
-        actionReason: null,
-        updatedAt: input.now,
-      }).where(and(
-        eq(sourceExecutionScopes.id, scopeId),
-        eq(sourceExecutionScopes.status, 'refreshing'),
-        eq(sourceExecutionScopes.refreshLeaseToken, input.token),
-      )).run()
-      if (result.changes !== 1) return null
-      const scope = readScope(transaction, scopeId)
-      if (input.encryptedSession !== undefined) {
-        transaction.insert(sourceExecutionSessions).values({ executionScopeId: scopeId,
-          encryptedSession: sessionCodec.encrypt(input.encryptedSession), authGeneration: scope.authGeneration, updatedAt: input.now })
-          .onConflictDoUpdate({ target: sourceExecutionSessions.executionScopeId,
-            set: { encryptedSession: sessionCodec.encrypt(input.encryptedSession), authGeneration: scope.authGeneration, updatedAt: input.now } }).run()
-      }
-      return scope
+    async completeRefresh(scopeId: SourceExecutionScopeId, input: { encryptedSession?: string; now: string; token: string }) {
+      return database.transaction(async (transaction) => {
+        const [scope] = await transaction.update(sourceExecutionScopes).set({
+          status: 'available',
+          blockedUntil: null,
+          backoffAttempt: 0,
+          authGeneration: sql`${sourceExecutionScopes.authGeneration} + 1`,
+          refreshLeaseToken: null,
+          refreshLeaseExpiresAt: null,
+          actionReason: null,
+          updatedAt: input.now,
+        }).where(and(
+          eq(sourceExecutionScopes.id, scopeId),
+          eq(sourceExecutionScopes.status, 'refreshing'),
+          eq(sourceExecutionScopes.refreshLeaseToken, input.token),
+        )).returning()
+        if (!scope) return null
+        if (input.encryptedSession !== undefined) {
+          const encryptedSession = sessionCodec.encrypt(input.encryptedSession)
+          await transaction.insert(sourceExecutionSessions).values({ executionScopeId: scopeId,
+            encryptedSession, authGeneration: scope.authGeneration, updatedAt: input.now })
+            .onConflictDoUpdate({ target: sourceExecutionSessions.executionScopeId,
+              set: { encryptedSession, authGeneration: scope.authGeneration, updatedAt: input.now } })
+        }
+        return scope
       })
     },
 
-    failRefresh(scopeId: SourceExecutionScopeId, input: {
+    async failRefresh(scopeId: SourceExecutionScopeId, input: {
       now: string
       reason: string
       token: string
     }) {
-      const result = database.update(sourceExecutionScopes).set({
+      const [updated] = await database.update(sourceExecutionScopes).set({
         status: 'action_required',
         refreshLeaseToken: null,
         refreshLeaseExpiresAt: null,
@@ -185,35 +186,35 @@ export function createSourceExecutionGovernor(
         eq(sourceExecutionScopes.id, scopeId),
         eq(sourceExecutionScopes.status, 'refreshing'),
         eq(sourceExecutionScopes.refreshLeaseToken, input.token),
-      )).run()
-      return result.changes === 1 ? readScope(database, scopeId) : null
+      )).returning()
+      return updated ?? null
     },
 
-    cooldownRefresh(scopeId: SourceExecutionScopeId, input: BlockScopeInput & { token: string }) {
-      return database.transaction((transaction) => {
-        const scope = readScope(transaction, scopeId)
+    async cooldownRefresh(scopeId: SourceExecutionScopeId, input: BlockScopeInput & { token: string }) {
+      return database.transaction(async (transaction) => {
+        const scope = await readScopeForUpdate(transaction, scopeId)
         if (scope.status !== 'refreshing' || scope.refreshLeaseToken !== input.token) return null
         const cooldown = cooldownValues(scope, input)
-        const result = transaction.update(sourceExecutionScopes).set({
+        const [updated] = await transaction.update(sourceExecutionScopes).set({
           ...cooldown, status: 'cooldown', refreshLeaseToken: null,
           refreshLeaseExpiresAt: null, actionReason: null, updatedAt: input.now,
         }).where(and(
           eq(sourceExecutionScopes.id, scopeId), eq(sourceExecutionScopes.status, 'refreshing'),
           eq(sourceExecutionScopes.refreshLeaseToken, input.token),
-        )).run()
-        return result.changes === 1 ? readScope(transaction, scopeId) : null
+        )).returning()
+        return updated ?? null
       })
     },
 
-    releaseRefreshLease(scopeId: SourceExecutionScopeId, input: { now: string; token: string }) {
-      const result = database.update(sourceExecutionScopes).set({
+    async releaseRefreshLease(scopeId: SourceExecutionScopeId, input: { now: string; token: string }) {
+      const updated = await database.update(sourceExecutionScopes).set({
         status: 'available', refreshLeaseToken: null, refreshLeaseExpiresAt: null, updatedAt: input.now,
       }).where(and(
         eq(sourceExecutionScopes.id, scopeId),
         eq(sourceExecutionScopes.status, 'refreshing'),
         eq(sourceExecutionScopes.refreshLeaseToken, input.token),
-      )).run()
-      return result.changes === 1
+      )).returning({ id: sourceExecutionScopes.id })
+      return updated.length === 1
     },
   }
 }
@@ -222,9 +223,16 @@ function sanitizeActionReason(reason: string) {
   return /^[a-z][a-z0-9_]{0,63}$/.test(reason) ? reason : 'source_action_required'
 }
 
-function readScope(database: Pick<DrizzleDatabase, 'select'>, scopeId: SourceExecutionScopeId) {
-  const scope = database.select().from(sourceExecutionScopes)
-    .where(eq(sourceExecutionScopes.id, scopeId)).get()
+async function readScope(database: Pick<PgliteDatabase, 'select'>, scopeId: SourceExecutionScopeId) {
+  const [scope] = await database.select().from(sourceExecutionScopes)
+    .where(eq(sourceExecutionScopes.id, scopeId)).limit(1)
+  if (!scope) throw new Error(`Source execution scope not found: ${scopeId}`)
+  return scope
+}
+
+async function readScopeForUpdate(database: Pick<PgliteDatabase, 'select'>, scopeId: SourceExecutionScopeId) {
+  const [scope] = await database.select().from(sourceExecutionScopes)
+    .where(eq(sourceExecutionScopes.id, scopeId)).limit(1).for('update')
   if (!scope) throw new Error(`Source execution scope not found: ${scopeId}`)
   return scope
 }

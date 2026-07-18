@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from './connector.repository'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 
 describe('connector checkpoint upgrade copy', () => {
   it('is idempotent and never overwrites a newer target checkpoint', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const { repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
       id: 'upgrade-copy', connectorId: 'fixture.provider', connectorVersion: '1.0.0',
       displayName: 'Upgrade copy', enabled: true,
@@ -32,8 +29,8 @@ describe('connector checkpoint upgrade copy', () => {
       targetFilterSignature: 'provider-state:fixture.provider@2.0.0',
     }
 
-    repository.copyCheckpointIfAbsent(copy)
-    repository.copyCheckpointIfAbsent(copy)
+    await repository.copyCheckpointIfAbsent(copy)
+    await repository.copyCheckpointIfAbsent(copy)
 
     await expect(repository.getCheckpoint({
       connectorInstanceId: 'upgrade-copy',
@@ -44,6 +41,5 @@ describe('connector checkpoint upgrade copy', () => {
     })
     await expect(repository.listCheckpoints({ connectorInstanceId: 'upgrade-copy' }))
       .resolves.toHaveLength(2)
-    sqlite.close()
   })
 })

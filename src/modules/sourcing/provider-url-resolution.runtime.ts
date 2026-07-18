@@ -1,5 +1,5 @@
 import type { LocalConnectorRegistry } from '../connectors/connector.registry'
-import type { createSqliteConnectorRepository } from '../connectors/connector.repository'
+import type { createPgliteConnectorRepository } from '../connectors/connector.repository'
 import {
   createRunRuntime,
   redactSensitiveValue,
@@ -18,7 +18,7 @@ import type { ClaimedProviderUrlResolutionWork } from './provider-url-resolution
 export function createProviderUrlResolutionRuntime(options: {
   authHost?: AppConnectorAuthHost
   connectorRegistry: LocalConnectorRegistry
-  connectorRepository: ReturnType<typeof createSqliteConnectorRepository>
+  connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   connectorRuntime?: AppConnectorRuntimePorts
   governor: ReturnType<typeof createSourceExecutionGovernor>
   now: () => Date
@@ -44,7 +44,7 @@ export function createProviderUrlResolutionRuntime(options: {
       return { status: 'terminal', reason: 'provider_url_connector_disabled' }
     }
     const timestamp = options.now().toISOString()
-    const scope = options.governor.getScope(work.executionScopeId)
+    const scope = await options.governor.getScope(work.executionScopeId)
     if (scope.status === 'action_required') {
       return { status: 'terminal', reason: 'provider_url_source_action_required', action: 'authenticate' }
     }
@@ -107,7 +107,7 @@ export function createProviderUrlResolutionRuntime(options: {
       return { status: 'terminal', reason: 'provider_url_invalid_result' }
     }
     if (redacted.status === 'retryable' && redacted.retryReason === 'rate_limit') {
-      options.governor.blockScope(work.executionScopeId, {
+      await options.governor.blockScope(work.executionScopeId, {
         now: options.now().toISOString(),
         serverMinimumDelayMs: redacted.serverMinimumDelayMs,
       })

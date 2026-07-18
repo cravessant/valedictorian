@@ -1,23 +1,22 @@
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { drizzle } from 'drizzle-orm/pglite'
 import { describe, expect, it } from 'vitest'
 import {
   connectorRuns,
   connectorRunSynchronizations,
   schema,
 } from '../../db/schema'
-import { createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
-import { createSqliteConnectorRepository } from './connector.repository'
+import { createPgliteConnectorRepository } from './connector.repository'
+import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 
-describe('SQLite connector repository bounded history', () => {
+describe('PGlite connector repository bounded history', () => {
   it('keeps latest selection and a filtered one-row page bounded across legacy history', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
+    const { client } = await createConnectorRepositoryTestContext()
     const queries: string[] = []
-    const database = drizzle(sqlite, {
+    const database = drizzle(client, {
       schema,
       logger: { logQuery(query) { queries.push(query) } },
     })
-    const repository = createSqliteConnectorRepository(database)
+    const repository = createPgliteConnectorRepository(database)
     const instance = await repository.upsertInstance({
       id: 'bounded-history',
       connectorId: 'fixture.jobs',
@@ -28,30 +27,37 @@ describe('SQLite connector repository bounded history', () => {
     })
 
     for (let index = 0; index < 250; index += 1) {
-      insertRun(database, instance.executionScopeId, {
+      await insertRun(database, instance.executionScopeId, {
         id: `legacy-${index.toString().padStart(3, '0')}`,
         startedAt: new Date(Date.UTC(2026, 6, 13, 12, index)).toISOString(),
       })
     }
-    insertRun(database, instance.executionScopeId, {
+    await insertRun(database, instance.executionScopeId, {
       id: 'synchronized-latest',
       mode: 'scheduled',
       startedAt: '2026-07-13T11:00:00.000Z',
       status: 'queued',
     })
-    insertSynchronization(database, 'synchronized-latest', 'in_progress')
-    insertRun(database, instance.executionScopeId, {
+    await insertSynchronization(database, 'synchronized-latest', 'in_progress')
+    await insertRun(database, instance.executionScopeId, {
+      id: 'synchronized-tie-winner',
+      mode: 'scheduled',
+      startedAt: '2026-07-13T11:00:00.000Z',
+      status: 'queued',
+    })
+    await insertSynchronization(database, 'synchronized-tie-winner', 'in_progress')
+    await insertRun(database, instance.executionScopeId, {
       id: 'synchronized-completed',
       lifecycleCounts: false,
       mode: 'manual',
       startedAt: '2026-07-13T10:00:00.000Z',
       status: 'completed',
     })
-    insertSynchronization(database, 'synchronized-completed', 'caught_up')
+    await insertSynchronization(database, 'synchronized-completed', 'caught_up')
 
     queries.length = 0
     await expect(repository.getStatusSummary(instance.id)).resolves.toMatchObject({
-      latestRun: { id: 'synchronized-latest' },
+      latestRun: { id: 'synchronized-tie-winner' },
     })
     expect(queries.length).toBeLessThanOrEqual(3)
 
@@ -72,11 +78,10 @@ describe('SQLite connector repository bounded history', () => {
     })
     expect(page.items[0]!.stats).not.toHaveProperty('lifecycleCounts')
     expect(queries.length).toBeLessThanOrEqual(2)
-    sqlite.close()
   })
 })
 
-function insertRun(
+async function insertRun(
   database: ReturnType<typeof drizzle<typeof schema>>,
   executionScopeId: string,
   input: {
@@ -88,7 +93,7 @@ function insertRun(
   },
 ) {
   const status = input.status ?? 'completed'
-  database.insert(connectorRuns).values({
+  await database.insert(connectorRuns).values({
     id: input.id,
     executionScopeId,
     connectorInstanceId: 'bounded-history',
@@ -111,15 +116,15 @@ function insertRun(
     createdAt: input.startedAt,
     updatedAt: input.startedAt,
     deletedAt: null,
-  }).run()
+  })
 }
 
-function insertSynchronization(
+async function insertSynchronization(
   database: ReturnType<typeof drizzle<typeof schema>>,
   connectorRunId: string,
   outcome: 'caught_up' | 'in_progress',
 ) {
-  database.insert(connectorRunSynchronizations).values({
+  await database.insert(connectorRunSynchronizations).values({
     connectorRunId,
     snapshotJson: JSON.stringify({
       newestFrontier: { state: 'not_started' },
@@ -132,7 +137,7 @@ function insertSynchronization(
     }),
     createdAt: '2026-07-13T12:00:00.000Z',
     updatedAt: '2026-07-13T12:00:00.000Z',
-  }).run()
+  })
 }
 
 function zeroLifecycle(connectorRunId: string, executionScopeId: string) {
