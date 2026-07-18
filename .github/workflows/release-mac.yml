@@ -2,6 +2,12 @@ name: Release Mac
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_update_feed:
+        description: Publish this main-branch build to the alpha update feed
+        required: true
+        default: false
+        type: boolean
   push:
     tags:
       - 'v*.*.*'
@@ -10,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: release-mac-alpha
   cancel-in-progress: false
 
 env:
@@ -21,6 +27,8 @@ jobs:
     name: Verify Release
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      publish_update_feed: ${{ steps.release-mode.outputs.publish_update_feed }}
     permissions:
       contents: read
       actions: read
@@ -29,6 +37,26 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: valedictorian-app
+
+      - name: Resolve release mode
+        id: release-mode
+        env:
+          REQUESTED_PUBLISH: ${{ inputs.publish_update_feed }}
+        run: |
+          publish_update_feed=false
+
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            publish_update_feed=true
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${REQUESTED_PUBLISH}" = "true" ]; then
+            if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+              echo "::error::Manual update-feed publishing is restricted to the main branch"
+              exit 1
+            fi
+
+            publish_update_feed=true
+          fi
+
+          echo "publish_update_feed=${publish_update_feed}" >> "$GITHUB_OUTPUT"
 
       - name: Verify release tag
         if: startsWith(github.ref, 'refs/tags/')
@@ -45,6 +73,73 @@ jobs:
             throw new Error(`Release tag ${actualTag} does not match package version ${expectedTag}`)
           }
           NODE
+
+      - name: Validate macOS signing secrets
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for secret_name in \
+            MAC_CSC_LINK \
+            MAC_CSC_KEY_PASSWORD \
+            APPLE_API_KEY \
+            APPLE_API_KEY_ID \
+            APPLE_API_ISSUER \
+            APPLE_TEAM_ID
+          do
+            if [ -z "${!secret_name}" ]; then
+              echo "::error::$secret_name is required for signed and notarized Mac releases"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Validate update feed publishing secrets
+        if: steps.release-mode.outputs.publish_update_feed == 'true'
+        env:
+          UPDATE_FEED_URL: ${{ vars.UPDATE_FEED_URL }}
+          UPDATE_FEED_ENDPOINT: ${{ secrets.UPDATE_FEED_ENDPOINT }}
+          UPDATE_FEED_BUCKET: ${{ secrets.UPDATE_FEED_BUCKET }}
+          UPDATE_FEED_ACCESS_KEY_ID: ${{ secrets.UPDATE_FEED_ACCESS_KEY_ID }}
+          UPDATE_FEED_SECRET_ACCESS_KEY: ${{ secrets.UPDATE_FEED_SECRET_ACCESS_KEY }}
+          UPDATE_FEED_PREFIX: ${{ vars.UPDATE_FEED_PREFIX }}
+        run: |
+          missing=0
+          for secret_name in \
+            UPDATE_FEED_URL \
+            UPDATE_FEED_ENDPOINT \
+            UPDATE_FEED_BUCKET \
+            UPDATE_FEED_ACCESS_KEY_ID \
+            UPDATE_FEED_SECRET_ACCESS_KEY \
+            UPDATE_FEED_PREFIX
+          do
+            if [ -z "${!secret_name}" ]; then
+              echo "::error::$secret_name is required for publishing app update metadata"
+              missing=1
+            fi
+          done
+
+          if [ "$UPDATE_FEED_URL" != "https://updates.valedictorian.app/mac/alpha" ]; then
+            echo "::error::UPDATE_FEED_URL must match the app's electron-builder publish URL"
+            missing=1
+          fi
+
+          if [ "$UPDATE_FEED_PREFIX" != "mac/alpha" ]; then
+            echo "::error::UPDATE_FEED_PREFIX must be mac/alpha"
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Reuse prior successful CI when safe
         id: prior-ci
@@ -161,74 +256,6 @@ jobs:
             sleep "$sleep_seconds"
           done
 
-      - name: Validate macOS signing secrets
-        working-directory: valedictorian-app
-        env:
-          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          missing=0
-          for secret_name in \
-            MAC_CSC_LINK \
-            MAC_CSC_KEY_PASSWORD \
-            APPLE_API_KEY \
-            APPLE_API_KEY_ID \
-            APPLE_API_ISSUER \
-            APPLE_TEAM_ID
-          do
-            if [ -z "${!secret_name}" ]; then
-              echo "::error::$secret_name is required for signed and notarized Mac releases"
-              missing=1
-            fi
-          done
-
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
-
-      - name: Validate update feed publishing secrets
-        working-directory: valedictorian-app
-        env:
-          UPDATE_FEED_URL: ${{ vars.UPDATE_FEED_URL }}
-          UPDATE_FEED_ENDPOINT: ${{ secrets.UPDATE_FEED_ENDPOINT }}
-          UPDATE_FEED_BUCKET: ${{ secrets.UPDATE_FEED_BUCKET }}
-          UPDATE_FEED_ACCESS_KEY_ID: ${{ secrets.UPDATE_FEED_ACCESS_KEY_ID }}
-          UPDATE_FEED_SECRET_ACCESS_KEY: ${{ secrets.UPDATE_FEED_SECRET_ACCESS_KEY }}
-          UPDATE_FEED_PREFIX: ${{ vars.UPDATE_FEED_PREFIX }}
-        run: |
-          missing=0
-          for secret_name in \
-            UPDATE_FEED_URL \
-            UPDATE_FEED_ENDPOINT \
-            UPDATE_FEED_BUCKET \
-            UPDATE_FEED_ACCESS_KEY_ID \
-            UPDATE_FEED_SECRET_ACCESS_KEY \
-            UPDATE_FEED_PREFIX
-          do
-            if [ -z "${!secret_name}" ]; then
-              echo "::error::$secret_name is required for publishing app update metadata"
-              missing=1
-            fi
-          done
-
-          if [ "$UPDATE_FEED_URL" != "https://updates.valedictorian.app/mac/alpha" ]; then
-            echo "::error::UPDATE_FEED_URL must match the app's electron-builder publish URL"
-            missing=1
-          fi
-
-          if [ "$UPDATE_FEED_PREFIX" != "mac/alpha" ]; then
-            echo "::error::UPDATE_FEED_PREFIX must be mac/alpha"
-            missing=1
-          fi
-
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
-
       - name: Decode App Store Connect API key
         working-directory: valedictorian-app
         env:
@@ -282,6 +309,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish update feed
+        if: needs.verify.outputs.publish_update_feed == 'true'
         working-directory: valedictorian-app
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.UPDATE_FEED_ACCESS_KEY_ID }}
