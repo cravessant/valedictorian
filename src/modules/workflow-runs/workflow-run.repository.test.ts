@@ -351,6 +351,33 @@ describe('PGlite workflow run repository', () => {
     }
   })
 
+  it('preserves deterministic source slug conflicts for distinct names', async () => {
+    const { client, database, repository } = await openMigratedWorkflowRunDb()
+    try {
+      const first = await repository.startRun({
+        runType: 'sourcing',
+        actorType: 'agent',
+        sourceName: 'A-B',
+        summary: 'First source name.',
+      })
+
+      await expect(repository.startRun({
+        runType: 'sourcing',
+        actorType: 'agent',
+        sourceName: 'A B',
+        summary: 'Colliding source name.',
+      })).rejects.toThrow('Source ID conflict: source-a-b belongs to A-B, not A B')
+
+      expect(await database.select().from(sources)).toEqual([
+        expect.objectContaining({ id: first.sourceId, name: 'A-B' }),
+      ])
+      expect(await database.select().from(workflowRuns)).toHaveLength(1)
+      expect(await database.select().from(workflowRunSteps)).toHaveLength(1)
+    } finally {
+      await closeClient(client)
+    }
+  })
+
   it('persists runs across on-disk close and reopen', async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-run-pglite-'))
     try {

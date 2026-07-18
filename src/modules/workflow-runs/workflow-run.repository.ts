@@ -305,6 +305,12 @@ async function findOrCreateSource(
     throw new Error(`Source not found after conflict: ${source.id}`)
   }
 
+  if (createdByPeer.name !== trimmedName) {
+    throw new Error(
+      `Source ID conflict: ${source.id} belongs to ${createdByPeer.name}, not ${trimmedName}`,
+    )
+  }
+
   return createdByPeer
 }
 
