@@ -59,6 +59,8 @@ describe('canonical candidate projection', () => {
     })
     const service = createCanonicalCandidateProjectionService(() => new Date(NOW))
 
+    // PGlite 0.5 has one backend connection; these lock addresses are what
+    // independent PostgreSQL transactions contend on in a server deployment.
     const results = await Promise.allSettled([first, newest].map((persisted) =>
       database.transaction((transaction) =>
         service.projectPersisted(transaction, persisted.candidateId, persisted.rawRevisionId))))
@@ -80,6 +82,44 @@ describe('canonical candidate projection', () => {
       'source_entity:job-concurrent-a',
       'source_entity:job-concurrent-z',
     ]))
+  })
+
+  it('serializes otherwise unrelated projections that share only a destination', async () => {
+    const database = await createTestDatabase()
+    const destination = 'https://jobs.example.test/identity-lock'
+    const first = await seedPassedCandidate(database, 'identity-lock-a', {
+      canonicalIdentity: { kind: 'provider_job', value: 'provider-a' },
+      destination: { class: 'employer_or_ats', url: destination },
+    })
+    const second = await seedPassedCandidate(database, 'identity-lock-b', {
+      canonicalIdentity: { kind: 'provider_job', value: 'provider-b' },
+      destination: { class: 'employer_or_ats', url: destination },
+    })
+    const service = createCanonicalCandidateProjectionService(() => new Date(NOW))
+    const projectAndReadLocks = (persisted: typeof first) => database.transaction(async (transaction) => {
+      await service.projectPersisted(transaction, persisted.candidateId, persisted.rawRevisionId)
+      const locks = await transaction
+        .select({
+          classId: sql<string>`classid::text`,
+          objectId: sql<string>`objid::text`,
+        })
+        .from(sql`pg_locks`)
+        .where(sql`locktype = 'advisory' and mode = 'ExclusiveLock' and granted`)
+      return locks.map(({ classId, objectId }) => `${classId}:${objectId}`)
+    })
+
+    const firstLocks = await projectAndReadLocks(first)
+    const secondLocks = await projectAndReadLocks(second)
+    const sharedLocks = firstLocks.filter((lock) => secondLocks.includes(lock))
+    const [released] = await database
+      .select({ count: sql<number>`count(*)::integer` })
+      .from(sql`pg_locks`)
+      .where(sql`locktype = 'advisory'`)
+
+    expect(firstLocks).toHaveLength(4)
+    expect(secondLocks).toHaveLength(4)
+    expect(sharedLocks).toHaveLength(1)
+    expect(released?.count).toBe(0)
   })
 
   it('keeps the first projection identity primary while accumulating later aliases', async () => {
