@@ -3,7 +3,6 @@ import {
   type FieldResolutionOutcome,
   type ConnectorHistoricalBackfillState,
   type ConnectorNewestFrontierState,
-  type ConnectorSynchronizationOutcome,
   type ConnectorVersionedRendererSchema,
   type JsonValue,
   type RawSourceIntakeReceipt,
@@ -19,6 +18,39 @@ import type {
   ConnectorDynamicOptionsDeclaration,
   ConnectorOptionValue,
 } from "./dynamic-options.js"
+import {
+  sanitizeConnectorRefreshStopReason,
+  type ConnectorAuthOutcomeReason,
+  type ConnectorAuthValidationStatus,
+  type ConnectorProviderUrlResolverReason,
+  type ConnectorRefreshStopReason,
+  type ConnectorRefreshWarning,
+  type ConnectorSynchronizationOutcome,
+} from "./connector-outcomes.js"
+
+export {
+  connectorRefreshWarning,
+  connectorRefreshWarningMessages,
+  ConnectorExecutionError,
+  connectorExecutionErrorCode,
+  connectorExecutionErrorMessage,
+  sanitizeConnectorRefreshWarnings,
+  sanitizeConnectorRefreshStopReason,
+  sanitizeConnectorAuthValidationResult,
+  sanitizeConnectorBoundaryDate,
+  sanitizeConnectorSynchronization,
+  sanitizeConnectorSynchronizationOutcome,
+  type ConnectorAuthOutcomeReason,
+  type SanitizedConnectorAuthValidationResult,
+  type ConnectorProviderUrlResolverReason,
+  type ConnectorRefreshStopReason,
+  type ConnectorRefreshWarning,
+  type ConnectorRefreshWarningCode,
+  type ConnectorSynchronization,
+  type ConnectorSynchronizationCancelledReason,
+  type ConnectorSynchronizationFailedReason,
+  type ConnectorSynchronizationOutcome,
+} from "./connector-outcomes.js"
 
 export {
   parseConnectorDynamicOptionsDeclaration,
@@ -53,7 +85,6 @@ export type {
   TransientRetryReason,
   ConnectorHistoricalBackfillState,
   ConnectorNewestFrontierState,
-  ConnectorSynchronizationOutcome,
   ConnectorVersionedRendererSchema,
 } from "sparxie"
 export {
@@ -491,13 +522,13 @@ export type ConnectorProviderUrlResolverResult =
     }
   | {
       status: "retryable"
-      reason: string
+      reason: ConnectorProviderUrlResolverReason
       retryReason: TransientRetryReason
       serverMinimumDelayMs?: number
     }
   | {
       status: "terminal"
-      reason: string
+      reason: ConnectorProviderUrlResolverReason
       action?: "authenticate"
       parserChanged?: boolean
       evidence?: readonly ConnectorProviderUrlResolverEvidence[]
@@ -626,14 +657,55 @@ export type ConnectorRefreshStats = {
   resolvedEmployerOrAts?: number
   resolvedThirdParty?: number
   skipped?: number
-  stopReason?: string
+  stopReason?: ConnectorRefreshStopReason
   totalAvailable?: number
   unresolved?: number
 }
 
-export type ConnectorRefreshWarning = {
-  code: string
-  message: string
+const connectorRefreshNumericStats = [
+  "attempted",
+  "authRequired",
+  "discovered",
+  "discoveryPages",
+  "eligible",
+  "filtered",
+  "providerReturned",
+  "providerValid",
+  "providerInvalid",
+  "sourceDuplicates",
+  "pendingResolution",
+  "resolved",
+  "resolvedEmployerOrAts",
+  "resolvedThirdParty",
+  "skipped",
+  "totalAvailable",
+  "unresolved",
+] as const satisfies readonly (keyof ConnectorRefreshStats)[]
+
+export function sanitizeConnectorRefreshStats(
+  value: unknown,
+): ConnectorRefreshStats {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+  const stats: ConnectorRefreshStats = {
+    observations: sanitizedCount(record.observations),
+  }
+  // These are independently reported connector aggregates. The shared ABI
+  // declares no cross-provider sum relationship between its named counters.
+  for (const key of connectorRefreshNumericStats) {
+    if (Object.hasOwn(record, key)) stats[key] = sanitizedCount(record[key])
+  }
+  if (Object.hasOwn(record, "stopReason")) {
+    stats.stopReason = sanitizeConnectorRefreshStopReason(record.stopReason)
+  }
+  return stats
+}
+
+function sanitizedCount(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : 0
 }
 
 export type ConnectorRefreshStatus =
@@ -665,20 +737,11 @@ export type ConnectorAuthValidationInput = {
   workspaceId: string
 }
 
-export type ConnectorAuthValidationStatus =
-  | "ready"
-  | "missing"
-  | "expired"
-  | "action_required"
-  | "rate_limited"
-  | "retryable"
-  | "failed"
-  | "cancelled"
-  | "invocation_timeout"
+export type { ConnectorAuthValidationStatus } from "./connector-outcomes.js"
 
 export type ConnectorAuthValidationResult = {
   status: ConnectorAuthValidationStatus
-  reason?: string
+  reason: ConnectorAuthOutcomeReason
 }
 
 export type JobConnector = {

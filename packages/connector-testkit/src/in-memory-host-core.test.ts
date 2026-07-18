@@ -422,7 +422,9 @@ describe("in-memory connector host — core", () => {
       coverage: { start: "second", end: "second" },
     })
     releaseFirst?.()
-    await expect(first).rejects.toThrow("first concurrent refresh failed")
+    await expect(first).rejects.toMatchObject({
+      code: "connector_execution_failed",
+    })
 
     const snapshot = host.snapshot()
     expect(
@@ -441,8 +443,8 @@ describe("in-memory connector host — core", () => {
         status,
       })),
     ).toEqual([
-      { end: "second", id: "run_2", status: "completed" },
-      { end: "first", id: "run_1", status: "failed" },
+      { end: null, id: "run_2", status: "completed" },
+      { end: null, id: "run_1", status: "failed" },
     ])
     expect(snapshot.runs[0]).toMatchObject({
       id: "run_2",
@@ -456,8 +458,8 @@ describe("in-memory connector host — core", () => {
       stats: { observations: 0 },
       warnings: [
         {
-          code: "connector_refresh_failed",
-          message: "Connector refresh failed before returning a result.",
+          code: "connector.execution_failed",
+          message: "Connector execution failed before completion.",
         },
       ],
     })
@@ -469,7 +471,7 @@ describe("in-memory connector host — core", () => {
         mode: "manual",
         coverage: { start: "failing", end: "failing" },
       }),
-    ).rejects.toThrow("fixture refresh failed")
+    ).rejects.toMatchObject({ code: "connector_execution_failed" })
     await host.refresh(connector, {
       connectorInstanceId: "instance_concurrent_runs",
       workspaceId: "workspace_alpha",
@@ -523,7 +525,7 @@ describe("in-memory connector host — core", () => {
         mode: "manual",
         coverage: { start: "before-capture", end: "before-capture" },
       }),
-    ).rejects.toThrow("secret-bearing upstream failure")
+    ).rejects.toMatchObject({ code: "connector_execution_failed" })
     await host.refresh(connector, {
       connectorInstanceId: "instance_pre_capture_failure",
       workspaceId: "workspace_alpha",
@@ -536,7 +538,7 @@ describe("in-memory connector host — core", () => {
     expect(snapshot.runs[0]).toMatchObject({
       id: "run_1",
       status: "failed",
-      warnings: [expect.objectContaining({ code: "connector_refresh_failed" })],
+      warnings: [expect.objectContaining({ code: "connector.execution_failed" })],
     })
     expect(JSON.stringify(snapshot.runs[0])).not.toContain(
       "secret-bearing upstream failure",

@@ -28,7 +28,7 @@ describe("in-memory connector host — auth", () => {
             return { status: "ready", sessionId: "canonical-session" }
           },
         )
-        return { status: result.status, reason: "fixture_auth_result" }
+        return { status: result.status, reason: "jobright_auth_ready" }
       },
     }
     const host = createInMemoryConnectorHost()
@@ -51,8 +51,8 @@ describe("in-memory connector host — auth", () => {
     expect(establishmentCalls).toBe(1)
     release.resolve()
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { status: "ready", reason: "fixture_auth_result" },
-      { status: "ready", reason: "fixture_auth_result" },
+      { status: "ready", reason: "jobright_auth_ready" },
+      { status: "ready", reason: "jobright_auth_ready" },
     ])
   })
 
@@ -75,7 +75,12 @@ describe("in-memory connector host — auth", () => {
             return { status: "ready", sessionId: "stale-session" }
           },
         )
-        return { status: result.status, reason: result.status === "ready" ? result.sessionId : result.reason }
+        return {
+          status: result.status === "ready" ? "ready" : "failed",
+          reason: result.status === "ready"
+            ? "jobright_auth_ready"
+            : "auth_validation_failed",
+        }
       },
     }
     const host = createInMemoryConnectorHost({ authSessions: sessions })
@@ -97,7 +102,7 @@ describe("in-memory connector host — auth", () => {
     release.resolve()
     await expect(validation).resolves.toEqual({
       status: "ready",
-      reason: "newer-session",
+      reason: "jobright_auth_ready",
     })
     expect(sessions[scope]).toEqual({ generation: 2, sessionId: "newer-session" })
   })
@@ -178,13 +183,13 @@ describe("in-memory connector host — auth", () => {
     ]
     const result: ConnectorAuthValidationResult = {
       status: "ready",
-      reason: "fixture_ready",
+      reason: "jobright_auth_ready",
     }
 
     expect(statuses).toContain(result.status)
     expect(result).toEqual({
       status: "ready",
-      reason: "fixture_ready",
+      reason: "jobright_auth_ready",
     })
   })
 
@@ -364,10 +369,9 @@ describe("in-memory connector host — auth", () => {
         received.push({ input, grant })
         return {
           status: grant.status === "ready" ? "ready" : "missing",
-          reason:
-            grant.status === "ready"
-              ? "fixture_auth_ready"
-              : (grant.reason ?? "fixture_auth_missing"),
+          reason: grant.status === "ready"
+            ? "jobright_auth_ready"
+            : "username_password_missing",
         }
       },
     }
@@ -401,7 +405,7 @@ describe("in-memory connector host — auth", () => {
 
     expect(result).toEqual({
       status: "ready",
-      reason: "fixture_auth_ready",
+      reason: "jobright_auth_ready",
     })
     expect(received).toEqual([
       {

@@ -26,8 +26,27 @@ import type {
   ResolverDeclaration,
   RetryAdvice,
 } from "@sparxie/valedictorian-connectors-core"
-import { jobObservationSchemaVersion } from "@sparxie/valedictorian-connectors-core"
-import { connectorRunSummarySchema } from "sparxie"
+import {
+  ConnectorExecutionError,
+  connectorRefreshWarning,
+  jobObservationSchemaVersion,
+  sanitizeConnectorRefreshWarnings,
+  sanitizeConnectorRefreshStats,
+  sanitizeConnectorAuthValidationResult,
+} from "@sparxie/valedictorian-connectors-core"
+import { canonicalDateOnlySchema, connectorRunSummarySchema } from "sparxie"
+import {
+  sanitizeConnectorRunCoverage,
+  sanitizeConnectorRunLifecycle,
+  sanitizeRetryHints,
+  type ConnectorRunCoverageWindow,
+} from "./result-sanitizers.js"
+import {
+  isSafeCheckpointSchemaVersion,
+  projectJobObservation,
+} from "./result-validation.js"
+
+export type { ConnectorRunCoverageWindow } from "./result-sanitizers.js"
 
 export function assertValidConnectorRunSummary(input: unknown): void {
   connectorRunSummarySchema.parse(input)
@@ -202,13 +221,14 @@ export type ConnectorRunRecord = {
   workspaceId: string
   mode: ConnectorRefreshMode
   status: ConnectorRefreshStatus | "failed"
-  coverage: ConnectorCoverageWindow
+  coverage: ConnectorRunCoverageWindow
   config: unknown
   filters: unknown
   filterSignature: string
   stats: ConnectorRefreshResult["stats"]
   warnings: ConnectorRefreshResult["warnings"]
   retryHints: RetryAdvice | null
+  synchronization: ConnectorRefreshResult["synchronization"]
 }
 
 export type ConnectorCheckpointRecord = {
@@ -291,7 +311,7 @@ export function createInMemoryConnectorHost(
   const instances = new Map<string, ConnectorInstanceRecord>()
   const runs: ConnectorRunRecord[] = []
   const checkpoints = new Map<string, ConnectorCheckpointRecord>()
-  const observations: HostObservationRecord[] = []
+  let observations: HostObservationRecord[] = []
   const rawCaptures: InMemoryRawCaptureRecord[] = []
   const normalizations: InMemoryNormalizationRecord[] = []
   const rawRecordIdsByIdentity = new Map<string, string>()
@@ -338,9 +358,11 @@ export function createInMemoryConnectorHost(
       runCounter += 1
       const connectorRunId = `run_${runCounter}`
       const startedAt = hostTimestamp(options)
-      let result: ConnectorRefreshResult
+      let projectedRun: ConnectorRunRecord
+      let projectedCheckpoint: ConnectorCheckpointRecord
+      let projectedObservations: HostObservationRecord[]
       try {
-        result = await connector.refresh(
+        const result = await connector.refresh(
           {
             connectorInstanceId: request.connectorInstanceId,
             workspaceId: request.workspaceId,
@@ -378,67 +400,117 @@ export function createInMemoryConnectorHost(
             },
           ),
         )
-      } catch (error) {
-        runs.push({
+        const lifecycle = sanitizeConnectorRunLifecycle(
+          result.status,
+          result.synchronization,
+        )
+        projectedRun = {
           id: connectorRunId,
           startedAt,
           completedAt: hostTimestamp(options, startedAt),
           connectorInstanceId: request.connectorInstanceId,
           workspaceId: request.workspaceId,
           mode: request.mode,
-          status: "failed",
-          coverage: cloneJsonLike(request.coverage),
+          status: lifecycle.status,
+          coverage: sanitizeConnectorRunCoverage(result.coverage),
+          config: runConfig,
+          filters: runFilters,
+          filterSignature,
+          stats: sanitizeConnectorRefreshStats(result.stats),
+          warnings: sanitizeConnectorRefreshWarnings(result.warnings),
+          retryHints: sanitizeRetryHints(result.retryHints),
+          synchronization: lifecycle.synchronization,
+        }
+        const nextCheckpoint = result.nextCheckpoint
+        if (!isSafeCheckpointSchemaVersion(nextCheckpoint.schemaVersion)) {
+          throw new TypeError("Invalid connector checkpoint schema version")
+        }
+        projectedCheckpoint = {
+          connectorInstanceId: request.connectorInstanceId,
+          filterSignature,
+          checkpoint: cloneJsonLike(nextCheckpoint.checkpoint),
+          schemaVersion: nextCheckpoint.schemaVersion,
+        }
+        const resultObservations = result.observations
+        if (!Array.isArray(resultObservations) ||
+          resultObservations.length > 10_000) {
+          throw new TypeError("Invalid connector observations")
+        }
+        projectedObservations = observations.map(cloneJsonLike)
+        let projectedObservationCount = 0
+        for (const rawObservation of resultObservations) {
+          if (projectedObservationCount >= 10_000) {
+            throw new TypeError("Invalid connector observations")
+          }
+          const observation = projectJobObservation(
+            cloneJsonLike(rawObservation),
+            connector.definition.id,
+            connector.definition.version,
+          )
+          if (!observation) {
+            throw new TypeError("Invalid connector observation")
+          }
+          upsertObservation(
+            projectedObservations,
+            instances,
+            request.workspaceId,
+            request.connectorInstanceId,
+            observation,
+          )
+          projectedObservationCount += 1
+        }
+        projectedRun = {
+          ...projectedRun,
+          stats: {
+            ...projectedRun.stats,
+            observations: projectedObservationCount,
+          },
+        }
+      } catch {
+        const cancelled = request.signal?.aborted === true
+        const failedRun: ConnectorRunRecord = {
+          id: connectorRunId,
+          startedAt,
+          completedAt: hostTimestamp(options, startedAt),
+          connectorInstanceId: request.connectorInstanceId,
+          workspaceId: request.workspaceId,
+          mode: request.mode,
+          status: cancelled ? "cancelled" : "failed",
+          coverage: sanitizeConnectorRunCoverage(request.coverage),
           config: runConfig,
           filters: runFilters,
           filterSignature,
           stats: { observations: 0 },
-          warnings: [
-            {
-              code: "connector_refresh_failed",
-              message: "Connector refresh failed before returning a result.",
-            },
-          ],
+          warnings: cancelled
+            ? []
+            : [connectorRefreshWarning("connector.execution_failed")],
           retryHints: null,
-        })
-        throw error
+          synchronization: {
+            newestFrontier: { state: "advancing" },
+            historicalBackfill: {
+              state: "advancing",
+              boundary: {
+                earliestDate: coverageBoundaryDate(request.coverage.start),
+              },
+            },
+            pendingResolutionCount: 0,
+            outcome: cancelled
+              ? { kind: "cancelled", reason: "cancelled" }
+              : {
+                  kind: "failed",
+                  reason: "connector_execution_failed",
+                },
+          },
+        }
+        runs.push(failedRun)
+        if (cancelled) return failedRun
+        throw new ConnectorExecutionError()
       }
 
-      const run: ConnectorRunRecord = {
-        id: connectorRunId,
-        startedAt,
-        completedAt: hostTimestamp(options, startedAt),
-        connectorInstanceId: request.connectorInstanceId,
-        workspaceId: request.workspaceId,
-        mode: request.mode,
-        status: result.status ?? "completed",
-        coverage: result.coverage,
-        config: runConfig,
-        filters: runFilters,
-        filterSignature,
-        stats: result.stats,
-        warnings: result.warnings,
-        retryHints: result.retryHints ?? null,
-      }
-      runs.push(run)
-
-      checkpoints.set(checkpointKey, {
-        connectorInstanceId: request.connectorInstanceId,
-        filterSignature,
-        checkpoint: result.nextCheckpoint.checkpoint,
-        schemaVersion: result.nextCheckpoint.schemaVersion,
-      })
-
-      for (const observation of result.observations) {
-        upsertObservation(
-          observations,
-          instances,
-          request.workspaceId,
-          request.connectorInstanceId,
-          observation,
-        )
-      }
-
-      return run
+      runs.push(projectedRun)
+      checkpoints.set(checkpointKey, projectedCheckpoint)
+      observations = projectedObservations
+      return projectedRun
     },
 
     async validateAuth(connector, request) {
@@ -460,19 +532,25 @@ export function createInMemoryConnectorHost(
         )
       }
 
-      return await connector.validateAuth(
-        {
-          connectorInstanceId: request.connectorInstanceId,
-          executionScopeId: `connector.${request.connectorInstanceId}`,
-          workspaceId: request.workspaceId,
-        },
-        createConnectorRuntime(
-          instance.auth ?? [],
-          connector.definition.auth?.requirements ?? [],
-          options,
-          authRefreshFlights,
-        ),
-      )
+      try {
+        return sanitizeConnectorAuthValidationResult(
+          await connector.validateAuth(
+            {
+              connectorInstanceId: request.connectorInstanceId,
+              executionScopeId: `connector.${request.connectorInstanceId}`,
+              workspaceId: request.workspaceId,
+            },
+            createConnectorRuntime(
+              instance.auth ?? [],
+              connector.definition.auth?.requirements ?? [],
+              options,
+              authRefreshFlights,
+            ),
+          ),
+        )
+      } catch {
+        throw new ConnectorExecutionError()
+      }
     },
 
     snapshot() {
@@ -486,6 +564,13 @@ export function createInMemoryConnectorHost(
       }
     },
   }
+}
+
+function coverageBoundaryDate(value: string | null): string {
+  const parsed = canonicalDateOnlySchema.safeParse(
+    typeof value === "string" ? value.slice(0, 10) : null,
+  )
+  return parsed.success ? parsed.data : "1970-01-01"
 }
 
 function cloneConnectorInstance(
