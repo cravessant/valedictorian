@@ -41,6 +41,22 @@ export function admitConnectorScheduleDue({
   }
 }): Promise<DispatchConnectorScheduleDueResult> {
   return database.transaction(async (tx) => {
+    const [instance] = await tx
+      .select()
+      .from(connectorInstances)
+      .where(and(
+        eq(connectorInstances.id, input.connectorInstanceId),
+        isNull(connectorInstances.deletedAt),
+      ))
+      .limit(1)
+      .for('update')
+
+    if (!instance) {
+      throw Object.assign(new Error(`Connector instance not found: ${input.connectorInstanceId}`), {
+        statusCode: 404,
+      })
+    }
+
     const [scheduleRow] = await tx
       .select()
       .from(connectorSchedules)
@@ -60,22 +76,6 @@ export function admitConnectorScheduleDue({
 
     if (scheduleRow.state === 'paused') {
       return { status: 'paused' }
-    }
-
-    const [instance] = await tx
-      .select()
-      .from(connectorInstances)
-      .where(and(
-        eq(connectorInstances.id, input.connectorInstanceId),
-        isNull(connectorInstances.deletedAt),
-      ))
-      .limit(1)
-      .for('update')
-
-    if (!instance) {
-      throw Object.assign(new Error(`Connector instance not found: ${input.connectorInstanceId}`), {
-        statusCode: 404,
-      })
     }
 
     if (!instance.enabled) {

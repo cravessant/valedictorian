@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { CanonicalSourceCandidate, RoleKind } from 'sparxie'
 import {
   applicationLinks,
@@ -63,6 +63,7 @@ export function createCanonicalCandidateProjectionService(
         const timestamp = now().toISOString()
         const identityKeys = sourcingProjectionIdentityKeys(candidate)
         const identityKey = identityKeys[0]
+        await lockProjectionIdentities(transaction, identityKeys)
         const sourceName = persisted.reportedOriginName?.trim() || persisted.adapterId
         const identityMatches = (await transaction
           .select()
@@ -331,6 +332,19 @@ function sourcingProjectionIdentityKeys(candidate: CanonicalSourceCandidate) {
       : []),
     `raw_record:${candidate.rawRecordId}`,
   ])]
+}
+
+async function lockProjectionIdentities(
+  transaction: Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0],
+  identityKeys: readonly string[],
+) {
+  for (const identityKey of [...identityKeys].sort()) {
+    await transaction.execute(sql`
+      select pg_advisory_xact_lock(
+        hashtextextended('canonical-sourcing-projection:' || ${identityKey}, 0)
+      )
+    `)
+  }
 }
 
 function parseProjectionAliases(value: string) {

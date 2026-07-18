@@ -1,8 +1,11 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { schema, sourceExecutionScopes } from '../../db/schema'
-import { connectorInstances, connectorRuns } from '../../db/schema.connectors'
+import { connectorInstances, connectorRuns, connectorSchedules } from '../../db/schema.connectors'
 import {
   createPgliteClient,
   migratePgliteDatabase,
@@ -43,6 +46,72 @@ describe('PGlite connector schedule dispatch', () => {
 
     expect(queries.some((query) => /from "connector_instances"[\s\S]*for update/i.test(query)))
       .toBe(true)
+  })
+
+  it('keeps instance-first lock order compatible with retirement across independent clients', async () => {
+    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'schedule-retirement-lock-order-'))
+    const dataDir = path.join(temporaryRoot, 'pglite')
+    const firstClient = await createPgliteClient({ dataDir })
+    const retirementDatabase = await migratePgliteDatabase(firstClient)
+    await seedConnectorInstance(retirementDatabase, 'connector-dispatch-retirement-order')
+    const scheduleRepository = createConnectorScheduleRepository(
+      retirementDatabase,
+      () => new Date(CREATED_AT),
+    )
+    const schedule = await scheduleRepository.create({
+      connectorInstanceId: 'connector-dispatch-retirement-order',
+      state: 'enabled', cadence: CADENCE, timezone: 'UTC',
+    })
+    const secondClient = await createPgliteClient({ dataDir })
+    onTestFinished(async () => {
+      await Promise.all([firstClient.close(), secondClient.close()])
+      await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
+    })
+
+    let observedInstanceLockQuery: (() => void) | undefined
+    const instanceLockQueryStarted = new Promise<void>((resolve) => {
+      observedInstanceLockQuery = resolve
+    })
+    const dispatchDatabase = drizzle(secondClient, {
+      schema,
+      logger: {
+        logQuery(query) {
+          if (/from "connector_instances"[\s\S]*for update/i.test(query)) {
+            observedInstanceLockQuery?.()
+          }
+        },
+      },
+    })
+
+    let dispatch: Promise<Awaited<ReturnType<typeof admitConnectorScheduleDue>>> | undefined
+    await retirementDatabase.transaction(async (transaction) => {
+      await transaction.select({ id: connectorInstances.id })
+        .from(connectorInstances)
+        .where(and(
+          eq(connectorInstances.id, schedule.connectorInstanceId),
+          isNull(connectorInstances.deletedAt),
+        ))
+        .for('update')
+
+      dispatch = admitConnectorScheduleDue({
+        database: dispatchDatabase,
+        now: () => new Date(DUE_AT),
+        maximumCatchUpAgeMinutes: 180,
+        input: {
+          connectorInstanceId: schedule.connectorInstanceId,
+          expectedRevision: schedule.revision,
+        },
+      })
+      await instanceLockQueryStarted
+
+      await expect(transaction.select({ id: connectorSchedules.id })
+        .from(connectorSchedules)
+        .where(eq(connectorSchedules.id, schedule.id))
+        .for('update', { noWait: true }))
+        .resolves.toEqual([{ id: schedule.id }])
+    })
+
+    await expect(dispatch).resolves.toMatchObject({ status: 'admitted' })
   })
 
   it('converges concurrent duplicate admission on one queued run and occurrence', async () => {
