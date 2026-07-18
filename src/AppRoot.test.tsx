@@ -269,6 +269,8 @@ describe('AppRoot workspace gate', () => {
     const createItem = createHeading.closest('[data-slot="item"]')
     expect(createItem).not.toBeNull()
     expect(createItem!.closest('[data-slot="item-group"]')).not.toBeNull()
+    expect(createItem).toHaveClass('border-transparent', 'px-0', 'py-1')
+    expect(createItem).not.toHaveClass('px-4', 'py-3')
     expect(createHeading.closest('[data-slot="item-title"]')).not.toBeNull()
     expect(createItem!.querySelector('[data-slot="item-description"]')).toHaveTextContent(
       'Create a new workspace under a folder.',
@@ -285,6 +287,8 @@ describe('AppRoot workspace gate', () => {
     })
     const openItem = openHeading.closest('[data-slot="item"]')
     expect(openItem).not.toBeNull()
+    expect(openItem).toHaveClass('border-transparent', 'px-0', 'py-1')
+    expect(openItem).not.toHaveClass('px-4', 'py-3')
     expect(openHeading.closest('[data-slot="item-title"]')).not.toBeNull()
     expect(openItem!.querySelector('[data-slot="item-description"]')).toHaveTextContent(
       'Open an existing workspace folder.',
