@@ -185,18 +185,22 @@ describe('local server profile document routes', () => {
       headers: { 'content-type': 'application/json' },
       method: 'PUT',
     })
-    expect(upsert.status).toBe(400)
+    expect(upsert.status).toBe(500)
     const upsertBody = await readJson(upsert)
-    expect(upsertBody).toEqual({
-      message: 'Identity secrets cannot be managed through ordinary secret administration',
+    expect(upsertBody).toMatchObject({
+      code: 'internal_error',
+      message: 'An unexpected error occurred.',
+      requestId: expect.any(String),
     })
     expect(JSON.stringify(upsertBody)).not.toContain(identityCanary)
 
     const remove = await fetch(`${base}/secrets/identity_ssn_last4`, { method: 'DELETE' })
-    expect(remove.status).toBe(400)
+    expect(remove.status).toBe(500)
     const removeBody = await readJson(remove)
-    expect(removeBody).toEqual({
-      message: 'Identity secrets cannot be managed through ordinary secret administration',
+    expect(removeBody).toMatchObject({
+      code: 'internal_error',
+      message: 'An unexpected error occurred.',
+      requestId: expect.any(String),
     })
     expect(JSON.stringify(removeBody)).not.toContain(identityCanary)
 

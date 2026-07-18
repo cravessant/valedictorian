@@ -1,15 +1,9 @@
 import http from 'node:http'
 import {
-  connectorScheduleErrorCodes,
-  connectorOptionQueryErrorCodes,
-  connectorRetirementActiveWorkConflictSchema,
-  connectorOverviewErrorCodes,
   defaultLocalCapabilities,
   invalidPersistedRawDetailErrorBody,
   isApplicationStatus,
   localSecretResolutionErrorBodies,
-  localSecretResolutionErrorCodes,
-  profileDocumentErrorCodes,
   rawSourceRecordSchema,
   rawSourceRecordsListResultSchema,
   type BatchRawSourceRecordsInput,
@@ -18,7 +12,6 @@ import {
   type ProfileUpdateInput,
 } from 'sparxie'
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
-import { toLocalSecretResolutionHttpFailure } from '../modules/secrets/local-secret-resolution'
 import {
   readJsonBody,
   readOptionalBooleanField,
@@ -62,6 +55,10 @@ import {
 import type { WorkspaceClientResolver } from './local-server'
 import type { LocalWorkspaceManager } from './local-workspaces'
 import { handleConnectorRoutes } from './local-server.routes.connectors'
+import {
+  handleHttpRequestError,
+  type ValedictorianHttpRequestErrorLogger,
+} from './local-server.error-boundary'
 
 function buildLocalCapabilities(
   connectorScheduling: ConnectorSchedulingCapability,
@@ -85,6 +82,8 @@ export async function handleRequest({
   client,
   connectorScheduling = defaultLocalCapabilities.connectorScheduling,
   localSecretResolutionEnabled = false,
+  onRequestError,
+  pathname: inboundPathname,
   request,
   resolveWorkspaceClient,
   response,
@@ -95,6 +94,8 @@ export async function handleRequest({
   client: ValedictorianWorkspaceClient
   connectorScheduling?: ConnectorSchedulingCapability
   localSecretResolutionEnabled?: boolean
+  onRequestError: ValedictorianHttpRequestErrorLogger
+  pathname?: string
   request: http.IncomingMessage
   resolveWorkspaceClient?: WorkspaceClientResolver
   response: http.ServerResponse
@@ -102,6 +103,8 @@ export async function handleRequest({
   workspaceManager?: LocalWorkspaceManager
   workspaceScoped?: boolean
 }) {
+  const pathname = inboundPathname
+    ?? new URL(request.url ?? '/', 'http://127.0.0.1').pathname
   try {
     const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1')
     const isLocalSecretResolveRoute = isLocalSecretResolvePath(requestUrl.pathname)
@@ -210,6 +213,8 @@ export async function handleRequest({
           client: workspaceClient,
           connectorScheduling,
           localSecretResolutionEnabled,
+          onRequestError,
+          pathname,
           request,
           response,
           token,
@@ -374,13 +379,8 @@ export async function handleRequest({
         return
       }
 
-      try {
-        const result = await client.secrets.local.resolve(await readJsonBody(request) as never)
-        writeNoStoreJson(response, 200, result)
-      } catch (error) {
-        const failure = toLocalSecretResolutionHttpFailure(error)
-        writeNoStoreJson(response, failure.statusCode, failure.body)
-      }
+      const result = await client.secrets.local.resolve(await readJsonBody(request) as never)
+      writeNoStoreJson(response, 200, result)
       return
     }
 
@@ -848,91 +848,15 @@ export async function handleRequest({
 
     writeJson(response, 404, { message: 'Not found' })
   } catch (error) {
-    const retirementConflict = connectorRetirementActiveWorkConflictSchema.safeParse(
-      error && typeof error === 'object' ? {
-        code: 'code' in error ? error.code : undefined,
-        connectorInstanceId: 'connectorInstanceId' in error
-          ? error.connectorInstanceId
-          : undefined,
-        message: 'message' in error ? error.message : undefined,
-        cancellationRequired: 'cancellationRequired' in error
-          ? error.cancellationRequired
-          : undefined,
-        activeRuns: 'activeRuns' in error ? error.activeRuns : undefined,
-      } : error,
-    )
-    if (retirementConflict.success) {
-      writeJson(response, 409, retirementConflict.data)
-      return
-    }
-
-    if (
-      error &&
-      typeof error === 'object' &&
-      'body' in error &&
-      error.body &&
-      typeof error.body === 'object' &&
-      'code' in error.body &&
-      typeof (error.body as { code?: unknown }).code === 'string' &&
-      (localSecretResolutionErrorCodes as readonly string[]).includes(
-        (error.body as { code: string }).code,
-      )
-    ) {
-      const failure = toLocalSecretResolutionHttpFailure(error)
-      writeNoStoreJson(response, failure.statusCode, failure.body)
-      return
-    }
-
-    if (
-      error &&
-      typeof error === 'object' &&
-      'body' in error &&
-      error.body &&
-      typeof error.body === 'object' &&
-      'code' in error.body &&
-      typeof (error.body as { code?: unknown }).code === 'string' &&
-      (profileDocumentErrorCodes as readonly string[]).includes(
-        (error.body as { code: string }).code,
-      )
-    ) {
-      writeJson(response, readErrorStatusCode(error), error.body)
-      return
-    }
-
-    const body: { code?: string; message: string } = {
-      message: error instanceof Error ? error.message : String(error),
-    }
-
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      typeof error.code === 'string' &&
-      (error.code === invalidPersistedRawDetailErrorBody.code
-        || error.code === 'already_configured'
-        || error.code === 'capability_unavailable'
-        || (connectorOptionQueryErrorCodes as readonly string[]).includes(error.code)
-        || (connectorScheduleErrorCodes as readonly string[]).includes(error.code)
-        || (connectorOverviewErrorCodes as readonly string[]).includes(error.code))
-    ) {
-      body.code = error.code
-    }
-
-    writeJson(response, readErrorStatusCode(error), body)
+    handleHttpRequestError({
+      error,
+      isLocalSecretResolveRoute: isLocalSecretResolvePath(pathname),
+      onRequestError,
+      pathname,
+      request,
+      response,
+    })
   }
-}
-
-function readErrorStatusCode(error: unknown) {
-  if (
-    error &&
-    typeof error === 'object' &&
-    'statusCode' in error &&
-    typeof error.statusCode === 'number'
-  ) {
-    return error.statusCode
-  }
-
-  return 400
 }
 
 function isDomainRoute(pathname: string) {

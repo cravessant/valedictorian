@@ -8,9 +8,10 @@ import {
   sourceExecutionSessions,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
-import type {
-  ConnectorRetirementActiveWorkConflict,
-  ConnectorRetirementResult,
+import {
+  connectorRetirementActiveWorkConflictMessage,
+  type ConnectorRetirementActiveWorkConflict,
+  type ConnectorRetirementResult,
 } from 'sparxie'
 
 export async function retireConnectorInstance(
@@ -140,7 +141,7 @@ function activeWorkConflict(
   const conflict: ConnectorRetirementActiveWorkConflict = {
     code: 'connector_retirement_active_work_conflict',
     connectorInstanceId,
-    message: 'Cancel queued or running connector work before removing this connector.',
+    message: connectorRetirementActiveWorkConflictMessage,
     cancellationRequired: true,
     activeRuns,
   }

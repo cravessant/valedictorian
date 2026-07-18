@@ -29,9 +29,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     expect(response.status).toBe(400)
-    await expect(readJson(response)).resolves.toEqual({
-      message: 'Invalid lockStartedAt: tomorrow-ish',
-    })
+    await expect(readJson(response)).resolves.toEqual({ message: 'The request is invalid.' })
     expect(workflowCalls).toBe(0)
   })
 
@@ -60,9 +58,7 @@ describe('local Valedictorian HTTP server', () => {
     )
 
     expect(response.status).toBe(400)
-    await expect(readJson(response)).resolves.toEqual({
-      message: 'missingUserInfo is required for needs_user_info attempts',
-    })
+    await expect(readJson(response)).resolves.toEqual({ message: 'The request is invalid.' })
     expect(completeCalls).toBe(0)
   })
 

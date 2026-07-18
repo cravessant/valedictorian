@@ -23,7 +23,9 @@ import {
   readOptionalNumberField,
   readOptionalStringField,
   readRecord,
-  readStringField
+  readStringField,
+  localHttpValidationError,
+  parseLocalHttpInput,
 } from './local-server.http'
 
 
@@ -42,12 +44,12 @@ export function parseConnectorOverviewListQuery(requestUrl: URL): ConnectorOverv
   setStringQuery(requestUrl, 'cursor', (value) => { query.cursor = value })
   setNumberQuery(requestUrl, 'limit', (value) => { query.limit = value })
   setStringQuery(requestUrl, 'enabled', (value) => {
-    if (value !== 'true' && value !== 'false') throw new Error(`Invalid enabled filter: ${value}`)
+    if (value !== 'true' && value !== 'false') throw localHttpValidationError(`Invalid enabled filter: ${value}`)
     query.enabled = value === 'true'
   })
   setStringQuery(requestUrl, 'severity', (value) => { query.severity = value })
   setStringQuery(requestUrl, 'status', (value) => { query.status = value })
-  return connectorOverviewListQuerySchema.parse(query)
+  return parseLocalHttpInput(() => connectorOverviewListQuerySchema.parse(query))
 }
 export interface ConnectorRunsListQuery {
   connectorInstanceId: string
@@ -154,7 +156,7 @@ export function parseActionQueueListQuery(requestUrl: URL): ActionQueueListQuery
 
   if (actionBucket) {
     if (!isActionQueueBucket(actionBucket)) {
-      throw new Error(`Invalid action queue bucket: ${actionBucket}`)
+      throw localHttpValidationError(`Invalid action queue bucket: ${actionBucket}`)
     }
 
     query.actionBucket = actionBucket
@@ -197,10 +199,10 @@ export function parseConnectorRunTriggerInput(
   body: unknown,
 ): TriggerConnectorRunInput {
   const record = body === undefined || body === null ? {} : readRecord(body)
-  return triggerConnectorRunInputSchema.parse({
+  return parseLocalHttpInput(() => triggerConnectorRunInputSchema.parse({
     ...record,
     connectorInstanceId,
-  })
+  }))
 }
 
 export function parseConnectorCheckpointsListQuery(
@@ -242,7 +244,7 @@ export function parsePolicyEvidenceListQuery(requestUrl: URL): PolicyEvidenceLis
 
   if (subjectType) {
     if (!isPolicySubjectType(subjectType)) {
-      throw new Error(`Invalid policy subject type: ${subjectType}`)
+      throw localHttpValidationError(`Invalid policy subject type: ${subjectType}`)
     }
 
     query.subjectType = subjectType
@@ -250,7 +252,7 @@ export function parsePolicyEvidenceListQuery(requestUrl: URL): PolicyEvidenceLis
 
   if (tag) {
     if (!isPolicyEvidenceTag(tag)) {
-      throw new Error(`Invalid policy evidence tag: ${tag}`)
+      throw localHttpValidationError(`Invalid policy evidence tag: ${tag}`)
     }
 
     query.tag = tag
@@ -279,11 +281,11 @@ export function parsePolicyEvidenceInput(body: unknown): PolicyEvidenceInput {
   const tag = readStringField(record, 'tag')
 
   if (!isPolicySubjectType(subjectType)) {
-    throw new Error(`Invalid policy subject type: ${subjectType}`)
+    throw localHttpValidationError(`Invalid policy subject type: ${subjectType}`)
   }
 
   if (!isPolicyEvidenceTag(tag)) {
-    throw new Error(`Invalid policy evidence tag: ${tag}`)
+    throw localHttpValidationError(`Invalid policy evidence tag: ${tag}`)
   }
 
   return {
@@ -346,7 +348,7 @@ function readOptionalCanonicalDateOnlyField(
   }
   const parsed = canonicalDateOnlySchema.safeParse(record[field])
   if (!parsed.success) {
-    throw new Error(`Invalid ${field}`)
+    throw localHttpValidationError(`Invalid ${field}`)
   }
   return parsed.data
 }

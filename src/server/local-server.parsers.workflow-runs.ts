@@ -1,5 +1,5 @@
 import { isApplicationAttemptActorType, isRunStatus, isRunType, type ValedictorianWorkspaceClient, type WorkflowRunsListInput } from 'sparxie'
-import { readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
+import { localHttpValidationError, readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 import { setNumberQuery, setStringQuery } from './local-server.parsers.query-primitives'
 
 export function parseWorkflowRunsListQuery(requestUrl: URL): WorkflowRunsListInput {
@@ -9,7 +9,7 @@ export function parseWorkflowRunsListQuery(requestUrl: URL): WorkflowRunsListInp
 
   if (runType) {
     if (!isRunType(runType)) {
-      throw new Error(`Invalid runType: ${runType}`)
+      throw localHttpValidationError(`Invalid runType: ${runType}`)
     }
 
     query.runType = runType
@@ -17,7 +17,7 @@ export function parseWorkflowRunsListQuery(requestUrl: URL): WorkflowRunsListInp
 
   if (status) {
     if (!isRunStatus(status)) {
-      throw new Error(`Invalid run status: ${status}`)
+      throw localHttpValidationError(`Invalid run status: ${status}`)
     }
 
     query.status = status
@@ -51,11 +51,11 @@ export function parseRunStartInput(
   const actorType = readStringField(record, 'actorType')
 
   if (!isRunType(runType)) {
-    throw new Error(`Invalid runType: ${runType}`)
+    throw localHttpValidationError(`Invalid runType: ${runType}`)
   }
 
   if (!isApplicationAttemptActorType(actorType)) {
-    throw new Error(`Invalid actorType: ${actorType}`)
+    throw localHttpValidationError(`Invalid actorType: ${actorType}`)
   }
 
   return {
@@ -99,7 +99,7 @@ export function parseRunCompleteInput(
 
   if (statusValue !== undefined) {
     if (!isRunStatus(statusValue)) {
-      throw new Error(`Invalid run status: ${statusValue}`)
+      throw localHttpValidationError(`Invalid run status: ${statusValue}`)
     }
 
     status = statusValue

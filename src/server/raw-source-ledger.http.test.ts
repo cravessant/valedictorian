@@ -236,7 +236,7 @@ describe('raw source ledger HTTP API', () => {
       secondWorkspace.sourcing.rawRecords.get(created.receipts[0].rawRecordId),
     ).rejects.toMatchObject({
       status: 404,
-      body: { message: 'Raw source record not found' },
+      body: null,
     })
     await expect(firstWorkspace.sourcing.rawRecords.get('missing / encoded id')).rejects.toBeInstanceOf(
       ValedictorianHttpError,
@@ -357,7 +357,7 @@ describe('raw source ledger HTTP API', () => {
         ],
       }).catch((caught: unknown) => caught) as ValedictorianHttpError
 
-      expect(error).toMatchObject({ status: 400 })
+      expect(error).toMatchObject({ status: 400, body: null })
       expect(JSON.stringify(error.body)).not.toContain(secretValue)
       expect(error.message).not.toContain(secretValue)
     }
@@ -394,7 +394,7 @@ describe('raw source ledger HTTP API', () => {
         { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: `credential-target-${index}`, ...unsafeEnvelope },
       ] }).catch((caught: unknown) => caught) as ValedictorianHttpError
 
-      expect(error).toMatchObject({ status: 400 })
+      expect(error).toMatchObject({ status: 400, body: null })
       expect(error.message).not.toContain(username)
       expect(error.message).not.toContain(password)
       expect(JSON.stringify(error.body)).not.toContain(username)
@@ -453,7 +453,7 @@ describe('raw source ledger HTTP API', () => {
       ],
     }).catch((caught: unknown) => caught) as ValedictorianHttpError
 
-    expect(payloadError).toMatchObject({ status: 400 })
+    expect(payloadError).toMatchObject({ status: 400, body: null })
     expect(payloadError.message).not.toContain(payloadSecret)
     expect(JSON.stringify(payloadError.body)).not.toContain(payloadSecret)
 
@@ -550,7 +550,7 @@ describe('raw source ledger HTTP API', () => {
     })
 
     expect(response.status).toBe(413)
-    expect(JSON.parse(response.body)).toEqual({ message: 'Request body exceeds the raw batch limit' })
+    expect(JSON.parse(response.body)).toEqual({ message: 'The request body is too large.' })
   })
 
   it('commits raw intake then exposes a passed deterministic normalization result', async () => {
@@ -797,7 +797,10 @@ describe('raw source ledger HTTP API', () => {
       payload: { company: 'Acme', title: 'Intern', url: 'https://jobs.lever.co/acme/job-1' },
     }] })
     await expect(first.normalization.get(intake.receipts[0].rawRecordId)).resolves.toMatchObject({ status: 'completed' })
-    await expect(second.normalization.get(intake.receipts[0].rawRecordId)).rejects.toMatchObject({ status: 404 })
+    await expect(second.normalization.get(intake.receipts[0].rawRecordId)).rejects.toMatchObject({
+      status: 404,
+      body: null,
+    })
   })
 
   it('persists exact replay history across restart without crossing workspace boundaries', async () => {
@@ -898,9 +901,7 @@ describe('raw source ledger HTTP API', () => {
     )
 
     expect(response.status).toBe(413)
-    await expect(response.json()).resolves.toEqual({
-      message: 'Request body exceeds the raw replay limit',
-    })
+    await expect(response.json()).resolves.toEqual({ message: 'The request body is too large.' })
   })
 })
 

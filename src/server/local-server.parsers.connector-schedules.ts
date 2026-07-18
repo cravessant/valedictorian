@@ -14,7 +14,7 @@ import {
 } from 'sparxie'
 import { ZodError } from 'zod'
 import { createConnectorScheduleError } from '../modules/connectors/connector-schedule.errors'
-import { readRecord } from './local-server.http'
+import { localHttpValidationError, parseLocalHttpInput, readRecord } from './local-server.http'
 
 function readScheduleBody(body: unknown): Record<string, unknown> {
   return readRecord(body)
@@ -36,9 +36,7 @@ function mapUpsertParseError(error: unknown, body: Record<string, unknown>): nev
       )
     }
 
-    throw Object.assign(new Error(error.issues[0]?.message ?? 'Invalid connector schedule input'), {
-      statusCode: 400,
-    })
+    throw localHttpValidationError(error.issues[0]?.message ?? 'Invalid connector schedule input', error)
   }
 
   throw error
@@ -64,40 +62,40 @@ export function parsePauseConnectorScheduleInput(
   connectorInstanceId: string,
   body: unknown,
 ): PauseConnectorScheduleInput {
-  return pauseConnectorScheduleInputSchema.parse({
+  return parseLocalHttpInput(() => pauseConnectorScheduleInputSchema.parse({
     ...readScheduleBody(body),
     connectorInstanceId,
-  })
+  }))
 }
 
 export function parseResumeConnectorScheduleInput(
   connectorInstanceId: string,
   body: unknown,
 ): ResumeConnectorScheduleInput {
-  return resumeConnectorScheduleInputSchema.parse({
+  return parseLocalHttpInput(() => resumeConnectorScheduleInputSchema.parse({
     ...readScheduleBody(body),
     connectorInstanceId,
-  })
+  }))
 }
 
 export function parseDeleteConnectorScheduleInput(
   connectorInstanceId: string,
   body: unknown,
 ): DeleteConnectorScheduleInput {
-  return deleteConnectorScheduleInputSchema.parse({
+  return parseLocalHttpInput(() => deleteConnectorScheduleInputSchema.parse({
     ...readScheduleBody(body),
     connectorInstanceId,
-  })
+  }))
 }
 
 export function parseDispatchConnectorScheduleDueInput(
   connectorInstanceId: string,
   body: unknown,
 ): DispatchConnectorScheduleDueInput {
-  return dispatchConnectorScheduleDueInputSchema.parse({
+  return parseLocalHttpInput(() => dispatchConnectorScheduleDueInputSchema.parse({
     ...readScheduleBody(body),
     connectorInstanceId,
-  })
+  }))
 }
 
 export function parseConnectorScheduleHistoryQuery(
@@ -110,11 +108,11 @@ export function parseConnectorScheduleHistoryQuery(
   const offset = offsetParam === null ? 0 : Number(offsetParam)
 
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT) {
-    throw new Error(`Invalid limit: ${limitParam}`)
+    throw localHttpValidationError(`Invalid limit: ${limitParam}`)
   }
 
   if (!Number.isInteger(offset) || offset < 0) {
-    throw new Error(`Invalid offset: ${offsetParam}`)
+    throw localHttpValidationError(`Invalid offset: ${offsetParam}`)
   }
 
   return { connectorInstanceId, limit, offset }

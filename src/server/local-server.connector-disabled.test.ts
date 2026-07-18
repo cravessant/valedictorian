@@ -81,7 +81,7 @@ describe('disabled connector execution', () => {
       .forWorkspace(workspaceId)
     await expect(httpClient.connectors.runs.trigger(trigger)).rejects.toMatchObject({
       status: 409,
-      message: 'Connector instance is disabled: disabled-fixture',
+      body: null,
     })
     expect(refreshCalls).toBe(0)
 

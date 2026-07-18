@@ -1,5 +1,5 @@
-import { canonicalizeApplicationUrl, isApplicationListSort, isApplicationStatus, isManualReviewKind, isRoleKind, isWorkMode, normalizeApplicationLinkKind, type ApplicationLinkInput, type ApplicationListQuery, type ValedictorianWorkspaceClient, type WorkMode } from 'sparxie'
-import { copyOptionalBooleanField, copyOptionalNullableStringField, copyOptionalStringField, readOptionalBooleanField, readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField, validateWorkflowTimestampInput } from './local-server.http'
+import { canonicalizeApplicationUrl, isApplicationListSort, isApplicationStatus, isManualReviewKind, isRoleKind, isWorkMode, normalizeApplicationLinkKind, normalizeJobTimingInput, type ApplicationLinkInput, type ApplicationListQuery, type ValedictorianWorkspaceClient, type WorkMode } from 'sparxie'
+import { copyOptionalBooleanField, copyOptionalNullableStringField, copyOptionalStringField, localHttpValidationError, parseLocalHttpInput, readOptionalBooleanField, readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField, validateWorkflowTimestampInput } from './local-server.http'
 import { setNumberQuery, setStringQuery } from './local-server.parsers.query-primitives'
 import { readOptionalJobTermsField, readOptionalJobTimingModeField } from './local-server.parsers.job-timing'
 
@@ -12,25 +12,25 @@ export function parseCreateApplicationInput(
   const workMode = readStringField(body, 'workMode')
 
   if (!isApplicationStatus(status)) {
-    throw new Error(`Invalid application status: ${status}`)
+    throw localHttpValidationError(`Invalid application status: ${status}`)
   }
 
   if (!isRoleKind(roleKind)) {
-    throw new Error(`Invalid roleKind: ${roleKind}`)
+    throw localHttpValidationError(`Invalid roleKind: ${roleKind}`)
   }
 
   if (!isWorkMode(workMode)) {
-    throw new Error(`Invalid workMode: ${workMode}`)
+    throw localHttpValidationError(`Invalid workMode: ${workMode}`)
   }
 
   const primaryLink = readOptionalLinkField(body, 'primaryLink')
   const sourceLink = readOptionalLinkField(body, 'sourceLink')
 
   if (!primaryLink && !sourceLink) {
-    throw new Error('Application creation requires a primaryLink or sourceLink')
+    throw localHttpValidationError('Application creation requires a primaryLink or sourceLink')
   }
 
-  return {
+  const input = {
     companyName: readStringField(body, 'companyName'),
     roleTitle: readStringField(body, 'roleTitle'),
     sourceName: readStringField(body, 'sourceName'),
@@ -52,6 +52,8 @@ export function parseCreateApplicationInput(
     sourceLink,
     initialNote: readOptionalStringField(body, 'initialNote'),
   }
+  parseLocalHttpInput(() => normalizeJobTimingInput(input))
+  return input
 }
 
 export function parseApplicationUpdateInput(
@@ -105,7 +107,7 @@ export function parseWorkflowUpdateInput(
     manualReviewKind !== null &&
     (typeof manualReviewKind !== 'string' || !isManualReviewKind(manualReviewKind))
   ) {
-    throw new Error(`Invalid manualReviewKind: ${JSON.stringify(manualReviewKind)}`)
+    throw localHttpValidationError(`Invalid manualReviewKind: ${JSON.stringify(manualReviewKind)}`)
   }
 
   return input as unknown as Parameters<ValedictorianWorkspaceClient['applications']['workflow']['update']>[0]
@@ -117,9 +119,9 @@ export function parseLinkCreateInput(
 ): Parameters<ValedictorianWorkspaceClient['applications']['links']['create']>[0] {
   return {
     applicationId,
-    kind: normalizeApplicationLinkKind(readStringField(body, 'kind')),
+    kind: parseLocalHttpInput(() => normalizeApplicationLinkKind(readStringField(body, 'kind'))),
     label: readStringField(body, 'label'),
-    url: canonicalizeApplicationUrl(readStringField(body, 'url')),
+    url: parseLocalHttpInput(() => canonicalizeApplicationUrl(readStringField(body, 'url'))),
     externalId: readOptionalNullableStringField(body, 'externalId'),
     isPrimary: readOptionalBooleanField(body, 'isPrimary'),
   }
@@ -134,11 +136,11 @@ export function parseLinkUpdateInput(
   const input: Record<string, unknown> = { applicationId, linkId }
 
   if ('kind' in record) {
-    input.kind = normalizeApplicationLinkKind(readStringField(record, 'kind'))
+    input.kind = parseLocalHttpInput(() => normalizeApplicationLinkKind(readStringField(record, 'kind')))
   }
   copyOptionalStringField(record, input, 'label')
   if ('url' in record) {
-    input.url = canonicalizeApplicationUrl(readStringField(record, 'url'))
+    input.url = parseLocalHttpInput(() => canonicalizeApplicationUrl(readStringField(record, 'url')))
   }
   copyOptionalNullableStringField(record, input, 'externalId')
   copyOptionalBooleanField(record, input, 'isPrimary')
@@ -159,9 +161,9 @@ export function readOptionalLinkField(
   }
 
   return {
-    kind: normalizeApplicationLinkKind(readStringField(value, 'kind')),
+    kind: parseLocalHttpInput(() => normalizeApplicationLinkKind(readStringField(value, 'kind'))),
     label: readStringField(value, 'label'),
-    url: canonicalizeApplicationUrl(readStringField(value, 'url')),
+    url: parseLocalHttpInput(() => canonicalizeApplicationUrl(readStringField(value, 'url'))),
     externalId: readOptionalNullableStringField(value, 'externalId'),
   }
 }
@@ -208,7 +210,7 @@ export function parseApplicationListQuery(requestUrl: URL): ApplicationListQuery
 
   if (status) {
     if (!isApplicationStatus(status)) {
-      throw new Error(`Invalid application status: ${status}`)
+      throw localHttpValidationError(`Invalid application status: ${status}`)
     }
 
     query.status = status
@@ -224,7 +226,7 @@ export function parseApplicationListQuery(requestUrl: URL): ApplicationListQuery
 
   if (sort) {
     if (!isApplicationListSort(sort)) {
-      throw new Error(`Invalid application list sort: ${sort}`)
+      throw localHttpValidationError(`Invalid application list sort: ${sort}`)
     }
 
     query.sort = sort

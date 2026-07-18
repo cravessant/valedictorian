@@ -1,4 +1,7 @@
-import { ConnectorRetirementConflictError } from 'sparxie'
+import {
+  ConnectorRetirementConflictError,
+  connectorRetirementActiveWorkConflictMessage,
+} from 'sparxie'
 import { describe, expect, it, vi } from 'vitest'
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { registerConnectorsIpc } from './connectors.ipc'
@@ -7,7 +10,7 @@ import { createConnectorsPreloadApi } from './connectors.preload'
 describe('connectors preload API', () => {
   it('reconstructs a typed retirement conflict across the registered IPC boundary', async () => {
     const remove = vi.fn(async () => {
-      throw Object.assign(new Error('Cancel active work first.'), {
+      throw Object.assign(new Error(connectorRetirementActiveWorkConflictMessage), {
         code: 'connector_retirement_active_work_conflict',
         connectorInstanceId: 'connector-with-active-work',
         cancellationRequired: true,

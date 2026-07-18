@@ -1,5 +1,5 @@
-import { isManualSourcingDecisionStatus, isRoleKind, isSourcingDestinationClass, isSourcingMergeStatus, isSourcingUsability, isWorkMode, rawSourceRecordsListQueryParamKeys, rawSourceRecordsListQuerySchema, type RawSourceRecordsListQuery, type SourcingFindingsListInput, type ValedictorianWorkspaceClient } from 'sparxie'
-import { readNumberField, readOptionalNullableStringField, readOptionalNumberField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
+import { isManualSourcingDecisionStatus, isRoleKind, isSourcingDestinationClass, isSourcingMergeStatus, isSourcingUsability, isWorkMode, normalizeJobTimingInput, rawSourceRecordsListQueryParamKeys, rawSourceRecordsListQuerySchema, type RawSourceRecordsListQuery, type SourcingFindingsListInput, type ValedictorianWorkspaceClient } from 'sparxie'
+import { localHttpValidationError, parseLocalHttpInput, readNumberField, readOptionalNullableStringField, readOptionalNumberField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 import { setNumberQuery, setStringQuery } from './local-server.parsers.query-primitives'
 import { readOptionalJobTermsField, readOptionalJobTimingModeField } from './local-server.parsers.job-timing'
 
@@ -8,9 +8,9 @@ export function parseRawSourceRecordsListQuery(requestUrl: URL): RawSourceRecord
   const query: Record<string, unknown> = {}
 
   for (const key of requestUrl.searchParams.keys()) {
-    if (!allowed.has(key)) throw new Error(`Invalid raw source list query parameter: ${key}`)
+    if (!allowed.has(key)) throw localHttpValidationError(`Invalid raw source list query parameter: ${key}`)
     if (requestUrl.searchParams.getAll(key).length !== 1) {
-      throw new Error(`Duplicate raw source list query parameter: ${key}`)
+      throw localHttpValidationError(`Duplicate raw source list query parameter: ${key}`)
     }
   }
   for (const key of rawSourceRecordsListQueryParamKeys) {
@@ -19,7 +19,7 @@ export function parseRawSourceRecordsListQuery(requestUrl: URL): RawSourceRecord
     query[key] = key === 'limit' && /^\d+$/.test(value) ? Number(value) : value
   }
 
-  return rawSourceRecordsListQuerySchema.parse(query)
+  return parseLocalHttpInput(() => rawSourceRecordsListQuerySchema.parse(query))
 }
 
 export function parseSourcingFindingsListQuery(requestUrl: URL): SourcingFindingsListInput {
@@ -28,7 +28,7 @@ export function parseSourcingFindingsListQuery(requestUrl: URL): SourcingFinding
 
   if (mergeStatus) {
     if (!isSourcingMergeStatus(mergeStatus)) {
-      throw new Error(`Invalid sourcing merge status: ${mergeStatus}`)
+      throw localHttpValidationError(`Invalid sourcing merge status: ${mergeStatus}`)
     }
 
     query.mergeStatus = mergeStatus
@@ -37,7 +37,7 @@ export function parseSourcingFindingsListQuery(requestUrl: URL): SourcingFinding
   const destinationClass = requestUrl.searchParams.get('destinationClass')
   if (destinationClass) {
     if (!isSourcingDestinationClass(destinationClass)) {
-      throw new Error(`Invalid sourcing destination class: ${destinationClass}`)
+      throw localHttpValidationError(`Invalid sourcing destination class: ${destinationClass}`)
     }
     query.destinationClass = destinationClass
   }
@@ -45,7 +45,7 @@ export function parseSourcingFindingsListQuery(requestUrl: URL): SourcingFinding
   const usability = requestUrl.searchParams.get('usability')
   if (usability) {
     if (!isSourcingUsability(usability)) {
-      throw new Error(`Invalid sourcing usability: ${usability}`)
+      throw localHttpValidationError(`Invalid sourcing usability: ${usability}`)
     }
     query.usability = usability
   }
@@ -80,11 +80,11 @@ export function parseSourcingFindingCreateInput(
   let mergeStatus: Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0]['mergeStatus']
 
   if (!isRoleKind(roleKind)) {
-    throw new Error(`Invalid roleKind: ${roleKind}`)
+    throw localHttpValidationError(`Invalid roleKind: ${roleKind}`)
   }
 
   if (!isWorkMode(workMode)) {
-    throw new Error(`Invalid workMode: ${workMode}`)
+    throw localHttpValidationError(`Invalid workMode: ${workMode}`)
   }
 
   if (mergeStatusValue !== undefined) {
@@ -92,7 +92,7 @@ export function parseSourcingFindingCreateInput(
     mergeStatus = mergeStatusValue
   }
 
-  return {
+  const input = {
     workflowRunId: readStringField(record, 'workflowRunId'),
     sourceId: readOptionalNullableStringField(record, 'sourceId'),
     sourceName: readOptionalNullableStringField(record, 'sourceName'),
@@ -122,6 +122,8 @@ export function parseSourcingFindingCreateInput(
     mergeStatus,
     discoveredAt: readOptionalNullableStringField(record, 'discoveredAt'),
   }
+  parseLocalHttpInput(() => normalizeJobTimingInput(input))
+  return input
 }
 
 export function parseSourcingCandidateProcessInput(
@@ -132,11 +134,11 @@ export function parseSourcingCandidateProcessInput(
   const workMode = readStringField(record, 'workMode')
 
   if (!isRoleKind(roleKind)) {
-    throw new Error(`Invalid roleKind: ${roleKind}`)
+    throw localHttpValidationError(`Invalid roleKind: ${roleKind}`)
   }
 
   if (!isWorkMode(workMode)) {
-    throw new Error(`Invalid workMode: ${workMode}`)
+    throw localHttpValidationError(`Invalid workMode: ${workMode}`)
   }
 
   return {
@@ -174,7 +176,7 @@ export function parseCandidateScore(value: unknown) {
   const penalties = record.penalties
 
   if (!Array.isArray(penalties) || !penalties.every((penalty) => typeof penalty === 'number')) {
-    throw new Error('Invalid score penalties')
+    throw localHttpValidationError('Invalid score penalties')
   }
 
   return {
@@ -201,16 +203,20 @@ export function parseSourcingFindingUpdateInput(
   let mergeStatus: Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['update']>[0]['mergeStatus']
 
   if (roleKind !== undefined && !isRoleKind(roleKind)) {
-    throw new Error(`Invalid roleKind: ${roleKind}`)
+    throw localHttpValidationError(`Invalid roleKind: ${roleKind}`)
   }
 
   if (workMode !== undefined && !isWorkMode(workMode)) {
-    throw new Error(`Invalid workMode: ${workMode}`)
+    throw localHttpValidationError(`Invalid workMode: ${workMode}`)
   }
 
   if (mergeStatusValue !== undefined) {
     assertWritableSourcingMergeStatus(mergeStatusValue)
     mergeStatus = mergeStatusValue
+  }
+
+  if ('duplicateNotes' in record) {
+    throw localHttpValidationError('duplicateNotes cannot be supplied manually')
   }
 
   return {
@@ -253,7 +259,7 @@ export function parseSourcingFindingDecisionInput(
   const mergeStatus = readStringField(record, 'mergeStatus')
 
   if (!isManualSourcingDecisionStatus(mergeStatus)) {
-    throw new Error(`Invalid manual sourcing decision: ${mergeStatus}`)
+    throw localHttpValidationError(`Invalid manual sourcing decision: ${mergeStatus}`)
   }
 
   return {
@@ -271,10 +277,10 @@ function assertWritableSourcingMergeStatus(
   Parameters<ValedictorianWorkspaceClient['sourcing']['findings']['create']>[0]['mergeStatus']
 > {
   if (!isSourcingMergeStatus(mergeStatus)) {
-    throw new Error(`Invalid sourcing merge status: ${mergeStatus}`)
+    throw localHttpValidationError(`Invalid sourcing merge status: ${mergeStatus}`)
   }
 
   if (mergeStatus === 'merged') {
-    throw new Error('Sourcing findings can only be marked merged by promotion.')
+    throw localHttpValidationError('Sourcing findings can only be marked merged by promotion.')
   }
 }

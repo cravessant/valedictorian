@@ -5,7 +5,7 @@ import {
   connectorOptionQueryErrorBodies,
   connectorOptionQueryErrorStatusByCode,
 } from 'sparxie'
-import { readJsonBody, writeJson } from './local-server.http'
+import { parseLocalHttpInput, readJsonBody, writeJson } from './local-server.http'
 
 export async function handleConnectorCapabilityRoutes({
   client,
@@ -42,7 +42,7 @@ export async function handleConnectorCapabilityRoutes({
   const connectorInstanceId = decodeURIComponent(optionQueryMatch[1])
   const rawBody = await readJsonBody(request)
   if (isEndpointShapedOptionSource(rawBody)) throw optionQueryError('option_source_undeclared')
-  const body = connectorOptionQueryBodySchema.parse(rawBody)
+  const body = parseLocalHttpInput(() => connectorOptionQueryBodySchema.parse(rawBody))
   const instances = await client.connectors.list()
   const instance = instances.items.find((candidate) => candidate.id === connectorInstanceId)
   if (!instance) throw optionQueryError('unsupported_descriptor')

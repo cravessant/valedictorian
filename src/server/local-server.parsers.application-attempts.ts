@@ -1,5 +1,5 @@
 import { isApplicationAttemptActorType, isApplicationAttemptStepType, isApplicationStatus, isManualReviewKind, type ValedictorianWorkspaceClient } from 'sparxie'
-import { readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
+import { localHttpValidationError, readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 import { hasText, setNumberQuery } from './local-server.parsers.query-primitives'
 
 const attemptBlockerOutcomes = new Set([
@@ -73,7 +73,7 @@ export function parseAttemptStartInput(
   const actorType = readStringField(body, 'actorType')
 
   if (!isApplicationAttemptActorType(actorType)) {
-    throw new Error(`Invalid actorType: ${actorType}`)
+    throw localHttpValidationError(`Invalid actorType: ${actorType}`)
   }
 
   return {
@@ -96,7 +96,7 @@ export function parseAttemptStepInput(
   const type = readStringField(record, 'type')
 
   if (!isApplicationAttemptStepType(type)) {
-    throw new Error(`Invalid attempt step type: ${type}`)
+    throw localHttpValidationError(`Invalid attempt step type: ${type}`)
   }
 
   return {
@@ -117,7 +117,7 @@ export function parseAttemptCompleteInput(
   const outcome = readStringField(body, 'outcome')
 
   if (!isApplicationStatus(outcome)) {
-    throw new Error(`Invalid application status: ${outcome}`)
+    throw localHttpValidationError(`Invalid application status: ${outcome}`)
   }
 
   const holdStartedAt = readOptionalNullableStringField(body, 'holdStartedAt')
@@ -127,24 +127,24 @@ export function parseAttemptCompleteInput(
 
   if (outcome === 'ready_for_review') {
     if (!hasText(holdStartedAt)) {
-      throw new Error('holdStartedAt is required for ready_for_review attempts')
+      throw localHttpValidationError('holdStartedAt is required for ready_for_review attempts')
     }
 
     if (!hasText(manualReviewKind)) {
-      throw new Error('manualReviewKind is required for ready_for_review attempts')
+      throw localHttpValidationError('manualReviewKind is required for ready_for_review attempts')
     }
   }
 
   if (outcome === 'needs_user_info' && !hasText(missingUserInfo)) {
-    throw new Error('missingUserInfo is required for needs_user_info attempts')
+    throw localHttpValidationError('missingUserInfo is required for needs_user_info attempts')
   }
 
   if (attemptBlockerOutcomes.has(outcome) && !hasText(blockerReason)) {
-    throw new Error(`blockerReason is required for ${outcome} attempts`)
+    throw localHttpValidationError(`blockerReason is required for ${outcome} attempts`)
   }
 
   if (manualReviewKind !== undefined && manualReviewKind !== null && !isManualReviewKind(manualReviewKind)) {
-    throw new Error(`Invalid manualReviewKind: ${manualReviewKind}`)
+    throw localHttpValidationError(`Invalid manualReviewKind: ${manualReviewKind}`)
   }
 
   return {

@@ -29,6 +29,17 @@ describe('connector option HTTP edge contracts', () => {
     await Promise.all(servers.splice(0).map((server) => server.close()))
   })
 
+  it('maps a schema-invalid option query body to the fixed validation response', async () => {
+    const harness = await createHarness()
+    servers.push(harness.server)
+
+    const response = await harness.query({ operation: { kind: 'search' } })
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ message: 'The request is invalid.' })
+    expect(harness.providerQueries).toEqual([])
+  })
+
   it.each([
     {
       name: 'an undeclared module-like source',

@@ -499,7 +499,10 @@ describe('local Valedictorian HTTP server', () => {
       payload: { company: 'A', title: 'Intern', url: 'https://jobs.lever.co/a/role' },
     }] })
     await expect(root.forWorkspace(workspaceA.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).resolves.toMatchObject({ rawRevisionId: intake.receipts[0].revision.id })
-    await expect(root.forWorkspace(workspaceB.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).rejects.toMatchObject({ status: 404 })
+    await expect(root.forWorkspace(workspaceB.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).rejects.toMatchObject({
+      status: 404,
+      body: null,
+    })
     await manager.close()
   })
 

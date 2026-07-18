@@ -24,7 +24,10 @@ describe('raw source projection receipt HTTP API', () => {
       status: 'not_eligible', rawRecordId: intake.receipts[0].rawRecordId,
       normalizationStatus: 'completed', canonicalCandidateId: null, gateStatus: 'needs_enrichment',
     })
-    await expect(sourcing.rawRevisions.projection.get('unknown-revision')).rejects.toMatchObject({ status: 404 })
+    await expect(sourcing.rawRevisions.projection.get('unknown-revision')).rejects.toMatchObject({
+      status: 404,
+      body: null,
+    })
   })
 
   it('sees pending before projection and preserves redacted failure evidence', async () => {

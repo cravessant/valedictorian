@@ -43,9 +43,7 @@ describe('public manual connector trigger parity', () => {
       },
     )
     expect(rejected.status).toBe(400)
-    await expect(rejected.json()).resolves.toMatchObject({
-      message: expect.stringMatching(/unrecognized_keys|Unrecognized key/i),
-    })
+    await expect(rejected.json()).resolves.toEqual({ message: 'The request is invalid.' })
     await expect(local.connectors.runs.list({
       connectorInstanceId: 'parity-fixture',
     })).resolves.toMatchObject({ items: [], total: 0 })
@@ -103,7 +101,7 @@ describe('public manual connector trigger parity', () => {
 
     await expect(http.connectors.runs.trigger(trigger)).rejects.toMatchObject({
       status: 409,
-      message: 'Connector instance is disabled: parity-fixture',
+      body: null,
     })
     await expect(ipc.runs.trigger(trigger)).rejects.toThrow(
       'Connector instance is disabled: parity-fixture',

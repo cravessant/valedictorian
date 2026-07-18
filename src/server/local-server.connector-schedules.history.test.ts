@@ -57,17 +57,13 @@ describe('local server connector schedule occurrence history', () => {
       `${server.url}/v1/workspaces/${workspaceId}/connectors/connector-instance-schedule/schedule/audit?limit=${overLimit}&offset=0`,
     )
     expect(auditResponse.status).toBe(400)
-    expect(await readJson(auditResponse)).toMatchObject({
-      message: expect.stringMatching(/limit/i),
-    })
+    expect(await readJson(auditResponse)).toEqual({ message: 'The request is invalid.' })
 
     const occurrenceResponse = await fetch(
       `${server.url}/v1/workspaces/${workspaceId}/connectors/connector-instance-schedule/schedule/occurrences?limit=${overLimit}&offset=0`,
     )
     expect(occurrenceResponse.status).toBe(400)
-    expect(await readJson(occurrenceResponse)).toMatchObject({
-      message: expect.stringMatching(/limit/i),
-    })
+    expect(await readJson(occurrenceResponse)).toEqual({ message: 'The request is invalid.' })
   })
 
   it('lists one admitted occurrence with pagination and workspace isolation', async () => {

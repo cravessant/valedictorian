@@ -76,7 +76,7 @@ describe('local server connector schedule capability', () => {
 
     expect(error).toBeInstanceOf(ValedictorianHttpError)
     expect(error).toMatchObject({
-      status: 400,
+      status: 503,
       body: {
         code: 'connector_scheduling_unavailable',
         message: expect.stringMatching(/unavailable/i),
@@ -127,7 +127,7 @@ describe('local server connector schedule capability', () => {
 
     expect(error).toBeInstanceOf(ValedictorianHttpError)
     expect(error).toMatchObject({
-      status: 400,
+      status: 503,
       body: {
         code: 'connector_scheduling_unavailable',
         message: expect.stringMatching(/unavailable/i),
@@ -178,7 +178,7 @@ describe('local server connector schedule capability', () => {
 
     expect(error).toBeInstanceOf(ValedictorianHttpError)
     expect(error).toMatchObject({
-      status: 400,
+      status: 503,
       body: {
         code: 'connector_scheduling_unavailable',
         message: expect.stringMatching(/unavailable/i),

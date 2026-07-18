@@ -7,6 +7,10 @@ import {
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
 import { writeEmpty, writeNoStoreEmpty } from './local-server.http'
 import { handleRequest, isLocalSecretResolvePath } from './local-server.routes'
+import {
+  defaultValedictorianHttpRequestErrorLogger,
+  type ValedictorianHttpRequestErrorLogger,
+} from './local-server.error-boundary'
 import type { LocalWorkspaceManager } from './local-workspaces'
 
 export type WorkspaceClientResolver = (
@@ -17,6 +21,7 @@ export interface CreateValedictorianHttpServerOptions {
   client: ValedictorianWorkspaceClient
   host?: string
   localSecretResolutionEnabled?: boolean
+  onRequestError?: ValedictorianHttpRequestErrorLogger
   port?: number
   resolveWorkspaceClient?: WorkspaceClientResolver
   token?: string
@@ -53,6 +58,7 @@ export async function createValedictorianHttpServer({
   client,
   host = '127.0.0.1',
   localSecretResolutionEnabled = false,
+  onRequestError = defaultValedictorianHttpRequestErrorLogger,
   port = 4317,
   resolveWorkspaceClient,
   token,
@@ -75,6 +81,7 @@ export async function createValedictorianHttpServer({
       client,
       connectorScheduling,
       localSecretResolutionEnabled,
+      onRequestError,
       request,
       resolveWorkspaceClient,
       response,

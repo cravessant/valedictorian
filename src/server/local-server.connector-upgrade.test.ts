@@ -259,7 +259,16 @@ describe('persisted connector package upgrades', () => {
 
     await expect(http.connectors.runs.trigger({
       connectorInstanceId: INSTANCE_ID, mode: 'manual',
-    })).rejects.toThrow(/Failed query: update "connector_instances"/)
+    })).rejects.toMatchObject({
+      body: {
+        code: 'internal_error',
+        message: 'An unexpected error occurred.',
+        requestId: expect.any(String),
+      },
+      kind: 'internal',
+      requestId: expect.any(String),
+      status: 500,
+    })
     const afterFailedMarker = await http.sourcing.rawRecords.normalization.get(
       intake.receipts[0].rawRecordId,
     )

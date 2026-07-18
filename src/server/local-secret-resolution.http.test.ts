@@ -11,6 +11,7 @@ import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registr
 import { createLocalWorkspaceManager } from './local-workspaces'
 import { getLocalValedictorianTestDatabase } from './local-valedictorian-client.test-harness'
 import {
+  createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,
   createSeededLocalClient,
   createTempDatabasePath,
@@ -443,6 +444,50 @@ describe('local secret resolution HTTP route', () => {
     expect(JSON.stringify(body)).not.toContain(CANARY)
   })
 
+  it('returns fixed 400 no-store for malformed JSON before secret resolution', async () => {
+    const workspaceId = 'workspace-malformed-json'
+    let createCalls = 0
+    let resolveCalls = 0
+    const client = createBoundaryWorkspaceClient(() => {
+      createCalls += 1
+    }, {
+      secrets: {
+        local: {
+          async resolve() {
+            resolveCalls += 1
+            throw new Error('secret resolution should not be called')
+          },
+        },
+      } as never,
+    })
+    const server = await fixture.start({
+      client,
+      localSecretResolutionEnabled: true,
+      resolveWorkspaceClient: async () => client,
+      token: 'server-token',
+    })
+
+    const response = await fetch(
+      `${server.url}/v1/workspaces/${workspaceId}/secrets/local/resolve`,
+      {
+        body: `{"private":"${CANARY}"`,
+        headers: {
+          authorization: 'Bearer server-token',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get('cache-control')).toContain('no-store')
+    const body = await readJson(response)
+    expect(body).toEqual({ message: 'The request is invalid.' })
+    expect(JSON.stringify(body)).not.toContain(CANARY)
+    expect(createCalls).toBe(0)
+    expect(resolveCalls).toBe(0)
+  })
+
   it('never echoes forged downstream error bodies and keeps canonical no-store outcomes', async () => {
     const SECRET_CANARY = 'forged-downstream-secret-canary-9f3c'
     const workspaceId = 'workspace-forged-errors'
@@ -525,7 +570,11 @@ describe('local secret resolution HTTP route', () => {
     expect(forgedMessageResponse.status).toBe(500)
     expect(forgedMessageResponse.headers.get('cache-control')).toContain('no-store')
     const forgedMessageBody = await readJson(forgedMessageResponse)
-    expect(forgedMessageBody).toEqual({ message: 'Local secret resolution failed' })
+    expect(forgedMessageBody).toEqual({
+      code: 'internal_error',
+      message: 'An unexpected error occurred.',
+      requestId: expect.any(String),
+    })
     expect(JSON.stringify(forgedMessageBody)).not.toContain(SECRET_CANARY)
   })
 

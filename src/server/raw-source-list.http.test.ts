@@ -190,6 +190,9 @@ describe('raw source list HTTP API', () => {
     ])
 
     expect(malformedResponses.map(({ status }) => status)).toEqual([400, 400, 400, 400])
+    await Promise.all(malformedResponses.map(async (response) => {
+      await expect(response.json()).resolves.toEqual({ message: 'The request is invalid.' })
+    }))
   })
 
   it('rejects canonical cursor envelopes outside the timestamp and Unicode scalar domain', async () => {
@@ -205,6 +208,9 @@ describe('raw source list HTTP API', () => {
     )))
 
     expect(responses.map(({ status }) => status)).toEqual([400, 400])
+    await Promise.all(responses.map(async (response) => {
+      await expect(response.json()).resolves.toEqual({ message: 'The request is invalid.' })
+    }))
   })
 })
 

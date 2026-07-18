@@ -74,9 +74,9 @@ describe('local Valedictorian HTTP server mutation validation', () => {
       })
 
       expect(response.status).toBe(400)
-      await expect(readJson(response)).resolves.toEqual({
-        message: testCase.message,
-      })
+      const body = await readJson(response)
+      expect(body).toEqual({ message: 'The request is invalid.' })
+      expect(JSON.stringify(body)).not.toContain(testCase.message)
     }
 
     expect(createCalls).toBe(0)

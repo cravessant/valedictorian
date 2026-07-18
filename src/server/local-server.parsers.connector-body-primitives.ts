@@ -1,5 +1,5 @@
 import type { ConnectorAuthMode } from '@sparxie/valedictorian-connectors-core'
-import { readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
+import { localHttpValidationError, readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 
 const connectorAuthModeSet = new Set<ConnectorAuthMode>([
   'none', 'api_key', 'bearer_token', 'oauth', 'cookie_jar', 'username_password',
@@ -12,7 +12,7 @@ export function readBooleanField(record: Record<string, unknown>, field: string)
     return value
   }
 
-  throw new Error(`Missing ${field}`)
+  throw localHttpValidationError(`Missing ${field}`)
 }
 export function readOptionalRecordField(record: Record<string, unknown>, field: string) {
   if (!(field in record)) {
@@ -25,7 +25,7 @@ export function readOptionalRecordField(record: Record<string, unknown>, field: 
     return value as Record<string, unknown>
   }
 
-  throw new Error(`Invalid ${field}`)
+  throw localHttpValidationError(`Invalid ${field}`)
 }
 
 export function readOptionalConnectorAuthReferences(record: Record<string, unknown>) {
@@ -36,7 +36,7 @@ export function readOptionalConnectorAuthReferences(record: Record<string, unkno
   const value = record.auth
 
   if (!Array.isArray(value)) {
-    throw new Error('Invalid auth')
+    throw localHttpValidationError('Invalid auth')
   }
 
   return value.map((entry, index) => {
@@ -44,7 +44,7 @@ export function readOptionalConnectorAuthReferences(record: Record<string, unkno
     const mode = readStringField(authRecord, 'mode')
 
     if (!isConnectorAuthMode(mode)) {
-      throw new Error(`Invalid auth[${index}].mode: ${mode}`)
+      throw localHttpValidationError(`Invalid auth[${index}].mode: ${mode}`)
     }
 
     const reference = {
@@ -81,6 +81,6 @@ export function validateConnectorTimestamp(value: string | null | undefined, fie
   }
 
   if (!/^\d{4}-\d{2}-\d{2}T/.test(value) || Number.isNaN(new Date(value).getTime())) {
-    throw new Error(`Invalid ${fieldName}: ${value}`)
+    throw localHttpValidationError(`Invalid ${fieldName}: ${value}`)
   }
 }

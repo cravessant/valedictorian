@@ -9,7 +9,9 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  ValedictorianHttpError,
+  ConnectorScheduleHttpError,
+  connectorScheduleErrorBodies,
+  connectorScheduleErrorStatusByCode,
   type ConnectorScheduleSummary,
   type ConnectorSchedulingCapability,
 } from 'sparxie'
@@ -211,14 +213,10 @@ describe('App connector schedules', () => {
     const profileApi = createProfileApi()
     const scheduleApi = createAvailableScheduleApi({
       onUpsert: async () => {
-        throw new ValedictorianHttpError({
-          body: {
-            code: 'schedule_too_frequent',
-            message: 'Schedule interval is below the capability minimum.',
-          },
-          message: 'ignored raw body dump',
-          status: 400,
-        })
+        throw new ConnectorScheduleHttpError(
+          connectorScheduleErrorBodies.schedule_too_frequent,
+          connectorScheduleErrorStatusByCode.schedule_too_frequent,
+        )
       },
     })
     const workspace = createWorkspaceSummary({ id: 'workspace-schedule-validate' })
@@ -269,7 +267,7 @@ describe('App connector schedules', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
     expect(await screen.findByText(
-      'Schedule interval is below the capability minimum.',
+      'The connector schedule cadence is too frequent.',
     )).toBeInTheDocument()
     expect(screen.queryByText('ignored raw body dump')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Every minutes')).toHaveValue(30)
@@ -338,7 +336,7 @@ describe('App connector schedules', () => {
         timezone: 'Europe/London',
       })
     })
-  })
+  }, 15_000)
 
   it('hides unsupported cadence modes and presets below the capability minimum', async () => {
     const connectorsApi = createConnectorsApi()

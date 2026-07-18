@@ -1,5 +1,37 @@
 import http from 'node:http'
 
+export class LocalHttpValidationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'LocalHttpValidationError'
+  }
+}
+
+export class LocalHttpBodyTooLargeError extends Error {
+  readonly statusCode = 413
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'LocalHttpBodyTooLargeError'
+  }
+}
+
+export function localHttpValidationError(message: string, cause?: unknown) {
+  return Object.assign(
+    new LocalHttpValidationError(message),
+    cause === undefined ? {} : { cause },
+  )
+}
+
+export function parseLocalHttpInput<T>(parse: () => T): T {
+  try {
+    return parse()
+  } catch (error) {
+    if (error instanceof LocalHttpValidationError) throw error
+    throw localHttpValidationError('Invalid request input', error)
+  }
+}
+
 export function readJsonBody(
   request: http.IncomingMessage,
   options: { maxBytes?: number; maxBytesMessage?: string } = {},
@@ -49,14 +81,14 @@ export function readJsonBody(
       try {
         resolve(JSON.parse(text) as unknown)
       } catch (error) {
-        reject(error)
+        reject(localHttpValidationError('Invalid JSON request body', error))
       }
     })
   })
 }
 
 function bodyLimitError(message = 'Request body exceeds the raw batch limit') {
-  return Object.assign(new Error(message), { statusCode: 413 })
+  return new LocalHttpBodyTooLargeError(message)
 }
 
 export function readStringField(body: unknown, field: string) {
@@ -69,10 +101,10 @@ export function readStringField(body: unknown, field: string) {
       return trimmed
     }
 
-    throw new Error(`${field} is required`)
+    throw localHttpValidationError(`${field} is required`)
   }
 
-  throw new Error(`Missing ${field}`)
+  throw localHttpValidationError(`Missing ${field}`)
 }
 
 /** Required string field preserved byte-for-byte (no trim). Empty string is valid. */
@@ -80,12 +112,12 @@ export function readRequiredOpaqueStringField(body: unknown, field: string) {
   const record = readRecord(body)
 
   if (!(field in record)) {
-    throw new Error(`Missing ${field}`)
+    throw localHttpValidationError(`Missing ${field}`)
   }
 
   const value = record[field]
   if (typeof value !== 'string') {
-    throw new Error(`Invalid ${field}`)
+    throw localHttpValidationError(`Invalid ${field}`)
   }
 
   return value
@@ -114,7 +146,7 @@ export function readOptionalNullableStringField(body: unknown, field: string) {
     return value
   }
 
-  throw new Error(`Invalid ${field}`)
+  throw localHttpValidationError(`Invalid ${field}`)
 }
 
 export function readOptionalNumberField(body: unknown, field: string) {
@@ -130,7 +162,7 @@ export function readOptionalNumberField(body: unknown, field: string) {
     return value
   }
 
-  throw new Error(`Invalid ${field}`)
+  throw localHttpValidationError(`Invalid ${field}`)
 }
 
 export function readNumberField(body: unknown, field: string) {
@@ -140,7 +172,7 @@ export function readNumberField(body: unknown, field: string) {
     return record[field]
   }
 
-  throw new Error(`Missing ${field}`)
+  throw localHttpValidationError(`Missing ${field}`)
 }
 
 export function readOptionalBooleanField(body: unknown, field: string) {
@@ -156,7 +188,7 @@ export function readOptionalBooleanField(body: unknown, field: string) {
     return value
   }
 
-  throw new Error(`Invalid ${field}`)
+  throw localHttpValidationError(`Invalid ${field}`)
 }
 
 export function copyOptionalStringField(
@@ -169,7 +201,7 @@ export function copyOptionalStringField(
   }
 
   if (typeof source[field] !== 'string') {
-    throw new Error(`Invalid ${field}`)
+    throw localHttpValidationError(`Invalid ${field}`)
   }
 
   target[field] = source[field]
@@ -185,7 +217,7 @@ export function copyOptionalNullableStringField(
   }
 
   if (source[field] !== null && typeof source[field] !== 'string') {
-    throw new Error(`Invalid ${field}`)
+    throw localHttpValidationError(`Invalid ${field}`)
   }
 
   target[field] = source[field]
@@ -201,7 +233,7 @@ export function copyOptionalBooleanField(
   }
 
   if (typeof source[field] !== 'boolean') {
-    throw new Error(`Invalid ${field}`)
+    throw localHttpValidationError(`Invalid ${field}`)
   }
 
   target[field] = source[field]
@@ -222,7 +254,7 @@ export function validateWorkflowTimestampInput(
     !/^\d{4}-\d{2}-\d{2}T/.test(value) ||
     Number.isNaN(new Date(value).getTime())
   ) {
-    throw new Error(`Invalid ${fieldName}: ${formatUnknownValue(value)}`)
+    throw localHttpValidationError(`Invalid ${fieldName}: ${formatUnknownValue(value)}`)
   }
 }
 
@@ -239,20 +271,28 @@ function formatUnknownValue(value: unknown) {
 }
 
 export function writeJson(response: http.ServerResponse, statusCode: number, body: unknown) {
+  const serializedBody = serializeJson(body)
   response.writeHead(statusCode, {
     ...localCorsHeaders,
     'content-type': 'application/json',
   })
-  response.end(JSON.stringify(body))
+  response.end(serializedBody)
 }
 
 export function writeNoStoreJson(response: http.ServerResponse, statusCode: number, body: unknown) {
+  const serializedBody = serializeJson(body)
   response.writeHead(statusCode, {
     ...localCorsHeaders,
     'cache-control': 'no-store',
     'content-type': 'application/json',
   })
-  response.end(JSON.stringify(body))
+  response.end(serializedBody)
+}
+
+function serializeJson(body: unknown): string {
+  const serialized = JSON.stringify(body)
+  if (serialized === undefined) throw new TypeError('Response body is not JSON serializable')
+  return serialized
 }
 
 export function writeEmpty(response: http.ServerResponse, statusCode: number) {
@@ -269,7 +309,7 @@ export function writeNoStoreEmpty(response: http.ServerResponse, statusCode: num
 }
 
 const localCorsHeaders = {
-  'access-control-allow-headers': 'authorization, content-type',
+  'access-control-allow-headers': 'authorization, content-type, x-request-id',
   'access-control-allow-methods': 'DELETE, GET, OPTIONS, PATCH, POST, PUT',
   'access-control-allow-origin': '*',
 }

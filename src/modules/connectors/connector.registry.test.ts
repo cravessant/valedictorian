@@ -59,14 +59,14 @@ describe('connector registry', () => {
       ),
     ) as { version: string }
 
-    expect(appPackage.dependencies.sparxie).toBe('0.24.0')
+    expect(appPackage.dependencies.sparxie).toBe('0.26.1')
     expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.15.0')
     expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.15.0')
     expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.15.0')
     expect(appPackage.pnpm?.overrides).toBeUndefined()
     expect(appPackage.resolutions).toBeUndefined()
     expect(appPackage).not.toHaveProperty('overrides')
-    expect(sparxiePackage.version).toBe('0.24.0')
+    expect(sparxiePackage.version).toBe('0.26.1')
     expect(jobrightPackage.version).toBe('0.15.0')
     expect(jobrightPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe('^0.15.0')
     expect(corePackage.version).toBe('0.15.0')

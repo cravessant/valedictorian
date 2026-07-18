@@ -223,7 +223,7 @@ describe('local server connector schedule management', () => {
 
     expect(stale).toBeInstanceOf(ValedictorianHttpError)
     expect(stale).toMatchObject({
-      status: 400,
+      status: 409,
       body: { code: 'stale_schedule_revision' },
     })
     await expect(
@@ -511,7 +511,7 @@ describe('local server connector schedule management', () => {
     )
     const body = await readJson(response)
 
-    expect(response.status).toBe(400)
+    expect(response.status).toBe(422)
     expect(body).toMatchObject({
       code: 'invalid_timezone',
       message: expect.stringMatching(/timezone|IANA/i),
@@ -569,7 +569,7 @@ describe('local server connector schedule management', () => {
     )
     const body = await readJson(response)
 
-    expect(response.status).toBe(400)
+    expect(response.status).toBe(422)
     expect(body).toMatchObject({
       code: 'invalid_cadence',
     })
@@ -621,7 +621,7 @@ describe('local server connector schedule management', () => {
 
     expect(error).toBeInstanceOf(ValedictorianHttpError)
     expect(error).toMatchObject({
-      status: 400,
+      status: 422,
       body: { code: 'schedule_too_frequent' },
     })
     await expect(
@@ -675,6 +675,7 @@ describe('local server connector schedule management', () => {
     )
 
     expect(response.status).toBe(400)
+    await expect(readJson(response)).resolves.toEqual({ message: 'The request is invalid.' })
     await expect(
       httpClient.connectors.schedules.get('connector-instance-schedule'),
     ).resolves.toBeNull()
@@ -727,7 +728,7 @@ describe('local server connector schedule management', () => {
 
     expect(error).toBeInstanceOf(ValedictorianHttpError)
     expect(error).toMatchObject({
-      status: 400,
+      status: 422,
       body: { code: 'invalid_cadence' },
     })
     await expect(
