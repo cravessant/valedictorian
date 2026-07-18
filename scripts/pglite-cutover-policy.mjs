@@ -70,8 +70,8 @@ function auditLockfile(contents, violations) {
   const importers = packagesOffset === -1 ? contents : contents.slice(0, packagesOffset)
   for (const dependencyName of forbiddenDependencyNames) {
     const escapedName = dependencyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const importerPattern = new RegExp(`^ {6}['\"]?${escapedName}['\"]?:`, 'm')
-    const packagePattern = new RegExp(`^ {2}['\"]?${escapedName}@`, 'm')
+    const importerPattern = new RegExp(`^ {6}['"]?${escapedName}['"]?:`, 'm')
+    const packagePattern = new RegExp(`^ {2}['"]?${escapedName}@`, 'm')
     if (importerPattern.test(importers) || packagePattern.test(contents)) {
       violations.push(`pnpm-lock.yaml: resolved package ${dependencyName} is forbidden`)
     }
