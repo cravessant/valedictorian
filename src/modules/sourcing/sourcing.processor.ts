@@ -2,20 +2,20 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { ProcessSourcingCandidateInput, SourcingFinding } from 'sparxie'
 import { applicationEvents, applications, opportunities } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
-import { createSqliteApplicationRepository } from '../applications/application.repository'
-import { createSqliteScoringRepository } from '../scoring/scoring.repository'
-import { createSqliteWorkflowRunRepository } from '../workflow-runs/workflow-run.repository'
+import type { PgliteDatabase } from '../../db/pglite'
+import { createPgliteApplicationRepository } from '../applications/application.repository'
+import { createPgliteScoringRepository } from '../scoring/scoring.repository'
+import { createPgliteWorkflowRunRepository } from '../workflow-runs/workflow-run.repository'
 import {
-  createSqliteSourcingRepository,
+  createPgliteSourcingRepository,
   findDuplicateApplication,
 } from './sourcing.repository'
 
-export function createSqliteSourcingProcessor(database: DrizzleDatabase) {
-  const applicationRepository = createSqliteApplicationRepository(database)
-  const scoringRepository = createSqliteScoringRepository(database)
-  const sourcingRepository = createSqliteSourcingRepository(database)
-  const workflowRunRepository = createSqliteWorkflowRunRepository(database)
+export function createPgliteSourcingProcessor(database: PgliteDatabase) {
+  const applicationRepository = createPgliteApplicationRepository(database)
+  const scoringRepository = createPgliteScoringRepository(database)
+  const sourcingRepository = createPgliteSourcingRepository(database)
+  const workflowRunRepository = createPgliteWorkflowRunRepository(database)
 
   return {
     async processCandidate(input: ProcessSourcingCandidateInput): Promise<SourcingFinding> {
@@ -54,7 +54,7 @@ export function createSqliteSourcingProcessor(database: DrizzleDatabase) {
         return blocked
       }
 
-      const duplicate = findDuplicateApplication(database, finding)
+      const duplicate = await findDuplicateApplication(database, finding)
 
       if (duplicate) {
         const duplicated = await updateFindingDecision(database, finding.id, {
@@ -80,7 +80,7 @@ export function createSqliteSourcingProcessor(database: DrizzleDatabase) {
           applicationId: promoted.mergedApplicationId,
           ...input.score,
         })
-        insertScoreEvent(database, promoted.mergedApplicationId, input.score)
+        await insertScoreEvent(database, promoted.mergedApplicationId, input.score)
 
         if (
           input.cutoffScore !== undefined &&
@@ -110,7 +110,7 @@ function promotionBlocker(finding: SourcingFinding) {
 }
 
 async function updateFindingDecision(
-  database: DrizzleDatabase,
+  database: PgliteDatabase,
   findingId: string,
   patch: {
     blocker?: string
@@ -122,7 +122,7 @@ async function updateFindingDecision(
 ) {
   const now = new Date().toISOString()
 
-  database
+  const [changed] = await database
     .update(opportunities)
     .set({
       blocker: patch.blocker ?? null,
@@ -133,13 +133,17 @@ async function updateFindingDecision(
       updatedAt: now,
     })
     .where(eq(opportunities.id, findingId))
-    .run()
+    .returning({ id: opportunities.id })
+
+  if (!changed) {
+    throw new Error(`Sourcing finding not found: ${findingId}`)
+  }
 
   return selectProcessedFinding(database, findingId)
 }
 
-async function selectProcessedFinding(database: DrizzleDatabase, findingId: string) {
-  const result = await createSqliteSourcingRepository(database).listFindings()
+async function selectProcessedFinding(database: PgliteDatabase, findingId: string) {
+  const result = await createPgliteSourcingRepository(database).listFindings()
   const finding = result.items.find((item) => item.id === findingId)
 
   if (!finding) {
@@ -150,7 +154,7 @@ async function selectProcessedFinding(database: DrizzleDatabase, findingId: stri
 }
 
 async function recordProcessingStep(
-  workflowRunRepository: ReturnType<typeof createSqliteWorkflowRunRepository>,
+  workflowRunRepository: ReturnType<typeof createPgliteWorkflowRunRepository>,
   finding: SourcingFinding,
   decision: string,
   reason: string,
@@ -169,23 +173,23 @@ async function recordProcessingStep(
   })
 }
 
-function insertScoreEvent(
-  database: DrizzleDatabase,
+async function insertScoreEvent(
+  database: PgliteDatabase,
   applicationId: string,
   score: NonNullable<ProcessSourcingCandidateInput['score']>,
 ) {
   const now = new Date().toISOString()
-  const existing = database
+  const [existing] = await database
     .select({ id: applications.id })
     .from(applications)
     .where(eq(applications.id, applicationId))
-    .get()
+    .limit(1)
 
   if (!existing) {
     throw new Error(`Application not found: ${applicationId}`)
   }
 
-  database
+  await database
     .insert(applicationEvents)
     .values({
       id: randomUUID(),
@@ -196,5 +200,4 @@ function insertScoreEvent(
       actor: 'agent:sourcing',
       createdAt: now,
     })
-    .run()
 }
