@@ -98,6 +98,7 @@ export function createLocalWorkspaceManager({
   const clientCache = new Map<string, ValedictorianWorkspaceClient>()
   const clientInflight = new Map<string, Promise<ValedictorianWorkspaceClient>>()
   const capabilityCache = new Map<string, PreparedWorkspaceProfileCapabilities>()
+  const recoveryScopeCache = new Map<string, { pgliteDataPath: string; workspaceId: string }>()
   let closeInflight: Promise<void> | null = null
   const prepareCapabilities = prepareWorkspaceCapabilities
     ?? (createClient === createLocalValedictorianClient
@@ -111,10 +112,13 @@ export function createLocalWorkspaceManager({
       closeInflight = (async () => {
         await Promise.allSettled(clientInflight.values())
         const capabilities = [...capabilityCache.values()]
+        const recoveryScopes = [...recoveryScopeCache.values()]
         clientInflight.clear()
         capabilityCache.clear()
+        recoveryScopeCache.clear()
         clientCache.clear()
         await Promise.allSettled(capabilities.map((prepared) => prepared.dispose()))
+        for (const scope of recoveryScopes) connectorRunRecovery.deactivate(scope)
       })().finally(() => {
         closeInflight = null
       })
@@ -147,31 +151,32 @@ export function createLocalWorkspaceManager({
       if (inflightClient) return inflightClient
 
       const resolution = (async () => {
+        let prepared: PreparedWorkspaceProfileCapabilities | null = null
+        let recoveryScope: { pgliteDataPath: string; workspaceId: string } | null = null
         try {
-        const registry = await registryStore.get()
-        const workspace = registry.workspaces[workspaceId]
+          const registry = await registryStore.get()
+          const workspace = registry.workspaces[workspaceId]
 
-        if (!workspace) {
-          throw new Error(`Workspace not registered: ${workspaceId}`)
-        }
+          if (!workspace) {
+            throw new Error(`Workspace not registered: ${workspaceId}`)
+          }
 
-        if (!fs.existsSync(workspace.path)) {
-          throw new Error(`Workspace path does not exist: ${workspace.path}`)
-        }
+          if (!fs.existsSync(workspace.path)) {
+            throw new Error(`Workspace path does not exist: ${workspace.path}`)
+          }
 
-        const connectorPorts = createConnectorPorts(workspaceId)
-        const layout = resolveWorkspaceLayout(workspace.path)
-        const prepared = prepareCapabilities
-          ? await prepareCapabilities({
-              profilePath: layout.profilePath,
-              secretCodec: secretCodec ?? unavailableWorkspaceSecretCodec,
-              pgliteDataPath: layout.pgliteDataPath,
-              workspaceId,
-            })
-          : null
-        let client: ValedictorianWorkspaceClient
-        try {
-          client = await createClient({
+          const connectorPorts = createConnectorPorts(workspaceId)
+          const layout = resolveWorkspaceLayout(workspace.path)
+          recoveryScope = { pgliteDataPath: layout.pgliteDataPath, workspaceId }
+          prepared = prepareCapabilities
+            ? await prepareCapabilities({
+                profilePath: layout.profilePath,
+                secretCodec: secretCodec ?? unavailableWorkspaceSecretCodec,
+                pgliteDataPath: layout.pgliteDataPath,
+                workspaceId,
+              })
+            : null
+          const client = await createClient({
             ...(prepared ? { database: prepared.database } : {}),
             connectorRunRecovery,
             connectorRuntime: connectorPorts.connectorRuntime,
@@ -189,15 +194,17 @@ export function createLocalWorkspaceManager({
             pgliteDataPath: layout.pgliteDataPath,
             workspaceId,
           } as LocalValedictorianClientOptions)
+          await registryStore.clearError(workspaceId)
+          if (prepared) capabilityCache.set(workspaceId, prepared)
+          recoveryScopeCache.set(workspaceId, recoveryScope)
+          clientCache.set(workspaceId, client)
+          return client
         } catch (error) {
+          clientCache.delete(workspaceId)
+          capabilityCache.delete(workspaceId)
+          if (recoveryScope) connectorRunRecovery.deactivate(recoveryScope)
+          recoveryScopeCache.delete(workspaceId)
           await prepared?.dispose()
-          throw error
-        }
-        if (prepared) capabilityCache.set(workspaceId, prepared)
-        clientCache.set(workspaceId, client)
-        await registryStore.clearError(workspaceId)
-        return client
-        } catch (error) {
           await registryStore.recordError(
             workspaceId,
             sanitizedWorkspaceInitializationError(error),

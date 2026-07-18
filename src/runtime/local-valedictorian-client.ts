@@ -182,19 +182,6 @@ export async function createLocalValedictorianClient({
   })
   const actionQueueRepository = createPgliteActionQueueRepository(database)
   const connectorRepository = createPgliteConnectorRepository(database)
-  const recoverInterruptedRuns = async () => {
-    await connectorRepository.recoverInterruptedRuns({
-      completedAt: now().toISOString(),
-    })
-  }
-  if (connectorRunRecovery) {
-    if (!pgliteDataPath) {
-      throw new Error('pgliteDataPath is required when connectorRunRecovery is provided')
-    }
-    await connectorRunRecovery.activate({ pgliteDataPath, workspaceId }, recoverInterruptedRuns)
-  } else {
-    await recoverInterruptedRuns()
-  }
   const policyRepository = createPglitePolicyRepository(database)
   const workflowRunRepository = createPgliteWorkflowRunRepository(database)
   const sourcingProcessor = createPgliteSourcingProcessor(database)
@@ -684,6 +671,17 @@ export async function createLocalValedictorianClient({
       retryKind: 'connector_capture', ...(signal ? { signal } : {}),
     })),
   }))
+  const recoverInterruptedRuns = async () => {
+    await connectorRepository.recoverInterruptedRuns({ completedAt: now().toISOString() })
+  }
+  if (connectorRunRecovery) {
+    if (!pgliteDataPath) {
+      throw new Error('pgliteDataPath is required when connectorRunRecovery is provided')
+    }
+    await connectorRunRecovery.activate({ pgliteDataPath, workspaceId }, recoverInterruptedRuns)
+  } else {
+    await recoverInterruptedRuns()
+  }
   return client
 }
 async function reconnectConnectorStatus({

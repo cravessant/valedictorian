@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 
 export interface ConnectorRunRecoveryScope {
   pgliteDataPath: string
@@ -12,6 +11,7 @@ export interface ConnectorRunRecoveryLifecycle {
     scope: ConnectorRunRecoveryScope,
     recover: () => Promise<void> | void,
   ): Promise<boolean>
+  deactivate(scope: ConnectorRunRecoveryScope): void
 }
 
 export function createConnectorRunRecoveryLifecycle(): ConnectorRunRecoveryLifecycle {
@@ -19,10 +19,7 @@ export function createConnectorRunRecoveryLifecycle(): ConnectorRunRecoveryLifec
 
   return {
     async activate(scope, recover) {
-      const key = JSON.stringify([
-        scope.workspaceId,
-        ...resolvePhysicalDatabaseIdentity(resolveDatabaseFilePath(scope.pgliteDataPath)),
-      ])
+      const key = resolveRecoveryScopeKey(scope)
 
       if (activeScopes.has(key)) {
         return false
@@ -37,12 +34,22 @@ export function createConnectorRunRecoveryLifecycle(): ConnectorRunRecoveryLifec
         throw error
       }
     },
+    deactivate(scope) {
+      activeScopes.delete(resolveRecoveryScopeKey(scope))
+    },
   }
 }
 
-function resolvePhysicalDatabaseIdentity(databasePath: string): string[] {
+function resolveRecoveryScopeKey(scope: ConnectorRunRecoveryScope) {
+  return JSON.stringify([
+    scope.workspaceId,
+    ...resolvePhysicalPgliteIdentity(scope.pgliteDataPath),
+  ])
+}
+
+function resolvePhysicalPgliteIdentity(pgliteDataPath: string): string[] {
   try {
-    const stats = fs.statSync(databasePath, { bigint: true })
+    const stats = fs.statSync(pgliteDataPath, { bigint: true })
 
     return [
       'file',
@@ -51,7 +58,7 @@ function resolvePhysicalDatabaseIdentity(databasePath: string): string[] {
       stats.birthtimeNs.toString(),
     ]
   } catch {
-    const absolutePath = path.resolve(databasePath)
+    const absolutePath = path.resolve(pgliteDataPath)
     const parentPath = path.dirname(absolutePath)
     let physicalParentPath = parentPath
 

@@ -55,12 +55,11 @@ describe('local workspace PGlite owner lifecycle', () => {
     await expect(secondClient.applications.list()).resolves.toMatchObject({ total: 0 })
     await manager.close()
 
-    const reopenedManager = createLocalWorkspaceManager({ registryStore })
-    const reopenedFirstClient = await reopenedManager.resolveClient(first.id)
+    const reopenedFirstClient = await manager.resolveClient(first.id)
     await expect(reopenedFirstClient.applications.list()).resolves.toMatchObject({
       items: [expect.objectContaining({ companyName: 'Persistent Company' })],
       total: 1,
     })
-    await reopenedManager.close()
+    await manager.close()
   })
 })

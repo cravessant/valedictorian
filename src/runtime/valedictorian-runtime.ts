@@ -162,6 +162,12 @@ export async function createValedictorianRuntime({
   const connectorPorts = createConnectorPorts(config.workspaceId)
   const scheduler = createScheduler(schedulerOptions)
   const effectiveConnectorRunRecovery = connectorRunRecovery ?? workspaceManager?.connectorRunRecovery
+  const recoveryScope = effectiveConnectorRunRecovery
+    ? {
+        pgliteDataPath: config.pgliteDataPath,
+        workspaceId: config.workspaceId ?? 'local-workspace',
+      }
+    : null
   const localSecretResolutionEnabled =
     config.mode === 'local-shared'
     && Boolean(config.apiToken)
@@ -215,6 +221,7 @@ export async function createValedictorianRuntime({
     ...(config.workspaceId === undefined ? {} : { workspaceId: config.workspaceId }),
     } as LocalValedictorianClientOptions)
   } catch (error) {
+    if (recoveryScope) effectiveConnectorRunRecovery?.deactivate(recoveryScope)
     await disposePreparedCapabilities()
     throw error
   }
@@ -244,6 +251,7 @@ export async function createValedictorianRuntime({
     server = deferServerStart ? null : await startServer(serverOptions)
   } catch (error) {
     await scheduler.stop()
+    if (recoveryScope) effectiveConnectorRunRecovery?.deactivate(recoveryScope)
     await disposePreparedCapabilities()
     throw error
   }
@@ -263,7 +271,11 @@ export async function createValedictorianRuntime({
         try {
           await workspaceManager?.close()
         } finally {
-          await disposePreparedCapabilities()
+          try {
+            await disposePreparedCapabilities()
+          } finally {
+            if (recoveryScope) effectiveConnectorRunRecovery?.deactivate(recoveryScope)
+          }
         }
       }
     })()
