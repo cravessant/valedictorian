@@ -10,7 +10,7 @@ import {
   workflowRunSteps,
   workflowRuns,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import {
   canonicalizeApplicationUrl,
   isApplicationAttemptActorType,
@@ -68,7 +68,7 @@ interface ApplicationAttemptRow {
   updatedAt: string
 }
 
-export type MutationDatabase = Pick<DrizzleDatabase, 'insert' | 'select' | 'update'>
+export type MutationDatabase = Pick<PgliteDatabase, 'insert' | 'select' | 'update'>
 
 export function workflowPatch(input: {
   blockerReason?: string | null
@@ -524,13 +524,13 @@ function hasApplicationTimingPatch(input: {
   )
 }
 
-export function findOrCreateCompany(database: MutationDatabase, name: string, now: string) {
+export async function findOrCreateCompany(database: MutationDatabase, name: string, now: string) {
   const normalizedName = normalizeText(name)
-  const existing = database
+  const [existing] = await database
     .select()
     .from(companies)
     .where(eq(companies.normalizedName, normalizedName))
-    .get()
+    .limit(1)
 
   if (existing) {
     return existing
@@ -546,13 +546,12 @@ export function findOrCreateCompany(database: MutationDatabase, name: string, no
     deletedAt: null,
   }
 
-  database.insert(companies).values(company).run()
+  await database.insert(companies).values(company)
   return company
 }
 
-export function hasActiveOfficialUrl(database: MutationDatabase, url: string, excludedLinkId?: string) {
-  return Boolean(
-    database
+export async function hasActiveOfficialUrl(database: MutationDatabase, url: string, excludedLinkId?: string) {
+  const links = await database
       .select({ id: applicationLinks.id })
       .from(applicationLinks)
       .innerJoin(applications, eq(applicationLinks.applicationId, applications.id))
@@ -564,18 +563,16 @@ export function hasActiveOfficialUrl(database: MutationDatabase, url: string, ex
           isNull(applications.deletedAt),
         ),
       )
-      .all()
-      .some((link) => link.id !== excludedLinkId),
-  )
+  return links.some((link) => link.id !== excludedLinkId)
 }
 
-export function hasActiveApplicationFingerprint(
+export async function hasActiveApplicationFingerprint(
   database: MutationDatabase,
   companyId: string,
   sourceId: string,
   roleTitle: string,
 ) {
-  return database
+  const rows = await database
     .select({
       id: applications.id,
       roleTitle: applications.roleTitle,
@@ -588,16 +585,14 @@ export function hasActiveApplicationFingerprint(
         isNull(applications.deletedAt),
       ),
     )
-    .all()
-    .some((application) => normalizeText(application.roleTitle) === normalizeText(roleTitle))
+  return rows.some((application) => normalizeText(application.roleTitle) === normalizeText(roleTitle))
 }
 
-export function findOrCreateSource(database: MutationDatabase, name: string, now: string) {
+export async function findOrCreateSource(database: MutationDatabase, name: string, now: string) {
   const normalizedName = normalizeText(name)
-  const existing = database
+  const existing = (await database
     .select()
-    .from(sources)
-    .all()
+    .from(sources))
     .find((source) => normalizeText(source.name) === normalizedName)
 
   if (existing) {
@@ -613,11 +608,11 @@ export function findOrCreateSource(database: MutationDatabase, name: string, now
     deletedAt: null,
   }
 
-  database.insert(sources).values(source).run()
+  await database.insert(sources).values(source)
   return source
 }
 
-export function insertApplicationLink(
+export async function insertApplicationLink(
   database: MutationDatabase,
   {
     applicationId,
@@ -635,7 +630,7 @@ export function insertApplicationLink(
 ) {
   const id = randomUUID()
 
-  database
+  const [created] = await database
     .insert(applicationLinks)
     .values({
       id,
@@ -650,9 +645,7 @@ export function insertApplicationLink(
       updatedAt: now,
       deletedAt: null,
     })
-    .run()
-
-  const created = database.select().from(applicationLinks).where(eq(applicationLinks.id, id)).get()
+    .returning()
 
   if (!created) {
     throw new Error(`Application link not found: ${id}`)
@@ -661,12 +654,12 @@ export function insertApplicationLink(
   return mapApplicationLinkRecord(created)
 }
 
-export function clearPrimaryApplicationLinks(
+export async function clearPrimaryApplicationLinks(
   database: MutationDatabase,
   applicationId: string,
   now: string,
 ) {
-  database
+  await database
     .update(applicationLinks)
     .set({ isPrimary: false, updatedAt: now })
     .where(
@@ -675,7 +668,6 @@ export function clearPrimaryApplicationLinks(
         isNull(applicationLinks.deletedAt),
       ),
     )
-    .run()
 }
 
 export function mapApplicationLinkRecord(
@@ -696,7 +688,7 @@ export function mapApplicationLinkRecord(
   }
 }
 
-export function insertApplicationEvent(
+export async function insertApplicationEvent(
   database: MutationDatabase,
   {
     applicationId,
@@ -712,7 +704,7 @@ export function insertApplicationEvent(
     type: string
   },
 ) {
-  database
+  await database
     .insert(applicationEvents)
     .values({
       id: randomUUID(),
@@ -723,10 +715,9 @@ export function insertApplicationEvent(
       actor: 'agent',
       createdAt: now,
     })
-    .run()
 }
 
-export function insertWorkflowRunStep(
+export async function insertWorkflowRunStep(
   database: MutationDatabase,
   {
     actor,
@@ -746,7 +737,7 @@ export function insertWorkflowRunStep(
     workflowRunId: string
   },
 ) {
-  database
+  await database
     .insert(workflowRunSteps)
     .values({
       id: randomUUID(),
@@ -758,12 +749,10 @@ export function insertWorkflowRunStep(
       actor,
       createdAt: now,
     })
-    .run()
 }
 
-export function hasActiveApplicationAttempt(database: MutationDatabase, applicationId: string) {
-  return Boolean(
-    database
+export async function hasActiveApplicationAttempt(database: MutationDatabase, applicationId: string) {
+  const [active] = await database
       .select({ id: workflowRuns.id })
       .from(workflowRuns)
       .where(
@@ -773,11 +762,12 @@ export function hasActiveApplicationAttempt(database: MutationDatabase, applicat
           eq(workflowRuns.status, 'in_progress'),
         ),
       )
-      .get(),
-  )
+      .limit(1)
+
+  return Boolean(active)
 }
 
-export function upsertApplicationWorkflowState(
+export async function upsertApplicationWorkflowState(
   database: MutationDatabase,
   {
     applicationId,
@@ -795,25 +785,7 @@ export function upsertApplicationWorkflowState(
     }
   },
 ) {
-  const existing = database
-    .select()
-    .from(applicationWorkflowStates)
-    .where(eq(applicationWorkflowStates.applicationId, applicationId))
-    .get()
-
-  if (existing) {
-    database
-      .update(applicationWorkflowStates)
-      .set({
-        ...patch,
-        updatedAt: now,
-      })
-      .where(eq(applicationWorkflowStates.applicationId, applicationId))
-      .run()
-    return
-  }
-
-  database
+  await database
     .insert(applicationWorkflowStates)
     .values({
       applicationId,
@@ -825,38 +797,43 @@ export function upsertApplicationWorkflowState(
       createdAt: now,
       updatedAt: now,
     })
-    .run()
+    .onConflictDoUpdate({
+      target: applicationWorkflowStates.applicationId,
+      set: {
+        ...patch,
+        updatedAt: now,
+      },
+    })
 }
 
-export function selectApplicationAttemptById(
+export async function selectApplicationAttemptById(
   database: MutationDatabase,
   attemptId: string,
-): ApplicationAttempt | null {
-  const row = database
+): Promise<ApplicationAttempt | null> {
+  const [row] = await database
     .select()
     .from(workflowRuns)
     .where(and(eq(workflowRuns.id, attemptId), eq(workflowRuns.runType, 'application_attempt')))
-    .get()
+    .limit(1)
 
   if (!row) {
     return null
   }
 
-  const steps = selectApplicationAttemptSteps(database, attemptId)
+  const steps = await selectApplicationAttemptSteps(database, attemptId)
 
   return mapApplicationAttempt(row, steps)
 }
 
-export function selectApplicationAttemptSteps(database: MutationDatabase, attemptId: string) {
+export async function selectApplicationAttemptSteps(database: MutationDatabase, attemptId: string) {
   return database
     .select()
     .from(workflowRunSteps)
     .where(eq(workflowRunSteps.workflowRunId, attemptId))
     .orderBy(asc(workflowRunSteps.sequence))
-    .all()
 }
 
-export function validateVerificationReceiptForOutcome(
+export async function validateVerificationReceiptForOutcome(
   database: MutationDatabase,
   attemptId: string,
   outcome: string,
@@ -865,7 +842,7 @@ export function validateVerificationReceiptForOutcome(
     return
   }
 
-  const receipt = latestVerificationReceipt(database, attemptId)
+  const receipt = await latestVerificationReceipt(database, attemptId)
 
   if (outcome === 'submitted' && !isPassedFinalReviewReceipt(receipt)) {
     throw new Error('submitted attempts require a passed final-review verification receipt')
@@ -876,8 +853,8 @@ export function validateVerificationReceiptForOutcome(
   }
 }
 
-export function latestVerificationReceipt(database: MutationDatabase, attemptId: string) {
-  const step = database
+export async function latestVerificationReceipt(database: MutationDatabase, attemptId: string) {
+  const [step] = await database
     .select()
     .from(workflowRunSteps)
     .where(
@@ -887,7 +864,7 @@ export function latestVerificationReceipt(database: MutationDatabase, attemptId:
       ),
     )
     .orderBy(desc(workflowRunSteps.sequence))
-    .get()
+    .limit(1)
 
   if (!step) {
     return null

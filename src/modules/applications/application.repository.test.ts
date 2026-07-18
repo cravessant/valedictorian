@@ -6,19 +6,23 @@ import {
   sources,
 } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
 import { seedSampleApplications } from './application.fixtures'
-import { createSqliteApplicationRepository } from './application.repository'
+import { createPgliteApplicationRepository } from './application.repository'
 
-describe('SQLite application repository create and update behavior', () => {
+async function createTestDatabase() {
+  const client = await createPgliteClient()
+  onTestFinished(() => client.close())
+  return migratePgliteDatabase(client)
+}
+
+describe('PGlite application repository create and update behavior', () => {
   it('creates applications with reused lookup rows, a primary link, and an audit event', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const created = await repository.createApplication({
       companyName: 'Versant Media',
       roleTitle: 'Software Engineer Intern',
@@ -55,13 +59,13 @@ describe('SQLite application repository create and update behavior', () => {
         url: 'https://jobs.example.com/versant/software-engineer-intern',
       },
     })
-    expect(database.select().from(companies).where(eq(companies.name, 'Versant Media')).all()).toHaveLength(1)
-    expect(database.select().from(sources).where(eq(sources.name, 'LinkedIn')).all()).toHaveLength(1)
+    expect(await database.select().from(companies).where(eq(companies.name, 'Versant Media'))).toHaveLength(1)
+    expect(await database.select().from(sources).where(eq(sources.name, 'LinkedIn'))).toHaveLength(1)
     expect(
-      database.select().from(applicationLinks).where(eq(applicationLinks.applicationId, created.id)).all(),
+      await database.select().from(applicationLinks).where(eq(applicationLinks.applicationId, created.id)),
     ).toHaveLength(1)
     expect(
-      database.select().from(applicationEvents).where(eq(applicationEvents.applicationId, created.id)).all(),
+      await database.select().from(applicationEvents).where(eq(applicationEvents.applicationId, created.id)),
     ).toEqual([
       expect.objectContaining({
         type: 'application_created',
@@ -75,11 +79,9 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('normalizes application timing across date, term, and unknown modes', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase()
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const created = await repository.createApplication({
       companyName: 'Calendar Labs',
       roleTitle: 'Infrastructure Intern',
@@ -146,11 +148,9 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects mixed application date and term timing input', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase()
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.createApplication({
@@ -173,11 +173,9 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects blank required create text fields before writing lookup rows', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase()
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.createApplication({
@@ -195,18 +193,16 @@ describe('SQLite application repository create and update behavior', () => {
         },
       }),
     ).rejects.toThrow('companyName is required')
-    expect(database.select().from(companies).all()).toHaveLength(0)
-    expect(database.select().from(sources).all()).toHaveLength(0)
-    expect(database.select().from(applications).all()).toHaveLength(0)
+    expect(await database.select().from(companies)).toHaveLength(0)
+    expect(await database.select().from(sources)).toHaveLength(0)
+    expect(await database.select().from(applications)).toHaveLength(0)
   })
 
   it('rejects invalid mutation enum values', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const validCreateInput = {
       companyName: 'Delta Labs',
       roleTitle: 'Software Engineering Intern',
@@ -249,11 +245,9 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects application creation without a primary or source link', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase()
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.createApplication({
@@ -266,15 +260,13 @@ describe('SQLite application repository create and update behavior', () => {
         status: 'queued',
       }),
     ).rejects.toThrow('Application creation requires a primaryLink or sourceLink')
-    expect(database.select().from(applications).all()).toHaveLength(0)
+    expect(await database.select().from(applications)).toHaveLength(0)
   })
 
   it('canonicalizes stored link URLs and rejects malformed URLs', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase()
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const created = await repository.createApplication({
       companyName: 'Delta Labs',
       roleTitle: 'Software Engineering Intern',
@@ -291,11 +283,11 @@ describe('SQLite application repository create and update behavior', () => {
     })
 
     expect(
-      database
+      await database
         .select()
         .from(applicationLinks)
         .where(eq(applicationLinks.applicationId, created.id))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       kind: 'official',
       url: 'https://jobs.example.com/apply?a=1&b=2',
@@ -320,12 +312,10 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects application creation with a duplicate active official URL', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.createApplication({
@@ -346,12 +336,10 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects application creation with a duplicate company-role-source fingerprint', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.createApplication({
@@ -372,12 +360,10 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('appends note events and updates summary notes', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const updated = await repository.appendApplicationNote({
       applicationId: 'application-versant-platform',
       message: 'Reached final review page.',
@@ -388,11 +374,11 @@ describe('SQLite application repository create and update behavior', () => {
       notes: 'Reached final review page.',
     })
     expect(
-      database
+      await database
         .select()
         .from(applicationEvents)
         .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
-        .all(),
+        ,
     ).toEqual([
       expect.objectContaining({
         type: 'note',
@@ -402,12 +388,10 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects blank note messages', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.appendApplicationNote({
@@ -425,11 +409,9 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects blank initial create notes when provided', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
+    const database = await createTestDatabase()
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.createApplication({
@@ -448,16 +430,14 @@ describe('SQLite application repository create and update behavior', () => {
         initialNote: '   ',
       }),
     ).rejects.toThrow('note message is required')
-    expect(database.select().from(applications).all()).toHaveLength(0)
+    expect(await database.select().from(applications)).toHaveLength(0)
   })
 
   it('updates status with audit and note events', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const updated = await repository.updateApplicationStatus({
       applicationId: 'application-versant-platform',
       status: 'submitted',
@@ -470,11 +450,11 @@ describe('SQLite application repository create and update behavior', () => {
       status: 'submitted',
     })
     expect(
-      database
+      await database
         .select()
         .from(applicationEvents)
         .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
-        .all(),
+        ,
     ).toEqual([
       expect.objectContaining({
         type: 'status_updated',
@@ -488,12 +468,10 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('updates restricted application metadata with an audit event', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const updated = await repository.updateApplication({
       applicationId: 'application-versant-platform',
       roleTitle: 'Platform Engineering Intern',
@@ -511,22 +489,22 @@ describe('SQLite application repository create and update behavior', () => {
       hasApplied: true,
     })
     expect(
-      database
+      await database
         .select()
         .from(applications)
         .where(eq(applications.id, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       currentResumeVariant: 'systems_resume',
       hasApplied: true,
       roleTitle: 'Platform Engineering Intern',
     })
     expect(
-      database
+      await database
         .select()
         .from(applicationEvents)
         .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
-        .all(),
+        ,
     ).toEqual([
       expect.objectContaining({
         type: 'application_updated',
@@ -536,12 +514,10 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects empty metadata, workflow, and link patches', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.updateApplication({
@@ -562,12 +538,10 @@ describe('SQLite application repository create and update behavior', () => {
   })
 
   it('rejects invalid metadata patch values', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.updateApplication({
@@ -587,6 +561,33 @@ describe('SQLite application repository create and update behavior', () => {
         workMode: 'distributed',
       } as never),
     ).rejects.toThrow('Invalid workMode: distributed')
+  })
+
+  it('allows only one concurrent create for the same active fingerprint', async () => {
+    const database = await createTestDatabase()
+    const repository = createPgliteApplicationRepository(database)
+    const input = {
+      companyName: 'Concurrency Labs',
+      roleTitle: 'Backend Intern',
+      sourceName: 'LinkedIn',
+      roleKind: 'internship' as const,
+      country: 'US',
+      workMode: 'remote' as const,
+      status: 'queued' as const,
+      primaryLink: {
+        kind: 'official' as const,
+        label: 'official',
+        url: 'https://jobs.example.com/concurrency/backend-intern',
+      },
+    }
+
+    const results = await Promise.allSettled([
+      repository.createApplication(input),
+      repository.createApplication(input),
+    ])
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    await expect(repository.listApplications()).resolves.toMatchObject({ total: 1 })
   })
 
 })

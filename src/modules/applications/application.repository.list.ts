@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, gte, isNull, like, lte, or, type SQL } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, isNull, lte, or, sql, type SQL } from 'drizzle-orm'
 import {
   applicationLinks,
   applications,
   companies,
   sources,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import {
   DEFAULT_APPLICATION_LIST_LIMIT,
   MAX_APPLICATION_LIST_LIMIT,
@@ -15,7 +15,7 @@ import {
   type WorkMode,
 } from './application.types'
 
-export type MutationDatabase = Pick<DrizzleDatabase, 'insert' | 'select' | 'update'>
+export type MutationDatabase = Pick<PgliteDatabase, 'insert' | 'select' | 'update'>
 
 export const applicationSelection = {
   id: applications.id,
@@ -80,8 +80,8 @@ export function validateListLimit(limit = DEFAULT_APPLICATION_LIST_LIMIT) {
   return limit
 }
 
-export function selectApplicationById(database: MutationDatabase, id: string) {
-  const row = database
+export async function selectApplicationById(database: MutationDatabase, id: string) {
+  const [row] = await database
     .select(applicationSelection)
     .from(applications)
     .innerJoin(companies, eq(applications.companyId, companies.id))
@@ -100,7 +100,7 @@ export function selectApplicationById(database: MutationDatabase, id: string) {
         isNull(applications.deletedAt),
       ),
     )
-    .get()
+    .limit(1)
 
   return row ? mapApplicationRow(row) : null
 }
@@ -141,50 +141,50 @@ export function mapApplicationRow(row: ApplicationRow): ApplicationListItem {
 
 export function buildApplicationListOrder(query: ApplicationListQuery) {
   if (query.sort === 'company_asc') {
-    return [asc(companies.name), desc(applications.updatedAt)]
+    return [asc(companies.name), desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'company_desc') {
-    return [desc(companies.name), desc(applications.updatedAt)]
+    return [desc(companies.name), desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'role_asc') {
-    return [asc(applications.roleTitle), desc(applications.updatedAt)]
+    return [asc(applications.roleTitle), desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'role_desc') {
-    return [desc(applications.roleTitle), desc(applications.updatedAt)]
+    return [desc(applications.roleTitle), desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'source_asc') {
-    return [asc(sources.name), desc(applications.updatedAt)]
+    return [asc(sources.name), desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'source_desc') {
-    return [desc(sources.name), desc(applications.updatedAt)]
+    return [desc(sources.name), desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'status_asc') {
-    return [asc(applications.status), desc(applications.updatedAt)]
+    return [asc(applications.status), desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'status_desc') {
-    return [desc(applications.status), desc(applications.updatedAt)]
+    return [desc(applications.status), desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'priority_asc') {
-    return [asc(applications.currentPriorityScore), desc(applications.updatedAt)]
+    return [sql`${applications.currentPriorityScore} asc nulls first`, desc(applications.updatedAt), asc(applications.id)]
   }
 
   if (query.sort === 'updated_asc') {
-    return [asc(applications.updatedAt), desc(applications.currentPriorityScore)]
+    return [asc(applications.updatedAt), sql`${applications.currentPriorityScore} desc nulls last`, asc(applications.id)]
   }
 
   if (query.sort === 'updated_desc') {
-    return [desc(applications.updatedAt), desc(applications.currentPriorityScore)]
+    return [desc(applications.updatedAt), sql`${applications.currentPriorityScore} desc nulls last`, asc(applications.id)]
   }
 
-  return [desc(applications.currentPriorityScore), desc(applications.updatedAt)]
+  return [sql`${applications.currentPriorityScore} desc nulls last`, desc(applications.updatedAt), asc(applications.id)]
 }
 
 export function buildApplicationListWhere(query: ApplicationListQuery) {
@@ -211,25 +211,25 @@ export function buildApplicationListWhere(query: ApplicationListQuery) {
   }
 
   if (query.company) {
-    filters.push(like(companies.name, `%${query.company}%`))
+    filters.push(ilike(companies.name, `%${query.company}%`))
   }
 
   if (query.role) {
-    filters.push(like(applications.roleTitle, `%${query.role}%`))
+    filters.push(ilike(applications.roleTitle, `%${query.role}%`))
   }
 
   if (query.source) {
-    filters.push(like(sources.name, `%${query.source}%`))
+    filters.push(ilike(sources.name, `%${query.source}%`))
   }
 
   if (query.search) {
     const pattern = `%${query.search}%`
     const searchFilter = or(
-      like(companies.name, pattern),
-      like(applications.roleTitle, pattern),
-      like(sources.name, pattern),
-      like(applications.locationRaw, pattern),
-      like(applications.notes, pattern),
+      ilike(companies.name, pattern),
+      ilike(applications.roleTitle, pattern),
+      ilike(sources.name, pattern),
+      ilike(applications.locationRaw, pattern),
+      ilike(applications.notes, pattern),
     )
 
     if (searchFilter) {

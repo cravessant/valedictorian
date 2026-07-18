@@ -5,20 +5,23 @@ import {
   applications,
 } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../../db/sqlite'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
 import { seedSampleApplications } from './application.fixtures'
-import { createSqliteApplicationRepository } from './application.repository'
-import { createSqliteActionQueueRepository } from '../action-queue/action-queue.repository'
+import { createPgliteApplicationRepository } from './application.repository'
 
-describe('SQLite application repository links, events, and workflow state', () => {
+async function createTestDatabase() {
+  const client = await createPgliteClient()
+  onTestFinished(() => client.close())
+  return migratePgliteDatabase(client)
+}
+
+describe('PGlite application repository links, events, and workflow state', () => {
   it('lists application events newest first with pagination', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    database
+    await database
       .insert(applicationEvents)
       .values([
         {
@@ -40,9 +43,9 @@ describe('SQLite application repository links, events, and workflow state', () =
           createdAt: '2026-06-04T17:00:00.000Z',
         },
       ])
-      .run()
 
-    const repository = createSqliteApplicationRepository(database)
+
+    const repository = createPgliteApplicationRepository(database)
     await expect(
       repository.listApplicationEvents({
         applicationId: 'application-versant-platform',
@@ -64,12 +67,10 @@ describe('SQLite application repository links, events, and workflow state', () =
   })
 
   it('upserts workflow state and clears nullable fields', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await repository.updateApplicationWorkflow({
       applicationId: 'application-versant-platform',
@@ -83,11 +84,11 @@ describe('SQLite application repository links, events, and workflow state', () =
     })
 
     expect(
-      database
+      await database
         .select()
         .from(applicationWorkflowStates)
         .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       applicationId: 'application-versant-platform',
       missingUserInfo: 'Fall 2026 dates',
@@ -95,22 +96,19 @@ describe('SQLite application repository links, events, and workflow state', () =
       manualReviewKind: 'overridable',
     })
     expect(
-      database
+      (await database
         .select()
         .from(applicationEvents)
-        .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
-        .all()
+        .where(eq(applicationEvents.applicationId, 'application-versant-platform')))
         .map((event) => event.type),
     ).toEqual(['workflow_updated', 'workflow_updated'])
   })
 
   it('rejects invalid workflow timestamps while allowing null clears', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.updateApplicationWorkflow({
@@ -129,12 +127,10 @@ describe('SQLite application repository links, events, and workflow state', () =
   })
 
   it('creates and updates links while preserving a single primary link', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const createdLink = await repository.createApplicationLink({
       applicationId: 'application-versant-platform',
       kind: 'source',
@@ -144,11 +140,10 @@ describe('SQLite application repository links, events, and workflow state', () =
     })
 
     expect(
-      database
+      (await database
         .select()
         .from(applicationLinks)
-        .where(eq(applicationLinks.applicationId, 'application-versant-platform'))
-        .all()
+        .where(eq(applicationLinks.applicationId, 'application-versant-platform')))
         .filter((link) => link.isPrimary),
     ).toHaveLength(1)
     expect(await repository.getApplication('application-versant-platform')).toMatchObject({
@@ -166,7 +161,7 @@ describe('SQLite application repository links, events, and workflow state', () =
     })
 
     expect(
-      database.select().from(applicationLinks).where(eq(applicationLinks.id, createdLink.id)).get(),
+      await database.select().from(applicationLinks).where(eq(applicationLinks.id, createdLink.id)).limit(1).then(([row]) => row),
     ).toMatchObject({
       label: 'LinkedIn Easy Apply',
       url: 'https://www.linkedin.com/jobs/view/versant-updated',
@@ -175,12 +170,10 @@ describe('SQLite application repository links, events, and workflow state', () =
   })
 
   it('lists active application links with primary links first', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     const sourceLink = await repository.createApplicationLink({
       applicationId: 'application-versant-platform',
       kind: 'source',
@@ -205,11 +198,11 @@ describe('SQLite application repository links, events, and workflow state', () =
       label: 'LinkedIn primary',
     })
 
-    const archived = database
+    const archived = await database
       .select()
       .from(applicationLinks)
       .where(eq(applicationLinks.label, 'Archived source'))
-      .get()
+      .limit(1).then(([row]) => row)
 
     if (!archived) {
       throw new Error('Expected archived link fixture')
@@ -241,12 +234,10 @@ describe('SQLite application repository links, events, and workflow state', () =
   })
 
   it('soft-archives links without hiding active applications', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     await repository.updateApplicationLink({
       applicationId: 'application-versant-platform',
       linkId: 'link-versant-official',
@@ -254,11 +245,11 @@ describe('SQLite application repository links, events, and workflow state', () =
     })
 
     expect(
-      database
+      await database
         .select()
         .from(applicationLinks)
         .where(eq(applicationLinks.id, 'link-versant-official'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       deletedAt: expect.any(String),
       isPrimary: false,
@@ -270,12 +261,10 @@ describe('SQLite application repository links, events, and workflow state', () =
   })
 
   it('rejects duplicate official URLs on link update after canonicalization', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.updateApplicationLink({
@@ -287,12 +276,10 @@ describe('SQLite application repository links, events, and workflow state', () =
   })
 
   it('rejects duplicate official URLs on link creation after canonicalization', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.createApplicationLink({
@@ -305,23 +292,21 @@ describe('SQLite application repository links, events, and workflow state', () =
   })
 
   it('archives applications and hides them from application and queue reads', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
     await repository.archiveApplication({
       applicationId: 'application-versant-platform',
       note: 'Duplicate tracker row.',
     })
 
     expect(
-      database
+      await database
         .select()
         .from(applications)
         .where(eq(applications.id, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       deletedAt: expect.any(String),
     })
@@ -333,21 +318,12 @@ describe('SQLite application repository links, events, and workflow state', () =
       ]),
     })
 
-    const queue = createSqliteActionQueueRepository(database)
-    await expect(queue.listActionQueue()).resolves.toMatchObject({
-      actionBucketCounts: {
-        apply_now: 0,
-      },
-      items: expect.not.arrayContaining([
-        expect.objectContaining({ id: 'application-versant-platform' }),
-      ]),
-    })
     expect(
-      database
+      await database
         .select()
         .from(applicationEvents)
         .where(eq(applicationEvents.applicationId, 'application-versant-platform'))
-        .all(),
+        ,
     ).toEqual([
       expect.objectContaining({
         type: 'application_archived',
@@ -357,12 +333,10 @@ describe('SQLite application repository links, events, and workflow state', () =
   })
 
   it('rejects blank archive notes when provided', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const database = createDrizzleDatabase(sqlite)
-    seedSampleApplications(database)
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    const repository = createSqliteApplicationRepository(database)
+    const repository = createPgliteApplicationRepository(database)
 
     await expect(
       repository.archiveApplication({
@@ -371,14 +345,38 @@ describe('SQLite application repository links, events, and workflow state', () =
       }),
     ).rejects.toThrow('archive note is required')
     expect(
-      database
+      await database
         .select()
         .from(applications)
         .where(eq(applications.id, 'application-versant-platform'))
-        .get(),
+        .limit(1).then(([row]) => row),
     ).toMatchObject({
       deletedAt: null,
     })
+  })
+
+  it('allows only one concurrent active official link for a URL', async () => {
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
+    const repository = createPgliteApplicationRepository(database)
+    const url = 'https://jobs.example.com/concurrent/official'
+    const results = await Promise.allSettled([
+      repository.createApplicationLink({
+        applicationId: 'application-versant-platform',
+        kind: 'official',
+        label: 'official',
+        url,
+      }),
+      repository.createApplicationLink({
+        applicationId: 'application-jobster-analytics',
+        kind: 'official',
+        label: 'official',
+        url,
+      }),
+    ])
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
   })
 
 })

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, count, desc, eq, isNull, like, type SQL } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, isNull, type SQL } from 'drizzle-orm'
 import type {
   CreateApplicationInput,
   CreateSourcingFindingInput,
@@ -29,19 +29,19 @@ import {
   opportunities,
   workflowRuns,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import {
   canonicalizeApplicationUrl,
   isRoleKind,
   isWorkMode,
   normalizeApplicationUrlPreservingQuery,
 } from '../applications/application.types'
-import { createSqliteApplicationRepository } from '../applications/application.repository'
+import { createPgliteApplicationRepository } from '../applications/application.repository'
 import {
   evaluateSourcingCandidatePolicy,
   readPolicyConfig,
 } from '../policy/policy.repository'
-import { createSqliteScoringRepository } from '../scoring/scoring.repository'
+import { createPgliteScoringRepository } from '../scoring/scoring.repository'
 
 const DEFAULT_FINDINGS_LIST_LIMIT = 50
 
@@ -94,25 +94,25 @@ const sourcingFindingSelection = {
   updatedAt: opportunities.updatedAt,
 }
 
-export function createSqliteSourcingRepository(database: DrizzleDatabase) {
+export function createPgliteSourcingRepository(database: PgliteDatabase) {
   return {
     async createFinding(input: CreateSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
       assertCompatibleSourcingDispositionInput(input)
       const normalizedInput = normalizeCreateFindingInput(input, now)
 
-      return database.transaction((transaction) => {
-        const run = transaction
+      return database.transaction(async (transaction) => {
+        const [run] = await transaction
           .select()
           .from(workflowRuns)
           .where(eq(workflowRuns.id, normalizedInput.workflowRunId))
-          .get()
+          .limit(1)
 
         if (!run) {
           throw new Error(`Workflow run not found: ${normalizedInput.workflowRunId}`)
         }
 
-        const source = resolveFindingSource(transaction, normalizedInput, run.sourceId, now)
+        const source = await resolveFindingSource(transaction, normalizedInput, run.sourceId, now)
 
         if (!source) {
           throw new Error('Sourcing finding requires a sourceName or a run source')
@@ -120,7 +120,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
         const findingId = randomUUID()
 
-        transaction
+        await transaction
           .insert(opportunities)
           .values({
             id: findingId,
@@ -157,7 +157,6 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
             updatedAt: now,
             deletedAt: null,
           })
-          .run()
 
         return reclassifySourcingFinding(transaction, findingId, now)
       })
@@ -171,23 +170,21 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
       const limit = input.limit ?? DEFAULT_FINDINGS_LIST_LIMIT
       const offset = input.offset ?? 0
       const where = buildFindingsWhere(input)
-      const totalRow = database
+      const [totalRow] = await database
         .select({ value: count() })
         .from(opportunities)
         .innerJoin(sources, eq(opportunities.sourceId, sources.id))
         .where(where)
-        .get()
-      const rows = database
+      const rows = await database
         .select(sourcingFindingSelection)
         .from(opportunities)
         .innerJoin(sources, eq(opportunities.sourceId, sources.id))
         .leftJoin(applications, eq(opportunities.applicationId, applications.id))
         .leftJoin(companies, eq(applications.companyId, companies.id))
         .where(where)
-        .orderBy(desc(opportunities.discoveredAt))
+        .orderBy(desc(opportunities.discoveredAt), asc(opportunities.id))
         .limit(limit)
         .offset(offset)
-        .all()
       const items = rows.map(mapSourcingFinding)
       const total = totalRow?.value ?? 0
 
@@ -207,8 +204,8 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
       }
 
       if (input.sourceName !== undefined || input.sourceId !== undefined) {
-        const current = selectSourcingFindingById(database, input.findingId)
-        const source = resolveFindingSource(
+        const current = await selectSourcingFindingById(database, input.findingId)
+        const source = await resolveFindingSource(
           database,
           {
             sourceId:
@@ -339,12 +336,11 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         patch.mergeNotes = nullableTrimmedText(input.mergeNotes)
       }
 
-      return database.transaction((transaction) => {
-        transaction
+      return database.transaction(async (transaction) => {
+        await transaction
           .update(opportunities)
           .set(patch)
           .where(eq(opportunities.id, input.findingId))
-          .run()
 
         return reclassifySourcingFinding(transaction, input.findingId, now)
       })
@@ -356,7 +352,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
 
       const now = new Date().toISOString()
 
-      database
+      const [changed] = await database
         .update(opportunities)
         .set({
           blocker: null,
@@ -374,13 +370,17 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
           updatedAt: now,
         })
         .where(eq(opportunities.id, input.findingId))
-        .run()
+        .returning({ id: opportunities.id })
+
+      if (!changed) {
+        throw new Error(`Sourcing finding not found: ${input.findingId}`)
+      }
 
       return selectSourcingFindingById(database, input.findingId)
     },
     async promoteFinding(input: PromoteSourcingFindingInput): Promise<SourcingFinding> {
       const now = new Date().toISOString()
-      const finding = reclassifySourcingFinding(database, input.findingId, now)
+      const finding = await reclassifySourcingFinding(database, input.findingId, now)
       const approvesThirdPartyDestination =
         finding.mergeStatus === 'blocked' &&
         finding.policyBlocker === 'third_party_destination' &&
@@ -396,10 +396,10 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         throw new Error('Sourcing policy requires a country before promotion.')
       }
 
-      const duplicate = findDuplicateApplication(database, finding)
+      const duplicate = await findDuplicateApplication(database, finding)
 
       if (duplicate) {
-        database
+        await database
           .update(opportunities)
           .set({
             mergeStatus: 'duplicate',
@@ -409,12 +409,11 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
             updatedAt: now,
           })
           .where(eq(opportunities.id, finding.id))
-          .run()
 
         return selectSourcingFindingById(database, finding.id)
       }
 
-      const application = await createSqliteApplicationRepository(database).createApplication({
+      const application = await createPgliteApplicationRepository(database).createApplication({
         companyName: finding.companyName,
         roleTitle: finding.roleTitle,
         sourceName: finding.sourceName,
@@ -444,7 +443,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
       })
 
       if (finding.priorityScore !== null) {
-        await createSqliteScoringRepository(database).recordScore({
+        await createPgliteScoringRepository(database).recordScore({
           applicationId: application.id,
           score: finding.priorityScore,
           band: finding.priorityBand ?? priorityBandForScore(finding.priorityScore),
@@ -458,7 +457,7 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
         })
       }
 
-      database
+      await database
         .insert(applicationEvents)
         .values({
           id: randomUUID(),
@@ -469,9 +468,8 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
           actor: 'agent',
           createdAt: now,
         })
-        .run()
 
-      database
+      await database
         .update(opportunities)
         .set({
           mergeStatus: 'merged',
@@ -480,7 +478,6 @@ export function createSqliteSourcingRepository(database: DrizzleDatabase) {
           updatedAt: now,
         })
         .where(eq(opportunities.id, finding.id))
-        .run()
 
       return selectSourcingFindingById(database, finding.id)
     },
@@ -511,20 +508,20 @@ function applicationTimingInputForFinding(
   }
 }
 
-function reclassifySourcingFinding(
-  database: Pick<DrizzleDatabase, 'select' | 'update'>,
+async function reclassifySourcingFinding(
+  database: Pick<PgliteDatabase, 'select' | 'update'>,
   findingId: string,
   now: string,
 ) {
-  const finding = selectSourcingFindingById(database, findingId)
+  const finding = await selectSourcingFindingById(database, findingId)
 
   if (finding.mergeStatus === 'merged' || isManualDispositionFinding(finding)) {
     return finding
   }
 
-  const classification = classifySourcingFinding(database as DrizzleDatabase, finding)
+  const classification = await classifySourcingFinding(database as PgliteDatabase, finding)
 
-  database
+  await database
     .update(opportunities)
     .set({
       blocker: classification.blocker,
@@ -536,15 +533,14 @@ function reclassifySourcingFinding(
       updatedAt: now,
     })
     .where(eq(opportunities.id, findingId))
-    .run()
 
   return selectSourcingFindingById(database, findingId)
 }
 
-function classifySourcingFinding(
-  database: DrizzleDatabase,
+async function classifySourcingFinding(
+  database: PgliteDatabase,
   finding: SourcingFinding,
-): Pick<
+): Promise<Pick<
   typeof opportunities.$inferInsert,
   | 'blocker'
   | 'duplicateNotes'
@@ -552,7 +548,7 @@ function classifySourcingFinding(
   | 'mergeStatus'
   | 'applicationId'
   | 'mergeNotes'
-> {
+>> {
   if (!finding.officialUrl && !finding.sourceUrl) {
     const note = 'Candidate requires an officialUrl or sourceUrl before promotion.'
 
@@ -566,7 +562,7 @@ function classifySourcingFinding(
     }
   }
 
-  const duplicate = findDuplicateApplication(database, finding)
+  const duplicate = await findDuplicateApplication(database, finding)
 
   if (duplicate) {
     return {
@@ -592,7 +588,7 @@ function classifySourcingFinding(
     }
   }
 
-  const policyDecision = evaluateSourcingCandidatePolicy(database, readPolicyConfig(database), {
+  const policyDecision = await evaluateSourcingCandidatePolicy(database, await readPolicyConfig(database), {
     findingId: finding.id,
     companyName: finding.companyName,
     roleTitle: finding.roleTitle,
@@ -749,7 +745,7 @@ function buildFindingsWhere(input: SourcingFindingsListInput) {
   if (input.sourceId) {
     filters.push(eq(opportunities.sourceId, input.sourceId))
   } else if (input.source) {
-    filters.push(like(sources.name, `%${input.source}%`))
+    filters.push(ilike(sources.name, `%${input.source}%`))
   }
 
   if (input.destinationClass) {
@@ -763,18 +759,18 @@ function buildFindingsWhere(input: SourcingFindingsListInput) {
   return and(...filters)
 }
 
-function selectSourcingFindingById(
-  database: Pick<DrizzleDatabase, 'select'>,
+async function selectSourcingFindingById(
+  database: Pick<PgliteDatabase, 'select'>,
   findingId: string,
 ) {
-  const row = database
+  const [row] = await database
     .select(sourcingFindingSelection)
     .from(opportunities)
     .innerJoin(sources, eq(opportunities.sourceId, sources.id))
     .leftJoin(applications, eq(opportunities.applicationId, applications.id))
     .leftJoin(companies, eq(applications.companyId, companies.id))
     .where(eq(opportunities.id, findingId))
-    .get()
+    .limit(1)
 
   if (!row) {
     throw new Error(`Sourcing finding not found: ${findingId}`)
@@ -851,9 +847,9 @@ function mapSourcingFinding(row: SourcingFindingRow): SourcingFinding {
   }
 }
 
-export function findDuplicateApplication(database: DrizzleDatabase, finding: SourcingFinding) {
+export async function findDuplicateApplication(database: PgliteDatabase, finding: SourcingFinding) {
   if (finding.officialUrl) {
-    const duplicate = database
+    const [duplicate] = await database
       .select({ applicationId: applicationLinks.applicationId })
       .from(applicationLinks)
       .where(
@@ -863,7 +859,7 @@ export function findDuplicateApplication(database: DrizzleDatabase, finding: Sou
           isNull(applicationLinks.deletedAt),
         ),
       )
-      .get()
+      .limit(1)
 
     if (duplicate) {
       return {
@@ -878,7 +874,7 @@ export function findDuplicateApplication(database: DrizzleDatabase, finding: Sou
   const normalizedRoleTitle = normalizeText(finding.roleTitle)
 
   if (finding.sourceUrl) {
-    const sourceUrlDuplicate = database
+    const sourceUrlDuplicate = (await database
       .select({
         applicationId: applications.id,
         normalizedCompanyName: companies.normalizedName,
@@ -894,8 +890,7 @@ export function findDuplicateApplication(database: DrizzleDatabase, finding: Sou
           isNull(applicationLinks.deletedAt),
           isNull(applications.deletedAt),
         ),
-      )
-      .all()
+      ))
       .find(
         (application) =>
           application.normalizedCompanyName === normalizedCompanyName &&
@@ -911,7 +906,7 @@ export function findDuplicateApplication(database: DrizzleDatabase, finding: Sou
     }
   }
 
-  const sourceDuplicate = database
+  const sourceDuplicate = (await database
     .select({ applicationId: applications.id, roleTitle: applications.roleTitle })
     .from(applications)
     .innerJoin(companies, eq(applications.companyId, companies.id))
@@ -921,8 +916,7 @@ export function findDuplicateApplication(database: DrizzleDatabase, finding: Sou
         eq(applications.sourceId, finding.sourceId),
         isNull(applications.deletedAt),
       ),
-    )
-    .all()
+    ))
     .find((application) => normalizeText(application.roleTitle) === normalizedRoleTitle)
 
   return sourceDuplicate
@@ -934,8 +928,8 @@ export function findDuplicateApplication(database: DrizzleDatabase, finding: Sou
     : null
 }
 
-function resolveFindingSource(
-  database: Pick<DrizzleDatabase, 'insert' | 'select'>,
+async function resolveFindingSource(
+  database: Pick<PgliteDatabase, 'insert' | 'select'>,
   input: { sourceId?: string | null; sourceName?: string | null },
   runSourceId: string | null,
   now: string,
@@ -946,20 +940,22 @@ function resolveFindingSource(
 
   const sourceId = input.sourceId ?? runSourceId
 
-  return sourceId ? database.select().from(sources).where(eq(sources.id, sourceId)).get() : null
+  if (!sourceId) return null
+  const [source] = await database.select().from(sources).where(eq(sources.id, sourceId)).limit(1)
+  return source ?? null
 }
 
-function findOrCreateSource(
-  database: Pick<DrizzleDatabase, 'insert' | 'select'>,
+async function findOrCreateSource(
+  database: Pick<PgliteDatabase, 'insert' | 'select'>,
   sourceName: string,
   now: string,
 ) {
   const normalizedName = sourceName.trim().toLowerCase()
-  const existing = database
+  const [existing] = await database
     .select()
     .from(sources)
     .where(eq(sources.name, sourceName.trim()))
-    .get()
+    .limit(1)
 
   if (existing) {
     return existing
@@ -974,8 +970,7 @@ function findOrCreateSource(
     deletedAt: null,
   }
 
-  database.insert(sources).values(source).run()
-
+  await database.insert(sources).values(source)
   return source
 }
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { ScoreInput, ScoreRecord } from 'sparxie'
 import { applicationScores, applications } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 
 export type { ScoreInput } from 'sparxie'
 
@@ -10,15 +10,14 @@ export interface ScoringRepository {
   recordScore: (input: ScoreInput) => Promise<ScoreRecord>
 }
 
-export function createSqliteScoringRepository(database: DrizzleDatabase): ScoringRepository {
+export function createPgliteScoringRepository(database: PgliteDatabase): ScoringRepository {
   return {
     async recordScore(input) {
       const createdAt = new Date().toISOString()
       const id = randomUUID()
 
-      database
-        .insert(applicationScores)
-        .values({
+      await database.transaction(async (tx) => {
+        await tx.insert(applicationScores).values({
           id,
           applicationId: input.applicationId,
           score: input.score,
@@ -32,17 +31,16 @@ export function createSqliteScoringRepository(database: DrizzleDatabase): Scorin
           rubricVersion: input.rubricVersion,
           createdAt,
         })
-        .run()
 
-      database
-        .update(applications)
-        .set({
-          currentPriorityScore: input.score,
-          currentPriorityBand: input.band,
-          updatedAt: createdAt,
-        })
-        .where(eq(applications.id, input.applicationId))
-        .run()
+        await tx
+          .update(applications)
+          .set({
+            currentPriorityScore: input.score,
+            currentPriorityBand: input.band,
+            updatedAt: createdAt,
+          })
+          .where(eq(applications.id, input.applicationId))
+      })
 
       return {
         ...input,
