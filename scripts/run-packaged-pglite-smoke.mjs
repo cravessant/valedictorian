@@ -50,9 +50,16 @@ export function resolvePackagedResourcesDirectory(executablePath, platform = pro
   return path.join(path.dirname(executablePath), 'resources')
 }
 
-async function runPackagedApp(executablePath, environment, timeoutMs) {
+export function packagedAppLaunch(executablePath, runner) {
+  return runner
+    ? { args: [executablePath], command: runner }
+    : { args: [], command: executablePath }
+}
+
+async function runPackagedApp(executablePath, environment, timeoutMs, runner) {
+  const launch = packagedAppLaunch(executablePath, runner)
   await new Promise((resolve, reject) => {
-    const child = spawn(executablePath, [], {
+    const child = spawn(launch.command, launch.args, {
       env: environment,
       stdio: 'inherit',
       windowsHide: true,
@@ -121,15 +128,20 @@ function readArgument(name) {
 
 async function run() {
   const releaseRoot = path.resolve(readArgument('--release-root') ?? 'release')
+  const platform = readArgument('--platform') ?? process.platform
+  if (!['darwin', 'linux', 'win32'].includes(platform)) {
+    throw new Error('--platform must be darwin, linux, or win32')
+  }
+  const runner = readArgument('--runner')
   const executablePath = path.resolve(
-    readArgument('--app') ?? findPackagedAppExecutable(releaseRoot),
+    readArgument('--app') ?? findPackagedAppExecutable(releaseRoot, platform),
   )
   const timeoutMs = Number(readArgument('--timeout-ms') ?? 120_000)
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
     throw new Error('--timeout-ms must be a positive integer')
   }
 
-  const resourcesDirectory = resolvePackagedResourcesDirectory(executablePath)
+  const resourcesDirectory = resolvePackagedResourcesDirectory(executablePath, platform)
   const artifactProblems = inspectPgliteRuntimeArtifactLayout(resourcesDirectory)
   if (artifactProblems.length > 0) {
     throw new Error(`Packaged PGlite asset inspection failed:\n${artifactProblems.join('\n')}`)
@@ -141,6 +153,12 @@ async function run() {
       environment: process.env,
       executablePath,
       resultDirectory,
+      spawnPackagedApp: (appPath, environment, smokeTimeoutMs) => runPackagedApp(
+        appPath,
+        environment,
+        smokeTimeoutMs,
+        runner,
+      ),
       timeoutMs,
     })
     process.stdout.write('Packaged PGlite restart smoke OK\n')

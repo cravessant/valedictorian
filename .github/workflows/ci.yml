@@ -125,3 +125,56 @@ jobs:
       - name: Inspect assets and verify PGlite restart
         working-directory: valedictorian-app
         run: pnpm run smoke:pglite-package
+
+  windows-wine-package-smoke:
+    name: Package Smoke (Windows via Wine)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: electronuserland/builder:wine-chrome@sha256:e042935889a044728987d7e6bad7cffef13cc6bf64828e7678d8735f99ca0846
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          path: valedictorian-app
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.3.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26.5.0
+          cache: pnpm
+          cache-dependency-path: valedictorian-app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: valedictorian-app
+        run: pnpm install --frozen-lockfile
+
+      - name: Build application bundles
+        working-directory: valedictorian-app
+        run: pnpm exec vite build
+
+      - name: Build Windows package
+        working-directory: valedictorian-app
+        run: pnpm exec electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Verify Windows installer
+        working-directory: valedictorian-app
+        shell: bash
+        run: |
+          mapfile -t installers < <(find release -type f -name 'Valedictorian-Windows-*-Setup.exe')
+          if [ "${#installers[@]}" -ne 1 ]; then
+            echo "Expected one configured NSIS installer; found ${#installers[@]}"
+            exit 1
+          fi
+
+      - name: Inspect assets and verify PGlite restart through Wine
+        working-directory: valedictorian-app
+        run: xvfb-run -a pnpm run smoke:pglite-package -- --platform win32 --runner wine
