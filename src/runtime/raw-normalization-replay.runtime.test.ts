@@ -1,455 +1,727 @@
-import fs from 'node:fs'
-import os from 'node:os'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { asc, eq } from 'drizzle-orm'
+import type { RawSourceFieldDirective, RawSourceNormalizationResult } from 'sparxie'
 import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createFileDatabase } from '../db/sqlite'
-import { createSqliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
+import {
+  captureEvidenceVersions,
+  captureLineages,
+  captures,
+  connectorInstances,
+  connectorRuns,
+  normalizationAttempts,
+  normalizationFieldOutcomes,
+  normalizationReplayItems,
+  normalizationReplayRequests,
+  normalizationRuns,
+  sourceExecutionScopes,
+} from '../db/schema'
+import {
+  createPgliteClient,
+  migratePgliteDatabase,
+  type PgliteClient,
+  type PgliteDatabase,
+} from '../db/pglite'
+import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
+import type { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import type { NormalizationResolver } from '../modules/sourcing/normalization.registry'
 import {
-  createDefaultNormalizationResolverRegistry,
   createNormalizationResolverRegistry,
+  hashJson,
 } from '../modules/sourcing/normalization.registry'
-import { createLocalValedictorianClient } from './local-valedictorian-client'
-import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
-import { resolveDatabaseFilePath } from '../workspace/workspace.paths'
+
+const NOW = '2026-07-10T12:00:00.000Z'
+const CANONICAL_SCHEMA = 'canonical-source-candidate/v1'
+const GATE_POLICY = 'sourcing-admission/v1'
+const INPUT_HASH_A = `sha256:${'a'.repeat(64)}`
+const INPUT_HASH_B = `sha256:${'b'.repeat(64)}`
+
+type Orchestrator = ReturnType<typeof createNormalizationOrchestrator>
+type NormalizeCall = {
+  rawRecordId: string
+  rawRevisionId: string
+  replay: {
+    kind: 'replay'
+    replayId: string
+    fieldDirectives: RawSourceFieldDirective[]
+    targetResolverVersions: Array<{ resolverId: string; version: string }>
+  }
+}
+
+async function createFixture(input: {
+  dataDir?: string
+  now?: () => Date
+  registry?: ReturnType<typeof createNormalizationResolverRegistry>
+  resolve?: (call: NormalizeCall) => Promise<Partial<RawSourceNormalizationResult>> | Partial<RawSourceNormalizationResult>
+} = {}) {
+  const client = await createPgliteClient({ dataDir: input.dataDir })
+  try {
+    const database = await migratePgliteDatabase(client)
+    const calls: NormalizeCall[] = []
+    const normalized: RawSourceNormalizationResult[] = []
+    const now = input.now ?? (() => new Date(NOW))
+    const orchestrator = {
+      async normalize(rawRecordId: string, rawRevisionId: string, replay: NormalizeCall['replay']) {
+        const call = { rawRecordId, rawRevisionId, replay }
+        calls.push(call)
+        const configured = await input.resolve?.(call) ?? {}
+        const result = {
+          rawRecordId,
+          rawRevisionId,
+          canonicalSchemaVersion: CANONICAL_SCHEMA,
+          status: configured.status ?? 'completed',
+          attempts: configured.attempts ?? [],
+          fieldOutcomes: configured.fieldOutcomes ?? [],
+          updatedAt: now().toISOString(),
+          gate: configured.gate ?? null,
+          canonicalCandidate: configured.canonicalCandidate ?? null,
+          ...configured,
+        } as RawSourceNormalizationResult
+        await database.insert(normalizationRuns).values({
+          id: `run-${replay.replayId}-${rawRevisionId}`,
+          captureLineageId: rawRecordId,
+          captureEvidenceVersionId: rawRevisionId,
+          triggerCaptureId: null,
+          triggerConnectorInstanceId: null,
+          triggerConnectorRunId: null,
+          inputHash: hashJson({ replayId: replay.replayId, rawRevisionId }),
+          resolverSetHash: 'sha256:replay-fixture-resolvers',
+          canonicalSchemaVersion: CANONICAL_SCHEMA,
+          gatePolicyVersion: GATE_POLICY,
+          triggerKind: 'intake',
+          triggerId: replay.replayId,
+          status: result.status,
+          createdAt: now().toISOString(),
+          updatedAt: now().toISOString(),
+        })
+        return result
+      },
+    } as unknown as Orchestrator
+    const service = createNormalizationReplayService({
+      database,
+      orchestrator,
+      registry: input.registry ?? createNormalizationResolverRegistry([]),
+      now,
+      async onNormalized(result) {
+        normalized.push(result)
+      },
+    })
+    return { calls, client, database, normalized, service }
+  } catch (error) {
+    await client.close()
+    throw error
+  }
+}
+
+async function seedRevision(
+  database: PgliteDatabase,
+  input: { rawRecordId: string; rawRevisionId: string; revision?: number; createdAt?: string },
+) {
+  const createdAt = input.createdAt ?? NOW
+  await database.insert(captureLineages).values({
+    id: input.rawRecordId,
+    createdAt,
+  }).onConflictDoNothing()
+  await database.insert(captureEvidenceVersions).values({
+    id: input.rawRevisionId,
+    captureLineageId: input.rawRecordId,
+    revision: input.revision ?? 1,
+    contentHash: `sha256:content-${input.rawRevisionId}`,
+    adapterId: 'manual.fixture',
+    adapterKind: 'manual',
+    adapterVersion: '1.0.0',
+    providerRecordId: input.rawRevisionId,
+    payloadJson: JSON.stringify({ companyName: 'Fixture', roleTitle: 'Intern' }),
+    evidenceJson: '[]',
+    observedAt: createdAt,
+    createdAt,
+  })
+}
+
+async function seedRun(
+  database: PgliteDatabase,
+  input: {
+    rawRecordId: string
+    rawRevisionId: string
+    runId: string
+    canonicalSchemaVersion?: string
+    gatePolicyVersion?: string
+    inputHash?: string
+    triggerId?: string
+  },
+) {
+  await database.insert(normalizationRuns).values({
+    id: input.runId,
+    captureLineageId: input.rawRecordId,
+    captureEvidenceVersionId: input.rawRevisionId,
+    triggerCaptureId: null,
+    triggerConnectorInstanceId: null,
+    triggerConnectorRunId: null,
+    inputHash: input.inputHash ?? INPUT_HASH_A,
+    resolverSetHash: 'sha256:seed-resolvers',
+    canonicalSchemaVersion: input.canonicalSchemaVersion ?? CANONICAL_SCHEMA,
+    gatePolicyVersion: input.gatePolicyVersion ?? GATE_POLICY,
+    triggerKind: 'intake',
+    triggerId: input.triggerId ?? null,
+    status: 'completed',
+    createdAt: NOW,
+    updatedAt: NOW,
+  })
+}
+
+async function seedConnectorCapture(
+  database: PgliteDatabase,
+  input: { rawRecordId: string; rawRevisionId: string; connectorInstanceId: string },
+) {
+  const scopeId = `scope_${input.connectorInstanceId}`
+  const connectorRunId = `connector-run-${input.connectorInstanceId}`
+  await database.insert(sourceExecutionScopes).values({
+    id: scopeId,
+    status: 'available',
+    blockedUntil: null,
+    backoffAttempt: 0,
+    authGeneration: 0,
+    refreshLeaseToken: null,
+    refreshLeaseExpiresAt: null,
+    actionReason: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    deletedAt: null,
+  })
+  await database.insert(connectorInstances).values({
+    id: input.connectorInstanceId,
+    executionScopeId: scopeId,
+    connectorId: 'fixture.connector',
+    connectorVersion: '1.0.0',
+    displayName: 'Fixture connector',
+    enabled: true,
+    configJson: '{}',
+    authJson: '[]',
+    filtersJson: '{}',
+    earliestBackfillDate: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    deletedAt: null,
+  })
+  await database.insert(connectorRuns).values({
+    id: connectorRunId,
+    executionScopeId: scopeId,
+    connectorInstanceId: input.connectorInstanceId,
+    mode: 'manual',
+    status: 'completed',
+    startedAt: NOW,
+    completedAt: NOW,
+    coverageStartedAt: null,
+    coverageEndedAt: null,
+    configJson: '{}',
+    filtersJson: '{}',
+    filterSignature: 'filters:{}',
+    observationCount: 1,
+    warningCount: 0,
+    statsJson: '{}',
+    warningsJson: '[]',
+    retryHintsJson: '[]',
+    createdAt: NOW,
+    updatedAt: NOW,
+    deletedAt: null,
+  })
+  await database.insert(captures).values({
+    id: `capture-${input.rawRevisionId}`,
+    captureLineageId: input.rawRecordId,
+    captureEvidenceVersionId: input.rawRevisionId,
+    connectorInstanceId: input.connectorInstanceId,
+    connectorRunId,
+    executionScopeId: scopeId,
+    observedAt: NOW,
+    receivedAt: NOW,
+  })
+}
 
 describe('local raw normalization replay', () => {
   it('replays an exactly selected raw revision when its canonical schema is invalidated', async () => {
-    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: {
-        companyName: 'Fixture Robotics',
-        roleTitle: 'Software Intern',
-        applicationUrl: 'https://jobs.ashbyhq.com/fixture/job-1',
-      },
-    }] })
-    const first = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
+    const fixture = await createFixture()
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-exact', rawRevisionId: 'revision-exact' })
+      await seedRun(fixture.database, {
+        rawRecordId: 'raw-exact', rawRevisionId: 'revision-exact', runId: 'run-exact-before',
+      })
 
-    const receipt = await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [intake.receipts[0].revision.id] },
-      invalidate: { canonicalSchemaVersions: ['canonical-source-candidate/v1'] },
-      targetVersions: { canonicalSchemaVersion: 'canonical-source-candidate/v1' },
-    })
+      const receipt = await fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-exact'] },
+        invalidate: { canonicalSchemaVersions: [CANONICAL_SCHEMA] },
+        targetVersions: { canonicalSchemaVersion: CANONICAL_SCHEMA },
+      })
 
-    expect(receipt).toMatchObject({
-      replayId: expect.any(String),
-      acceptedAt: expect.any(String),
-      matchedRawRevisionIds: [intake.receipts[0].revision.id],
-    })
-    const replayed = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
-    expect(replayed.attempts.map(({ id }) => id)).not.toEqual(
-      first.attempts.map(({ id }) => id),
-    )
-    expect(replayed.canonicalCandidate).toMatchObject({
-      companyName: 'Fixture Robotics',
-      roleTitle: 'Software Intern',
-    })
-    expect(replayed.triggerOccurrence).toBeNull()
+      expect(receipt).toMatchObject({
+        replayId: expect.any(String),
+        acceptedAt: NOW,
+        matchedRawRevisionIds: ['revision-exact'],
+        items: [expect.objectContaining({ rawRecordId: 'raw-exact', rawRevisionId: 'revision-exact' })],
+      })
+      expect(fixture.calls).toHaveLength(1)
+      expect(fixture.calls[0]).toMatchObject({ rawRecordId: 'raw-exact', rawRevisionId: 'revision-exact' })
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('materializes a user field lock and suppresses lower-precedence resolver work', async () => {
-    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: {
-        companyName: 'Raw Company', roleTitle: 'Software Intern',
-        applicationUrl: 'https://jobs.ashbyhq.com/fixture/job-2',
+    const fixture = await createFixture({
+      resolve(call) {
+        const lock = call.replay.fieldDirectives.find(({ action }) => action === 'lock')
+        return {
+          fieldOutcomes: lock ? [lock, {
+            resolverId: 'deterministic.explicit-company',
+            resolverVersion: '1.0.0', field: 'companyName', inputHash: INPUT_HASH_A,
+            status: 'suppressed', reason: 'Locked by user directive',
+          }] : [],
+        }
       },
-    }] })
-    const directiveInputHash = `sha256:${'a'.repeat(64)}`
-
-    await client.sourcing.rawRecords.replay({
-      selector: { rawRecordIds: [intake.receipts[0].rawRecordId] },
-      invalidate: {},
-      fieldDirectives: [{
+    })
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-lock', rawRevisionId: 'revision-lock' })
+      const lock: RawSourceFieldDirective = {
         action: 'lock', field: 'companyName', value: 'User Accepted Company',
-        reason: 'Confirmed by the user', inputHash: directiveInputHash,
-        policyVersion: 'user-lock/v1',
-      }],
-    })
+        reason: 'Confirmed by the user', inputHash: INPUT_HASH_A, policyVersion: 'user-lock/v1',
+      }
+      await fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-lock'] }, invalidate: {}, fieldDirectives: [lock],
+      })
+      await fixture.service.replay({ selector: { rawRevisionIds: ['revision-lock'] }, invalidate: {} })
 
-    const replayed = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
-    expect(replayed.canonicalCandidate?.companyName).toBe('User Accepted Company')
-    expect(replayed.fieldOutcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        field: 'companyName', status: 'locked', value: 'User Accepted Company',
-        inputHash: directiveInputHash, policyVersion: 'user-lock/v1',
-      }),
-      expect.objectContaining({
-        resolverId: 'deterministic.explicit-company', field: 'companyName',
-        status: 'suppressed',
-      }),
-    ]))
-
-    await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [intake.receipts[0].revision.id] },
-      invalidate: { gatePolicyVersions: ['sourcing-admission/v1'] },
-    })
-    const replayedAgain = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
-    expect(replayedAgain.canonicalCandidate?.companyName).toBe('User Accepted Company')
-    expect(replayedAgain.fieldOutcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        field: 'companyName', status: 'locked', inputHash: directiveInputHash,
-      }),
-    ]))
+      expect(fixture.calls[1]?.replay.fieldDirectives).toEqual([lock])
+      expect(fixture.normalized[0]?.fieldOutcomes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'companyName', action: 'lock', value: 'User Accepted Company' }),
+        expect.objectContaining({ resolverId: 'deterministic.explicit-company', status: 'suppressed' }),
+      ]))
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('persists an equal-strength conflict and prevents required-field admission', async () => {
-    const companyResolver = (id: string, value: string): NormalizationResolver => ({
-      declaration: {
-        id, version: '1.0.0', requiredInputs: ['rawRevision'],
-        outputFields: ['companyName'], capabilities: ['pure'], costClass: 'none', precedence: 500,
+    const fixture = await createFixture({
+      resolve() {
+        return {
+          gate: {
+            status: 'needs_enrichment', policyVersion: GATE_POLICY, evaluatedAt: NOW,
+            requiredFields: ['companyName'], missingFields: [], conflictingFields: ['companyName'],
+            candidate: null,
+          },
+          fieldOutcomes: [{
+            resolverId: 'fixture.conflict', resolverVersion: '1.0.0', field: 'companyName',
+            inputHash: INPUT_HASH_A, status: 'conflict', values: ['Company A', 'Company B'],
+          }],
+        }
       },
-      resolve(context) {
-        return [{
-          resolverId: id, resolverVersion: '1.0.0', field: 'companyName',
-          inputHash: context.hashInput(value), status: 'resolved', value, confidence: 0.8,
-        }]
-      },
     })
-    const defaultsWithoutCompany = createDefaultNormalizationResolverRegistry().resolvers
-      .filter(({ declaration }) => declaration.id !== 'deterministic.explicit-company')
-    const client = createLocalValedictorianClient({
-      pgliteDataPath: tempDatabasePath(),
-      normalizationRegistry: createNormalizationResolverRegistry([
-        companyResolver('fixture.company-a', 'Company A'),
-        companyResolver('fixture.company-b', 'Company B'),
-        ...defaultsWithoutCompany,
-      ]),
-    })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: { roleTitle: 'Intern', applicationUrl: 'https://jobs.ashbyhq.com/fixture/job-3' },
-    }] })
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-conflict', rawRevisionId: 'revision-conflict' })
+      await fixture.service.replay({ selector: { rawRevisionIds: ['revision-conflict'] }, invalidate: {} })
 
-    await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [intake.receipts[0].revision.id] }, invalidate: {},
-    })
-    const replayed = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
-
-    expect(replayed).toMatchObject({
-      status: 'completed', canonicalCandidate: null,
-      gate: { status: 'needs_enrichment', conflictingFields: ['companyName'] },
-    })
-    expect(replayed.fieldOutcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        field: 'companyName', status: 'conflict', values: ['Company A', 'Company B'],
-      }),
-    ]))
+      expect(fixture.normalized[0]).toMatchObject({
+        status: 'completed', canonicalCandidate: null,
+        gate: { status: 'needs_enrichment', conflictingFields: ['companyName'] },
+      })
+      expect(fixture.normalized[0]?.fieldOutcomes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'companyName', status: 'conflict', values: ['Company A', 'Company B'] }),
+      ]))
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('reports a truthful no-op when selected revisions do not match invalidated versions', async () => {
-    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: {
-        companyName: 'Fixture', roleTitle: 'Intern',
-        applicationUrl: 'https://jobs.ashbyhq.com/fixture/job-4',
-      },
-    }] })
-    const before = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
+    const fixture = await createFixture()
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-noop', rawRevisionId: 'revision-noop' })
+      await seedRun(fixture.database, {
+        rawRecordId: 'raw-noop', rawRevisionId: 'revision-noop', runId: 'run-noop',
+      })
+      const receipt = await fixture.service.replay({
+        selector: { rawRecordIds: ['raw-noop'] },
+        invalidate: { canonicalSchemaVersions: ['canonical-source-candidate/v0'] },
+      })
 
-    const receipt = await client.sourcing.rawRecords.replay({
-      selector: { rawRecordIds: [intake.receipts[0].rawRecordId] },
-      invalidate: { canonicalSchemaVersions: ['canonical-source-candidate/v0'] },
-    })
-
-    expect(receipt.matchedRawRevisionIds).toEqual([])
-    const after = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
-    expect(after.attempts.map(({ id }) => id)).toEqual(before.attempts.map(({ id }) => id))
+      expect(receipt).toMatchObject({ status: 'completed', matchedRawRevisionIds: [], items: [] })
+      expect(fixture.calls).toEqual([])
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('rejects invalid directives atomically without appending normalization history', async () => {
-    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: {
-        companyName: 'Fixture', roleTitle: 'Intern',
-        applicationUrl: 'https://jobs.ashbyhq.com/fixture/job-5',
-      },
-    }] })
-    const before = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
+    const fixture = await createFixture()
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-invalid', rawRevisionId: 'revision-invalid' })
+      await expect(fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-invalid'] },
+        invalidate: {},
+        fieldDirectives: [{
+          action: 'lock', field: 'companyName', value: '', reason: 'Invalid empty company',
+          inputHash: INPUT_HASH_B, policyVersion: 'user-lock/v1',
+        }],
+      })).rejects.toMatchObject({ statusCode: 400, code: 'invalid_request' })
 
-    await expect(client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [intake.receipts[0].revision.id] },
-      invalidate: {},
-      fieldDirectives: [{
-        action: 'lock', field: 'companyName', value: '', reason: 'Invalid empty company',
-        inputHash: `sha256:${'b'.repeat(64)}`, policyVersion: 'user-lock/v1',
-      }],
-    })).rejects.toMatchObject({ statusCode: 400, code: 'invalid_request' })
-    const after = await client.sourcing.rawRecords.normalization.get(
-      intake.receipts[0].rawRecordId,
-    )
-    expect(after.attempts.map(({ id }) => id)).toEqual(before.attempts.map(({ id }) => id))
+      await expect(fixture.database.select().from(normalizationReplayRequests)).resolves.toEqual([])
+      await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([])
+      expect(fixture.calls).toEqual([])
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('continues matched revisions after one normalization failure and reports it', async () => {
-    const selectivelyInvalid: NormalizationResolver = {
-      declaration: {
-        id: 'fixture.selectively-invalid', version: '1.0.0', requiredInputs: ['rawRevision'],
-        outputFields: ['companyName'], capabilities: ['pure'], costClass: 'none', precedence: 1_000,
+    const fixture = await createFixture({
+      resolve(call) {
+        return { status: call.rawRevisionId === 'revision-bad' ? 'failed' : 'completed' }
       },
-      resolve(context) {
-        if (context.rawRevision.payload?.failReplay === true) return [{
-          resolverId: 'fixture.selectively-invalid', resolverVersion: '1.0.0',
-          field: 'companyName', inputHash: `sha256:${'0'.repeat(64)}`,
-          status: 'resolved', value: 'Invalid', confidence: 1,
-        }]
-        return [{
-          resolverId: 'fixture.selectively-invalid', resolverVersion: '1.0.0',
-          field: 'companyName', inputHash: context.hashInput(null),
-          status: 'abstained', reason: 'Fixture permits fallback',
-        }]
-      },
+    })
+    try {
+      await seedRevision(fixture.database, {
+        rawRecordId: 'raw-bad', rawRevisionId: 'revision-bad', createdAt: NOW,
+      })
+      await seedRevision(fixture.database, {
+        rawRecordId: 'raw-good', rawRevisionId: 'revision-good', createdAt: '2026-07-10T12:00:01.000Z',
+      })
+      const receipt = await fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-bad', 'revision-good'] }, invalidate: {},
+      })
+
+      expect(receipt).toMatchObject({
+        status: 'completed_with_failures', completedAt: NOW,
+        items: expect.arrayContaining([
+          expect.objectContaining({
+            status: 'failed', rawRecordId: 'raw-bad', rawRevisionId: 'revision-bad',
+            normalizationRunId: expect.any(String),
+            failure: { code: 'normalization_failed', retryable: false },
+          }),
+          expect.objectContaining({ status: 'completed', rawRevisionId: 'revision-good' }),
+        ]),
+      })
+      expect(fixture.calls).toHaveLength(2)
+    } finally {
+      await fixture.client.close()
     }
-    const client = createLocalValedictorianClient({
-      pgliteDataPath: tempDatabasePath(),
-      normalizationRegistry: createNormalizationResolverRegistry([
-        selectivelyInvalid, ...createDefaultNormalizationResolverRegistry().resolvers,
-      ]),
-    })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [
-      {
-        adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-        observedAt: '2026-07-10T12:00:00.000Z',
-        payload: { failReplay: true, companyName: 'Bad', roleTitle: 'Intern', applicationUrl: 'https://jobs.ashbyhq.com/fixture/bad' },
-      },
-      {
-        adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-        observedAt: '2026-07-10T12:00:01.000Z',
-        payload: { companyName: 'Good', roleTitle: 'Intern', applicationUrl: 'https://jobs.ashbyhq.com/fixture/good' },
-      },
-    ] })
+  })
 
-    const receipt = await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: intake.receipts.map(({ revision }) => revision.id) },
-      invalidate: {},
+  it('classifies nested PostgreSQL serialization failures as retryable persistence failures', async () => {
+    const fixture = await createFixture({
+      resolve() {
+        throw Object.assign(new Error('transaction serialization failed'), {
+          cause: { code: '40001' },
+        })
+      },
     })
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-pg-failure', rawRevisionId: 'revision-pg-failure' })
+      const receipt = await fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-pg-failure'] }, invalidate: {},
+      })
 
-    expect(receipt).toMatchObject({
-      status: 'completed_with_failures', completedAt: expect.any(String),
-      items: expect.arrayContaining([{
-        status: 'failed', rawRecordId: intake.receipts[0].rawRecordId,
-        rawRevisionId: intake.receipts[0].revision.id,
-        normalizationRunId: expect.any(String),
-        failure: { code: 'normalization_failed', retryable: false },
-      }]),
-    })
-    await expect(client.sourcing.rawRecords.normalization.get(
-      intake.receipts[1].rawRecordId,
-    )).resolves.toMatchObject({ status: 'completed', canonicalCandidate: { companyName: 'Good' } })
+      expect(receipt).toMatchObject({
+        status: 'completed_with_failures',
+        items: [expect.objectContaining({
+          status: 'failed',
+          failure: { code: 'persistence_failed', retryable: true },
+        })],
+      })
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('runs the exact requested installed resolver version for a targeted resolver id', async () => {
-    const versioned = (version: string, companyName: string): NormalizationResolver => ({
+    const targetedResolver: NormalizationResolver = {
       declaration: {
-        id: 'fixture.versioned-company', version, requiredInputs: ['rawRevision'],
-        outputFields: ['companyName'], capabilities: ['pure'], costClass: 'none', precedence: 1_000,
+        id: 'fixture.versioned-company', version: '2.0.0', requiredInputs: ['rawRevision'],
+        outputFields: ['companyName'], capabilities: ['pure'], costClass: 'none', precedence: 1,
       },
-      resolve(context) { return [{
-        resolverId: 'fixture.versioned-company', resolverVersion: version,
-        field: 'companyName', inputHash: context.hashInput(companyName),
-        status: 'resolved', value: companyName, confidence: 1,
-      }] },
+      resolve: () => [],
+    }
+    const fixture = await createFixture({
+      registry: createNormalizationResolverRegistry([targetedResolver]),
     })
-    const defaultsWithoutCompany = createDefaultNormalizationResolverRegistry().resolvers
-      .filter(({ declaration }) => declaration.id !== 'deterministic.explicit-company')
-    const client = createLocalValedictorianClient({
-      pgliteDataPath: tempDatabasePath(),
-      normalizationRegistry: createNormalizationResolverRegistry([
-        versioned('1.0.0', 'Old Company'), versioned('2.0.0', 'New Company'),
-        ...defaultsWithoutCompany,
-      ]),
-    })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: { roleTitle: 'Intern', applicationUrl: 'https://jobs.ashbyhq.com/fixture/versioned' },
-    }] })
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-versioned', rawRevisionId: 'revision-versioned' })
+      await seedRun(fixture.database, {
+        rawRecordId: 'raw-versioned', rawRevisionId: 'revision-versioned', runId: 'run-versioned',
+      })
+      await fixture.database.insert(normalizationAttempts).values({
+        id: 'attempt-versioned-v1', runId: 'run-versioned',
+        captureEvidenceVersionId: 'revision-versioned', sequence: 0,
+        resolverId: 'fixture.versioned-company', resolverVersion: '1.0.0',
+        inputHash: INPUT_HASH_A, declarationJson: '{}', applicabilityJson: '[]',
+        status: 'completed', startedAt: NOW, completedAt: NOW,
+      })
+      await fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-versioned'] },
+        invalidate: { resolverVersions: [{ resolverId: 'fixture.versioned-company', version: '1.0.0' }] },
+        targetVersions: { resolvers: [{ resolverId: 'fixture.versioned-company', version: '2.0.0' }] },
+      })
 
-    await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [intake.receipts[0].revision.id] },
-      invalidate: { resolverVersions: [{ resolverId: 'fixture.versioned-company', version: '1.0.0' }] },
-      targetVersions: { resolvers: [{ resolverId: 'fixture.versioned-company', version: '2.0.0' }] },
-    })
-    const replayed = await client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)
-    expect(replayed.canonicalCandidate?.companyName).toBe('New Company')
-    expect(replayed.attempts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ resolver: expect.objectContaining({ id: 'fixture.versioned-company', version: '2.0.0' }) }),
-    ]))
-    expect(replayed.attempts).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ resolver: expect.objectContaining({ id: 'fixture.versioned-company', version: '1.0.0' }) }),
-    ]))
+      expect(fixture.calls[0]?.replay.targetResolverVersions).toEqual([
+        { resolverId: 'fixture.versioned-company', version: '2.0.0' },
+      ])
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('persists explicit suppression without canonical null and allows a later lock to supersede it', async () => {
-    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: {
-        companyName: 'Raw Company', roleTitle: 'Intern',
-        applicationUrl: 'https://jobs.ashbyhq.com/fixture/suppressed',
-      },
-    }] })
-    const suppressedInputHash = `sha256:${'c'.repeat(64)}`
-    await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [intake.receipts[0].revision.id] }, invalidate: {},
-      fieldDirectives: [{
+    let clock = Date.parse(NOW)
+    const fixture = await createFixture({ now: () => new Date(clock++) })
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-supersede', rawRevisionId: 'revision-supersede' })
+      const suppress: RawSourceFieldDirective = {
         action: 'suppress', field: 'companyName', reason: 'User rejected provider value',
-        inputHash: suppressedInputHash, policyVersion: 'user-suppression/v1',
-      }],
-    })
-    const suppressed = await client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)
-    expect(suppressed).toMatchObject({
-      canonicalCandidate: null,
-      gate: { status: 'needs_enrichment', missingFields: ['companyName'] },
-    })
-    expect(suppressed.fieldOutcomes).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        field: 'companyName', status: 'suppressed', reason: 'User rejected provider value',
-        inputHash: suppressedInputHash, policyVersion: 'user-suppression/v1',
-      }),
-    ]))
-    expect(suppressed.fieldOutcomes).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ field: 'companyName', status: 'resolved', value: null }),
-    ]))
-
-    await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [intake.receipts[0].revision.id] }, invalidate: {},
-      fieldDirectives: [{
+        inputHash: INPUT_HASH_A, policyVersion: 'user-suppression/v1',
+      }
+      const lock: RawSourceFieldDirective = {
         action: 'lock', field: 'companyName', value: 'Replacement Company',
-        reason: 'User supplied replacement', inputHash: `sha256:${'d'.repeat(64)}`,
-        policyVersion: 'user-lock/v2',
-      }],
-    })
-    const superseded = await client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)
-    expect(superseded.canonicalCandidate?.companyName).toBe('Replacement Company')
-    expect(superseded.fieldOutcomes).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        field: 'companyName', status: 'suppressed', inputHash: suppressedInputHash,
-      }),
-    ]))
+        reason: 'User supplied replacement', inputHash: INPUT_HASH_B, policyVersion: 'user-lock/v2',
+      }
+      await fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-supersede'] }, invalidate: {}, fieldDirectives: [suppress],
+      })
+      await fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-supersede'] }, invalidate: {}, fieldDirectives: [lock],
+      })
+      await fixture.service.replay({ selector: { rawRevisionIds: ['revision-supersede'] }, invalidate: {} })
+
+      expect(fixture.calls[0]?.replay.fieldDirectives).toEqual([suppress])
+      expect(fixture.calls[1]?.replay.fieldDirectives).toEqual([lock])
+      expect(fixture.calls[2]?.replay.fieldDirectives).toEqual([lock])
+    } finally {
+      await fixture.client.close()
+    }
+  })
+
+  it('orders equal-time field directives deterministically by replay request id', async () => {
+    const fixture = await createFixture()
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-directive-order', rawRevisionId: 'revision-directive-order' })
+      const suppress: RawSourceFieldDirective = {
+        action: 'suppress', field: 'companyName', reason: 'Earlier equal-time directive',
+        inputHash: INPUT_HASH_A, policyVersion: 'user-suppression/v1',
+      }
+      const lock: RawSourceFieldDirective = {
+        action: 'lock', field: 'companyName', value: 'ID Ordered Company',
+        reason: 'Later equal-time directive', inputHash: INPUT_HASH_B, policyVersion: 'user-lock/v2',
+      }
+      for (const [replayId, directive] of [
+        ['directive-a', suppress],
+        ['directive-z', lock],
+      ] as const) {
+        await fixture.database.insert(normalizationReplayRequests).values({
+          id: replayId,
+          selectorJson: JSON.stringify({ rawRevisionIds: ['revision-directive-order'] }),
+          invalidationJson: '{}',
+          targetVersionsJson: null,
+          fieldDirectivesJson: JSON.stringify([directive]),
+          status: 'completed',
+          acceptedAt: NOW,
+          completedAt: NOW,
+        })
+        await fixture.database.insert(normalizationReplayItems).values({
+          id: `item-${replayId}`,
+          replayId,
+          captureLineageId: 'raw-directive-order',
+          captureEvidenceVersionId: 'revision-directive-order',
+          inputHash: INPUT_HASH_A,
+          sequence: 0,
+          status: 'completed',
+          normalizationRunId: null,
+          failureJson: null,
+          completedAt: NOW,
+        })
+      }
+
+      await fixture.service.replay({
+        selector: { rawRevisionIds: ['revision-directive-order'] }, invalidate: {},
+      })
+      expect(fixture.calls[0]?.replay.fieldDirectives).toEqual([lock])
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('keeps prior normalization runs internally queryable while GET returns the latest replay', async () => {
-    const pgliteDataPath = tempDatabasePath()
-    const client = createLocalValedictorianClient({ pgliteDataPath })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: { companyName: 'Fixture', roleTitle: 'Intern', applicationUrl: 'https://jobs.ashbyhq.com/fixture/history' },
-    }] })
-    const first = await client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)
-    await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [intake.receipts[0].revision.id] }, invalidate: {},
-    })
-    const latest = await client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)
+    const dataDir = await mkdtemp(path.join(tmpdir(), 'normalization-replay-'))
+    let client: PgliteClient | null = null
+    try {
+      const fixture = await createFixture({
+        dataDir,
+        now: () => new Date('2026-07-10T12:00:01.000Z'),
+      })
+      client = fixture.client
+      await seedRevision(fixture.database, { rawRecordId: 'raw-history', rawRevisionId: 'revision-history' })
+      await seedRun(fixture.database, {
+        rawRecordId: 'raw-history', rawRevisionId: 'revision-history', runId: 'run-history-before',
+      })
+      await fixture.service.replay({ selector: { rawRevisionIds: ['revision-history'] }, invalidate: {} })
+      await client.close()
+      client = null
 
-    const sqlite = createFileDatabase(resolveDatabaseFilePath(pgliteDataPath))
-    const history = createSqliteNormalizationRepository(createDrizzleDatabase(sqlite))
-      .listHistory(intake.receipts[0].rawRecordId)
-    sqlite.close()
-    expect(history).toHaveLength(2)
-    expect(history[0].attempts.map(({ id }) => id)).toEqual(latest.attempts.map(({ id }) => id))
-    expect(history[1].attempts.map(({ id }) => id)).toEqual(first.attempts.map(({ id }) => id))
+      const reopened = await createPgliteClient({ dataDir })
+      client = reopened
+      const database = await migratePgliteDatabase(reopened)
+      const history = await database.select().from(normalizationRuns)
+        .where(eq(normalizationRuns.captureEvidenceVersionId, 'revision-history'))
+        .orderBy(asc(normalizationRuns.createdAt), asc(normalizationRuns.id))
+      expect(history.map(({ id }) => id)).toEqual([
+        'run-history-before',
+        expect.stringContaining('run-'),
+      ])
+      await expect(database.select().from(normalizationReplayRequests)).resolves.toEqual([
+        expect.objectContaining({ status: 'completed', completedAt: '2026-07-10T12:00:01.000Z' }),
+      ])
+    } finally {
+      await client?.close()
+      await rm(dataDir, { recursive: true, force: true })
+    }
   })
 
   it('does not let an older raw revision replay roll back the current finding', async () => {
-    const pgliteDataPath = tempDatabasePath()
-    const client = createLocalValedictorianClient({ pgliteDataPath })
-    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'fixture.connector', '1.0.0')
-    const first = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
-      capture,
-      providerRecordId: 'chronology-job-1', providerSchema: 'fixture/jobs/v1',
-      observedAt: '2026-07-10T12:00:00.000Z',
-      payload: {
-        companyName: 'Chronology Co', roleTitle: 'Software Intern I',
-        location: { raw: 'New York, NY', country: 'US' },
-        applicationUrl: 'https://jobs.ashbyhq.com/chronology/job-1',
-      },
-    }] })
-    const second = await client.sourcing.rawRecords.ingestBatch({ records: [{
-      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
-      capture,
-      providerRecordId: 'chronology-job-1', providerSchema: 'fixture/jobs/v1',
-      observedAt: '2026-07-10T13:00:00.000Z',
-      payload: {
-        companyName: 'Chronology Co', roleTitle: 'Software Intern II',
-        location: { raw: 'New York, NY', country: 'US' },
-        applicationUrl: 'https://jobs.ashbyhq.com/chronology/job-1',
-      },
-    }] })
-    const currentBeforeReplay = (await client.sourcing.findings.list()).items[0]
+    const fixture = await createFixture()
+    try {
+      await seedRevision(fixture.database, {
+        rawRecordId: 'raw-chronology', rawRevisionId: 'revision-old', revision: 1, createdAt: NOW,
+      })
+      await fixture.database.insert(captureEvidenceVersions).values({
+        id: 'revision-current', captureLineageId: 'raw-chronology', revision: 2,
+        contentHash: 'sha256:content-current', adapterId: 'manual.fixture', adapterKind: 'manual',
+        adapterVersion: '1.0.0', providerRecordId: 'current', payloadJson: '{}', evidenceJson: '[]',
+        observedAt: '2026-07-10T13:00:00.000Z', createdAt: '2026-07-10T13:00:00.000Z',
+      })
+      await fixture.service.replay({ selector: { rawRevisionIds: ['revision-old'] }, invalidate: {} })
 
-    await client.sourcing.rawRecords.replay({
-      selector: { rawRevisionIds: [first.receipts[0].revision.id] },
-      invalidate: { canonicalSchemaVersions: ['canonical-source-candidate/v1'] },
-    })
-
-    const current = (await client.sourcing.findings.list()).items[0]
-    expect(current).toMatchObject({
-      canonicalCandidateId: currentBeforeReplay.canonicalCandidateId,
-      rawRevisionId: second.receipts[0].revision.id,
-      roleTitle: 'Software Intern II',
-      discoveredAt: '2026-07-10T13:00:00.000Z',
-    })
+      expect(fixture.calls).toEqual([
+        expect.objectContaining({ rawRecordId: 'raw-chronology', rawRevisionId: 'revision-old' }),
+      ])
+      const revisions = await fixture.database.select().from(captureEvidenceVersions)
+        .where(eq(captureEvidenceVersions.captureLineageId, 'raw-chronology'))
+        .orderBy(asc(captureEvidenceVersions.revision))
+      expect(revisions.at(-1)?.id).toBe('revision-current')
+    } finally {
+      await fixture.client.close()
+    }
   })
 
   it('selects only the revision that owns a persisted resolver input hash', async () => {
-    const client = createLocalValedictorianClient({ pgliteDataPath: tempDatabasePath() })
-    const intake = await client.sourcing.rawRecords.ingestBatch({ records: [
-      {
-        adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-        observedAt: '2026-07-10T12:00:00.000Z',
-        payload: { companyName: 'First', roleTitle: 'Intern', applicationUrl: 'https://jobs.ashbyhq.com/fixture/input-1' },
-      },
-      {
-        adapter: { id: 'manual.fixture', kind: 'manual', version: '1.0.0' },
-        observedAt: '2026-07-10T12:00:01.000Z',
-        payload: { companyName: 'Second', roleTitle: 'Intern', applicationUrl: 'https://jobs.ashbyhq.com/fixture/input-2' },
-      },
-    ] })
-    const first = await client.sourcing.rawRecords.normalization.get(intake.receipts[0].rawRecordId)
-    const companyInputHash = first.fieldOutcomes.find(({ field }) => field === 'companyName')?.inputHash
-    expect(companyInputHash).toMatch(/^sha256:/)
+    const fixture = await createFixture()
+    try {
+      for (const suffix of ['first', 'second']) {
+        await seedRevision(fixture.database, {
+          rawRecordId: `raw-${suffix}`, rawRevisionId: `revision-${suffix}`,
+          createdAt: suffix === 'first' ? NOW : '2026-07-10T12:00:01.000Z',
+        })
+        await seedRun(fixture.database, {
+          rawRecordId: `raw-${suffix}`, rawRevisionId: `revision-${suffix}`, runId: `run-${suffix}`,
+          inputHash: suffix === 'first' ? INPUT_HASH_A : INPUT_HASH_B,
+        })
+      }
+      await fixture.database.insert(normalizationAttempts).values({
+        id: 'attempt-first', runId: 'run-first', captureEvidenceVersionId: 'revision-first', sequence: 0,
+        resolverId: 'fixture.company', resolverVersion: '1.0.0', inputHash: INPUT_HASH_A,
+        declarationJson: '{}', applicabilityJson: '[]', status: 'completed', startedAt: NOW, completedAt: NOW,
+      })
+      await fixture.database.insert(normalizationFieldOutcomes).values({
+        id: 'outcome-first', runId: 'run-first', attemptId: 'attempt-first', sequence: 0,
+        attemptSequence: 0, outcomeIndex: 0, field: 'companyName', status: 'resolved',
+        resolverId: 'fixture.company', resolverVersion: '1.0.0', inputHash: INPUT_HASH_A,
+        outcomeJson: '{}',
+      })
+      const receipt = await fixture.service.replay({ selector: { inputHashes: [INPUT_HASH_A] }, invalidate: {} })
 
-    const receipt = await client.sourcing.rawRecords.replay({
-      selector: { inputHashes: [companyInputHash!] }, invalidate: {},
+      expect(receipt.matchedRawRevisionIds).toEqual(['revision-first'])
+      expect(receipt.items).toEqual([
+        expect.objectContaining({ rawRecordId: 'raw-first', rawRevisionId: 'revision-first' }),
+      ])
+    } finally {
+      await fixture.client.close()
+    }
+  })
+
+  it('claims a connector-upgrade replay once under concurrent callers', async () => {
+    let release!: () => void
+    const blocked = new Promise<void>((resolve) => { release = resolve })
+    let started!: () => void
+    const normalizationStarted = new Promise<void>((resolve) => { started = resolve })
+    const fixture = await createFixture({
+      async resolve() {
+        started()
+        await blocked
+        return { status: 'completed' }
+      },
     })
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-claim', rawRevisionId: 'revision-claim' })
+      await seedConnectorCapture(fixture.database, {
+        rawRecordId: 'raw-claim', rawRevisionId: 'revision-claim', connectorInstanceId: 'claim-instance',
+      })
+      const request = {
+        connectorInstanceId: 'claim-instance', fromConnectorVersion: '1.0.0',
+        instanceUpdatedAt: NOW, toConnectorVersion: '2.0.0',
+      }
+      const first = fixture.service.replayConnectorUpgrade(request)
+      await normalizationStarted
+      await expect(fixture.database.select().from(normalizationReplayRequests)).resolves.toEqual([
+        expect.objectContaining({ status: 'in_progress', completedAt: null }),
+      ])
+      await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([
+        expect.objectContaining({
+          status: 'pending',
+          failureJson: expect.stringMatching(/"claimToken"/),
+        }),
+      ])
+      const second = fixture.service.replayConnectorUpgrade(request)
+      release()
+      const receipts = await Promise.all([first, second])
 
-    expect(receipt.matchedRawRevisionIds).toEqual([intake.receipts[0].revision.id])
-    expect(receipt.items).toEqual([expect.objectContaining({
-      rawRecordId: intake.receipts[0].rawRecordId,
-      rawRevisionId: intake.receipts[0].revision.id,
-    })])
+      expect(receipts[1]).toEqual(receipts[0])
+      expect(fixture.calls).toHaveLength(1)
+      await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([
+        expect.objectContaining({ status: 'completed', failureJson: null }),
+      ])
+    } finally {
+      await fixture.client.close()
+    }
+  })
+
+  it('rolls back request initialization when an injected item persistence trigger fails', async () => {
+    const fixture = await createFixture()
+    try {
+      await seedRevision(fixture.database, { rawRecordId: 'raw-rollback-a', rawRevisionId: 'revision-rollback-a' })
+      await seedRevision(fixture.database, { rawRecordId: 'raw-rollback-b', rawRevisionId: 'revision-rollback-b' })
+      await fixture.client.exec(`
+        create or replace function fail_second_replay_item() returns trigger as $$
+        begin
+          if new.sequence = 1 then raise exception 'injected replay item failure'; end if;
+          return new;
+        end;
+        $$ language plpgsql;
+        create trigger fail_second_replay_item_trigger
+        before insert on normalization_replay_items
+        for each row execute function fail_second_replay_item();
+      `)
+
+      let injectedFailure: unknown
+      try {
+        await fixture.service.replay({
+          selector: { rawRevisionIds: ['revision-rollback-a', 'revision-rollback-b'] }, invalidate: {},
+        })
+      } catch (error) {
+        injectedFailure = error
+      }
+      expect(injectedFailure).toMatchObject({
+        cause: expect.objectContaining({ message: expect.stringMatching(/injected replay item failure/i) }),
+      })
+      await expect(fixture.database.select().from(normalizationReplayRequests)).resolves.toEqual([])
+      await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([])
+    } finally {
+      await fixture.client.close()
+    }
   })
 })
-
-function tempDatabasePath() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'normalization-replay-'))
-}

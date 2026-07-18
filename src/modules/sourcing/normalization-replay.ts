@@ -20,7 +20,7 @@ import {
   captures,
   captureEvidenceVersions,
 } from '../../db/schema'
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import {
   CANONICAL_CANDIDATE_SCHEMA_VERSION,
   createNormalizationOrchestrator,
@@ -29,8 +29,10 @@ import {
 } from './normalization.orchestrator'
 import { hashJson, type NormalizationResolverRegistry } from './normalization.registry'
 
+const REPLAY_CLAIM_LEASE_MS = 30_000
+
 export function createNormalizationReplayService(options: {
-  database: DrizzleDatabase
+  database: PgliteDatabase
   orchestrator: ReturnType<typeof createNormalizationOrchestrator>
   registry: NormalizationResolverRegistry
   now?: () => Date
@@ -45,29 +47,38 @@ export function createNormalizationReplayService(options: {
   ): Promise<RawSourceReplayReceipt> {
     if (validateInput) validateReplayInput(input)
     validateTargetVersions(input, options.registry)
-    const matches = selectMatches(options.database, input)
-    initializeReplay(options.database, { input, matches, replayId, acceptedAt: now().toISOString() })
-    const existing = options.database.select({ status: normalizationReplayRequests.status })
+    const matches = await selectMatches(options.database, input)
+    await initializeReplay(options.database, { input, matches, replayId, acceptedAt: now().toISOString() })
+    const [existing] = await options.database.select({ status: normalizationReplayRequests.status })
       .from(normalizationReplayRequests)
-      .where(eq(normalizationReplayRequests.id, replayId)).get()
+      .where(eq(normalizationReplayRequests.id, replayId)).limit(1)
     if (existing?.status === 'completed' || existing?.status === 'completed_with_failures') {
-      return readReplayReceipt(options.database, replayId)
+      return await readReplayReceipt(options.database, replayId)
     }
-    options.database.update(normalizationReplayRequests).set({ status: 'in_progress' })
-      .where(eq(normalizationReplayRequests.id, replayId)).run()
-
-    const pending = options.database.select().from(normalizationReplayItems)
+    await options.database.update(normalizationReplayRequests).set({ status: 'in_progress' })
       .where(and(
-        eq(normalizationReplayItems.replayId, replayId),
-        eq(normalizationReplayItems.status, 'pending'),
+        eq(normalizationReplayRequests.id, replayId),
+        eq(normalizationReplayRequests.status, 'accepted'),
       ))
-      .orderBy(asc(normalizationReplayItems.sequence)).all()
-    for (const match of pending) {
-      if (settleReplayItemFromPersistedRun(options.database, replayId, match.id, match.captureEvidenceVersionId, now)) {
+
+    const claimToken = crypto.randomUUID()
+    while (true) {
+      const match = await claimNextReplayItem(
+        options.database,
+        replayId,
+        claimToken,
+        now().toISOString(),
+      )
+      if (!match) {
+        if (!await hasPendingReplayItems(options.database, replayId)) break
+        await new Promise<void>((resolve) => setTimeout(resolve, 1))
+        continue
+      }
+      if (await settleReplayItemFromPersistedRun(options.database, replayId, match.id, match.captureEvidenceVersionId, now)) {
         continue
       }
       try {
-        const effectiveDirectives = selectEffectiveDirectives(
+        const effectiveDirectives = await selectEffectiveDirectives(
           options.database,
           match.captureEvidenceVersionId,
         )
@@ -76,62 +87,55 @@ export function createNormalizationReplayService(options: {
           targetResolverVersions: input.targetVersions?.resolvers ?? [],
         })
         await options.onNormalized?.(result)
-        const run = options.database.select({ id: normalizationRuns.id }).from(normalizationRuns)
+        const [run] = await options.database.select({ id: normalizationRuns.id }).from(normalizationRuns)
           .where(and(
             eq(normalizationRuns.captureEvidenceVersionId, match.captureEvidenceVersionId),
             eq(normalizationRuns.triggerId, replayId),
-          )).get()
+          )).orderBy(desc(normalizationRuns.createdAt), desc(normalizationRuns.id)).limit(1)
         const resultFailed = result.status === 'failed'
         const failure: RawSourceReplayFailure | null = resultFailed
           ? { code: 'normalization_failed', retryable: false }
           : null
         const completedAt = now().toISOString()
-        options.database.update(normalizationReplayItems).set({
+        await options.database.update(normalizationReplayItems).set({
           status: resultFailed ? 'failed' : 'completed', normalizationRunId: run?.id ?? null,
           failureJson: failure ? JSON.stringify(failure) : null,
           completedAt,
         }).where(and(
           eq(normalizationReplayItems.replayId, replayId),
           eq(normalizationReplayItems.captureEvidenceVersionId, match.captureEvidenceVersionId),
-        )).run()
+          eq(normalizationReplayItems.failureJson, match.failureJson!),
+        ))
       } catch (error) {
         const failure = classifyReplayFailure(error)
         const completedAt = now().toISOString()
-        options.database.update(normalizationReplayItems).set({
+        await options.database.update(normalizationReplayItems).set({
           status: 'failed',
           failureJson: JSON.stringify(failure),
           completedAt,
         }).where(and(
           eq(normalizationReplayItems.replayId, replayId),
           eq(normalizationReplayItems.captureEvidenceVersionId, match.captureEvidenceVersionId),
-        )).run()
+          eq(normalizationReplayItems.failureJson, match.failureJson!),
+        ))
       }
     }
 
-    const failed = options.database.select({ id: normalizationReplayItems.id })
-      .from(normalizationReplayItems)
-      .where(and(
-        eq(normalizationReplayItems.replayId, replayId),
-        eq(normalizationReplayItems.status, 'failed'),
-      )).get()
-    options.database.update(normalizationReplayRequests).set({
-      status: failed ? 'completed_with_failures' : 'completed',
-      completedAt: now().toISOString(),
-    }).where(eq(normalizationReplayRequests.id, replayId)).run()
-    return readReplayReceipt(options.database, replayId)
+    await finalizeReplay(options.database, replayId, now().toISOString())
+    return await readReplayReceipt(options.database, replayId)
   }
 
   return {
     replay(input: ReplayRawSourceRecordsInput) {
       return replayWithId(input, crypto.randomUUID(), true)
     },
-    replayConnectorUpgrade(input: {
+    async replayConnectorUpgrade(input: {
       connectorInstanceId: string
       fromConnectorVersion: string
       instanceUpdatedAt: string
       toConnectorVersion: string
     }) {
-      const rawRevisionIds = currentConnectorRawRevisionIds(
+      const rawRevisionIds = await currentConnectorRawRevisionIds(
         options.database,
         input.connectorInstanceId,
       )
@@ -144,44 +148,120 @@ export function createNormalizationReplayService(options: {
   }
 }
 
-function settleReplayItemFromPersistedRun(
-  database: DrizzleDatabase,
+async function claimNextReplayItem(
+  database: PgliteDatabase,
+  replayId: string,
+  claimToken: string,
+  claimedAt: string,
+) {
+  const staleBefore = new Date(Date.parse(claimedAt) - REPLAY_CLAIM_LEASE_MS).toISOString()
+  const claimJson = replayClaimJson(claimToken, claimedAt)
+  return await database.transaction(async (transaction) => {
+    const [item] = await transaction.select().from(normalizationReplayItems)
+      .where(and(
+        eq(normalizationReplayItems.replayId, replayId),
+        eq(normalizationReplayItems.status, 'pending'),
+        sql`(
+          ${normalizationReplayItems.failureJson} is null
+          or (${normalizationReplayItems.failureJson}::jsonb)->>'claimedAt' <= ${staleBefore}
+        )`,
+      ))
+      .orderBy(asc(normalizationReplayItems.sequence), asc(normalizationReplayItems.id))
+      .limit(1)
+      .for('update', { skipLocked: true })
+    if (!item) return null
+    const [claimed] = await transaction.update(normalizationReplayItems)
+      .set({ failureJson: claimJson })
+      .where(and(
+        eq(normalizationReplayItems.id, item.id),
+        eq(normalizationReplayItems.status, 'pending'),
+        sql`(
+          ${normalizationReplayItems.failureJson} is null
+          or (${normalizationReplayItems.failureJson}::jsonb)->>'claimedAt' <= ${staleBefore}
+        )`,
+      ))
+      .returning()
+    return claimed ?? null
+  })
+}
+
+function replayClaimJson(claimToken: string, claimedAt: string) {
+  return JSON.stringify({ claimedAt, claimToken })
+}
+
+async function hasPendingReplayItems(database: PgliteDatabase, replayId: string) {
+  const [pending] = await database.select({ id: normalizationReplayItems.id })
+    .from(normalizationReplayItems)
+    .where(and(
+      eq(normalizationReplayItems.replayId, replayId),
+      eq(normalizationReplayItems.status, 'pending'),
+    )).limit(1)
+  return Boolean(pending)
+}
+
+async function finalizeReplay(database: PgliteDatabase, replayId: string, completedAt: string) {
+  await database.transaction(async (transaction) => {
+    const [pending] = await transaction.select({ id: normalizationReplayItems.id })
+      .from(normalizationReplayItems)
+      .where(and(
+        eq(normalizationReplayItems.replayId, replayId),
+        eq(normalizationReplayItems.status, 'pending'),
+      )).limit(1).for('update')
+    if (pending) return
+    const [failed] = await transaction.select({ id: normalizationReplayItems.id })
+      .from(normalizationReplayItems)
+      .where(and(
+        eq(normalizationReplayItems.replayId, replayId),
+        eq(normalizationReplayItems.status, 'failed'),
+      )).limit(1)
+    await transaction.update(normalizationReplayRequests).set({
+      status: failed ? 'completed_with_failures' : 'completed',
+      completedAt,
+    }).where(and(
+      eq(normalizationReplayRequests.id, replayId),
+      eq(normalizationReplayRequests.status, 'in_progress'),
+    ))
+  })
+}
+
+async function settleReplayItemFromPersistedRun(
+  database: PgliteDatabase,
   replayId: string,
   replayItemId: string,
   rawRevisionId: string,
   now: () => Date,
 ) {
-  const run = database.select({ id: normalizationRuns.id, status: normalizationRuns.status })
+  const [run] = await database.select({ id: normalizationRuns.id, status: normalizationRuns.status })
     .from(normalizationRuns)
     .where(and(
       eq(normalizationRuns.triggerId, replayId),
       eq(normalizationRuns.captureEvidenceVersionId, rawRevisionId),
     ))
-    .orderBy(desc(normalizationRuns.createdAt), desc(normalizationRuns.id)).get()
+    .orderBy(desc(normalizationRuns.createdAt), desc(normalizationRuns.id)).limit(1)
   if (!run || !['completed', 'blocked', 'failed'].includes(run.status)) return false
   const failed = run.status === 'failed'
-  database.update(normalizationReplayItems).set({
+  await database.update(normalizationReplayItems).set({
     status: failed ? 'failed' : 'completed',
     normalizationRunId: run.id,
     failureJson: failed
       ? JSON.stringify({ code: 'normalization_failed', retryable: false })
       : null,
     completedAt: now().toISOString(),
-  }).where(eq(normalizationReplayItems.id, replayItemId)).run()
+  }).where(eq(normalizationReplayItems.id, replayItemId))
   return true
 }
 
-function initializeReplay(
-  database: DrizzleDatabase,
+async function initializeReplay(
+  database: PgliteDatabase,
   input: {
     acceptedAt: string
     input: ReplayRawSourceRecordsInput
-    matches: ReturnType<typeof selectMatches>
+    matches: Awaited<ReturnType<typeof selectMatches>>
     replayId: string
   },
 ) {
-  database.transaction((transaction) => {
-    const inserted = transaction.insert(normalizationReplayRequests).values({
+  await database.transaction(async (transaction) => {
+    const [inserted] = await transaction.insert(normalizationReplayRequests).values({
       id: input.replayId,
       selectorJson: JSON.stringify(input.input.selector),
       invalidationJson: JSON.stringify(input.input.invalidate),
@@ -189,29 +269,29 @@ function initializeReplay(
         ? JSON.stringify(input.input.targetVersions)
         : null,
       fieldDirectivesJson: JSON.stringify(input.input.fieldDirectives ?? []),
-      status: input.matches.length ? 'in_progress' : 'accepted',
+      status: 'accepted',
       acceptedAt: input.acceptedAt,
       completedAt: null,
-    }).onConflictDoNothing().run()
-    if (inserted.changes === 0) return
-    input.matches.forEach((match, sequence) => {
-      transaction.insert(normalizationReplayItems).values({
+    }).onConflictDoNothing().returning()
+    if (!inserted) return
+    for (const [sequence, match] of input.matches.entries()) {
+      await transaction.insert(normalizationReplayItems).values({
         id: crypto.randomUUID(), replayId: input.replayId, captureLineageId: match.rawRecordId,
         captureEvidenceVersionId: match.rawRevisionId, inputHash: match.inputHash,
         sequence, status: 'pending', normalizationRunId: null,
         failureJson: null, completedAt: null,
-      }).run()
-    })
+      })
+    }
   })
 }
 
-function readReplayReceipt(database: DrizzleDatabase, replayId: string): RawSourceReplayReceipt {
-  const request = database.select().from(normalizationReplayRequests)
-    .where(eq(normalizationReplayRequests.id, replayId)).get()
+async function readReplayReceipt(database: PgliteDatabase, replayId: string): Promise<RawSourceReplayReceipt> {
+  const [request] = await database.select().from(normalizationReplayRequests)
+    .where(eq(normalizationReplayRequests.id, replayId)).limit(1)
   if (!request) throw new Error(`Normalization replay request not found: ${replayId}`)
-  const persistedItems = database.select().from(normalizationReplayItems)
+  const persistedItems = await database.select().from(normalizationReplayItems)
     .where(eq(normalizationReplayItems.replayId, replayId))
-    .orderBy(asc(normalizationReplayItems.sequence)).all()
+    .orderBy(asc(normalizationReplayItems.sequence), asc(normalizationReplayItems.id))
   const items = persistedItems.flatMap((item): RawSourceReplayItem[] => {
     if (item.status === 'pending') return []
     const run = item.normalizationRunId ? { normalizationRunId: item.normalizationRunId } : {}
@@ -247,17 +327,20 @@ function readReplayReceipt(database: DrizzleDatabase, replayId: string): RawSour
   throw new Error(`Normalization replay request has invalid terminal status: ${request.status}`)
 }
 
-function currentConnectorRawRevisionIds(database: DrizzleDatabase, connectorInstanceId: string) {
-  const rawRecordIds = new Set(database.select({ rawRecordId: captures.captureLineageId })
+async function currentConnectorRawRevisionIds(database: PgliteDatabase, connectorInstanceId: string) {
+  const rawRecordIds = new Set((await database.select({ rawRecordId: captures.captureLineageId })
     .from(captures)
     .where(eq(captures.connectorInstanceId, connectorInstanceId))
-    .all().map(({ rawRecordId }) => rawRecordId))
+    ).map(({ rawRecordId }) => rawRecordId))
   const current = new Map<string, { id: string; revision: number }>()
-  for (const revision of database.select({
+  for (const revision of await database.select({
     id: captureEvidenceVersions.id,
     rawRecordId: captureEvidenceVersions.captureLineageId,
     revision: captureEvidenceVersions.revision,
-  }).from(captureEvidenceVersions).orderBy(asc(captureEvidenceVersions.createdAt), asc(captureEvidenceVersions.id)).all()) {
+  }).from(captureEvidenceVersions).orderBy(
+    asc(captureEvidenceVersions.createdAt),
+    asc(captureEvidenceVersions.id),
+  )) {
     if (!rawRecordIds.has(revision.rawRecordId)) continue
     const prior = current.get(revision.rawRecordId)
     if (!prior || revision.revision > prior.revision) current.set(revision.rawRecordId, revision)
@@ -276,13 +359,21 @@ function connectorUpgradeReplayId(input: {
 }
 
 function classifyReplayFailure(error: unknown): RawSourceReplayFailure {
-  if (isRecord(error) && typeof error.code === 'string' && error.code.startsWith('SQLITE_')) {
+  const errorCode = postgresErrorCode(error)
+  if (errorCode) {
+    const retryableCodes = new Set(['40001', '40P01', '53300', '55P03', '57P03'])
     return {
       code: 'persistence_failed',
-      retryable: error.code === 'SQLITE_BUSY' || error.code === 'SQLITE_LOCKED',
+      retryable: retryableCodes.has(errorCode),
     }
   }
   return { code: 'internal_error', retryable: false }
+}
+
+function postgresErrorCode(error: unknown, depth = 0): string | null {
+  if (depth > 4 || !isRecord(error)) return null
+  if (typeof error.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code)) return error.code
+  return postgresErrorCode(error.cause, depth + 1)
 }
 
 function validateReplayInput(input: unknown): asserts input is ReplayRawSourceRecordsInput {
@@ -363,8 +454,8 @@ function isInputHash(value: unknown): value is string {
   return typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value)
 }
 
-function selectEffectiveDirectives(database: DrizzleDatabase, rawRevisionId: string) {
-  const requests = database.select({
+async function selectEffectiveDirectives(database: PgliteDatabase, rawRevisionId: string) {
+  const requests = await database.select({
     id: normalizationReplayRequests.id,
     acceptedAt: normalizationReplayRequests.acceptedAt,
     directivesJson: normalizationReplayRequests.fieldDirectivesJson,
@@ -373,8 +464,8 @@ function selectEffectiveDirectives(database: DrizzleDatabase, rawRevisionId: str
     .where(eq(normalizationReplayItems.captureEvidenceVersionId, rawRevisionId))
     .orderBy(
       asc(normalizationReplayRequests.acceptedAt),
-      sql`${normalizationReplayRequests}.rowid asc`,
-    ).all()
+      asc(normalizationReplayRequests.id),
+    )
   const byField = new Map<string, RawSourceFieldDirective>()
   for (const request of requests) {
     for (const directive of JSON.parse(request.directivesJson) as RawSourceFieldDirective[]) {
@@ -384,50 +475,55 @@ function selectEffectiveDirectives(database: DrizzleDatabase, rawRevisionId: str
   return [...byField.values()]
 }
 
-function selectMatches(database: DrizzleDatabase, input: ReplayRawSourceRecordsInput) {
-  const revisions = database.select({
+async function selectMatches(database: PgliteDatabase, input: ReplayRawSourceRecordsInput) {
+  const revisions = await database.select({
     rawRecordId: captureEvidenceVersions.captureLineageId,
     rawRevisionId: captureEvidenceVersions.id,
     contentHash: captureEvidenceVersions.contentHash,
-  }).from(captureEvidenceVersions).orderBy(asc(captureEvidenceVersions.createdAt), asc(captureEvidenceVersions.id)).all()
+  }).from(captureEvidenceVersions).orderBy(
+    asc(captureEvidenceVersions.createdAt),
+    asc(captureEvidenceVersions.id),
+  )
   const rawRecordIds = input.selector.rawRecordIds ? new Set(input.selector.rawRecordIds) : null
   const rawRevisionIds = input.selector.rawRevisionIds ? new Set(input.selector.rawRevisionIds) : null
   const inputHashes = input.selector.inputHashes ? new Set(input.selector.inputHashes) : null
 
-  return revisions.flatMap((revision) => {
-    if (rawRecordIds && !rawRecordIds.has(revision.rawRecordId)) return []
-    if (rawRevisionIds && !rawRevisionIds.has(revision.rawRevisionId)) return []
-    const runs = database.select().from(normalizationRuns)
-      .where(eq(normalizationRuns.captureEvidenceVersionId, revision.rawRevisionId)).all()
-    if (inputHashes && !matchesInputHash(database, runs, inputHashes)) return []
-    if (!matchesInvalidation(database, runs, input.invalidate)) return []
-    return [{
+  const matches: Array<{ rawRecordId: string; rawRevisionId: string; inputHash: string }> = []
+  for (const revision of revisions) {
+    if (rawRecordIds && !rawRecordIds.has(revision.rawRecordId)) continue
+    if (rawRevisionIds && !rawRevisionIds.has(revision.rawRevisionId)) continue
+    const runs = await database.select().from(normalizationRuns)
+      .where(eq(normalizationRuns.captureEvidenceVersionId, revision.rawRevisionId))
+    if (inputHashes && !await matchesInputHash(database, runs, inputHashes)) continue
+    if (!await matchesInvalidation(database, runs, input.invalidate)) continue
+    matches.push({
       rawRecordId: revision.rawRecordId,
       rawRevisionId: revision.rawRevisionId,
       inputHash: hashJson({ rawRevisionId: revision.rawRevisionId, contentHash: revision.contentHash }),
-    }]
-  })
+    })
+  }
+  return matches
 }
 
-function matchesInputHash(
-  database: DrizzleDatabase,
+async function matchesInputHash(
+  database: PgliteDatabase,
   runs: Array<typeof normalizationRuns.$inferSelect>,
   inputHashes: ReadonlySet<string>,
 ) {
   if (runs.some(({ inputHash }) => inputHashes.has(inputHash))) return true
   if (!runs.length) return false
   const runIds = runs.map(({ id }) => id)
-  if (database.select({ inputHash: normalizationAttempts.inputHash }).from(normalizationAttempts)
-    .where(inArray(normalizationAttempts.runId, runIds)).all()
+  if ((await database.select({ inputHash: normalizationAttempts.inputHash }).from(normalizationAttempts)
+    .where(inArray(normalizationAttempts.runId, runIds)))
     .some(({ inputHash }) => inputHashes.has(inputHash))) return true
-  return database.select({ inputHash: normalizationFieldOutcomes.inputHash })
+  return (await database.select({ inputHash: normalizationFieldOutcomes.inputHash })
     .from(normalizationFieldOutcomes)
-    .where(inArray(normalizationFieldOutcomes.runId, runIds)).all()
+    .where(inArray(normalizationFieldOutcomes.runId, runIds)))
     .some(({ inputHash }) => inputHashes.has(inputHash))
 }
 
-function matchesInvalidation(
-  database: DrizzleDatabase,
+async function matchesInvalidation(
+  database: PgliteDatabase,
   runs: Array<typeof normalizationRuns.$inferSelect>,
   invalidation: ReplayRawSourceRecordsInput['invalidate'],
 ) {
@@ -440,10 +536,10 @@ function matchesInvalidation(
   if (invalidation.canonicalSchemaVersions?.some((version) => runs.some((run) => run.canonicalSchemaVersion === version))) return true
   if (invalidation.gatePolicyVersions?.some((version) => runs.some((run) => run.gatePolicyVersion === version))) return true
   if (invalidation.resolverVersions?.length && runs.length) {
-    const attempts = database.select({
+    const attempts = await database.select({
       resolverId: normalizationAttempts.resolverId,
       resolverVersion: normalizationAttempts.resolverVersion,
-    }).from(normalizationAttempts).where(inArray(normalizationAttempts.runId, runs.map(({ id }) => id))).all()
+    }).from(normalizationAttempts).where(inArray(normalizationAttempts.runId, runs.map(({ id }) => id)))
     if (invalidation.resolverVersions.some((version) => attempts.some((attempt) =>
       attempt.resolverId === version.resolverId && attempt.resolverVersion === version.version,
     ))) return true
