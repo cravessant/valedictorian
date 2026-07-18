@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { CanonicalSourceCandidate } from 'sparxie'
 import { eq, sql } from 'drizzle-orm'
 import {
@@ -20,6 +20,7 @@ import {
   migratePgliteDatabase,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createCanonicalCandidateProjectionService } from './canonical-candidate.projection'
 
 const NOW = '2026-07-18T10:00:00.000Z'
@@ -298,9 +299,7 @@ describe('canonical candidate projection', () => {
 })
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 async function seedPassedCandidate(

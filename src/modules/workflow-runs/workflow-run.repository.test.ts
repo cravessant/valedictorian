@@ -10,9 +10,14 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteWorkflowRunRepository } from './workflow-run.repository'
 
 async function openMigratedWorkflowRunDb(dataDir?: string) {
+  if (!dataDir) {
+    const { client, database } = await createPgliteTestOwner()
+    return { client, database, repository: createPgliteWorkflowRunRepository(database) }
+  }
   const client = await createPgliteClient(dataDir ? { dataDir } : {})
   const database = await migratePgliteDatabase(client)
   return {

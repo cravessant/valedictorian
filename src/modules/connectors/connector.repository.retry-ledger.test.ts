@@ -11,7 +11,8 @@ import {
   retryWork,
   sourceExecutionScopes,
 } from '../../db/schema'
-import { createPgliteClient, createPgliteDatabase, migratePgliteDatabase, type PgliteClient, type PgliteDatabase } from '../../db/pglite'
+import { createPgliteClient, createPgliteDatabase, type PgliteClient, type PgliteDatabase } from '../../db/pglite'
+import { prepareConfiguredPgliteDataPath } from '../../test/pglite-template'
 import { createPgliteConnectorRepository } from './connector.repository'
 import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
 import { completedConnectorRefreshContract } from './connector-refresh-result.test-helpers'
@@ -164,8 +165,9 @@ await database.update(retryWork).set({
   it('atomically blocks non-adjacent same-scope work while another scope proceeds across callers and restart', async () => {
     const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-acquisition-'))
     const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+    prepareConfiguredPgliteDataPath(pgliteDataPath)
     const client = await createPgliteClient({ dataDir: pgliteDataPath })
-    const database = await migratePgliteDatabase(client)
+    const database = createPgliteDatabase(client)
     const repository = createPgliteConnectorRepository(database)
     for (const id of ['shared-a', 'other']) {
       await repository.upsertInstance({ id, connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: id, enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
@@ -282,8 +284,9 @@ await database.update(retryWork).set({
   it('allows one exact-due acquisition across callers sharing the workspace owner', async () => {
     const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-race-'))
     const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+    prepareConfiguredPgliteDataPath(pgliteDataPath)
     const firstClient = await createPgliteClient({ dataDir: pgliteDataPath })
-    const sharedDatabase = await migratePgliteDatabase(firstClient)
+    const sharedDatabase = createPgliteDatabase(firstClient)
     const first = createPgliteConnectorRepository(sharedDatabase)
     await first.upsertInstance({
       id: 'race-instance', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
@@ -320,8 +323,9 @@ await database.update(retryWork).set({
   it('reuses one exact-due outcome after a worker process owner closes', async () => {
     const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-process-race-'))
     const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+    prepareConfiguredPgliteDataPath(pgliteDataPath)
     const client = await createPgliteClient({ dataDir: pgliteDataPath })
-    const repository = createPgliteConnectorRepository(await migratePgliteDatabase(client))
+    const repository = createPgliteConnectorRepository(createPgliteDatabase(client))
     await repository.upsertInstance({
       id: 'process-race', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Process race', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -360,8 +364,9 @@ await database.update(retryWork).set({
     async (state) => {
       const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), `retry-${state}-`))
       const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+      prepareConfiguredPgliteDataPath(pgliteDataPath)
       let client = await createPgliteClient({ dataDir: pgliteDataPath })
-      const repository = createPgliteConnectorRepository(await migratePgliteDatabase(client))
+      const repository = createPgliteConnectorRepository(createPgliteDatabase(client))
       await repository.upsertInstance({
         id: `terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
         displayName: 'Terminal fixture', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -409,8 +414,9 @@ await database.update(retryWork).set({
     async (state) => {
       const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), `normalization-${state}-`))
       const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+      prepareConfiguredPgliteDataPath(pgliteDataPath)
       let client = await createPgliteClient({ dataDir: pgliteDataPath })
-      const database = await migratePgliteDatabase(client)
+      const database = createPgliteDatabase(client)
       const repository = createPgliteConnectorRepository(database)
       await repository.upsertInstance({ id: `normalization-terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Normalization terminal', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
       await seedNormalizationRetry(client, database, `normalization-terminal-${state}`, `normalization-${state}`, '2026-07-11T12:01:00.000Z')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { createPgliteTestDatabase, createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createApplicationFileSecretStore } from '../../settings/app-secret.composition'
 import {
   createApplicationSecretScope,
@@ -21,17 +21,15 @@ const testCodec: SecretCodec = {
 }
 
 async function createWorkspaceService(workspaceId: string) {
-  const client = await createPgliteClient()
-  const database = await migratePgliteDatabase(client)
+  const owner = await createPgliteTestOwner()
   return {
-    client,
     service: createPgliteSecretService(
-      database,
+      owner.database,
       testCodec,
       createWorkspaceSecretScope(workspaceId),
     ),
     async cleanup() {
-      await client.close()
+      await owner.close()
     },
   }
 }
@@ -64,18 +62,13 @@ describe('secret scopes', () => {
       fs.mkdtempSync(path.join(os.tmpdir(), 'scoped-app-secrets-')),
       'secrets.json',
     )
-    const client = await createPgliteClient()
-    try {
-      const database = await migratePgliteDatabase(client)
-      const appStore = createApplicationFileSecretStore(secretsPath, testCodec)
-      const service = createPgliteSecretService(database, testCodec, workspaceScope)
+    const database = await createPgliteTestDatabase()
+    const appStore = createApplicationFileSecretStore(secretsPath, testCodec)
+    const service = createPgliteSecretService(database, testCodec, workspaceScope)
 
-      expect(appStore.scope).toEqual(applicationScope)
-      expect(service.scope).toEqual(workspaceScope)
-      expect(appStore.scope.domain).toBe('application')
-    } finally {
-      await client.close()
-    }
+    expect(appStore.scope).toEqual(applicationScope)
+    expect(service.scope).toEqual(workspaceScope)
+    expect(appStore.scope.domain).toBe('application')
   })
 
   it('isolates two workspace-scoped secret services', async () => {

@@ -6,12 +6,8 @@ import {
   companies,
   sources,
 } from '../../db/schema'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteClient,
-  type PgliteDatabase,
-} from '../../db/pglite'
+import type { PgliteDatabase } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteScoringRepository } from './scoring.repository'
 
 const scoreInput = {
@@ -28,17 +24,12 @@ const scoreInput = {
 } as const
 
 async function openMigratedScoringDb() {
-  const client = await createPgliteClient()
-  const database = await migratePgliteDatabase(client)
+  const owner = await createPgliteTestOwner()
   return {
-    client,
-    database,
-    repository: createPgliteScoringRepository(database),
+    ...owner,
+    cleanup: () => owner.close(),
+    repository: createPgliteScoringRepository(owner.database),
   }
-}
-
-async function closeClient(client: PgliteClient) {
-  await client.close()
 }
 
 async function seedScorableApplication(database: PgliteDatabase) {
@@ -90,7 +81,7 @@ async function seedScorableApplication(database: PgliteDatabase) {
 
 describe('PGlite scoring repository', () => {
   it('records a score and updates the application priority atomically', async () => {
-    const { client, database, repository } = await openMigratedScoringDb()
+    const { cleanup, database, repository } = await openMigratedScoringDb()
     try {
       await seedScorableApplication(database)
 
@@ -131,12 +122,12 @@ describe('PGlite scoring repository', () => {
         updatedAt: record.createdAt,
       })
     } finally {
-      await closeClient(client)
+      await cleanup()
     }
   })
 
   it('rolls back the score insert when the application update fails', async () => {
-    const { client, database, repository } = await openMigratedScoringDb()
+    const { cleanup, client, database, repository } = await openMigratedScoringDb()
     try {
       await seedScorableApplication(database)
       await client.exec(`
@@ -174,7 +165,7 @@ describe('PGlite scoring repository', () => {
         currentPriorityBand: null,
       })
     } finally {
-      await closeClient(client)
+      await cleanup()
     }
   })
 })

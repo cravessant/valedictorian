@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   captureLineages,
   captureEvidenceVersions,
@@ -20,18 +20,12 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createPgliteRawSourceRepository } from './raw-source.repository'
 
 describe('raw source repository', () => {
-  const clients = new Set<PgliteClient>()
-
-  afterEach(async () => {
-    await Promise.all([...clients].map((client) => client.close()))
-    clients.clear()
-  })
-
   it('rolls back raw capture when transactional staging fails', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const repository = createPgliteRawSourceRepository(database)
     let stageCompleted = false
 
@@ -59,7 +53,7 @@ describe('raw source repository', () => {
   })
 
   it('returns receipts in input order after awaited transactional staging', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const repository = createPgliteRawSourceRepository(database)
     let stagedIntakeIds: readonly string[] = []
 
@@ -86,7 +80,7 @@ describe('raw source repository', () => {
   })
 
   it('rejects connector intake without complete capture lineage', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const repository = createPgliteRawSourceRepository(database)
 
     await expect(repository.ingestBatch({
@@ -99,7 +93,7 @@ describe('raw source repository', () => {
   })
 
   it('scopes strong identity independently from adapter version and preserves revision provenance', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const receivedTimes = [
       new Date('2026-07-10T14:00:00.000Z'),
       new Date('2026-07-10T15:00:00.000Z'),
@@ -170,7 +164,7 @@ describe('raw source repository', () => {
   })
 
   it('persists connector instance and run lineage on every raw occurrence', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const repository = createPgliteRawSourceRepository(database)
     const capture = await createConnectorCapture(database, 'jobright.resolver')
     const result = await repository.ingestBatch({
@@ -191,7 +185,7 @@ describe('raw source repository', () => {
   })
 
   it('rejects occurrence lineage assembled from different raw or connector owners', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const rawRepository = createPgliteRawSourceRepository(database)
     const runs = []
 
@@ -271,7 +265,7 @@ describe('raw source repository', () => {
   })
 
   it('does not create strong identity for blank connector provider ids', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const capture = await createConnectorCapture(database, 'fixture.connector')
     const repository = createPgliteRawSourceRepository(database)
     const result = await repository.ingestBatch({
@@ -289,7 +283,7 @@ describe('raw source repository', () => {
   })
 
   it('reuses trimmed-equivalent provider identity while preserving raw provenance', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const capture = await createConnectorCapture(database, 'fixture.connector')
     const repository = createPgliteRawSourceRepository(database)
     const base = {
@@ -317,7 +311,7 @@ describe('raw source repository', () => {
   })
 
   it('keeps null and present provider schemas in separate identity namespaces', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const capture = await createConnectorCapture(database, 'fixture.connector')
     const repository = createPgliteRawSourceRepository(database)
     const result = await repository.ingestBatch({
@@ -335,7 +329,7 @@ describe('raw source repository', () => {
   })
 
   it('reuses exact content while appending ordered occurrences to one durable revision', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const capture = await createConnectorCapture(database, 'fixture.connector')
     const receivedTimes = [
       new Date('2026-07-10T12:00:01.000Z'),
@@ -373,7 +367,7 @@ describe('raw source repository', () => {
   })
 
   it('converges concurrent duplicate intake on one canonical durable record', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const capture = await createConnectorCapture(database, 'fixture.concurrent')
     const repository = createPgliteRawSourceRepository(
       database,
@@ -408,7 +402,7 @@ describe('raw source repository', () => {
   })
 
   it('rejects a captured identity already evidenced for a conflicting owner', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const capture = await createConnectorCapture(database, 'fixture.connector')
     const repository = createPgliteRawSourceRepository(database)
     const identityNamespace = 'adapter:17:fixture.connector|schema:value:9:fixture@1'
@@ -487,7 +481,7 @@ describe('raw source repository', () => {
   })
 
   it('rejects invalid timestamps and non-JSON runtime values', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const repository = createPgliteRawSourceRepository(database)
     const base = {
       adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
@@ -512,7 +506,7 @@ describe('raw source repository', () => {
   })
 
   it('rejects exact credential header aliases throughout fixed envelopes', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const repository = createPgliteRawSourceRepository(database)
     const secretValue = 'envelope-secret-must-not-leak'
     const record = {
@@ -556,7 +550,7 @@ describe('raw source repository', () => {
   })
 
   it('rejects unknown keys on every fixed transport envelope', async () => {
-    const database = await createTestDatabase(clients)
+    const database = await createTestDatabase()
     const repository = createPgliteRawSourceRepository(database)
     const record = {
       adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
@@ -639,10 +633,8 @@ async function createConnectorCapture(
   }
 }
 
-async function createTestDatabase(clients: Set<PgliteClient>) {
-  const client = await createPgliteClient()
-  clients.add(client)
-  return migratePgliteDatabase(client)
+async function createTestDatabase() {
+  return createPgliteTestDatabase()
 }
 
 function normalizationValues(input: {

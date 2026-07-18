@@ -19,6 +19,7 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteProjectionOutcomeRepository } from './projection-outcome.repository'
 
 describe('projection outcome repository', () => {
@@ -312,9 +313,8 @@ describe('projection outcome repository', () => {
 })
 
 async function createTestContext(clients: Set<PgliteClient>) {
-  const client = await createPgliteClient()
+  const { client, database } = await createPgliteTestOwner()
   clients.add(client)
-  const database = await migratePgliteDatabase(client)
   return {
     client,
     database,

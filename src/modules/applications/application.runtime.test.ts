@@ -1,18 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from '../../db/pglite'
+import { describe, expect, it } from 'vitest'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createApplicationServiceFromPglite } from './application.runtime'
-
-const clients: PgliteClient[] = []
-
-afterEach(async () => {
-  await Promise.all(clients.splice(0).map((client) => client.close()))
-})
 
 describe('application runtime factory', () => {
   it('creates an empty application service from PGlite by default', async () => {
-    const client = await createPgliteClient()
-    clients.push(client)
-    const database = await migratePgliteDatabase(client)
+    const database = await createPgliteTestDatabase()
 
     const service = createApplicationServiceFromPglite(database)
     const result = await service.listApplications()

@@ -6,7 +6,7 @@ import {
   captureLineages,
   captureEvidenceVersions,
 } from '../../db/schema'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteNormalizationRepository } from './normalization.repository'
 
 const RESOLVER_ID = 'jobright.authenticated-destination'
@@ -19,9 +19,9 @@ async function seedExactDestinationAttempt(input: {
   destinationValue?: string
   completedAt?: string
 }) {
-  const client = await createPgliteClient()
+  const client = await createPgliteTestOwner()
   try {
-    const database = await migratePgliteDatabase(client)
+    const { database } = client
     const normalizationRepository = createPgliteNormalizationRepository(database)
     const now = input.completedAt ?? '2026-07-11T12:00:00.000Z'
     const rawRecordId = 'raw-record-exact-success'

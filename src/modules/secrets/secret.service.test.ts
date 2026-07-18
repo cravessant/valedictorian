@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
 import { workspaceSecrets } from '../../db/schema'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteSecretService } from './secret.composition'
 import type { SecretCodec } from './secret.codec'
 import { createWorkspaceSecretScope } from './secret.scope'
@@ -30,14 +30,12 @@ const testCodec: SecretCodec = {
 }
 
 async function createServiceFixture() {
-  const client = await createPgliteClient()
-  const database = await migratePgliteDatabase(client)
+  const owner = await createPgliteTestOwner()
   return {
-    client,
-    database,
-    service: createPgliteSecretService(database, testCodec, testWorkspaceScope),
+    database: owner.database,
+    service: createPgliteSecretService(owner.database, testCodec, testWorkspaceScope),
     async cleanup() {
-      await client.close()
+      await owner.close()
     },
   }
 }

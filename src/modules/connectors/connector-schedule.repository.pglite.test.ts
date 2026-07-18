@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { schema, sourceExecutionScopes } from '../../db/schema'
@@ -15,6 +15,7 @@ import {
   migratePgliteDatabase,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestDatabase, createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createConnectorScheduleRepository } from './connector-schedule.repository'
 
 const NOW = '2026-07-18T10:00:00.000Z'
@@ -22,10 +23,8 @@ const CADENCE = { kind: 'interval' as const, everyMinutes: 60 }
 
 describe('PGlite connector schedule repository', () => {
   it('reads each page and total from one PostgreSQL snapshot', async () => {
-    const client = await createPgliteClient()
-    onTestFinished(() => client.close())
-    await migratePgliteDatabase(client)
-    const database = drizzle(client, { schema })
+    const owner = await createPgliteTestOwner()
+    const database = drizzle(owner.client, { schema })
     await seedConnectorInstance(database, 'connector-schedule-page-snapshot')
     const repository = createConnectorScheduleRepository(database, () => new Date(NOW))
     await repository.create({
@@ -33,7 +32,7 @@ describe('PGlite connector schedule repository', () => {
       state: 'enabled', cadence: CADENCE, timezone: 'UTC',
     })
 
-    const query = vi.spyOn(client, 'query')
+    const query = vi.spyOn(owner.client, 'query')
     await repository.listAudit({
       connectorInstanceId: 'connector-schedule-page-snapshot', limit: 10, offset: 0,
     })
@@ -287,9 +286,7 @@ describe('PGlite connector schedule repository', () => {
 })
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 async function seedConnectorInstance(database: PgliteDatabase, id: string) {

@@ -23,6 +23,7 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../db/pglite'
+import { createPgliteTestOwner } from '../test/pglite-test-owner'
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 import type { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import type { NormalizationResolver } from '../modules/sourcing/normalization.registry'
@@ -55,9 +56,10 @@ async function createFixture(input: {
   registry?: ReturnType<typeof createNormalizationResolverRegistry>
   resolve?: (call: NormalizeCall) => Promise<Partial<RawSourceNormalizationResult>> | Partial<RawSourceNormalizationResult>
 } = {}) {
-  const client = await createPgliteClient({ dataDir: input.dataDir })
+  const owner = input.dataDir ? null : await createPgliteTestOwner()
+  const client = owner?.client ?? await createPgliteClient({ dataDir: input.dataDir })
   try {
-    const database = await migratePgliteDatabase(client)
+    const database = owner?.database ?? await migratePgliteDatabase(client)
     const calls: NormalizeCall[] = []
     const normalized: RawSourceNormalizationResult[] = []
     const now = input.now ?? (() => new Date(NOW))

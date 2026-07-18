@@ -172,6 +172,7 @@ describe('build configuration', () => {
     const releaseWorkflow = fs.readFileSync(path.resolve('.github/workflows/release-mac.yml'), 'utf8')
 
     expect(ciWorkflow).toContain('package-smoke:')
+    expect(ciWorkflow.slice(ciWorkflow.indexOf('package-smoke:'))).not.toContain('needs: test')
     expect(ciWorkflow).toContain('macos-latest')
     expect(ciWorkflow).toContain('windows-latest')
     expect(ciWorkflow).toContain('pnpm exec electron-builder --win --publish never')
@@ -184,7 +185,30 @@ describe('build configuration', () => {
   it('keeps Electron main runtime-probed packages out of the Vite bundle', () => {
     const viteConfig = readViteConfig()
     const testSetup = fs.readFileSync(path.resolve('src/test/setup.ts'), 'utf8')
+    const pgliteHarness = fs.readFileSync(
+      path.resolve('src/runtime/local-valedictorian-client.test-harness.ts'),
+      'utf8',
+    )
+    const serverPgliteHarness = fs.readFileSync(
+      path.resolve('src/server/local-valedictorian-client.test-harness.ts'),
+      'utf8',
+    )
+    const normalizedPgliteHarness = pgliteHarness.replace(/\s+/g, ' ')
 
+    expect(viteConfig).toContain("globalSetup: './src/test/global-setup.ts'")
+    expect(viteConfig).toContain('maxWorkers: process.env.CI ? 4 : 2')
+    expect(normalizedPgliteHarness).toContain(
+      'clonedFromTemplate ? createPgliteDatabase(pglite) : await migratePgliteDatabase(pglite)',
+    )
+    expect(
+      normalizedPgliteHarness.match(
+        /const clonedFromTemplate = prepareConfiguredPgliteDataPath\(pgliteDataPath\)/g,
+      ),
+    ).toHaveLength(2)
+    expect(normalizedPgliteHarness).toContain(
+      'if (!dataDir) activeTempPaths.add(pgliteDataPath) const clonedFromTemplate = prepareConfiguredPgliteDataPath(pgliteDataPath)',
+    )
+    expect(serverPgliteHarness).toContain('prepareConfiguredPgliteDataPath')
     expect(viteConfig).toContain('testTimeout: process.env.CI ? 30_000 : 5_000')
     expect(testSetup).toContain(
       'configure({ asyncUtilTimeout: process.env.CI ? 15_000 : 1_000 })',

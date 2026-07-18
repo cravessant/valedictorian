@@ -2,28 +2,23 @@ import {
   applications,
 } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it, onTestFinished } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { describe, expect, it } from 'vitest'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from './application.fixtures'
 import { createPgliteApplicationRepository } from './application.repository'
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 describe('PGlite application repository list queries', () => {
   it('lists table-ready application rows ordered by priority score', async () => {
-    const client = await createPgliteClient()
+    const database = await createTestDatabase()
+    await seedSampleApplications(database)
 
-    try {
-      const database = await migratePgliteDatabase(client)
-      await seedSampleApplications(database)
-
-      const repository = createPgliteApplicationRepository(database)
-      const result = await repository.listApplications()
-      const rows = result.items
+    const repository = createPgliteApplicationRepository(database)
+    const result = await repository.listApplications()
+    const rows = result.items
 
     expect(result).toMatchObject({
       total: 3,
@@ -44,10 +39,7 @@ describe('PGlite application repository list queries', () => {
         url: 'https://jobs.example.test/remediated/f60a3102c158cd7c',
       },
     })
-      expect(rows.map((row) => row.currentPriorityScore)).toEqual([8, 6, 3])
-    } finally {
-      await client.close()
-    }
+    expect(rows.map((row) => row.currentPriorityScore)).toEqual([8, 6, 3])
   })
 
   it('sorts application rows by company name ascending', async () => {

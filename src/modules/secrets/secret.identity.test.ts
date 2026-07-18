@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteSecretService } from './secret.composition'
 import type { SecretCodec } from './secret.codec'
 import { createWorkspaceSecretScope } from './secret.scope'
@@ -22,16 +22,15 @@ const testCodec: SecretCodec = {
 }
 
 async function createServiceFixture() {
-  const client = await createPgliteClient()
-  const database = await migratePgliteDatabase(client)
+  const owner = await createPgliteTestOwner()
   return {
     service: createPgliteSecretService(
-      database,
+      owner.database,
       testCodec,
       createWorkspaceSecretScope('ws-identity'),
     ),
     async cleanup() {
-      await client.close()
+      await owner.close()
     },
   }
 }

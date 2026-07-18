@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   applicationLinks,
   applicationWorkflowStates,
@@ -7,18 +7,13 @@ import {
   companies,
   sources,
 } from '../../db/schema'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteDatabase,
-} from '../../db/pglite'
+import type { PgliteDatabase } from '../../db/pglite'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from './application.fixtures'
 import { createPgliteApplicationRepository } from './application.repository'
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 async function installFailingEventTrigger(database: PgliteDatabase) {

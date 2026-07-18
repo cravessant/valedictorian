@@ -1,20 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from '../../db/pglite'
 import { sourceExecutionSessions } from '../../db/schema'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createSourceExecutionGovernor, deriveSourceExecutionScopeId } from './source-execution-governor'
 import { createSourceSessionExecutor } from './source-session-executor'
 
-const clients: PgliteClient[] = []
-
-afterEach(async () => {
-  await Promise.all(clients.splice(0).map((client) => client.close()))
-})
-
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  clients.push(client)
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 async function fixture() {

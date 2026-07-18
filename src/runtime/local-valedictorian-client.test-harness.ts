@@ -3,8 +3,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach } from 'vitest'
+import { prepareConfiguredPgliteDataPath } from '../test/pglite-template'
 import {
   createPgliteClient,
+  createPgliteDatabase,
   migratePgliteDatabase,
   type PgliteClient,
   type PgliteDatabase,
@@ -52,11 +54,14 @@ export async function createTestLocalValedictorianClient(
     if (!options.pgliteDataPath) tempPathsByClient.set(client, pgliteDataPath)
     return client
   }
+  const clonedFromTemplate = prepareConfiguredPgliteDataPath(pgliteDataPath)
   const pglite = await createPgliteClient({ dataDir: pgliteDataPath })
   activePgliteClients.add(pglite)
   if (!options.pgliteDataPath) tempPathsByPglite.set(pglite, pgliteDataPath)
   try {
-    const database = await migratePgliteDatabase(pglite)
+    const database = clonedFromTemplate
+      ? createPgliteDatabase(pglite)
+      : await migratePgliteDatabase(pglite)
     const client = await createLocalValedictorianClient({ ...options, database, pgliteDataPath })
     databasesByClient.set(client, database)
     pgliteByClient.set(client, pglite)
@@ -91,14 +96,22 @@ export async function closeTestLocalValedictorianClient(client: LocalValedictori
 }
 
 export async function createTestPgliteDatabase(dataDir?: string) {
-  const pglite = await createPgliteClient({ dataDir })
+  const pgliteDataPath = dataDir
+    ?? fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-test-pglite-'))
+  if (!dataDir) activeTempPaths.add(pgliteDataPath)
+  const clonedFromTemplate = prepareConfiguredPgliteDataPath(pgliteDataPath)
+  const pglite = await createPgliteClient({ dataDir: pgliteDataPath })
   activePgliteClients.add(pglite)
-  const database = await migratePgliteDatabase(pglite)
+  if (!dataDir) tempPathsByPglite.set(pglite, pgliteDataPath)
+  const database = clonedFromTemplate
+    ? createPgliteDatabase(pglite)
+    : await migratePgliteDatabase(pglite)
   return {
     database,
     async close() {
       if (!activePgliteClients.delete(pglite)) return
       await pglite.close()
+      cleanTestPglitePath(pglite)
     },
   }
 }

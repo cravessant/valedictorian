@@ -6,11 +6,8 @@ import {
   retryWork,
   sourceExecutionScopes,
 } from '../../db/schema'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteDatabase,
-} from '../../db/pglite'
+import type { PgliteDatabase } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createNormalizationOrchestrator } from './normalization.orchestrator'
 import { createPgliteNormalizationRepository } from './normalization.repository'
 import {
@@ -25,9 +22,9 @@ import { createPgliteRawSourceRepository } from './raw-source.repository'
 describe('provider URL resolution executor', () => {
   it('records exact resolver success without invoking hosted resolution', async () => {
     const clock = new Date('2026-07-16T12:00:00.000Z')
-    const client = await createPgliteClient()
+    const client = await createPgliteTestOwner()
     try {
-      const database = await migratePgliteDatabase(client)
+      const { database } = client
       const capture = await seedConnectorCapture(database, 'one', clock.toISOString())
       const intake = await createPgliteRawSourceRepository(database, () => clock).ingestBatch({
         records: [{
@@ -205,9 +202,9 @@ describe('provider URL resolution executor', () => {
 
   it('advances the durable attempt number when retry work becomes due again', async () => {
     let clock = new Date('2026-07-16T12:00:00.000Z')
-    const client = await createPgliteClient()
+    const client = await createPgliteTestOwner()
     try {
-      const database = await migratePgliteDatabase(client)
+      const { database } = client
       const capture = await seedConnectorCapture(database, 'retry', clock.toISOString())
       const intake = await createPgliteRawSourceRepository(database, () => clock).ingestBatch({
         records: [{
@@ -531,9 +528,9 @@ async function createExecutorFixture(options: {
 }) {
   const clock = new Date('2026-07-16T12:00:00.000Z')
   const now = options.now ?? (() => clock)
-  const client = await createPgliteClient()
+  const client = await createPgliteTestOwner()
   try {
-    const database = await migratePgliteDatabase(client)
+    const { database } = client
     const capture = await seedConnectorCapture(database, 'fixture', clock.toISOString())
     const intake = await createPgliteRawSourceRepository(database, () => clock).ingestBatch({
       records: [{

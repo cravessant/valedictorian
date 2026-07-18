@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { rawSourceRecordsListResultSchema } from 'sparxie'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   captureEvidenceVersions,
   captureLineages,
@@ -19,19 +19,12 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteRawSourceRepository } from './raw-source.repository'
 
 describe('raw source repository list', () => {
-  const clients = new Set<PgliteClient>()
-
-  afterEach(async () => {
-    await Promise.all([...clients].map((client) => client.close()))
-    clients.clear()
-  })
-
   it('returns strict sparse summaries without arbitrary raw payload data', async () => {
     const { repository } = await createTestContext(
-      clients,
       () => new Date('2026-07-10T14:00:00.000Z'),
     )
     const secret = 'must-not-appear-in-list-results'
@@ -85,7 +78,6 @@ describe('raw source repository list', () => {
 
   it('uses one bounded PostgreSQL statement for a one-row page regardless of total records', async () => {
     const { client, database, repository } = await createTestContext(
-      clients,
       () => new Date('2026-07-10T14:00:00.000Z'),
     )
     const intake = await repository.ingestBatch({
@@ -111,7 +103,7 @@ describe('raw source repository list', () => {
   })
 
   it('ranks normalization history once instead of rescanning it for every raw record', async () => {
-    const { client, repository } = await createTestContext(clients)
+    const { client, repository } = await createTestContext()
     await repository.ingestBatch({ records: [rawRecord('fixture.cli', 'cli', 'plan')] })
     const query = vi.spyOn(client, 'query')
     await repository.list({ limit: 1 })
@@ -134,7 +126,7 @@ describe('raw source repository list', () => {
       new Date('2026-07-10T13:00:00.000Z'),
       new Date('2026-07-10T15:00:00.000Z'),
     ]
-    const { repository } = await createTestContext(clients, () => receivedTimes.shift()!)
+    const { repository } = await createTestContext(() => receivedTimes.shift()!)
     await repository.ingestBatch({ records: [rawRecord('fixture.cli', 'cli', 'one')] })
     await repository.ingestBatch({ records: [rawRecord('fixture.cli', 'cli', 'two')] })
     await repository.ingestBatch({ records: [rawRecord('fixture.import', 'import', 'three')] })
@@ -159,7 +151,7 @@ describe('raw source repository list', () => {
   })
 
   it('uses C-collation UTF-8 bytewise id order for equal receipt timestamps', async () => {
-    const { database, repository } = await createTestContext(clients)
+    const { database, repository } = await createTestContext()
     const ids = [`raw-\u{10000}`, `raw-\u{E000}`]
     const receivedAt = '2026-07-10T14:00:00.000Z'
     await seedRawRows(database, ids, receivedAt)
@@ -170,7 +162,7 @@ describe('raw source repository list', () => {
   })
 
   it('keeps identical-timestamp pages on the strict stable-id cursor boundary', async () => {
-    const { database, repository } = await createTestContext(clients)
+    const { database, repository } = await createTestContext()
     const ids = ['raw-c', 'raw-b', 'raw-a']
     await seedRawRows(database, ids, '2026-07-10T14:00:00.000Z')
 
@@ -186,7 +178,6 @@ describe('raw source repository list', () => {
 
   it('filters connector capture and inclusive received-time identity', async () => {
     const { database, repository } = await createTestContext(
-      clients,
       () => new Date('2026-07-10T14:00:00.000Z'),
     )
     const connector = await createConnectorInstance(
@@ -240,7 +231,7 @@ describe('raw source repository list', () => {
       new Date('2026-07-10T14:00:00.001Z'),
       new Date('2026-07-10T14:00:00.002Z'),
     ]
-    const { repository } = await createTestContext(clients, () => receivedTimes.shift()!)
+    const { repository } = await createTestContext(() => receivedTimes.shift()!)
     await repository.ingestBatch({ records: [rawRecord('fixture.cli', 'cli', 'lower')] })
     const middle = await repository.ingestBatch({ records: [rawRecord('fixture.cli', 'cli', 'middle')] })
     await repository.ingestBatch({ records: [rawRecord('fixture.cli', 'cli', 'upper')] })
@@ -259,7 +250,7 @@ describe('raw source repository list', () => {
       new Date('2026-07-10T15:00:00.000Z'),
       new Date('2026-07-10T16:00:00.000Z'),
     ]
-    const { database, repository } = await createTestContext(clients, () => receivedAt.shift()!)
+    const { database, repository } = await createTestContext(() => receivedAt.shift()!)
     const connector = await createConnectorInstance(
       database,
       'connector-instance-lineage',
@@ -345,7 +336,6 @@ describe('raw source repository list', () => {
     'reports unfinished %s normalization without gate or projection lineage',
     async (status) => {
       const { database, repository } = await createTestContext(
-        clients,
         () => new Date('2026-07-10T14:00:00.000Z'),
       )
       const intake = await repository.ingestBatch({
@@ -374,7 +364,7 @@ describe('raw source repository list', () => {
   )
 
   it('reports absent normalization lineage with explicit null summaries', async () => {
-    const { repository } = await createTestContext(clients)
+    const { repository } = await createTestContext()
     await repository.ingestBatch({ records: [rawRecord('fixture.cli', 'cli', 'raw-only')] })
 
     const result = await repository.list({ normalizationStatus: 'raw_only' })
@@ -392,7 +382,6 @@ describe('raw source repository list', () => {
 
   it('selects the newest normalization creation over an older run updated later', async () => {
     const { database, repository } = await createTestContext(
-      clients,
       () => new Date('2026-07-10T14:00:00.000Z'),
     )
     const intake = await repository.ingestBatch({ records: [rawRecord(
@@ -434,7 +423,7 @@ describe('raw source repository list', () => {
   })
 
   it('returns stable concurrent list snapshots for unchanged durable state', async () => {
-    const { repository } = await createTestContext(clients)
+    const { repository } = await createTestContext()
     await repository.ingestBatch({
       records: ['one', 'two', 'three'].map((marker) =>
         rawRecord('fixture.cli', 'cli', marker)),
@@ -449,13 +438,8 @@ describe('raw source repository list', () => {
   })
 })
 
-async function createTestContext(
-  clients: Set<PgliteClient>,
-  now?: () => Date,
-) {
-  const client = await createPgliteClient()
-  clients.add(client)
-  const database = await migratePgliteDatabase(client)
+async function createTestContext(now?: () => Date) {
+  const { client, database } = await createPgliteTestOwner()
   return {
     client,
     database,

@@ -8,7 +8,7 @@ import { createPgliteConnectorRepository } from '../modules/connectors/connector
 import { createSourceExecutionGovernor } from '../modules/source-execution/source-execution-governor'
 import { createProviderUrlResolutionRuntime } from '../modules/sourcing/provider-url-resolution.runtime'
 import { createPgliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
-import { createPgliteClient, migratePgliteDatabase } from '../db/pglite'
+import { createPgliteTestOwner } from '../test/pglite-test-owner'
 import type {
   AppConnectorRuntime,
   AppJobConnector,
@@ -515,8 +515,7 @@ describe('runtime provider URL resolution', () => {
 
 async function createProviderRuntimeFixture(enabled: boolean) {
   const now = '2026-07-16T12:00:00.000Z'
-  const pglite = await createPgliteClient()
-  const database = await migratePgliteDatabase(pglite)
+  const { client: pglite, database } = await createPgliteTestOwner()
   const connectorRepository = createPgliteConnectorRepository(database)
   const resolve = vi.fn(async (): Promise<ProviderUrlResolverResult> => ({
     status: 'resolved',

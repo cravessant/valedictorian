@@ -17,10 +17,11 @@ import {
 import {
   createPgliteClient,
   createPgliteDatabase,
-  migratePgliteDatabase,
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { prepareConfiguredPgliteDataPath } from '../../test/pglite-template'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { retireConnectorInstance } from './connector-retirement.persistence'
 
 const clients = new Set<PgliteClient>()
@@ -41,7 +42,7 @@ describe('connector retirement persistence on PGlite', () => {
   it('atomically retires owned work, preserves lineage, and survives close/reopen', async () => {
     const dataDir = createDataDirectory()
     let client = await openClient(dataDir)
-    let database = await migratePgliteDatabase(client)
+    let database = createPgliteDatabase(client)
     const fixture = await seedRetirementFixture(database, 'durable')
 
     await expect(retireConnectorInstance(database, fixture.connectorInstanceId, RETIRED_AT))
@@ -199,12 +200,13 @@ describe('connector retirement persistence on PGlite', () => {
 })
 
 async function createDatabase() {
-  const client = await openClient()
-  return { client, database: await migratePgliteDatabase(client) }
+  const { client, database } = await createPgliteTestOwner()
+  clients.add(client)
+  return { client, database }
 }
 
-async function openClient(dataDir?: string) {
-  const client = await createPgliteClient(dataDir ? { dataDir } : {})
+async function openClient(dataDir: string) {
+  const client = await createPgliteClient({ dataDir })
   clients.add(client)
   return client
 }
@@ -217,6 +219,7 @@ async function closeClient(client: PgliteClient) {
 function createDataDirectory() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-pglite-'))
   dataDirectories.add(directory)
+  prepareConfiguredPgliteDataPath(directory)
   return directory
 }
 

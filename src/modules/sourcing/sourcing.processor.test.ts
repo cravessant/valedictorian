@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
 import {
   applicationEvents,
@@ -7,15 +7,14 @@ import {
   opportunities,
   workflowRunSteps,
 } from '../../db/schema'
-import { createPgliteClient, migratePgliteDatabase, type PgliteDatabase } from '../../db/pglite'
+import type { PgliteDatabase } from '../../db/pglite'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from '../applications/application.fixtures'
 import { createPgliteWorkflowRunRepository } from '../workflow-runs/workflow-run.repository'
 import { createPgliteSourcingProcessor } from './sourcing.processor'
 
 async function createDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  const database = await migratePgliteDatabase(client)
+  const database = await createPgliteTestDatabase()
   await seedSampleApplications(database)
   return database
 }

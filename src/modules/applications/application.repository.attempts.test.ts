@@ -8,8 +8,8 @@ import {
   workflowRunSteps,
 } from '../../db/schema'
 import { eq, sql } from 'drizzle-orm'
-import { describe, expect, it, onTestFinished } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { describe, expect, it } from 'vitest'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from './application.fixtures'
 import { createPgliteApplicationRepository } from './application.repository'
 import { createPglitePolicyRepository } from '../policy/policy.repository'
@@ -17,9 +17,7 @@ import { createPglitePolicyRepository } from '../policy/policy.repository'
 type ApplicationRepositoryInstance = ReturnType<typeof createPgliteApplicationRepository>
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 const passedVerificationReceiptPayload = {

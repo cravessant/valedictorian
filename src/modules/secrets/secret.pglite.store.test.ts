@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
-} from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import type { SecretCodec } from './secret.codec'
 import { createWorkspaceSecretScope } from './secret.scope'
 import { defineSecretStoreContract } from './secret.store.contract'
@@ -26,13 +23,12 @@ const testCodec: SecretCodec = {
 }
 
 async function createMigratedFixture() {
-  const client = await createPgliteClient()
-  const database = await migratePgliteDatabase(client)
-  return { client, database }
+  const owner = await createPgliteTestOwner()
+  return { ...owner, cleanup: () => owner.close() }
 }
 
 defineSecretStoreContract(async () => {
-  const { client, database } = await createMigratedFixture()
+  const { cleanup, database } = await createMigratedFixture()
   const store = createPgliteSecretStore(database, testCodec, testWorkspaceScope)
 
   return {
@@ -48,14 +44,14 @@ defineSecretStoreContract(async () => {
       ).rejects.toMatchObject({ code: 'secure_storage_unavailable' })
     },
     async cleanup() {
-      await client.close()
+      await cleanup()
     },
   }
 })
 
 describe('PGlite SecretStore adapter', () => {
   it('keeps ciphertext out of summaries and stores no plaintext in workspace_secrets', async () => {
-    const { client, database } = await createMigratedFixture()
+    const { cleanup, client, database } = await createMigratedFixture()
     try {
       const store = createPgliteSecretStore(database, testCodec, testWorkspaceScope)
       const summary = await store.upsert({
@@ -75,12 +71,12 @@ describe('PGlite SecretStore adapter', () => {
       expect(row.rows).toEqual([{ encrypted_value: 'enc:secret-plaintext' }])
       expect(row.rows[0]?.encrypted_value).not.toBe('secret-plaintext')
     } finally {
-      await client.close()
+      await cleanup()
     }
   })
 
   it('soft-deletes and restores the same key on re-upsert', async () => {
-    const { client, database } = await createMigratedFixture()
+    const { cleanup, client, database } = await createMigratedFixture()
     try {
       const store = createPgliteSecretStore(database, testCodec, testWorkspaceScope)
       await store.upsert({
@@ -117,23 +113,21 @@ describe('PGlite SecretStore adapter', () => {
       expect(active.rows[0]?.deleted_at).toBeNull()
       expect(active.rows[0]?.encrypted_value).toBe('enc:second')
     } finally {
-      await client.close()
+      await cleanup()
     }
   })
 
   it('isolates two workspace stores that share a logical key', async () => {
-    const clientA = await createPgliteClient()
-    const clientB = await createPgliteClient()
+    const ownerA = await createPgliteTestOwner()
+    const ownerB = await createPgliteTestOwner()
     try {
-      const databaseA = await migratePgliteDatabase(clientA)
-      const databaseB = await migratePgliteDatabase(clientB)
       const storeA = createPgliteSecretStore(
-        databaseA,
+        ownerA.database,
         testCodec,
         createWorkspaceSecretScope('workspace-a'),
       )
       const storeB = createPgliteSecretStore(
-        databaseB,
+        ownerB.database,
         testCodec,
         createWorkspaceSecretScope('workspace-b'),
       )
@@ -159,13 +153,13 @@ describe('PGlite SecretStore adapter', () => {
       })
       expect(storeA.scope).not.toEqual(storeB.scope)
     } finally {
-      await clientA.close()
-      await clientB.close()
+      await ownerA.close()
+      await ownerB.close()
     }
   })
 
   it('persists noncanonical values when cast across the validated boundary (no adapter normalization)', async () => {
-    const { client, database } = await createMigratedFixture()
+    const { cleanup, database } = await createMigratedFixture()
     try {
       const store = createPgliteSecretStore(database, testCodec, testWorkspaceScope)
 
@@ -194,7 +188,7 @@ describe('PGlite SecretStore adapter', () => {
         store.resolve('greenhouse_password' as NormalizedSecretKey),
       ).resolves.toBeNull()
     } finally {
-      await client.close()
+      await cleanup()
     }
   })
 })

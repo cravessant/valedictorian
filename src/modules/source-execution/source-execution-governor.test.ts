@@ -1,24 +1,16 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
-import type { PgliteClient } from '../../db/pglite'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import {
   createSourceExecutionGovernor,
   deriveSourceExecutionScopeId,
 } from './source-execution-governor'
 
-const clients: PgliteClient[] = []
-
-afterEach(async () => {
-  await Promise.all(clients.splice(0).map((client) => client.close()))
-})
-
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  clients.push(client)
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 describe('source execution governor', () => {

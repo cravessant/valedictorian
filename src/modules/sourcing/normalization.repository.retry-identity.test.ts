@@ -26,6 +26,7 @@ import {
   migratePgliteDatabase,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import {
   createPgliteNormalizationRepository,
   type PersistNormalizationInput,
@@ -211,9 +212,8 @@ function persistenceInput(
 
 describe('normalization repository acquired retry identity', () => {
   it('preserves the original execution scope through consecutive retryable direct replays', async () => {
-    const client = await createPgliteClient()
+    const { client, database } = await createPgliteTestOwner()
     try {
-      const database = await migratePgliteDatabase(client)
       await seedRawRevision(database, { withScope: true })
       const repository = createPgliteNormalizationRepository(database)
 
@@ -284,9 +284,8 @@ describe('normalization repository acquired retry identity', () => {
   })
 
   it('rejects exact acquired replay when persisted attempt input hash does not match acquired work', async () => {
-    const client = await createPgliteClient()
+    const { client, database } = await createPgliteTestOwner()
     try {
-      const database = await migratePgliteDatabase(client)
       await seedRawRevision(database, { withScope: true })
       const repository = createPgliteNormalizationRepository(database)
       await database.insert(retryWork).values({
@@ -355,9 +354,8 @@ describe('normalization repository acquired retry identity', () => {
   })
 
   it('converges strong destination identity ownership and records a conflicting owner without reassignment', async () => {
-    const client = await createPgliteClient()
+    const { client, database } = await createPgliteTestOwner()
     try {
-      const database = await migratePgliteDatabase(client)
       const sourceJobId = 'job-source-identity'
       await seedRawRevision(database, { jobId: sourceJobId })
       const repository = createPgliteNormalizationRepository(database)
@@ -457,9 +455,8 @@ describe('normalization repository acquired retry identity', () => {
   })
 
   it('rolls back the complete passed multi-write when staging fails', async () => {
-    const client = await createPgliteClient()
+    const { client, database } = await createPgliteTestOwner()
     try {
-      const database = await migratePgliteDatabase(client)
       const jobId = 'job-atomic-normalization'
       await seedRawRevision(database, { jobId })
       const candidate: CanonicalSourceCandidate = {

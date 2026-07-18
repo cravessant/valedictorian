@@ -14,6 +14,7 @@ import {
   migratePgliteDatabase,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteRawSourceRepository } from './raw-source.repository'
 import { createProviderUrlResolutionRepository } from './provider-url-resolution.repository'
 
@@ -129,8 +130,7 @@ describe('provider URL resolution repository', () => {
 })
 
 async function createProviderUrlRaceFixture(clock: Date) {
-  const client = await createPgliteClient()
-  const database = await migratePgliteDatabase(client)
+  const { client, database } = await createPgliteTestOwner()
   const capture = await createConnectorCapture(database, 'race', clock.toISOString())
   const intake = await createPgliteRawSourceRepository(database, () => clock).ingestBatch({
     records: [{

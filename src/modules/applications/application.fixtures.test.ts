@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   applicationLinks,
   applicationScores,
@@ -12,6 +12,7 @@ import {
   workflowRunSteps,
 } from '../../db/schema'
 import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import {
   parseReferenceTrackerApplications,
   seedReferenceTrackerApplications,
@@ -21,9 +22,7 @@ import {
 import { createPgliteApplicationRepository } from './application.repository'
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 describe('sample applications seed', () => {

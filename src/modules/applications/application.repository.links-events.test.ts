@@ -5,15 +5,13 @@ import {
   applications,
 } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it, onTestFinished } from 'vitest'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { describe, expect, it } from 'vitest'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from './application.fixtures'
 import { createPgliteApplicationRepository } from './application.repository'
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 describe('PGlite application repository links, events, and workflow state', () => {

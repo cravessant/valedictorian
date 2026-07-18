@@ -17,12 +17,17 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPglitePolicyRepository } from '../policy/policy.repository'
 import { createPgliteActionQueueRepository } from './action-queue.repository'
 
 const createdAt = '2026-06-04T16:00:00.000Z'
 
 async function openMigratedActionQueueDb(dataDir?: string) {
+  if (!dataDir) {
+    const { client, database } = await createPgliteTestOwner()
+    return { client, database, repository: createPgliteActionQueueRepository(database) }
+  }
   const client = await createPgliteClient(dataDir ? { dataDir } : {})
   const database = await migratePgliteDatabase(client)
   return {

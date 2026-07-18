@@ -1,6 +1,10 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach } from 'vitest'
 import {
   createPgliteClient,
+  createPgliteDatabase,
   migratePgliteDatabase,
   type PgliteClient,
   type PgliteDatabase,
@@ -10,6 +14,7 @@ import {
   createLocalValedictorianClient as createRuntimeLocalValedictorianClient,
 } from '../runtime/local-valedictorian-client'
 import type { LocalValedictorianClientOptions } from '../runtime/local-valedictorian-runtime-options'
+import { prepareConfiguredPgliteDataPath } from '../test/pglite-template'
 
 type LocalTestClientOptions = Omit<LocalValedictorianClientOptions, 'database'>
 
@@ -21,14 +26,19 @@ export interface OwnedPgliteTestDatabase {
 
 const activeOwners = new Set<OwnedPgliteTestDatabase>()
 const clientOwners = new WeakMap<LocalValedictorianClient, OwnedPgliteTestDatabase>()
+const clonedDataPaths = new Set<string>()
 
 export async function openPgliteTestDatabase(
   pgliteDataPath?: string,
 ): Promise<OwnedPgliteTestDatabase> {
-  const client = await createPgliteClient(
-    pgliteDataPath ? { dataDir: pgliteDataPath } : {},
-  )
-  const database = await migratePgliteDatabase(client)
+  const dataPath = pgliteDataPath
+    ?? fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-server-pglite-'))
+  const clonedFromTemplate = prepareConfiguredPgliteDataPath(dataPath)
+  if (clonedFromTemplate) clonedDataPaths.add(dataPath)
+  const client = await createPgliteClient({ dataDir: dataPath })
+  const database = clonedFromTemplate
+    ? createPgliteDatabase(client)
+    : await migratePgliteDatabase(client)
   let closed = false
   const owner: OwnedPgliteTestDatabase = {
     client,
@@ -81,4 +91,6 @@ export function getLocalValedictorianTestDatabase(
 afterEach(async () => {
   const owners = [...activeOwners].reverse()
   for (const owner of owners) await owner.close()
+  for (const dataPath of clonedDataPaths) fs.rmSync(dataPath, { force: true, recursive: true })
+  clonedDataPaths.clear()
 })

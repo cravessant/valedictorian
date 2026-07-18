@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { eq, sql } from 'drizzle-orm'
 import {
   applicationEvents,
@@ -12,15 +12,14 @@ import {
   sources,
 } from '../../db/schema'
 import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
+import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from '../applications/application.fixtures'
 import { createPglitePolicyRepository } from '../policy/policy.repository'
 import { createPgliteWorkflowRunRepository } from '../workflow-runs/workflow-run.repository'
 import { createPgliteSourcingRepository } from './sourcing.repository'
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 describe('PGlite sourcing repository', () => {

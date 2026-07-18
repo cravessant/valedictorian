@@ -19,6 +19,7 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPglitePolicyRepository } from './policy.repository'
 
 const passedVerificationReceiptPayload = {
@@ -31,6 +32,10 @@ const passedVerificationReceiptPayload = {
 }
 
 async function openMigratedPolicyDb(dataDir?: string) {
+  if (!dataDir) {
+    const { client, database } = await createPgliteTestOwner()
+    return { client, database, repository: createPglitePolicyRepository(database) }
+  }
   const client = await createPgliteClient(dataDir ? { dataDir } : {})
   const database = await migratePgliteDatabase(client)
   return {

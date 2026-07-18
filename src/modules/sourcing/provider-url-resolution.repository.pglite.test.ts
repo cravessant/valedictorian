@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   captureEvidenceVersions,
   captureLineages,
@@ -6,25 +6,12 @@ import {
   retryWork,
   sourceExecutionScopes,
 } from '../../db/schema'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteClient,
-} from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createProviderUrlResolutionRepository } from './provider-url-resolution.repository'
 
 describe('provider URL resolution PGlite repository', () => {
-  const clients = new Set<PgliteClient>()
-
-  afterEach(async () => {
-    await Promise.all([...clients].map((client) => client.close()))
-    clients.clear()
-  })
-
   it('awaits enqueue and converges duplicate work through PostgreSQL conflict handling', async () => {
-    const client = await createPgliteClient()
-    clients.add(client)
-    const database = await migratePgliteDatabase(client)
+    const { database } = await createPgliteTestOwner()
     const timestamp = '2026-07-16T12:00:00.000Z'
     await database.insert(sourceExecutionScopes).values({
       id: 'scope-one', createdAt: timestamp, updatedAt: timestamp,
@@ -59,9 +46,7 @@ describe('provider URL resolution PGlite repository', () => {
   })
 
   it('rolls back an acquisition when PostgreSQL rejects the claimed transition', async () => {
-    const client = await createPgliteClient()
-    clients.add(client)
-    const database = await migratePgliteDatabase(client)
+    const { client, database } = await createPgliteTestOwner()
     const timestamp = '2026-07-16T12:00:00.000Z'
     await database.insert(sourceExecutionScopes).values({
       id: 'scope-rollback', createdAt: timestamp, updatedAt: timestamp,

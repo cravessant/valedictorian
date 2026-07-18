@@ -1,13 +1,10 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { schema, sourceExecutionScopes } from '../../db/schema'
 import { connectorInstances, connectorRuns } from '../../db/schema.connectors'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteDatabase,
-} from '../../db/pglite'
+import type { PgliteDatabase } from '../../db/pglite'
+import { createPgliteTestDatabase, createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { admitConnectorScheduleDue } from './connector-schedule.dispatch'
 import { createConnectorScheduleRepository } from './connector-schedule.repository'
 
@@ -17,11 +14,9 @@ const CADENCE = { kind: 'interval' as const, everyMinutes: 60 }
 
 describe('PGlite connector schedule dispatch', () => {
   it('locks the connector identity shared with manual and retry admission', async () => {
-    const client = await createPgliteClient()
-    onTestFinished(() => client.close())
-    await migratePgliteDatabase(client)
+    const owner = await createPgliteTestOwner()
     const queries: string[] = []
-    const database = drizzle(client, {
+    const database = drizzle(owner.client, {
       schema,
       logger: { logQuery(query) { queries.push(query) } },
     })
@@ -46,11 +41,9 @@ describe('PGlite connector schedule dispatch', () => {
   })
 
   it('keeps instance-first lock order compatible with retirement through one workspace owner', async () => {
-    const client = await createPgliteClient()
-    onTestFinished(() => client.close())
-    await migratePgliteDatabase(client)
+    const owner = await createPgliteTestOwner()
     const queries: string[] = []
-    const database = drizzle(client, {
+    const database = drizzle(owner.client, {
       schema,
       logger: { logQuery(query) { queries.push(query) } },
     })
@@ -170,9 +163,7 @@ describe('PGlite connector schedule dispatch', () => {
 })
 
 async function createTestDatabase() {
-  const client = await createPgliteClient()
-  onTestFinished(() => client.close())
-  return migratePgliteDatabase(client)
+  return createPgliteTestDatabase()
 }
 
 async function seedConnectorInstance(database: PgliteDatabase, id: string) {

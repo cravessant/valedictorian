@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   connectorInstances,
   connectorRuns,
@@ -6,26 +6,15 @@ import {
   retryWork,
   sourceExecutionScopes,
 } from '../../db/schema'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteClient,
-} from '../../db/pglite'
+import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { createDefaultNormalizationResolverRegistry } from '../sourcing/normalization.registry'
 import { createPgliteNormalizationRepository } from '../sourcing/normalization.repository'
 import { createPgliteRawSourceRepository } from '../sourcing/raw-source.repository'
 import { createConnectorNormalizationHost } from './connector.normalization'
 
 describe('connector normalization host', () => {
-  const clients = new Set<PgliteClient>()
-
-  afterEach(async () => {
-    await Promise.all([...clients].map((client) => client.close()))
-    clients.clear()
-  })
-
   it('persists a blocked attempt without invoking an undeclared host capability', async () => {
-    const { database, capture } = await createFixture(clients, 'blocked', '2026-07-10T12:00:00.000Z')
+    const { database, capture } = await createFixture('blocked', '2026-07-10T12:00:00.000Z')
     const rawRepository = createPgliteRawSourceRepository(database)
     const normalizationRepository = createPgliteNormalizationRepository(database)
     const receipt = (await rawRepository.ingestBatch({ records: [{
@@ -87,7 +76,7 @@ describe('connector normalization host', () => {
 
   it('persists one typed retry unit for a multi-field connector resolver invocation', async () => {
     const timestamp = '2026-07-11T12:00:00.000Z'
-    const { client, database, capture } = await createFixture(clients, 'retry', timestamp)
+    const { client, database, capture } = await createFixture('retry', timestamp)
     const rawRepository = createPgliteRawSourceRepository(database)
     const normalizationRepository = createPgliteNormalizationRepository(database)
     const receipt = (await rawRepository.ingestBatch({ records: [{
@@ -173,13 +162,10 @@ describe('connector normalization host', () => {
 })
 
 async function createFixture(
-  clients: Set<PgliteClient>,
   suffix: string,
   timestamp: string,
 ) {
-  const client = await createPgliteClient()
-  clients.add(client)
-  const database = await migratePgliteDatabase(client)
+  const { client, database } = await createPgliteTestOwner()
   const executionScopeId = `normalization-scope-${suffix}`
   const connectorInstanceId = `normalization-instance-${suffix}`
   const connectorRunId = `normalization-run-${suffix}`

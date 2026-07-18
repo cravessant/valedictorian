@@ -12,7 +12,7 @@ describe('CI workflow', () => {
     expect(workflow).toContain('- main')
     expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}')
     expect(workflow).toContain('cancel-in-progress: true')
-    expect(workflow).toMatch(/test:\n[\s\S]*?timeout-minutes: 60/)
+    expect(workflow).toMatch(/test:\n[\s\S]*?timeout-minutes: 20/)
     expect(workflow).toContain('run: pnpm test')
     expect(workflow).toContain('run: pnpm lint')
     expect(workflow).not.toContain('run: pnpm typecheck')
