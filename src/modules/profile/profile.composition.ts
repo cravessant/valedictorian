@@ -1,12 +1,10 @@
 import fs from 'node:fs'
-import { createFileDatabase } from '../../db/sqlite'
 import {
   createPgliteClient,
   migratePgliteDatabase,
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
-import { resolveDatabaseFilePath } from '../../workspace/workspace.paths'
 import type { SecretCodec } from '../secrets/secret.codec'
 import { createPgliteSecretService } from '../secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../secrets/secret.scope'
@@ -16,7 +14,6 @@ import {
   createJsonProfileStore,
   type CreateJsonProfileStoreOptions,
 } from './profile.json.store'
-import { migrateLegacyProfileToJson } from './profile.migration'
 import { assertSupportedProfileUpgrade } from './profile.upgrade-policy'
 
 export interface PreparedWorkspaceProfileCapabilities {
@@ -34,10 +31,8 @@ export async function prepareWorkspaceProfileCapabilities(options: {
   workspaceId: string
 }): Promise<PreparedWorkspaceProfileCapabilities> {
   assertSupportedProfileUpgrade({ profilePath: options.profilePath })
-  const databaseFilePath = resolveDatabaseFilePath(options.pgliteDataPath)
   fs.mkdirSync(options.pgliteDataPath, { recursive: true })
   const pgliteClient = await createPgliteClient({ dataDir: options.pgliteDataPath })
-  let sqlite: ReturnType<typeof createFileDatabase> | null = null
   try {
     const database = await migratePgliteDatabase(pgliteClient)
     const secretService = createPgliteSecretService(
@@ -45,18 +40,6 @@ export async function prepareWorkspaceProfileCapabilities(options: {
       options.secretCodec,
       createWorkspaceSecretScope(options.workspaceId),
     )
-    if (fs.existsSync(databaseFilePath)) {
-      sqlite = createFileDatabase(databaseFilePath)
-      await migrateLegacyProfileToJson({
-        database: sqlite,
-        profilePath: options.profilePath,
-        secretCodec: options.secretCodec,
-        secretService,
-        databasePath: databaseFilePath,
-      })
-      sqlite.close()
-      sqlite = null
-    }
     const profileService = createJsonProfileService(options.profilePath)
     let disposeInflight: Promise<void> | null = null
     return {
@@ -77,7 +60,6 @@ export async function prepareWorkspaceProfileCapabilities(options: {
       secretService,
     }
   } catch (error) {
-    sqlite?.close()
     await pgliteClient.close()
     throw error
   }

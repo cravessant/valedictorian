@@ -21,15 +21,20 @@ const forbiddenOperationalMigrationAssets = [
   'src/db/sqlite.earliest-backfill-migration.test.ts',
   'src/db/sqlite.installed-migration.test.ts',
   'src/db/sqlite.raw-source-lineage-migration.test.ts',
+  'src/modules/profile/profile.legacy-sqlite.fixture.ts',
+  'src/modules/profile/profile.legacy-sqlite.ts',
+  'src/modules/profile/profile.migration.backup.test.ts',
+  'src/modules/profile/profile.migration.backup.ts',
+  'src/modules/profile/profile.migration.source.test.ts',
+  'src/modules/profile/profile.migration.source.ts',
+  'src/modules/profile/profile.migration.test.ts',
+  'src/modules/profile/profile.migration.ts',
 ] as const
 
-const requiredProfileMigrationEvidence = [
-  'src/modules/profile/profile.migration.source.ts',
-  'src/modules/profile/profile.migration.source.test.ts',
-  'src/modules/profile/profile.migration.backup.ts',
-  'src/modules/profile/profile.migration.backup.test.ts',
-  'src/modules/profile/profile.migration.ts',
-  'src/modules/profile/profile.migration.test.ts',
+const requiredProfileUpgradePolicy = [
+  'UPGRADING.md',
+  'src/modules/profile/profile.upgrade-policy.test.ts',
+  'src/modules/profile/profile.upgrade-policy.ts',
 ] as const
 
 describe('operational migration cutover boundary', () => {
@@ -66,7 +71,7 @@ describe('operational migration cutover boundary', () => {
       .sort()
     expect(leftoverOperationalMigrationTests).toEqual([])
 
-    for (const relativePath of requiredProfileMigrationEvidence) {
+    for (const relativePath of requiredProfileUpgradePolicy) {
       expect(fs.existsSync(path.join(repoRoot, relativePath)), relativePath).toBe(true)
     }
 
@@ -74,15 +79,6 @@ describe('operational migration cutover boundary', () => {
       .readdirSync(profileDir)
       .filter((name) => name.startsWith('profile.migration'))
       .sort()
-    expect(profileEvidence).toEqual(
-      expect.arrayContaining([
-        'profile.migration.backup.test.ts',
-        'profile.migration.backup.ts',
-        'profile.migration.source.test.ts',
-        'profile.migration.source.ts',
-        'profile.migration.test.ts',
-        'profile.migration.ts',
-      ]),
-    )
+    expect(profileEvidence).toEqual([])
   })
 })
