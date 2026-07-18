@@ -1,13 +1,13 @@
-import type { DrizzleDatabase } from '../../db/sqlite'
+import type { PgliteDatabase } from '../../db/pglite'
 import type { SecretCodec } from './secret.codec'
 import type { WorkspaceSecretScope } from './secret.scope'
 import { createSecretService, type SecretService } from './secret.service'
-import { createSqliteSecretStore } from './secret.sqlite.store'
+import { createPgliteSecretStore } from './secret.pglite.store'
 
-export function createSqliteSecretService(
-  database: DrizzleDatabase,
+export function createPgliteSecretService(
+  database: PgliteDatabase,
   secretCodec: SecretCodec,
   scope: WorkspaceSecretScope,
 ): SecretService {
-  return createSecretService(createSqliteSecretStore(database, secretCodec, scope))
+  return createSecretService(createPgliteSecretStore(database, secretCodec, scope))
 }

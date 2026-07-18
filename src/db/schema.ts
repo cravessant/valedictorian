@@ -1,5 +1,17 @@
+/**
+ * PostgreSQL operational schema for the PGlite cutover (#238).
+ *
+ * Temporary #283 cutover-parity shapes retained only to finish the engine cutover;
+ * they are not desired lifecycle decisions and remain replaceable by ordinary
+ * versioned PostgreSQL migrations after post-#237 reassessment:
+ * - jobs embeds the primary external identity tuple
+ * - Capture→Job ownership can diverge across capture_lineages.job_id and capture paths
+ * - opportunities.projection_aliases_json is JSON-scanned alias storage
+ * - opportunities.application_id is reverse-only Opportunity→Application linkage
+ * - retry_work collapses scheduled-work identities into kind-specific unique indexes
+ */
 import { sql } from 'drizzle-orm'
-import { check, foreignKey, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { boolean, check, foreignKey, index, integer, pgTable, text, unique, uniqueIndex } from 'drizzle-orm/pg-core'
 import {
   connectorCheckpoints,
   connectorInstances,
@@ -28,7 +40,7 @@ const timestamps = {
   deletedAt: text('deleted_at'),
 }
 
-export const companies = sqliteTable('companies', {
+export const companies = pgTable('companies', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   normalizedName: text('normalized_name').notNull(),
@@ -36,7 +48,7 @@ export const companies = sqliteTable('companies', {
   ...timestamps,
 })
 
-export const sources = sqliteTable(
+export const sources = pgTable(
   'sources',
   {
     id: text('id').primaryKey(),
@@ -49,7 +61,7 @@ export const sources = sqliteTable(
   }),
 )
 
-export const applications = sqliteTable('applications', {
+export const applications = pgTable('applications', {
   id: text('id').primaryKey(),
   companyId: text('company_id')
     .notNull()
@@ -70,7 +82,7 @@ export const applications = sqliteTable('applications', {
   workMode: text('work_mode').notNull(),
   locationRaw: text('location_raw'),
   status: text('status').notNull(),
-  hasApplied: integer('has_applied', { mode: 'boolean' }).notNull(),
+  hasApplied: boolean('has_applied').notNull(),
   currentPriorityScore: integer('current_priority_score'),
   currentPriorityBand: text('current_priority_band'),
   currentResumeVariant: text('current_resume_variant'),
@@ -78,7 +90,7 @@ export const applications = sqliteTable('applications', {
   ...timestamps,
 })
 
-export const applicationLinks = sqliteTable('application_links', {
+export const applicationLinks = pgTable('application_links', {
   id: text('id').primaryKey(),
   applicationId: text('application_id')
     .notNull()
@@ -87,12 +99,12 @@ export const applicationLinks = sqliteTable('application_links', {
   label: text('label').notNull(),
   url: text('url').notNull(),
   externalId: text('external_id'),
-  isPrimary: integer('is_primary', { mode: 'boolean' }).notNull(),
+  isPrimary: boolean('is_primary').notNull(),
   discoveredAt: text('discovered_at').notNull(),
   ...timestamps,
 })
 
-export const applicationScores = sqliteTable('application_scores', {
+export const applicationScores = pgTable('application_scores', {
   id: text('id').primaryKey(),
   applicationId: text('application_id')
     .notNull()
@@ -109,7 +121,7 @@ export const applicationScores = sqliteTable('application_scores', {
   createdAt: text('created_at').notNull(),
 })
 
-export const applicationWorkflowStates = sqliteTable('application_workflow_states', {
+export const applicationWorkflowStates = pgTable('application_workflow_states', {
   applicationId: text('application_id')
     .primaryKey()
     .references(() => applications.id),
@@ -122,7 +134,7 @@ export const applicationWorkflowStates = sqliteTable('application_workflow_state
   updatedAt: text('updated_at').notNull(),
 })
 
-export const applicationEvents = sqliteTable('application_events', {
+export const applicationEvents = pgTable('application_events', {
   id: text('id').primaryKey(),
   applicationId: text('application_id')
     .notNull()
@@ -134,7 +146,7 @@ export const applicationEvents = sqliteTable('application_events', {
   createdAt: text('created_at').notNull(),
 })
 
-export const applicationAttempts = sqliteTable('application_attempts', {
+export const applicationAttempts = pgTable('application_attempts', {
   id: text('id').primaryKey(),
   applicationId: text('application_id')
     .notNull()
@@ -156,7 +168,7 @@ export const applicationAttempts = sqliteTable('application_attempts', {
   updatedAt: text('updated_at').notNull(),
 })
 
-export const applicationAttemptSteps = sqliteTable('application_attempt_steps', {
+export const applicationAttemptSteps = pgTable('application_attempt_steps', {
   id: text('id').primaryKey(),
   attemptId: text('attempt_id')
     .notNull()
@@ -172,7 +184,7 @@ export const applicationAttemptSteps = sqliteTable('application_attempt_steps', 
   createdAt: text('created_at').notNull(),
 })
 
-export const workflowRuns = sqliteTable(
+export const workflowRuns = pgTable(
   'workflow_runs',
   {
     id: text('id').primaryKey(),
@@ -205,7 +217,7 @@ export const workflowRuns = sqliteTable(
   }),
 )
 
-export const workflowRunSteps = sqliteTable('workflow_run_steps', {
+export const workflowRunSteps = pgTable('workflow_run_steps', {
   id: text('id').primaryKey(),
   workflowRunId: text('workflow_run_id')
     .notNull()
@@ -218,7 +230,7 @@ export const workflowRunSteps = sqliteTable('workflow_run_steps', {
   createdAt: text('created_at').notNull(),
 })
 
-export const profileSecrets = sqliteTable('profile_secrets', {
+export const workspaceSecrets = pgTable('workspace_secrets', {
   key: text('key').primaryKey(),
   label: text('label').notNull(),
   kind: text('kind').notNull(),
@@ -226,14 +238,14 @@ export const profileSecrets = sqliteTable('profile_secrets', {
   ...timestamps,
 })
 
-export const policyConfig = sqliteTable('policy_config', {
+export const policyConfig = pgTable('policy_config', {
   id: text('id').primaryKey(),
   configJson: text('config_json').notNull(),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })
 
-export const policyEvidence = sqliteTable(
+export const policyEvidence = pgTable(
   'policy_evidence',
   {
     id: text('id').primaryKey(),
@@ -255,7 +267,7 @@ export const policyEvidence = sqliteTable(
   }),
 )
 
-export const jobs = sqliteTable(
+export const jobs = pgTable(
   'jobs',
   {
     id: text('id').primaryKey(),
@@ -285,7 +297,7 @@ export const jobs = sqliteTable(
   }),
 )
 
-export const jobIdentities = sqliteTable(
+export const jobIdentities = pgTable(
   'job_identities',
   {
     id: text('id').primaryKey(),
@@ -319,7 +331,7 @@ export const jobIdentities = sqliteTable(
   }),
 )
 
-export const jobIdentityConflicts = sqliteTable(
+export const jobIdentityConflicts = pgTable(
   'job_identity_conflicts',
   {
     id: text('id').primaryKey(),
@@ -353,7 +365,7 @@ export const jobIdentityConflicts = sqliteTable(
   }),
 )
 
-export const captureLineages = sqliteTable(
+export const captureLineages = pgTable(
   'capture_lineages',
   {
     id: text('id').primaryKey(),
@@ -365,7 +377,7 @@ export const captureLineages = sqliteTable(
   }),
 )
 
-export const sourceExecutionScopes = sqliteTable(
+export const sourceExecutionScopes = pgTable(
   'source_execution_scopes',
   {
     id: text('id').primaryKey(),
@@ -381,13 +393,17 @@ export const sourceExecutionScopes = sqliteTable(
   (table) => ({
     availabilityIdx: index('idx_source_execution_scopes_availability').on(table.status, table.blockedUntil),
     statusCheck: check('chk_source_execution_scopes_status', sql`${table.status} in ('available','cooldown','refreshing','action_required')`),
-    idCheck: check('chk_source_execution_scopes_id', sql`length(${table.id}) between 8 and 256 and ${table.id} not glob '*[^A-Za-z0-9._~-]*'`),
+    idCheck: check('chk_source_execution_scopes_id', sql`length(${table.id}) between 8 and 256 and ${table.id} ~ '^[A-Za-z0-9._~-]+$'`),
     backoffCheck: check('chk_source_execution_scopes_backoff', sql`${table.backoffAttempt} >= 0`),
     generationCheck: check('chk_source_execution_scopes_generation', sql`${table.authGeneration} >= 0`),
+    actionReasonCheck: check(
+      'chk_source_execution_scopes_action_reason',
+      sql`${table.actionReason} is null or ${table.actionReason} ~ '^[a-z0-9_]{1,64}$'`,
+    ),
   }),
 )
 
-export const connectorRunSynchronizations = sqliteTable(
+export const connectorRunSynchronizations = pgTable(
   'connector_run_synchronizations',
   {
     connectorRunId: text('connector_run_id').primaryKey().references(() => connectorRuns.id),
@@ -400,7 +416,7 @@ export const connectorRunSynchronizations = sqliteTable(
   }),
 )
 
-export const sourceExecutionSessions = sqliteTable(
+export const sourceExecutionSessions = pgTable(
   'source_execution_sessions',
   {
     executionScopeId: text('execution_scope_id').primaryKey().references(() => sourceExecutionScopes.id),
@@ -414,7 +430,7 @@ export const sourceExecutionSessions = sqliteTable(
   }),
 )
 
-export const captureEvidenceVersions = sqliteTable(
+export const captureEvidenceVersions = pgTable(
   'capture_evidence_versions',
   {
     id: text('id').primaryKey(),
@@ -438,7 +454,7 @@ export const captureEvidenceVersions = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
-    recordIdIdx: uniqueIndex('idx_capture_evidence_versions_id_lineage').on(
+    recordIdIdx: unique('idx_capture_evidence_versions_id_lineage').on(
       table.id,
       table.captureLineageId,
     ),
@@ -456,7 +472,7 @@ export const captureEvidenceVersions = sqliteTable(
   }),
 )
 
-export const retryWork = sqliteTable(
+export const retryWork = pgTable(
   'retry_work',
   {
     id: text('id').primaryKey(),
@@ -547,7 +563,7 @@ export const retryWork = sqliteTable(
   }),
 )
 
-export const captures = sqliteTable(
+export const captures = pgTable(
   'captures',
   {
     id: text('id').primaryKey(),
@@ -601,7 +617,7 @@ export const captures = sqliteTable(
   }),
 )
 
-export const normalizationRuns = sqliteTable(
+export const normalizationRuns = pgTable(
   'normalization_runs',
   {
     id: text('id').primaryKey(),
@@ -634,7 +650,7 @@ export const normalizationRuns = sqliteTable(
   }),
 )
 
-export const normalizationReplayRequests = sqliteTable(
+export const normalizationReplayRequests = pgTable(
   'normalization_replay_requests',
   {
     id: text('id').primaryKey(),
@@ -652,7 +668,7 @@ export const normalizationReplayRequests = sqliteTable(
   }),
 )
 
-export const normalizationReplayItems = sqliteTable(
+export const normalizationReplayItems = pgTable(
   'normalization_replay_items',
   {
     id: text('id').primaryKey(),
@@ -673,7 +689,7 @@ export const normalizationReplayItems = sqliteTable(
   }),
 )
 
-export const normalizationAttempts = sqliteTable(
+export const normalizationAttempts = pgTable(
   'normalization_attempts',
   {
     id: text('id').primaryKey(),
@@ -695,7 +711,7 @@ export const normalizationAttempts = sqliteTable(
   }),
 )
 
-export const normalizationFieldOutcomes = sqliteTable(
+export const normalizationFieldOutcomes = pgTable(
   'normalization_field_outcomes',
   {
     id: text('id').primaryKey(),
@@ -718,7 +734,7 @@ export const normalizationFieldOutcomes = sqliteTable(
   }),
 )
 
-export const jobFactVersions = sqliteTable(
+export const jobFactVersions = pgTable(
   'job_fact_versions',
   {
     id: text('id').primaryKey(),
@@ -732,7 +748,7 @@ export const jobFactVersions = sqliteTable(
   },
   (table) => ({
     runIdx: uniqueIndex('idx_job_fact_versions_run').on(table.runId),
-    lineageIdx: uniqueIndex('idx_job_fact_versions_lineage').on(
+    lineageIdx: unique('idx_job_fact_versions_lineage').on(
       table.id,
       table.captureLineageId,
       table.captureEvidenceVersionId,
@@ -741,7 +757,7 @@ export const jobFactVersions = sqliteTable(
   }),
 )
 
-export const sourcingProjectionOutcomes = sqliteTable(
+export const sourcingProjectionOutcomes = pgTable(
   'sourcing_projection_outcomes',
   {
     id: text('id').primaryKey(),
@@ -751,7 +767,7 @@ export const sourcingProjectionOutcomes = sqliteTable(
     status: text('status').notNull(),
     opportunityId: text('opportunity_id').references(() => opportunities.id),
     failureCode: text('failure_code'),
-    failureRetryable: integer('failure_retryable', { mode: 'boolean' }),
+    failureRetryable: boolean('failure_retryable'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     projectedAt: text('projected_at'),
@@ -774,12 +790,12 @@ export const sourcingProjectionOutcomes = sqliteTable(
     fieldsCheck: check('chk_sourcing_projection_outcomes_fields', sql`
       (${table.status} = 'pending' and ${table.opportunityId} is null and ${table.failureCode} is null and ${table.failureRetryable} is null and ${table.projectedAt} is null and ${table.failedAt} is null)
       or (${table.status} = 'projected' and ${table.opportunityId} is not null and ${table.failureCode} is null and ${table.failureRetryable} is null and ${table.projectedAt} is not null and ${table.failedAt} is null)
-      or (${table.status} = 'failed' and ${table.opportunityId} is null and ${table.failureCode} in ('projection_failed','persistence_failed','internal_error') and ${table.failureRetryable} in (0, 1) and ${table.projectedAt} is null and ${table.failedAt} is not null)
+      or (${table.status} = 'failed' and ${table.opportunityId} is null and ${table.failureCode} in ('projection_failed','persistence_failed','internal_error') and ${table.failureRetryable} is not null and ${table.projectedAt} is null and ${table.failedAt} is not null)
     `),
   }),
 )
 
-export const normalizationGates = sqliteTable(
+export const normalizationGates = pgTable(
   'normalization_gates',
   {
     id: text('id').primaryKey(),
@@ -798,7 +814,7 @@ export const normalizationGates = sqliteTable(
   }),
 )
 
-export const opportunities = sqliteTable(
+export const opportunities = pgTable(
   'opportunities',
   {
     id: text('id').primaryKey(),
@@ -893,7 +909,7 @@ export const schema = {
   normalizationRuns,
   policyConfig,
   policyEvidence,
-  profileSecrets,
+  workspaceSecrets,
   captures,
   captureLineages,
   captureEvidenceVersions,

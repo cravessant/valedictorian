@@ -1,1 +1,0 @@
-ALTER TABLE `connector_instances` ADD `auth_json` text DEFAULT '[]' NOT NULL;

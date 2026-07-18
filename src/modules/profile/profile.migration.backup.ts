@@ -2,13 +2,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
-import type { SqliteDatabase } from '../../db/sqlite'
+import type { LegacySqliteDatabase } from './profile.legacy-sqlite'
 
 export const profileMigrationBackupFileName = 'legacy-profile-source-v1.sqlite'
 
 export function createVerifiedProfileMigrationBackup(options: {
   beforePublish?: () => void
-  database: SqliteDatabase
+  database: LegacySqliteDatabase
   migrationDirectory: string
 }): string {
   const backupPath = path.join(options.migrationDirectory, profileMigrationBackupFileName)

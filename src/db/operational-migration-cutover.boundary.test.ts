@@ -1,0 +1,88 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+const repoRoot = path.resolve('.')
+const drizzleDir = path.join(repoRoot, 'drizzle')
+const dbDir = path.join(repoRoot, 'src', 'db')
+const profileDir = path.join(repoRoot, 'src', 'modules', 'profile')
+
+const forbiddenOperationalMigrationAssets = [
+  'src/db/data-migrations.ts',
+  'src/db/sqlite.legacy-schema.ts',
+  'src/db/sqlite.schema-test-helpers.ts',
+  'src/db/sqlite.schema-migration.test.ts',
+  'src/db/sqlite.data-migration-guards.test.ts',
+  'src/db/sqlite.lifecycle-rename.test.ts',
+  'src/db/sqlite.scope-owner-invariants.test.ts',
+  'src/db/sqlite.scope-continuity-migration.test.ts',
+  'src/db/sqlite.connector-contract-migration.test.ts',
+  'src/db/sqlite.connector-schedule-migration.test.ts',
+  'src/db/sqlite.earliest-backfill-migration.test.ts',
+  'src/db/sqlite.installed-migration.test.ts',
+  'src/db/sqlite.raw-source-lineage-migration.test.ts',
+] as const
+
+const requiredProfileMigrationEvidence = [
+  'src/modules/profile/profile.migration.source.ts',
+  'src/modules/profile/profile.migration.source.test.ts',
+  'src/modules/profile/profile.migration.backup.ts',
+  'src/modules/profile/profile.migration.backup.test.ts',
+  'src/modules/profile/profile.migration.ts',
+  'src/modules/profile/profile.migration.test.ts',
+] as const
+
+describe('operational migration cutover boundary', () => {
+  it('keeps exactly one PostgreSQL baseline and no historical operational SQLite migration surface', () => {
+    const sqlBaselines = fs
+      .readdirSync(drizzleDir)
+      .filter((name) => name.endsWith('.sql'))
+      .sort()
+    expect(sqlBaselines).toEqual(['0000_pglite_operational_baseline.sql'])
+
+    const journal = JSON.parse(
+      fs.readFileSync(path.join(drizzleDir, 'meta', '_journal.json'), 'utf8'),
+    ) as { dialect: string; entries: Array<{ tag: string }> }
+    expect(journal.dialect).toBe('postgresql')
+    expect(journal.entries).toHaveLength(1)
+    expect(journal.entries[0]?.tag).toBe('0000_pglite_operational_baseline')
+
+    for (const relativePath of forbiddenOperationalMigrationAssets) {
+      expect(fs.existsSync(path.join(repoRoot, relativePath)), relativePath).toBe(false)
+    }
+
+    const leftoverOperationalMigrationTests = fs
+      .readdirSync(dbDir)
+      .filter(
+        (name) =>
+          name.startsWith('sqlite.') &&
+          (name.includes('migration') ||
+            name.includes('lifecycle-rename') ||
+            name.includes('scope-owner') ||
+            name.includes('scope-continuity') ||
+            name.includes('schema-test-helpers') ||
+            name.includes('data-migration')),
+      )
+      .sort()
+    expect(leftoverOperationalMigrationTests).toEqual([])
+
+    for (const relativePath of requiredProfileMigrationEvidence) {
+      expect(fs.existsSync(path.join(repoRoot, relativePath)), relativePath).toBe(true)
+    }
+
+    const profileEvidence = fs
+      .readdirSync(profileDir)
+      .filter((name) => name.startsWith('profile.migration'))
+      .sort()
+    expect(profileEvidence).toEqual(
+      expect.arrayContaining([
+        'profile.migration.backup.test.ts',
+        'profile.migration.backup.ts',
+        'profile.migration.source.test.ts',
+        'profile.migration.source.ts',
+        'profile.migration.test.ts',
+        'profile.migration.ts',
+      ]),
+    )
+  })
+})

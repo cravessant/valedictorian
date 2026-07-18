@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createFileDatabase, migrateDatabase } from '../../db/sqlite'
+import { createFileLegacyProfileSqliteDatabase } from './profile.legacy-sqlite.fixture'
 import {
   computeProfileMigrationBackupSha256,
   createVerifiedProfileMigrationBackup,
@@ -26,8 +26,7 @@ describe('profile migration backup publication', () => {
     fs.mkdirSync(migrationDirectory, { recursive: true })
     const staleTempName = `.${profileMigrationBackupFileName}.interrupted.tmp`
     fs.writeFileSync(path.join(migrationDirectory, staleTempName), 'incomplete')
-    const database = createFileDatabase(path.join(rootPath, 'workspace.sqlite'))
-    migrateDatabase(database)
+    const database = createFileLegacyProfileSqliteDatabase(path.join(rootPath, 'workspace.sqlite'))
 
     expect(() => createVerifiedProfileMigrationBackup({
       beforePublish() {
@@ -50,8 +49,7 @@ describe('profile migration backup publication', () => {
     const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-backup-immutable-'))
     cleanupPaths.push(rootPath)
     const migrationDirectory = path.join(rootPath, 'profile-migration')
-    const database = createFileDatabase(path.join(rootPath, 'workspace.sqlite'))
-    migrateDatabase(database)
+    const database = createFileLegacyProfileSqliteDatabase(path.join(rootPath, 'workspace.sqlite'))
     const backupPath = createVerifiedProfileMigrationBackup({ database, migrationDirectory })
     const originalChecksum = computeProfileMigrationBackupSha256(backupPath)
     database.prepare(`

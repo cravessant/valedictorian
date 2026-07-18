@@ -2,8 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { profileDocumentSchemaVersion, type ProfileDocument } from 'sparxie'
-import type { SqliteDatabase } from '../../db/sqlite'
 import type { SecretCodec } from '../secrets/secret.codec'
+import type { LegacySqliteDatabase } from './profile.legacy-sqlite'
 import { isSecretCodecAvailable } from '../secrets/secret.codec'
 import { identitySsnLast4SecretKey } from '../secrets/secret.identity'
 import type { SecretService } from '../secrets/secret.service'
@@ -94,8 +94,8 @@ export interface ProfileMigrationResult {
 }
 
 export async function migrateLegacyProfileToJson(options: {
-  cleanupLegacyTables?: (database: SqliteDatabase) => void
-  database: SqliteDatabase
+  cleanupLegacyTables?: (database: LegacySqliteDatabase) => void
+  database: LegacySqliteDatabase
   now?: () => Date
   profilePath: string
   secretCodec: SecretCodec
@@ -406,7 +406,7 @@ function verifyBackupMatchesSource(
   }
 }
 
-function cleanupLegacyProfileTables(database: SqliteDatabase) {
+function cleanupLegacyProfileTables(database: LegacySqliteDatabase) {
   database.transaction(() => {
     database.exec(`
       drop table if exists profile_answers;
@@ -418,8 +418,8 @@ function cleanupLegacyProfileTables(database: SqliteDatabase) {
 }
 
 function runLegacyProfileCleanup(options: {
-  cleanupLegacyTables?: (database: SqliteDatabase) => void
-  database: SqliteDatabase
+  cleanupLegacyTables?: (database: LegacySqliteDatabase) => void
+  database: LegacySqliteDatabase
 }) {
   try {
     (options.cleanupLegacyTables ?? cleanupLegacyProfileTables)(options.database)
