@@ -252,12 +252,10 @@ export async function createValedictorianRuntime({
     scheduler.start()
   }
 
-  return {
-    client,
-    connectors: client.connectors,
-    profileService: preparedCapabilities?.profileService ?? null,
-    secretService: preparedCapabilities?.secretService ?? null,
-    close: async () => {
+  let closeInflight: Promise<void> | null = null
+  const close = () => {
+    if (closeInflight) return closeInflight
+    closeInflight = (async () => {
       try {
         await scheduler.stop()
         await server?.close()
@@ -268,7 +266,16 @@ export async function createValedictorianRuntime({
           await disposePreparedCapabilities()
         }
       }
-    },
+    })()
+    return closeInflight
+  }
+
+  return {
+    client,
+    connectors: client.connectors,
+    profileService: preparedCapabilities?.profileService ?? null,
+    secretService: preparedCapabilities?.secretService ?? null,
+    close,
     stopScheduler: () => scheduler.stop(),
     get server() {
       return server

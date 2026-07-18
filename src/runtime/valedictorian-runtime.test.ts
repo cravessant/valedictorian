@@ -255,10 +255,10 @@ describe('Valedictorian runtime creation', () => {
     ])
     expect(runtime.profileService).toBe(profileService)
     expect(runtime.secretService).toBe(secretService)
-    await runtime.close()
-    await runtime.close()
+    await Promise.all([runtime.close(), runtime.close()])
     expect(events).toContain('capabilities.dispose')
     expect(dispose).toHaveBeenCalledTimes(1)
+    expect(server.close).toHaveBeenCalledTimes(1)
   })
 
   it('disposes prepared capabilities when local server startup fails', async () => {
