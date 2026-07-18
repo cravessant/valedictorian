@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { createDrizzleDatabase, createInMemoryDatabase, migrateDatabase } from '../db/sqlite'
-import { createSqliteConnectorRepository } from '../modules/connectors/connector.repository'
+import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { mapConnectorRunSummary, publicConnectorRunSummary } from './local-connector-public-run'
+import { createTestPgliteDatabase } from './local-valedictorian-client.test-harness'
 
 describe('public terminal connector lifecycle projection', () => {
   it('publishes a valid terminal synchronization for a completed generic normalization retry', async () => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const fixture = await createTestPgliteDatabase()
+    const repository = createPgliteConnectorRepository(fixture.database)
     await repository.upsertInstance({
       id: 'generic-normalization-retry', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Generic normalization retry', enabled: true,
@@ -37,7 +36,7 @@ describe('public terminal connector lifecycle projection', () => {
         outcome: { kind: 'yielded', reason: 'invocation_budget' },
         lifecycleCounts: { source: 'frozen_terminal' },
       })
-    sqlite.close()
+    await fixture.close()
   })
 
   it.each([
@@ -84,9 +83,8 @@ describe('public terminal connector lifecycle projection', () => {
       outcome: () => ({ kind: 'failed' as const, reason: 'fixture_failure' }),
     },
   ])('publishes frozen zero-count lifecycle details for $name', async (terminal) => {
-    const sqlite = createInMemoryDatabase()
-    migrateDatabase(sqlite)
-    const repository = createSqliteConnectorRepository(createDrizzleDatabase(sqlite))
+    const fixture = await createTestPgliteDatabase()
+    const repository = createPgliteConnectorRepository(fixture.database)
     const instance = await repository.upsertInstance({
       id: `terminal-${terminal.name.replaceAll(' ', '-')}`,
       connectorId: 'fixture.jobs',
@@ -153,6 +151,6 @@ describe('public terminal connector lifecycle projection', () => {
         rejected: 0,
       },
     })
-    sqlite.close()
+    await fixture.close()
   })
 })
