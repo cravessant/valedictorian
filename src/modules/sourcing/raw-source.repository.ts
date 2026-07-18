@@ -81,7 +81,7 @@ export function createPgliteRawSourceRepository(
 ): RawSourceRepository {
   return {
     async list(query) {
-      return listRawSourceRecords(database as never, query)
+      return listRawSourceRecords(database, query)
     },
 
     async ingestBatch(input, options) {
