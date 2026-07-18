@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ValedictorianWorkspaceClient } from 'sparxie'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
+import { ProfileUpgradeRequiredError } from '../modules/profile/profile.upgrade-policy'
 import { createLocalWorkspaceManager } from './local-workspaces'
 
 describe('local workspace profile capability lifecycle', () => {
@@ -120,6 +121,39 @@ describe('local workspace profile capability lifecycle', () => {
     })
     await Promise.all([manager.close(), manager.close()])
     expect(secondDispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('records the safe staged-upgrade instruction without exposing a workspace path', async () => {
+    const registryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-upgrade-registry-'))
+    const workspace = initializeWorkspace(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'workspace-upgrade-required-')),
+      { createId: () => 'workspace-upgrade-required' },
+    )
+    cleanupPaths.push(registryRoot, workspace.rootPath)
+    const registryStore = createFileWorkspaceRegistryStore(path.join(registryRoot, 'workspaces.json'))
+    const manager = createLocalWorkspaceManager({
+      prepareWorkspaceCapabilities: vi.fn(async () => {
+        throw new ProfileUpgradeRequiredError()
+      }) as never,
+      registryStore,
+    })
+    await manager.open({ path: workspace.rootPath })
+
+    await expect(manager.resolveClient(workspace.id)).rejects.toBeInstanceOf(
+      ProfileUpgradeRequiredError,
+    )
+    await expect(registryStore.get()).resolves.toMatchObject({
+      workspaces: {
+        [workspace.id]: {
+          latestError: {
+            message: expect.stringContaining(
+              'Valedictorian 0.1.0-alpha.43 through 0.1.0-alpha.46',
+            ),
+          },
+        },
+      },
+    })
+    await manager.close()
   })
 
   it('awaits an in-flight first resolution before closing its owner', async () => {

@@ -23,6 +23,7 @@ import {
   prepareWorkspaceProfileCapabilities,
   type PreparedWorkspaceProfileCapabilities,
 } from '../modules/profile/profile.composition'
+import { ProfileUpgradeRequiredError } from '../modules/profile/profile.upgrade-policy'
 
 export class LocalWorkspaceConflictError extends Error {
   readonly statusCode = 409
@@ -225,7 +226,10 @@ export function createLocalWorkspaceManager({
 function sanitizedWorkspaceInitializationError(error: unknown) {
   if (
     error instanceof Error
-    && error.name === 'ProfileMigrationError'
+    && (
+      error.name === 'ProfileMigrationError'
+      || error instanceof ProfileUpgradeRequiredError
+    )
     && !error.message.includes('/')
     && !error.message.includes('\\')
   ) {
