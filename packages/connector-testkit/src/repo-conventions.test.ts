@@ -324,6 +324,10 @@ describe("connector repository conventions", () => {
     expect(rootPackage.scripts?.["publish:public"]).toBeUndefined()
     expect(ciWorkflow).toContain("pnpm install --frozen-lockfile")
     expect(ciWorkflow).toContain("cancel-in-progress: true")
+    expect(ciWorkflow).toContain(
+      "types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]",
+    )
+    expect(ciWorkflow).toContain("github.event.pull_request.draft == false")
     expect(ciWorkflow.match(/run: pnpm build/g)).toHaveLength(1)
     expect(ciWorkflow).toContain("pnpm exec vitest run --passWithNoTests")
     expect(ciWorkflow).toContain("pnpm exec tsc --noEmit")
