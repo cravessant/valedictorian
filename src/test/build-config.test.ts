@@ -196,7 +196,8 @@ describe('build configuration', () => {
     const normalizedPgliteHarness = pgliteHarness.replace(/\s+/g, ' ')
 
     expect(viteConfig).toContain("globalSetup: './src/test/global-setup.ts'")
-    expect(viteConfig).toContain('maxWorkers: process.env.CI ? 4 : 2')
+    expect(viteConfig).toContain('maxWorkers: 2')
+    expect(viteConfig).toContain('minWorkers: process.env.CI ? 2 : undefined')
     expect(normalizedPgliteHarness).toContain(
       'clonedFromTemplate ? createPgliteDatabase(pglite) : await migratePgliteDatabase(pglite)',
     )
