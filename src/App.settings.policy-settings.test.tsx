@@ -281,9 +281,52 @@ describe('policy settings', () => {
 
     rejectReset?.(new Error('Policy store unavailable.'))
 
-    expect(await within(dialog).findByText('Policy store unavailable.')).toBeInTheDocument()
+    const alert = await within(dialog).findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'form-failure')
+    expect(alert).toHaveTextContent('An unexpected error occurred.')
+    expect(document.activeElement).toBe(alert)
+    expect(within(dialog).queryByText('Policy store unavailable.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Policy update failed')).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Reset policy' })).toBeEnabled()
     expect(screen.getByRole('alertdialog', { name: 'Reset policy?' })).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-slot="form-failure"]')).toHaveLength(1)
+  })
+
+  it('owns policy save failures with one form surface and never duplicates a toast', async () => {
+    const policyApi = createPolicyApi()
+    policyApi.config.update = vi.fn(async () => {
+      throw new Error('ENOENT /var/policy.json stack')
+    })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        policyApi={policyApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Policy' }))
+    expect(await screen.findByRole('heading', { name: 'Policy' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Apply cutoff'), { target: { value: '7' } })
+    fireEvent.click(
+      within(screen.getByRole('region', { name: 'Action Queue decisions' })).getByRole('button', {
+        name: 'Save Action Queue decisions',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(policyApi.config.update).toHaveBeenCalled()
+    })
+
+    const formFailure = await screen.findByRole('alert')
+    expect(formFailure).toHaveAttribute('data-slot', 'form-failure')
+    expect(formFailure).toHaveTextContent('An unexpected error occurred.')
+    expect(screen.queryByText('ENOENT /var/policy.json stack')).not.toBeInTheDocument()
+    expect(screen.queryByText('Policy update failed')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Apply cutoff')).toHaveValue(7)
   })
 
 })

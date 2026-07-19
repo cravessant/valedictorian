@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { ValedictorianHttpError, ValedictorianTransportError } from 'sparxie'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { Input } from '@/components/ui/input'
 import { fieldControlId } from '@/lib/field-control-id'
+import { safePublicErrorMessage } from '../app/error-presentation'
 import type { AppSettingsPatch } from './app-settings'
 
 export function ApiTokenSettingsControls({
@@ -15,20 +18,42 @@ export function ApiTokenSettingsControls({
   const [draft, setDraft] = useState('')
   const [pending, setPending] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const isMountedRef = useRef(true)
   const controlId = fieldControlId('settings-text', 'API token')
   const statusLabel = apiTokenConfigured ? 'Configured' : 'Not configured'
   const saveLabel = apiTokenConfigured ? 'Replace' : 'Set'
 
-  async function applyPatch(patch: AppSettingsPatch, failureMessage: string) {
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  async function applyPatch(patch: AppSettingsPatch, fallbackMessage: string) {
     setPending(true)
     setErrorMessage(null)
     try {
       await onSettingsPatch(patch)
+      if (!isMountedRef.current) {
+        return
+      }
       setDraft('')
-    } catch {
-      setErrorMessage(failureMessage)
+    } catch (error: unknown) {
+      if (!isMountedRef.current) {
+        return
+      }
+      const typedFailure = error instanceof ValedictorianHttpError
+        || error instanceof ValedictorianTransportError
+      setErrorMessage(
+        typedFailure
+          ? (safePublicErrorMessage(error) || fallbackMessage)
+          : fallbackMessage,
+      )
     } finally {
-      setPending(false)
+      if (isMountedRef.current) {
+        setPending(false)
+      }
     }
   }
 
@@ -51,16 +76,15 @@ export function ApiTokenSettingsControls({
           id={controlId}
           type="password"
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            if (errorMessage) setErrorMessage(null)
+          }}
         />
         {errorMessage ? (
-          <p
-            aria-live="polite"
-            className="text-sm text-destructive"
-            data-testid="api-token-error"
-          >
-            {errorMessage}
-          </p>
+          <div data-testid="api-token-error">
+            <FormFailureAlert message={errorMessage} title="API token update failed" />
+          </div>
         ) : null}
         <div className="flex flex-wrap gap-2">
           <Button

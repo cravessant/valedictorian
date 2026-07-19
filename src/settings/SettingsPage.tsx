@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -19,7 +19,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
+import { clearDestructiveToastDedupeFor, useToast } from '@/components/ui/use-toast'
 import { typography, typographyClass } from '@/components/ui/typography'
+import {
+  actionFailureToastInput,
+  type ErrorPresentation,
+} from '../app/error-presentation'
 import { AlertCircle, ArrowLeft, Bot, Brush, CircleUserRound, Cog, Database, FolderOpen, Globe2, KeyRound, Monitor, Search, Server, ShieldCheck, SlidersHorizontal, Terminal } from 'lucide-react'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
@@ -47,8 +53,12 @@ interface SettingsPageProps {
   restartRequired: boolean
   selectedPanel: SettingsPanelId
   settings: AppSettings
+  settingsLoadFailure: ErrorPresentation | null
+  onRetrySettingsLoad: () => void
   workspace: WorkspaceSummary | null
   workspaceApi: WorkspacePreloadApi
+  workspaceLoadFailure: ErrorPresentation | null
+  onRetryWorkspaceLoad: () => void
   onConnectorRunSettled: () => void
   onOpenSourcingRuns: (runId?: string) => void
   onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
@@ -244,17 +254,31 @@ export function SettingsPage({
   restartRequired,
   selectedPanel,
   settings,
+  settingsLoadFailure,
+  onRetrySettingsLoad,
   workspace,
   workspaceApi,
+  workspaceLoadFailure,
+  onRetryWorkspaceLoad,
   onConnectorRunSettled,
   onOpenSourcingRuns,
   onSettingsPatch,
 }: SettingsPageProps) {
+  const { toast } = useToast()
   const selectedItem = settingsNavGroups
     .flatMap((group) => group.items)
     .find((item) => item.id === selectedPanel)
   const selectedLabel = selectedItem?.label ?? 'General'
   const apiBaseUrl = `http://${settings.localApiHost}:${settings.localApiPort}`
+
+  function patchSettings(patch: AppSettingsPatch) {
+    void Promise.resolve(onSettingsPatch(patch)).catch((error: unknown) => {
+      toast(actionFailureToastInput(error, {
+        fallbackMessage: 'Settings could not be saved.',
+        operationId: 'settings:update',
+      }))
+    })
+  }
 
   return (
     <main className={`h-full min-w-0 overflow-auto px-5 py-6 text-foreground md:h-[calc(100vh-3rem)] sm:px-8 lg:px-12 ${contentColumnClass}`}>
@@ -272,10 +296,16 @@ export function SettingsPage({
 
         <div className="mt-8">
           {selectedPanel === SETTINGS_PANELS.GENERAL ? (
-            <GeneralSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
+            <GeneralSettingsPanel settings={settings} onSettingsPatch={patchSettings} />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.CONFIGURATION ? (
-            <ConfigurationSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
+            <ConfigurationSettingsPanel
+              settings={settings}
+              settingsLoadFailure={settingsLoadFailure}
+              onRetrySettingsLoad={onRetrySettingsLoad}
+              onSettingsPatch={onSettingsPatch}
+              onOrdinarySettingsPatch={patchSettings}
+            />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.CONNECTORS ? (
             <ConnectorSettingsPanel
@@ -295,10 +325,15 @@ export function SettingsPage({
             />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.APPEARANCE ? (
-            <AppearanceSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
+            <AppearanceSettingsPanel settings={settings} onSettingsPatch={patchSettings} />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.DATA ? (
-            <DataSettingsPanel workspace={workspace} workspaceApi={workspaceApi} />
+            <DataSettingsPanel
+              workspace={workspace}
+              workspaceApi={workspaceApi}
+              workspaceLoadFailure={workspaceLoadFailure}
+              onRetryWorkspaceLoad={onRetryWorkspaceLoad}
+            />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.PROFILE ? (
             <ProfileSettingsPanel profileApi={profileApi} />
@@ -307,7 +342,7 @@ export function SettingsPage({
             <PolicySettingsPanel policyApi={policyApi} />
           ) : null}
           {selectedPanel === SETTINGS_PANELS.ADVANCED ? (
-            <DeveloperSettingsPanel settings={settings} onSettingsPatch={onSettingsPatch} />
+            <DeveloperSettingsPanel settings={settings} onSettingsPatch={patchSettings} />
           ) : null}
           {!isFunctionalSettingsPanel(selectedPanel) ? (
             <ComingLaterSettingsPanel label={selectedLabel} />
@@ -383,10 +418,16 @@ function GeneralSettingsPanel({
 
 function ConfigurationSettingsPanel({
   settings,
+  settingsLoadFailure,
+  onRetrySettingsLoad,
   onSettingsPatch,
+  onOrdinarySettingsPatch,
 }: {
   settings: AppSettings
+  settingsLoadFailure: ErrorPresentation | null
+  onRetrySettingsLoad: () => void
   onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
+  onOrdinarySettingsPatch: (patch: AppSettingsPatch) => void
 }) {
   return (
     <section aria-labelledby="configuration-settings-title" className="space-y-7">
@@ -399,22 +440,26 @@ function ConfigurationSettingsPanel({
         </p>
       </div>
 
+      {settingsLoadFailure ? (
+        <LoadFailureView failure={settingsLoadFailure} onRetry={onRetrySettingsLoad} />
+      ) : null}
+
       <div className="divide-y divide-border rounded-md border border-border bg-card">
         <SettingsTextInput
           label="Remote API URL"
           value={settings.remoteApiUrl}
-          onChange={(value) => onSettingsPatch({ remoteApiUrl: value })}
+          onChange={(value) => onOrdinarySettingsPatch({ remoteApiUrl: value })}
         />
         <SettingsTextInput
           label="Local API host"
           value={settings.localApiHost}
-          onChange={(value) => onSettingsPatch({ localApiHost: value })}
+          onChange={(value) => onOrdinarySettingsPatch({ localApiHost: value })}
         />
         <SettingsTextInput
           label="Local API port"
           type="number"
           value={String(settings.localApiPort)}
-          onChange={(value) => onSettingsPatch({ localApiPort: Number(value) })}
+          onChange={(value) => onOrdinarySettingsPatch({ localApiPort: Number(value) })}
         />
         <ApiTokenSettingsControls
           apiTokenConfigured={settings.apiTokenConfigured}
@@ -484,10 +529,95 @@ function AgentAccessSettingsPanel({
 function DataSettingsPanel({
   workspace,
   workspaceApi,
+  workspaceLoadFailure,
+  onRetryWorkspaceLoad,
 }: {
   workspace: WorkspaceSummary | null
   workspaceApi: WorkspacePreloadApi
+  workspaceLoadFailure: ErrorPresentation | null
+  onRetryWorkspaceLoad: () => void
 }) {
+  const { toast } = useToast()
+  const [pendingAction, setPendingAction] = useState<'choose' | 'reveal' | null>(null)
+  const pendingActionRef = useRef<'choose' | 'reveal' | null>(null)
+  const isMountedRef = useRef(true)
+  const workspaceApiRef = useRef(workspaceApi)
+  const actionTargetEpochRef = useRef(0)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    workspaceApiRef.current = workspaceApi
+    actionTargetEpochRef.current += 1
+    pendingActionRef.current = null
+    setPendingAction(null)
+    return () => {
+      isMountedRef.current = false
+      actionTargetEpochRef.current += 1
+    }
+  }, [workspaceApi])
+
+  function runWorkspaceFolderAction(
+    kind: 'choose' | 'reveal',
+    {
+      fallbackMessage,
+      operationId,
+    }: {
+      fallbackMessage: string
+      operationId: string
+    },
+  ) {
+    if (!isMountedRef.current || pendingActionRef.current !== null) {
+      return
+    }
+    const epochAtStart = actionTargetEpochRef.current
+    const apiAtStart = workspaceApiRef.current
+    pendingActionRef.current = kind
+    setPendingAction(kind)
+    const task = kind === 'choose'
+      ? () => apiAtStart.chooseFolder()
+      : () => apiAtStart.revealCurrent()
+    void task()
+      .catch((error: unknown) => {
+        if (
+          !isMountedRef.current
+          || actionTargetEpochRef.current !== epochAtStart
+          || workspaceApiRef.current !== apiAtStart
+        ) {
+          return
+        }
+        clearDestructiveToastDedupeFor(operationId)
+        toast({
+          ...actionFailureToastInput(error, {
+            fallbackMessage,
+            operationId,
+          }),
+          action: {
+            label: 'Retry',
+            onClick: () => {
+              if (!isMountedRef.current) {
+                return
+              }
+              clearDestructiveToastDedupeFor(operationId)
+              runWorkspaceFolderAction(kind, { fallbackMessage, operationId })
+            },
+          },
+        })
+      })
+      .finally(() => {
+        if (
+          !isMountedRef.current
+          || actionTargetEpochRef.current !== epochAtStart
+          || workspaceApiRef.current !== apiAtStart
+        ) {
+          return
+        }
+        if (pendingActionRef.current === kind) {
+          pendingActionRef.current = null
+          setPendingAction(null)
+        }
+      })
+  }
+
   return (
     <section aria-labelledby="data-settings-title" className="space-y-7">
       <div>
@@ -498,6 +628,10 @@ function DataSettingsPanel({
           Workspace files and local database paths.
         </p>
       </div>
+
+      {workspaceLoadFailure ? (
+        <LoadFailureView failure={workspaceLoadFailure} onRetry={onRetryWorkspaceLoad} />
+      ) : null}
 
       <div className="divide-y divide-border rounded-md border border-border bg-card">
         <SettingsTextInput
@@ -518,19 +652,35 @@ function DataSettingsPanel({
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <Button type="button" variant="outline" className="gap-2" onClick={() => void workspaceApi.chooseFolder()}>
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2"
+          disabled={pendingAction !== null}
+          onClick={() => {
+            runWorkspaceFolderAction('choose', {
+              fallbackMessage: 'Workspace could not be chosen.',
+              operationId: 'workspace:choose-folder',
+            })
+          }}
+        >
           <FolderOpen className="h-4 w-4" aria-hidden="true" />
-          Choose workspace
+          {pendingAction === 'choose' ? 'Choosing...' : 'Choose workspace'}
         </Button>
         <Button
           type="button"
           variant="outline"
           className="gap-2"
-          disabled={!workspace}
-          onClick={() => void workspaceApi.revealCurrent()}
+          disabled={!workspace || pendingAction !== null}
+          onClick={() => {
+            runWorkspaceFolderAction('reveal', {
+              fallbackMessage: 'Workspace could not be revealed.',
+              operationId: 'workspace:reveal-current',
+            })
+          }}
         >
           <FolderOpen className="h-4 w-4" aria-hidden="true" />
-          Reveal workspace
+          {pendingAction === 'reveal' ? 'Revealing...' : 'Reveal workspace'}
         </Button>
       </div>
     </section>

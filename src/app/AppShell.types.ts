@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
+import type { ErrorPresentation } from './error-presentation'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
@@ -48,28 +49,28 @@ import type { RawNormalizationRunFilter, RawRecordsReadApi } from '../modules/so
 
 export interface AppShellProps {
   actionQueueBucket: ActionQueueBucket | undefined
-  actionQueueError: string | null
+  actionQueueError: ErrorPresentation | null
   actionQueueOffset: number
   actionQueueResult: ActionQueueListResult
   appView: AppView
   applicationCreator: (input: CreateApplicationInput) => Promise<ApplicationDetail>
   applicationDetail: ApplicationDetail | null
-  applicationDetailError: string | null
-  applicationEventsError: string | null
+  applicationDetailError: ErrorPresentation | null
+  applicationEventsError: ErrorPresentation | null
   applicationEventsResult: ApplicationEventsListResult
   applicationLinkCreator: (input: CreateApplicationLinkInput) => Promise<ApplicationLinkRecord>
   applicationLinkUpdater: (input: UpdateApplicationLinkInput) => Promise<ApplicationLinkRecord>
-  applicationLinksError: string | null
+  applicationLinksError: ErrorPresentation | null
   applicationLinksResult: ApplicationLinksListResult
   applicationNoteAppender: (input: AppendApplicationNoteInput) => Promise<ApplicationDetail>
   applicationStatusUpdater: (input: StatusUpdateInput) => Promise<ApplicationDetail>
   applicationUpdater: (input: UpdateApplicationInput) => Promise<ApplicationDetail>
   applicationWorkflowUpdater: (input: UpdateApplicationWorkflowInput) => Promise<ApplicationDetail>
-  attemptError: string | null
+  attemptError: ErrorPresentation | null
   attemptResult: ApplicationAttemptsListResult
   checkForUpdates: () => Promise<UpdateState>
   closeTransientSidebar: () => void
-  connectorStatusError: string | null
+  connectorStatusError: ErrorPresentation | null
   connectorStatusResult: ConnectorStatusListResult
   connectorsApi: ConnectorsPreloadApi
   connectorScheduleApi: ConnectorScheduleUiApi
@@ -77,7 +78,7 @@ export interface AppShellProps {
   createSourcingFinding: (input: CreateSourcingFindingInput) => Promise<SourcingFinding>
   decideSourcingFinding: (input: SetSourcingFindingDecisionInput) => Promise<SourcingFinding>
   editingApplication: ApplicationListItem | null
-  error: string | null
+  error: ErrorPresentation | null
   filters: FilterState
   filtersExpanded: boolean
   focusedConnectorRunId: string | null
@@ -110,8 +111,12 @@ export interface AppShellProps {
   rawRecordsApi: RawRecordsReadApi
   normalizationRunFilter: RawNormalizationRunFilter | null
   promoteFinding: (findingId: string) => void
-  promotingFindingId: string | null
+  promotingFindingIds: ReadonlySet<string>
   reloadApplicationViews: () => void
+  reloadApplications: () => void
+  reloadActionQueue: () => void
+  reloadApplicationDetail: () => void
+  reloadConnectorStatus: () => void
   reloadConnectorRunOutcomes: () => void
   reloadSourcing: () => void
   resetFilters: () => void
@@ -136,14 +141,18 @@ export interface AppShellProps {
   setSourcingOffset: Dispatch<SetStateAction<number>>
   setSourcingUsability: Dispatch<SetStateAction<SourcingUsability | undefined>>
   settings: AppSettings
+  settingsLoadFailure: ErrorPresentation | null
   settingsOpen: boolean
   settingsRestartRequired: boolean
+  reloadSettings: () => void
+  reloadWorkspace: () => void
+  workspaceLoadFailure: ErrorPresentation | null
   sidebarHoverExpanded: boolean
   sidebarState: 'expanded' | 'collapsed' | 'hover' | 'drawer-open' | 'drawer-closed'
   sidebarToggleCollapsed: boolean
   sidebarVisible: boolean
   sourcingDestinationClass: SourcingDestinationClass | undefined
-  sourcingError: string | null
+  sourcingError: ErrorPresentation | null
   focusedSourcingFindingId: string | null
   sourcingMergeStatus: SourcingMergeStatus | undefined
   sourcingOffset: number

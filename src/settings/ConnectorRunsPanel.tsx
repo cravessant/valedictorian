@@ -17,6 +17,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { AlertCircle, History } from 'lucide-react'
 import { typography } from '@/components/ui/typography'
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
@@ -28,6 +29,7 @@ import {
 import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
 import type { RawNormalizationRunFilter } from '../modules/sourcing/raw-normalization.types'
+import { ownedLoadFailure, presentLoadFailure, type ErrorPresentation } from '../app/error-presentation'
 
 interface ConnectorRunHistoryItem {
   connectorId: string
@@ -123,18 +125,28 @@ export function ConnectorRunsPanel({
   onInspectNormalization?: (filter: RawNormalizationRunFilter) => void
 }) {
   const [items, setItems] = useState<ConnectorRunHistoryItem[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [loadFailure, setLoadFailure] = useState<ErrorPresentation | null>(null)
   const [focusedRunLookup, setFocusedRunLookup] = useState<FocusedConnectorRunLookup>('idle')
   const [isLoading, setIsLoading] = useState(true)
+  const [loadRetryKey, setLoadRetryKey] = useState(0)
   const focusedRunRef = useRef<HTMLElement | null>(null)
   const focusedRunAppliedIdRef = useRef<string | null>(null)
+  const focusedIdentityRef = useRef(focusedRunId)
+  const itemsRef = useRef(items)
+  itemsRef.current = items
 
   useEffect(() => {
+    const focusedChanged = focusedIdentityRef.current !== focusedRunId
+    focusedIdentityRef.current = focusedRunId
     focusedRunAppliedIdRef.current = null
-    setFocusedRunLookup('idle')
-  }, [focusedRunId])
+    if (focusedChanged) {
+      setItems([])
+      itemsRef.current = []
+      setLoadFailure(null)
+      setFocusedRunLookup('idle')
+      setIsLoading(true)
+    }
 
-  useEffect(() => {
     let cancelled = false
     let pollTimer: ReturnType<typeof setTimeout> | undefined
     let resolvedFocusedItem: ConnectorRunHistoryItem | null = null
@@ -168,17 +180,27 @@ export function ConnectorRunsPanel({
         if (!cancelled) {
           setItems(nextItems)
           setFocusedRunLookup(focusedRunId && focusedLookupComplete ? lookupOutcome : 'idle')
-          setError(null)
+          setLoadFailure(null)
           if (nextItems.some(({ run }) => run.status === 'queued' || run.status === 'running')) {
             pollTimer = setTimeout(loadRuns, 1_000)
           }
         }
       })
-      .catch(() => {
+      .catch((reason: unknown) => {
         if (!cancelled) {
-          setItems([])
+          const hasStaleData = !focusedChanged && itemsRef.current.length > 0
           setFocusedRunLookup('idle')
-          setError('Connector run history could not be loaded.')
+          const presentation = presentLoadFailure(reason, {
+            fallbackMessage: 'Connector run history could not be loaded.',
+            hasStaleData,
+            trigger: hasStaleData ? 'refresh' : 'load',
+          })
+          const owned = ownedLoadFailure(
+            presentation.surface === 'authentication' || presentation.surface === 'global'
+              ? presentation
+              : { ...presentation, title: 'Run history unavailable' },
+          )
+          setLoadFailure(owned)
         }
       })
       .finally(() => {
@@ -195,7 +217,7 @@ export function ConnectorRunsPanel({
         clearTimeout(pollTimer)
       }
     }
-  }, [connectorsApi, focusedRunId])
+  }, [connectorsApi, focusedRunId, loadRetryKey])
 
   useEffect(() => {
     if (!focusedRunId || isLoading || focusedRunLookup !== 'found') {
@@ -230,12 +252,11 @@ export function ConnectorRunsPanel({
       {isLoading ? (
         <p className={typography.muted} role="status">Loading connector runs...</p>
       ) : null}
-      {error ? (
-        <Alert variant="destructive">
-          <AlertCircle aria-hidden="true" />
-          <AlertTitle>Run history unavailable</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+      {loadFailure ? (
+        <LoadFailureView
+          failure={loadFailure}
+          onRetry={() => setLoadRetryKey((current) => current + 1)}
+        />
       ) : null}
       {focusedRunLookup === 'not_found' && focusedRunId ? (
         <Alert variant="destructive">
@@ -256,7 +277,7 @@ export function ConnectorRunsPanel({
           More history is available beyond this search limit.
         </p>
       ) : null}
-      {!isLoading && !error && items.length === 0 ? (
+      {!isLoading && !loadFailure && items.length === 0 ? (
         <Empty
           aria-label="Empty connector runs"
           className="flex-none gap-3 rounded-md border border-solid border-border bg-card p-6"

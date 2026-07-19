@@ -5,6 +5,7 @@ import type {
   RawSourceRecord,
   RawSourceRecordSummary,
 } from 'sparxie'
+import { ValedictorianProtocolError } from 'sparxie'
 import {
   createNeedsEnrichmentNormalization,
   createPassedNormalization,
@@ -251,14 +252,15 @@ describe('sourcing normalization inspection', () => {
 
   it('announces list failures and retries through the same public query', async () => {
     const list = vi.fn()
-      .mockRejectedValueOnce(new Error('unsafe upstream details'))
+      .mockRejectedValueOnce(new ValedictorianProtocolError({ message: 'unsafe upstream details' }))
       .mockResolvedValueOnce({ items: [createRawSummary()], nextCursor: null })
     renderApp({ list, get: vi.fn(), getNormalization: vi.fn(), getProjection: vi.fn() })
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
     fireEvent.click(screen.getByRole('button', { name: 'Normalization' }))
 
-    const alert = await screen.findByRole('alert', { name: 'Capture lineages unavailable' })
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
     expect(alert).toHaveTextContent('Capture lineages could not be loaded.')
     expect(alert).not.toHaveTextContent('unsafe upstream details')
     fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))

@@ -19,7 +19,7 @@ function renderSourcingPage(
       isLoading={false}
       mergeStatus={undefined}
       destinationClass={undefined}
-      promotingFindingId={null}
+      promotingFindingIds={new Set()}
       result={createSourcingResult([])}
       showDebugData={false}
       sourceId=""

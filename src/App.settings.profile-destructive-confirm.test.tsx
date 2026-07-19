@@ -243,4 +243,159 @@ describe('profile destructive confirmations', () => {
       screen.getByRole('alertdialog', { name: 'Remove secure value Greenhouse password?' }),
     ).toBeInTheDocument()
   })
+
+  it('keeps education removal dialog retryable and preserves the item after a failed update', async () => {
+    const profileApi = createProfileApi()
+    await seedRemovableProfile(profileApi)
+    const updateCallsBeforeOpen = vi.mocked(profileApi.update).mock.calls.length
+    vi.mocked(profileApi.update)
+      .mockRejectedValueOnce(new Error('education remove dump /secret/vault'))
+      .mockImplementation(async (patch) => {
+        const current = await profileApi.get()
+        return {
+          ...current,
+          ...patch,
+          answers: patch.answers ?? current.answers,
+          education: patch.education ?? current.education,
+        }
+      })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(await screen.findByText('University of Colorado Boulder')).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove education University of Colorado Boulder' }),
+    )
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Remove education University of Colorado Boulder?',
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove education' }))
+
+    await waitFor(() => {
+      expect(profileApi.update).toHaveBeenCalledTimes(updateCallsBeforeOpen + 1)
+    })
+    const alert = await within(dialog).findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'form-failure')
+    expect(alert).toHaveTextContent(/Could not remove education/)
+    expect(alert).not.toHaveTextContent('/secret')
+    expect(document.activeElement).toBe(alert)
+    expect(screen.queryByText(/education remove dump/i)).not.toBeInTheDocument()
+    expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-slot="form-failure"]')).toHaveLength(1)
+    expect(within(dialog).getByRole('button', { name: 'Remove education' })).toBeEnabled()
+    expect(screen.getByText('University of Colorado Boulder')).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('alertdialog', {
+          name: 'Remove education University of Colorado Boulder?',
+        }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('University of Colorado Boulder')).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove education University of Colorado Boulder' }),
+    )
+    const retryDialog = await screen.findByRole('alertdialog', {
+      name: 'Remove education University of Colorado Boulder?',
+    })
+    fireEvent.click(within(retryDialog).getByRole('button', { name: 'Remove education' }))
+
+    await waitFor(() => {
+      expect(profileApi.update).toHaveBeenCalledTimes(updateCallsBeforeOpen + 2)
+    })
+    expect(vi.mocked(profileApi.update).mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        education: [],
+      }),
+    )
+    expect(await screen.findByText('Education removed.')).toBeInTheDocument()
+    expect(screen.queryByText('University of Colorado Boulder')).not.toBeInTheDocument()
+  })
+
+  it('keeps reusable-answer removal dialog retryable and preserves the item after a failed update', async () => {
+    const profileApi = createProfileApi()
+    await seedRemovableProfile(profileApi)
+    const updateCallsBeforeOpen = vi.mocked(profileApi.update).mock.calls.length
+    vi.mocked(profileApi.update)
+      .mockRejectedValueOnce(new Error('answer remove dump /secret/vault'))
+      .mockImplementation(async (patch) => {
+        const current = await profileApi.get()
+        return {
+          ...current,
+          ...patch,
+          answers: patch.answers ?? current.answers,
+          education: patch.education ?? current.education,
+        }
+      })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(await screen.findByText('Referral source')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove answer Referral source' }))
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Remove answer Referral source?',
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove answer' }))
+
+    await waitFor(() => {
+      expect(profileApi.update).toHaveBeenCalledTimes(updateCallsBeforeOpen + 1)
+    })
+    const alert = await within(dialog).findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'form-failure')
+    expect(alert).toHaveTextContent(/Could not remove answer/)
+    expect(alert).not.toHaveTextContent('/secret')
+    expect(document.activeElement).toBe(alert)
+    expect(screen.queryByText(/answer remove dump/i)).not.toBeInTheDocument()
+    expect(document.querySelectorAll('[role="alert"]')).toHaveLength(1)
+    expect(document.querySelectorAll('[data-slot="form-failure"]')).toHaveLength(1)
+    expect(within(dialog).getByRole('button', { name: 'Remove answer' })).toBeEnabled()
+    expect(screen.getByText('Referral source')).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('alertdialog', { name: 'Remove answer Referral source?' }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Referral source')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove answer Referral source' }))
+    fireEvent.click(
+      within(
+        await screen.findByRole('alertdialog', { name: 'Remove answer Referral source?' }),
+      ).getByRole('button', { name: 'Remove answer' }),
+    )
+
+    await waitFor(() => {
+      expect(profileApi.update).toHaveBeenCalledTimes(updateCallsBeforeOpen + 2)
+    })
+    expect(vi.mocked(profileApi.update).mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({
+        answers: [],
+      }),
+    )
+    expect(await screen.findByText('Answer removed.')).toBeInTheDocument()
+    expect(screen.queryByText('Referral source')).not.toBeInTheDocument()
+  })
 })

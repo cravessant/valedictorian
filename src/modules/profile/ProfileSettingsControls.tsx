@@ -17,6 +17,7 @@ import { TableCell, TableRow } from '@/components/ui/table'
 import { typography } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
 import { X } from 'lucide-react'
+import { safePublicErrorMessage } from '../../app/error-presentation'
 import {
   type ProfileAnswer,
   type ProfileEducation,
@@ -101,15 +102,7 @@ export function ProfileRowModal({
 }
 
 export function formatProfileError(error: unknown) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-
-  if (typeof error === 'string' && error.trim()) {
-    return error
-  }
-
-  return 'Please try again.'
+  return safePublicErrorMessage(error)
 }
 
 export function ProfileSection({
@@ -286,18 +279,20 @@ export function CompactSelect({
 
 export function InlineEditorActions({
   cancelLabel,
+  disabled = false,
   onCancel,
   onSave,
   saveLabel,
 }: {
   cancelLabel: string
+  disabled?: boolean
   onCancel: () => void
   onSave: () => void
   saveLabel: string
 }) {
   return (
     <div className="flex flex-wrap gap-2">
-      <Button type="button" onClick={onSave}>
+      <Button type="button" disabled={disabled} onClick={onSave}>
         {saveLabel}
       </Button>
       <Button type="button" aria-label={cancelLabel} variant="ghost" onClick={onCancel}>

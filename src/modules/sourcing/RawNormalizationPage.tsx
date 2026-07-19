@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import type { RawSourceRecordSummary } from 'sparxie'
 import { formatTimestamp } from '../../app/format'
+import {
+  ownedLoadFailure,
+  presentLoadFailure,
+  type ErrorPresentation,
+} from '../../app/error-presentation'
 import type { RawNormalizationRunFilter, RawRecordsReadApi } from './raw-normalization.types'
 import {
   buildRawRecordQuery,
@@ -31,32 +37,51 @@ export function RawNormalizationPage({
   const [pageIndex, setPageIndex] = useState(0)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [items, setItems] = useState<RawSourceRecordSummary[]>([])
-  const [error, setError] = useState(false)
+  const [loadFailure, setLoadFailure] = useState<ErrorPresentation | null>(null)
   const [loading, setLoading] = useState(true)
   const [retryKey, setRetryKey] = useState(0)
   const [selectedSummary, setSelectedSummary] = useState<RawSourceRecordSummary | null>(null)
+  const itemsRef = useRef(items)
+  itemsRef.current = items
   const query = useMemo(
     () => buildRawRecordQuery(filters, cursorHistory[pageIndex]),
     [cursorHistory, filters, pageIndex],
   )
+  const queryIdentityRef = useRef({ query, runFilter })
 
   useEffect(() => {
     let cancelled = false
+    const previousItems = itemsRef.current
+    const previousIdentity = queryIdentityRef.current
+    const queryChanged =
+      previousIdentity.query !== query || previousIdentity.runFilter !== runFilter
+    queryIdentityRef.current = { query, runFilter }
     setLoading(true)
-    setError(false)
-    setItems([])
-    setNextCursor(null)
-    setSelectedSummary(null)
+    if (queryChanged) {
+      setLoadFailure(null)
+      setItems([])
+      setNextCursor(null)
+      setSelectedSummary(null)
+    }
     void loadRawRecords(api, query, runFilter).then((result) => {
       if (!cancelled) {
         setItems(result.items)
         setNextCursor(result.nextCursor)
-        setError(false)
+        setLoadFailure(null)
       }
-    }).catch(() => {
+    }).catch((reason: unknown) => {
       if (!cancelled) {
-        setItems([])
-        setError(true)
+        if (!queryChanged) {
+          setItems(previousItems)
+        }
+        const hadItems = !queryChanged && previousItems.length > 0
+        setLoadFailure(ownedLoadFailure(presentLoadFailure(reason, {
+          fallbackMessage: runFilter
+            ? 'Capture lineage could not be verified, so no connector-run results are shown.'
+            : 'Capture lineages could not be loaded.',
+          hasStaleData: hadItems,
+          trigger: hadItems ? 'refresh' : 'load',
+        })))
       }
     }).finally(() => {
       if (!cancelled) setLoading(false)
@@ -80,6 +105,8 @@ export function RawNormalizationPage({
             setFilters(nextFilters)
             setCursorHistory([undefined])
             setPageIndex(0)
+            setItems([])
+            setSelectedSummary(null)
           }}
         />
         {runFilter ? (
@@ -91,34 +118,18 @@ export function RawNormalizationPage({
             Showing Capture lineages with Captures from connector run {runFilter.connectorRunId}.
           </p>
         ) : null}
-        {loading ? (
+        {loading && items.length === 0 ? (
           <p aria-label="Loading Capture lineages" role="status">
             Loading Capture lineages...
           </p>
         ) : null}
-        {error ? (
-          <div
-            aria-label={runFilter
-              ? 'Connector run Capture lineages could not be verified'
-              : 'Capture lineages unavailable'}
-            className="rounded-md border border-destructive/50 bg-destructive/10 p-4"
-            role="alert"
-          >
-            <p className="text-sm text-destructive">
-              {runFilter
-                ? 'Capture lineage could not be verified, so no connector-run results are shown.'
-                : 'Capture lineages could not be loaded.'}
-            </p>
-            <button
-              type="button"
-              className="mt-3 rounded-md border border-border px-3 py-2 text-sm"
-              onClick={() => setRetryKey((key) => key + 1)}
-            >
-              Retry
-            </button>
-          </div>
+        {loadFailure ? (
+          <LoadFailureView
+            failure={loadFailure}
+            onRetry={() => setRetryKey((key) => key + 1)}
+          />
         ) : null}
-        {!loading && !error && items.length === 0 ? (
+        {!loading && !loadFailure && items.length === 0 ? (
           <p
             aria-label="No Capture lineages match the current filters"
             className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground"
@@ -127,10 +138,10 @@ export function RawNormalizationPage({
             No Capture lineages match the current filters.
           </p>
         ) : null}
-        {!loading && !error && items.length > 0 ? (
+        {items.length > 0 ? (
           <RawRecordsTable items={items} onSelect={setSelectedSummary} />
         ) : null}
-        {!error && !loading && !runFilter ? (
+        {!loadFailure && !loading && !runFilter ? (
           <nav aria-label="Capture lineage pagination" className="flex items-center justify-end gap-2">
             <button
               type="button"

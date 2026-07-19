@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -7,9 +6,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { X } from 'lucide-react'
 import { manualSourcingDecisionStatuses, type ManualSourcingDecisionStatus, type SetSourcingFindingDecisionInput, type SourcingFinding } from 'sparxie'
+import { classifyErrorPresentation } from '../../app/error-presentation'
 import { FindingInput, FindingSelect, FindingTextarea } from './SourcingFindingFormFields'
 
 export function SourcingFindingDispositionModal({
@@ -45,7 +46,10 @@ export function SourcingFindingDispositionModal({
       })
       onClose()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError))
+      setError(classifyErrorPresentation(saveError, {
+        scope: 'form',
+        trigger: 'save',
+      }).message)
     }
   }
 
@@ -77,10 +81,7 @@ export function SourcingFindingDispositionModal({
           <div className="px-5 py-4">
             <div className="grid gap-4">
               {error ? (
-                <Alert variant="destructive">
-                  <AlertTitle>Save failed</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+                <FormFailureAlert message={error} title="Save failed" />
               ) : null}
               <FindingSelect
                 label="Disposition"

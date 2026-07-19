@@ -11,6 +11,7 @@ export function FindingTimingFields({
   onTimingLabelChange,
   onTimingModeChange,
   startDate,
+  termsError,
   termsJson,
   timingLabel,
   timingMode,
@@ -22,6 +23,7 @@ export function FindingTimingFields({
   onTimingLabelChange: (value: string) => void
   onTimingModeChange: (value: JobTimingMode) => void
   startDate: string
+  termsError?: string | null
   termsJson: string
   timingLabel: string
   timingMode: JobTimingMode
@@ -44,7 +46,12 @@ export function FindingTimingFields({
       ) : null}
       {timingMode === 'terms' ? (
         <>
-          <FindingTextarea label="Terms JSON" value={termsJson} onChange={onTermsJsonChange} />
+          <FindingTextarea
+            error={termsError}
+            label="Terms JSON"
+            value={termsJson}
+            onChange={onTermsJsonChange}
+          />
           <FindingInput label="Timing summary" value={termsPreview} disabled onChange={() => {}} />
         </>
       ) : null}

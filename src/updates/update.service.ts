@@ -107,10 +107,10 @@ function createUpdateService({ app, beforeInstall, updater }: UpdateServiceDepen
         status: 'ready',
       })
     })
-    updater.on('error', (error) => {
+    updater.on('error', () => {
       setState({
         currentVersion: app.getVersion(),
-        message: readErrorMessage(error),
+        message: 'Update check failed',
         status: 'error',
       })
     })
@@ -128,10 +128,10 @@ function createUpdateService({ app, beforeInstall, updater }: UpdateServiceDepen
       })
       try {
         await updater.checkForUpdates()
-      } catch (error) {
+      } catch {
         setState({
           currentVersion: app.getVersion(),
-          message: readErrorMessage(error),
+          message: 'Update check failed',
           status: 'error',
         })
       }
@@ -171,18 +171,6 @@ function readPercent(value: unknown) {
   }
 
   return 0
-}
-
-function readErrorMessage(value: unknown) {
-  if (value instanceof Error) {
-    return value.message
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  return 'Unable to check for updates.'
 }
 
 export { createElectronUpdateService, createUpdateService }

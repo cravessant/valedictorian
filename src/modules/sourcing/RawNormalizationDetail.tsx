@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { X } from 'lucide-react'
 import { InvalidPersistedRawDetailHttpError } from 'sparxie'
 import type {
@@ -17,6 +18,7 @@ import type {
   RawSourceRecord,
   RawSourceRecordSummary,
 } from 'sparxie'
+import { presentLoadFailure, ownedLoadFailure, type ErrorPresentation } from '../../app/error-presentation'
 import { formatTimestamp } from '../../app/format'
 import type { RawRecordsReadApi } from './raw-normalization.types'
 import {
@@ -32,7 +34,6 @@ type RawDetailIssue =
   | 'normalization_revision'
   | 'normalization_unavailable'
   | 'projection_revision'
-type RawDetailLoadError = 'backend_unavailable' | 'invalid_detail' | 'load_failed'
 
 export function RawNormalizationDetail({
   api,
@@ -49,42 +50,52 @@ export function RawNormalizationDetail({
   const [normalization, setNormalization] = useState<RawSourceNormalizationResult | null>(null)
   const [projection, setProjection] = useState<RawSourceProjectionResult | null>(null)
   const [detailIssue, setDetailIssue] = useState<RawDetailIssue | null>(null)
-  const [error, setError] = useState<RawDetailLoadError | null>(null)
+  const [loadFailure, setLoadFailure] = useState<ErrorPresentation | null>(null)
+  const [retryKey, setRetryKey] = useState(0)
+  const [hasSettledLoad, setHasSettledLoad] = useState(false)
+  const loadedSummaryIdRef = useRef(summary.id)
+  const hasRecordRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
-    setRecord(null)
-    setNormalization(null)
-    setProjection(null)
-    setDetailIssue(null)
-    setError(null)
+    if (loadedSummaryIdRef.current !== summary.id) {
+      loadedSummaryIdRef.current = summary.id
+      setRecord(null)
+      setNormalization(null)
+      setProjection(null)
+      setDetailIssue(null)
+      hasRecordRef.current = false
+    }
+    setLoadFailure(null)
+    setHasSettledLoad(false)
     void Promise.allSettled([api.get(summary.id), api.getNormalization(summary.id)])
       .then(async ([recordResult, normalizationResult]) => {
         if (cancelled) return
         if (recordResult.status === 'rejected') throw recordResult.reason
+        if (normalizationResult.status === 'rejected') throw normalizationResult.reason
         const nextRecord = recordResult.value
-        const nextNormalization = normalizationResult.status === 'fulfilled'
-          ? normalizationResult.value ?? null
-          : null
+        const nextNormalization = normalizationResult.value ?? null
         const nextProjection = await api.getProjection(nextRecord.latestRevision.id)
         if (!cancelled) {
           setProjection(nextProjection)
           setRecord(nextRecord)
           setNormalization(nextNormalization)
+          hasRecordRef.current = true
           setDetailIssue(getRawDetailIssue(nextRecord, nextNormalization, nextProjection))
-          setError(null)
+          setLoadFailure(null)
+          setHasSettledLoad(true)
         }
       }).catch((reason: unknown) => {
         if (!cancelled) {
-          setProjection(null)
-          setRecord(null)
-          setNormalization(null)
-          setDetailIssue(null)
-          setError(classifyRawDetailLoadError(reason))
+          const failure = ownedLoadFailure(
+            classifyRawDetailLoadFailure(reason, hasRecordRef.current),
+          )
+          setLoadFailure(failure)
+          setHasSettledLoad(true)
         }
       })
     return () => { cancelled = true }
-  }, [api, summary])
+  }, [api, summary, retryKey])
 
   const title = `Capture lineage ${sanitizeDisplayText(summary.id)}`
 
@@ -108,8 +119,20 @@ export function RawNormalizationDetail({
         </DialogHeader>
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-4 px-5 py-4">
-            {!record && !error ? <p role="status">Loading Capture lineage detail...</p> : null}
-            {error ? <RawDetailLoadFailure error={error} /> : null}
+            {!record && !loadFailure && !hasSettledLoad ? (
+              <p role="status">Loading Capture lineage detail...</p>
+            ) : null}
+            {!record && !loadFailure && hasSettledLoad ? (
+              <p role="status" aria-label="Capture lineage detail is unavailable">
+                Capture lineage detail is unavailable.
+              </p>
+            ) : null}
+            {loadFailure ? (
+              <LoadFailureView
+                failure={loadFailure}
+                onRetry={() => setRetryKey((key) => key + 1)}
+              />
+            ) : null}
             {record ? <RawRecordDetail record={record} /> : null}
             {record && projection && detailIssue ? <RawDetailConflict issue={detailIssue} /> : null}
             {record && projection && !detailIssue ? (
@@ -126,21 +149,25 @@ export function RawNormalizationDetail({
   )
 }
 
-function RawDetailLoadFailure({ error }: { error: RawDetailLoadError }) {
-  return (
-    <p role="alert">
-      {error === 'invalid_detail'
-        ? 'Capture lineage detail is invalid and cannot be displayed.'
-        : error === 'backend_unavailable'
-          ? 'Capture lineage detail is unavailable because the backend could not be reached.'
-          : 'Capture lineage detail could not be loaded.'}
-    </p>
-  )
-}
-
-function classifyRawDetailLoadError(error: unknown): RawDetailLoadError {
-  if (error instanceof InvalidPersistedRawDetailHttpError) return 'invalid_detail'
-  return error instanceof TypeError ? 'backend_unavailable' : 'load_failed'
+function classifyRawDetailLoadFailure(
+  error: unknown,
+  hasStaleData: boolean,
+): ErrorPresentation {
+  if (error instanceof InvalidPersistedRawDetailHttpError) {
+    return {
+      message: 'Capture lineage detail is invalid and cannot be displayed.',
+      retryable: false,
+      surface: 'scoped_load',
+      title: 'Load failed',
+    }
+  }
+  return presentLoadFailure(error, {
+    fallbackMessage: error instanceof TypeError
+      ? 'Capture lineage detail is unavailable because the backend could not be reached.'
+      : 'Capture lineage detail could not be loaded.',
+    hasStaleData,
+    trigger: hasStaleData ? 'refresh' : 'load',
+  })
 }
 
 function RawDetailConflict({ issue }: { issue: RawDetailIssue }) {

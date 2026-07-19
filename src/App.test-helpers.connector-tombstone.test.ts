@@ -10,7 +10,13 @@ describe('createConnectorsApi tombstone parity', () => {
     await expect(connectorsApi.list()).resolves.toEqual({ items: [] })
 
     await expect(connectorsApi.create(jobrightInput('jobright-tombstone')))
-      .rejects.toMatchObject({ code: 'already_configured', status: 409 })
+      .rejects.toMatchObject({
+        status: 409,
+        body: {
+          code: 'already_configured',
+          message: 'This connector is already configured. Manage the existing instance.',
+        },
+      })
   })
 
   it('allows a fresh Jobright id after the active instance is retired', async () => {

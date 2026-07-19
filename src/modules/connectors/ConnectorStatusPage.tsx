@@ -1,4 +1,3 @@
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -8,11 +7,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { typography, typographyClass } from '@/components/ui/typography'
 import { cn } from '@/lib/utils'
-import { AlertCircle, Cable } from 'lucide-react'
+import { Cable } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type {
   ConnectorStatusAction,
@@ -20,16 +20,18 @@ import type {
   ConnectorStatusSeverity,
   ConnectorStatusView,
 } from './connector.status'
+import type { ErrorPresentation } from '../../app/error-presentation'
 
 const CONNECTOR_STATUS_SCROLL_HINT_ID = 'connector-status-scroll-hint'
 
 interface ConnectorStatusPageProps {
   contentColumnClass: string
-  error: string | null
+  error: ErrorPresentation | null
   isLoading: boolean
   operations?: ReactNode
   result: ConnectorStatusListResult
   onAction: (connector: ConnectorStatusView, action: ConnectorStatusAction) => void
+  onRetry?: () => void
 }
 
 function ConnectorStatusPage({
@@ -39,8 +41,9 @@ function ConnectorStatusPage({
   operations,
   result,
   onAction,
+  onRetry,
 }: ConnectorStatusPageProps) {
-  const showTable = result.available && !error && result.items.length > 0
+  const showTable = result.available && result.items.length > 0
 
   return (
     <main className={`h-full min-w-0 overflow-auto px-4 py-5 text-foreground md:h-[calc(100vh-3rem)] sm:px-6 lg:px-8 ${contentColumnClass}`}>
@@ -80,11 +83,7 @@ function ConnectorStatusPage({
         ) : null}
 
         {error ? (
-          <Alert variant="destructive">
-            <AlertCircle aria-hidden="true" />
-            <AlertTitle>Load failed</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <LoadFailureView failure={error} onRetry={onRetry} />
         ) : null}
 
         {!isLoading && !result.available && !error ? (

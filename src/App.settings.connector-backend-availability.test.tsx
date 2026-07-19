@@ -26,21 +26,21 @@ describe('connector backend availability', () => {
       .mockResolvedValueOnce({ items: [jobrightInstance()] })
     renderApp(connectorsApi)
     await openConnectors()
-    expect(await screen.findByText('Workspace backend unavailable')).toBeInTheDocument()
-    expect(
-      screen.getByText('Connector actions are unavailable until the workspace backend recovers.'),
-    ).toBeInTheDocument()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    expect(alert).toHaveTextContent('Connector state could not be loaded.')
+    expect(alert).not.toHaveTextContent(/secret session detail/i)
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Empty connector instances')).not.toBeInTheDocument()
     expect(screen.queryByText('No connector instances configured.')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add Jobright connector' })).not.toBeInTheDocument()
-    expect(screen.queryByText(/secret session detail/i)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Retry connector loading' }))
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(connectorsApi.list).toHaveBeenCalledTimes(2))
     expect(await screen.findByText('1 connector instance configured.')).toBeInTheDocument()
-    expect(screen.queryByText('Connector actions are unavailable until the workspace backend recovers.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add Jobright connector' })).not.toBeInTheDocument()
   })
-  it('sanitizes an already-configured create rejection into an actionable category', async () => {
+  it('does not treat a forged bare 409 create rejection as already configured', async () => {
     const connectorsApi = createConnectorsApi()
     vi.mocked(connectorsApi.create).mockRejectedValue(Object.assign(
       new Error('duplicate credential session abc123'),
@@ -50,9 +50,27 @@ describe('connector backend availability', () => {
     await openConnectors()
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
     expect(await screen.findByText(
+      'The connector action was rejected. Reload connector state before trying again.',
+    )).toBeInTheDocument()
+    expect(screen.queryByText(/already configured/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/abc123/i)).not.toBeInTheDocument()
+  })
+
+  it('sanitizes a schema-validated already-configured create rejection', async () => {
+    const { ValedictorianHttpError } = await import('sparxie')
+    const { canonicalAlreadyConfiguredBody } = await import('./app/error-presentation')
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.create).mockRejectedValue(new ValedictorianHttpError({
+      body: { ...canonicalAlreadyConfiguredBody },
+      message: 'Request failed',
+      status: 409,
+    }))
+    renderApp(connectorsApi)
+    await openConnectors()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
+    expect(await screen.findByText(
       'Jobright is already configured. Reload connector state and manage the existing instance.',
     )).toBeInTheDocument()
-    expect(screen.queryByText(/abc123/i)).not.toBeInTheDocument()
   })
   it('reloads through the same renderer when the verified backend binding recovers', async () => {
     const connectorsApi = createConnectorsApi()
@@ -73,13 +91,13 @@ describe('connector backend availability', () => {
     expect(screen.getByText('Loading connector instances...')).toBeInTheDocument()
     expect(screen.queryByLabelText('Empty connector instances')).not.toBeInTheDocument()
     lifecycleListener?.({ status: 'unavailable' })
-    expect(await screen.findByText('Workspace backend unavailable')).toBeInTheDocument()
-    expect(
-      screen.getByText('Connector actions are unavailable until the workspace backend recovers.'),
-    ).toBeInTheDocument()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    expect(alert).toHaveTextContent('Connector state could not be loaded.')
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     resolveStaleList({ items: [jobrightInstance()] })
     await waitFor(() => expect(screen.queryByText('1 connector instance configured.')).not.toBeInTheDocument())
-    expect(screen.getByText('Workspace backend unavailable')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveAttribute('data-slot', 'scoped-load-failure')
     lifecycleListener?.({ status: 'available' })
     expect(await screen.findByText('1 connector instance configured.')).toBeInTheDocument()
     expect(screen.queryByText('Loading connector instances...')).not.toBeInTheDocument()

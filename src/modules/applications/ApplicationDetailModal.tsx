@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ExternalLinkButton } from '@/components/ExternalLinkButton'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
@@ -17,8 +17,10 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { fieldControlId } from '@/lib/field-control-id'
-import { AlertCircle, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import type { ScoreInput, ScoreRecord, VerificationReceiptPayload } from 'sparxie'
+import { InlineLoadError } from '../../app/InlineLoadError'
+import { classifyErrorPresentation, type ErrorPresentation } from '../../app/error-presentation'
 import type { ApplicationDetailSeed } from '../../app/types'
 import { formatTimestamp } from '../../app/format'
 import { formatEnumLabel } from '../../app/labels'
@@ -35,19 +37,20 @@ import { formatJobTerms } from './application.types'
 interface ApplicationDetailModalProps {
   application: ApplicationDetail | ApplicationDetailSeed
   attempts: ApplicationAttempt[]
-  attemptsError: string | null
-  detailError: string | null
+  attemptsError: ErrorPresentation | null
+  detailError: ErrorPresentation | null
   events: ApplicationEvent[]
-  eventsError: string | null
+  eventsError: ErrorPresentation | null
   isAttemptsLoading: boolean
   isDetailLoading: boolean
   isEventsLoading: boolean
   isLinksLoading: boolean
   links: ApplicationLinkRecord[]
-  linksError: string | null
+  linksError: ErrorPresentation | null
   onCreateLink?: (input: CreateApplicationLinkInput) => Promise<ApplicationLinkRecord>
   onRecordScore?: (input: ScoreInput) => Promise<ScoreRecord>
   onUpdateLink?: (input: UpdateApplicationLinkInput) => Promise<ApplicationLinkRecord>
+  onRetryLoad?: () => void
   onClose: () => void
 }
 
@@ -67,6 +70,7 @@ function ApplicationDetailModal({
   onCreateLink,
   onRecordScore,
   onUpdateLink,
+  onRetryLoad,
   onClose,
 }: ApplicationDetailModalProps) {
   const [linkEditorOpen, setLinkEditorOpen] = useState(false)
@@ -119,7 +123,7 @@ function ApplicationDetailModal({
                 <Skeleton className="h-8 w-2/3" />
               </div>
             ) : null}
-            {detailError ? <InlineLoadError message={detailError} /> : null}
+            {detailError ? <InlineLoadError failure={detailError} onRetry={onRetryLoad} /> : null}
             <section className="mb-4 rounded-md border border-border px-4 py-3">
               <p className="text-xs font-medium uppercase text-muted-foreground">
                 Overview
@@ -170,15 +174,18 @@ function ApplicationDetailModal({
                   </Button>
                 ) : null}
               </div>
-              {isLinksLoading ? (
+              {isLinksLoading && links.length === 0 ? (
                 <div role="status" aria-label="Application links loading" className="mt-2 space-y-2">
                   <Skeleton className="h-8 w-48" />
                 </div>
-              ) : linksError ? (
-                <InlineLoadError message={linksError} />
-              ) : links.length === 0 ? (
+              ) : null}
+              {linksError ? (
+                <InlineLoadError failure={linksError} onRetry={onRetryLoad} />
+              ) : null}
+              {!isLinksLoading && !linksError && links.length === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">No links recorded.</p>
-              ) : (
+              ) : null}
+              {links.length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {links.map((link) => (
                     <div key={link.id} className="flex items-center gap-1">
@@ -199,23 +206,26 @@ function ApplicationDetailModal({
                     </div>
                   ))}
                 </div>
-              )}
+              ) : null}
             </section>
 
             <section className="mb-4 rounded-md border border-border px-4 py-3">
               <p className="text-xs font-medium uppercase text-muted-foreground">
                 Events
               </p>
-              {isEventsLoading ? (
+              {isEventsLoading && events.length === 0 ? (
                 <div role="status" aria-label="Application events loading" className="mt-2 space-y-2">
                   <Skeleton className="h-8 w-full" />
                   <Skeleton className="h-8 w-2/3" />
                 </div>
-              ) : eventsError ? (
-                <InlineLoadError message={eventsError} />
-              ) : events.length === 0 ? (
+              ) : null}
+              {eventsError ? (
+                <InlineLoadError failure={eventsError} onRetry={onRetryLoad} />
+              ) : null}
+              {!isEventsLoading && !eventsError && events.length === 0 ? (
                 <p className="mt-2 text-sm text-muted-foreground">No events recorded.</p>
-              ) : (
+              ) : null}
+              {events.length > 0 ? (
                 <ol className="mt-2 divide-y divide-border">
                   {events.map((event) => (
                     <li key={event.id} className="grid gap-1 py-2">
@@ -229,7 +239,7 @@ function ApplicationDetailModal({
                     </li>
                   ))}
                 </ol>
-              )}
+              ) : null}
             </section>
 
             <section className="rounded-md border border-border px-4 py-3">
@@ -237,7 +247,7 @@ function ApplicationDetailModal({
                 Attempts
               </p>
 
-            {isAttemptsLoading ? (
+            {isAttemptsLoading && attempts.length === 0 ? (
               <div role="status" aria-label="Attempts loading" className="space-y-2">
                 <Skeleton className="h-8 w-full" />
                 <Skeleton className="h-8 w-3/4" />
@@ -245,18 +255,14 @@ function ApplicationDetailModal({
             ) : null}
 
             {attemptsError ? (
-              <Alert variant="destructive">
-                <AlertCircle aria-hidden="true" />
-                <AlertTitle>Load failed</AlertTitle>
-                <AlertDescription>{attemptsError}</AlertDescription>
-              </Alert>
+                <InlineLoadError failure={attemptsError} onRetry={onRetryLoad} />
             ) : null}
 
             {!isAttemptsLoading && !attemptsError && attempts.length === 0 ? (
               <p className="mt-2 text-sm text-muted-foreground">No attempts recorded.</p>
             ) : null}
 
-            {!isAttemptsLoading && !attemptsError && attempts.length > 0 ? (
+            {attempts.length > 0 ? (
               <div className="mt-2 space-y-4">
                 {attempts.map((attempt) => (
                   <section key={attempt.id} className="rounded-md border border-border">
@@ -363,14 +369,17 @@ function ApplicationLinkEditorModal({
 
       onClose()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError))
+      setError(classifyErrorPresentation(saveError, {
+        scope: 'form',
+        trigger: 'save',
+      }).message)
     }
   }
 
   return (
     <FormDialog title={title} onClose={onClose}>
       <div className="grid gap-4">
-        {error ? <InlineLoadError message={error} /> : null}
+        {error ? <FormFailureAlert message={error} title="Save failed" /> : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <CompactModalInput label="Link label" value={label} onChange={setLabel} />
           <CompactModalInput label="Link kind" value={kind} onChange={setKind} />
@@ -433,14 +442,17 @@ function ScoreEditorModal({
       })
       onClose()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError))
+      setError(classifyErrorPresentation(saveError, {
+        scope: 'form',
+        trigger: 'save',
+      }).message)
     }
   }
 
   return (
     <FormDialog title="Record application score" onClose={onClose}>
       <div className="grid gap-4">
-        {error ? <InlineLoadError message={error} /> : null}
+        {error ? <FormFailureAlert message={error} title="Save failed" /> : null}
         <div className="grid gap-3 sm:grid-cols-2">
           <CompactModalInput label="Score" type="number" value={score} onChange={setScore} />
           <CompactModalInput label="Band" value={band} onChange={setBand} />
@@ -654,16 +666,5 @@ function formatApplicationTiming(application: ApplicationDetail | ApplicationDet
   const termsLabel = formatJobTerms(application.terms)
   return termsLabel || 'Unknown'
 }
-
-function InlineLoadError({ message }: { message: string }) {
-  return (
-    <Alert variant="destructive" className="mt-2">
-      <AlertCircle aria-hidden="true" />
-      <AlertTitle>Load failed</AlertTitle>
-      <AlertDescription>{message}</AlertDescription>
-    </Alert>
-  )
-}
-
 
 export { ApplicationDetailModal }

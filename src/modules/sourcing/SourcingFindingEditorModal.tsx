@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -7,9 +6,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { X } from 'lucide-react'
 import { roleKinds, type CreateSourcingFindingInput, type JobTimingMode, type SourcingFinding, type UpdateSourcingFindingInput } from 'sparxie'
+import { classifyErrorPresentation } from '../../app/error-presentation'
+import { fieldControlId } from '@/lib/field-control-id'
 import { FindingTimingFields, buildFindingTimingInput } from './SourcingFindingTiming'
 import { FindingInput, FindingSelect, FindingTextarea, applyOptionalFindingFields } from './SourcingFindingFormFields'
 
@@ -52,19 +54,36 @@ export function SourcingFindingEditorModal({
   const [blocker, setBlocker] = useState(finding?.blocker ?? '')
   const [mergeNotes, setMergeNotes] = useState(finding?.mergeNotes ?? '')
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{
+    priorityScore?: string
+    termsJson?: string
+  }>({})
   const title = mode === 'add' ? 'Add opportunity' : 'Edit opportunity'
 
   async function saveFinding() {
     setError(null)
+    setFieldErrors({})
 
     try {
-      const timingInput = buildFindingTimingInput({
-        endDate,
-        startDate,
-        timingLabel,
-        timingMode,
-        termsJson,
-      })
+      let timingInput
+      try {
+        timingInput = buildFindingTimingInput({
+          endDate,
+          startDate,
+          timingLabel,
+          timingMode,
+          termsJson,
+        })
+      } catch (timingError) {
+        const message = timingError instanceof Error
+          ? timingError.message
+          : 'Terms JSON is invalid.'
+        setFieldErrors({ termsJson: message })
+        queueMicrotask(() => {
+          document.getElementById(fieldControlId('sourcing-finding', 'Terms JSON'))?.focus()
+        })
+        return
+      }
 
       if (mode === 'add' && onCreate) {
         const input: CreateSourcingFindingInput = {
@@ -77,16 +96,27 @@ export function SourcingFindingEditorModal({
           ...timingInput,
         }
 
-        applyOptionalFindingFields(input, {
-          duplicateNotes,
-          fitNotes,
-          locationRaw,
-          officialUrl,
-          postedAge,
-          priorityBand,
-          priorityScore,
-          sourceUrl,
-        }, { includeNulls: false })
+        try {
+          applyOptionalFindingFields(input, {
+            duplicateNotes,
+            fitNotes,
+            locationRaw,
+            officialUrl,
+            postedAge,
+            priorityBand,
+            priorityScore,
+            sourceUrl,
+          }, { includeNulls: false })
+        } catch (priorityError) {
+          const message = priorityError instanceof Error
+            ? priorityError.message
+            : 'Priority score must be a number.'
+          setFieldErrors({ priorityScore: message })
+          queueMicrotask(() => {
+            document.getElementById(fieldControlId('sourcing-finding', 'Priority score'))?.focus()
+          })
+          return
+        }
 
         await onCreate(input)
       } else if (mode === 'edit' && finding && onUpdate) {
@@ -100,25 +130,39 @@ export function SourcingFindingEditorModal({
           ...timingInput,
         }
 
-        applyOptionalFindingFields(input, {
-          blocker,
-          duplicateNotes,
-          fitNotes,
-          locationRaw,
-          mergeNotes,
-          officialUrl,
-          postedAge,
-          priorityBand,
-          priorityScore,
-          sourceUrl,
-        }, { includeNulls: true })
+        try {
+          applyOptionalFindingFields(input, {
+            blocker,
+            duplicateNotes,
+            fitNotes,
+            locationRaw,
+            mergeNotes,
+            officialUrl,
+            postedAge,
+            priorityBand,
+            priorityScore,
+            sourceUrl,
+          }, { includeNulls: true })
+        } catch (priorityError) {
+          const message = priorityError instanceof Error
+            ? priorityError.message
+            : 'Priority score must be a number.'
+          setFieldErrors({ priorityScore: message })
+          queueMicrotask(() => {
+            document.getElementById(fieldControlId('sourcing-finding', 'Priority score'))?.focus()
+          })
+          return
+        }
 
         await onUpdate(input)
       }
 
       onClose()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError))
+      setError(classifyErrorPresentation(saveError, {
+        scope: 'form',
+        trigger: 'save',
+      }).message)
     }
   }
 
@@ -144,10 +188,7 @@ export function SourcingFindingEditorModal({
           <div className="px-5 py-4">
             <div className="grid gap-4">
               {error ? (
-                <Alert variant="destructive">
-                  <AlertTitle>Save failed</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+                <FormFailureAlert message={error} title="Save failed" />
               ) : null}
               <div className="grid max-h-[70vh] gap-3 overflow-auto pr-1 sm:grid-cols-2">
                 {mode === 'add' ? (
@@ -162,19 +203,31 @@ export function SourcingFindingEditorModal({
                   startDate={startDate}
                   timingLabel={timingLabel}
                   timingMode={timingMode}
+                  termsError={fieldErrors.termsJson}
                   termsJson={termsJson}
                   onEndDateChange={setEndDate}
                   onStartDateChange={setStartDate}
                   onTimingLabelChange={setTimingLabel}
                   onTimingModeChange={setTimingMode}
-                  onTermsJsonChange={setTermsJson}
+                  onTermsJsonChange={(value) => {
+                    setTermsJson(value)
+                    setFieldErrors((current) => ({ ...current, termsJson: undefined }))
+                  }}
                 />
                 <FindingInput label="Location" value={locationRaw} onChange={setLocationRaw} />
                 <FindingSelect label="Work mode" value={workMode} options={['remote', 'onsite', 'hybrid', 'unclear']} onChange={(value) => setWorkMode(value as CreateSourcingFindingInput['workMode'])} />
                 <FindingInput label="Official URL" value={officialUrl} onChange={setOfficialUrl} />
                 <FindingInput label="Source URL" value={sourceUrl} onChange={setSourceUrl} />
                 <FindingInput label="Posted age" value={postedAge} onChange={setPostedAge} />
-                <FindingInput label="Priority score" value={priorityScore} onChange={setPriorityScore} />
+                <FindingInput
+                  error={fieldErrors.priorityScore}
+                  label="Priority score"
+                  value={priorityScore}
+                  onChange={(value) => {
+                    setPriorityScore(value)
+                    setFieldErrors((current) => ({ ...current, priorityScore: undefined }))
+                  }}
+                />
                 <FindingInput label="Priority band" value={priorityBand} onChange={setPriorityBand} />
                 <FindingTextarea
                   className="min-h-24"

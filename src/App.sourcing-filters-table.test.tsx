@@ -351,7 +351,7 @@ describe('App', () => {
     expect(within(table).getByText('Needs source data before promotion')).toBeInTheDocument()
   })
 
-  it('keeps the current table visible while refreshed rows are loading', async () => {
+  it('clears application rows during a pending actual search query change', async () => {
     let loadCount = 0
 
     render(
@@ -374,11 +374,9 @@ describe('App', () => {
       expect(loadCount).toBe(2)
     })
 
-    expect(
-      screen.queryByRole('status', { name: 'Applications loading' }),
-    ).not.toBeInTheDocument()
-    expect(screen.getByRole('table', { name: 'Applications' })).toBeInTheDocument()
-    expect(screen.getByText('Astranis Space Technologies')).toBeInTheDocument()
+    expect(screen.queryByText('Astranis Space Technologies')).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Applications loading' })).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Applications' })).not.toBeInTheDocument()
   })
 
   it('reloads rows with expanded human filter controls', async () => {
@@ -579,18 +577,22 @@ describe('App', () => {
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
     })
+    await screen.findByRole('table', { name: 'Applications' })
+    const paginationAfterNext = screen.getByRole('navigation', { name: 'Application pagination' })
 
-    expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeEnabled()
-    expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeDisabled()
+    expect(within(paginationAfterNext).getByRole('button', { name: 'Previous page' })).toBeEnabled()
+    expect(within(paginationAfterNext).getByRole('button', { name: 'Next page' })).toBeDisabled()
 
-    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous page' }))
+    fireEvent.click(within(paginationAfterNext).getByRole('button', { name: 'Previous page' }))
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
     })
+    await screen.findByRole('table', { name: 'Applications' })
+    const paginationAfterPrevious = screen.getByRole('navigation', { name: 'Application pagination' })
 
-    expect(within(pagination).getByRole('button', { name: 'Previous page' })).toBeDisabled()
-    expect(within(pagination).getByRole('button', { name: 'Next page' })).toBeEnabled()
+    expect(within(paginationAfterPrevious).getByRole('button', { name: 'Previous page' })).toBeDisabled()
+    expect(within(paginationAfterPrevious).getByRole('button', { name: 'Next page' })).toBeEnabled()
   })
 
   it('pages through sourcing results in labeled pagination', async () => {
@@ -629,22 +631,26 @@ describe('App', () => {
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
     })
+    await screen.findByRole('table', { name: 'Opportunities' })
+    const paginationAfterNext = screen.getByRole('navigation', { name: 'Opportunity pagination' })
 
     expect(
-      within(pagination).getByRole('button', { name: 'Previous Opportunity page' }),
+      within(paginationAfterNext).getByRole('button', { name: 'Previous Opportunity page' }),
     ).toBeEnabled()
-    expect(within(pagination).getByRole('button', { name: 'Next Opportunity page' })).toBeDisabled()
+    expect(within(paginationAfterNext).getByRole('button', { name: 'Next Opportunity page' })).toBeDisabled()
 
-    fireEvent.click(within(pagination).getByRole('button', { name: 'Previous Opportunity page' }))
+    fireEvent.click(within(paginationAfterNext).getByRole('button', { name: 'Previous Opportunity page' }))
 
     await waitFor(() => {
       expect(queries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
     })
+    await screen.findByRole('table', { name: 'Opportunities' })
+    const paginationAfterPrevious = screen.getByRole('navigation', { name: 'Opportunity pagination' })
 
     expect(
-      within(pagination).getByRole('button', { name: 'Previous Opportunity page' }),
+      within(paginationAfterPrevious).getByRole('button', { name: 'Previous Opportunity page' }),
     ).toBeDisabled()
-    expect(within(pagination).getByRole('button', { name: 'Next Opportunity page' })).toBeEnabled()
+    expect(within(paginationAfterPrevious).getByRole('button', { name: 'Next Opportunity page' })).toBeEnabled()
   })
 
   it('reloads rows when sortable table headers are clicked', async () => {

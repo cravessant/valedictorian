@@ -1,12 +1,11 @@
 import {
   isIanaTimeZone,
   MAX_CONNECTOR_SCHEDULE_INTERVAL_MINUTES,
-  connectorScheduleErrorPayloadSchema,
-  ValedictorianHttpError,
   type ConnectorScheduleCadence,
   type ConnectorScheduleSummary,
   type ConnectorSchedulingCapability,
 } from 'sparxie'
+import { classifyErrorPresentation } from '../app/error-presentation'
 import type { ConnectorScheduleDraft } from './connector-schedule.types'
 
 export const CONNECTOR_SCHEDULE_UNAVAILABLE_EXPLANATION =
@@ -213,42 +212,55 @@ const WEEKDAY_LABELS: Record<number, string> = {
   7: 'Sunday',
 }
 
+export type ConnectorScheduleValidationField =
+  | 'timezone'
+  | 'preset'
+  | 'everyMinutes'
+  | 'localTime'
+  | 'dayOfWeek'
+
 export function validateConnectorScheduleDraft(
   draft: ConnectorScheduleDraft,
   capability: Extract<ConnectorSchedulingCapability, { available: true }>,
-): string | null {
+): { field: ConnectorScheduleValidationField; message: string } | null {
   if (draft.mode === 'manual') {
     return null
   }
 
   if (!isIanaTimeZone(draft.timezone)) {
-    return 'Choose a valid IANA timezone.'
+    return { field: 'timezone', message: 'Choose a valid IANA timezone.' }
   }
 
   if (draft.mode === 'preset') {
     const preset = supportedSchedulePresets(capability).find((item) => item.id === draft.presetId)
     if (!preset) {
-      return 'Choose a supported schedule preset.'
+      return { field: 'preset', message: 'Choose a supported schedule preset.' }
     }
     return null
   }
 
   if (draft.mode === 'custom-interval') {
     if (!capability.supportedCadences.includes('interval')) {
-      return 'Interval schedules are not supported.'
+      return { field: 'everyMinutes', message: 'Interval schedules are not supported.' }
     }
 
     const everyMinutes = Number(draft.everyMinutes)
     if (!Number.isInteger(everyMinutes)) {
-      return 'Interval minutes must be a whole number.'
+      return { field: 'everyMinutes', message: 'Interval minutes must be a whole number.' }
     }
 
     if (everyMinutes < capability.minimumIntervalMinutes) {
-      return `Interval must be at least ${capability.minimumIntervalMinutes} minutes.`
+      return {
+        field: 'everyMinutes',
+        message: `Interval must be at least ${capability.minimumIntervalMinutes} minutes.`,
+      }
     }
 
     if (everyMinutes > MAX_CONNECTOR_SCHEDULE_INTERVAL_MINUTES) {
-      return `Interval must be at most ${MAX_CONNECTOR_SCHEDULE_INTERVAL_MINUTES} minutes.`
+      return {
+        field: 'everyMinutes',
+        message: `Interval must be at most ${MAX_CONNECTOR_SCHEDULE_INTERVAL_MINUTES} minutes.`,
+      }
     }
 
     return null
@@ -256,27 +268,30 @@ export function validateConnectorScheduleDraft(
 
   if (draft.mode === 'custom-daily') {
     if (!capability.supportedCadences.includes('daily')) {
-      return 'Daily schedules are not supported.'
+      return { field: 'localTime', message: 'Daily schedules are not supported.' }
     }
 
     if (!isCanonicalLocalTime(draft.localTime)) {
-      return 'Daily time must use HH:mm.'
+      return { field: 'localTime', message: 'Daily time must use HH:mm.' }
     }
 
     return null
   }
 
   if (!capability.supportedCadences.includes('weekly')) {
-    return 'Weekly schedules are not supported.'
+    return { field: 'dayOfWeek', message: 'Weekly schedules are not supported.' }
   }
 
   const dayOfWeek = Number(draft.dayOfWeek)
   if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7) {
-    return 'Weekly day must be an ISO weekday from 1 (Monday) through 7 (Sunday).'
+    return {
+      field: 'dayOfWeek',
+      message: 'Weekly day must be an ISO weekday from 1 (Monday) through 7 (Sunday).',
+    }
   }
 
   if (!isCanonicalLocalTime(draft.localTime)) {
-    return 'Weekly time must use HH:mm.'
+    return { field: 'localTime', message: 'Weekly time must use HH:mm.' }
   }
 
   return null
@@ -341,20 +356,10 @@ function isCanonicalLocalTime(value: string) {
 }
 
 export function sanitizeConnectorScheduleError(error: unknown): string {
-  if (error instanceof ValedictorianHttpError) {
-    const parsed = connectorScheduleErrorPayloadSchema.safeParse(error.body)
-    if (parsed.success) {
-      return parsed.data.message
-    }
-
-    return 'Schedule request failed. Review the schedule and try again.'
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return 'Schedule request failed. Review the schedule and try again.'
+  return classifyErrorPresentation(error, {
+    scope: 'form',
+    trigger: 'save',
+  }).message
 }
 
 export function isConnectorScheduleDraftDirty(

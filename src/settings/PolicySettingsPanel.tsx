@@ -1,21 +1,14 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/components/ui/use-toast'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { typography, typographyClass } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
-import { AlertCircle, ShieldCheck } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 import {
   defaultPolicyConfig,
   isPolicyEvidenceTag,
@@ -23,6 +16,12 @@ import {
   type PolicyConfigPatch,
   type PolicyEvidenceTag,
 } from 'sparxie'
+import {
+  classifyErrorPresentation,
+  ownedLoadFailure,
+  presentLoadFailure,
+  type ErrorPresentation,
+} from '../app/error-presentation'
 import type { PolicyPreloadApi } from '../ipc/policy.preload'
 import { SettingsToggleRow } from '../app/AppChrome'
 import { SettingsTextInput } from './SettingsTextInput'
@@ -30,13 +29,35 @@ import { SettingsTextInput } from './SettingsTextInput'
 export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi }) {
   const [draftConfig, setDraftConfig] = useState<PolicyConfig>(defaultPolicyConfig)
   const [savedConfig, setSavedConfig] = useState<PolicyConfig>(defaultPolicyConfig)
-  const [error, setError] = useState<string | null>(null)
+  const [loadFailure, setLoadFailure] = useState<ErrorPresentation | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadRetryKey, setLoadRetryKey] = useState(0)
   const [savingSection, setSavingSection] = useState<PolicySaveScope>(null)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [resetConfirmError, setResetConfirmError] = useState<string | null>(null)
   const { toast } = useToast()
   const isResetting = savingSection === 'reset'
+  const isMountedRef = useRef(true)
+  const policyApiRef = useRef(policyApi)
+  const mutationTargetEpochRef = useRef(0)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    policyApiRef.current = policyApi
+    mutationTargetEpochRef.current += 1
+    setSavingSection(null)
+    return () => {
+      isMountedRef.current = false
+      mutationTargetEpochRef.current += 1
+    }
+  }, [policyApi])
+
+  function isCurrentMutationTarget(epochAtStart: number, apiAtStart: PolicyPreloadApi): boolean {
+    return isMountedRef.current
+      && mutationTargetEpochRef.current === epochAtStart
+      && policyApiRef.current === apiAtStart
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -48,12 +69,16 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
         if (!cancelled) {
           setDraftConfig(nextConfig)
           setSavedConfig(nextConfig)
-          setError(null)
+          setLoadFailure(null)
+          setFormError(null)
         }
       })
       .catch((loadError: unknown) => {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Policy settings failed to load.')
+          setLoadFailure(ownedLoadFailure(presentLoadFailure(loadError, {
+            scope: 'section',
+            trigger: 'load',
+          })))
         }
       })
       .finally(() => {
@@ -65,7 +90,7 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
     return () => {
       cancelled = true
     }
-  }, [policyApi])
+  }, [policyApi, loadRetryKey])
 
   function updateDraft(updater: (currentConfig: PolicyConfig) => PolicyConfig) {
     setDraftConfig((currentConfig) => updater(currentConfig))
@@ -92,29 +117,40 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
 
   function savePolicySection(section: PolicySectionKey) {
     const sectionTitle = policySectionTitles[section]
+    const epochAtStart = mutationTargetEpochRef.current
+    const apiAtStart = policyApi
     setSavingSection(section)
-    void policyApi.config
+    void apiAtStart.config
       .update(buildPolicySectionPatch(section, draftConfig))
       .then((nextConfig) => {
+        if (!isCurrentMutationTarget(epochAtStart, apiAtStart)) {
+          return
+        }
         setSavedConfig(nextConfig)
         setDraftConfig((currentDraft) => mergeSavedPolicySection(currentDraft, nextConfig, section))
-        setError(null)
+        setLoadFailure(null)
+        setFormError(null)
         toast({
           title: `${sectionTitle} saved.`,
           variant: 'success',
         })
       })
       .catch((saveError: unknown) => {
-        const message =
-          saveError instanceof Error ? saveError.message : 'Policy settings failed to save.'
-        setError(message)
-        toast({
-          description: message,
-          title: 'Policy update failed',
-          variant: 'destructive',
+        if (!isCurrentMutationTarget(epochAtStart, apiAtStart)) {
+          return
+        }
+        const presentation = classifyErrorPresentation(saveError, {
+          scope: 'form',
+          trigger: 'save',
         })
+        setFormError(presentation.message)
       })
-      .finally(() => setSavingSection(null))
+      .finally(() => {
+        if (!isCurrentMutationTarget(epochAtStart, apiAtStart)) {
+          return
+        }
+        setSavingSection(null)
+      })
   }
 
   function openResetConfirm() {
@@ -123,14 +159,20 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
   }
 
   function resetPolicyConfig() {
+    const epochAtStart = mutationTargetEpochRef.current
+    const apiAtStart = policyApi
     setSavingSection('reset')
     setResetConfirmError(null)
-    void policyApi.config
+    void apiAtStart.config
       .reset()
       .then((nextConfig) => {
+        if (!isCurrentMutationTarget(epochAtStart, apiAtStart)) {
+          return
+        }
         setDraftConfig(nextConfig)
         setSavedConfig(nextConfig)
-        setError(null)
+        setLoadFailure(null)
+        setFormError(null)
         setResetConfirmOpen(false)
         toast({
           title: 'Policy reset.',
@@ -138,16 +180,21 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
         })
       })
       .catch((resetError: unknown) => {
-        const message = resetError instanceof Error ? resetError.message : 'Policy reset failed.'
-        setError(message)
-        setResetConfirmError(message)
-        toast({
-          description: message,
-          title: 'Policy update failed',
-          variant: 'destructive',
+        if (!isCurrentMutationTarget(epochAtStart, apiAtStart)) {
+          return
+        }
+        const presentation = classifyErrorPresentation(resetError, {
+          scope: 'form',
+          trigger: 'save',
         })
+        setResetConfirmError(presentation.message)
       })
-      .finally(() => setSavingSection(null))
+      .finally(() => {
+        if (!isCurrentMutationTarget(epochAtStart, apiAtStart)) {
+          return
+        }
+        setSavingSection(null)
+      })
   }
 
   return (
@@ -192,9 +239,7 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
             </AlertDialogDescription>
           </AlertDialogHeader>
           {resetConfirmError ? (
-            <p className="text-sm text-destructive" role="alert">
-              {resetConfirmError}
-            </p>
+            <FormFailureAlert message={resetConfirmError} title="Policy reset failed" />
           ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
@@ -210,12 +255,14 @@ export function PolicySettingsPanel({ policyApi }: { policyApi: PolicyPreloadApi
         </AlertDialogContent>
       </AlertDialog>
 
-      {error ? (
-        <Alert variant="destructive">
-          <AlertCircle aria-hidden="true" />
-          <AlertTitle>Policy failed</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+      {loadFailure ? (
+        <LoadFailureView
+          failure={loadFailure}
+          onRetry={() => setLoadRetryKey((current) => current + 1)}
+        />
+      ) : null}
+      {formError ? (
+        <FormFailureAlert message={formError} title="Policy failed" />
       ) : null}
 
       <PolicySection

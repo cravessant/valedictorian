@@ -213,9 +213,9 @@ describe('App connector schedules', () => {
     const profileApi = createProfileApi()
     const scheduleApi = createAvailableScheduleApi({
       onUpsert: async () => {
-        throw new ConnectorScheduleHttpError(
-          connectorScheduleErrorBodies.schedule_too_frequent,
-          connectorScheduleErrorStatusByCode.schedule_too_frequent,
+          throw new ConnectorScheduleHttpError(
+            connectorScheduleErrorBodies.schedule_too_frequent,
+            connectorScheduleErrorStatusByCode.schedule_too_frequent,
         )
       },
     })
@@ -267,11 +267,56 @@ describe('App connector schedules', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
 
     expect(await screen.findByText(
-      'The connector schedule cadence is too frequent.',
+      connectorScheduleErrorBodies.schedule_too_frequent.message,
     )).toBeInTheDocument()
     expect(screen.queryByText('ignored raw body dump')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Every minutes')).toHaveValue(30)
     expect(screen.getByLabelText('Schedule mode')).toHaveValue('custom-interval')
+  })
+
+  it('preserves schedule draft and shows typed stale revision conflicts inline', async () => {
+    const connectorsApi = createConnectorsApi()
+    const profileApi = createProfileApi()
+    const scheduleApi = createAvailableScheduleApi({
+      onUpsert: async () => {
+        throw new ConnectorScheduleHttpError(
+          connectorScheduleErrorBodies.stale_schedule_revision,
+          409,
+        )
+      },
+    })
+    const workspace = createWorkspaceSummary({ id: 'workspace-schedule-stale' })
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        connectorsApi={connectorsApi}
+        connectorScheduleApi={scheduleApi}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+        workspaceApi={createWorkspaceApi(workspace)}
+      />,
+    )
+
+    await screen.findByRole('table', { name: 'Applications' })
+    await openConnectorsOverview()
+    await authenticateJobrightInConnectors({ connectorsApi, profileApi })
+    await waitFor(() => expect(scheduleApi.getSchedule).toHaveBeenCalled())
+
+    fireEvent.change(await screen.findByLabelText('Schedule mode'), {
+      target: { value: 'custom-interval' },
+    })
+    fireEvent.change(screen.getByLabelText('Every minutes'), {
+      target: { value: '45' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }))
+
+    expect(await screen.findByText(
+      connectorScheduleErrorBodies.stale_schedule_revision.message,
+    )).toBeInTheDocument()
+    expect(screen.getByLabelText('Every minutes')).toHaveValue(45)
+    expect(screen.getByLabelText('Schedule mode')).toHaveValue('custom-interval')
+    expect(screen.queryByText('Policy update failed')).not.toBeInTheDocument()
   })
 
   it('saves custom daily and weekly schedules with structured cadence and timezone payloads', async () => {
@@ -520,9 +565,17 @@ describe('App connector schedules', () => {
     expect(within(dialog).getByRole('button', { name: 'Removing...' })).toBeDisabled()
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
 
-    rejectDelete?.(new Error('Schedule revision conflict.'))
+    rejectDelete?.(
+      new ConnectorScheduleHttpError(
+        connectorScheduleErrorBodies.stale_schedule_revision,
+        409,
+      ),
+    )
 
-    expect(await within(dialog).findByText(/Schedule revision conflict/)).toBeInTheDocument()
+    expect(await within(dialog).findByText(
+      connectorScheduleErrorBodies.stale_schedule_revision.message,
+    )).toBeInTheDocument()
+    expect(within(dialog).queryByText('Schedule revision conflict.')).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Remove schedule' })).toBeEnabled()
     expect(screen.getByRole('alertdialog', { name: 'Remove automatic schedule?' })).toBeInTheDocument()
   })

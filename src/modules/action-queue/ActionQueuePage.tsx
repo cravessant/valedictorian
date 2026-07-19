@@ -1,4 +1,3 @@
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -14,13 +13,15 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { typography, typographyClass } from '@/components/ui/typography'
-import { AlertCircle, ExternalLink, Inbox, Pencil } from 'lucide-react'
+import { ExternalLink, Inbox, Pencil } from 'lucide-react'
 import { actionQueueBuckets, type ActionQueueBucket, type ActionQueueListItem, type ActionQueueListResult } from 'sparxie'
 import type { ApplicationDetailSeed } from '../../app/types'
+import type { ErrorPresentation } from '../../app/error-presentation'
 import { formatEnumLabel } from '../../app/labels'
 
 const ACTION_BUCKET_ALL = 'all'
@@ -28,7 +29,7 @@ const ACTION_BUCKET_ALL = 'all'
 interface ActionQueuePageProps {
   actionBucket: ActionQueueBucket | undefined
   contentColumnClass: string
-  error: string | null
+  error: ErrorPresentation | null
   isLoading: boolean
   result: ActionQueueListResult
   onActionBucketChange: (actionBucket: ActionQueueBucket | undefined) => void
@@ -36,6 +37,7 @@ interface ActionQueuePageProps {
   onOpenApplication: (application: ApplicationDetailSeed) => void
   onPreviousPage: () => void
   onNextPage: () => void
+  onRetry?: () => void
 }
 
 function ActionQueuePage({
@@ -49,10 +51,11 @@ function ActionQueuePage({
   onOpenApplication,
   onPreviousPage,
   onNextPage,
+  onRetry,
 }: ActionQueuePageProps) {
   const pageStart = result.total === 0 ? 0 : result.offset + 1
   const pageEnd = Math.min(result.offset + result.items.length, result.total)
-  const showResultTable = !error && result.items.length > 0
+  const showResultTable = result.items.length > 0
 
   return (
     <main className={`flex h-full min-w-0 flex-col overflow-hidden px-4 py-5 text-foreground md:h-[calc(100vh-3rem)] sm:px-6 lg:px-8 ${contentColumnClass}`}>
@@ -113,11 +116,7 @@ function ActionQueuePage({
         ) : null}
 
         {error ? (
-          <Alert variant="destructive">
-            <AlertCircle aria-hidden="true" />
-            <AlertTitle>Load failed</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <LoadFailureView failure={error} onRetry={onRetry} />
         ) : null}
 
         {showResultTable ? (

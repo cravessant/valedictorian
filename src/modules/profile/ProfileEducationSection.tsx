@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { profileEducationTypeOptions, type ProfileEducation } from 'sparxie'
 import { Button } from '@/components/ui/button'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
@@ -27,7 +28,9 @@ type ProfileEducationSectionProps = {
   draft: EducationDraft
   editorMode: 'add' | 'edit'
   education: ProfileEducation[]
+  formError: string | null
   isEditorOpen: boolean
+  saveDisabled?: boolean
   onAdd: () => void
   onCancel: () => void
   onDraftChange: Dispatch<SetStateAction<EducationDraft>>
@@ -40,7 +43,9 @@ export function ProfileEducationSection({
   draft,
   editorMode,
   education,
+  formError,
   isEditorOpen,
+  saveDisabled = false,
   onAdd,
   onCancel,
   onDraftChange,
@@ -96,6 +101,7 @@ export function ProfileEducationSection({
           title={editorMode === 'add' ? 'Add education' : 'Edit education'}
           onClose={onCancel}
         >
+          {formError ? <FormFailureAlert message={formError} /> : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field className="grid gap-1 text-xs font-medium text-muted-foreground">
               <FieldLabel
@@ -196,6 +202,7 @@ export function ProfileEducationSection({
           </div>
           <InlineEditorActions
             cancelLabel="Cancel education"
+            disabled={saveDisabled}
             saveLabel="Save education"
             onCancel={onCancel}
             onSave={onSave}

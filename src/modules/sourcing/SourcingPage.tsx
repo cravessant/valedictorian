@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
@@ -16,6 +15,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Combobox } from '@/components/ui/combobox'
@@ -23,7 +23,7 @@ import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { typography, typographyClass } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
-import { AlertCircle, Ban, Pencil, Search } from 'lucide-react'
+import { Ban, Pencil, Search } from 'lucide-react'
 import {
   sourcingMergeStatuses,
   sourcingDestinationClasses,
@@ -39,6 +39,7 @@ import {
 } from 'sparxie'
 import { formatSourcingLocation } from '../../app/format'
 import { formatEnumLabel } from '../../app/labels'
+import type { ErrorPresentation } from '../../app/error-presentation'
 import type { ApplicationDetailSeed } from '../../app/types'
 
 import { SourcingFindingDispositionModal } from './SourcingFindingDispositionModal'
@@ -54,12 +55,12 @@ import { sourcingFindingToApplication } from './SourcingFindingPromotion'
 
 interface SourcingPageProps {
   contentColumnClass: string
-  error: string | null
+  error: ErrorPresentation | null
   focusedFindingId: string | null
   isLoading: boolean
   mergeStatus: SourcingMergeStatus | undefined
   destinationClass: SourcingDestinationClass | undefined
-  promotingFindingId: string | null
+  promotingFindingIds: ReadonlySet<string>
   result: SourcingFindingsListResult
   showDebugData: boolean
   sourceId: string
@@ -75,6 +76,7 @@ interface SourcingPageProps {
   onSourceChange: (sourceId: string) => void
   onUsabilityChange: (usability: SourcingUsability | undefined) => void
   onUpdateFinding: (input: UpdateSourcingFindingInput) => Promise<SourcingFinding>
+  onRetry?: () => void
 }
 
 function SourcingPage({
@@ -84,7 +86,7 @@ function SourcingPage({
   isLoading,
   mergeStatus,
   destinationClass,
-  promotingFindingId,
+  promotingFindingIds,
   result,
   showDebugData,
   sourceId,
@@ -100,13 +102,14 @@ function SourcingPage({
   onSourceChange,
   onUsabilityChange,
   onUpdateFinding,
+  onRetry,
 }: SourcingPageProps) {
   const [addingFinding, setAddingFinding] = useState(false)
   const [editingFinding, setEditingFinding] = useState<SourcingFinding | null>(null)
   const [decidingFinding, setDecidingFinding] = useState<SourcingFinding | null>(null)
   const pageStart = result.total === 0 ? 0 : result.offset + 1
   const pageEnd = Math.min(result.offset + result.items.length, result.total)
-  const showResultTable = !error && result.items.length > 0
+  const showResultTable = result.items.length > 0
   const sourceOptions = Array.from(
     new Map(result.items.map((item) => [item.sourceId, item.sourceName])).entries(),
   ).map(([sourceId, sourceName]) => ({ sourceId, sourceName }))
@@ -263,11 +266,7 @@ function SourcingPage({
         ) : null}
 
         {error ? (
-          <Alert variant="destructive">
-            <AlertCircle aria-hidden="true" />
-            <AlertTitle>Load failed</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <LoadFailureView failure={error} onRetry={onRetry} />
         ) : null}
 
         {showResultTable ? (
@@ -317,7 +316,7 @@ function SourcingPage({
                       focused={focusedFindingId === item.id}
                       key={item.id}
                       item={item}
-                      isPromoting={promotingFindingId === item.id}
+                      isPromoting={promotingFindingIds.has(item.id)}
                       showDebugData={showDebugData}
                       onDecideFinding={setDecidingFinding}
                       onEditFinding={setEditingFinding}

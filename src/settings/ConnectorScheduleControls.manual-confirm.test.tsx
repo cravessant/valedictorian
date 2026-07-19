@@ -31,6 +31,8 @@ function renderControls({
     <ConnectorScheduleControls
       capability={availableCapability}
       capabilityLoadError={null}
+      loadFailure={null}
+      validationField={null}
       canonical={canonical}
       connectorDisplayName="Jobright"
       connectorEnabled

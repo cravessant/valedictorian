@@ -1,3 +1,9 @@
+import {
+  canonicalAlreadyConfiguredBody,
+  classifyErrorPresentation,
+  isCanonicalAlreadyConfigured,
+} from '../app/error-presentation'
+import { ValedictorianHttpError, ValedictorianTransportError } from 'sparxie'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import type {
   ConnectorAuthUiState,
@@ -121,29 +127,37 @@ export function sanitizedJobrightCredentialActionErrorMessage(
 }
 
 export function sanitizedConnectorCreateErrorMessage(error: unknown): string {
-  const candidate = error && typeof error === 'object'
-    ? error as { code?: unknown; status?: unknown; statusCode?: unknown }
-    : {}
-  const status = typeof candidate.status === 'number'
-    ? candidate.status
-    : candidate.statusCode
-
-  if (status === 409 || candidate.code === 'already_configured') {
+  if (isCanonicalAlreadyConfigured(error)) {
     return 'Jobright is already configured. Reload connector state and manage the existing instance.'
   }
-  if (status === 400 || status === 422 || candidate.code === 'validation_rejected') {
+
+  if (
+    error instanceof ValedictorianHttpError
+    && (error.status === 400 || error.status === 422 || error.kind === 'validation')
+  ) {
     return 'Jobright configuration was rejected. Review the connector fields and try again.'
   }
+
   if (
-    error instanceof TypeError
-    || status === 502
-    || status === 503
-    || status === 504
-    || candidate.code === 'backend_unavailable'
+    error instanceof ValedictorianTransportError
+    || (error instanceof ValedictorianHttpError && (
+      error.kind === 'unavailable'
+      || error.status === 502
+      || error.status === 503
+      || error.status === 504
+    ))
   ) {
     return 'The workspace backend is unavailable. Restore it, then retry connector loading.'
   }
-  return 'The connector action was rejected. Reload connector state before trying again.'
+
+  const presentation = classifyErrorPresentation(error, {
+    scope: 'form',
+    trigger: 'save',
+  })
+  return presentation.message === 'An unexpected error occurred.'
+    || presentation.message === canonicalAlreadyConfiguredBody.message
+    ? 'The connector action was rejected. Reload connector state before trying again.'
+    : presentation.message
 }
 
 export function defaultConnectorSettingsDraft(

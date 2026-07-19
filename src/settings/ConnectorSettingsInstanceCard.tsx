@@ -27,7 +27,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Field, FieldLabel } from '@/components/ui/field'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { Input } from '@/components/ui/input'
+import type { ErrorPresentation } from '../app/error-presentation'
 import { Switch } from '@/components/ui/switch'
 import { fieldControlId } from '@/lib/field-control-id'
 import { AlertTriangle, ChevronDown, Pencil } from 'lucide-react'
@@ -94,9 +96,10 @@ export function ConnectorSettingsInstanceCard({
   latestRun,
   latestRunStatus,
   isSavingSettings,
+  settingsSaveError,
   isRemoving,
   authenticatingInstanceId,
-  runningInstanceId,
+  runningInstanceIds,
   schedulingCapability,
   capabilityLoadError,
   scheduleCanonical,
@@ -104,8 +107,10 @@ export function ConnectorSettingsInstanceCard({
   scheduleIsDirty,
   scheduleIsLoading,
   scheduleIsSaving,
+  scheduleLoadFailure,
   scheduleStatusMessage,
   scheduleStatusTone,
+  scheduleValidationField,
   onBeginCredentialEdit,
   onCancelCredentialEdit,
   onUpdateCredentialDraft,
@@ -123,6 +128,7 @@ export function ConnectorSettingsInstanceCard({
   onDiscardSchedule,
   onPauseSchedule,
   onResumeSchedule,
+  onRetryScheduleLoad,
 }: {
   instance: ConnectorSettingsInstance
   descriptor: InstalledConnectorDescriptor | undefined
@@ -135,19 +141,23 @@ export function ConnectorSettingsInstanceCard({
   latestRun: ConnectorSettingsRun | undefined
   latestRunStatus: string | undefined
   isSavingSettings: boolean
+  settingsSaveError: string | null
   isRemoving: boolean
   authenticatingInstanceId: string | null
-  runningInstanceId: string | null
+  runningInstanceIds: ReadonlySet<string>
   schedulingCapability: ConnectorSchedulingCapability | null
-  capabilityLoadError: string | null
+  capabilityLoadError: ErrorPresentation | null
   scheduleCanonical: ConnectorScheduleSummary | null
   scheduleDraft: ConnectorScheduleDraft
   scheduleIsDirty: boolean
   scheduleIsLoading: boolean
   scheduleIsSaving: boolean
+  scheduleLoadFailure: ErrorPresentation | null
   scheduleStatusMessage: string | null
   scheduleStatusTone: 'idle' | 'success' | 'error'
+  scheduleValidationField: import('./connector-schedule.helpers').ConnectorScheduleValidationField | null
   onBeginCredentialEdit: (instance: ConnectorSettingsInstance) => void
+  onRetryScheduleLoad: () => void
   onCancelCredentialEdit: (instanceId: string) => void
   onUpdateCredentialDraft: (instanceId: string, patch: Partial<ConnectorAuthCredentialDraft>) => void
   onSaveAndValidateCredentials: (instance: ConnectorSettingsInstance) => void
@@ -228,7 +238,7 @@ export function ConnectorSettingsInstanceCard({
     || !draft.enabled
     || !authReady
     || isEditingAuth
-    || runningInstanceId === instance.id
+    || runningInstanceIds.has(instance.id)
     || isSavingSettings
     || draftDirty
     || !earliestValid
@@ -240,7 +250,7 @@ export function ConnectorSettingsInstanceCard({
   })
   const runBlockReason = runBlocked
     ? describeConnectorRunActionReason({
-      isRunning: runningInstanceId === instance.id,
+      isRunning: runningInstanceIds.has(instance.id),
       isSavingSettings,
       isEditingAuth,
       draftDirty,
@@ -646,6 +656,11 @@ export function ConnectorSettingsInstanceCard({
               Discard unsaved connector settings
             </Button>
           ) : null}
+          {settingsSaveError ? (
+            <div className="basis-full">
+              <FormFailureAlert message={settingsSaveError} />
+            </div>
+          ) : null}
         </div> : null}
       </section>
 
@@ -659,13 +674,16 @@ export function ConnectorSettingsInstanceCard({
         isDirty={scheduleIsDirty}
         isLoading={scheduleIsLoading}
         isSaving={scheduleIsSaving}
+        loadFailure={scheduleLoadFailure}
         statusMessage={scheduleStatusMessage}
         statusTone={scheduleStatusTone}
+        validationField={scheduleValidationField}
         readOnly={!editing}
         onDiscard={() => onDiscardSchedule(instance)}
         onDraftChange={(patch) => onScheduleDraftChange(instance.id, patch)}
         onPause={() => onPauseSchedule(instance)}
         onResume={() => onResumeSchedule(instance)}
+        onRetryLoad={onRetryScheduleLoad}
         onSave={() => onSaveSchedule(instance)}
       />
 
@@ -699,7 +717,7 @@ export function ConnectorSettingsInstanceCard({
               disabled={runBlocked}
               onClick={() => onRunNow(instance)}
             >
-              {runningInstanceId === instance.id ? 'Running...' : 'Run Jobright now'}
+              {runningInstanceIds.has(instance.id) ? 'Running...' : 'Run Jobright now'}
             </Button>
           </div>
           {latestRunStatus ? (

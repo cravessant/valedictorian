@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useToast } from '@/components/ui/use-toast'
+import { clearDestructiveToastDedupeFor, useToast } from '@/components/ui/use-toast'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { actionFailureToastInput, type ErrorPresentation } from './app/error-presentation'
+import {
+  actionQueueLoadFailure,
+  applicationsLoadFailure,
+  connectorStatusLoadFailure,
+  sourcingLoadFailure,
+} from './app/app-load-failure'
+import {
+  GlobalFailureOwnerProvider,
+  takeLocalLoadFailure,
+  useCreateGlobalFailureOwner,
+} from './app/global-failure-owner'
+import { useApplicationDetailSubsectionLoads } from './app/use-application-detail-subsection-loads'
+import { useOpportunityAndActionQueueMutations } from './app/use-opportunity-and-action-queue-mutations'
+import { useAppBootstrapLoads } from './app/use-app-bootstrap-loads'
 import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
@@ -19,7 +34,12 @@ import type {
   LocalConnectorSkipActionInput,
   LocalConnectorStatusActionInput
 } from './runtime/local-valedictorian-client'
-import { requiresRestart } from './settings/requiresRestart'
+import {
+  applyOptimisticSettingsPatch,
+  commitSettingsPatch,
+  createSettingsMutationTargetGate,
+  settingsPatchKeys,
+} from './app/settings-mutation'
 import {
   type ApplicationAttemptsListResult,
   type ApplicationDetail,
@@ -58,9 +78,6 @@ import {
   type UpdateSourcingFindingInput
 } from 'sparxie'
 import {
-  defaultAppSettings,
-  normalizeAppSettings,
-  type AppSettings,
   type AppSettingsPatch
 } from './settings/app-settings'
 import { applyResolvedTheme } from './theme/theme-applier'
@@ -96,9 +113,6 @@ import {
   defaultSourcingLoader,
   defaultRawRecordsApi,
   defaultUpdateSourcingFinding,
-  emptyApplicationEventsResult,
-  emptyApplicationLinksResult,
-  emptyAttemptResult,
   emptyApplicationResult,
   emptyActionQueueResult,
   emptyConnectorStatusResult,
@@ -114,23 +128,16 @@ import {
   PAGE_LIMIT,
   SETTINGS_PANELS,
   defaultFilters,
-  type ApplicationDetailSeed,
   type AppView,
   type FilterState,
   type SettingsPanelId
 } from './app/types'
-import type { WorkspaceSummary } from './workspace/workspace.initializer'
 import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
-import type { RawRecordsReadApi } from './modules/sourcing/raw-normalization.types'
-import type { RawNormalizationRunFilter } from './modules/sourcing/raw-normalization.types'
+import type { RawNormalizationRunFilter, RawRecordsReadApi } from './modules/sourcing/raw-normalization.types'
 import { locateSourcingFinding } from './modules/sourcing/locate-sourcing-finding'
 
 const narrowSidebarMediaQuery = '(max-width: 767px)'
 const DATA_AUTO_REFRESH_INTERVAL_MS = 15_000
-const initialConnectorStatusResult: ConnectorStatusListResult = {
-  available: true,
-  items: [],
-}
 
 interface AppProps {
   applicationLoader?: (query: ApplicationListQuery) => Promise<ApplicationListResult>
@@ -202,10 +209,18 @@ function App({
   updatesApi = defaultUpdatesApi,
   workspaceApi = defaultWorkspaceApi,
 }: AppProps) {
+  const {
+    filtersExpanded,
+    reloadSettings,
+    reloadWorkspace,
+    setFiltersExpanded,
+    setSettings,
+    settings,
+    settingsLoadFailure,
+    workspace,
+    workspaceLoadFailure,
+  } = useAppBootstrapLoads({ settingsApi, workspaceApi })
   const [filters, setFilters] = useState<FilterState>(defaultFilters)
-  const [filtersExpanded, setFiltersExpanded] = useState(false)
-  const [settings, setSettings] = useState<AppSettings>(defaultAppSettings)
-  const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [appView, setAppView] = useState<AppView>(APP_VIEWS.APPLICATIONS)
   const [selectedSettingsPanel, setSelectedSettingsPanel] = useState<SettingsPanelId>(
@@ -223,20 +238,33 @@ function App({
   const [result, setResult] = useState<ApplicationListResult>(emptyApplicationResult)
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedApplications, setHasLoadedApplications] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ErrorPresentation | null>(null)
   const [actionQueueBucket, setActionQueueBucket] = useState<ActionQueueBucket | undefined>(undefined)
   const [actionQueueOffset, setActionQueueOffset] = useState(0)
   const [actionQueueReloadKey, setActionQueueReloadKey] = useState(0)
   const [actionQueueResult, setActionQueueResult] = useState<ActionQueueListResult>(emptyActionQueueResult)
   const [isActionQueueLoading, setIsActionQueueLoading] = useState(false)
   const [hasLoadedActionQueue, setHasLoadedActionQueue] = useState(false)
-  const [actionQueueError, setActionQueueError] = useState<string | null>(null)
+  const [actionQueueError, setActionQueueError] = useState<ErrorPresentation | null>(null)
   const [connectorStatusReloadKey, setConnectorStatusReloadKey] = useState(0)
-  const [connectorStatusResult, setConnectorStatusResult] = useState<ConnectorStatusListResult>(initialConnectorStatusResult)
+  const [connectorStatusResult, setConnectorStatusResult] = useState<ConnectorStatusListResult>(emptyConnectorStatusResult)
   const [isConnectorStatusLoading, setIsConnectorStatusLoading] = useState(false)
   const [hasLoadedConnectorStatus, setHasLoadedConnectorStatus] = useState(false)
-  const [connectorStatusError, setConnectorStatusError] = useState<string | null>(null)
+  const [connectorStatusError, setConnectorStatusError] = useState<ErrorPresentation | null>(null)
   const connectorBackendGenerationRef = useRef(0)
+  const hasLoadedApplicationsRef = useRef(false)
+  const hasLoadedActionQueueRef = useRef(false)
+  const hasLoadedConnectorStatusRef = useRef(false)
+  const hasLoadedSourcingRef = useRef(false)
+  const globalFailureOwner = useCreateGlobalFailureOwner()
+  const globalFailureOwnerRef = useRef(globalFailureOwner)
+  globalFailureOwnerRef.current = globalFailureOwner
+  const applicationsQueryIdentityRef = useRef<ApplicationListQuery | null>(null)
+  const actionQueueQueryIdentityRef = useRef<ActionQueueListQuery | null>(null)
+  const sourcingQueryIdentityRef = useRef<{
+    pendingFindingId: string | null
+    query: SourcingFindingsListInput
+  } | null>(null)
   const [sourcingMergeStatus, setSourcingMergeStatus] = useState<SourcingMergeStatus | undefined>(undefined)
   const [sourcingDestinationClass, setSourcingDestinationClass] = useState<SourcingDestinationClass | undefined>(undefined)
   const [sourcingUsability, setSourcingUsability] = useState<SourcingUsability | undefined>(undefined)
@@ -246,29 +274,70 @@ function App({
   const [sourcingResult, setSourcingResult] = useState<SourcingFindingsListResult>(emptySourcingResult)
   const [isSourcingLoading, setIsSourcingLoading] = useState(false)
   const [hasLoadedSourcing, setHasLoadedSourcing] = useState(false)
-  const [sourcingError, setSourcingError] = useState<string | null>(null)
-  const [promotingFindingId, setPromotingFindingId] = useState<string | null>(null)
+  const [sourcingError, setSourcingError] = useState<ErrorPresentation | null>(null)
   const [focusedSourcingFindingId, setFocusedSourcingFindingId] = useState<string | null>(null)
   const [pendingSourcingFindingId, setPendingSourcingFindingId] = useState<string | null>(null)
-  const [selectedApplication, setSelectedApplication] = useState<ApplicationDetailSeed | null>(null)
-  const [applicationDetail, setApplicationDetail] = useState<ApplicationDetail | null>(null)
-  const [applicationLinksResult, setApplicationLinksResult] = useState<ApplicationLinksListResult>(emptyApplicationLinksResult)
-  const [applicationEventsResult, setApplicationEventsResult] = useState<ApplicationEventsListResult>(emptyApplicationEventsResult)
-  const [isApplicationDetailLoading, setIsApplicationDetailLoading] = useState(false)
-  const [isApplicationLinksLoading, setIsApplicationLinksLoading] = useState(false)
-  const [isApplicationEventsLoading, setIsApplicationEventsLoading] = useState(false)
-  const [applicationDetailError, setApplicationDetailError] = useState<string | null>(null)
-  const [applicationLinksError, setApplicationLinksError] = useState<string | null>(null)
-  const [applicationEventsError, setApplicationEventsError] = useState<string | null>(null)
+  const {
+    attemptError,
+    attemptResult,
+    applicationDetail,
+    applicationDetailError,
+    applicationEventsError,
+    applicationEventsResult,
+    applicationLinksError,
+    applicationLinksResult,
+    isApplicationDetailLoading,
+    isApplicationEventsLoading,
+    isApplicationLinksLoading,
+    isAttemptLoading,
+    openApplicationDetail,
+    reloadApplicationDetail,
+    selectedApplication,
+    setSelectedApplication,
+  } = useApplicationDetailSubsectionLoads({
+    applicationDetailLoader,
+    applicationEventsLoader,
+    applicationLinksLoader,
+    attemptLoader,
+  })
   const { checkForUpdates, installUpdate, updateState } = useAppUpdates(updatesApi)
   const { toast } = useToast()
-  const [attemptResult, setAttemptResult] = useState<ApplicationAttemptsListResult>(emptyAttemptResult)
-  const [isAttemptLoading, setIsAttemptLoading] = useState(false)
-  const [attemptError, setAttemptError] = useState<string | null>(null)
   const [editingApplication, setEditingApplication] = useState<ApplicationListItem | null>(null)
   const [isAddingApplication, setIsAddingApplication] = useState(false)
   const previousAppViewRef = useRef(appView)
   const updateReadyToastVersionsRef = useRef(new Set<string>())
+  const settingsKeyGenerationRef = useRef<Record<string, number>>({})
+  const settingsApiRef = useRef(settingsApi)
+  const committedSettingsRef = useRef(settings)
+  const settingsMutationTargetGateRef = useRef(createSettingsMutationTargetGate())
+  const isAppMountedRef = useRef(true)
+
+  if (settingsApiRef.current !== settingsApi) {
+    settingsApiRef.current = settingsApi
+    for (const key of Object.keys(settingsKeyGenerationRef.current)) {
+      settingsKeyGenerationRef.current[key] += 1
+    }
+    settingsMutationTargetGateRef.current.replaceTarget()
+  }
+  const {
+    openActionQueueApplicationEditor,
+    promoteFinding,
+    promotingFindingIds,
+  } = useOpportunityAndActionQueueMutations({
+    applicationDetailLoader,
+    isAppMountedRef,
+    promoteSourcingFinding,
+    reloadActionQueueIfLoaded: () => {
+      if (appView === APP_VIEWS.ACTION_QUEUE || hasLoadedActionQueue) {
+        setActionQueueReloadKey((current) => current + 1)
+      }
+    },
+    reloadApplications: () => {
+      setApplicationReloadKey((current) => current + 1)
+    },
+    setEditingApplication,
+    setSourcingResult,
+  })
   const query = useMemo(() => buildApplicationListQuery(filters, offset), [filters, offset])
   const actionQueueQuery = useMemo(
     () => buildActionQueueListQuery(actionQueueBucket, actionQueueOffset),
@@ -297,41 +366,24 @@ function App({
             : false
 
   useEffect(() => {
-    let isMounted = true
-
-    void settingsApi.get().then((savedSettings) => {
-      if (isMounted) {
-        setSettings(savedSettings)
-        setFiltersExpanded(savedSettings.showAdvancedFilters)
-      }
-    })
-
-    return () => {
-      isMounted = false
-    }
-  }, [settingsApi])
-
-  useEffect(() => {
     applyResolvedTheme(resolveTheme(settings.theme))
   }, [settings.theme])
 
   useEffect(() => {
-    let isMounted = true
-
-    void workspaceApi.getCurrent().then((currentWorkspace) => {
-      if (isMounted) {
-        setWorkspace(currentWorkspace)
-      }
-    }).catch(() => {
-      if (isMounted) {
-        setWorkspace(null)
-      }
-    })
-
-    return () => {
-      isMounted = false
+    if (settingsMutationTargetGateRef.current.isIdle()) {
+      committedSettingsRef.current = settings
     }
-  }, [workspaceApi])
+  }, [settings])
+
+  useEffect(() => {
+    const gate = settingsMutationTargetGateRef.current
+    isAppMountedRef.current = true
+    return () => {
+      isAppMountedRef.current = false
+      gate.invalidate()
+      clearDestructiveToastDedupeFor('settings:update')
+    }
+  }, [])
 
   useEffect(() => {
     const openSettingsFromNativeMenu = () => {
@@ -360,6 +412,7 @@ function App({
         setConnectorStatusReloadKey((current) => current + 1)
       } else {
         setConnectorStatusResult(emptyConnectorStatusResult)
+        hasLoadedConnectorStatusRef.current = true
         setHasLoadedConnectorStatus(true)
         setIsConnectorStatusLoading(false)
         setConnectorStatusError(null)
@@ -369,19 +422,41 @@ function App({
 
   useEffect(() => {
     let isMounted = true
+    const previousQuery = applicationsQueryIdentityRef.current
+    const queryChanged = previousQuery !== null && previousQuery !== query
+    applicationsQueryIdentityRef.current = query
 
     setIsLoading(true)
+    if (queryChanged) {
+      setResult(emptyApplicationResult)
+      setError(null)
+      hasLoadedApplicationsRef.current = false
+      setHasLoadedApplications(false)
+    }
+
     applicationLoader(query)
       .then((nextResult) => {
         if (isMounted) {
           setResult(nextResult)
+          hasLoadedApplicationsRef.current = true
           setHasLoadedApplications(true)
           setError(null)
+          globalFailureOwnerRef.current.clearGlobalFailure('applications')
         }
       })
-      .catch(() => {
+      .catch((loadError: unknown) => {
         if (isMounted) {
-          setError('Applications could not be loaded.')
+          const failure = applicationsLoadFailure(loadError, hasLoadedApplicationsRef.current)
+          setError(takeLocalLoadFailure(
+            failure,
+            globalFailureOwnerRef.current,
+            'applications',
+            () => setApplicationReloadKey((current) => current + 1),
+          ))
+          if (!failure && !hasLoadedApplicationsRef.current) {
+            hasLoadedApplicationsRef.current = true
+            setHasLoadedApplications(true)
+          }
         }
       })
       .finally(() => {
@@ -401,19 +476,41 @@ function App({
     }
 
     let isMounted = true
+    const previousQuery = actionQueueQueryIdentityRef.current
+    const queryChanged = previousQuery !== null && previousQuery !== actionQueueQuery
+    actionQueueQueryIdentityRef.current = actionQueueQuery
 
     setIsActionQueueLoading(true)
+    if (queryChanged) {
+      setActionQueueResult(emptyActionQueueResult)
+      setActionQueueError(null)
+      hasLoadedActionQueueRef.current = false
+      setHasLoadedActionQueue(false)
+    }
+
     actionQueueLoader(actionQueueQuery)
       .then((nextResult) => {
         if (isMounted) {
           setActionQueueResult(nextResult)
+          hasLoadedActionQueueRef.current = true
           setHasLoadedActionQueue(true)
           setActionQueueError(null)
+          globalFailureOwnerRef.current.clearGlobalFailure('action-queue')
         }
       })
-      .catch(() => {
+      .catch((loadError: unknown) => {
         if (isMounted) {
-          setActionQueueError('Action Queue could not be loaded.')
+          const failure = actionQueueLoadFailure(loadError, hasLoadedActionQueueRef.current)
+          setActionQueueError(takeLocalLoadFailure(
+            failure,
+            globalFailureOwnerRef.current,
+            'action-queue',
+            () => setActionQueueReloadKey((current) => current + 1),
+          ))
+          if (!failure && !hasLoadedActionQueueRef.current) {
+            hasLoadedActionQueueRef.current = true
+            setHasLoadedActionQueue(true)
+          }
         }
       })
       .finally(() => {
@@ -440,14 +537,25 @@ function App({
       .then((nextResult) => {
         if (isMounted && requestGeneration === connectorBackendGenerationRef.current) {
           setConnectorStatusResult(nextResult)
+          hasLoadedConnectorStatusRef.current = true
           setHasLoadedConnectorStatus(true)
           setConnectorStatusError(null)
+          globalFailureOwnerRef.current.clearGlobalFailure('connector-status')
         }
       })
-      .catch(() => {
+      .catch((loadError: unknown) => {
         if (isMounted && requestGeneration === connectorBackendGenerationRef.current) {
-          setConnectorStatusResult(emptyConnectorStatusResult)
-          setConnectorStatusError('Connector status could not be loaded.')
+          const failure = connectorStatusLoadFailure(loadError, hasLoadedConnectorStatusRef.current)
+          setConnectorStatusError(takeLocalLoadFailure(
+            failure,
+            globalFailureOwnerRef.current,
+            'connector-status',
+            () => setConnectorStatusReloadKey((current) => current + 1),
+          ))
+          if (!failure && !hasLoadedConnectorStatusRef.current) {
+            hasLoadedConnectorStatusRef.current = true
+            setHasLoadedConnectorStatus(true)
+          }
         }
       })
       .finally(() => {
@@ -467,8 +575,25 @@ function App({
     }
 
     let isMounted = true
+    const nextIdentity = {
+      pendingFindingId: pendingSourcingFindingId,
+      query: sourcingQuery,
+    }
+    const previousIdentity = sourcingQueryIdentityRef.current
+    const queryChanged = previousIdentity !== null && (
+      previousIdentity.query !== nextIdentity.query
+      || previousIdentity.pendingFindingId !== nextIdentity.pendingFindingId
+    )
+    sourcingQueryIdentityRef.current = nextIdentity
 
     setIsSourcingLoading(true)
+    if (queryChanged) {
+      setSourcingResult(emptySourcingResult)
+      setSourcingError(null)
+      hasLoadedSourcingRef.current = false
+      setHasLoadedSourcing(false)
+    }
+
     const request = pendingSourcingFindingId
       ? locateSourcingFinding(sourcingLoader, pendingSourcingFindingId, PAGE_LIMIT)
       : sourcingLoader(sourcingQuery)
@@ -476,7 +601,12 @@ function App({
       .then((nextResult) => {
         if (isMounted) {
           if (!nextResult) {
-            setSourcingError(`Opportunity ${pendingSourcingFindingId} could not be located.`)
+            setSourcingError({
+              message: `Opportunity ${pendingSourcingFindingId} could not be located.`,
+              retryable: true,
+              surface: 'scoped_load',
+              title: 'Load failed',
+            })
             return
           }
           setSourcingResult(nextResult)
@@ -484,13 +614,25 @@ function App({
             setSourcingOffset(nextResult.offset)
             setPendingSourcingFindingId(null)
           }
+          hasLoadedSourcingRef.current = true
           setHasLoadedSourcing(true)
           setSourcingError(null)
+          globalFailureOwnerRef.current.clearGlobalFailure('sourcing')
         }
       })
-      .catch(() => {
+      .catch((loadError: unknown) => {
         if (isMounted) {
-          setSourcingError('Opportunities could not be loaded.')
+          const failure = sourcingLoadFailure(loadError, hasLoadedSourcingRef.current)
+          setSourcingError(takeLocalLoadFailure(
+            failure,
+            globalFailureOwnerRef.current,
+            'sourcing',
+            () => setSourcingReloadKey((current) => current + 1),
+          ))
+          if (!failure && !hasLoadedSourcingRef.current) {
+            hasLoadedSourcingRef.current = true
+            setHasLoadedSourcing(true)
+          }
         }
       })
       .finally(() => {
@@ -593,135 +735,6 @@ function App({
     })
   }, [installUpdate, toast, updateState])
 
-  useEffect(() => {
-    if (!selectedApplication) {
-      return undefined
-    }
-
-    let isMounted = true
-
-    setIsAttemptLoading(true)
-    attemptLoader(selectedApplication.id)
-      .then((nextResult) => {
-        if (isMounted) {
-          setAttemptResult(nextResult)
-          setAttemptError(null)
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setAttemptResult(emptyAttemptResult)
-          setAttemptError('Attempts could not be loaded.')
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsAttemptLoading(false)
-        }
-      })
-
-    return () => {
-      isMounted = false
-    }
-  }, [attemptLoader, selectedApplication])
-
-  useEffect(() => {
-    if (!selectedApplication) {
-      return undefined
-    }
-
-    let isMounted = true
-    const applicationId = selectedApplication.id
-
-    setIsApplicationDetailLoading(true)
-    applicationDetailLoader(applicationId)
-      .then((nextDetail) => {
-        if (isMounted) {
-          setApplicationDetail(nextDetail)
-          setApplicationDetailError(nextDetail ? null : 'Application detail could not be found.')
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setApplicationDetail(null)
-          setApplicationDetailError('Application detail could not be loaded.')
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsApplicationDetailLoading(false)
-        }
-      })
-
-    return () => {
-      isMounted = false
-    }
-  }, [applicationDetailLoader, selectedApplication])
-
-  useEffect(() => {
-    if (!selectedApplication) {
-      return undefined
-    }
-
-    let isMounted = true
-
-    setIsApplicationLinksLoading(true)
-    applicationLinksLoader({ applicationId: selectedApplication.id })
-      .then((nextResult) => {
-        if (isMounted) {
-          setApplicationLinksResult(nextResult)
-          setApplicationLinksError(null)
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setApplicationLinksResult(emptyApplicationLinksResult)
-          setApplicationLinksError('Links could not be loaded.')
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsApplicationLinksLoading(false)
-        }
-      })
-
-    return () => {
-      isMounted = false
-    }
-  }, [applicationLinksLoader, selectedApplication])
-
-  useEffect(() => {
-    if (!selectedApplication) {
-      return undefined
-    }
-
-    let isMounted = true
-
-    setIsApplicationEventsLoading(true)
-    applicationEventsLoader({ applicationId: selectedApplication.id })
-      .then((nextResult) => {
-        if (isMounted) {
-          setApplicationEventsResult(nextResult)
-          setApplicationEventsError(null)
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setApplicationEventsResult(emptyApplicationEventsResult)
-          setApplicationEventsError('Events could not be loaded.')
-        }
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsApplicationEventsLoading(false)
-        }
-      })
-
-    return () => {
-      isMounted = false
-    }
-  }, [applicationEventsLoader, selectedApplication])
-
   function updateFilter(key: keyof FilterState, value: string) {
     setFilters((current) => ({
       ...current,
@@ -773,18 +786,16 @@ function App({
     setSourcingReloadKey((current) => current + 1)
   }
 
+  function reloadConnectorStatus() {
+    setConnectorStatusReloadKey((current) => current + 1)
+  }
+
   function reloadConnectorRunOutcomes() {
+    if (!isAppMountedRef.current) {
+      return
+    }
     setConnectorStatusReloadKey((current) => current + 1)
     reloadSourcing()
-    void sourcingLoader(sourcingQuery)
-      .then((nextResult) => {
-        setSourcingResult(nextResult)
-        setHasLoadedSourcing(true)
-        setSourcingError(null)
-      })
-      .catch(() => {
-        setSourcingError('Opportunities could not be loaded.')
-      })
   }
 
   function handleConnectorStatusAction(
@@ -797,78 +808,51 @@ function App({
     })
   }
 
-  function promoteFinding(findingId: string) {
-    setPromotingFindingId(findingId)
-    setSourcingError(null)
-
-    void promoteSourcingFinding({ findingId })
-      .then((promotedFinding) => {
-        setSourcingResult((current) => ({
-          ...current,
-          items: current.items.map((item) =>
-            item.id === promotedFinding.id ? promotedFinding : item,
-          ),
-        }))
-        reloadApplications()
-        reloadActionQueueIfLoaded()
-      })
-      .catch(() => {
-        setSourcingError('Opportunity could not be promoted.')
-      })
-      .finally(() => {
-        setPromotingFindingId(null)
-      })
+  function notifySettingsPatchFailure(error: unknown) {
+    if (!isAppMountedRef.current) {
+      return
+    }
+    toast(actionFailureToastInput(error, {
+      fallbackMessage: 'Settings could not be saved.',
+      operationId: 'settings:update',
+    }))
   }
 
   function updateSettings(patch: AppSettingsPatch): Promise<void> {
-    const nextSettings = normalizeAppSettings({
-      ...settings,
-      ...patch,
-    })
-
-    setSettings(nextSettings)
-
-    if (typeof patch.showAdvancedFilters === 'boolean') {
-      setFiltersExpanded(patch.showAdvancedFilters)
+    const apiTarget = settingsApi
+    const operation: Record<string, number> = {}
+    for (const key of settingsPatchKeys(patch)) {
+      const next = (settingsKeyGenerationRef.current[key] ?? 0) + 1
+      settingsKeyGenerationRef.current[key] = next
+      operation[key] = next
     }
-
-    return settingsApi.update(patch).then((savedSettings) => {
-      setSettings(savedSettings)
-
-      if (typeof patch.showAdvancedFilters === 'boolean') {
-        setFiltersExpanded(savedSettings.showAdvancedFilters)
-      }
-
-      if (requiresRestart(patch)) {
-        setSettingsRestartRequired(true)
-      }
+    const membership = settingsMutationTargetGateRef.current.begin()
+    applyOptimisticSettingsPatch({
+      patch,
+      previousSettings: settings,
+      setFiltersExpanded,
+      setSettings,
     })
-  }
-
-  function openApplicationDetail(application: ApplicationDetailSeed) {
-    setSelectedApplication(application)
-    setApplicationDetail(null)
-    setApplicationLinksResult(emptyApplicationLinksResult)
-    setApplicationEventsResult(emptyApplicationEventsResult)
-    setAttemptResult(emptyAttemptResult)
-    setApplicationDetailError(null)
-    setApplicationLinksError(null)
-    setApplicationEventsError(null)
-    setAttemptError(null)
-  }
-
-  function openActionQueueApplicationEditor(application: ApplicationDetailSeed) {
-    void applicationDetailLoader(application.id)
-      .then((detail) => {
-        if (detail) {
-          setEditingApplication(detail)
-        } else {
-          setActionQueueError('Application detail could not be found.')
-        }
-      })
-      .catch(() => {
-        setActionQueueError('Application detail could not be loaded.')
-      })
+    return commitSettingsPatch({
+      getCommittedSettings: () => committedSettingsRef.current,
+      isActiveApiTarget: () => (
+        settingsApiRef.current === apiTarget
+        && membership.belongsToCurrentTarget()
+      ),
+      isCurrentOperation: () => Object.entries(operation).every(
+        ([key, generation]) => settingsKeyGenerationRef.current[key] === generation,
+      ),
+      patch,
+      setCommittedSettings: (next) => {
+        committedSettingsRef.current = next
+      },
+      setFiltersExpanded,
+      setSettings,
+      setSettingsRestartRequired,
+      settingsApi: apiTarget,
+    }).finally(() => {
+      membership.end()
+    })
   }
 
   useEffect(() => {
@@ -929,11 +913,12 @@ function App({
       setSidebarHoverExpanded(false)
     }
 
-    void updateSettings({ sidebarCollapsed: nextCollapsed })
+    void updateSettings({ sidebarCollapsed: nextCollapsed }).catch(notifySettingsPatchFailure)
   }
 
   return (
     <TooltipProvider delayDuration={500}>
+      <GlobalFailureOwnerProvider value={globalFailureOwner}>
       <AppShell
       actionQueueBucket={actionQueueBucket}
       actionQueueError={actionQueueError}
@@ -995,8 +980,12 @@ function App({
       rawRecordsApi={rawRecordsApi}
       normalizationRunFilter={normalizationRunFilter}
       promoteFinding={promoteFinding}
-      promotingFindingId={promotingFindingId}
+      promotingFindingIds={promotingFindingIds}
       reloadApplicationViews={reloadApplicationViews}
+      reloadApplications={reloadApplications}
+      reloadActionQueue={reloadActionQueue}
+      reloadApplicationDetail={reloadApplicationDetail}
+      reloadConnectorStatus={reloadConnectorStatus}
       reloadConnectorRunOutcomes={reloadConnectorRunOutcomes}
       reloadSourcing={reloadSourcing}
       resetFilters={resetFilters}
@@ -1021,8 +1010,11 @@ function App({
       setSourcingOffset={setSourcingOffset}
       setSourcingUsability={setSourcingUsability}
       settings={settings}
+      settingsLoadFailure={settingsLoadFailure}
       settingsOpen={settingsOpen}
       settingsRestartRequired={settingsRestartRequired}
+      reloadSettings={reloadSettings}
+      reloadWorkspace={reloadWorkspace}
       sidebarHoverExpanded={sidebarHoverExpanded}
       sidebarState={sidebarState}
       sidebarToggleCollapsed={sidebarToggleCollapsed}
@@ -1048,7 +1040,9 @@ function App({
       windowChromeState={windowChromeState}
       workspace={workspace}
       workspaceApi={workspaceApi}
+      workspaceLoadFailure={workspaceLoadFailure}
       />
+      </GlobalFailureOwnerProvider>
     </TooltipProvider>
   )
 }

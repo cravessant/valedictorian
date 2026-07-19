@@ -1,7 +1,7 @@
 import type { CreateSourcingFindingInput, UpdateSourcingFindingInput } from 'sparxie'
 import { formatEnumLabel } from '../../app/labels'
 
-import { Field, FieldLabel } from '@/components/ui/field'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,16 +10,19 @@ import { cn } from '@/lib/utils'
 
 export function FindingInput({
   disabled,
+  error,
   label,
   onChange,
   value,
 }: {
   disabled?: boolean
+  error?: string | null
   label: string
   onChange: (value: string) => void
   value: string
 }) {
   const controlId = fieldControlId('sourcing-finding', label)
+  const errorId = `${controlId}-error`
 
   return (
     <Field
@@ -30,27 +33,37 @@ export function FindingInput({
         {label}
       </FieldLabel>
       <Input
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={error ? true : undefined}
         disabled={disabled}
         id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+      {error ? (
+        <FieldError id={errorId} className="text-xs text-destructive">
+          {error}
+        </FieldError>
+      ) : null}
     </Field>
   )
 }
 
 export function FindingTextarea({
   className,
+  error,
   label,
   onChange,
   value,
 }: {
   className?: string
+  error?: string | null
   label: string
   onChange: (value: string) => void
   value: string
 }) {
   const controlId = fieldControlId('sourcing-finding', label)
+  const errorId = `${controlId}-error`
 
   return (
     <Field className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
@@ -58,11 +71,18 @@ export function FindingTextarea({
         {label}
       </FieldLabel>
       <Textarea
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={error ? true : undefined}
         className={cn('min-h-20', className)}
         id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+      {error ? (
+        <FieldError id={errorId} className="text-xs text-destructive">
+          {error}
+        </FieldError>
+      ) : null}
     </Field>
   )
 }

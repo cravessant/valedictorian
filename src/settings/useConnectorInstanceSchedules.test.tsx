@@ -263,7 +263,7 @@ describe('connector schedule load ownership', () => {
     })
 
     await waitFor(() => {
-      expect(result.current.capabilityLoadError).toMatch(/could not be loaded/i)
+      expect(result.current.capabilityLoadError?.message).toMatch(/could not be loaded/i)
     })
     expect(getScheduleC).not.toHaveBeenCalled()
     expect(result.current.schedulingCapability).toBeNull()

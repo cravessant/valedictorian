@@ -10,9 +10,12 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
-import { Field, FieldLabel } from '@/components/ui/field'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { Input } from '@/components/ui/input'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import type { ErrorPresentation } from '../app/error-presentation'
 import type {
   ConnectorScheduleSummary,
   ConnectorSchedulingCapability,
@@ -22,6 +25,7 @@ import {
   formatConnectorScheduleCadence,
   listIanaTimeZones,
   supportedSchedulePresets,
+  type ConnectorScheduleValidationField,
 } from './connector-schedule.helpers'
 import type { ConnectorScheduleDraft } from './connector-schedule.types'
 import { MAX_CONNECTOR_SCHEDULE_INTERVAL_MINUTES } from 'sparxie'
@@ -45,10 +49,13 @@ export function ConnectorScheduleControls({
   draft,
   isDirty,
   isLoading,
+  loadFailure = null,
   readOnly = false,
   isSaving,
+  onRetryLoad,
   statusMessage,
   statusTone,
+  validationField = null,
   onDiscard,
   onDraftChange,
   onPause,
@@ -56,17 +63,20 @@ export function ConnectorScheduleControls({
   onSave,
 }: {
   capability: ConnectorSchedulingCapability | null
-  capabilityLoadError: string | null
+  capabilityLoadError: ErrorPresentation | null
   canonical: ConnectorScheduleSummary | null
   connectorDisplayName: string
   connectorEnabled: boolean
   draft: ConnectorScheduleDraft
   isDirty: boolean
   isLoading: boolean
+  loadFailure?: ErrorPresentation | null
   readOnly?: boolean
   isSaving: boolean
+  onRetryLoad?: () => void
   statusMessage: string | null
   statusTone: 'idle' | 'success' | 'error'
+  validationField?: ConnectorScheduleValidationField | null
   onDiscard: () => void
   onDraftChange: (patch: Partial<ConnectorScheduleDraft>) => void
   onPause: () => void
@@ -80,9 +90,43 @@ export function ConnectorScheduleControls({
   const dailyTimeId = useId()
   const weeklyDayId = useId()
   const weeklyTimeId = useId()
+  const validationErrorId = useId()
   const [manualRemoveOpen, setManualRemoveOpen] = useState(false)
   const [manualRemoveError, setManualRemoveError] = useState<string | null>(null)
   const wouldRemovePersistedSchedule = draft.mode === 'manual' && canonical !== null
+  const validationMessage = validationField && statusTone === 'error' ? statusMessage : null
+  const formFailureMessage =
+    statusTone === 'error' && !validationField && !manualRemoveOpen && statusMessage
+      ? statusMessage
+      : null
+  const statusLiveMessage =
+    validationMessage || formFailureMessage || (manualRemoveOpen && statusTone === 'error')
+      ? null
+      : statusMessage
+
+  useEffect(() => {
+    if (!validationField || !validationMessage) {
+      return
+    }
+    const controlId = {
+      timezone: timezoneId,
+      preset: presetId,
+      everyMinutes: intervalId,
+      localTime: draft.mode === 'custom-weekly' ? weeklyTimeId : dailyTimeId,
+      dayOfWeek: weeklyDayId,
+    }[validationField]
+    document.getElementById(controlId)?.focus()
+  }, [
+    dailyTimeId,
+    draft.mode,
+    intervalId,
+    presetId,
+    timezoneId,
+    validationField,
+    validationMessage,
+    weeklyDayId,
+    weeklyTimeId,
+  ])
 
   useEffect(() => {
     if (!manualRemoveOpen || isSaving) {
@@ -110,15 +154,21 @@ export function ConnectorScheduleControls({
           <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
           <p className="text-xs font-medium text-muted-foreground">Unavailable to load</p>
         </div>
-        <div
-          aria-atomic="true"
-          aria-label={`${connectorDisplayName} schedule status`}
-          aria-live="polite"
-          className="text-xs font-medium text-destructive"
-          role="status"
-        >
-          {capabilityLoadError}
+        <LoadFailureView failure={capabilityLoadError} onRetry={onRetryLoad} />
+      </section>
+    )
+  }
+
+  if (loadFailure) {
+    return (
+      <section
+        aria-label={`${connectorDisplayName} schedule`}
+        className="grid gap-2 border-b border-border/70 py-5"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-sm font-semibold text-foreground">Automatic schedule</h4>
         </div>
+        <LoadFailureView failure={loadFailure} onRetry={onRetryLoad} />
       </section>
     )
   }
@@ -254,6 +304,8 @@ export function ConnectorScheduleControls({
             Preset
           </FieldLabel>
           <NativeSelect
+            aria-describedby={validationField === 'preset' ? validationErrorId : undefined}
+            aria-invalid={validationField === 'preset' ? true : undefined}
             disabled={readOnly || isSaving}
             id={presetId}
             value={draft.presetId ?? ''}
@@ -275,6 +327,8 @@ export function ConnectorScheduleControls({
             Every minutes
           </FieldLabel>
           <Input
+            aria-describedby={validationField === 'everyMinutes' ? validationErrorId : undefined}
+            aria-invalid={validationField === 'everyMinutes' ? true : undefined}
             disabled={readOnly || isSaving}
             id={intervalId}
             inputMode="numeric"
@@ -296,6 +350,8 @@ export function ConnectorScheduleControls({
             Daily local time
           </FieldLabel>
           <Input
+            aria-describedby={validationField === 'localTime' ? validationErrorId : undefined}
+            aria-invalid={validationField === 'localTime' ? true : undefined}
             disabled={readOnly || isSaving}
             id={dailyTimeId}
             pattern="[0-2][0-9]:[0-5][0-9]"
@@ -316,6 +372,8 @@ export function ConnectorScheduleControls({
               Weekday
             </FieldLabel>
             <NativeSelect
+              aria-describedby={validationField === 'dayOfWeek' ? validationErrorId : undefined}
+              aria-invalid={validationField === 'dayOfWeek' ? true : undefined}
               disabled={readOnly || isSaving}
               id={weeklyDayId}
               value={draft.dayOfWeek}
@@ -334,6 +392,8 @@ export function ConnectorScheduleControls({
               Weekly local time
             </FieldLabel>
             <Input
+              aria-describedby={validationField === 'localTime' ? validationErrorId : undefined}
+              aria-invalid={validationField === 'localTime' ? true : undefined}
               disabled={readOnly || isSaving}
               id={weeklyTimeId}
               pattern="[0-2][0-9]:[0-5][0-9]"
@@ -354,6 +414,8 @@ export function ConnectorScheduleControls({
             Timezone
           </FieldLabel>
           <Combobox
+            aria-describedby={validationField === 'timezone' ? validationErrorId : undefined}
+            aria-invalid={validationField === 'timezone' ? true : undefined}
             disabled={readOnly || isSaving}
             emptyText="No timezone found."
             id={timezoneId}
@@ -466,9 +528,7 @@ export function ConnectorScheduleControls({
             </AlertDialogDescription>
           </AlertDialogHeader>
           {manualRemoveError ? (
-            <p className="text-sm text-destructive" role="alert">
-              {manualRemoveError}
-            </p>
+            <FormFailureAlert message={manualRemoveError} title="Schedule removal failed" />
           ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSaving}>Cancel</AlertDialogCancel>
@@ -487,21 +547,25 @@ export function ConnectorScheduleControls({
         </AlertDialogContent>
       </AlertDialog>
 
+      {formFailureMessage ? <FormFailureAlert message={formFailureMessage} /> : null}
       <div
         aria-atomic="true"
         aria-label={`${connectorDisplayName} schedule status`}
         aria-live="polite"
         className={
-          statusTone === 'error'
-            ? 'text-xs font-medium text-destructive'
-            : statusTone === 'success'
-              ? 'text-xs font-medium text-success'
-              : 'text-xs text-muted-foreground'
+          statusTone === 'success'
+            ? 'text-xs font-medium text-success'
+            : 'text-xs text-muted-foreground'
         }
         role="status"
       >
-        {statusMessage ?? ''}
+        {statusLiveMessage ?? ''}
       </div>
+      {validationMessage ? (
+        <FieldError id={validationErrorId} className="text-xs text-destructive">
+          {validationMessage}
+        </FieldError>
+      ) : null}
     </section>
   )
 }

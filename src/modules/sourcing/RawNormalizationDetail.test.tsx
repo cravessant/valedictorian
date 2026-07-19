@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   InvalidPersistedRawDetailHttpError,
   ValedictorianHttpError,
+  ValedictorianProtocolError,
+  ValedictorianTransportError,
   invalidPersistedRawDetailErrorBody,
+  valedictorianFailureKindMessages,
   type RawSourceProjectionResult,
   type RawSourceRecord,
   type RawSourceRecordSummary,
@@ -38,6 +41,7 @@ describe('RawNormalizationDetail', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Capture lineage detail is invalid and cannot be displayed.')
     expect(alert).not.toHaveTextContent('capture lineage')
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 
   it('does not classify an untyped matching code as invalid persisted detail', async () => {
@@ -155,9 +159,7 @@ describe('RawNormalizationDetail', () => {
     const summary = {
       id: 'raw-record-safe', normalizationStatus: 'raw_only',
     } as RawSourceRecordSummary
-    const getNormalization = vi.fn(async () => {
-      throw new Error('private normalization read detail')
-    })
+    const getNormalization = vi.fn(async () => null)
 
     render(
       <RawNormalizationDetail
@@ -200,10 +202,127 @@ describe('RawNormalizationDetail', () => {
     expect(dialog).not.toHaveTextContent('signed-evidence-value')
     expect(dialog).not.toHaveTextContent('compound-sig-payload-value')
     expect(dialog).not.toHaveTextContent('compound-sig-evidence-value')
-    expect(dialog).not.toHaveTextContent('private normalization read detail')
     expect(dialog).toHaveTextContent('Sensitive detail omitted')
     expect(dialog).toHaveTextContent('No Job normalization or Opportunity projection recorded for this evidence version')
     expect(getNormalization).toHaveBeenCalledWith('raw-record-safe')
+  })
+
+  it('treats getNormalization request rejection as scoped request failure with Retry, not domain not-started', async () => {
+    const record = {
+      id: 'raw-record-1',
+      latestRevision: {
+        id: 'raw-revision-1', revision: 1,
+        adapter: { id: 'jobright', kind: 'connector', version: '1.0.0' },
+        payload: { title: 'Recovered capture title' }, evidence: [],
+      },
+      occurrences: [],
+    } as RawSourceRecord
+    const normalization = createPassedNormalization(createNeedsEnrichmentNormalization())
+    const projection = {
+      rawRecordId: 'raw-record-1', rawRevisionId: 'raw-revision-1',
+      status: 'projected', normalizationStatus: 'completed', gateStatus: 'passed',
+      canonicalCandidateId: 'candidate-1', projectedAt: '2026-07-10T12:00:04.000Z',
+      updatedAt: '2026-07-10T12:00:04.000Z',
+      finding: { id: 'finding-1', mergeStatus: 'new', mergedApplicationId: null },
+    } satisfies RawSourceProjectionResult
+    const getNormalization = vi.fn()
+      .mockRejectedValueOnce(new ValedictorianProtocolError({
+        message: 'private normalization read detail /secret/path',
+      }))
+      .mockResolvedValueOnce(normalization)
+    const get = vi.fn(async () => record)
+    const getProjection = vi.fn(async () => projection)
+
+    render(
+      <RawNormalizationDetail
+        api={{ list: vi.fn(), get, getNormalization, getProjection }}
+        onClose={() => undefined}
+        summary={{ id: 'raw-record-1', normalizationStatus: 'completed' } as RawSourceRecordSummary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    expect(alert).toHaveTextContent('Capture lineage detail could not be loaded.')
+    expect(alert).not.toHaveTextContent('private normalization read detail')
+    expect(alert).not.toHaveTextContent('/secret/path')
+    expect(screen.queryByText(/not started/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('No Job normalization or Opportunity projection recorded for this evidence version'))
+      .not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('Recovered capture title')).toBeInTheDocument()
+    expect(screen.getByText('Projected to Opportunity finding-1')).toBeInTheDocument()
+    expect(getNormalization).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps prior record and outcomes visible when a same-summary getNormalization retry rejects', async () => {
+    const record = {
+      id: 'raw-record-1',
+      latestRevision: {
+        id: 'raw-revision-1', revision: 1,
+        adapter: { id: 'jobright', kind: 'connector', version: '1.0.0' },
+        payload: { title: 'Stale capture title' }, evidence: [],
+      },
+      occurrences: [],
+    } as RawSourceRecord
+    const normalization = createPassedNormalization(createNeedsEnrichmentNormalization())
+    const projection = {
+      rawRecordId: 'raw-record-1', rawRevisionId: 'raw-revision-1',
+      status: 'projected', normalizationStatus: 'completed', gateStatus: 'passed',
+      canonicalCandidateId: 'candidate-1', projectedAt: '2026-07-10T12:00:04.000Z',
+      updatedAt: '2026-07-10T12:00:04.000Z',
+      finding: { id: 'finding-1', mergeStatus: 'new', mergedApplicationId: null },
+    } satisfies RawSourceProjectionResult
+    const summary = {
+      id: 'raw-record-1', normalizationStatus: 'completed',
+    } as RawSourceRecordSummary
+
+    const { rerender } = render(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => record),
+          getNormalization: vi.fn(async () => normalization),
+          getProjection: vi.fn(async () => projection),
+        }}
+        onClose={() => undefined}
+        summary={summary}
+      />,
+    )
+    expect(await screen.findByText('Stale capture title')).toBeInTheDocument()
+    expect(screen.getByText('Projected to Opportunity finding-1')).toBeInTheDocument()
+
+    const getNormalization = vi.fn(async () => {
+      throw new ValedictorianProtocolError({
+        message: 'retry normalization dump /secret',
+      })
+    })
+    rerender(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => record),
+          getNormalization,
+          getProjection: vi.fn(async () => projection),
+        }}
+        onClose={() => undefined}
+        summary={summary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    expect(alert).not.toHaveTextContent('retry normalization dump')
+    expect(alert).not.toHaveTextContent('/secret')
+    expect(screen.getByText('Stale capture title')).toBeInTheDocument()
+    expect(screen.getByText('Projected to Opportunity finding-1')).toBeInTheDocument()
+    expect(screen.queryByText(/not started/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('No Job normalization or Opportunity projection recorded for this evidence version'))
+      .not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(getNormalization).toHaveBeenCalled()
   })
 
   it('loads exact-revision projection truth and renders the canonical candidate fields', async () => {
@@ -439,5 +558,257 @@ describe('RawNormalizationDetail', () => {
     expect(screen.getByText('Projected to Opportunity finding-current')).toBeInTheDocument()
     expect(screen.queryByText('Stale Company')).not.toBeInTheDocument()
     expect(screen.queryByText('Projected to Opportunity finding-stale')).not.toBeInTheDocument()
+  })
+
+  it('shows scoped request failure with Retry for detail rejection, not domain not-started', async () => {
+    const normalization = createPassedNormalization(createNeedsEnrichmentNormalization())
+    const get = vi.fn()
+      .mockRejectedValueOnce(new ValedictorianProtocolError({
+        message: 'detail dump /secret',
+      }))
+      .mockResolvedValueOnce({
+        id: 'raw-record-1',
+        latestRevision: {
+          id: 'raw-revision-1',
+          revision: 1,
+          adapter: { id: 'jobright', kind: 'connector', version: '1.0.0' },
+          payload: { title: 'Recovered capture title', company: 'Acme' },
+          evidence: [],
+        },
+        occurrences: [],
+      } as RawSourceRecord)
+    const getNormalization = vi.fn(async () => normalization)
+    const getProjection = vi.fn(async () => ({
+      rawRecordId: 'raw-record-1',
+      rawRevisionId: 'raw-revision-1',
+      status: 'projected',
+      normalizationStatus: 'completed',
+      gateStatus: 'passed',
+      canonicalCandidateId: 'candidate-1',
+      projectedAt: '2026-07-10T12:00:04.000Z',
+      updatedAt: '2026-07-10T12:00:04.000Z',
+      finding: { id: 'finding-1', mergeStatus: 'new', mergedApplicationId: null },
+    } satisfies RawSourceProjectionResult))
+
+    render(
+      <RawNormalizationDetail
+        api={{ list: vi.fn(), get, getNormalization, getProjection }}
+        onClose={() => undefined}
+        summary={{ id: 'raw-record-1', normalizationStatus: 'completed' } as RawSourceRecordSummary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    expect(alert).toHaveTextContent('Capture lineage detail could not be loaded.')
+    expect(alert).not.toHaveTextContent('/secret')
+    expect(screen.queryByText(/not started/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('Recovered capture title')).toBeInTheDocument()
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('retains record, normalization, and projection panes after a rejected detail retry', async () => {
+    const normalization = createPassedNormalization(createNeedsEnrichmentNormalization())
+    const record = {
+      id: 'raw-record-1',
+      latestRevision: {
+        id: 'raw-revision-1',
+        revision: 1,
+        adapter: { id: 'jobright', kind: 'connector', version: '1.0.0' },
+        payload: { title: 'Capture title', company: 'Acme' },
+        evidence: [],
+      },
+      occurrences: [],
+    } as RawSourceRecord
+    const projection = {
+      rawRecordId: 'raw-record-1',
+      rawRevisionId: 'raw-revision-1',
+      status: 'projected',
+      normalizationStatus: 'completed',
+      gateStatus: 'passed',
+      canonicalCandidateId: 'candidate-1',
+      projectedAt: '2026-07-10T12:00:04.000Z',
+      updatedAt: '2026-07-10T12:00:04.000Z',
+      finding: { id: 'finding-1', mergeStatus: 'new', mergedApplicationId: null },
+    } satisfies RawSourceProjectionResult
+
+    const successApi = {
+      list: vi.fn(),
+      get: vi.fn(async () => record),
+      getNormalization: vi.fn(async () => normalization),
+      getProjection: vi.fn(async () => projection),
+    }
+    const { rerender } = render(
+      <RawNormalizationDetail
+        api={successApi}
+        onClose={() => undefined}
+        summary={{ id: 'raw-record-1', normalizationStatus: 'completed' } as RawSourceRecordSummary}
+      />,
+    )
+    expect(await screen.findByText('Capture title')).toBeInTheDocument()
+    expect(screen.getByText('Projected to Opportunity finding-1')).toBeInTheDocument()
+
+    rerender(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => {
+            throw new ValedictorianProtocolError({
+              message: 'retry dump /secret',
+            })
+          }),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(),
+        }}
+        onClose={() => undefined}
+        summary={{ id: 'raw-record-1', normalizationStatus: 'completed' } as RawSourceRecordSummary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    expect(alert).not.toHaveTextContent('/secret')
+    expect(screen.getByText('Capture title')).toBeInTheDocument()
+    expect(screen.getByText('Projected to Opportunity finding-1')).toBeInTheDocument()
+    expect(screen.queryByText(/not started/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  it('settles an initial AbortError to empty non-error UI without a truthy load failure', async () => {
+    render(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => {
+            throw new DOMException('The operation was aborted.', 'AbortError')
+          }),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(),
+        }}
+        onClose={() => undefined}
+        summary={{ id: 'aborted-record' } as RawSourceRecordSummary}
+      />,
+    )
+
+    expect(await screen.findByRole('status', {
+      name: 'Capture lineage detail is unavailable',
+    })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('status', { name: 'Loading Capture lineage detail...' }))
+      .not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('renders AuthenticationFailure through LoadFailureView for typed authentication detail failures', async () => {
+    const get = vi.fn()
+      .mockRejectedValueOnce(new ValedictorianHttpError({
+        body: null,
+        kind: 'authentication',
+        message: 'detail auth dump /secret',
+        status: 401,
+      }))
+      .mockResolvedValueOnce({
+        id: 'raw-record-1',
+        latestRevision: {
+          id: 'raw-revision-1', revision: 1,
+          adapter: { id: 'jobright', kind: 'connector', version: '1.0.0' },
+          payload: { title: 'Recovered capture title' }, evidence: [],
+        },
+        occurrences: [],
+      } as RawSourceRecord)
+    const normalization = createPassedNormalization(createNeedsEnrichmentNormalization())
+    const getNormalization = vi.fn(async () => normalization)
+    const getProjection = vi.fn(async () => ({
+      rawRecordId: 'raw-record-1', rawRevisionId: 'raw-revision-1',
+      status: 'projected', normalizationStatus: 'completed', gateStatus: 'passed',
+      canonicalCandidateId: 'candidate-1', projectedAt: '2026-07-10T12:00:04.000Z',
+      updatedAt: '2026-07-10T12:00:04.000Z',
+      finding: { id: 'finding-1', mergeStatus: 'new', mergedApplicationId: null },
+    } satisfies RawSourceProjectionResult))
+
+    render(
+      <RawNormalizationDetail
+        api={{ list: vi.fn(), get, getNormalization, getProjection }}
+        onClose={() => undefined}
+        summary={{ id: 'raw-record-1', normalizationStatus: 'completed' } as RawSourceRecordSummary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'authentication-failure')
+    expect(alert).toHaveTextContent('Authentication')
+    expect(alert).not.toHaveTextContent('/secret')
+    expect(document.querySelector('[data-slot="scoped-load-failure"]')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('Recovered capture title')).toBeInTheDocument()
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps stale panes beside GlobalFailureAlert after typed transport refresh rejection', async () => {
+    const record = {
+      id: 'raw-record-1',
+      latestRevision: {
+        id: 'raw-revision-1', revision: 1,
+        adapter: { id: 'jobright', kind: 'connector', version: '1.0.0' },
+        payload: { title: 'Stale capture title' }, evidence: [],
+      },
+      occurrences: [],
+    } as RawSourceRecord
+    const normalization = createPassedNormalization(createNeedsEnrichmentNormalization())
+    const projection = {
+      rawRecordId: 'raw-record-1', rawRevisionId: 'raw-revision-1',
+      status: 'projected', normalizationStatus: 'completed', gateStatus: 'passed',
+      canonicalCandidateId: 'candidate-1', projectedAt: '2026-07-10T12:00:04.000Z',
+      updatedAt: '2026-07-10T12:00:04.000Z',
+      finding: { id: 'finding-1', mergeStatus: 'new', mergedApplicationId: null },
+    } satisfies RawSourceProjectionResult
+    const summary = {
+      id: 'raw-record-1', normalizationStatus: 'completed',
+    } as RawSourceRecordSummary
+
+    const { rerender } = render(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => record),
+          getNormalization: vi.fn(async () => normalization),
+          getProjection: vi.fn(async () => projection),
+        }}
+        onClose={() => undefined}
+        summary={summary}
+      />,
+    )
+    expect(await screen.findByText('Stale capture title')).toBeInTheDocument()
+    expect(screen.getByText('Projected to Opportunity finding-1')).toBeInTheDocument()
+
+    rerender(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => {
+            throw new ValedictorianTransportError({
+              cause: new Error('ECONNREFUSED /var/raw-detail/secret'),
+            })
+          }),
+          getNormalization: vi.fn(async () => normalization),
+          getProjection: vi.fn(async () => projection),
+        }}
+        onClose={() => undefined}
+        summary={summary}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'global-failure')
+    expect(alert).toHaveTextContent(valedictorianFailureKindMessages.unavailable)
+    expect(alert).not.toHaveTextContent('ECONNREFUSED')
+    expect(screen.getByText('Stale capture title')).toBeInTheDocument()
+    expect(screen.getByText('Projected to Opportunity finding-1')).toBeInTheDocument()
+    expect(document.querySelector('[data-slot="scoped-load-failure"]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 })

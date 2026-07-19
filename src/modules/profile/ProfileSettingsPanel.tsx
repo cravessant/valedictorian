@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -34,12 +34,14 @@ import {
   type UserProfile,
 } from 'sparxie'
 import type { ProfilePreloadApi } from '../../ipc/profile.preload'
+import { ownedLoadFailure, presentLoadFailure, type ErrorPresentation } from '../../app/error-presentation'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { SettingsTextInput } from '../../settings/SettingsTextInput'
 import {
   BirthDateSelectRow,
   BooleanPreferenceControl,
   CompactInput,
-  formatProfileError,
   InlineEditorActions,
   ProfileAnswerRow,
   ProfileRowModal,
@@ -56,28 +58,20 @@ import {
 } from './ProfileSettingsControls'
 import { ProfileEducationSection } from './ProfileEducationSection'
 import { ProfileSecureValuesSection } from './ProfileSecureValuesSection'
+import {
+  canStartProfileWrite,
+  canonicalBirthDate,
+  isProfileScopeSaving,
+  isProfileWriteDisabled,
+  presentProfileClientValidationMessage,
+  splitDateOfBirth,
+  type PendingDestructiveRemoval,
+  type ProfileSaveScope,
+  type ProfileSaveStatus,
+} from './profile-settings-status'
+import { runOwnedProfileAction } from './profile-settings-run-action'
 
 type ProfileField = keyof Omit<UserProfile, 'answers' | 'education'>
-type ProfileSaveScope =
-  | 'answer'
-  | 'date-of-birth'
-  | 'education'
-  | 'identity'
-  | 'profile'
-  | 'secret'
-  | 'voluntary-self-id'
-type ProfileSaveStatus = {
-  kind: 'saving' | 'success' | 'error'
-  message: string
-  scope: ProfileSaveScope
-} | null
-type PendingDestructiveRemoval = {
-  confirmLabel: string
-  description: string
-  kind: 'education' | 'answer' | 'secret'
-  targetId: string
-  title: string
-} | null
 
 function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi }) {
   const [profile, setProfile] = useState<UserProfile>(defaultUserProfile)
@@ -85,6 +79,13 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   const [identityConfigured, setIdentityConfigured] = useState(false)
   const [identityDraft, setIdentityDraft] = useState('')
   const [isProfileLoading, setIsProfileLoading] = useState(true)
+  const [hasLoadedProfile, setHasLoadedProfile] = useState(false)
+  const hasLoadedProfileRef = useRef(false)
+  const isMountedRef = useRef(true)
+  const profileApiRef = useRef(profileApi)
+  const mutationTargetEpochRef = useRef(0)
+  const [profileLoadError, setProfileLoadError] = useState<ErrorPresentation | null>(null)
+  const [profileReloadKey, setProfileReloadKey] = useState(0)
   const [showAnswerEditor, setShowAnswerEditor] = useState(false)
   const [showEducationEditor, setShowEducationEditor] = useState(false)
   const [showSecretEditor, setShowSecretEditor] = useState(false)
@@ -107,8 +108,20 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
       (pendingRemoval.kind === 'secret' && saveStatus.scope === 'secret'))
 
   useEffect(() => {
+    isMountedRef.current = true
+    profileApiRef.current = profileApi
+    mutationTargetEpochRef.current += 1
+    return () => {
+      isMountedRef.current = false
+      mutationTargetEpochRef.current += 1
+    }
+  }, [profileApi])
+
+  useEffect(() => {
     let active = true
 
+    setIsProfileLoading(true)
+    setProfileLoadError(null)
     void Promise.all([profileApi.get(), profileApi.identity.status(), profileApi.secrets.list()])
       .then(([savedProfile, savedIdentityStatus, savedSecrets]) => {
         if (!active) {
@@ -119,6 +132,20 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
         setBirthDateDraft(splitDateOfBirth(savedProfile.dateOfBirth))
         setIdentityConfigured(savedIdentityStatus)
         setSecretSummaries(savedSecrets)
+        setHasLoadedProfile(true)
+        hasLoadedProfileRef.current = true
+        setProfileLoadError(null)
+      })
+      .catch((loadError: unknown) => {
+        if (!active) {
+          return
+        }
+        const hasStaleData = hasLoadedProfileRef.current
+        setProfileLoadError(ownedLoadFailure(presentLoadFailure(loadError, {
+          hasStaleData,
+          scope: 'page',
+          trigger: hasStaleData ? 'refresh' : 'load',
+        })))
       })
       .finally(() => {
         if (active) {
@@ -129,7 +156,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     return () => {
       active = false
     }
-  }, [profileApi])
+  }, [profileApi, profileReloadKey])
 
   function updateProfileField(field: ProfileField, value: string) {
     setProfile((current) => ({
@@ -200,31 +227,39 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   }
 
   function saveEducation() {
-    const nextEducationItem = normalizeProfileEducationInput({
-      classStanding: educationDraft.classStanding,
-      degree: educationDraft.degree,
-      educationType:
-        educationDraft.educationType === 'Other'
-          ? educationDraft.otherEducationType
-          : educationDraft.educationType,
-      graduationDate: educationDraft.graduationDate,
-      major: educationDraft.major,
-      notes: educationDraft.notes,
-      satScore: educationDraft.satScore,
-      school: educationDraft.school,
-      transcriptPath: educationDraft.transcriptPath,
-    })
+    let nextEducationItem
+    try {
+      nextEducationItem = normalizeProfileEducationInput({
+        classStanding: educationDraft.classStanding,
+        degree: educationDraft.degree,
+        educationType:
+          educationDraft.educationType === 'Other'
+            ? educationDraft.otherEducationType
+            : educationDraft.educationType,
+        graduationDate: educationDraft.graduationDate,
+        major: educationDraft.major,
+        notes: educationDraft.notes,
+        satScore: educationDraft.satScore,
+        school: educationDraft.school,
+        transcriptPath: educationDraft.transcriptPath,
+      })
+    } catch (error: unknown) {
+      ownProfileClientValidation('education', error)
+      return
+    }
     const nextEducation = [
       ...profile.education.filter((item) => item.id !== nextEducationItem.id),
       nextEducationItem,
     ]
 
-    setProfile((current) => ({ ...current, education: nextEducation }))
-    setEducationDraft(educationDraftDefaults)
-    setShowEducationEditor(false)
     runProfileAction({
       errorPrefix: 'Could not save education',
-      onSuccess: setProfile,
+      onSuccess: (value) => {
+        setProfile(value)
+        setEducationDraft(educationDraftDefaults)
+        setEducationEditorMode('add')
+        setShowEducationEditor(false)
+      },
       pendingMessage: 'Saving education...',
       scope: 'education',
       successMessage: 'Education saved.',
@@ -236,12 +271,14 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     setEducationDraft(educationDraftDefaults)
     setEducationEditorMode('add')
     setShowEducationEditor(false)
+    clearModalSaveError('education')
   }
 
   function openAddEducation() {
     setEducationDraft(educationDraftDefaults)
     setEducationEditorMode('add')
     setShowEducationEditor(true)
+    clearModalSaveError('education')
   }
 
   function openEditEducation(education: ProfileEducation) {
@@ -263,6 +300,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     })
     setEducationEditorMode('edit')
     setShowEducationEditor(true)
+    clearModalSaveError('education')
   }
 
   function requestRemoveEducation(id: string) {
@@ -316,7 +354,6 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   function removeEducation(id: string) {
     const nextEducation = profile.education.filter((item) => item.id !== id)
 
-    setProfile((current) => ({ ...current, education: nextEducation }))
     runProfileAction({
       errorPrefix: 'Could not remove education',
       onSuccess: (value) => {
@@ -334,7 +371,6 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   function removeAnswer(key: string) {
     const nextAnswers = profile.answers.filter((answer) => answer.key !== key)
 
-    setProfile((current) => ({ ...current, answers: nextAnswers }))
     runProfileAction({
       errorPrefix: 'Could not remove answer',
       onSuccess: (value) => {
@@ -434,24 +470,32 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
   }
 
   function saveAnswer() {
-    const nextAnswer = normalizeProfileAnswerInput({
-      answer: answerDraft.answer,
-      category: null,
-      includeInAgentContext: answerDraft.includeInAgentContext,
-      label: answerDraft.label,
-      questionPattern: answerDraft.questionPattern,
-    })
+    let nextAnswer
+    try {
+      nextAnswer = normalizeProfileAnswerInput({
+        answer: answerDraft.answer,
+        category: null,
+        includeInAgentContext: answerDraft.includeInAgentContext,
+        label: answerDraft.label,
+        questionPattern: answerDraft.questionPattern,
+      })
+    } catch (error: unknown) {
+      ownProfileClientValidation('answer', error)
+      return
+    }
     const nextAnswers = [
       ...profile.answers.filter((answer) => answer.key !== nextAnswer.key),
       nextAnswer,
     ]
 
-    setProfile((current) => ({ ...current, answers: nextAnswers }))
-    setAnswerDraft(answerDraftDefaults)
-    setShowAnswerEditor(false)
     runProfileAction({
       errorPrefix: 'Could not save answer',
-      onSuccess: setProfile,
+      onSuccess: (value) => {
+        setProfile(value)
+        setAnswerDraft(answerDraftDefaults)
+        setAnswerEditorMode('add')
+        setShowAnswerEditor(false)
+      },
       pendingMessage: 'Saving answer...',
       scope: 'answer',
       successMessage: 'Answer saved.',
@@ -463,12 +507,14 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     setAnswerDraft(answerDraftDefaults)
     setAnswerEditorMode('add')
     setShowAnswerEditor(false)
+    clearModalSaveError('answer')
   }
 
   function openAddAnswer() {
     setAnswerDraft(answerDraftDefaults)
     setAnswerEditorMode('add')
     setShowAnswerEditor(true)
+    clearModalSaveError('answer')
   }
 
   function openEditAnswer(answer: ProfileAnswer) {
@@ -480,6 +526,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     })
     setAnswerEditorMode('edit')
     setShowAnswerEditor(true)
+    clearModalSaveError('answer')
   }
 
   function saveSecret() {
@@ -501,12 +548,14 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     setSecretDraft(secretDraftDefaults)
     setSecretEditorMode('add')
     setShowSecretEditor(false)
+    clearModalSaveError('secret')
   }
 
   function openAddSecret() {
     setSecretDraft(secretDraftDefaults)
     setSecretEditorMode('add')
     setShowSecretEditor(true)
+    clearModalSaveError('secret')
   }
 
   function openEditSecret(secret: ProfileSecretSummary) {
@@ -518,6 +567,18 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     })
     setSecretEditorMode('edit')
     setShowSecretEditor(true)
+    clearModalSaveError('secret')
+  }
+
+  function ownProfileClientValidation(scope: 'answer' | 'education', error: unknown) {
+    if (!canStartProfileWrite(saveStatus, scope)) {
+      return
+    }
+    setSaveStatus({
+      kind: 'error',
+      message: presentProfileClientValidationMessage(error, scope),
+      scope,
+    })
   }
 
   function runProfileAction<T>({
@@ -535,37 +596,47 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
     successMessage: string
     task: () => Promise<T>
   }) {
-    setSaveStatus({ kind: 'saving', message: pendingMessage, scope })
-    void task()
-      .then((value) => {
-        onSuccess(value)
-        setSaveStatus({ kind: 'success', message: successMessage, scope })
-        toast({
-          title: successMessage,
-          variant: 'success',
-        })
-      })
-      .catch((error: unknown) => {
-        const message = `${errorPrefix}. ${formatProfileError(error)}`
-        setSaveStatus({
-          kind: 'error',
-          message,
-          scope,
-        })
-        if (pendingRemoval) {
-          setRemovalError(message)
-        }
-        toast({
-          description: message,
-          title: 'Profile update failed',
-          variant: 'destructive',
-        })
-      })
+    runOwnedProfileAction({
+      errorPrefix,
+      isMountedRef,
+      mutationTargetEpochRef,
+      onSuccess,
+      pendingMessage,
+      pendingRemoval,
+      profileApiRef,
+      saveStatus,
+      scope,
+      setRemovalError,
+      setSaveStatus,
+      successMessage,
+      task,
+      toast,
+    })
   }
 
   function isSaving(scope: ProfileSaveScope) {
-    return saveStatus?.scope === scope && saveStatus.kind === 'saving'
+    return isProfileScopeSaving(saveStatus, scope)
   }
+
+  function isWriteDisabled(scope: ProfileSaveScope) {
+    return isProfileWriteDisabled(saveStatus, scope)
+  }
+
+  function modalFormError(scope: 'answer' | 'education' | 'secret') {
+    return saveStatus?.kind === 'error' && saveStatus.scope === scope
+      ? saveStatus.message
+      : null
+  }
+
+  function clearModalSaveError(scope: 'answer' | 'education' | 'secret') {
+    setSaveStatus((current) => (
+      current?.kind === 'error' && current.scope === scope ? null : current
+    ))
+  }
+
+  const answerFormError = modalFormError('answer')
+  const educationFormError = modalFormError('education')
+  const secretFormError = modalFormError('secret')
 
   return (
     <section aria-labelledby="profile-settings-title" className="space-y-7">
@@ -578,11 +649,20 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
         </p>
       </div>
 
-      {isProfileLoading ? (
+      {isProfileLoading && !hasLoadedProfile ? (
         <div role="status" aria-label="Profile loading">
           <Skeleton className="h-32 w-full" />
         </div>
-      ) : (
+      ) : null}
+
+      {profileLoadError ? (
+        <LoadFailureView
+          failure={profileLoadError}
+          onRetry={() => setProfileReloadKey((key) => key + 1)}
+        />
+      ) : null}
+
+      {hasLoadedProfile || (!isProfileLoading && !profileLoadError) ? (
         <>
           <ProfileSection title="Profile Basics">
             <SettingsTextInput
@@ -656,7 +736,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
               onChange={(value) => updateProfileField('linkedinUrl', value)}
             />
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
-              <Button type="button" disabled={isSaving('profile')} onClick={saveProfile}>
+              <Button type="button" disabled={isWriteDisabled('profile')} onClick={saveProfile}>
                 {isSaving('profile') ? 'Saving...' : 'Save profile basics'}
               </Button>
             </div>
@@ -666,7 +746,9 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             draft={educationDraft}
             editorMode={educationEditorMode}
             education={profile.education}
+            formError={educationFormError}
             isEditorOpen={showEducationEditor}
+            saveDisabled={isWriteDisabled('education')}
             onAdd={openAddEducation}
             onCancel={cancelEducation}
             onDraftChange={setEducationDraft}
@@ -721,7 +803,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
               onChange={(value) => updateProfileField('travelNotes', value)}
             />
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
-              <Button type="button" disabled={isSaving('profile')} onClick={saveProfile}>
+              <Button type="button" disabled={isWriteDisabled('profile')} onClick={saveProfile}>
                 {isSaving('profile') ? 'Saving...' : 'Save work authorization'}
               </Button>
             </div>
@@ -748,14 +830,14 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
               <Button
                 type="button"
-                disabled={isSaving('date-of-birth')}
+                disabled={isWriteDisabled('date-of-birth')}
                 onClick={saveDateOfBirth}
               >
                 {isSaving('date-of-birth') ? 'Saving...' : 'Save date of birth'}
               </Button>
               <Button
                 type="button"
-                disabled={isSaving('identity') || !/^\d{4}$/.test(identityDraft)}
+                disabled={isWriteDisabled('identity') || !/^\d{4}$/.test(identityDraft)}
                 onClick={saveIdentity}
               >
                 {isSaving('identity') ? 'Saving...' : 'Set or replace SSN last four'}
@@ -797,7 +879,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             <div className="flex flex-wrap items-center justify-end gap-3 px-4 py-3">
               <Button
                 type="button"
-                disabled={isSaving('voluntary-self-id')}
+                disabled={isWriteDisabled('voluntary-self-id')}
                 onClick={saveVoluntarySelfId}
               >
                 {isSaving('voluntary-self-id') ? 'Saving...' : 'Save voluntary self-ID'}
@@ -849,7 +931,9 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
           <ProfileSecureValuesSection
             draft={secretDraft}
             editorMode={secretEditorMode}
+            formError={secretFormError}
             isEditorOpen={showSecretEditor}
+            saveDisabled={isWriteDisabled('secret')}
             onAdd={openAddSecret}
             onCancel={cancelSecret}
             onDraftChange={setSecretDraft}
@@ -863,6 +947,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
               title={answerEditorMode === 'add' ? 'Add answer' : 'Edit answer'}
               onClose={cancelAnswer}
             >
+              {answerFormError ? <FormFailureAlert message={answerFormError} /> : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <CompactInput
                   label="Answer name"
@@ -902,6 +987,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
               </div>
               <InlineEditorActions
                 cancelLabel="Cancel answer"
+                disabled={isWriteDisabled('answer')}
                 saveLabel="Save answer"
                 onCancel={cancelAnswer}
                 onSave={saveAnswer}
@@ -909,7 +995,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             </ProfileRowModal>
           ) : null}
         </>
-      )}
+      ) : null}
 
       <AlertDialog
         open={pendingRemoval !== null}
@@ -918,6 +1004,9 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             return
           }
           if (!open) {
+            if (pendingRemoval) {
+              clearModalSaveError(pendingRemoval.kind)
+            }
             setPendingRemoval(null)
             setRemovalError(null)
           }
@@ -931,9 +1020,7 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
             </AlertDialogDescription>
           </AlertDialogHeader>
           {removalError ? (
-            <p className="text-sm text-destructive" role="alert">
-              {removalError}
-            </p>
+            <FormFailureAlert message={removalError} title="Removal failed" />
           ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
@@ -950,18 +1037,6 @@ function ProfileSettingsPanel({ profileApi }: { profileApi: ProfilePreloadApi })
       </AlertDialog>
     </section>
   )
-}
-
-function splitDateOfBirth(value: string | null) {
-  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  return match
-    ? { day: match[3], month: match[2], year: match[1] }
-    : { day: '', month: '', year: '' }
-}
-
-function canonicalBirthDate(value: { day: string; month: string; year: string }) {
-  if (!value.day && !value.month && !value.year) return null
-  return `${value.year}-${value.month}-${value.day}`
 }
 
 export { ProfileSettingsPanel }

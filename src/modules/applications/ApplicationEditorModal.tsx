@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -7,15 +6,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Field, FieldLabel } from '@/components/ui/field'
+import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { fieldControlId } from '@/lib/field-control-id'
 import { X } from 'lucide-react'
+import { classifyErrorPresentation } from '../../app/error-presentation'
 import { formatEnumLabel } from '../../app/labels'
 import {
   applicationStatuses,
@@ -101,22 +102,35 @@ function ApplicationEditorModal({
   const [blockerReason, setBlockerReason] = useState('')
   const [applicationNote, setApplicationNote] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [termsFieldError, setTermsFieldError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const title = mode === 'add' ? 'Add application' : 'Edit application'
 
   async function saveApplication() {
     setError(null)
+    setTermsFieldError(null)
     setIsSaving(true)
 
     try {
-      const timingInput = buildTimingInput({
-        endDate,
-        startDate,
-        timingLabel,
-        timingMode,
-        termsJson,
-      })
-
+      let timingInput
+      try {
+        timingInput = buildTimingInput({
+          endDate,
+          startDate,
+          timingLabel,
+          timingMode,
+          termsJson,
+        })
+      } catch (timingError) {
+        const message = timingError instanceof Error
+          ? timingError.message
+          : 'Terms JSON is invalid.'
+        setTermsFieldError(message)
+        queueMicrotask(() => {
+          document.getElementById(fieldControlId('application-editor', 'Terms JSON'))?.focus()
+        })
+        return
+      }
       if (mode === 'add') {
         await onCreate({
           companyName: companyName.trim(),
@@ -196,7 +210,10 @@ function ApplicationEditorModal({
       onSaved()
       onClose()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError))
+      setError(classifyErrorPresentation(saveError, {
+        scope: 'form',
+        trigger: 'save',
+      }).message)
     } finally {
       setIsSaving(false)
     }
@@ -224,10 +241,7 @@ function ApplicationEditorModal({
           <div className="px-5 py-4">
             <div className="grid gap-4">
               {error ? (
-                <Alert variant="destructive">
-                  <AlertTitle>Save failed</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+                <FormFailureAlert message={error} title="Save failed" />
               ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <EditorInput label="Company" value={companyName} disabled={mode === 'edit'} onChange={setCompanyName} />
@@ -242,12 +256,16 @@ function ApplicationEditorModal({
                   startDate={startDate}
                   timingLabel={timingLabel}
                   timingMode={timingMode}
+                  termsError={termsFieldError}
                   termsJson={termsJson}
                   onEndDateChange={setEndDate}
                   onStartDateChange={setStartDate}
                   onTimingLabelChange={setTimingLabel}
                   onTimingModeChange={setTimingMode}
-                  onTermsJsonChange={setTermsJson}
+                  onTermsJsonChange={(value) => {
+                    setTermsJson(value)
+                    setTermsFieldError(null)
+                  }}
                 />
                 <EditorInput label="Location" value={locationRaw} onChange={setLocationRaw} />
                 <EditorInput label="Primary URL" value={primaryUrl} disabled={mode === 'edit'} onChange={setPrimaryUrl} />
@@ -309,6 +327,7 @@ function TimingFields({
   onTimingLabelChange,
   onTimingModeChange,
   startDate,
+  termsError,
   termsJson,
   timingLabel,
   timingMode,
@@ -320,6 +339,7 @@ function TimingFields({
   onTimingLabelChange: (value: string) => void
   onTimingModeChange: (value: JobTimingMode) => void
   startDate: string
+  termsError?: string | null
   termsJson: string
   timingLabel: string
   timingMode: JobTimingMode
@@ -340,7 +360,12 @@ function TimingFields({
       ) : null}
       {timingMode === 'terms' ? (
         <>
-          <EditorTextarea label="Terms JSON" value={termsJson} onChange={onTermsJsonChange} />
+          <EditorTextarea
+            error={termsError}
+            label="Terms JSON"
+            value={termsJson}
+            onChange={onTermsJsonChange}
+          />
           <EditorInput label="Timing summary" value={termsPreview} disabled onChange={() => {}} />
         </>
       ) : null}
@@ -458,15 +483,18 @@ function EditorOptionalSelect({
 }
 
 function EditorTextarea({
+  error,
   label,
   onChange,
   value,
 }: {
+  error?: string | null
   label: string
   onChange: (value: string) => void
   value: string
 }) {
   const controlId = fieldControlId('application-editor', label)
+  const errorId = `${controlId}-error`
 
   return (
     <Field className="grid gap-1 text-xs font-medium text-muted-foreground sm:col-span-2">
@@ -474,11 +502,18 @@ function EditorTextarea({
         {label}
       </FieldLabel>
       <Textarea
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={error ? true : undefined}
         className="min-h-20 resize-y"
         id={controlId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
+      {error ? (
+        <FieldError id={errorId} className="text-xs text-destructive">
+          {error}
+        </FieldError>
+      ) : null}
     </Field>
   )
 }

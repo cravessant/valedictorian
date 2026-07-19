@@ -1,15 +1,15 @@
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { InputGroupButton } from '@/components/ui/input-group'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Toaster } from '@/components/ui/sonner'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { typography, typographyClass } from '@/components/ui/typography'
 import { fieldControlId } from '@/lib/field-control-id'
-import { AlertCircle, SlidersHorizontal } from 'lucide-react'
+import { SlidersHorizontal } from 'lucide-react'
 import { ApplicationTable } from './modules/applications/ApplicationTable'
 import { ApplicationDetailModal } from './modules/applications/ApplicationDetailModal'
 import { ApplicationEditorModal } from './modules/applications/ApplicationEditorModal'
@@ -18,6 +18,7 @@ import { ActionQueuePage } from './modules/action-queue/ActionQueuePage'
 import { ConnectorStatusPage } from './modules/connectors/ConnectorStatusPage'
 import { SourcingPage } from './modules/sourcing/SourcingPage'
 import { RawNormalizationPage } from './modules/sourcing/RawNormalizationPage'
+import { AppWideGlobalFailure } from './app/global-failure-owner'
 import { AppSidebar, AppTopbar } from './app/AppChrome'
 import { formatEnumLabel } from './app/labels'
 import { ConnectorRunsPanel, ConnectorSettingsPanel, SettingsPage, SettingsSidebar } from './settings/SettingsPage'
@@ -96,8 +97,12 @@ export function AppShell({
   rawRecordsApi,
   normalizationRunFilter,
   promoteFinding,
-  promotingFindingId,
+  promotingFindingIds,
   reloadApplicationViews,
+  reloadApplications,
+  reloadActionQueue,
+  reloadApplicationDetail,
+  reloadConnectorStatus,
   reloadConnectorRunOutcomes,
   reloadSourcing,
   resetFilters,
@@ -122,8 +127,11 @@ export function AppShell({
   setSourcingOffset,
   setSourcingUsability,
   settings,
+  settingsLoadFailure,
   settingsOpen,
   settingsRestartRequired,
+  reloadSettings,
+  reloadWorkspace,
   sidebarHoverExpanded,
   sidebarState,
   sidebarToggleCollapsed,
@@ -149,6 +157,7 @@ export function AppShell({
   windowChromeState,
   workspace,
   workspaceApi,
+  workspaceLoadFailure,
 }: AppShellProps) {
   return (
     <div
@@ -170,6 +179,7 @@ export function AppShell({
         }}
         onToggleSidebar={togglePinnedSidebar}
       />
+      <AppWideGlobalFailure />
       {!isNarrowViewport && settings.sidebarCollapsed && !sidebarHoverExpanded ? (
         <button
           type="button"
@@ -256,8 +266,12 @@ export function AppShell({
             restartRequired={settingsRestartRequired}
             selectedPanel={selectedSettingsPanel}
             settings={settings}
+            settingsLoadFailure={settingsLoadFailure}
+            onRetrySettingsLoad={reloadSettings}
             workspace={workspace}
             workspaceApi={workspaceApi}
+            workspaceLoadFailure={workspaceLoadFailure}
+            onRetryWorkspaceLoad={reloadWorkspace}
             onConnectorRunSettled={reloadConnectorRunOutcomes}
             onOpenSourcingRuns={(runId) => {
               setSettingsOpen(false)
@@ -287,6 +301,7 @@ export function AppShell({
             onNextPage={() => setActionQueueOffset(actionQueueOffset + PAGE_LIMIT)}
             onOpenApplication={openApplicationDetail}
             onPreviousPage={() => setActionQueueOffset(Math.max(0, actionQueueOffset - PAGE_LIMIT))}
+            onRetry={reloadActionQueue}
           />
         ) : appView === APP_VIEWS.CONNECTORS ? (
           <ConnectorStatusPage
@@ -312,6 +327,7 @@ export function AppShell({
             )}
             result={connectorStatusResult}
             onAction={handleConnectorStatusAction}
+            onRetry={reloadConnectorStatus}
           />
         ) : appView === APP_VIEWS.CONNECTOR_RUNS ? (
           <main
@@ -337,7 +353,7 @@ export function AppShell({
             isLoading={isSourcingLoading && !hasLoadedSourcing}
             mergeStatus={sourcingMergeStatus}
             destinationClass={sourcingDestinationClass}
-            promotingFindingId={promotingFindingId}
+            promotingFindingIds={promotingFindingIds}
             result={sourcingResult}
             showDebugData={settings.showDebugData}
             sourceId={sourcingSourceId}
@@ -371,6 +387,7 @@ export function AppShell({
               reloadSourcing()
               return finding
             }}
+            onRetry={reloadSourcing}
           />
         ) : appView === APP_VIEWS.SOURCING_NORMALIZATION ? (
           <RawNormalizationPage
@@ -573,11 +590,7 @@ export function AppShell({
               ) : null}
 
               {error ? (
-                <Alert variant="destructive">
-                  <AlertCircle aria-hidden="true" />
-                  <AlertTitle>Load failed</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+                <LoadFailureView failure={error} onRetry={reloadApplications} />
               ) : null}
 
               {hasLoadedApplications ? (
@@ -634,6 +647,7 @@ export function AppShell({
           links={applicationLinksResult.items}
           linksError={applicationLinksError}
           attemptsError={attemptError}
+          onRetryLoad={reloadApplicationDetail}
           onCreateLink={async (input) => {
             const link = await applicationLinkCreator(input)
             reloadApplicationViews()

@@ -8,17 +8,23 @@ import {
   isConnectorScheduleDraftDirty,
   sanitizeConnectorScheduleError,
   validateConnectorScheduleDraft,
+  type ConnectorScheduleValidationField,
 } from './connector-schedule.helpers'
+import { presentLoadFailure, ownedLoadFailure, type ErrorPresentation } from '../app/error-presentation'
 import type { ConnectorScheduleDraft, ConnectorScheduleUiApi } from './connector-schedule.types'
 import type { ConnectorSettingsInstance } from './connector-settings.types'
+
+export type { ConnectorScheduleValidationField }
 
 export type InstanceScheduleUiState = {
   canonical: ConnectorScheduleSummary | null
   draft: ConnectorScheduleDraft
   isLoading: boolean
   isSaving: boolean
+  loadFailure: ErrorPresentation | null
   statusMessage: string | null
   statusTone: 'idle' | 'success' | 'error'
+  validationField: ConnectorScheduleValidationField | null
 }
 
 export function createInitialInstanceScheduleState(): InstanceScheduleUiState {
@@ -27,8 +33,10 @@ export function createInitialInstanceScheduleState(): InstanceScheduleUiState {
     draft: createEmptyConnectorScheduleDraft(),
     isLoading: true,
     isSaving: false,
+    loadFailure: null,
     statusMessage: null,
     statusTone: 'idle',
+    validationField: null,
   }
 }
 
@@ -41,10 +49,11 @@ export function useConnectorInstanceSchedules({
   instances: ConnectorSettingsInstance[]
   workspaceId: string | null
 }) {
+  const [scheduleReloadKey, setScheduleReloadKey] = useState(0)
   const [loadedCapability, setLoadedCapability] = useState<{
     api: ConnectorScheduleUiApi
     capability: ConnectorSchedulingCapability | null
-    error: string | null
+    error: ErrorPresentation | null
     workspaceId: string
   } | null>(null)
   const [scheduleStates, setScheduleStates] = useState<Record<string, InstanceScheduleUiState>>({})
@@ -114,15 +123,20 @@ export function useConnectorInstanceSchedules({
           workspaceId: requestWorkspaceId,
         })
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled || requestGeneration !== scheduleRequestGeneration.current) {
           return
         }
 
+        const failure = ownedLoadFailure(presentLoadFailure(error, {
+          fallbackMessage: CONNECTOR_SCHEDULE_LOAD_FAILURE_EXPLANATION,
+          hasStaleData: false,
+          trigger: 'load',
+        }))
         setLoadedCapability({
           api: requestApi,
-          capability: null,
-          error: CONNECTOR_SCHEDULE_LOAD_FAILURE_EXPLANATION,
+          capability: failure ? null : { available: false },
+          error: failure,
           workspaceId: requestWorkspaceId,
         })
       })
@@ -130,7 +144,7 @@ export function useConnectorInstanceSchedules({
     return () => {
       cancelled = true
     }
-  }, [connectorScheduleApi, workspaceId])
+  }, [connectorScheduleApi, scheduleReloadKey, workspaceId])
 
   useEffect(() => {
     if (
@@ -191,8 +205,10 @@ export function useConnectorInstanceSchedules({
               draft: draftFromCanonicalSchedule(schedule),
               isLoading: false,
               isSaving: false,
+              loadFailure: null,
               statusMessage: null,
               statusTone: 'idle',
+              validationField: null,
             },
           }
         })
@@ -209,8 +225,11 @@ export function useConnectorInstanceSchedules({
           [instanceId]: {
             ...createInitialInstanceScheduleState(),
             isLoading: false,
-            statusMessage: sanitizeConnectorScheduleError(error),
-            statusTone: 'error',
+            loadFailure: ownedLoadFailure(presentLoadFailure(error, {
+              fallbackMessage: CONNECTOR_SCHEDULE_LOAD_FAILURE_EXPLANATION,
+              hasStaleData: false,
+              trigger: 'load',
+            })),
           },
         }))
       }
@@ -301,6 +320,7 @@ export function useConnectorInstanceSchedules({
           },
           statusMessage: null,
           statusTone: 'idle',
+          validationField: null,
         },
       }
     })
@@ -319,8 +339,10 @@ export function useConnectorInstanceSchedules({
         draft: draftFromCanonicalSchedule(schedule),
         isLoading: false,
         isSaving: false,
+        loadFailure: null,
         statusMessage,
         statusTone,
+        validationField: null,
       },
     }))
   }
@@ -345,8 +367,9 @@ export function useConnectorInstanceSchedules({
         ...states,
         [instance.id]: {
           ...current,
-          statusMessage: validationError,
+          statusMessage: validationError.message,
           statusTone: 'error',
+          validationField: validationError.field,
         },
       }))
       return
@@ -441,6 +464,9 @@ export function useConnectorInstanceSchedules({
       [instance.id]: {
         ...current,
         isSaving: true,
+        statusMessage: null,
+        statusTone: 'idle',
+        validationField: null,
       },
     }))
 
@@ -468,6 +494,9 @@ export function useConnectorInstanceSchedules({
       [instance.id]: {
         ...current,
         isSaving: true,
+        statusMessage: null,
+        statusTone: 'idle',
+        validationField: null,
       },
     }))
 
@@ -487,6 +516,7 @@ export function useConnectorInstanceSchedules({
     discardConnectorSchedule,
     isScheduleDraftDirty: isConnectorScheduleDraftDirty,
     pauseConnectorSchedule,
+    reloadSchedules: () => setScheduleReloadKey((key) => key + 1),
     resumeConnectorSchedule,
     saveConnectorSchedule,
     scheduleStates,

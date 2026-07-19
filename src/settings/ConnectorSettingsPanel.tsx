@@ -11,18 +11,20 @@ import {
 import { AlertCircle, Cable } from 'lucide-react'
 import { typography, typographyClass } from '@/components/ui/typography'
 import type { InstalledConnectorDescriptor } from 'sparxie'
+import { LoadFailureView } from '@/components/ui/load-failure-view'
+import { useToast } from '@/components/ui/use-toast'
+import {
+  ownedLoadFailure,
+  presentLoadFailure,
+  type ErrorPresentation,
+} from '../app/error-presentation'
 import type { ProfilePreloadApi } from '../ipc/profile.preload'
 import {
   JOBRIGHT_CONNECTOR_ID,
   JOBRIGHT_CONNECTOR_VERSION,
 } from '../modules/connectors/jobright.constants'
 import {
-  maximumSelectableEarliestBackfillDate,
-  validateSelectableEarliestBackfillDate,
-} from '../modules/connectors/connector.earliest-backfill'
-import {
   defaultConnectorSettingsDraft,
-  isUnchangedConnectorDisable,
   jobrightSecretKeyForInstance,
   sanitizedConnectorAuthErrorMessage,
   sanitizedConnectorCreateErrorMessage,
@@ -30,6 +32,15 @@ import {
   shouldAutoValidateJobrightAuth,
   type JobrightCredentialActionStage,
 } from './connector-settings.helpers'
+import {
+  omitRecordKey,
+  selectInstalledConnectorDescriptor,
+} from './connector-instance-settings-mutations'
+import {
+  removeConnectorInstance,
+  runConnectorInstanceNow,
+  saveConnectorInstanceSettings,
+} from './connector-instance-owned-mutations'
 import {
   describeConnectorCredentialBlockReason,
   isConnectorCredentialDraftReady,
@@ -54,15 +65,6 @@ type RendererBackendBinding = {
   retryBackend?(): Promise<void>
 }
 
-function selectInstalledConnectorDescriptor(
-  descriptors: InstalledConnectorDescriptor[],
-  connectorId: string,
-  connectorVersion: string,
-) {
-  const sameConnector = descriptors.filter((descriptor) => descriptor.connectorId === connectorId)
-  return sameConnector.find((descriptor) => descriptor.connectorVersion === connectorVersion)
-    ?? (sameConnector.length === 1 ? sameConnector[0] : undefined)
-}
 export function ConnectorSettingsPanel({
   connectorsApi,
   connectorScheduleApi,
@@ -84,6 +86,9 @@ export function ConnectorSettingsPanel({
 }) {
   const [instances, setInstances] = useState<ConnectorSettingsInstance[]>([])
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'unavailable'>('loading')
+  const [listLoadFailure, setListLoadFailure] = useState<ErrorPresentation | null>(null)
+  const hasLoadedInstancesRef = useRef(false)
+  const workspaceIdentityRef = useRef(workspaceId)
   const [loadGeneration, setLoadGeneration] = useState(0)
   const [drafts, setDrafts] = useState<Record<string, ConnectorSettingsDraft>>({})
   const [descriptors, setDescriptors] = useState<Record<string, InstalledConnectorDescriptor>>({})
@@ -99,17 +104,28 @@ export function ConnectorSettingsPanel({
   const [removingInstanceIds, setRemovingInstanceIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   )
-  const [runningInstanceId, setRunningInstanceId] = useState<string | null>(null)
+  const [runningInstanceIds, setRunningInstanceIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
   const [latestRunStatuses, setLatestRunStatuses] = useState<Record<string, string>>({})
   const [latestRuns, setLatestRuns] = useState<Record<string, ConnectorSettingsRun>>({})
   const [connectorActionError, setConnectorActionError] = useState<string | null>(null)
+  const [settingsSaveErrors, setSettingsSaveErrors] = useState<Record<string, string>>({})
   const authValidationGenerations = useRef<Record<string, number>>({})
+  const settingsSaveGenerations = useRef<Record<string, number>>({})
+  const runGenerations = useRef<Record<string, number>>({})
+  const createTargetEpochRef = useRef(0)
+  const isMountedRef = useRef(true)
   const backendGeneration = useRef(0)
+  const runningInstanceIdsRef = useRef(runningInstanceIds)
+  runningInstanceIdsRef.current = runningInstanceIds
+  const { toast } = useToast()
   const {
     capabilityLoadError,
     discardConnectorSchedule,
     isScheduleDraftDirty,
     pauseConnectorSchedule,
+    reloadSchedules,
     resumeConnectorSchedule,
     saveConnectorSchedule,
     scheduleStates,
@@ -131,60 +147,86 @@ export function ConnectorSettingsPanel({
       if (state.status === 'available') {
         setLoadGeneration((generation) => generation + 1)
       } else {
+        setInstances([])
+        hasLoadedInstancesRef.current = false
+        setListLoadFailure({
+          message: 'Connector state could not be loaded.',
+          retryable: true,
+          surface: 'scoped_load',
+          title: 'Load failed',
+        })
         setLoadState('unavailable')
       }
     })
   }, [])
 
+  useEffect(() => {
+    isMountedRef.current = true
+    createTargetEpochRef.current += 1
+    setIsAdding(false)
+    setSavingInstanceIds(new Set())
+    setRemovingInstanceIds(new Set())
+    setRunningInstanceIds(new Set())
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [connectorsApi, workspaceId])
+
 
   useEffect(() => {
-    if (!runningInstanceId) {
+    if (runningInstanceIds.size === 0) {
       return
     }
 
     let cancelled = false
-    let pollTimer: ReturnType<typeof setTimeout> | undefined
+    const pollTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-    const poll = async () => {
+    const pollInstance = async (instanceId: string) => {
       try {
         const result = await connectorsApi.runs.list({
-          connectorInstanceId: runningInstanceId,
+          connectorInstanceId: instanceId,
           limit: 1,
           offset: 0,
         })
         const run = result.items[0]
 
-        if (cancelled) {
+        if (cancelled || !runningInstanceIdsRef.current.has(instanceId)) {
           return
         }
 
         if (run) {
-          setLatestRuns((currentRuns) => ({ ...currentRuns, [runningInstanceId]: run }))
+          setLatestRuns((currentRuns) => ({ ...currentRuns, [instanceId]: run }))
           setLatestRunStatuses((currentStatuses) => ({
             ...currentStatuses,
-            [runningInstanceId]: run.status,
+            [instanceId]: run.status,
           }))
         }
 
         if (!run || run.status === 'queued' || run.status === 'running') {
-          pollTimer = setTimeout(poll, 500)
+          pollTimers.set(instanceId, setTimeout(() => {
+            void pollInstance(instanceId)
+          }, 500))
         }
       } catch {
-        if (!cancelled) {
-          pollTimer = setTimeout(poll, 1_000)
+        if (!cancelled && runningInstanceIdsRef.current.has(instanceId)) {
+          pollTimers.set(instanceId, setTimeout(() => {
+            void pollInstance(instanceId)
+          }, 1_000))
         }
       }
     }
 
-    void poll()
+    for (const instanceId of runningInstanceIds) {
+      void pollInstance(instanceId)
+    }
 
     return () => {
       cancelled = true
-      if (pollTimer) {
-        clearTimeout(pollTimer)
+      for (const timer of pollTimers.values()) {
+        clearTimeout(timer)
       }
     }
-  }, [connectorsApi, runningInstanceId])
+  }, [connectorsApi, runningInstanceIds])
 
   function nextAuthValidationGeneration(instanceId: string): number {
     const nextGeneration = (authValidationGenerations.current[instanceId] ?? 0) + 1
@@ -204,6 +246,15 @@ export function ConnectorSettingsPanel({
     let cancelled = false
     const requestGeneration = backendGeneration.current
     const validationGenerations = authValidationGenerations.current
+    const workspaceChanged = workspaceIdentityRef.current !== workspaceId
+    workspaceIdentityRef.current = workspaceId
+
+    if (workspaceChanged) {
+      setInstances([])
+      setDescriptors({})
+      hasLoadedInstancesRef.current = false
+      setListLoadFailure(null)
+    }
 
     setLoadState('loading')
 
@@ -221,6 +272,8 @@ export function ConnectorSettingsPanel({
           `${descriptor.connectorId}\u0000${descriptor.connectorVersion}`,
           descriptor,
         ])))
+        hasLoadedInstancesRef.current = true
+        setListLoadFailure(null)
         setLoadState('loaded')
 
         const autoValidateInstances = result.items.filter(shouldAutoValidateJobrightAuth)
@@ -292,9 +345,18 @@ export function ConnectorSettingsPanel({
           }
         }))
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled && requestGeneration === backendGeneration.current) {
-          setLoadState('unavailable')
+          const failure = ownedLoadFailure(presentLoadFailure(error, {
+            fallbackMessage: 'Connector state could not be loaded.',
+            hasStaleData: hasLoadedInstancesRef.current,
+            trigger: hasLoadedInstancesRef.current ? 'refresh' : 'load',
+          }))
+          setListLoadFailure(failure)
+          if (!failure && !hasLoadedInstancesRef.current) {
+            hasLoadedInstancesRef.current = true
+          }
+          setLoadState(hasLoadedInstancesRef.current || !failure ? 'loaded' : 'unavailable')
         }
       })
 
@@ -304,9 +366,10 @@ export function ConnectorSettingsPanel({
         validationGenerations[instanceId] = (validationGenerations[instanceId] ?? 0) + 1
       }
     }
-  }, [connectorsApi, loadGeneration])
+  }, [connectorsApi, loadGeneration, workspaceId])
 
   function addJobrightConnector() {
+    const epochAtStart = createTargetEpochRef.current
     setConnectorActionError(null)
     setIsAdding(true)
     void connectorsApi.create({
@@ -326,6 +389,9 @@ export function ConnectorSettingsPanel({
       filters: { country: 'US' },
     })
       .then((created) => {
+        if (!isMountedRef.current || createTargetEpochRef.current !== epochAtStart) {
+          return
+        }
         invalidateAuthValidation(created.id)
         setInstances((currentInstances) => [
           ...currentInstances.filter((instance) => instance.id !== created.id),
@@ -338,9 +404,17 @@ export function ConnectorSettingsPanel({
         onConnectorChanged()
       })
       .catch((error) => {
+        if (!isMountedRef.current || createTargetEpochRef.current !== epochAtStart) {
+          return
+        }
         setConnectorActionError(sanitizedConnectorCreateErrorMessage(error))
       })
-      .finally(() => setIsAdding(false))
+      .finally(() => {
+        if (!isMountedRef.current || createTargetEpochRef.current !== epochAtStart) {
+          return
+        }
+        setIsAdding(false)
+      })
   }
 
   const hasJobrightInstance = instances.some(
@@ -504,17 +578,15 @@ export function ConnectorSettingsPanel({
           return
         }
 
+        setConnectorActionError(null)
         setAuthStates((currentStates) => ({
           ...currentStates,
           [instance.id]: {
             kind: 'local',
-            message: sanitizedConnectorAuthErrorMessage(error),
+            message: sanitizedJobrightCredentialActionErrorMessage(actionStage, error),
             status: 'failed',
           },
         }))
-        setConnectorActionError(
-          sanitizedJobrightCredentialActionErrorMessage(actionStage, error),
-        )
       })
       .finally(() => {
         if (!isCurrentAuthValidationGeneration(instance.id, generation)) {
@@ -590,6 +662,7 @@ export function ConnectorSettingsPanel({
   }
 
   function updateDraft(instanceId: string, patch: Partial<ConnectorSettingsDraft>) {
+    setSettingsSaveErrors((currentErrors) => omitRecordKey(currentErrors, instanceId))
     setDrafts((currentDrafts) => ({
       ...currentDrafts,
       [instanceId]: {
@@ -601,77 +674,27 @@ export function ConnectorSettingsPanel({
   }
 
   function saveConnectorSettings(instance: ConnectorSettingsInstance) {
-    if (savingInstanceIds.has(instance.id)) {
-      return
-    }
-
-    const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
-    const savedDraft = defaultConnectorSettingsDraft(instance)
-    const descriptor = selectInstalledConnectorDescriptor(
-      Object.values(descriptors),
-      instance.connectorId,
-      instance.connectorVersion,
-    )
-    const isJobrightInstance = instance.connectorId === JOBRIGHT_CONNECTOR_ID
-    const earliestValidation = isJobrightInstance
-      ? validateSelectableEarliestBackfillDate({
-          candidate: draft.earliestBackfillDate,
-          createdAt: instance.createdAt,
-          todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
-        })
-      : null
-    if (earliestValidation && !earliestValidation.ok) {
-      setConnectorActionError(earliestValidation.message)
-      return
-    }
-    setConnectorActionError(null)
-    setSavingInstanceIds((currentIds) => {
-      const nextIds = new Set(currentIds)
-      nextIds.add(instance.id)
-      return nextIds
+    saveConnectorInstanceSettings({
+      connectorsApi,
+      createTargetEpochRef,
+      descriptors,
+      drafts,
+      instance,
+      isMountedRef,
+      onConnectorChanged,
+      savingInstanceIds,
+      setConnectorActionError,
+      setDrafts,
+      setInstances,
+      setSavingInstanceIds,
+      setSettingsSaveErrors,
+      settingsSaveGenerations,
     })
-    const update = isUnchangedConnectorDisable(instance, draft)
-      ? { connectorInstanceId: instance.id, enabled: false as const }
-      : {
-          connectorInstanceId: instance.id,
-          enabled: draft.enabled,
-          ...(descriptor && descriptor.connectorVersion !== instance.connectorVersion
-            ? { connectorVersion: descriptor.connectorVersion }
-            : {}),
-          ...(JSON.stringify(draft.config) !== JSON.stringify(savedDraft.config)
-            ? { config: draft.config }
-            : {}),
-          ...(descriptor ? { filters: draft.filters } : {}),
-          ...(earliestValidation?.ok
-            && draft.earliestBackfillDate !== savedDraft.earliestBackfillDate
-            ? { earliestBackfillDate: earliestValidation.value }
-            : {}),
-        }
-    void connectorsApi.update(update)
-      .then((updated) => {
-        setInstances((currentInstances) => currentInstances.map((currentInstance) =>
-          currentInstance.id === updated.id ? updated : currentInstance,
-        ))
-        setDrafts((currentDrafts) => ({
-          ...currentDrafts,
-          [updated.id]: defaultConnectorSettingsDraft(updated),
-        }))
-        onConnectorChanged()
-      })
-      .catch(() => {
-        setConnectorActionError('Connector settings could not be saved.')
-      })
-      .finally(() => {
-        setSavingInstanceIds((currentIds) => {
-          const nextIds = new Set(currentIds)
-          nextIds.delete(instance.id)
-          return nextIds
-        })
-      })
   }
 
   function discardConnectorSettings(instance: ConnectorSettingsInstance) {
     setConnectorActionError(null)
+    setSettingsSaveErrors((currentErrors) => omitRecordKey(currentErrors, instance.id))
     setDrafts((currentDrafts) => ({
       ...currentDrafts,
       [instance.id]: defaultConnectorSettingsDraft(instance),
@@ -679,55 +702,22 @@ export function ConnectorSettingsPanel({
   }
 
   function removeConnector(instance: ConnectorSettingsInstance) {
-    if (removingInstanceIds.has(instance.id)) {
-      return
-    }
-
-    setConnectorActionError(null)
-    setRemovingInstanceIds((currentIds) => new Set(currentIds).add(instance.id))
-    void connectorsApi.remove({ connectorInstanceId: instance.id })
-      .then(() => {
-        invalidateAuthValidation(instance.id)
-        setInstances((currentInstances) => currentInstances.filter(
-          (currentInstance) => currentInstance.id !== instance.id,
-        ))
-        setDrafts((currentDrafts) => {
-          const nextDrafts = { ...currentDrafts }
-          delete nextDrafts[instance.id]
-          return nextDrafts
-        })
-        setAuthStates((currentStates) => {
-          const nextStates = { ...currentStates }
-          delete nextStates[instance.id]
-          return nextStates
-        })
-        setCredentialEditFeedback((currentFeedback) => {
-          const nextFeedback = { ...currentFeedback }
-          delete nextFeedback[instance.id]
-          return nextFeedback
-        })
-        onConnectorChanged()
-      })
-      .catch((error: unknown) => {
-        const conflictCode = error && typeof error === 'object'
-          ? ('code' in error
-              ? error.code
-              : 'conflict' in error && error.conflict && typeof error.conflict === 'object'
-                && 'code' in error.conflict
-                ? error.conflict.code
-                : undefined)
-          : undefined
-        setConnectorActionError(conflictCode === 'connector_retirement_active_work_conflict'
-          ? 'Cancel queued or running connector work before removing this connector.'
-          : 'Connector could not be removed.')
-      })
-      .finally(() => {
-        setRemovingInstanceIds((currentIds) => {
-          const nextIds = new Set(currentIds)
-          nextIds.delete(instance.id)
-          return nextIds
-        })
-      })
+    removeConnectorInstance({
+      connectorsApi,
+      createTargetEpochRef,
+      instance,
+      invalidateAuthValidation,
+      isMountedRef,
+      onConnectorChanged,
+      removingInstanceIds,
+      setAuthStates,
+      setConnectorActionError,
+      setCredentialEditFeedback,
+      setDrafts,
+      setInstances,
+      setRemovingInstanceIds,
+      settingsSaveGenerations,
+    })
   }
 
   function isConnectorSettingsDraftDirty(instance: ConnectorSettingsInstance): boolean {
@@ -740,76 +730,23 @@ export function ConnectorSettingsPanel({
         && draft.earliestBackfillDate !== saved.earliestBackfillDate)
   }
 
-  function hasInvalidEarliestBackfillDraft(instance: ConnectorSettingsInstance): boolean {
-    if (instance.connectorId !== JOBRIGHT_CONNECTOR_ID) {
-      return false
-    }
-    const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
-    return !validateSelectableEarliestBackfillDate({
-      candidate: draft.earliestBackfillDate,
-      createdAt: instance.createdAt,
-      todayUtc: maximumSelectableEarliestBackfillDate(new Date().toISOString()),
-    }).ok
-  }
-
   function runConnectorNow(instance: ConnectorSettingsInstance) {
-    if (instance.connectorId !== JOBRIGHT_CONNECTOR_ID) {
-      return
-    }
-
-    if (savingInstanceIds.has(instance.id)) {
-      setConnectorActionError(
-        'Wait for connector settings to finish saving before running.',
-      )
-      return
-    }
-
-    if (isConnectorSettingsDraftDirty(instance)) {
-      setConnectorActionError(
-        'Save or discard your unsaved connector settings before running.',
-      )
-      return
-    }
-
-    if (hasInvalidEarliestBackfillDraft(instance)) {
-      setConnectorActionError(
-        'Choose a valid earliest backfill date before running.',
-      )
-      return
-    }
-
-    setConnectorActionError(null)
-    setRunningInstanceId(instance.id)
-    setLatestRunStatuses((currentStatuses) => ({
-      ...currentStatuses,
-      [instance.id]: 'running',
-    }))
-    void connectorsApi.runs.trigger({
-      connectorInstanceId: instance.id,
-      mode: 'manual',
+    runConnectorInstanceNow({
+      connectorsApi,
+      createTargetEpochRef,
+      drafts,
+      instance,
+      isMountedRef,
+      onRunSettled,
+      runGenerations,
+      runningInstanceIds,
+      savingInstanceIds,
+      setConnectorActionError,
+      setLatestRuns,
+      setLatestRunStatuses,
+      setRunningInstanceIds,
+      toast,
     })
-      .then((run) => {
-        setLatestRuns((currentRuns) => ({
-          ...currentRuns,
-          [instance.id]: run,
-        }))
-        setLatestRunStatuses((currentStatuses) => ({
-          ...currentStatuses,
-          [instance.id]: run.status,
-        }))
-      })
-      .catch(() => {
-        setConnectorActionError('Jobright run could not be completed.')
-        setLatestRunStatuses((currentStatuses) => {
-          const nextStatuses = { ...currentStatuses }
-          delete nextStatuses[instance.id]
-          return nextStatuses
-        })
-      })
-      .finally(() => {
-        setRunningInstanceId(null)
-        onRunSettled()
-      })
   }
 
   return (
@@ -847,28 +784,15 @@ export function ConnectorSettingsPanel({
         </Alert>
       ) : null}
 
-      {loadState === 'unavailable' ? (
-        <Alert variant="destructive" className="bg-card" role="alert">
-          <AlertCircle className="absolute left-4 top-4 h-4 w-4" aria-hidden="true" />
-          <div className="pl-7">
-            <AlertTitle>Workspace backend unavailable</AlertTitle>
-            <AlertDescription>
-              Connector state could not be loaded. Check the workspace backend, then retry.
-            </AlertDescription>
-            <Button
-              className="mt-3"
-              type="button"
-              variant="outline"
-              onClick={async () => {
-                await (window as Window & { valedictorianHttp?: RendererBackendBinding })
-                  .valedictorianHttp?.retryBackend?.()
-                setLoadGeneration((generation) => generation + 1)
-              }}
-            >
-              Retry connector loading
-            </Button>
-          </div>
-        </Alert>
+      {listLoadFailure ? (
+        <LoadFailureView
+          failure={listLoadFailure}
+          onRetry={() => {
+            void (window as Window & { valedictorianHttp?: RendererBackendBinding })
+              .valedictorianHttp?.retryBackend?.()
+            setLoadGeneration((generation) => generation + 1)
+          }}
+        />
       ) : null}
 
       {loadState === 'loaded' && !hasJobrightInstance ? (
@@ -892,15 +816,11 @@ export function ConnectorSettingsPanel({
       </div>
       ) : null}
 
-      {loadState === 'loading' ? (
+      {loadState === 'loading' && instances.length === 0 ? (
         <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
           Loading connector instances...
         </div>
-      ) : loadState === 'unavailable' ? (
-        <div className="min-w-0 space-y-3 overflow-hidden rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
-          Connector actions are unavailable until the workspace backend recovers.
-        </div>
-      ) : instances.length === 0 ? (
+      ) : instances.length === 0 && !listLoadFailure ? (
         <Empty
           aria-label="Empty connector instances"
           className="flex-none gap-3 rounded-md border border-solid border-border bg-card p-6"
@@ -917,7 +837,7 @@ export function ConnectorSettingsPanel({
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-      ) : (
+      ) : instances.length > 0 ? (
         <div className={typographyClass('muted', 'min-w-0 space-y-3')}>
           <p>{instances.length} connector instance{instances.length === 1 ? '' : 's'} configured.</p>
           <div className="grid gap-3">
@@ -942,9 +862,10 @@ export function ConnectorSettingsPanel({
                 latestRun={latestRuns[instance.id]}
                 latestRunStatus={latestRunStatuses[instance.id]}
                 isSavingSettings={savingInstanceIds.has(instance.id)}
+                settingsSaveError={settingsSaveErrors[instance.id] ?? null}
                 isRemoving={removingInstanceIds.has(instance.id)}
                 authenticatingInstanceId={authenticatingInstanceId}
-                runningInstanceId={runningInstanceId}
+                runningInstanceIds={runningInstanceIds}
                 schedulingCapability={schedulingCapability}
                 capabilityLoadError={capabilityLoadError}
                 scheduleCanonical={scheduleState.canonical}
@@ -955,8 +876,10 @@ export function ConnectorSettingsPanel({
                 )}
                 scheduleIsLoading={scheduleState.isLoading && Boolean(schedulingCapability?.available)}
                 scheduleIsSaving={scheduleState.isSaving}
+                scheduleLoadFailure={scheduleState.loadFailure}
                 scheduleStatusMessage={scheduleState.statusMessage}
                 scheduleStatusTone={scheduleState.statusTone}
+                scheduleValidationField={scheduleState.validationField}
                 onBeginCredentialEdit={beginCredentialEdit}
                 onCancelCredentialEdit={cancelCredentialEdit}
                 onUpdateCredentialDraft={updateCredentialDraft}
@@ -974,12 +897,13 @@ export function ConnectorSettingsPanel({
                 onDiscardSchedule={discardConnectorSchedule}
                 onPauseSchedule={pauseConnectorSchedule}
                 onResumeSchedule={resumeConnectorSchedule}
+                onRetryScheduleLoad={reloadSchedules}
               />
               )
             })}
           </div>
         </div>
-      )}
+      ) : null}
     </section>
   )
 }

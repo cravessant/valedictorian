@@ -277,8 +277,12 @@ describe('Jobright credential secrecy', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
 
     expect(await screen.findByText(
-      'Secure storage is unavailable. Enable platform encryption, then try again.',
+      'Credentials were not saved because secure storage is unavailable. Enable platform encryption, then try again.',
     )).toBeInTheDocument()
+    expect(screen.queryByText('Jobright credential setup incomplete')).not.toBeInTheDocument()
+    expect(screen.getAllByText(
+      'Credentials were not saved because secure storage is unavailable. Enable platform encryption, then try again.',
+    )).toHaveLength(1)
     expect(screen.queryByDisplayValue('demo@example.com')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('secret-password')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Jobright email')).not.toBeInTheDocument()
@@ -320,7 +324,7 @@ describe('Jobright credential secrecy', () => {
     expect(await screen.findByText(
       'Credentials were saved and linked, but validation could not start because the connector service is unavailable. Restart the app, then select Validate.',
     )).toBeInTheDocument()
-    expect(screen.getByText('Jobright credential setup incomplete')).toBeInTheDocument()
+    expect(screen.queryByText('Jobright credential setup incomplete')).not.toBeInTheDocument()
     expect(profileApi.secrets.upsert).toHaveBeenCalledOnce()
     expect(connectorsApi.update).toHaveBeenCalledOnce()
     expect(screen.queryByText('demo@example.com')).not.toBeInTheDocument()

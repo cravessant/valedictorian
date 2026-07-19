@@ -28,6 +28,7 @@ import type {
 } from './modules/applications/application.types'
 import type { ActionQueueListItem, ActionQueueListResult } from './modules/action-queue/action-queue.repository'
 import {
+  ValedictorianHttpError,
   defaultPolicyConfig,
   defaultUserProfile,
   normalizePolicyConfig,
@@ -40,6 +41,7 @@ import {
   type SourcingFinding,
   type SourcingFindingsListResult,
 } from 'sparxie'
+import { canonicalAlreadyConfiguredBody } from './app/error-presentation'
 import {
   defaultAppSettings,
   type AppSettings,
@@ -321,10 +323,11 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
         retiredIds.has(input.id)
         || instances.some((item) => item.id === input.id)
       ) {
-        throw Object.assign(
-          new Error('This connector is already configured. Manage the existing instance.'),
-          { code: 'already_configured', status: 409, statusCode: 409 },
-        )
+        throw new ValedictorianHttpError({
+          body: { ...canonicalAlreadyConfiguredBody },
+          message: 'Request failed',
+          status: 409,
+        })
       }
       const now = '2026-07-09T15:00:00.000Z'
       const instance: ConnectorInstance = {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { UpdateState } from '../ipc/updates.preload'
 import { createUpdateService, type UpdateBoundary } from './update.service'
 
 describe('update service', () => {
@@ -104,10 +105,10 @@ describe('update service', () => {
     expect(updater.quitAndInstall).toHaveBeenCalledTimes(1)
   })
 
-  it('reports updater failures as non-blocking error state', async () => {
+  it('reports updater failures with fixed safe copy, never raw diagnostics', async () => {
     const updater = createFakeUpdater()
     updater.checkForUpdates = vi.fn(async () => {
-      throw new Error('feed unavailable')
+      throw new Error('feed://internal/provider-path unavailable stack')
     })
     const service = createUpdateService({
       app: {
@@ -122,15 +123,17 @@ describe('update service', () => {
     service.onStateChanged((state) => states.push(state))
     await expect(service.check()).resolves.toEqual({
       currentVersion: '0.1.0-alpha.10',
-      message: 'feed unavailable',
+      message: 'Update check failed',
       status: 'error',
     })
 
+    expect(JSON.stringify(states)).not.toContain('feed://')
+    expect(JSON.stringify(states)).not.toContain('provider-path')
     expect(states).toEqual([
       { currentVersion: '0.1.0-alpha.10', status: 'checking' },
       {
         currentVersion: '0.1.0-alpha.10',
-        message: 'feed unavailable',
+        message: 'Update check failed',
         status: 'error',
       },
     ])

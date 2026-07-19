@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import type { ProfileSecretKind } from 'sparxie'
 import { Button } from '@/components/ui/button'
+import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import {
@@ -26,7 +27,9 @@ type SecretDraft = typeof secretDraftDefaults
 type ProfileSecureValuesSectionProps = {
   draft: SecretDraft
   editorMode: 'add' | 'edit'
+  formError: string | null
   isEditorOpen: boolean
+  saveDisabled?: boolean
   onAdd: () => void
   onCancel: () => void
   onDraftChange: Dispatch<SetStateAction<SecretDraft>>
@@ -39,7 +42,9 @@ type ProfileSecureValuesSectionProps = {
 export function ProfileSecureValuesSection({
   draft,
   editorMode,
+  formError,
   isEditorOpen,
+  saveDisabled = false,
   onAdd,
   onCancel,
   onDraftChange,
@@ -116,6 +121,7 @@ export function ProfileSecureValuesSection({
           title={editorMode === 'add' ? 'Add secure value' : 'Edit secure value'}
           onClose={onCancel}
         >
+          {formError ? <FormFailureAlert message={formError} /> : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <CompactInput
               label="Secure value name"
@@ -163,6 +169,7 @@ export function ProfileSecureValuesSection({
           </div>
           <InlineEditorActions
             cancelLabel="Cancel secure value"
+            disabled={saveDisabled}
             saveLabel="Save secure value"
             onCancel={onCancel}
             onSave={onSave}

@@ -27,7 +27,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useToast } from '@/components/ui/use-toast'
 import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
+import { actionFailureToastInput } from './error-presentation'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
 import { APP_VIEWS, type MainAppView } from './types'
@@ -128,17 +130,23 @@ function UpdateStatusControl({ onCheck, state, onInstall }: UpdateStatusControlP
 
   if (state.status === 'error') {
     return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="app-no-drag ml-auto h-7 max-w-[min(22rem,45vw)] gap-2 border-destructive/40 bg-destructive/15 px-2.5 text-destructive hover:bg-destructive/20 hover:text-destructive"
-        onClick={onCheck}
+      <div
+        role="alert"
+        aria-live="polite"
+        className="app-no-drag ml-auto inline-flex h-7 max-w-[min(22rem,45vw)] items-center gap-2 rounded-md border border-destructive/40 bg-destructive/15 px-2.5 text-xs font-medium text-destructive"
       >
         <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span className="truncate">{state.message ?? 'Update check failed'}</span>
-        <span className="shrink-0">Retry</span>
-      </Button>
+        <span className="truncate">Update check failed</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-6 shrink-0 px-1.5 text-destructive hover:bg-destructive/20 hover:text-destructive"
+          onClick={onCheck}
+        >
+          Retry
+        </Button>
+      </div>
     )
   }
 
@@ -416,11 +424,21 @@ function SettingsPopover({
   onOpenSettingsPage,
   onSettingsPatch,
 }: SettingsPopoverProps) {
+  const { toast } = useToast()
   const remoteEnabled = settings.runtimeMode === 'remote'
   const sharingEnabled = settings.runtimeMode === 'local-shared'
 
+  function patchSettings(patch: AppSettingsPatch) {
+    void Promise.resolve(onSettingsPatch(patch)).catch((error: unknown) => {
+      toast(actionFailureToastInput(error, {
+        fallbackMessage: 'Settings could not be saved.',
+        operationId: 'settings:update',
+      }))
+    })
+  }
+
   function updateRuntimeMode(runtimeMode: RuntimePreference) {
-    void onSettingsPatch({ runtimeMode })
+    patchSettings({ runtimeMode })
   }
 
   return (
@@ -481,7 +499,7 @@ function SettingsPopover({
               disabled={!remoteEnabled}
               value={settings.remoteApiUrl}
               onChange={(event) =>
-                onSettingsPatch({
+                patchSettings({
                   remoteApiUrl: event.target.value,
                 })
               }

@@ -7,6 +7,7 @@ import {
   within
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defaultUserProfile, ValedictorianProtocolError } from 'sparxie'
 import App from './App'
 import {
   createApplication,
@@ -322,7 +323,8 @@ describe('profile settings', () => {
 
     expect(within(profileBasics).getByRole('button', { name: 'Saving...' })).toBeDisabled()
     expect(await screen.findByText('Profile update failed')).toBeInTheDocument()
-    expect(screen.getByText('Could not save profile. Disk is full')).toBeInTheDocument()
+    expect(screen.getByText('Could not save profile. An unexpected error occurred.')).toBeInTheDocument()
+    expect(screen.queryByText(/Disk is full/)).not.toBeInTheDocument()
   })
 
   it('provides a visible save action for profile basics', async () => {
@@ -686,6 +688,99 @@ describe('profile settings', () => {
         willingToTravel: null,
       }))
     })
+  })
+
+  it('shows one scoped owner for initial aggregate profile load rejection and retries', async () => {
+    const profileApi = createProfileApi()
+    vi.mocked(profileApi.get)
+      .mockRejectedValueOnce(new ValedictorianProtocolError({ message: 'profile store /secret/path dump' }))
+      .mockResolvedValueOnce({
+        ...defaultUserProfile,
+        fullName: 'Ada Lovelace',
+        email: 'ada@example.com',
+      })
+    vi.mocked(profileApi.identity.status).mockResolvedValue(true)
+    vi.mocked(profileApi.secrets.list).mockResolvedValue([])
+
+    render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    expect(alert).not.toHaveTextContent('/secret/path')
+    expect(screen.queryByLabelText('Full name')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByDisplayValue('Ada Lovelace')).toBeInTheDocument()
+    expect(profileApi.get).toHaveBeenCalledTimes(2)
+    expect(profileApi.identity.status).toHaveBeenCalledTimes(2)
+    expect(profileApi.secrets.list).toHaveBeenCalledTimes(2)
+  })
+
+  it('preserves loaded profile state beside a failed refresh and retries the aggregate load', async () => {
+    const loadedProfile = {
+      ...defaultUserProfile,
+      fullName: 'Grace Hopper',
+      email: 'grace@example.com',
+    }
+    const secretSummary = {
+      key: 'demo-secret',
+      kind: 'password' as const,
+      label: 'Demo secret',
+      updatedAt: '2026-07-09T15:00:00.000Z',
+    }
+    const profileApi = createProfileApi()
+    vi.mocked(profileApi.get).mockResolvedValue(loadedProfile)
+    vi.mocked(profileApi.identity.status).mockResolvedValue(true)
+    vi.mocked(profileApi.secrets.list).mockResolvedValue([secretSummary])
+
+    const view = render(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={profileApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    await openSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
+    expect(await screen.findByDisplayValue('Grace Hopper')).toBeInTheDocument()
+    expect(screen.getByText('Demo secret')).toBeInTheDocument()
+
+    const refreshApi = createProfileApi()
+    vi.mocked(refreshApi.get).mockRejectedValueOnce(new ValedictorianProtocolError({ message: 'refresh dump /tmp/profile.db' }))
+    vi.mocked(refreshApi.identity.status).mockResolvedValue(true)
+    vi.mocked(refreshApi.secrets.list).mockResolvedValue([secretSummary])
+
+    view.rerender(
+      <App
+        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
+        profileApi={refreshApi}
+        settingsApi={createSettingsApi()}
+      />,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    expect(alert).not.toHaveTextContent('/tmp/profile.db')
+    expect(screen.getByDisplayValue('Grace Hopper')).toBeInTheDocument()
+    expect(screen.getByText('Demo secret')).toBeInTheDocument()
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+
+    vi.mocked(refreshApi.get).mockResolvedValueOnce(loadedProfile)
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(refreshApi.get).toHaveBeenCalledTimes(2))
+    expect(screen.getByDisplayValue('Grace Hopper')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
 })
