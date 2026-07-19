@@ -269,4 +269,116 @@ describe('SourcingPage', () => {
     expect(screen.queryByText('Review only')).not.toBeInTheDocument()
     expect(screen.queryByText('Retained for review')).not.toBeInTheDocument()
   })
+
+  it('distinguishes employer, third-party, and unresolved destinations without a Review only badge', () => {
+    const canonicalFullTime = {
+      ...createSourcingFinding({ id: 'finding-canonical', companyName: 'Canonical Co' }),
+      employmentType: 'full_time',
+      seniority: 'internship',
+    } as SourcingFinding
+
+    renderSourcingPage({
+      result: createSourcingResult([
+        createSourcingFinding({
+          id: 'finding-employer',
+          companyName: 'Employer Co',
+          destinationClass: 'employer_or_ats',
+          destinationUrl: 'https://jobs.lever.co/employer/role-1',
+          usability: 'usable',
+        }),
+        createSourcingFinding({
+          id: 'finding-third-party',
+          companyName: 'Third Party Co',
+          destinationClass: 'third_party_job_posting',
+          destinationUrl: 'https://www.linkedin.com/jobs/view/123456',
+          usability: 'review_only',
+          mergeStatus: 'blocked',
+          policyBlocker: 'third_party_destination',
+          blocker: 'Approve or reject this third-party job destination before promotion: https://www.linkedin.com/jobs/view/123456',
+        }),
+        createSourcingFinding({
+          id: 'finding-review',
+          companyName: 'Review Co',
+          destinationClass: null,
+          destinationUrl: null,
+          usability: 'review_only',
+          mergeStatus: 'blocked',
+        }),
+        canonicalFullTime,
+      ]),
+    })
+
+    const table = screen.getByRole('table', { name: 'Opportunities' })
+    expect(within(table).getByText('Employer / ATS')).toBeInTheDocument()
+    expect(within(table).getByRole('link', { name: 'third-party' })).toBeInTheDocument()
+    expect(within(table).getByText('Third-party')).toBeInTheDocument()
+    expect(within(table).getByText('Unresolved')).toBeInTheDocument()
+    expect(within(table).queryByText('Review only')).not.toBeInTheDocument()
+    expect(screen.queryByText('Retained for review')).not.toBeInTheDocument()
+    expect(within(table).getByText('Full Time')).toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: 'Promote Review Co' })).not.toBeInTheDocument()
+    expect(within(table).getByRole('button', { name: 'Promote Third Party Co' }))
+      .toHaveTextContent('Approve & promote')
+  })
+
+  it('separates promoted and blocked sourcing findings in review', () => {
+    renderSourcingPage({
+      result: createSourcingResult([
+        createSourcingFinding({
+          id: 'finding-merged',
+          companyName: 'Merged Co',
+          mergeStatus: 'merged',
+          mergedApplicationId: 'application-merged',
+          mergedApplicationCompanyName: 'Merged Co',
+          mergedApplicationRoleTitle: 'Software Engineering Intern',
+          mergeNotes: 'Merged into applications.',
+        }),
+        createSourcingFinding({
+          id: 'finding-blocked',
+          companyName: 'Blocked Co',
+          officialUrl: null,
+          sourceUrl: null,
+          mergeStatus: 'blocked',
+          blocker: 'Missing official URL.',
+          mergeNotes: 'Missing official URL.',
+        }),
+      ]),
+    })
+
+    const table = screen.getByRole('table', { name: 'Opportunities' })
+    expect(within(table).getByText('Promoted')).toBeInTheDocument()
+    expect(within(table).getByText('In applications')).toBeInTheDocument()
+    expect(within(table).getByText('Blocked')).toBeInTheDocument()
+    expect(within(table).getByText('Needs source data before promotion')).toBeInTheDocument()
+  })
+
+  it('hides sourcing raw diagnostic ids by default and reveals them when enabled', () => {
+    const finding = createSourcingFinding({
+      id: 'finding-merged',
+      companyName: 'Merged Co',
+      workflowRunId: 'workflow-run-debug-1',
+      mergeStatus: 'merged',
+      mergedApplicationId: 'application-merged-debug',
+      mergedApplicationCompanyName: 'Merged Co',
+      mergedApplicationRoleTitle: 'Software Engineering Intern',
+    })
+    const result = createSourcingResult([finding])
+
+    renderSourcingPage({ result, showDebugData: false })
+
+    const table = screen.getByRole('table', { name: 'Opportunities' })
+    expect(within(table).getByText('Merged Co - Software Engineering Intern')).toBeInTheDocument()
+    expect(within(table).getByRole('button', { name: 'Open app Merged Co' })).toBeInTheDocument()
+    expect(within(table).queryByText('workflow-run-debug-1')).not.toBeInTheDocument()
+    expect(within(table).queryByText('application-merged-debug')).not.toBeInTheDocument()
+
+    cleanup()
+    renderSourcingPage({ result, showDebugData: true })
+
+    const debugTable = screen.getByRole('table', { name: 'Opportunities' })
+    expect(within(debugTable).getByText('workflow-run-debug-1')).toBeInTheDocument()
+    expect(within(debugTable).getByText('application-merged-debug')).toBeInTheDocument()
+    expect(within(debugTable).getByText('Merged Co - Software Engineering Intern')).toBeInTheDocument()
+    expect(within(debugTable).getByRole('button', { name: 'Open app Merged Co' })).toBeInTheDocument()
+  })
 })

@@ -17,7 +17,6 @@ import type { ConnectorAuthGrant, ConnectorAuthMode, ConnectorAuthReference,
   ConnectorNormalizationInput,
   JobConnector,
 } from '@sparxie/valedictorian-connectors-core'
-import { z } from 'zod'
 import type {
   FieldResolutionOutcome,
   RawSourceIntakeReceipt,
@@ -25,7 +24,6 @@ import type {
   RawSourceRecordInput,
   ResolverCapability,
 } from 'sparxie'
-import { connectorRunSummarySchema, retryAdviceSchema, sourceOperationOutcomeSchema } from 'sparxie'
 import type {
   ConnectorCheckpointPayload,
   ConnectorInstanceRecord,
@@ -46,6 +44,7 @@ import { createSourceSessionExecutor } from '../source-execution/source-session-
 import { finalizeReconnectValidation } from './connector.auth-validation-finalization'
 import { unexpectedConnectorExecutionError } from './connector-execution.errors'
 import { sanitizeConnectorRefreshResult } from './connector.refresh-result-sanitizer'
+import { assertConnectorRefreshResult } from './connector.runner.refresh-contract'
 export type AppJobConnectorDefinition = ConnectorDefinition
 export type AppConnectorAuthMode = ConnectorAuthMode
 export type AppConnectorAuthRequirement = ConnectorAuthRequirement
@@ -605,96 +604,6 @@ function terminalConnectorRunStatus(value: unknown): ConnectorRunTerminalStatus 
   }
   if (value === 'completed') return value
   throw new Error(`Invalid connector refresh status: ${String(value)}`)
-}
-function assertConnectorRefreshStatus(value: unknown): asserts value is ConnectorRunTerminalStatus {
-  terminalConnectorRunStatus(value)
-}
-const connectorRefreshEnvelopeSchema = z.object({
-  observations: z.array(z.unknown()),
-  nextCheckpoint: z.object({ checkpoint: z.unknown(), schemaVersion: z.string().min(1).max(128) }).strict(),
-  coverage: z.object({ start: z.iso.datetime({ offset: true }), end: z.iso.datetime({ offset: true }) }).strict(),
-  stats: z.object({ observations: z.number().int().nonnegative() }).passthrough(),
-  warnings: z.array(z.object({ code: z.string().min(1).max(128), message: z.string().min(1).max(2048) }).strict()),
-  status: z.enum(['completed', 'failed', 'cancelled', 'skipped']),
-  retryHints: z.unknown().optional(),
-  operationOutcome: z.unknown(),
-  synchronization: z.unknown(),
-}).strict()
-function assertConnectorRefreshResult(
-  value: unknown,
-  executionScopeId: import('sparxie').SourceExecutionScopeId,
-): asserts value is ConnectorRefreshResult {
-  if (!isRecord(value)) throw new Error('Invalid connector refresh result')
-  assertConnectorRefreshStatus(value.status)
-  if (!('synchronization' in value)) throw new Error('Invalid connector refresh synchronization')
-  if (!connectorRefreshEnvelopeSchema.safeParse(value).success) throw new Error('Invalid connector refresh result')
-  if (value.retryHints !== undefined && value.retryHints !== null && !retryAdviceSchema.safeParse(value.retryHints).success) {
-    throw new Error('Invalid connector refresh retry advice')
-  }
-  if (value.operationOutcome !== null && !sourceOperationOutcomeSchema.safeParse(value.operationOutcome).success) {
-    throw new Error('Invalid connector refresh operation outcome')
-  }
-  if (isRecord(value.operationOutcome)
-    && (value.operationOutcome.kind === 'authentication_expired' || value.operationOutcome.kind === 'scope_rate_limited')
-    && value.operationOutcome.executionScopeId !== executionScopeId) {
-    throw new Error('Invalid connector refresh operation outcome scope')
-  }
-  assertConnectorRefreshSynchronization(value.synchronization, value.status, executionScopeId)
-  assertConnectorRefreshOperationConsistency(value.operationOutcome, value.synchronization)
-}
-function assertConnectorRefreshSynchronization(
-  value: unknown,
-  status: ConnectorRunTerminalStatus,
-  executionScopeId: import('sparxie').SourceExecutionScopeId,
-): asserts value is ConnectorRefreshResult['synchronization'] {
-  if (!isRecord(value) || !connectorRunSummarySchema.safeParse({
-    id: 'connector-refresh-validation', connectorInstanceId: 'connector-refresh-validation',
-    executionScopeId, status, filterSignature: 'connector-refresh-validation', observationCount: 0,
-    warningCount: 0, warnings: [], newestFrontier: value.newestFrontier,
-    historicalBackfill: value.historicalBackfill, pendingResolutionCount: value.pendingResolutionCount,
-    outcome: value.outcome, startedAt: '2000-01-01T00:00:00.000Z',
-    completedAt: '2000-01-01T00:00:00.000Z', mode: 'manual', scheduleOccurrence: null,
-  }).success) throw new Error('Invalid connector refresh synchronization')
-}
-function assertConnectorRefreshOperationConsistency(
-  operationOutcome: unknown,
-  synchronization: ConnectorRefreshResult['synchronization'],
-) {
-  const synchronizationOutcome = synchronization.outcome
-  const requiredSynchronizationKind = isRecord(operationOutcome)
-    ? operationOutcome.kind === 'scope_rate_limited'
-      ? 'cooling_down'
-      : operationOutcome.kind === 'authentication_expired'
-        ? 'action_required'
-        : null
-    : null
-  const synchronizationRequiresOperation = synchronizationOutcome.kind === 'cooling_down'
-    || synchronizationOutcome.kind === 'action_required'
-  if (requiredSynchronizationKind !== null
-    && (synchronizationOutcome.kind !== requiredSynchronizationKind
-      || !sameScopeOperation(operationOutcome, synchronizationOutcome.operation))) {
-    throw new Error('Inconsistent connector refresh operation outcome')
-  }
-  if (synchronizationRequiresOperation
-    && !sameScopeOperation(operationOutcome, synchronizationOutcome.operation)) {
-    throw new Error('Inconsistent connector refresh operation outcome')
-  }
-}
-function sameScopeOperation(left: unknown, right: unknown) {
-  if (!isRecord(left) || !isRecord(right) || left.kind !== right.kind) return false
-  if (left.kind === 'authentication_expired') {
-    return left.executionScopeId === right.executionScopeId
-      && left.requestRefresh === right.requestRefresh
-  }
-  if (left.kind === 'scope_rate_limited') {
-    return left.executionScopeId === right.executionScopeId
-      && left.retryAt === right.retryAt
-      && left.serverMinimumDelayMs === right.serverMinimumDelayMs
-  }
-  return false
-}
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 const connectorRunProgressMetricKeys = [
   'attempted',

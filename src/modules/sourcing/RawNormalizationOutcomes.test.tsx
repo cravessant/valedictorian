@@ -131,4 +131,40 @@ describe('RawNormalizationOutcomes', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
     expect(screen.getByText('Sensitive detail omitted')).toBeInTheDocument()
   })
+
+  it('explains resolver provenance, conflicts, abstentions, and the exact admission reason', () => {
+    const normalization = createNeedsEnrichmentNormalization()
+    const projection = {
+      rawRecordId: 'raw-record-1',
+      rawRevisionId: 'raw-revision-1',
+      status: 'not_eligible',
+      normalizationStatus: 'completed',
+      canonicalCandidateId: null,
+      gateStatus: 'needs_enrichment',
+      updatedAt: '2026-07-10T12:00:04.000Z',
+    } satisfies RawSourceProjectionResult
+
+    render(
+      <RawNormalizationOutcomes normalization={normalization} projection={projection} />,
+    )
+
+    const outcomes = screen.getByRole('region', { name: 'Job normalization resolver outcomes' })
+    expect(outcomes).toHaveTextContent('jobright.raw@2.1.0')
+    expect(outcomes).toHaveTextContent('Role title')
+    expect(outcomes).toHaveTextContent('Resolved')
+    expect(outcomes).toHaveTextContent('Destination URL')
+    expect(outcomes).toHaveTextContent('Conflict')
+    expect(outcomes).toHaveTextContent('Provider supplied competing destinations.')
+    expect(outcomes).toHaveTextContent('Compensation')
+    expect(outcomes).toHaveTextContent('Abstained')
+
+    const gate = screen.getByRole('region', { name: 'Opportunity admission gate' })
+    expect(gate).toHaveTextContent('Needs enrichment')
+    expect(gate).toHaveTextContent('Company is missing and destination conflicts.')
+    expect(gate).toHaveTextContent('Missing: Company name')
+    expect(gate).toHaveTextContent('Conflicting: Destination URL')
+    expect(gate).toHaveTextContent('normalization-gate@1')
+    expect(screen.getByText('No Job fact version')).toBeInTheDocument()
+    expect(screen.getByText(/Not eligible for Opportunity projection/)).toBeInTheDocument()
+  })
 })

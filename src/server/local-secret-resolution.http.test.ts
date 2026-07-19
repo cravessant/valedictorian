@@ -9,12 +9,13 @@ import type { SecretCodec } from '../modules/secrets/secret.codec'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
 import { createLocalWorkspaceManager } from './local-workspaces'
-import { getLocalValedictorianTestDatabase } from './local-valedictorian-client.test-harness'
+import {
+  getTestLocalValedictorianDatabase,
+  useResettablePgliteTestLocalValedictorianClient,
+} from '../runtime/local-valedictorian-client.test-harness'
 import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,
-  createSeededLocalClient,
-  createTempDatabasePath,
   createTempFilePath,
   readJson,
 } from './local-server.http-test-harness'
@@ -33,23 +34,24 @@ const availableCodec: SecretCodec = {
   },
 }
 
-describe('local secret resolution HTTP route', () => {
+const createResettableLocalClient = useResettablePgliteTestLocalValedictorianClient()
+
+describe.sequential('local secret resolution HTTP route', () => {
   const fixture = createLocalServerHttpTestFixture()
 
   beforeEach(() => fixture.setup())
   afterEach(() => fixture.teardown())
 
   it('advertises and serves authenticated workspace-scoped resolution with no-store', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-resolve'
-    const client = await createSeededLocalClient({
+    const client = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath,
+      seedDataMode: 'sample',
       workspaceId,
     })
     const secretService = createPgliteSecretService(
-      getLocalValedictorianTestDatabase(client),
+      getTestLocalValedictorianDatabase(client),
       availableCodec,
       createWorkspaceSecretScope(workspaceId),
     )
@@ -100,16 +102,15 @@ describe('local secret resolution HTTP route', () => {
   })
 
   it('blocks reserved identity resolution from authenticated shared HTTP while ordinary secrets resolve', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-shared-identity-boundary'
-    const client = await createSeededLocalClient({
+    const client = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath,
+      seedDataMode: 'sample',
       workspaceId,
     })
     const secretService = createPgliteSecretService(
-      getLocalValedictorianTestDatabase(client),
+      getTestLocalValedictorianDatabase(client),
       availableCodec,
       createWorkspaceSecretScope(workspaceId),
     )
@@ -158,12 +159,11 @@ describe('local secret resolution HTTP route', () => {
   })
 
   it('returns typed unauthorized and missing outcomes with no-store', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const workspaceId = 'workspace-resolve-errors'
-    const enabledClient = await createSeededLocalClient({
+    const enabledClient = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath,
+      seedDataMode: 'sample',
       workspaceId,
     })
     const server = await fixture.start({
@@ -212,10 +212,10 @@ describe('local secret resolution HTTP route', () => {
 
   it('requires authentication before unsupported when policy is disabled', async () => {
     const workspaceId = 'workspace-resolve-auth-first'
-    const disabledClient = await createSeededLocalClient({
+    const disabledClient = await createResettableLocalClient({
       localSecretResolutionEnabled: false,
       secretCodec: availableCodec,
-      pgliteDataPath: createTempDatabasePath(),
+      seedDataMode: 'sample',
       workspaceId,
     })
     const server = await fixture.start({
@@ -276,10 +276,10 @@ describe('local secret resolution HTTP route', () => {
 
   it('returns unauthorized when the server has no token configured', async () => {
     const workspaceId = 'workspace-resolve-no-server-token'
-    const client = await createSeededLocalClient({
+    const client = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath: createTempDatabasePath(),
+      seedDataMode: 'sample',
       workspaceId,
     })
     const server = await fixture.start({
@@ -311,10 +311,10 @@ describe('local secret resolution HTTP route', () => {
   })
 
   it('keeps the unscoped root resolve path as canonical 404 no-store', async () => {
-    const client = await createSeededLocalClient({
+    const client = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath: createTempDatabasePath(),
+      seedDataMode: 'sample',
       workspaceId: 'workspace-root',
     })
     const server = await fixture.start({
@@ -341,10 +341,10 @@ describe('local secret resolution HTTP route', () => {
 
   it('returns value-free 404 no-store when workspace resolution fails', async () => {
     const workspaceId = 'workspace-missing'
-    const client = await createSeededLocalClient({
+    const client = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath: createTempDatabasePath(),
+      seedDataMode: 'sample',
       workspaceId: 'workspace-active',
     })
     const server = await fixture.start({
@@ -379,10 +379,10 @@ describe('local secret resolution HTTP route', () => {
 
   it('marks every sensitive-route method outcome as no-store including OPTIONS', async () => {
     const workspaceId = 'workspace-methods'
-    const client = await createSeededLocalClient({
+    const client = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath: createTempDatabasePath(),
+      seedDataMode: 'sample',
       workspaceId,
     })
     const server = await fixture.start({
@@ -413,10 +413,10 @@ describe('local secret resolution HTTP route', () => {
 
   it('returns value-free 400 no-store for schema-invalid resolve input', async () => {
     const workspaceId = 'workspace-schema'
-    const client = await createSeededLocalClient({
+    const client = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath: createTempDatabasePath(),
+      seedDataMode: 'sample',
       workspaceId,
     })
     const server = await fixture.start({
@@ -491,10 +491,10 @@ describe('local secret resolution HTTP route', () => {
   it('never echoes forged downstream error bodies and keeps canonical no-store outcomes', async () => {
     const SECRET_CANARY = 'forged-downstream-secret-canary-9f3c'
     const workspaceId = 'workspace-forged-errors'
-    const baseClient = await createSeededLocalClient({
+    const baseClient = await createResettableLocalClient({
       localSecretResolutionEnabled: true,
       secretCodec: availableCodec,
-      pgliteDataPath: createTempDatabasePath(),
+      seedDataMode: 'sample',
       workspaceId,
     })
     const resolveBody = {
@@ -580,10 +580,10 @@ describe('local secret resolution HTTP route', () => {
 
   it('keeps capability false and unsupported when policy disables resolution', async () => {
     const workspaceId = 'workspace-resolve-disabled'
-    const disabledClient = await createSeededLocalClient({
+    const disabledClient = await createResettableLocalClient({
       localSecretResolutionEnabled: false,
       secretCodec: availableCodec,
-      pgliteDataPath: createTempDatabasePath(),
+      seedDataMode: 'sample',
       workspaceId,
     })
     const disabledServer = await fixture.start({
@@ -646,6 +646,87 @@ describe('local secret resolution HTTP route', () => {
       token: 'server-token',
       workspaceManager: manager,
     })
+
+    const secretsBase = `${server.url}/v1/workspaces/${workspaceA.id}/secrets`
+    const authHeaders = {
+      authorization: 'Bearer server-token',
+      'content-type': 'application/json',
+    }
+    const writeOnlyUpsert = await fetch(`${secretsBase}/greenhouse_password`, {
+      body: JSON.stringify({
+        kind: 'password',
+        label: 'Greenhouse',
+        value: 'correct horse battery staple',
+      }),
+      headers: authHeaders,
+      method: 'PUT',
+    })
+    const writeOnlyPayload = (await readJson(writeOnlyUpsert)) as Record<string, unknown>
+    const writeOnlyList = await fetch(secretsBase, {
+      headers: { authorization: 'Bearer server-token' },
+    })
+    const writeOnlyListPayload = (await readJson(writeOnlyList)) as {
+      items: Array<Record<string, unknown>>
+    }
+    const writeOnlyReveal = await fetch(`${secretsBase}/greenhouse_password`, {
+      headers: { authorization: 'Bearer server-token' },
+    })
+    expect(writeOnlyUpsert.status).toBe(200)
+    expect(writeOnlyPayload).toMatchObject({
+      key: 'greenhouse_password',
+      kind: 'password',
+      label: 'Greenhouse',
+    })
+    expect(writeOnlyPayload).not.toHaveProperty('value')
+    expect(writeOnlyListPayload.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'greenhouse_password',
+        kind: 'password',
+        label: 'Greenhouse',
+      }),
+    ]))
+    expect(writeOnlyListPayload.items.every((item) => !('value' in item))).toBe(true)
+    expect(writeOnlyReveal.status).toBe(404)
+
+    const profileUpdateResponse = await fetch(
+      `${server.url}/v1/workspaces/${workspaceA.id}/profile`,
+      {
+        body: JSON.stringify({ dateOfBirth: '1999-05-12', disabilityStatus: 'No' }),
+        headers: authHeaders,
+        method: 'PATCH',
+      },
+    )
+    const profilePayload = (await readJson(profileUpdateResponse)) as Record<string, unknown>
+    expect(profileUpdateResponse.status).toBe(200)
+    expect(profilePayload).toMatchObject({
+      dateOfBirth: '1999-05-12',
+      disabilityStatus: 'No',
+    })
+    expect(JSON.stringify(profilePayload)).not.toContain('ssn')
+    expect((await fetch(
+      `${server.url}/v1/workspaces/${workspaceA.id}/profile/sensitive`,
+      {
+        body: JSON.stringify({ ssnLast4: '5125' }),
+        headers: authHeaders,
+        method: 'PATCH',
+      },
+    )).status).toBe(404)
+    expect((await fetch(
+      `${server.url}/v1/workspaces/${workspaceA.id}/profile/sensitive`,
+      { headers: { authorization: 'Bearer server-token' } },
+    )).status).toBe(404)
+
+    const deleteResponse = await fetch(`${secretsBase}/greenhouse_password`, {
+      headers: { authorization: 'Bearer server-token' },
+      method: 'DELETE',
+    })
+    expect(deleteResponse.status).toBe(200)
+    const emptyList = (await readJson(await fetch(secretsBase, {
+      headers: { authorization: 'Bearer server-token' },
+    }))) as {
+      items: Array<{ key: string }>
+    }
+    expect(emptyList.items.every((item) => item.key !== 'greenhouse_password')).toBe(true)
 
     const resolve = async (workspaceId: string) => fetch(
       `${server.url}/v1/workspaces/${workspaceId}/secrets/local/resolve`,

@@ -8,7 +8,7 @@ import { ButtonGroup } from './button-group'
 afterEach(cleanup)
 
 describe('ButtonGroup', () => {
-  it('exposes its shadcn root slot and group role', () => {
+  it('exposes an accessible named group for its child actions', () => {
     render(
       <ButtonGroup aria-label="Example pagination">
         <Button type="button">Previous</Button>
@@ -16,25 +16,9 @@ describe('ButtonGroup', () => {
       </ButtonGroup>,
     )
 
-    const group = screen.getByRole('group', { name: 'Example pagination' })
-    expect(group).toHaveAttribute('data-slot', 'button-group')
-  })
-
-  it('merges orientation and className onto the root contract', () => {
-    render(
-      <ButtonGroup
-        aria-label="Vertical actions"
-        orientation="vertical"
-        className="custom-group"
-      >
-        <Button type="button">Up</Button>
-        <Button type="button">Down</Button>
-      </ButtonGroup>,
-    )
-
-    const group = screen.getByRole('group', { name: 'Vertical actions' })
-    expect(group).toHaveAttribute('data-orientation', 'vertical')
-    expect(group).toHaveClass('flex-col', 'custom-group', 'w-fit')
+    expect(screen.getByRole('group', { name: 'Example pagination' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument()
   })
 
   it('keeps ordinary Tab order across grouped buttons without arrow-key selection', async () => {

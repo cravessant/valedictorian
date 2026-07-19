@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { connectorRuns, connectorRunSynchronizations, schema } from '../../db/schema'
 import type { PgliteClient } from '../../db/pglite'
 import { createPgliteConnectorRepository } from './connector.repository'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 import { mapLocalConnectorOverviewRecord } from '../../runtime/local-connector-overview'
 import type { ConnectorStatusState } from 'sparxie'
 
-describe('PGlite connector overview repository', () => {
+describe.sequential('PGlite connector overview repository', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('reads one default-sized connector page and its latest synchronized runs in one query', async () => {
     const { client } = await createConnectorRepositoryTestContext()
     const queries: string[] = []

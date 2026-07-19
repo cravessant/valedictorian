@@ -70,28 +70,16 @@ export interface ConnectorRunLifecycleCounts {
   }
 }
 
-export async function reconcileConnectorRunLifecycleCounts(
-  database: Pick<PgliteDatabase, 'select'>,
-  run: ConnectorRunRecord,
-): Promise<ConnectorRunLifecycleCounts> {
-  const stats = recordFromUnknown(run.stats)
-  const occurrences = await database
-    .select({
-      rawRecordId: captures.captureLineageId,
-      rawRevisionId: captures.captureEvidenceVersionId,
-      revision: captureEvidenceVersions.revision,
-      providerRecordId: captureEvidenceVersions.providerRecordId,
-    })
-    .from(captures)
-    .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, captures.captureEvidenceVersionId))
-    .where(eq(captures.connectorRunId, run.id))
-  const capturedRecords = new Set(occurrences.map(({ rawRecordId }) => rawRecordId)).size
-  const capturedValidRecords = new Set(
-    occurrences
-      .filter(({ providerRecordId }) => Boolean(providerRecordId?.trim()))
-      .map(({ rawRecordId }) => rawRecordId),
-  ).size
-  const capturedInvalidRecords = Math.max(0, capturedRecords - capturedValidRecords)
+export function reconcileProviderLifecycleCounts(
+  input: unknown,
+  capture: {
+    capturedRecords: number
+    capturedValidRecords: number
+    capturedInvalidRecords: number
+    occurrenceCount: number
+  },
+): ConnectorRunLifecycleCounts['provider'] {
+  const stats = recordFromUnknown(input)
   const providerStats = [
     ['providerReturned', 'missing_provider_returned', 'invalid_provider_returned'],
     ['providerValid', 'missing_provider_valid', 'invalid_provider_valid'],
@@ -119,21 +107,63 @@ export async function reconcileConnectorRunLifecycleCounts(
     }
   }
   const returnedRows = reportedReturnedRows ?? 0
-  const invalidRecords = reportedInvalidRows ?? capturedInvalidRecords
+  const invalidRecords = reportedInvalidRows ?? capture.capturedInvalidRecords
   const sourceDuplicates = reportedSourceDuplicates ?? 0
   const validRecords = reportedValidRows !== null
     && reportedSourceDuplicates !== null
     && reportedValidRows >= reportedSourceDuplicates
     ? reportedValidRows - reportedSourceDuplicates
-    : capturedValidRecords
+    : capture.capturedValidRecords
   const classifiedRows = validRecords + invalidRecords + sourceDuplicates
-  const providerInvariant = gaps.length === 0
+  const invariant = gaps.length === 0
     ? 'reconciled' as const
     : gaps.some((gap) => gap.startsWith('missing_'))
       ? 'reported_stats_missing' as const
       : gaps.some((gap) => gap.startsWith('invalid_'))
         ? 'reported_stats_invalid' as const
         : 'reported_totals_inconsistent' as const
+
+  return {
+    returnedRows,
+    validRecords,
+    invalidRecords,
+    sourceDuplicates,
+    capturedRecords: capture.capturedRecords,
+    occurrenceCount: capture.occurrenceCount,
+    captureShortfall: Math.max(0, returnedRows - capture.occurrenceCount),
+    unclassifiedRows: Math.max(0, returnedRows - classifiedRows),
+    invariant,
+    gaps,
+  }
+}
+
+export async function reconcileConnectorRunLifecycleCounts(
+  database: Pick<PgliteDatabase, 'select'>,
+  run: ConnectorRunRecord,
+): Promise<ConnectorRunLifecycleCounts> {
+  const occurrences = await database
+    .select({
+      rawRecordId: captures.captureLineageId,
+      rawRevisionId: captures.captureEvidenceVersionId,
+      revision: captureEvidenceVersions.revision,
+      providerRecordId: captureEvidenceVersions.providerRecordId,
+    })
+    .from(captures)
+    .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, captures.captureEvidenceVersionId))
+    .where(eq(captures.connectorRunId, run.id))
+  const capturedRecords = new Set(occurrences.map(({ rawRecordId }) => rawRecordId)).size
+  const capturedValidRecords = new Set(
+    occurrences
+      .filter(({ providerRecordId }) => Boolean(providerRecordId?.trim()))
+      .map(({ rawRecordId }) => rawRecordId),
+  ).size
+  const capturedInvalidRecords = Math.max(0, capturedRecords - capturedValidRecords)
+  const provider = reconcileProviderLifecycleCounts(run.stats, {
+    capturedRecords,
+    capturedValidRecords,
+    capturedInvalidRecords,
+    occurrenceCount: occurrences.length,
+  })
   const scopedRevisions = new Map<string, { id: string; revision: number }>()
   for (const occurrence of occurrences) {
     const current = scopedRevisions.get(occurrence.rawRecordId)
@@ -320,18 +350,7 @@ export async function reconcileConnectorRunLifecycleCounts(
       ? 'live_current'
       : 'derived_pre_feature',
     scope: { kind: 'connector_run', connectorRunId: run.id, executionScopeId: run.executionScopeId },
-    provider: {
-      returnedRows,
-      validRecords,
-      invalidRecords,
-      sourceDuplicates,
-      capturedRecords,
-      occurrenceCount: occurrences.length,
-      captureShortfall: Math.max(0, returnedRows - occurrences.length),
-      unclassifiedRows: Math.max(0, returnedRows - classifiedRows),
-      invariant: providerInvariant,
-      gaps,
-    },
+    provider,
     destination: {
       ...destination,
       invariant: destinationClassified === capturedRecords

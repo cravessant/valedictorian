@@ -1,20 +1,18 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { connectorOverviewListResultSchema } from 'sparxie'
 import { describe, expect, it } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
-import { createTestLocalValedictorianClient as createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
+import { useResettablePgliteTestLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 
-describe('runtime connector overview', () => {
+const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()
+
+describe.sequential('runtime connector overview', () => {
   it('returns a strict sanitized never-run connector row through the workspace contract', async () => {
     const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       now: () => new Date('2026-07-13T12:00:00.000Z'),
       seedDataMode: 'none',
-      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-')),
     })
     await client.connectors.create({
       id: 'overview-never-run', connectorId: 'fixture.overview', connectorVersion: '1.0.0',
@@ -44,7 +42,6 @@ describe('runtime connector overview', () => {
     const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
-      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-page-')),
     })
     for (const [id, enabled] of [
       ['é-overview', true], ['z-overview', true], ['a-overview', true], ['😀-overview', true],
@@ -80,7 +77,6 @@ describe('runtime connector overview', () => {
     const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
-      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-filter-')),
     })
     for (const id of ['caught-up', 'never-run']) {
       await client.connectors.create({
@@ -107,7 +103,6 @@ describe('runtime connector overview', () => {
     const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([fixtureConnector]),
       seedDataMode: 'none',
-      pgliteDataPath: fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-connector-overview-skip-')),
     })
     await client.connectors.create({
       id: 'user-skip', connectorId: 'fixture.overview', connectorVersion: '1.0.0',

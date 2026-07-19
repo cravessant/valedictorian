@@ -203,6 +203,338 @@ describe('ConnectorRunSynchronizationDetails', () => {
     )).toBeInTheDocument()
     expect(screen.queryByText(/explicitly unclassified/i)).not.toBeInTheDocument()
   })
+
+  it('reconciles released lifecycle counts without opaque carried cycle stats', () => {
+    const run = runFixture({
+      status: 'failed',
+      newestFrontier: { state: 'caught_up' },
+      historicalBackfill: {
+        state: 'advancing',
+        boundary: { earliestDate: '2026-07-01' },
+      },
+      outcome: { kind: 'failed', reason: 'provider_schema_changed' },
+      lifecycleCounts: {
+        version: 'connector-run-lifecycle-counts/v1',
+        source: 'frozen_terminal',
+        scope: {
+          kind: 'connector_run',
+          connectorRunId: 'pancake-carried-50',
+          executionScopeId: 'scope_fixture_run_details',
+        },
+        provider: {
+          returnedRows: 0,
+          validRecords: 0,
+          invalidRecords: 0,
+          sourceDuplicates: 0,
+          capturedRecords: 0,
+          occurrenceCount: 0,
+          captureShortfall: 0,
+          unclassifiedRows: 0,
+          invariant: 'reported_stats_missing',
+          gaps: ['missing_provider_valid'],
+        },
+        destination: {
+          normalized: 0,
+          resolvedEmployerOrAts: 0,
+          resolvedThirdParty: 0,
+          unresolved: 0,
+          pending: 0,
+          gateRejected: 0,
+          unclassified: 0,
+          invariant: 'reconciled',
+        },
+        sourcing: {
+          findingsAdded: 0,
+          canonicalDuplicates: 0,
+          notFit: 0,
+          rejected: 0,
+          actionableReview: 0,
+          unclassified: 0,
+          invariant: 'reconciled',
+        },
+      },
+      warnings: [{
+        code: 'jobright_raw_intake_unavailable',
+        label: 'raw label',
+        message: 'raw message',
+        severity: 'blocked',
+      }],
+      completedAt: '2026-07-11T14:00:01.000Z',
+    })
+
+    render(
+      <>
+        <ConnectorRunSynchronizationDetails run={run} />
+        <ConnectorRunLifecycleDetails showDebugData run={run} />
+      </>,
+    )
+
+    expect(screen.getByText('Stage-specific synchronization counts')).toBeInTheDocument()
+    expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
+    expect(screen.getByText('Capture lineages: 0')).toBeInTheDocument()
+    expect(screen.getByText('Canonical duplicates: 0')).toBeInTheDocument()
+    expect(screen.getByText('Opportunities added: 0')).toBeInTheDocument()
+    expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
+    expect(screen.queryByText('Discovered jobs: 50')).not.toBeInTheDocument()
+    expect(screen.queryByText('Discovery page requests: 3')).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
+      .toHaveTextContent('Failed')
+    expect(screen.queryByText(/Technical status:/)).not.toBeInTheDocument()
+    expect(screen.getByText('Provider stats gaps: missing provider valid.')).toBeInTheDocument()
+    expect(screen.queryByText('Discovered: 50')).not.toBeInTheDocument()
+
+    const explanation = screen.getByRole('button', { name: 'How these counts work' })
+    expect(explanation).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(explanation)
+    expect(explanation).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText(/Provider returned rows are response rows, not a unique-job total/))
+      .toBeInTheDocument()
+    expect(screen.getByText(
+      /Captures are intake events; Capture lineages are unique persisted provider-record histories/,
+    )).toBeInTheDocument()
+  })
+
+  it('omits stale request-budget metrics while preserving provider progress', () => {
+    const run = runFixture({
+      status: 'skipped',
+      newestFrontier: { state: 'caught_up' },
+      historicalBackfill: {
+        state: 'advancing',
+        boundary: { earliestDate: '2026-07-01' },
+      },
+      pendingResolutionCount: 4,
+      outcome: { kind: 'yielded', reason: 'invocation_budget' },
+      lifecycleCounts: {
+        version: 'connector-run-lifecycle-counts/v1',
+        source: 'frozen_terminal',
+        scope: {
+          kind: 'connector_run',
+          connectorRunId: 'budget-stop-reason-run',
+          executionScopeId: 'scope_fixture_run_details',
+        },
+        provider: {
+          returnedRows: 0,
+          validRecords: 0,
+          invalidRecords: 0,
+          sourceDuplicates: 0,
+          capturedRecords: 0,
+          occurrenceCount: 0,
+          captureShortfall: 0,
+          unclassifiedRows: 0,
+          invariant: 'reconciled',
+          gaps: [],
+        },
+        destination: {
+          normalized: 0,
+          resolvedEmployerOrAts: 0,
+          resolvedThirdParty: 0,
+          unresolved: 0,
+          pending: 4,
+          gateRejected: 0,
+          unclassified: 0,
+          invariant: 'reconciled',
+        },
+        sourcing: {
+          findingsAdded: 0,
+          canonicalDuplicates: 0,
+          notFit: 0,
+          rejected: 0,
+          actionableReview: 0,
+          unclassified: 0,
+          invariant: 'reconciled',
+        },
+      },
+      completedAt: '2026-07-11T14:00:01.000Z',
+    })
+
+    render(
+      <>
+        <ConnectorRunSynchronizationDetails run={run} />
+        <ConnectorRunLifecycleDetails showDebugData run={run} />
+      </>,
+    )
+
+    expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
+    expect(screen.getByText('Capture lineages: 0')).toBeInTheDocument()
+    expect(screen.getByText('Pending: 4')).toBeInTheDocument()
+    expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
+    expect(screen.queryByText('Discovered jobs: 50')).not.toBeInTheDocument()
+    expect(screen.queryByText('Detail attempts: 50')).not.toBeInTheDocument()
+    expect(screen.queryByText('Request budget per run: 10')).not.toBeInTheDocument()
+    expect(screen.queryByText('Request budget: 50 / 10')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Request budget: 50\s*\/\s*10/)).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
+      .toHaveTextContent('Continuing later')
+    expect(screen.queryByText(/Stop reason:/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Discovered: 50')).not.toBeInTheDocument()
+  })
+
+  it('omits request budget label when run stats lack budget provenance', () => {
+    const run = runFixture({
+      status: 'failed',
+      newestFrontier: { state: 'caught_up' },
+      historicalBackfill: {
+        state: 'advancing',
+        boundary: { earliestDate: '2026-07-01' },
+      },
+      outcome: { kind: 'failed', reason: 'provider_schema_changed' },
+      lifecycleCounts: {
+        version: 'connector-run-lifecycle-counts/v1',
+        source: 'frozen_terminal',
+        scope: {
+          kind: 'connector_run',
+          connectorRunId: 'missing-budget-run',
+          executionScopeId: 'scope_fixture_run_details',
+        },
+        provider: {
+          returnedRows: 0,
+          validRecords: 0,
+          invalidRecords: 0,
+          sourceDuplicates: 0,
+          capturedRecords: 0,
+          occurrenceCount: 0,
+          captureShortfall: 0,
+          unclassifiedRows: 0,
+          invariant: 'reconciled',
+          gaps: [],
+        },
+        destination: {
+          normalized: 0,
+          resolvedEmployerOrAts: 0,
+          resolvedThirdParty: 0,
+          unresolved: 0,
+          pending: 0,
+          gateRejected: 0,
+          unclassified: 0,
+          invariant: 'reconciled',
+        },
+        sourcing: {
+          findingsAdded: 0,
+          canonicalDuplicates: 0,
+          notFit: 0,
+          rejected: 0,
+          actionableReview: 0,
+          unclassified: 0,
+          invariant: 'reconciled',
+        },
+      },
+      completedAt: '2026-07-11T14:00:01.000Z',
+    })
+
+    render(
+      <>
+        <ConnectorRunSynchronizationDetails run={run} />
+        <ConnectorRunLifecycleDetails showDebugData run={run} />
+      </>,
+    )
+
+    expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
+      .toHaveTextContent('Failed')
+    expect(screen.queryByText('Detail attempts: 50')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Stop reason:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Request budget per run:/i)).not.toBeInTheDocument()
+  })
+
+  it('hides connector run advanced diagnostics by default and reveals them when enabled', () => {
+    const run = {
+      ...runFixture({
+        status: 'failed',
+        newestFrontier: { state: 'caught_up' },
+        historicalBackfill: {
+          state: 'advancing',
+          boundary: { earliestDate: '2026-07-01' },
+        },
+        outcome: { kind: 'failed', reason: 'provider_schema_changed' },
+        warningCount: 1,
+        lifecycleCounts: {
+          version: 'connector-run-lifecycle-counts/v1',
+          source: 'frozen_terminal',
+          scope: {
+            kind: 'connector_run',
+            connectorRunId: 'debug-carried-run',
+            executionScopeId: 'scope_fixture_run_details',
+          },
+          provider: {
+            returnedRows: 0,
+            validRecords: 0,
+            invalidRecords: 0,
+            sourceDuplicates: 0,
+            capturedRecords: 0,
+            occurrenceCount: 0,
+            captureShortfall: 0,
+            unclassifiedRows: 0,
+            invariant: 'reported_stats_missing',
+            gaps: ['missing_provider_valid'],
+          },
+          destination: {
+            normalized: 0,
+            resolvedEmployerOrAts: 0,
+            resolvedThirdParty: 0,
+            unresolved: 0,
+            pending: 0,
+            gateRejected: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
+          },
+          sourcing: {
+            findingsAdded: 0,
+            canonicalDuplicates: 0,
+            notFit: 0,
+            rejected: 0,
+            actionableReview: 0,
+            unclassified: 0,
+            invariant: 'reconciled',
+          },
+        },
+        warnings: [{
+          code: 'jobright_raw_intake_unavailable',
+          label: 'raw label',
+          message: 'raw message',
+          severity: 'blocked',
+        }],
+        completedAt: '2026-07-11T14:00:01.000Z',
+      }),
+      stats: {
+        discovered: 50,
+        discoveryPages: 3,
+        providerReturned: 0,
+        stopReason: 'failed',
+      },
+    }
+
+    render(
+      <>
+        <ConnectorRunSynchronizationDetails run={run} />
+        <ConnectorRunLifecycleDetails run={run} />
+      </>,
+    )
+
+    expect(screen.getByText('Failed')).toBeInTheDocument()
+    expect(screen.getByText('Stage-specific synchronization counts')).toBeInTheDocument()
+    expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
+    expect(screen.queryByText('Frozen at terminal completion.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
+    expect(screen.queryByText('Discovered jobs: 50')).not.toBeInTheDocument()
+    expect(screen.queryByText('Provider stats gaps: missing provider valid.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'How these counts work' })).not.toBeInTheDocument()
+
+    cleanup()
+    render(
+      <>
+        <ConnectorRunSynchronizationDetails run={run} />
+        <ConnectorRunLifecycleDetails showDebugData run={run} />
+      </>,
+    )
+
+    expect(screen.getByText('Frozen at terminal completion.')).toBeInTheDocument()
+    expect(screen.getByText('Carried connector cycle')).toBeInTheDocument()
+    expect(screen.getByText('Discovered jobs: 50')).toBeInTheDocument()
+    expect(screen.getByText('Provider stats gaps: missing provider valid.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'How these counts work' })).toBeInTheDocument()
+    expect(screen.getByText('Failed')).toBeInTheDocument()
+    expect(screen.getByText('Stage-specific synchronization counts')).toBeInTheDocument()
+  })
 })
 
 function lifecycleFixture(

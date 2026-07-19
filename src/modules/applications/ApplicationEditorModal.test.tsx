@@ -77,4 +77,43 @@ describe('ApplicationEditorModal', () => {
       expect(onClose).toHaveBeenCalled()
     })
   })
+
+  it('keeps the add-application dialog open with sanitized save-failure feedback', async () => {
+    const onCreate = vi.fn(async () => {
+      throw new Error('Duplicate application official URL')
+    })
+    const onClose = vi.fn()
+
+    render(
+      <ApplicationEditorModal
+        mode="add"
+        onClose={onClose}
+        onCreate={onCreate as never}
+        onSaved={vi.fn(async () => undefined)}
+      />,
+    )
+
+    const dialog = await screen.findByRole('dialog', { name: 'Add application' })
+    fireEvent.change(within(dialog).getByLabelText('Company'), {
+      target: { value: 'Delta Labs' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Role'), {
+      target: { value: 'Software Engineering Intern' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Source'), {
+      target: { value: 'LinkedIn' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Country'), {
+      target: { value: 'US' },
+    })
+    fireEvent.change(within(dialog).getByLabelText('Primary URL'), {
+      target: { value: 'https://jobs.example.com/delta' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
+
+    expect(await within(dialog).findByText('An unexpected error occurred.')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Duplicate application official URL')).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Add application' })).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+  })
 })

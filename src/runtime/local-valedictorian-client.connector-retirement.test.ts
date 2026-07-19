@@ -12,21 +12,23 @@ import {
 } from '../modules/source-execution/source-execution-governor'
 import {
   closeTestLocalValedictorianClient,
-  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  createTestLocalValedictorianClient as createFreshLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
+  useResettablePgliteTestLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
 
 function createTempDatabasePath() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'connector-retirement-'))
 }
 
-describe('local connector instance retirement', () => {
+const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()
+
+describe.sequential('local connector instance retirement', () => {
   it('signals scheduled work only after retirement succeeds', async () => {
     const onScheduledWorkChanged = vi.fn()
     const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       onScheduledWorkChanged,
-      pgliteDataPath: createTempDatabasePath(),
     })
     await createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client)).upsertInstance({
       id: 'retirement-notification',
@@ -49,7 +51,7 @@ describe('local connector instance retirement', () => {
 
   it('retires an unregistered connector without loading its implementation or authentication', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const setupClient = await createLocalValedictorianClient({ pgliteDataPath })
+    const setupClient = await createFreshLocalValedictorianClient({ pgliteDataPath })
     await createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(setupClient),
     ).upsertInstance({
@@ -74,7 +76,7 @@ describe('local connector instance retirement', () => {
     const decrypt = vi.fn(() => {
       throw new Error('retirement must not retrieve authentication')
     })
-    const client = await createLocalValedictorianClient({
+    const client = await createFreshLocalValedictorianClient({
       connectorRegistry: { get: getConnector },
       secretCodec: {
         decrypt,
@@ -108,11 +110,9 @@ describe('local connector instance retirement', () => {
   })
 
   it('returns a typed conflict and preserves the instance when queued work is active', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
     const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
@@ -145,7 +145,6 @@ describe('local connector instance retirement', () => {
   })
 
   it('destroys connector-owned session credentials while preserving workspace secret administration', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       secretCodec: {
@@ -153,7 +152,6 @@ describe('local connector instance retirement', () => {
         encrypt: (value) => `encrypted:${value}`,
       },
       seedDataMode: 'none',
-      pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
     const database = getTestLocalValedictorianDatabase(client)
@@ -194,11 +192,9 @@ describe('local connector instance retirement', () => {
   })
 
   it('fences a late refresh completion from recreating a retired connector session', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const client = await createLocalValedictorianClient({
+    const client = await createFreshLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      pgliteDataPath,
       now: () => new Date('2026-07-13T16:00:00.000Z'),
     })
     const database = getTestLocalValedictorianDatabase(client)
@@ -228,12 +224,10 @@ describe('local connector instance retirement', () => {
   })
 
   it('retires mutable execution state while preserving checkpoints and historical sourcing lineage', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const retiredAt = '2026-07-13T16:00:00.000Z'
     const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
       seedDataMode: 'none',
-      pgliteDataPath,
       now: () => new Date(retiredAt),
     })
     const database = getTestLocalValedictorianDatabase(client)

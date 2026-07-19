@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   InvalidPersistedRawDetailHttpError,
@@ -810,5 +810,109 @@ describe('RawNormalizationDetail', () => {
     expect(screen.getByText('Projected to Opportunity finding-1')).toBeInTheDocument()
     expect(document.querySelector('[data-slot="scoped-load-failure"]')).toBeNull()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  it('separates the reported source from technical connector capture provenance', async () => {
+    const reportedOrigin = {
+      kind: 'job_board' as const,
+      name: 'LinkedIn',
+      providerId: 'linkedin',
+      url: 'javascript:alert(document.cookie)',
+    }
+    const record = {
+      id: 'raw-record-1',
+      sourceEntityId: null,
+      adapter: { id: 'jobright', kind: 'connector', version: '0.11.0' },
+      reportedOrigin,
+      createdAt: '2026-07-10T12:00:00.000Z',
+      latestRevision: {
+        id: 'raw-revision-1',
+        rawRecordId: 'raw-record-1',
+        revision: 1,
+        contentHash: 'sha256:safe-hash',
+        adapter: { id: 'jobright', kind: 'connector', version: '0.11.0' },
+        reportedOrigin: null,
+        observedAt: '2026-07-10T11:45:00.000Z',
+        providerRecordId: 'provider-job-123',
+        providerSchema: 'jobright-visitor-list@1',
+        payload: {
+          title: 'Platform Engineer',
+          company: 'Example Co',
+          location: null,
+          description: null,
+          applicationUrl: 'https://jobs.example.test/platform',
+          credentials: { password: 'never-render-this' },
+        },
+        evidence: [
+          { kind: 'provider', label: 'Listing title', value: 'Platform Engineer' },
+          { kind: 'request', label: 'Cookie', value: 'session=never-render-this' },
+        ],
+        createdAt: '2026-07-10T12:00:00.000Z',
+      },
+      occurrences: [
+        {
+          id: 'occurrence-1',
+          rawRecordId: 'raw-record-1',
+          rawRevisionId: 'raw-revision-1',
+          capture: {
+            connectorInstanceId: 'jobright-default',
+            connectorRunId: 'connector-run-1',
+            executionScopeId: 'scope-1',
+          },
+          observedAt: '2026-07-10T11:45:00.000Z',
+          receivedAt: '2026-07-10T12:00:00.000Z',
+        },
+      ],
+    } as RawSourceRecord
+
+    render(
+      <RawNormalizationDetail
+        api={{
+          list: vi.fn(),
+          get: vi.fn(async () => record),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(async () => ({
+            rawRecordId: 'raw-record-1',
+            rawRevisionId: 'raw-revision-1',
+            status: 'not_eligible',
+            normalizationStatus: null,
+            canonicalCandidateId: null,
+            gateStatus: null,
+            updatedAt: '2026-07-10T12:00:04.000Z',
+          } satisfies RawSourceProjectionResult)),
+        }}
+        onClose={() => undefined}
+        summary={{
+          id: 'raw-record-1',
+          reportedOrigin,
+          normalizationStatus: 'raw_only',
+        } as RawSourceRecordSummary}
+      />,
+    )
+
+    const dialog = await screen.findByRole('dialog', { name: 'Capture lineage raw-record-1' })
+    expect(within(dialog).getByRole('heading', { name: 'Latest evidence version facts' })).toBeInTheDocument()
+    expect(dialog).toHaveTextContent('Platform Engineer')
+    expect(dialog).toHaveTextContent('Example Co')
+    expect(dialog).toHaveTextContent('Missing location')
+    expect(dialog).toHaveTextContent('Missing description')
+    expect(dialog).toHaveTextContent('https://jobs.example.test/platform')
+    expect(within(dialog).getByRole('table', { name: 'Captures and evidence versions' }))
+      .toHaveTextContent('occurrence-1')
+    const provenance = within(dialog).getByRole('region', { name: 'Capture provenance' })
+    expect(provenance).toHaveTextContent('jobright · connector · 0.11.0')
+    expect(provenance).toHaveTextContent('jobright-default')
+    expect(provenance).toHaveTextContent('connector-run-1')
+    expect(provenance).toHaveTextContent('scope-1')
+    expect(provenance).toHaveTextContent('LinkedIn')
+    expect(provenance).toHaveTextContent('linkedin')
+    expect(provenance).toHaveTextContent('provider-job-123')
+    expect(provenance).toHaveTextContent('jobright-visitor-list@1')
+    expect(provenance).not.toHaveTextContent('javascript:')
+    expect(dialog).toHaveTextContent('raw-revision-1')
+    expect(dialog).toHaveTextContent('connector-run-1')
+    expect(dialog).not.toHaveTextContent(/credential|password|authorization|cookie/i)
+    expect(dialog).not.toHaveTextContent('never-render-this')
+    expect(dialog).not.toHaveTextContent('javascript:')
   })
 })

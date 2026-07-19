@@ -1,17 +1,18 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { createHttpValedictorianClient } from 'sparxie'
 import { afterEach, describe, expect, it } from 'vitest'
 import { presentCapturedRawFacts } from '../modules/sourcing/raw-captured-presentation'
-import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
-import { createConnectorCaptureFixture } from '../test-fixtures/connector-capture.fixture'
+import {
+  createTestConnectorCaptureFixture as createConnectorCaptureFixture,
+  useResettablePgliteTestLocalValedictorianClient,
+} from '../runtime/local-valedictorian-client.test-harness'
 import {
   LEGACY_NESTED_JOBRIGHT_PAYLOAD,
 } from '../test-fixtures/legacy-raw-source.fixture'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
 
-describe('raw source captured presentation HTTP boundary', () => {
+const createResettableLocalClient = useResettablePgliteTestLocalValedictorianClient()
+
+describe.sequential('raw source captured presentation HTTP boundary', () => {
   let server: StartedValedictorianHttpServer | null = null
 
   afterEach(async () => {
@@ -19,13 +20,22 @@ describe('raw source captured presentation HTTP boundary', () => {
     server = null
   })
 
-  it('aligns list and detail captured title/company for nested Jobright evidence', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-presentation-'))
-    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'jobright', '0.11.0')
-    const local = await createLocalValedictorianClient({
-      pgliteDataPath,
+  async function startWorkspace() {
+    const local = await createResettableLocalClient({
+      seedDataMode: 'none',
       now: () => new Date('2026-07-13T18:00:00.000Z'),
     })
+    server = await createValedictorianHttpServer({ client: local, host: '127.0.0.1', port: 0 })
+    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
+      .forWorkspace('workspace-1')
+      .sourcing
+      .rawRecords
+    return { local, rawRecords }
+  }
+
+  it('aligns list and detail captured title/company for nested Jobright evidence', async () => {
+    const { local, rawRecords } = await startWorkspace()
+    const capture = await createConnectorCaptureFixture(local, 'jobright', '0.11.0')
     const nestedJobrightPayload = {
       decodingStatus: 'valid',
       rawType: 'object',
@@ -57,11 +67,6 @@ describe('raw source captured presentation HTTP boundary', () => {
       }],
     })
     const rawRecordId = intake.receipts[0].rawRecordId
-    server = await createValedictorianHttpServer({ client: local, host: '127.0.0.1', port: 0 })
-    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
-      .forWorkspace('workspace-1')
-      .sourcing
-      .rawRecords
 
     const listed = await rawRecords.list({ adapterId: 'jobright' })
     const detail = await rawRecords.get(rawRecordId)
@@ -83,13 +88,8 @@ describe('raw source captured presentation HTTP boundary', () => {
   })
 
   it('aligns list and detail captured facts for a legacy-version nested Jobright revision', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-migrated-jobright-'))
-    const capture = await createConnectorCaptureFixture(pgliteDataPath, 'jobright', '0.11.0')
-    const local = await createLocalValedictorianClient({
-      pgliteDataPath,
-      seedDataMode: 'none',
-      now: () => new Date('2026-07-13T18:00:00.000Z'),
-    })
+    const { local, rawRecords } = await startWorkspace()
+    const capture = await createConnectorCaptureFixture(local, 'jobright', '0.11.0')
     const intake = await local.sourcing.rawRecords.ingestBatch({
       records: [{
         adapter: { id: 'jobright', kind: 'connector', version: '0.11.0' },
@@ -105,11 +105,6 @@ describe('raw source captured presentation HTTP boundary', () => {
       }],
     })
     const rawRecordId = intake.receipts[0].rawRecordId
-    server = await createValedictorianHttpServer({ client: local, host: '127.0.0.1', port: 0 })
-    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
-      .forWorkspace('workspace-1')
-      .sourcing
-      .rawRecords
 
     const listed = await rawRecords.list({ adapterId: 'jobright' })
     const detail = await rawRecords.get(rawRecordId)
@@ -133,11 +128,7 @@ describe('raw source captured presentation HTTP boundary', () => {
   })
 
   it('keeps sparse raw captures missing title and company without throwing', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'raw-captured-sparse-'))
-    const local = await createLocalValedictorianClient({
-      pgliteDataPath,
-      now: () => new Date('2026-07-13T18:00:00.000Z'),
-    })
+    const { local, rawRecords } = await startWorkspace()
     const intake = await local.sourcing.rawRecords.ingestBatch({
       records: [{
         adapter: { id: 'fixture.cli', kind: 'cli', version: '1.0.0' },
@@ -145,11 +136,6 @@ describe('raw source captured presentation HTTP boundary', () => {
         payload: { arbitrary: { note: 'no title or company' } },
       }],
     })
-    server = await createValedictorianHttpServer({ client: local, host: '127.0.0.1', port: 0 })
-    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
-      .forWorkspace('workspace-1')
-      .sourcing
-      .rawRecords
 
     const listed = await rawRecords.list()
     const detail = await rawRecords.get(intake.receipts[0].rawRecordId)
@@ -162,5 +148,4 @@ describe('raw source captured presentation HTTP boundary', () => {
     })])
     expect(captured).toEqual({ title: null, company: null })
   })
-
 })

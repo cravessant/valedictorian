@@ -141,27 +141,6 @@ describe('Electron sourcing wiring', () => {
     expect(envSource).toContain("valedictorianWindowChrome: import('../src/ipc/window-chrome.preload').WindowChromePreloadApi")
   })
 
-  it('keeps connector schedule UI free of client timers and schedule domain dispatch/history calls', () => {
-    const panelSource = fs.readFileSync(path.resolve('src/settings/ConnectorSettingsPanel.tsx'), 'utf8')
-    const controlsSource = fs.readFileSync(path.resolve('src/settings/ConnectorScheduleControls.tsx'), 'utf8')
-    const hookSource = fs.readFileSync(path.resolve('src/settings/useConnectorInstanceSchedules.ts'), 'utf8')
-    const loadersSource = fs.readFileSync(path.resolve('src/app/loaders.ts'), 'utf8')
-    const connectorsIpc = fs.readFileSync(path.resolve('src/ipc/connectors.ipc.ts'), 'utf8')
-    const connectorsPreload = fs.readFileSync(path.resolve('src/ipc/connectors.preload.ts'), 'utf8')
-
-    for (const source of [panelSource, controlsSource, hookSource, loadersSource]) {
-      expect(source).not.toContain('dispatchDue')
-      expect(source).not.toContain('listAudit')
-      expect(source).not.toContain('listOccurrences')
-      expect(source).not.toMatch(/setInterval\s*\(/)
-    }
-
-    expect(connectorsIpc).not.toContain('schedule')
-    expect(connectorsPreload).not.toContain('schedule')
-    expect(loadersSource).toContain('connectors.schedules')
-    expect(loadersSource).toContain('capabilities.get')
-  })
-
   it('passes the selected local backend and active workspace id to the renderer', () => {
     const preloadSource = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
     const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')

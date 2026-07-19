@@ -3,17 +3,19 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
-import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import {
   createSourceExecutionGovernor,
   deriveSourceExecutionScopeId,
 } from './source-execution-governor'
 
+const resettableDatabase = useResettablePgliteTestDatabase()
+
 async function createTestDatabase() {
-  return createPgliteTestDatabase()
+  return resettableDatabase()
 }
 
-describe('source execution governor', () => {
+describe.sequential('source execution governor', () => {
   it('derives the migration-compatible stable scope and rejects untrusted oversized instance ids', async () => {
     expect(deriveSourceExecutionScopeId('instance-one'))
       .toBe(`scope_${Buffer.from('instance-one').toString('hex')}`)

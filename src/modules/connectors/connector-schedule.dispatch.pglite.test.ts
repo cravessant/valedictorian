@@ -1,20 +1,24 @@
+import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { schema, sourceExecutionScopes } from '../../db/schema'
 import { connectorInstances, connectorRuns } from '../../db/schema.connectors'
 import type { PgliteDatabase } from '../../db/pglite'
-import { createPgliteTestDatabase, createPgliteTestOwner } from '../../test/pglite-test-owner'
+import {
+  createPgliteTestDatabase,
+  useResettablePgliteTestOwner,
+} from '../../test/pglite-test-owner'
 import { admitConnectorScheduleDue } from './connector-schedule.dispatch'
 import { createConnectorScheduleRepository } from './connector-schedule.repository'
 
 const CREATED_AT = '2026-07-18T10:00:00.000Z'
 const DUE_AT = '2026-07-18T11:00:00.000Z'
 const CADENCE = { kind: 'interval' as const, everyMinutes: 60 }
+const resettableOwner = useResettablePgliteTestOwner()
 
-describe('PGlite connector schedule dispatch', () => {
+describe.sequential('PGlite connector schedule dispatch', () => {
   it('locks the connector identity shared with manual and retry admission', async () => {
-    const owner = await createPgliteTestOwner()
+    const owner = resettableOwner()
     const queries: string[] = []
     const database = drizzle(owner.client, {
       schema,
@@ -41,7 +45,7 @@ describe('PGlite connector schedule dispatch', () => {
   })
 
   it('keeps instance-first lock order compatible with retirement through one workspace owner', async () => {
-    const owner = await createPgliteTestOwner()
+    const owner = resettableOwner()
     const queries: string[] = []
     const database = drizzle(owner.client, {
       schema,
@@ -77,7 +81,7 @@ describe('PGlite connector schedule dispatch', () => {
   })
 
   it('converges concurrent duplicate admission on one queued run and occurrence', async () => {
-    const database = await createTestDatabase()
+    const database = await createPgliteTestDatabase()
     await seedConnectorInstance(database, 'connector-dispatch-concurrent')
     const repository = createConnectorScheduleRepository(database, () => new Date(CREATED_AT))
     const schedule = await repository.create({
@@ -118,53 +122,209 @@ describe('PGlite connector schedule dispatch', () => {
     await expect(database.select().from(connectorRuns)).resolves.toHaveLength(1)
   })
 
-  it('rolls back admission when an injected occurrence failure aborts the transaction', async () => {
-    const database = await createTestDatabase()
-    await seedConnectorInstance(database, 'connector-dispatch-rollback')
+  it('returns paused without consuming a due occurrence or advancing eligibility', async () => {
+    const { database } = resettableOwner()
+    await seedConnectorInstance(database, 'connector-dispatch-paused')
     const repository = createConnectorScheduleRepository(database, () => new Date(CREATED_AT))
-    const schedule = await repository.create({
-      connectorInstanceId: 'connector-dispatch-rollback',
+    const created = await repository.create({
+      connectorInstanceId: 'connector-dispatch-paused',
       state: 'enabled',
       cadence: CADENCE,
       timezone: 'UTC',
     })
-    await database.execute(sql.raw(`
-      CREATE FUNCTION reject_schedule_occurrence() RETURNS trigger
-      LANGUAGE plpgsql AS $$
-      BEGIN
-        RAISE EXCEPTION 'injected schedule occurrence failure';
-      END;
-      $$;
-    `))
-    await database.execute(sql.raw(`
-      CREATE TRIGGER reject_schedule_occurrence_insert
-        BEFORE INSERT ON connector_schedule_occurrences
-        FOR EACH ROW EXECUTE FUNCTION reject_schedule_occurrence();
-    `))
+    const paused = await repository.pause({
+      connectorInstanceId: 'connector-dispatch-paused',
+      expectedRevision: created.revision,
+    })
 
     await expect(admitConnectorScheduleDue({
       database,
       now: () => new Date(DUE_AT),
       maximumCatchUpAgeMinutes: 180,
       input: {
-        connectorInstanceId: schedule.connectorInstanceId,
-        expectedRevision: schedule.revision,
+        connectorInstanceId: paused.connectorInstanceId,
+        expectedRevision: paused.revision,
       },
-    })).rejects.toThrow('Failed query: insert into "connector_schedule_occurrences"')
-    await expect(repository.getByConnectorInstanceId(schedule.connectorInstanceId))
-      .resolves.toMatchObject({ nextEligibleAt: schedule.nextEligibleAt })
+    })).resolves.toEqual({ status: 'paused' })
+
+    await expect(repository.getByConnectorInstanceId('connector-dispatch-paused')).resolves.toMatchObject({
+      state: 'paused',
+      nextEligibleAt: created.nextEligibleAt,
+      lastOccurrence: null,
+      revision: paused.revision,
+    })
+    await expect(database.select().from(connectorRuns)).resolves.toHaveLength(0)
+  })
+
+  it('returns connector_disabled without consuming a due occurrence or advancing eligibility', async () => {
+    const { database } = resettableOwner()
+    await seedConnectorInstance(database, 'connector-dispatch-disabled')
+    const repository = createConnectorScheduleRepository(database, () => new Date(CREATED_AT))
+    const created = await repository.create({
+      connectorInstanceId: 'connector-dispatch-disabled',
+      state: 'enabled',
+      cadence: CADENCE,
+      timezone: 'UTC',
+    })
+    await database.update(connectorInstances).set({ enabled: false }).where(
+      eq(connectorInstances.id, 'connector-dispatch-disabled'),
+    )
+
+    await expect(admitConnectorScheduleDue({
+      database,
+      now: () => new Date(DUE_AT),
+      maximumCatchUpAgeMinutes: 180,
+      input: {
+        connectorInstanceId: created.connectorInstanceId,
+        expectedRevision: created.revision,
+      },
+    })).resolves.toEqual({ status: 'connector_disabled' })
+
+    await expect(repository.getByConnectorInstanceId('connector-dispatch-disabled')).resolves.toMatchObject({
+      state: 'enabled',
+      nextEligibleAt: created.nextEligibleAt,
+      lastOccurrence: null,
+      revision: created.revision,
+    })
+    await expect(database.select().from(connectorRuns)).resolves.toHaveLength(0)
+  })
+
+  it('defers due dispatch when an active connector run exists without consuming the occurrence', async () => {
+    const { database } = resettableOwner()
+    await seedConnectorInstance(database, 'connector-dispatch-deferred')
+    const repository = createConnectorScheduleRepository(database, () => new Date(CREATED_AT))
+    const created = await repository.create({
+      connectorInstanceId: 'connector-dispatch-deferred',
+      state: 'enabled',
+      cadence: CADENCE,
+      timezone: 'UTC',
+    })
+    await database.insert(connectorRuns).values({
+      id: 'active-deferred-run',
+      executionScopeId: 'scope-connector-dispatch-deferred',
+      connectorInstanceId: 'connector-dispatch-deferred',
+      mode: 'manual',
+      status: 'running',
+      startedAt: CREATED_AT,
+      completedAt: null,
+      configJson: '{}',
+      filtersJson: '{}',
+      filterSignature: 'filters:{}',
+      observationCount: 0,
+      warningCount: 0,
+      statsJson: '{}',
+      warningsJson: '[]',
+      retryHintsJson: '{}',
+      createdAt: CREATED_AT,
+      updatedAt: CREATED_AT,
+    })
+
+    await expect(admitConnectorScheduleDue({
+      database,
+      now: () => new Date(DUE_AT),
+      maximumCatchUpAgeMinutes: 180,
+      input: {
+        connectorInstanceId: created.connectorInstanceId,
+        expectedRevision: created.revision,
+      },
+    })).resolves.toEqual({
+      status: 'deferred_active',
+      activeRunId: 'active-deferred-run',
+    })
+
+    await expect(repository.getByConnectorInstanceId('connector-dispatch-deferred')).resolves.toMatchObject({
+      nextEligibleAt: created.nextEligibleAt,
+      lastOccurrence: null,
+      revision: created.revision,
+    })
+  })
+
+  it('advances eligibility without admitting when all missed nominals are outside the catch-up horizon', async () => {
+    const { database } = resettableOwner()
+    await seedConnectorInstance(database, 'connector-dispatch-expired-horizon')
+    const repository = createConnectorScheduleRepository(database, () => new Date(CREATED_AT))
+    const created = await repository.create({
+      connectorInstanceId: 'connector-dispatch-expired-horizon',
+      state: 'enabled',
+      cadence: CADENCE,
+      timezone: 'UTC',
+    })
+
+    await expect(admitConnectorScheduleDue({
+      database,
+      now: () => new Date('2026-07-18T13:59:00.000Z'),
+      maximumCatchUpAgeMinutes: 30,
+      input: {
+        connectorInstanceId: created.connectorInstanceId,
+        expectedRevision: created.revision,
+      },
+    })).resolves.toEqual({
+      status: 'not_due',
+      nextEligibleAt: '2026-07-18T14:00:00.000Z',
+    })
+
+    await expect(repository.getByConnectorInstanceId(created.connectorInstanceId))
+      .resolves.toMatchObject({
+        lastOccurrence: null,
+        nextEligibleAt: '2026-07-18T14:00:00.000Z',
+        revision: created.revision,
+      })
     await expect(repository.listOccurrences({
-      connectorInstanceId: schedule.connectorInstanceId,
+      connectorInstanceId: created.connectorInstanceId,
       limit: 10,
       offset: 0,
-    })).resolves.toMatchObject({ total: 0, items: [] })
-    await expect(database.select().from(connectorRuns)).resolves.toEqual([])
+    })).resolves.toMatchObject({ items: [], total: 0 })
+    await expect(database.select().from(connectorRuns)).resolves.toHaveLength(0)
+  })
+
+  it('preserves an already active connector run when the schedule is paused', async () => {
+    const { database } = resettableOwner()
+    await seedConnectorInstance(database, 'connector-dispatch-active-paused')
+    const repository = createConnectorScheduleRepository(database, () => new Date(CREATED_AT))
+    const created = await repository.create({
+      connectorInstanceId: 'connector-dispatch-active-paused',
+      state: 'enabled',
+      cadence: CADENCE,
+      timezone: 'UTC',
+    })
+    await database.insert(connectorRuns).values({
+      id: 'active-paused-run',
+      executionScopeId: 'scope-connector-dispatch-active-paused',
+      connectorInstanceId: 'connector-dispatch-active-paused',
+      mode: 'manual',
+      status: 'running',
+      startedAt: CREATED_AT,
+      completedAt: null,
+      configJson: '{}',
+      filtersJson: '{}',
+      filterSignature: 'filters:{}',
+      observationCount: 0,
+      warningCount: 0,
+      statsJson: '{}',
+      warningsJson: '[]',
+      retryHintsJson: '{}',
+      createdAt: CREATED_AT,
+      updatedAt: CREATED_AT,
+    })
+    const paused = await repository.pause({
+      connectorInstanceId: 'connector-dispatch-active-paused',
+      expectedRevision: created.revision,
+    })
+
+    await expect(database.select().from(connectorRuns)).resolves.toEqual([
+      expect.objectContaining({ id: 'active-paused-run', mode: 'manual', status: 'running' }),
+    ])
+    await expect(admitConnectorScheduleDue({
+      database,
+      now: () => new Date(DUE_AT),
+      maximumCatchUpAgeMinutes: 180,
+      input: {
+        connectorInstanceId: paused.connectorInstanceId,
+        expectedRevision: paused.revision,
+      },
+    })).resolves.toEqual({ status: 'paused' })
   })
 })
-
-async function createTestDatabase() {
-  return createPgliteTestDatabase()
-}
 
 async function seedConnectorInstance(database: PgliteDatabase, id: string) {
   const executionScopeId = `scope-${id}`

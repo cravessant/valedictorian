@@ -138,4 +138,83 @@ describe('ApplicationDetailModal', () => {
     })
     expect(screen.getByRole('dialog', { name: 'Application detail' })).toBeInTheDocument()
   })
+
+  it('renders verification receipt attempt steps as receipt blocks', () => {
+    const attempts = createAttemptResult([
+      {
+        ...createAttemptResult().items[0],
+        steps: [
+          ...createAttemptResult().items[0].steps,
+          {
+            id: 'step-3',
+            attemptId: 'attempt-1',
+            applicationId: 'application-1',
+            sequence: 3,
+            type: 'verification_receipt',
+            message: 'Final review verification passed.',
+            payloadJson: JSON.stringify({
+              version: 1,
+              scope: 'final_review',
+              status: 'passed',
+              verified: ['resume attachment', 'contact info'],
+              unresolved: [],
+              evidence: 'Final review page showed the attached resume and contact info.',
+            }),
+            actor: 'agent:codex',
+            createdAt: '2026-06-04T16:03:00.000Z',
+          },
+          {
+            id: 'step-4',
+            attemptId: 'attempt-1',
+            applicationId: 'application-1',
+            sequence: 4,
+            type: 'verification_receipt',
+            message: 'Final review verification failed.',
+            payloadJson: JSON.stringify({
+              version: 1,
+              scope: 'final_review',
+              status: 'failed',
+              verified: ['resume attachment'],
+              unresolved: ['Fall availability dates', 'onsite availability'],
+              evidence: 'Submit was paused because the availability fields were unanswered.',
+            }),
+            actor: 'agent:codex',
+            createdAt: '2026-06-04T16:04:00.000Z',
+          },
+        ],
+      },
+    ])
+
+    renderDetailModal({ attempts: attempts.items })
+
+    const dialog = screen.getByRole('dialog', { name: 'Application detail' })
+    expect(within(dialog).getByText('Uploaded tailored resume.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Final review verification passed.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Final review verification failed.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Passed')).toBeInTheDocument()
+    expect(within(dialog).getByText('Failed')).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Final review page showed the attached resume and contact info.'),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Submit was paused because the availability fields were unanswered.'),
+    ).toBeInTheDocument()
+    expect(within(dialog).getAllByText('resume attachment')).toHaveLength(2)
+    expect(within(dialog).getByText('contact info')).toBeInTheDocument()
+    expect(within(dialog).getByText('Fall availability dates')).toBeInTheDocument()
+    expect(within(dialog).getByText('onsite availability')).toBeInTheDocument()
+  })
+
+  it('renders empty application detail sections', () => {
+    renderDetailModal({
+      attempts: [],
+      events: [],
+      links: [],
+    })
+
+    const dialog = screen.getByRole('dialog', { name: 'Application detail' })
+    expect(within(dialog).getByText('No links recorded.')).toBeInTheDocument()
+    expect(within(dialog).getByText('No events recorded.')).toBeInTheDocument()
+    expect(within(dialog).getByText('No attempts recorded.')).toBeInTheDocument()
+  })
 })

@@ -8,14 +8,30 @@ import type { PgliteDatabase } from '../db/pglite'
 import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
 import {
   createLocalValedictorianClient,
+  closeLocalValedictorianClient,
   getLocalValedictorianTestDatabase,
 } from './local-valedictorian-client.test-harness'
+import {
+  createLegacyRawSourceFixture,
+  LEGACY_MIXED_RAW_RECORD_ID,
+  LEGACY_VALID_CONNECTOR_RECORD_ID,
+} from '../test-fixtures/legacy-raw-source.fixture'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
 
 describe('raw source projection receipt HTTP API', () => {
   let server: StartedValedictorianHttpServer | null = null
   let localClient: LocalValedictorianClient | null = null
-  afterEach(async () => { await server?.close(); server = null })
+  const callerOwnedTempRoots = new Set<string>()
+  afterEach(async () => {
+    await server?.close()
+    server = null
+    if (localClient) await closeLocalValedictorianClient(localClient)
+    localClient = null
+    for (const root of callerOwnedTempRoots) {
+      fs.rmSync(root, { force: true, recursive: true })
+    }
+    callerOwnedTempRoots.clear()
+  })
 
   it('returns not eligible and 404 through the workspace client', async () => {
     const sourcing = await start()
@@ -27,6 +43,68 @@ describe('raw source projection receipt HTTP API', () => {
     await expect(sourcing.rawRevisions.projection.get('unknown-revision')).rejects.toMatchObject({
       status: 404,
       body: null,
+    })
+  })
+
+  it('serves legacy connector facts, normalization, gate, and not-eligible projection over HTTP', async () => {
+    const pgliteDataPath = tempPath()
+    await createLegacyRawSourceFixture(pgliteDataPath)
+    const sourcing = await start({}, pgliteDataPath)
+
+    await expect(sourcing.rawRecords.list({ limit: 50 })).resolves.toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ id: LEGACY_VALID_CONNECTOR_RECORD_ID }),
+      ]),
+    })
+    await expect(sourcing.rawRecords.get(LEGACY_MIXED_RAW_RECORD_ID)).rejects.toMatchObject({
+      status: 404,
+    })
+
+    const detail = await sourcing.rawRecords.get(LEGACY_VALID_CONNECTOR_RECORD_ID)
+    expect(detail).toMatchObject({
+      id: LEGACY_VALID_CONNECTOR_RECORD_ID,
+      latestRevision: {
+        payload: { title: 'Platform Engineer', company: 'Fixture Robotics' },
+      },
+      occurrences: [
+        expect.objectContaining({
+          capture: expect.objectContaining({ connectorRunId: 'legacy-connector-run' }),
+        }),
+      ],
+    })
+
+    const normalization = await sourcing.rawRecords.normalization.get(LEGACY_VALID_CONNECTOR_RECORD_ID)
+    expect(normalization).toMatchObject({
+      status: 'completed',
+      gate: {
+        status: 'needs_enrichment',
+        reason: 'Destination URL is missing.',
+      },
+      attempts: [
+        expect.objectContaining({
+          resolver: expect.objectContaining({
+            id: 'fixture.raw',
+            version: '1.0.0',
+          }),
+          outcomes: [
+            expect.objectContaining({
+              resolverId: 'fixture.raw',
+              resolverVersion: '1.0.0',
+              value: 'Platform Engineer',
+            }),
+          ],
+        }),
+      ],
+    })
+    expect(JSON.stringify(normalization)).toContain('"id":"fixture.raw"')
+    expect(JSON.stringify(normalization)).toContain('"version":"1.0.0"')
+
+    const projection = await sourcing.rawRevisions.projection.get(detail.latestRevision.id)
+    expect(projection).toMatchObject({
+      status: 'not_eligible',
+      normalizationStatus: 'completed',
+      gateStatus: 'needs_enrichment',
+      canonicalCandidateId: null,
     })
   })
 
@@ -155,6 +233,12 @@ describe('raw source projection receipt HTTP API', () => {
     expect(receipts[3]).toMatchObject({ status: 'projected', finding: { mergedApplicationId: application.id } })
   })
 
+  function tempPath() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projection-http-'))
+    callerOwnedTempRoots.add(root)
+    return path.join(root, 'pglite')
+  }
+
   async function start(options = {}, pgliteDataPath = tempPath()) {
     localClient = await createLocalValedictorianClient({ pgliteDataPath, ...options })
     server = await createValedictorianHttpServer({
@@ -164,7 +248,6 @@ describe('raw source projection receipt HTTP API', () => {
   }
 })
 
-function tempPath() { return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'projection-http-')), 'pglite') }
 function sparseRecord() { return { intakeItemId: 'sparse-record', adapter: { id: 'valedictorian.cli', kind: 'cli' as const, version: '0.7.6' }, observedAt: '2026-07-10T12:00:00.000Z', payload: { arbitrary: true } } }
 function passedRecord(id: string, adapterId = 'valedictorian.cli', kind: 'cli' | 'connector' = 'cli', providerRecordId?: string) { return { intakeItemId: `passed-${id}`, adapter: { id: adapterId, kind, version: '1.0.0' }, providerRecordId, observedAt: '2026-07-10T12:00:00.000Z', payload: { companyName: 'Fixture Robotics', roleTitle: 'Software Intern', applicationUrl: `https://jobs.lever.co/fixture/${id}` } } }
 async function installTransitionFailure(database: PgliteDatabase, status: 'projected' | 'failed') {

@@ -610,6 +610,177 @@ describe('RawNormalizationPage connector-run inspection', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(valedictorianFailureKindMessages.unavailable)
     expect(screen.getByRole('alert')).not.toHaveTextContent('ECONNREFUSED')
   })
+
+  it('queries the public list contract with connector, received, lifecycle, and projection filters', async () => {
+    const list = vi.fn(async () => ({ items: [], nextCursor: null }))
+    render(
+      <RawNormalizationPage
+        api={{ list, get: vi.fn(), getNormalization: vi.fn(), getProjection: vi.fn() }}
+        contentColumnClass=""
+      />,
+    )
+
+    await screen.findByRole('status', {
+      name: 'No Capture lineages match the current filters',
+    })
+
+    fireEvent.change(screen.getByLabelText('Source adapter'), {
+      target: { value: 'jobright' },
+    })
+    fireEvent.change(screen.getByLabelText('Capture kind'), {
+      target: { value: 'connector' },
+    })
+    fireEvent.change(screen.getByLabelText('Connector instance'), {
+      target: { value: 'jobright-default' },
+    })
+    fireEvent.change(screen.getByLabelText('Received from'), {
+      target: { value: '2026-07-01' },
+    })
+    fireEvent.change(screen.getByLabelText('Received to'), {
+      target: { value: '2026-07-10' },
+    })
+    fireEvent.change(screen.getByLabelText('Job normalization status'), {
+      target: { value: 'completed' },
+    })
+    fireEvent.change(screen.getByLabelText('Opportunity admission status'), {
+      target: { value: 'needs_enrichment' },
+    })
+    fireEvent.change(screen.getByLabelText('Opportunity projection status'), {
+      target: { value: 'not_eligible' },
+    })
+
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith({
+      adapterId: 'jobright',
+      adapterKind: 'connector',
+      connectorInstanceId: 'jobright-default',
+      gateStatus: 'needs_enrichment',
+      limit: 50,
+      normalizationStatus: 'completed',
+      projectionStatus: 'not_eligible',
+      receivedFrom: '2026-07-01T00:00:00.000Z',
+      receivedTo: '2026-07-10T23:59:59.999Z',
+    }))
+  })
+
+  it('paginates with opaque cursors and returns to the prior page', async () => {
+    const summary = (id: string) => ({
+      id,
+      adapter: { id: 'jobright' },
+      reportedOrigin: { name: 'Jobright', providerId: null },
+      providerRecordId: null,
+      roleTitle: null,
+      companyName: null,
+      firstObservedAt: '2026-07-10T12:00:00.000Z',
+      lastObservedAt: '2026-07-10T12:00:00.000Z',
+      occurrenceCount: 1,
+      revisionCount: 1,
+      normalizationStatus: 'raw_only',
+      gateStatus: null,
+      canonicalCandidateId: null,
+      projectionStatus: 'not_eligible',
+      findingId: null,
+    } as RawSourceRecordSummary)
+    const list = vi.fn(async (query?: { cursor?: string }) => query?.cursor === 'next-page'
+      ? { items: [summary('raw-record-2')], nextCursor: null }
+      : { items: [summary('raw-record-1')], nextCursor: 'next-page' })
+
+    render(
+      <RawNormalizationPage
+        api={{ list, get: vi.fn(), getNormalization: vi.fn(), getProjection: vi.fn() }}
+        contentColumnClass=""
+      />,
+    )
+
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' })).toBeInTheDocument()
+    expect(list).toHaveBeenLastCalledWith({ cursor: 'next-page', limit: 50 })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }))
+    expect(await screen.findByRole('button', { name: 'Inspect Capture lineage' })).toBeInTheDocument()
+    expect(list).toHaveBeenLastCalledWith({ limit: 50 })
+  })
+
+  it('announces an empty normalization result without hiding the filters', async () => {
+    render(
+      <RawNormalizationPage
+        api={{
+          list: vi.fn(async () => ({ items: [], nextCursor: null })),
+          get: vi.fn(),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(),
+        }}
+        contentColumnClass=""
+      />,
+    )
+
+    expect(await screen.findByRole('status', {
+      name: 'No Capture lineages match the current filters',
+    })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Capture normalization filters' })).toBeInTheDocument()
+    expect(screen.queryByRole('table', { name: 'Capture-to-Job normalization' })).not.toBeInTheDocument()
+  })
+
+  it('keeps normalization, gate, candidate, and finding projection as separate lifecycle columns', async () => {
+    const candidateId = '2f0cb73b-a522-4a83-a46a-5e4048ed3010'
+    const findingId = 'dd463b92-d71b-4200-8c7f-8295f8ad783b'
+    const projected = {
+      id: 'raw-projected',
+      adapter: { id: 'jobright' },
+      reportedOrigin: { name: 'Jobright', providerId: null },
+      providerRecordId: null,
+      roleTitle: null,
+      companyName: null,
+      firstObservedAt: '2026-07-10T12:00:00.000Z',
+      lastObservedAt: '2026-07-10T12:00:00.000Z',
+      occurrenceCount: 1,
+      revisionCount: 1,
+      normalizationStatus: 'completed',
+      normalizationUpdatedAt: '2026-07-10T12:00:03.000Z',
+      normalizationRawRevisionId: 'raw-revision-1',
+      gateStatus: 'passed',
+      canonicalCandidateId: candidateId,
+      projectionStatus: 'projected',
+      findingId,
+    } as RawSourceRecordSummary
+    const rejected = {
+      ...projected,
+      id: 'raw-rejected',
+      gateStatus: 'rejected',
+      canonicalCandidateId: null,
+      projectionStatus: 'not_eligible',
+      findingId: null,
+    } as RawSourceRecordSummary
+
+    render(
+      <RawNormalizationPage
+        api={{
+          list: vi.fn(async () => ({ items: [projected, rejected], nextCursor: null })),
+          get: vi.fn(),
+          getNormalization: vi.fn(),
+          getProjection: vi.fn(),
+        }}
+        contentColumnClass=""
+      />,
+    )
+
+    const table = await screen.findByRole('table', { name: 'Capture-to-Job normalization' })
+    expect(within(table).getByRole('columnheader', { name: 'Job fact version' }))
+      .toBeInTheDocument()
+    const projectedRow = within(table).getByText('Projected').closest('tr')!
+    expect(projectedRow).toHaveTextContent('Completed')
+    expect(projectedRow).toHaveTextContent('Passed')
+    expect(projectedRow).toHaveTextContent('Job facts persisted')
+    expect(projectedRow).toHaveTextContent('Projected')
+    const rejectedRow = within(table).getByText('Rejected').closest('tr')!
+    expect(rejectedRow).toHaveTextContent('Rejected')
+    expect(rejectedRow).toHaveTextContent('No Job facts')
+    expect(rejectedRow).toHaveTextContent('Not projected')
+    expect(table).not.toHaveTextContent(candidateId)
+    expect(table).not.toHaveTextContent(findingId)
+    expect(table).not.toContainHTML(candidateId)
+    expect(table).not.toContainHTML(findingId)
+  })
 })
 
 function deferredListResult() {

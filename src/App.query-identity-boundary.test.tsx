@@ -16,7 +16,6 @@ import {
   createActionQueueResult,
   createApplication,
   createConnectorsApiWithJobrightDescriptor,
-  createConnectorStatusResult,
   createListResult,
   createProfileApi,
   createSettingsApi,
@@ -408,53 +407,6 @@ describe('App list query-identity boundaries', () => {
     expect(screen.getByText('Panel Close Role')).toBeInTheDocument()
   })
 
-  it('does not invoke injected loaders when a deferred connector run settles after full App unmount', async () => {
-    const applicationLoader = vi.fn(async () => createListResult([createApplication()]))
-    const sourcingLoader = vi.fn(async () => createSourcingResult([]))
-    const connectorStatusLoader = vi.fn(async () => createConnectorStatusResult())
-    const connectorsApi = createConnectorsApiWithJobrightDescriptor()
-    const profileApi = createProfileApi()
-    type ConnectorRun = Awaited<ReturnType<typeof connectorsApi.runs.trigger>>
-    const pending = deferred<ConnectorRun>()
-    vi.mocked(connectorsApi.runs.trigger).mockReturnValueOnce(pending.promise)
-
-    const { unmount } = render(
-      <App
-        applicationLoader={applicationLoader}
-        connectorStatusLoader={connectorStatusLoader}
-        connectorsApi={connectorsApi}
-        profileApi={profileApi}
-        settingsApi={createSettingsApi()}
-        sourcingLoader={sourcingLoader}
-      />,
-    )
-
-    await openSettingsPage()
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
-    await authenticateJobrightForSettlement({ connectorsApi, profileApi })
-    await openConnectorDetails()
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-    await waitFor(() => expect(connectorsApi.runs.trigger).toHaveBeenCalledTimes(1))
-
-    const applicationCallsAtUnmount = applicationLoader.mock.calls.length
-    const sourcingCallsAtUnmount = sourcingLoader.mock.calls.length
-    const connectorStatusCallsAtUnmount = connectorStatusLoader.mock.calls.length
-
-    unmount()
-    await act(async () => {
-      pending.resolve(completedConnectorRun())
-      await pending.promise
-    })
-
-    // Characterization: React 18 drops setState on unmounted trees, so loader counts
-    // stay flat with or without the App mount guard; the guard still documents ownership.
-    expect(applicationLoader).toHaveBeenCalledTimes(applicationCallsAtUnmount)
-    expect(sourcingLoader).toHaveBeenCalledTimes(sourcingCallsAtUnmount)
-    expect(connectorStatusLoader).toHaveBeenCalledTimes(connectorStatusCallsAtUnmount)
-  })
 })
 
 function completedConnectorRun() {

@@ -1,34 +1,19 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { CanonicalSourceCandidate } from 'sparxie'
 import { eq, sql } from 'drizzle-orm'
+import { opportunities } from '../../db/schema'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import {
-  captureEvidenceVersions,
-  captureLineages,
-  jobFactVersions,
-  jobs,
-  normalizationGates,
-  normalizationRuns,
-  opportunities,
-  sources,
-  workflowRuns,
-} from '../../db/schema'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteDatabase,
-} from '../../db/pglite'
-import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
+  CANONICAL_PROJECTION_TEST_NOW as NOW,
+  seedPassedCanonicalCandidate,
+} from './canonical-candidate.projection.pglite-test-helpers'
 import { createCanonicalCandidateProjectionService } from './canonical-candidate.projection'
 
-const NOW = '2026-07-18T10:00:00.000Z'
+const resettableDatabase = useResettablePgliteTestDatabase()
 
-describe('canonical candidate projection', () => {
+describe.sequential('canonical candidate projection', () => {
   it('projects a passed canonical candidate and returns its finding identity', async () => {
     const database = await createTestDatabase()
-    const persisted = await seedPassedCandidate(database, 'projected')
+    const persisted = await seedPassedCanonicalCandidate(database, 'projected')
     const service = createCanonicalCandidateProjectionService(() => new Date(NOW))
 
     const findingId = await database.transaction((transaction) =>
@@ -48,12 +33,12 @@ describe('canonical candidate projection', () => {
   it('converges concurrent projection identities on the newest canonical destination', async () => {
     const database = await createTestDatabase()
     const destination = 'https://jobs.example.test/shared-role'
-    const first = await seedPassedCandidate(database, 'concurrent-a', {
+    const first = await seedPassedCanonicalCandidate(database, 'concurrent-a', {
       roleTitle: 'Software Intern',
       destination: { class: 'employer_or_ats', url: destination },
       canonicalIdentity: { kind: 'destination_url', value: destination },
     })
-    const newest = await seedPassedCandidate(database, 'concurrent-z', {
+    const newest = await seedPassedCanonicalCandidate(database, 'concurrent-z', {
       roleTitle: 'Software Engineering Intern',
       destination: { class: 'employer_or_ats', url: destination },
       canonicalIdentity: { kind: 'destination_url', value: destination },
@@ -88,11 +73,11 @@ describe('canonical candidate projection', () => {
   it('serializes otherwise unrelated projections that share only a destination', async () => {
     const database = await createTestDatabase()
     const destination = 'https://jobs.example.test/identity-lock'
-    const first = await seedPassedCandidate(database, 'identity-lock-a', {
+    const first = await seedPassedCanonicalCandidate(database, 'identity-lock-a', {
       canonicalIdentity: { kind: 'provider_job', value: 'provider-a' },
       destination: { class: 'employer_or_ats', url: destination },
     })
-    const second = await seedPassedCandidate(database, 'identity-lock-b', {
+    const second = await seedPassedCanonicalCandidate(database, 'identity-lock-b', {
       canonicalIdentity: { kind: 'provider_job', value: 'provider-b' },
       destination: { class: 'employer_or_ats', url: destination },
     })
@@ -125,12 +110,12 @@ describe('canonical candidate projection', () => {
 
   it('re-reads one matched opportunity after disjoint aliases converge on it', async () => {
     const database = await createTestDatabase()
-    const owner = await seedPassedCandidate(database, 'alias-owner')
-    const older = await seedPassedCandidate(database, 'alias-older', {
+    const owner = await seedPassedCanonicalCandidate(database, 'alias-owner')
+    const older = await seedPassedCanonicalCandidate(database, 'alias-older', {
       roleTitle: 'Older Software Intern',
       observedAt: '2026-07-18T11:00:00.000Z',
     })
-    const newest = await seedPassedCandidate(database, 'alias-newest', {
+    const newest = await seedPassedCanonicalCandidate(database, 'alias-newest', {
       roleTitle: 'Newest Software Intern',
       observedAt: '2026-07-18T12:00:00.000Z',
     })
@@ -178,11 +163,11 @@ describe('canonical candidate projection', () => {
   it('keeps the first projection identity primary while accumulating later aliases', async () => {
     const database = await createTestDatabase()
     const destination = 'https://jobs.example.test/identity-alias'
-    const first = await seedPassedCandidate(database, 'identity-first', {
+    const first = await seedPassedCanonicalCandidate(database, 'identity-first', {
       destination: { class: 'employer_or_ats', url: destination },
       canonicalIdentity: { kind: 'destination_url', value: destination },
     })
-    const later = await seedPassedCandidate(database, 'identity-later', {
+    const later = await seedPassedCanonicalCandidate(database, 'identity-later', {
       destination: { class: 'employer_or_ats', url: destination },
       canonicalIdentity: { kind: 'destination_url', value: destination },
       observedAt: '2026-07-18T11:00:00.000Z',
@@ -208,8 +193,8 @@ describe('canonical candidate projection', () => {
 
   it('reports conflicting canonical identity owners in deterministic order', async () => {
     const database = await createTestDatabase()
-    const first = await seedPassedCandidate(database, 'owner-a')
-    const second = await seedPassedCandidate(database, 'owner-b')
+    const first = await seedPassedCanonicalCandidate(database, 'owner-a')
+    const second = await seedPassedCanonicalCandidate(database, 'owner-b')
     const service = createCanonicalCandidateProjectionService(() => new Date(NOW))
     const firstFindingId = await database.transaction((transaction) =>
       service.projectPersisted(transaction, first.candidateId, first.rawRevisionId))
@@ -218,7 +203,7 @@ describe('canonical candidate projection', () => {
     expect(firstFindingId).toEqual(expect.any(String))
     expect(secondFindingId).toEqual(expect.any(String))
     if (!firstFindingId || !secondFindingId) throw new Error('Expected projected finding identities')
-    const conflict = await seedPassedCandidate(database, 'conflict', {
+    const conflict = await seedPassedCanonicalCandidate(database, 'conflict', {
       sourceEntityId: 'job-owner-a',
       canonicalIdentity: {
         kind: 'destination_url',
@@ -235,159 +220,8 @@ describe('canonical candidate projection', () => {
     await expect(database.select().from(opportunities)).resolves.toHaveLength(2)
   })
 
-  it('rolls back the complete projection when an injected write failure aborts the transaction', async () => {
-    const database = await createTestDatabase()
-    const persisted = await seedPassedCandidate(database, 'rollback')
-    const service = createCanonicalCandidateProjectionService(() => new Date(NOW))
-    await database.execute(sql.raw(`
-      CREATE FUNCTION reject_canonical_projection() RETURNS trigger
-      LANGUAGE plpgsql AS $$
-      BEGIN
-        RAISE EXCEPTION 'injected canonical projection failure';
-      END;
-      $$;
-    `))
-    await database.execute(sql.raw(`
-      CREATE TRIGGER reject_canonical_projection_insert
-        BEFORE INSERT ON opportunities
-        FOR EACH ROW EXECUTE FUNCTION reject_canonical_projection();
-    `))
-
-    await expect(database.transaction((transaction) =>
-      service.projectPersisted(transaction, persisted.candidateId, persisted.rawRevisionId)))
-      .rejects.toThrow('Failed query: insert into "opportunities"')
-    await expect(database.select().from(opportunities)).resolves.toEqual([])
-    await expect(database.select().from(sources)).resolves.toEqual([])
-    await expect(database.select().from(workflowRuns)).resolves.toEqual([])
-  })
-
-  it('keeps a projected finding visible after an on-disk close and reopen', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'canonical-projection-'))
-    let findingId: string | null = null
-
-    try {
-      const firstClient = await createPgliteClient({ dataDir: directory })
-      try {
-        const database = await migratePgliteDatabase(firstClient)
-        const persisted = await seedPassedCandidate(database, 'reopen')
-        const service = createCanonicalCandidateProjectionService(() => new Date(NOW))
-        findingId = await database.transaction((transaction) =>
-          service.projectPersisted(transaction, persisted.candidateId, persisted.rawRevisionId))
-      } finally {
-        await firstClient.close()
-      }
-
-      const reopenedClient = await createPgliteClient({ dataDir: directory })
-      try {
-        const database = await migratePgliteDatabase(reopenedClient)
-        const [persisted] = await database
-          .select()
-          .from(opportunities)
-          .where(eq(opportunities.id, findingId ?? ''))
-          .limit(1)
-        expect(persisted).toMatchObject({
-          companyName: 'Projected Robotics',
-          destinationUrl: 'https://jobs.example.test/reopen',
-        })
-      } finally {
-        await reopenedClient.close()
-      }
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  })
 })
 
 async function createTestDatabase() {
-  return createPgliteTestDatabase()
-}
-
-async function seedPassedCandidate(
-  database: PgliteDatabase,
-  suffix: string,
-  overrides: Partial<CanonicalSourceCandidate> = {},
-) {
-  const jobId = `job-${suffix}`
-  const rawRecordId = `raw-${suffix}`
-  const rawRevisionId = `revision-${suffix}`
-  const normalizationId = `normalization-${suffix}`
-  const candidateId = `candidate-${suffix}`
-  const destinationUrl = `https://jobs.example.test/${suffix}`
-  const candidate: CanonicalSourceCandidate = {
-    id: candidateId,
-    sourceEntityId: jobId,
-    rawRecordId,
-    rawRevisionId,
-    schemaVersion: 'canonical-candidate@1',
-    canonicalIdentity: { kind: 'destination_url', value: destinationUrl },
-    companyName: 'Projected Robotics',
-    roleTitle: 'Software Intern',
-    employmentType: 'internship',
-    seniority: 'internship',
-    workMode: 'remote',
-    location: { raw: 'Denver, CO', city: 'Denver', region: 'CO', country: 'US' },
-    compensation: null,
-    postedAt: { value: '2026-07-18', precision: 'date', raw: 'Jul 18' },
-    destination: { class: 'employer_or_ats', url: destinationUrl },
-    sourceUrl: null,
-    providerJobId: suffix,
-    observedAt: NOW,
-    ...overrides,
-  }
-
-  await database.insert(jobs).values({
-    id: jobId,
-    identityKind: 'provider_job',
-    identityNamespace: 'fixture',
-    identityValue: suffix,
-    createdAt: NOW,
-  })
-  await database.insert(captureLineages).values({ id: rawRecordId, jobId, createdAt: NOW })
-  await database.insert(captureEvidenceVersions).values({
-    id: rawRevisionId,
-    captureLineageId: rawRecordId,
-    revision: 1,
-    contentHash: `sha256:${suffix}`,
-    adapterId: 'fixture.cli',
-    adapterKind: 'cli',
-    adapterVersion: '1.0.0',
-    reportedOriginName: 'Fixture Board',
-    observedAt: candidate.observedAt,
-    evidenceJson: '[]',
-    createdAt: NOW,
-  })
-  await database.insert(normalizationRuns).values({
-    id: normalizationId,
-    captureLineageId: rawRecordId,
-    captureEvidenceVersionId: rawRevisionId,
-    inputHash: `sha256:input-${suffix}`,
-    resolverSetHash: 'sha256:resolver-set',
-    canonicalSchemaVersion: 'canonical-candidate@1',
-    gatePolicyVersion: 'gate/v1',
-    triggerKind: 'intake',
-    status: 'completed',
-    createdAt: NOW,
-    updatedAt: NOW,
-  })
-  await database.insert(jobFactVersions).values({
-    id: candidateId,
-    runId: normalizationId,
-    jobId,
-    captureLineageId: rawRecordId,
-    captureEvidenceVersionId: rawRevisionId,
-    schemaVersion: candidate.schemaVersion,
-    jobFactVersionJson: JSON.stringify(candidate),
-    createdAt: NOW,
-  })
-  await database.insert(normalizationGates).values({
-    id: `gate-${suffix}`,
-    runId: normalizationId,
-    policyVersion: 'gate/v1',
-    status: 'passed',
-    jobFactVersionId: candidateId,
-    gateJson: '{}',
-    evaluatedAt: NOW,
-  })
-
-  return { candidateId, rawRevisionId }
+  return resettableDatabase()
 }

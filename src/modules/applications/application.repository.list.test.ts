@@ -3,15 +3,17 @@ import {
 } from '../../db/schema'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
-import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from './application.fixtures'
 import { createPgliteApplicationRepository } from './application.repository'
 
+const resettableDatabase = useResettablePgliteTestDatabase()
+
 async function createTestDatabase() {
-  return createPgliteTestDatabase()
+  return resettableDatabase()
 }
 
-describe('PGlite application repository list queries', () => {
+describe.sequential('PGlite application repository list queries', () => {
   it('lists table-ready application rows ordered by priority score', async () => {
     const database = await createTestDatabase()
     await seedSampleApplications(database)

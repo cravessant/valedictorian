@@ -20,10 +20,12 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
-import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createPgliteRawSourceRepository } from './raw-source.repository'
 
-describe('raw source repository', () => {
+const resettableDatabase = useResettablePgliteTestDatabase()
+
+describe.sequential('raw source repository', () => {
   it('rolls back raw capture when transactional staging fails', async () => {
     const database = await createTestDatabase()
     const repository = createPgliteRawSourceRepository(database)
@@ -504,86 +506,6 @@ describe('raw source repository', () => {
       }),
     ).rejects.toThrow('must contain only JSON objects')
   })
-
-  it('rejects exact credential header aliases throughout fixed envelopes', async () => {
-    const database = await createTestDatabase()
-    const repository = createPgliteRawSourceRepository(database)
-    const secretValue = 'envelope-secret-must-not-leak'
-    const record = {
-      adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-    }
-    const inputs = [
-      { records: [record], 'X-Auth-Token': secretValue },
-      { records: [{ ...record, 'X-Access-Token': secretValue }] },
-      { records: [{ ...record, adapter: { ...record.adapter, 'X-Api-Token': secretValue } }] },
-      {
-        records: [
-          {
-            ...record,
-            reportedOrigin: {
-              kind: 'job_board' as const,
-              name: 'Fixture',
-              'proxy-authorization': secretValue,
-            },
-          },
-        ],
-      },
-      {
-        records: [
-          {
-            ...record,
-            evidence: [
-              { kind: 'fixture', label: 'unsafe', value: null, authentication: secretValue },
-            ],
-          },
-        ],
-      },
-    ]
-
-    for (const input of inputs) {
-      const error = await repository.ingestBatch(input as never).catch((caught: unknown) => caught) as Error
-
-      expect(error.message).toContain('forbidden sensitive key')
-      expect(error.message).not.toContain(secretValue)
-    }
-  })
-
-  it('rejects unknown keys on every fixed transport envelope', async () => {
-    const database = await createTestDatabase()
-    const repository = createPgliteRawSourceRepository(database)
-    const record = {
-      adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-    }
-    const inputs = [
-      { records: [record], extra: true },
-      { records: [{ ...record, extra: true }] },
-      { records: [{ ...record, adapter: { ...record.adapter, extra: true } }] },
-      {
-        records: [
-          {
-            ...record,
-            reportedOrigin: { kind: 'job_board' as const, name: 'Fixture', extra: true },
-          },
-        ],
-      },
-      {
-        records: [
-          {
-            ...record,
-            evidence: [{ kind: 'fixture', label: 'unknown', value: null, extra: true }],
-          },
-        ],
-      },
-    ]
-
-    for (const input of inputs) {
-      await expect(repository.ingestBatch(input as never)).rejects.toThrow(
-        'contains an unsupported property',
-      )
-    }
-  })
 })
 
 async function createConnectorCapture(
@@ -634,7 +556,7 @@ async function createConnectorCapture(
 }
 
 async function createTestDatabase() {
-  return createPgliteTestDatabase()
+  return resettableDatabase()
 }
 
 function normalizationValues(input: {

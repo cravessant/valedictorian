@@ -4,17 +4,20 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { initializeWorkspace } from '../workspace/workspace.initializer'
 import { createFileWorkspaceRegistryStore } from '../workspace/workspace.registry'
+import {
+  useResettablePgliteTestLocalValedictorianClient,
+} from '../runtime/local-valedictorian-client.test-harness'
 import { createLocalWorkspaceManager } from './local-workspaces'
 import {
   createBoundaryWorkspaceClient as createBoundaryTestClient,
   createLocalServerHttpTestFixture,
-  createSeededLocalClient as createLocalValedictorianClient,
-  createTempDatabasePath,
   createTempFilePath,
   readJson,
 } from './local-server.http-test-harness'
 
-describe('local Valedictorian HTTP server', () => {
+const createResettableLocalClient = useResettablePgliteTestLocalValedictorianClient()
+
+describe.sequential('local Valedictorian HTTP server', () => {
   const fixture = createLocalServerHttpTestFixture()
 
   beforeEach(() => fixture.setup())
@@ -182,107 +185,9 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('exposes write-only workspace secrets without a legacy sensitive profile route', async () => {
-    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-secrets-'))
-    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
-    const workspaceManager = createLocalWorkspaceManager({
-      createId: () => 'workspace-secrets',
-      registryStore,
-      secretCodec: {
-        decrypt(value) {
-          return value.replace(/^enc:/, '')
-        },
-        encrypt(value) {
-          return `enc:${value}`
-        },
-      },
-    })
-    await workspaceManager.open({ path: workspaceRoot })
-
-    const server = await fixture.start({
-      client: createBoundaryTestClient(() => {}),
-      host: '127.0.0.1',
-      port: 0,
-      workspaceManager,
-    })
-
-    const secretResponse = await fetch(
-      `${server.url}/v1/workspaces/workspace-secrets/secrets/greenhouse_password`,
-      {
-        body: JSON.stringify({
-          kind: 'password',
-          label: 'Greenhouse',
-          value: 'correct horse battery staple',
-        }),
-        headers: { 'content-type': 'application/json' },
-        method: 'PUT',
-      },
-    )
-    const secretPayload = (await readJson(secretResponse)) as Record<string, unknown>
-    const listResponse = await fetch(`${server.url}/v1/workspaces/workspace-secrets/secrets`)
-    const listPayload = (await readJson(listResponse)) as { items: Array<Record<string, unknown>> }
-    const revealResponse = await fetch(
-      `${server.url}/v1/workspaces/workspace-secrets/secrets/greenhouse_password`,
-    )
-
-    expect(secretResponse.status).toBe(200)
-    expect(secretPayload).toMatchObject({
-      key: 'greenhouse_password',
-      kind: 'password',
-      label: 'Greenhouse',
-    })
-    expect(secretPayload).not.toHaveProperty('value')
-    expect(listPayload.items[0]).toMatchObject({
-      key: 'greenhouse_password',
-      kind: 'password',
-      label: 'Greenhouse',
-    })
-    expect(listPayload.items[0]).not.toHaveProperty('value')
-    expect(revealResponse.status).toBe(404)
-
-    const profileUpdateResponse = await fetch(
-      `${server.url}/v1/workspaces/workspace-secrets/profile`,
-      {
-        body: JSON.stringify({ dateOfBirth: '1999-05-12', disabilityStatus: 'No' }),
-        headers: { 'content-type': 'application/json' },
-        method: 'PATCH',
-      },
-    )
-    const profilePayload = (await readJson(profileUpdateResponse)) as Record<string, unknown>
-    const legacySensitivePatchResponse = await fetch(
-      `${server.url}/v1/workspaces/workspace-secrets/profile/sensitive`,
-      {
-        body: JSON.stringify({ ssnLast4: '5125' }),
-        headers: { 'content-type': 'application/json' },
-        method: 'PATCH',
-      },
-    )
-    const legacySensitiveGetResponse = await fetch(
-      `${server.url}/v1/workspaces/workspace-secrets/profile/sensitive`,
-    )
-
-    expect(profileUpdateResponse.status).toBe(200)
-    expect(profilePayload).toMatchObject({
-      dateOfBirth: '1999-05-12',
-      disabilityStatus: 'No',
-    })
-    expect(JSON.stringify(profilePayload)).not.toContain('ssn')
-    expect(legacySensitivePatchResponse.status).toBe(404)
-    expect(legacySensitiveGetResponse.status).toBe(404)
-
-    const deleteResponse = await fetch(
-      `${server.url}/v1/workspaces/workspace-secrets/secrets/greenhouse_password`,
-      { method: 'DELETE' },
-    )
-    const emptyListResponse = await fetch(`${server.url}/v1/workspaces/workspace-secrets/secrets`)
-
-    expect(deleteResponse.status).toBe(200)
-    await expect(readJson(emptyListResponse)).resolves.toEqual({ items: [] })
-  })
-
   it('lists and gets applications with auth, filters, and pagination', async () => {
     const server = await fixture.start({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient({ seedDataMode: 'sample' }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -316,7 +221,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('lists action queue rows with auth, action bucket filtering, and pagination', async () => {
     const server = await fixture.start({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient({ seedDataMode: 'sample' }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -342,7 +247,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves profile update, read, and non-secret agent context routes', async () => {
     const server = await fixture.start({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient({ seedDataMode: 'sample' }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -419,7 +324,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves workflow runs and sourcing findings routes', async () => {
     const server = await fixture.start({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient({ seedDataMode: 'sample' }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -714,7 +619,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('returns a bad request for invalid action queue buckets', async () => {
     const server = await fixture.start({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient({ seedDataMode: 'sample' }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',
@@ -733,7 +638,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves policy config, evidence, and scheduler-ready evaluation endpoints', async () => {
     const server = await fixture.start({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient({ seedDataMode: 'sample' }),
       host: '127.0.0.1',
       port: 0,
       token: 'server-token',

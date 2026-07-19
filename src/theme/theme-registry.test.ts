@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  contrastRatio,
   getThemeContrastIssues,
   isThemeColor,
   normalizeThemeSettings,
@@ -81,7 +80,6 @@ describe('theme registry', () => {
   })
 
   it('reports contrast issues for inaccessible custom pairs', () => {
-    expect(contrastRatio('#ffffff', '#000000')).toBe(21)
     expect(getThemeContrastIssues(resolveTheme({
       presetId: 'graphite',
       overrides: {

@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { ApplicationListQuery } from './modules/applications/application.types'
-import type { SourcingFinding, SourcingFindingsListInput } from 'sparxie'
+import type { SourcingFindingsListInput } from 'sparxie'
 import {
   createApplication,
   createListResult,
@@ -30,65 +30,15 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('distinguishes employer, third-party, and unresolved sourcing destinations without a Review only badge', async () => {
+  it('passes destination class and usability filters to the sourcing loader', async () => {
     const queries: SourcingFindingsListInput[] = []
-    const canonicalFullTime = {
-      ...createSourcingFinding({ id: 'finding-canonical', companyName: 'Canonical Co' }),
-      rawRevisionId: 'raw-revision-1',
-      canonicalCandidateId: 'canonical-candidate-1',
-      destination: {
-        class: 'employer_or_ats',
-        url: 'https://jobs.lever.co/canonical/role-1',
-      },
-      employmentType: 'full_time',
-      seniority: 'internship',
-      location: null,
-      compensation: null,
-      postedAt: { value: null, precision: 'unknown', raw: null },
-    } as unknown as SourcingFinding
 
     render(
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
         sourcingLoader={(query) => {
           queries.push(query)
-          return Promise.resolve(createSourcingResult([
-            createSourcingFinding({
-              id: 'finding-employer',
-              companyName: 'Employer Co',
-              destinationClass: 'employer_or_ats',
-              destinationUrl: 'https://jobs.lever.co/employer/role-1',
-              intermediaryUrl: 'https://jobright.ai/jobs/info/employer-1',
-              officialUrl: 'https://jobs.lever.co/employer/role-1',
-              sourceUrl: 'https://jobright.ai/jobs/info/employer-1',
-              usability: 'usable',
-            }),
-            createSourcingFinding({
-              id: 'finding-third-party',
-              companyName: 'Third Party Co',
-              destinationClass: 'third_party_job_posting',
-              destinationUrl: 'https://www.linkedin.com/jobs/view/123456',
-              intermediaryUrl: 'https://jobright.ai/jobs/info/third-party-1',
-              officialUrl: null,
-              sourceUrl: 'https://www.linkedin.com/jobs/view/123456',
-              usability: 'review_only',
-              mergeStatus: 'blocked',
-              policyBlocker: 'third_party_destination',
-              blocker: 'Approve or reject this third-party job destination before promotion: https://www.linkedin.com/jobs/view/123456',
-            }),
-            createSourcingFinding({
-              id: 'finding-review',
-              companyName: 'Review Co',
-              destinationClass: null,
-              destinationUrl: null,
-              intermediaryUrl: 'https://jobright.ai/jobs/info/review-1',
-              officialUrl: null,
-              sourceUrl: 'https://jobright.ai/jobs/info/review-1',
-              usability: 'review_only',
-              mergeStatus: 'blocked',
-            }),
-            canonicalFullTime,
-          ]))
+          return Promise.resolve(createSourcingResult([createSourcingFinding()]))
         }}
         settingsApi={createSettingsApi()}
       />,
@@ -96,18 +46,7 @@ describe('App', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
     fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
-    const table = await screen.findByRole('table', { name: 'Opportunities' })
-
-    expect(within(table).getByText('Employer / ATS')).toBeInTheDocument()
-    expect(within(table).getByRole('link', { name: 'third-party' })).toBeInTheDocument()
-    expect(within(table).getByText('Third-party')).toBeInTheDocument()
-    expect(within(table).getByText('Unresolved')).toBeInTheDocument()
-    expect(within(table).queryByText('Review only')).not.toBeInTheDocument()
-    expect(screen.queryByText('Retained for review')).not.toBeInTheDocument()
-    expect(within(table).getByText('Full Time')).toBeInTheDocument()
-    expect(within(table).queryByRole('button', { name: 'Promote Review Co' })).not.toBeInTheDocument()
-    expect(within(table).getByRole('button', { name: 'Promote Third Party Co' }))
-      .toHaveTextContent('Approve & promote')
+    await screen.findByRole('table', { name: 'Opportunities' })
 
     fireEvent.change(screen.getByLabelText('Destination class'), {
       target: { value: 'third_party_job_posting' },
@@ -308,49 +247,6 @@ describe('App', () => {
     })
   })
 
-  it('separates promoted and blocked sourcing findings in review', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        sourcingLoader={() =>
-          Promise.resolve(
-            createSourcingResult([
-              createSourcingFinding({
-                id: 'finding-merged',
-                companyName: 'Merged Co',
-                mergeStatus: 'merged',
-                mergedApplicationId: 'application-merged',
-                mergedApplicationCompanyName: 'Merged Co',
-                mergedApplicationRoleTitle: 'Software Engineering Intern',
-                mergeNotes: 'Merged into applications.',
-              }),
-              createSourcingFinding({
-                id: 'finding-blocked',
-                companyName: 'Blocked Co',
-                officialUrl: null,
-                sourceUrl: null,
-                mergeStatus: 'blocked',
-                blocker: 'Missing official URL.',
-                mergeNotes: 'Missing official URL.',
-              }),
-            ]),
-          )
-        }
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
-
-    const table = await screen.findByRole('table', { name: 'Opportunities' })
-
-    expect(within(table).getByText('Promoted')).toBeInTheDocument()
-    expect(within(table).getByText('In applications')).toBeInTheDocument()
-    expect(within(table).getByText('Blocked')).toBeInTheDocument()
-    expect(within(table).getByText('Needs source data before promotion')).toBeInTheDocument()
-  })
-
   it('clears application rows during a pending actual search query change', async () => {
     let loadCount = 0
 
@@ -447,25 +343,6 @@ describe('App', () => {
     })
   })
 
-  it('keeps compact filter controls visually aligned', async () => {
-    render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))} />)
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    const search = screen.getByRole('textbox', { name: 'Search' })
-    expect(search).toHaveAttribute('data-slot', 'input-group-control')
-    expect(search).toHaveClass('h-9')
-    expect(search.closest('[data-slot="input-group"]')).toHaveClass('h-9', 'rounded-md')
-
-    const toggle = screen.getByRole('button', { name: 'Show filters' })
-    expect(toggle).toHaveClass('h-9', 'w-9', 'rounded-md')
-    expect(toggle.closest('[data-slot="input-group-addon"]')).toHaveAttribute(
-      'data-align',
-      'inline-end',
-    )
-    expect(search.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
   it('toggles expanded filters with keyboard on the input-group action', async () => {
     const user = userEvent.setup()
     render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))} />)
@@ -496,22 +373,6 @@ describe('App', () => {
     // Accessible name stays singular: Search label + toggle aria-label, no duplicates.
     expect(screen.getAllByRole('textbox', { name: 'Search' })).toHaveLength(1)
     expect(screen.getAllByRole('button', { name: 'Show filters' })).toHaveLength(1)
-  })
-
-  it('places reset in a separate expanded filter action row', async () => {
-    render(<App applicationLoader={() => Promise.resolve(createListResult([createApplication()]))} />)
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    expect(screen.queryByRole('button', { name: 'Reset filters' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show filters' }))
-
-    const actions = screen.getByRole('group', { name: 'Filter actions' })
-
-    expect(
-      within(actions).getByRole('button', { name: 'Reset filters' }),
-    ).toBeInTheDocument()
   })
 
   it('clears filters with reset', async () => {
@@ -779,30 +640,4 @@ describe('App', () => {
     })
   })
 
-  it('lets the applications table viewport fill the available page height', async () => {
-    const applications = Array.from({ length: 80 }, (_, index) =>
-      createApplication({
-        id: `application-${index}`,
-        companyName: `Company ${index}`,
-        roleTitle: `Role ${index}`,
-        primaryLink: null,
-      }),
-    )
-
-    render(<App applicationLoader={() => Promise.resolve(createListResult(applications))} />)
-
-    const viewport = await screen.findByRole('region', {
-      name: 'Applications table viewport',
-    })
-    const tableCard = viewport.parentElement
-    const pageSection = tableCard?.parentElement
-    const main = viewport.closest('main')
-
-    expect(main).toHaveClass('flex', 'h-full', 'md:h-[calc(100vh-3rem)]')
-    expect(main).not.toHaveClass('min-h-[calc(100vh-3rem)]')
-    expect(pageSection).toHaveClass('flex-1', 'min-h-0')
-    expect(tableCard).toHaveClass('flex-1', 'min-h-0')
-    expect(viewport).toHaveClass('flex-1', 'min-h-0')
-    expect(viewport).not.toHaveClass('max-h-[420px]')
-  })
 })

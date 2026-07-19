@@ -4,8 +4,9 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   closeTestLocalValedictorianClient,
-  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  createTestLocalValedictorianClient as createFreshRuntimeLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
+  useResettablePgliteTestLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
@@ -17,7 +18,9 @@ function createTempDatabasePath() {
 }
 
 
-describe('runtime local Valedictorian client', () => {
+describe.sequential('runtime local Valedictorian client', () => {
+  const createRuntimeLocalValedictorianClient
+    = useResettablePgliteTestLocalValedictorianClient()
   const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
 
   beforeEach(() => {
@@ -59,13 +62,13 @@ describe('runtime local Valedictorian client', () => {
       },
     }
     const connectorRegistry = createStaticConnectorRegistry([connector])
-    const firstClient = await createRuntimeLocalValedictorianClient({
+    const firstClient = await createFreshRuntimeLocalValedictorianClient({
       connectorRegistry,
       seedDataMode: 'none',
       pgliteDataPath: firstPgliteDataPath,
       workspaceId: 'workspace-first',
     })
-    const secondClient = await createRuntimeLocalValedictorianClient({
+    const secondClient = await createFreshRuntimeLocalValedictorianClient({
       connectorRegistry,
       seedDataMode: 'none',
       pgliteDataPath: secondPgliteDataPath,
@@ -115,7 +118,7 @@ describe('runtime local Valedictorian client', () => {
 
   it('recovers an interrupted running row as an explicit cancelled result on reopen', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const setupClient = await createRuntimeLocalValedictorianClient({ pgliteDataPath })
+    const setupClient = await createFreshRuntimeLocalValedictorianClient({ pgliteDataPath })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(setupClient),
     )
@@ -176,7 +179,7 @@ describe('runtime local Valedictorian client', () => {
     })
     await closeTestLocalValedictorianClient(setupClient)
 
-    const reopenedClient = await createRuntimeLocalValedictorianClient({
+    const reopenedClient = await createFreshRuntimeLocalValedictorianClient({
       connectorRunRecovery: createConnectorRunRecoveryLifecycle(),
       connectorRegistry: createStaticConnectorRegistry([
         fixtureConnector({ observedAt: '2026-07-08T19:00:00.000Z' }),
@@ -233,7 +236,6 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('rejects unsupported connector run triggers instead of queueing them', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get() {
@@ -241,7 +243,6 @@ describe('runtime local Valedictorian client', () => {
         },
       },
       seedDataMode: 'none',
-      pgliteDataPath,
     })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(client),
@@ -274,7 +275,6 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('rejects dry-run connector triggers before executing registered connectors', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
@@ -286,7 +286,6 @@ describe('runtime local Valedictorian client', () => {
         },
       },
       seedDataMode: 'none',
-      pgliteDataPath,
     })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(client),
@@ -320,7 +319,6 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('derives ordinary manual coverage end from the injected clock when omitted', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const clock = '2026-07-08T18:30:00.000Z'
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
@@ -334,7 +332,6 @@ describe('runtime local Valedictorian client', () => {
       },
       now: () => new Date(clock),
       seedDataMode: 'none',
-      pgliteDataPath,
     })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(client),
@@ -380,7 +377,6 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('rejects per-run filter overrides before executing registered connectors', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
@@ -392,7 +388,6 @@ describe('runtime local Valedictorian client', () => {
         },
       },
       seedDataMode: 'none',
-      pgliteDataPath,
     })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(client),
@@ -426,7 +421,6 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('records failed runs and allows a later trigger when registered connectors throw', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
@@ -439,7 +433,6 @@ describe('runtime local Valedictorian client', () => {
         },
       },
       seedDataMode: 'none',
-      pgliteDataPath,
     })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(client),
@@ -495,7 +488,6 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('does not fail a connector run by interpreting an invalid legacy observation', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
@@ -508,7 +500,6 @@ describe('runtime local Valedictorian client', () => {
         },
       },
       seedDataMode: 'none',
-      pgliteDataPath,
     })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(client),
@@ -590,7 +581,6 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('commits catch-up checkpoints independently of legacy observation projection', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
@@ -603,7 +593,6 @@ describe('runtime local Valedictorian client', () => {
         },
       },
       seedDataMode: 'none',
-      pgliteDataPath,
     })
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(client),
@@ -698,7 +687,6 @@ describe('runtime local Valedictorian client', () => {
 
 
   it('gates a manual retry before connector refresh and returns the persisted not-due run', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const base = fixtureConnector({ observedAt: '2026-07-11T12:00:00.000Z' })
     const refresh = vi.fn(async (input: Parameters<AppJobConnector['refresh']>[0], runtime: Parameters<AppJobConnector['refresh']>[1]) => ({
       ...await base.refresh(input, runtime),
@@ -714,7 +702,7 @@ describe('runtime local Valedictorian client', () => {
     const connector: AppJobConnector = { ...base, refresh }
     const client = await createRuntimeLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
-      now: () => new Date('2026-07-11T12:00:30.000Z'), seedDataMode: 'none', pgliteDataPath,
+      now: () => new Date('2026-07-11T12:00:30.000Z'), seedDataMode: 'none',
     })
     const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({
@@ -743,7 +731,6 @@ describe('runtime local Valedictorian client', () => {
 
 
   it('gates Jobright capture retries with the exact provider-state signature across direct, startup, and repeated triggers', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const refresh = vi.fn(async () => {
       throw new Error('Jobright refresh must not run before due')
     })
@@ -759,7 +746,6 @@ describe('runtime local Valedictorian client', () => {
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => new Date('2026-07-11T12:00:30.000Z'),
       seedDataMode: 'none',
-      pgliteDataPath,
     })
     const repository = createPgliteConnectorRepository(getTestLocalValedictorianDatabase(client))
     await repository.upsertInstance({

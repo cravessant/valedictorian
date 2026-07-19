@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
 const canary = 'provider-secret-diagnostic-canary-89'
 const coverage = {
@@ -8,7 +10,9 @@ const coverage = {
   end: '2026-07-18T00:00:00.000Z',
 }
 
-describe('connector runner — sanitized public outcomes', () => {
+describe.sequential('connector runner — sanitized public outcomes', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('converts a secret-bearing refresh throw into a fixed nominal execution error', async () => {
     const { repository } = await createConnectorRepositoryTestContext()
     const connector: AppJobConnector = {

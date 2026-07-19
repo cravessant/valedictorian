@@ -14,10 +14,14 @@ import {
 import { createPgliteClient, createPgliteDatabase, type PgliteClient, type PgliteDatabase } from '../../db/pglite'
 import { prepareConfiguredPgliteDataPath } from '../../test/pglite-template'
 import { createPgliteConnectorRepository } from './connector.repository'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 import { completedConnectorRefreshContract } from './connector-refresh-result.test-helpers'
 
-describe('PGlite connector repository retry ledger', () => {
+describe.sequential('PGlite connector repository retry ledger', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('leaves provider URL lineage for the app-wide source instead of connector acquisition', async () => {
     const { client, database, repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({
@@ -282,12 +286,7 @@ await database.update(retryWork).set({
   })
 
   it('allows one exact-due acquisition across callers sharing the workspace owner', async () => {
-    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-race-'))
-    const pgliteDataPath = path.join(temporaryRoot, 'pglite')
-    prepareConfiguredPgliteDataPath(pgliteDataPath)
-    const firstClient = await createPgliteClient({ dataDir: pgliteDataPath })
-    const sharedDatabase = createPgliteDatabase(firstClient)
-    const first = createPgliteConnectorRepository(sharedDatabase)
+    const { database: sharedDatabase, repository: first } = await createConnectorRepositoryTestContext()
     await first.upsertInstance({
       id: 'race-instance', connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
       displayName: 'Race fixture', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
@@ -316,8 +315,6 @@ await database.update(retryWork).set({
 
     expect(results.filter(({ acquired }) => acquired)).toHaveLength(1)
     expect(new Set(results.map(({ run }) => run.id))).toHaveLength(1)
-    await firstClient.close()
-    await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
   })
 
   it('reuses one exact-due outcome after a worker process owner closes', async () => {
@@ -359,83 +356,87 @@ await database.update(retryWork).set({
     await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
   })
 
-  it.each(['exhausted', 'cancelled'] as const)(
-    'does not let persisted %s capture work block unrelated discovery after restart',
-    async (state) => {
-      const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), `retry-${state}-`))
-      const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+  it('does not let persisted terminal capture or normalization work block unrelated discovery after restart', async () => {
+    const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'terminal-restart-'))
+    const pgliteDataPath = path.join(temporaryRoot, 'pglite')
+    let client: Awaited<ReturnType<typeof createPgliteClient>> | null = null
+    try {
       prepareConfiguredPgliteDataPath(pgliteDataPath)
-      let client = await createPgliteClient({ dataDir: pgliteDataPath })
-      const repository = createPgliteConnectorRepository(createPgliteDatabase(client))
-      await repository.upsertInstance({
-        id: `terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
-        displayName: 'Terminal fixture', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
-      })
-      await repository.recordRefreshResult({
-        connectorInstanceId: `terminal-${state}`, mode: 'manual',
-        startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
-        config: {}, filters: {}, filterSignature: 'filters:{}',
-        result: {
-          ...completedConnectorRefreshContract('2026-07-11'),
-          observations: [], warnings: [], stats: { observations: 0 },
-          coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
-          nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
-          retryHints: {
-            state, reason: 'operation_timeout', attempt: 3, maxAttempts: 3,
-            lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: null,
-            nextAttemptAt: null, horizonAt: '2026-07-11T13:00:00.000Z',
-          },
-        },
-      })
-      await client.close()
       client = await createPgliteClient({ dataDir: pgliteDataPath })
-      const restarted = createPgliteConnectorRepository(createPgliteDatabase(client))
-      await restarted.upsertInstance({
-        id: `terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '2.0.0',
-        displayName: 'Changed terminal fixture', enabled: true, filters: {}, config: { changed: true },
-      })
-
-      const first = await restarted.recordRunRequest({
-        connectorInstanceId: `terminal-${state}`, mode: 'catch_up', startedAt: '2026-07-11T14:00:00.000Z',
-      })
-      const second = await restarted.recordRunRequest({
-        connectorInstanceId: `terminal-${state}`, mode: 'catch_up', startedAt: '2026-07-11T15:00:00.000Z',
-      })
-
-      expect(first).toMatchObject({ acquired: true, acquiredWork: null, run: { status: 'queued', retryHints: null } })
-      expect(second).toMatchObject({ acquired: false, acquiredWork: null, run: { id: first.run.id, retryHints: null } })
-      await client.close()
-      await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
-    },
-  )
-
-  it.each(['exhausted', 'cancelled'] as const)(
-    'does not let persisted normalization %s work block unrelated discovery after restart',
-    async (state) => {
-      const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), `normalization-${state}-`))
-      const pgliteDataPath = path.join(temporaryRoot, 'pglite')
-      prepareConfiguredPgliteDataPath(pgliteDataPath)
-      let client = await createPgliteClient({ dataDir: pgliteDataPath })
-      const database = createPgliteDatabase(client)
+      let database = createPgliteDatabase(client)
       const repository = createPgliteConnectorRepository(database)
-      await repository.upsertInstance({ id: `normalization-terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '1.0.0', displayName: 'Normalization terminal', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
-      await seedNormalizationRetry(client, database, `normalization-terminal-${state}`, `normalization-${state}`, '2026-07-11T12:01:00.000Z')
-      await database.update(retryWork).set({ state, nextAttemptAt: null })
-        .where(eq(retryWork.id, `normalization-${state}`))
+
+      const matrix = [
+        { kind: 'capture', state: 'exhausted' },
+        { kind: 'capture', state: 'cancelled' },
+        { kind: 'normalization', state: 'exhausted' },
+        { kind: 'normalization', state: 'cancelled' },
+      ] as const
+
+      for (const { kind, state } of matrix) {
+        const connectorInstanceId = kind === 'capture' ? `terminal-${state}` : `normalization-terminal-${state}`
+        await repository.upsertInstance({
+          id: connectorInstanceId, connectorId: 'fixture.jobs', connectorVersion: '1.0.0',
+          displayName: 'Terminal fixture', enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z',
+        })
+        if (kind === 'capture') {
+          await repository.recordRefreshResult({
+            connectorInstanceId, mode: 'manual',
+            startedAt: '2026-07-11T12:00:00.000Z', completedAt: '2026-07-11T12:00:01.000Z',
+            config: {}, filters: {}, filterSignature: 'filters:{}',
+            result: {
+              ...completedConnectorRefreshContract('2026-07-11'),
+              observations: [], warnings: [], stats: { observations: 0 },
+              coverage: { start: '2026-07-11T11:00:00.000Z', end: '2026-07-11T12:00:00.000Z' },
+              nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture-checkpoint@1' },
+              retryHints: {
+                state, reason: 'operation_timeout', attempt: 3, maxAttempts: 3,
+                lastAttemptAt: '2026-07-11T12:00:00.000Z', computedDelayMs: null,
+                nextAttemptAt: null, horizonAt: '2026-07-11T13:00:00.000Z',
+              },
+            },
+          })
+        } else {
+          const retryWorkId = `normalization-${state}`
+          await seedNormalizationRetry(client, database, connectorInstanceId, retryWorkId, '2026-07-11T12:01:00.000Z')
+          await database.update(retryWork).set({ state, nextAttemptAt: null })
+            .where(eq(retryWork.id, retryWorkId))
+        }
+      }
 
       await client.close()
       client = await createPgliteClient({ dataDir: pgliteDataPath })
-      const restarted = createPgliteConnectorRepository(createPgliteDatabase(client))
-      await restarted.upsertInstance({ id: `normalization-terminal-${state}`, connectorId: 'fixture.jobs', connectorVersion: '2.0.0', displayName: 'Changed normalization terminal', enabled: true, filters: {}, config: { changed: true } })
-      const first = await restarted.recordRunRequest({ connectorInstanceId: `normalization-terminal-${state}`, mode: 'catch_up', startedAt: '2026-07-11T14:00:00.000Z' })
-      const second = await restarted.recordRunRequest({ connectorInstanceId: `normalization-terminal-${state}`, mode: 'catch_up', startedAt: '2026-07-11T15:00:00.000Z' })
+      database = createPgliteDatabase(client)
+      const restarted = createPgliteConnectorRepository(database)
 
-      expect(first).toMatchObject({ acquired: true, acquiredWork: null, run: { status: 'queued', retryHints: null } })
-      expect(second).toMatchObject({ acquired: false, acquiredWork: null, run: { id: first.run.id, retryHints: null } })
-      await client.close()
+      for (const { kind, state } of matrix) {
+        const connectorInstanceId = kind === 'capture' ? `terminal-${state}` : `normalization-terminal-${state}`
+        await restarted.upsertInstance({
+          id: connectorInstanceId, connectorId: 'fixture.jobs', connectorVersion: '2.0.0',
+          displayName: 'Changed terminal fixture', enabled: true, filters: {}, config: { changed: true },
+        })
+
+        const first = await restarted.recordRunRequest({
+          connectorInstanceId, mode: 'catch_up', startedAt: '2026-07-11T14:00:00.000Z',
+        })
+        const second = await restarted.recordRunRequest({
+          connectorInstanceId, mode: 'catch_up', startedAt: '2026-07-11T15:00:00.000Z',
+        })
+
+        expect(first).toMatchObject({ acquired: true, acquiredWork: null, run: { status: 'queued', retryHints: null } })
+        expect(second).toMatchObject({ acquired: false, acquiredWork: null, run: { id: first.run.id, retryHints: null } })
+      }
+    } finally {
+      if (client) {
+        try {
+          await client.close()
+        } catch {
+          // Already closed or close failed after a partial lifecycle.
+        }
+      }
       await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
-    },
-  )
+    }
+  })
 
   it('acquires due normalization work ahead of later capture work', async () => {
     const { client, database, repository } = await createConnectorRepositoryTestContext()
@@ -591,7 +592,10 @@ await database.update(retryWork).set({ state: 'exhausted', nextAttemptAt: null }
   })
 
   it('does not replay an old retry when a newer revision of the same provider record exists', async () => {
-    const { client, database, repository } = await currentRevisionFixture(['current-one'])
+    const { client, database, repository } = await currentRevisionFixture(
+      createConnectorRepositoryTestContext,
+      ['current-one'],
+    )
     await seedSharedProviderRevisionHistory(client)
     const historyLineages = Array.from({ length: 2_000 }, (_, index) => ({
       id: `history-record-${index}`, createdAt: '2026-07-10T00:00:00.000Z',
@@ -625,7 +629,10 @@ await database.update(retryWork).set({ state: 'exhausted', nextAttemptAt: null }
   })
 
   it('selects only the current retry across connector instances sharing a provider identity', async () => {
-    const { client, database, repository } = await currentRevisionFixture(['current-a', 'current-b'])
+    const { client, database, repository } = await currentRevisionFixture(
+      createConnectorRepositoryTestContext,
+      ['current-a', 'current-b'],
+    )
     await seedSharedProviderRevisionHistory(client)
     await seedExactNormalizationRetry(database, 'current-a', 'old-cross-scope', 'shared-revision-1')
     await seedExactNormalizationRetry(database, 'current-b', 'current-cross-scope', 'shared-revision-2')
@@ -914,8 +921,11 @@ async function seedNormalizationRetry(
   })
 }
 
-async function currentRevisionFixture(instanceIds: string[]) {
-  const { client, database, repository } = await createConnectorRepositoryTestContext()
+async function currentRevisionFixture(
+  createContext: ReturnType<typeof useResettablePgliteTestConnectorRepositoryContext>,
+  instanceIds: string[],
+) {
+  const { client, database, repository } = await createContext()
   for (const id of instanceIds) await repository.upsertInstance({ id, connectorId: 'jobright.resolver',
     connectorVersion: '0.11.0', displayName: id, enabled: true, filters: {}, createdAt: '2026-07-11T12:00:00.000Z' })
   return { client, database, repository }

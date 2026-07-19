@@ -26,7 +26,7 @@ import {
   migratePgliteDatabase,
   type PgliteDatabase,
 } from '../../db/pglite'
-import { createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { createPgliteTestOwner, useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import {
   createPgliteNormalizationRepository,
   type PersistNormalizationInput,
@@ -210,147 +210,141 @@ function persistenceInput(
   }
 }
 
-describe('normalization repository acquired retry identity', () => {
+const resettableOwner = useResettablePgliteTestOwner()
+
+describe.sequential('normalization repository acquired retry identity', () => {
   it('preserves the original execution scope through consecutive retryable direct replays', async () => {
-    const { client, database } = await createPgliteTestOwner()
-    try {
-      await seedRawRevision(database, { withScope: true })
-      const repository = createPgliteNormalizationRepository(database)
+    const { database } = resettableOwner()
+    await seedRawRevision(database, { withScope: true })
+    const repository = createPgliteNormalizationRepository(database)
 
-      await repository.persist({
-        ...persistenceInput('normalization-run-retry-1', retryAttempt(1)),
-        triggerOccurrence: {
-          id: 'capture-scope-replay',
-          rawRecordId: RAW_RECORD_ID,
-          rawRevisionId: RAW_REVISION_ID,
-          capture: {
-            connectorInstanceId: 'scope-replay',
-            connectorRunId: 'connector-run-intake',
-            executionScopeId: EXECUTION_SCOPE_ID,
-          },
-          observedAt: NOW,
-          receivedAt: NOW,
-        },
-      })
-
-      for (const attempt of [2, 3]) {
-        const [scheduled] = await database.select().from(retryWork)
-        expect(scheduled).toMatchObject({
-          attempt: attempt - 1,
-          executionScopeId: EXECUTION_SCOPE_ID,
-          state: 'scheduled',
-        })
-        expect(JSON.parse(scheduled!.lineageJson)).toMatchObject({
+    await repository.persist({
+      ...persistenceInput('normalization-run-retry-1', retryAttempt(1)),
+      triggerOccurrence: {
+        id: 'capture-scope-replay',
+        rawRecordId: RAW_RECORD_ID,
+        rawRevisionId: RAW_REVISION_ID,
+        capture: {
           connectorInstanceId: 'scope-replay',
           connectorRunId: 'connector-run-intake',
-        })
+          executionScopeId: EXECUTION_SCOPE_ID,
+        },
+        observedAt: NOW,
+        receivedAt: NOW,
+      },
+    })
 
-        const acquisitionToken = `acquisition-token-${attempt}`
-        await database.update(retryWork).set({
-          state: 'acquired',
-          acquiredAt: `2026-07-11T12:0${attempt}:00.000Z`,
-          acquisitionToken,
-          acquisitionRunId: null,
-        }).where(eq(retryWork.id, scheduled!.id))
-
-        await repository.persist({
-          ...persistenceInput(`normalization-run-retry-${attempt}`, retryAttempt(attempt)),
-          acquiredRetryWork: {
-            retryWorkId: scheduled!.id,
-            acquisitionToken,
-            executionScopeId: EXECUTION_SCOPE_ID,
-          },
-        })
-      }
-
-      const [work] = await database.select().from(retryWork)
-      expect(work).toMatchObject({
-        attempt: 3,
+    for (const attempt of [2, 3]) {
+      const [scheduled] = await database.select().from(retryWork)
+      expect(scheduled).toMatchObject({
+        attempt: attempt - 1,
         executionScopeId: EXECUTION_SCOPE_ID,
         state: 'scheduled',
       })
-      expect(JSON.parse(work!.lineageJson)).toMatchObject({
-        acquiredRetryWorkId: work!.id,
-        acquisitionToken: 'acquisition-token-3',
+      expect(JSON.parse(scheduled!.lineageJson)).toMatchObject({
         connectorInstanceId: 'scope-replay',
+        connectorRunId: 'connector-run-intake',
       })
-      await expect(database.select({ status: sourceExecutionScopes.status })
-        .from(sourceExecutionScopes)
-        .where(eq(sourceExecutionScopes.id, EXECUTION_SCOPE_ID)))
-        .resolves.toEqual([{ status: 'available' }])
-    } finally {
-      await client.close()
+
+      const acquisitionToken = `acquisition-token-${attempt}`
+      await database.update(retryWork).set({
+        state: 'acquired',
+        acquiredAt: `2026-07-11T12:0${attempt}:00.000Z`,
+        acquisitionToken,
+        acquisitionRunId: null,
+      }).where(eq(retryWork.id, scheduled!.id))
+
+      await repository.persist({
+        ...persistenceInput(`normalization-run-retry-${attempt}`, retryAttempt(attempt)),
+        acquiredRetryWork: {
+          retryWorkId: scheduled!.id,
+          acquisitionToken,
+          executionScopeId: EXECUTION_SCOPE_ID,
+        },
+      })
     }
+
+    const [work] = await database.select().from(retryWork)
+    expect(work).toMatchObject({
+      attempt: 3,
+      executionScopeId: EXECUTION_SCOPE_ID,
+      state: 'scheduled',
+    })
+    expect(JSON.parse(work!.lineageJson)).toMatchObject({
+      acquiredRetryWorkId: work!.id,
+      acquisitionToken: 'acquisition-token-3',
+      connectorInstanceId: 'scope-replay',
+    })
+    await expect(database.select({ status: sourceExecutionScopes.status })
+      .from(sourceExecutionScopes)
+      .where(eq(sourceExecutionScopes.id, EXECUTION_SCOPE_ID)))
+      .resolves.toEqual([{ status: 'available' }])
   })
 
   it('rejects exact acquired replay when persisted attempt input hash does not match acquired work', async () => {
-    const { client, database } = await createPgliteTestOwner()
-    try {
-      await seedRawRevision(database, { withScope: true })
-      const repository = createPgliteNormalizationRepository(database)
-      await database.insert(retryWork).values({
-        id: 'retry-work-hash-mismatch',
-        executionScopeId: EXECUTION_SCOPE_ID,
-        kind: 'normalization',
-        connectorInstanceId: null,
-        filterSignature: null,
-        checkpointSchemaVersion: null,
-        checkpointGeneration: null,
-        captureEvidenceVersionId: RAW_REVISION_ID,
-        resolverId: RESOLVER_ID,
-        resolverVersion: RESOLVER_VERSION,
-        inputHash: 'sha256:acquired-input-hash',
-        reason: 'server_failure',
-        attempt: 1,
-        maxAttempts: 3,
-        lastAttemptAt: NOW,
-        computedDelayMs: 30_000,
-        serverMinimumDelayMs: null,
-        nextAttemptAt: '2026-07-11T12:00:30.000Z',
-        horizonAt: '2026-07-11T13:00:00.000Z',
-        state: 'acquired',
-        ownerVersion: RESOLVER_VERSION,
-        lineageJson: JSON.stringify({ connectorInstanceId: 'scope-replay' }),
-        acquiredAt: '2026-07-11T12:00:30.000Z',
-        acquisitionToken: 'token-hash-mismatch',
-        acquisitionRunId: null,
-        skippedRunId: null,
-        createdAt: NOW,
-        updatedAt: '2026-07-11T12:00:30.000Z',
-        deletedAt: null,
-      })
+    const { database } = resettableOwner()
+    await seedRawRevision(database, { withScope: true })
+    const repository = createPgliteNormalizationRepository(database)
+    await database.insert(retryWork).values({
+      id: 'retry-work-hash-mismatch',
+      executionScopeId: EXECUTION_SCOPE_ID,
+      kind: 'normalization',
+      connectorInstanceId: null,
+      filterSignature: null,
+      checkpointSchemaVersion: null,
+      checkpointGeneration: null,
+      captureEvidenceVersionId: RAW_REVISION_ID,
+      resolverId: RESOLVER_ID,
+      resolverVersion: RESOLVER_VERSION,
+      inputHash: 'sha256:acquired-input-hash',
+      reason: 'server_failure',
+      attempt: 1,
+      maxAttempts: 3,
+      lastAttemptAt: NOW,
+      computedDelayMs: 30_000,
+      serverMinimumDelayMs: null,
+      nextAttemptAt: '2026-07-11T12:00:30.000Z',
+      horizonAt: '2026-07-11T13:00:00.000Z',
+      state: 'acquired',
+      ownerVersion: RESOLVER_VERSION,
+      lineageJson: JSON.stringify({ connectorInstanceId: 'scope-replay' }),
+      acquiredAt: '2026-07-11T12:00:30.000Z',
+      acquisitionToken: 'token-hash-mismatch',
+      acquisitionRunId: null,
+      skippedRunId: null,
+      createdAt: NOW,
+      updatedAt: '2026-07-11T12:00:30.000Z',
+      deletedAt: null,
+    })
 
-      const mismatchedAttempt = {
-        ...retryAttempt(2),
-        id: 'attempt-hash-mismatch',
+    const mismatchedAttempt = {
+      ...retryAttempt(2),
+      id: 'attempt-hash-mismatch',
+      inputHash: 'sha256:mismatched-attempt-hash',
+      outcomes: retryAttempt(2).outcomes.map((outcome) => ({
+        ...outcome,
         inputHash: 'sha256:mismatched-attempt-hash',
-        outcomes: retryAttempt(2).outcomes.map((outcome) => ({
-          ...outcome,
-          inputHash: 'sha256:mismatched-attempt-hash',
-        })),
-      }
-      await expect(repository.persist({
-        ...persistenceInput('normalization-run-hash-mismatch', mismatchedAttempt),
-        acquiredRetryWork: {
-          retryWorkId: 'retry-work-hash-mismatch',
-          acquisitionToken: 'token-hash-mismatch',
-          executionScopeId: EXECUTION_SCOPE_ID,
-        },
-      })).rejects.toThrow(/acquired normalization retry identity/i)
-
-      await expect(database.select().from(normalizationRuns)).resolves.toEqual([])
-      await expect(database.select().from(retryWork)).resolves.toEqual([
-        expect.objectContaining({
-          id: 'retry-work-hash-mismatch',
-          state: 'acquired',
-          inputHash: 'sha256:acquired-input-hash',
-          acquisitionToken: 'token-hash-mismatch',
-          nextAttemptAt: '2026-07-11T12:00:30.000Z',
-        }),
-      ])
-    } finally {
-      await client.close()
+      })),
     }
+    await expect(repository.persist({
+      ...persistenceInput('normalization-run-hash-mismatch', mismatchedAttempt),
+      acquiredRetryWork: {
+        retryWorkId: 'retry-work-hash-mismatch',
+        acquisitionToken: 'token-hash-mismatch',
+        executionScopeId: EXECUTION_SCOPE_ID,
+      },
+    })).rejects.toThrow(/acquired normalization retry identity/i)
+
+    await expect(database.select().from(normalizationRuns)).resolves.toEqual([])
+    await expect(database.select().from(retryWork)).resolves.toEqual([
+      expect.objectContaining({
+        id: 'retry-work-hash-mismatch',
+        state: 'acquired',
+        inputHash: 'sha256:acquired-input-hash',
+        acquisitionToken: 'token-hash-mismatch',
+        nextAttemptAt: '2026-07-11T12:00:30.000Z',
+      }),
+    ])
   })
 
   it('converges strong destination identity ownership and records a conflicting owner without reassignment', async () => {
@@ -360,94 +354,94 @@ describe('normalization repository acquired retry identity', () => {
       await seedRawRevision(database, { jobId: sourceJobId })
       const repository = createPgliteNormalizationRepository(database)
       const sourceEntity = {
-        id: sourceJobId,
-        identityKind: 'destination_url',
-        identityNamespace: 'fixture',
-        identityValue: 'https://jobs.example.test/retry',
-        createdAt: NOW,
+      id: sourceJobId,
+      identityKind: 'destination_url',
+      identityNamespace: 'fixture',
+      identityValue: 'https://jobs.example.test/retry',
+      createdAt: NOW,
       }
       const destination = {
-        class: 'direct_employer' as const,
-        url: 'https://jobs.example.test/strong-owner',
+      class: 'direct_employer' as const,
+      url: 'https://jobs.example.test/strong-owner',
       }
       const destinationOutcome = {
-        resolverId: RESOLVER_ID,
-        resolverVersion: RESOLVER_VERSION,
-        field: 'destinationUrl' as const,
-        inputHash: ATTEMPT_INPUT_HASH,
-        status: 'resolved' as const,
-        value: destination.url,
+      resolverId: RESOLVER_ID,
+      resolverVersion: RESOLVER_VERSION,
+      field: 'destinationUrl' as const,
+      inputHash: ATTEMPT_INPUT_HASH,
+      status: 'resolved' as const,
+      value: destination.url,
       }
       const strongInput = (runId: string) => ({
-        sourceEntity,
-        rawRevisionId: RAW_REVISION_ID,
-        destination,
-        destinationOutcome,
-        createdAt: NOW,
-        materialize: () => ({
-          ...persistenceInput(runId, retryAttempt(1), { attempts: [] }),
-          inputHash: 'sha256:strong-owner-cache',
-        }),
+      sourceEntity,
+      rawRevisionId: RAW_REVISION_ID,
+      destination,
+      destinationOutcome,
+      createdAt: NOW,
+      materialize: () => ({
+        ...persistenceInput(runId, retryAttempt(1), { attempts: [] }),
+        inputHash: 'sha256:strong-owner-cache',
+      }),
       })
 
       const converged = await Promise.all([
-        repository.persistWithStrongDestination(strongInput('normalization-strong-owner-a')),
-        repository.persistWithStrongDestination(strongInput('normalization-strong-owner-b')),
+      repository.persistWithStrongDestination(strongInput('normalization-strong-owner-a')),
+      repository.persistWithStrongDestination(strongInput('normalization-strong-owner-b')),
       ])
       expect(converged[1]).toEqual(converged[0])
       const reconciledIdentities = await database.select().from(jobIdentities)
       expect(reconciledIdentities).toHaveLength(2)
       expect(reconciledIdentities).toEqual(expect.arrayContaining([
-        expect.objectContaining({ jobId: sourceJobId, identityKind: 'canonical_destination' }),
-        expect.objectContaining({ jobId: sourceJobId, identityKind: 'destination_alias' }),
+      expect.objectContaining({ jobId: sourceJobId, identityKind: 'canonical_destination' }),
+      expect.objectContaining({ jobId: sourceJobId, identityKind: 'destination_alias' }),
       ]))
 
       const conflictingJobId = 'job-conflicting-owner'
       const conflictingUrl = 'https://jobs.example.test/conflicting-owner'
       await database.insert(jobs).values({
-        id: conflictingJobId,
-        identityKind: 'destination_url',
-        identityNamespace: DESTINATION_TAXONOMY_VERSION,
-        identityValue: conflictingUrl,
-        createdAt: NOW,
+      id: conflictingJobId,
+      identityKind: 'destination_url',
+      identityNamespace: DESTINATION_TAXONOMY_VERSION,
+      identityValue: conflictingUrl,
+      createdAt: NOW,
       })
       await database.insert(jobIdentities).values({
-        id: 'identity-conflicting-owner',
-        jobId: conflictingJobId,
-        identityKind: 'canonical_destination',
-        identityNamespace: DESTINATION_TAXONOMY_VERSION,
-        identityValue: conflictingUrl,
-        provenanceKind: 'normalization',
-        provenanceVersion: 'fixture',
-        evidenceJson: '{}',
-        captureEvidenceVersionId: RAW_REVISION_ID,
-        createdAt: NOW,
+      id: 'identity-conflicting-owner',
+      jobId: conflictingJobId,
+      identityKind: 'canonical_destination',
+      identityNamespace: DESTINATION_TAXONOMY_VERSION,
+      identityValue: conflictingUrl,
+      provenanceKind: 'normalization',
+      provenanceVersion: 'fixture',
+      evidenceJson: '{}',
+      captureEvidenceVersionId: RAW_REVISION_ID,
+      createdAt: NOW,
       })
       let conflictObserved = false
       await repository.persistWithStrongDestination({
-        sourceEntity,
-        rawRevisionId: RAW_REVISION_ID,
-        destination: { class: 'direct_employer', url: conflictingUrl },
-        destinationOutcome: { ...destinationOutcome, value: conflictingUrl },
-        createdAt: NOW,
-        materialize(reconciliation) {
-          conflictObserved = reconciliation.conflict
-          return persistenceInput('normalization-strong-conflict', retryAttempt(1), { attempts: [] })
-        },
+      sourceEntity,
+      rawRevisionId: RAW_REVISION_ID,
+      destination: { class: 'direct_employer', url: conflictingUrl },
+      destinationOutcome: { ...destinationOutcome, value: conflictingUrl },
+      createdAt: NOW,
+      materialize(reconciliation) {
+        conflictObserved = reconciliation.conflict
+        return persistenceInput('normalization-strong-conflict', retryAttempt(1), { attempts: [] })
+      },
       })
 
       expect(conflictObserved).toBe(true)
       await expect(database.select().from(jobIdentityConflicts)).resolves.toEqual([
-        expect.objectContaining({
-          jobId: sourceJobId,
-          conflictingJobId,
-          identityKind: 'canonical_destination',
-          identityValue: conflictingUrl,
-        }),
+      expect.objectContaining({
+        jobId: sourceJobId,
+        conflictingJobId,
+        identityKind: 'canonical_destination',
+        identityValue: conflictingUrl,
+      }),
       ])
       await expect(database.select().from(jobIdentities)
-        .where(eq(jobIdentities.id, 'identity-conflicting-owner'))).resolves.toEqual([
-        expect.objectContaining({ jobId: conflictingJobId }),
+      .where(eq(jobIdentities.id, 'identity-conflicting-owner'))).resolves.toEqual([
+      expect.objectContaining({ jobId: conflictingJobId }),
       ])
     } finally {
       await client.close()
@@ -455,101 +449,97 @@ describe('normalization repository acquired retry identity', () => {
   })
 
   it('rolls back the complete passed multi-write when staging fails', async () => {
-    const { client, database } = await createPgliteTestOwner()
-    try {
-      const jobId = 'job-atomic-normalization'
-      await seedRawRevision(database, { jobId })
-      const candidate: CanonicalSourceCandidate = {
-        id: 'candidate-atomic-normalization',
-        sourceEntityId: jobId,
-        rawRecordId: RAW_RECORD_ID,
-        rawRevisionId: RAW_REVISION_ID,
-        schemaVersion: 'canonical-candidate@1',
-        canonicalIdentity: { kind: 'destination_url', value: 'https://jobs.example.test/retry' },
-        companyName: 'Atomic Co',
-        roleTitle: 'Intern',
-        employmentType: 'internship',
-        seniority: 'internship',
-        workMode: 'remote',
-        location: null,
-        compensation: null,
-        postedAt: { value: null, precision: 'unknown', raw: null },
-        destination: { class: 'direct_employer', url: 'https://jobs.example.test/retry' },
-        sourceUrl: null,
-        providerJobId: null,
-        observedAt: NOW,
-      }
-      const attempt = retryAttempt(1)
-      attempt.executionScopeId = null
-      attempt.outcomes.unshift({
-        resolverId: RESOLVER_ID,
-        resolverVersion: RESOLVER_VERSION,
-        field: 'destinationUrl',
-        inputHash: ATTEMPT_INPUT_HASH,
-        status: 'resolved',
-        value: candidate.destination!.url,
-      })
-      const repository = createPgliteNormalizationRepository(database, {
-        async stagePassedCandidate(transaction) {
-          await expect(transaction.select().from(normalizationRuns)).resolves.toHaveLength(1)
-          await expect(transaction.select().from(normalizationAttempts)).resolves.toHaveLength(1)
-          await expect(transaction.select().from(normalizationFieldOutcomes)).resolves.toHaveLength(2)
-          await expect(transaction.select().from(normalizationGates)).resolves.toHaveLength(1)
-          await expect(transaction.select().from(jobFactVersions)).resolves.toHaveLength(1)
-          await expect(transaction.select().from(retryWork)).resolves.toHaveLength(1)
-          throw new Error('injected staging failure')
-        },
-      })
-
-      await expect(repository.persist({
-        ...persistenceInput('normalization-run-atomic', attempt),
-        candidate,
-        gate: {
-          status: 'passed',
-          policyVersion: 'normalization-gate@1',
-          evaluatedAt: NOW,
-          requiredFields: ['destinationUrl'],
-          missingFields: [],
-          conflictingFields: [],
-          candidate,
-        },
-      })).rejects.toThrow('injected staging failure')
-
-      await expect(database.select().from(normalizationRuns)).resolves.toEqual([])
-      await expect(database.select().from(normalizationAttempts)).resolves.toEqual([])
-      await expect(database.select().from(normalizationFieldOutcomes)).resolves.toEqual([])
-      await expect(database.select().from(normalizationGates)).resolves.toEqual([])
-      await expect(database.select().from(jobFactVersions)).resolves.toEqual([])
-      await expect(database.select().from(retryWork)).resolves.toEqual([])
-      await expect(database.select().from(sourceExecutionScopes)).resolves.toEqual([])
-
-      let projectedCandidateId: string | null = null
-      const successfulRepository = createPgliteNormalizationRepository(database, {
-        async stagePassedCandidate(transaction) {
-          await expect(transaction.select().from(jobFactVersions)).resolves.toHaveLength(1)
-        },
-        async projectPassedCandidate(candidateId) {
-          await Promise.resolve()
-          projectedCandidateId = candidateId
-        },
-      })
-      await expect(successfulRepository.persist({
-        ...persistenceInput('normalization-run-atomic-committed', attempt),
-        candidate,
-        gate: {
-          status: 'passed',
-          policyVersion: 'normalization-gate@1',
-          evaluatedAt: NOW,
-          requiredFields: ['destinationUrl'],
-          missingFields: [],
-          conflictingFields: [],
-          candidate,
-        },
-      })).resolves.toMatchObject({ canonicalCandidate: candidate })
-      expect(projectedCandidateId).toBe(candidate.id)
-    } finally {
-      await client.close()
+    const { database } = resettableOwner()
+    const jobId = 'job-atomic-normalization'
+    await seedRawRevision(database, { jobId })
+    const candidate: CanonicalSourceCandidate = {
+      id: 'candidate-atomic-normalization',
+      sourceEntityId: jobId,
+      rawRecordId: RAW_RECORD_ID,
+      rawRevisionId: RAW_REVISION_ID,
+      schemaVersion: 'canonical-candidate@1',
+      canonicalIdentity: { kind: 'destination_url', value: 'https://jobs.example.test/retry' },
+      companyName: 'Atomic Co',
+      roleTitle: 'Intern',
+      employmentType: 'internship',
+      seniority: 'internship',
+      workMode: 'remote',
+      location: null,
+      compensation: null,
+      postedAt: { value: null, precision: 'unknown', raw: null },
+      destination: { class: 'direct_employer', url: 'https://jobs.example.test/retry' },
+      sourceUrl: null,
+      providerJobId: null,
+      observedAt: NOW,
     }
+    const attempt = retryAttempt(1)
+    attempt.executionScopeId = null
+    attempt.outcomes.unshift({
+      resolverId: RESOLVER_ID,
+      resolverVersion: RESOLVER_VERSION,
+      field: 'destinationUrl',
+      inputHash: ATTEMPT_INPUT_HASH,
+      status: 'resolved',
+      value: candidate.destination!.url,
+    })
+    const repository = createPgliteNormalizationRepository(database, {
+      async stagePassedCandidate(transaction) {
+        await expect(transaction.select().from(normalizationRuns)).resolves.toHaveLength(1)
+        await expect(transaction.select().from(normalizationAttempts)).resolves.toHaveLength(1)
+        await expect(transaction.select().from(normalizationFieldOutcomes)).resolves.toHaveLength(2)
+        await expect(transaction.select().from(normalizationGates)).resolves.toHaveLength(1)
+        await expect(transaction.select().from(jobFactVersions)).resolves.toHaveLength(1)
+        await expect(transaction.select().from(retryWork)).resolves.toHaveLength(1)
+        throw new Error('injected staging failure')
+      },
+    })
+
+    await expect(repository.persist({
+      ...persistenceInput('normalization-run-atomic', attempt),
+      candidate,
+      gate: {
+        status: 'passed',
+        policyVersion: 'normalization-gate@1',
+        evaluatedAt: NOW,
+        requiredFields: ['destinationUrl'],
+        missingFields: [],
+        conflictingFields: [],
+        candidate,
+      },
+    })).rejects.toThrow('injected staging failure')
+
+    await expect(database.select().from(normalizationRuns)).resolves.toEqual([])
+    await expect(database.select().from(normalizationAttempts)).resolves.toEqual([])
+    await expect(database.select().from(normalizationFieldOutcomes)).resolves.toEqual([])
+    await expect(database.select().from(normalizationGates)).resolves.toEqual([])
+    await expect(database.select().from(jobFactVersions)).resolves.toEqual([])
+    await expect(database.select().from(retryWork)).resolves.toEqual([])
+    await expect(database.select().from(sourceExecutionScopes)).resolves.toEqual([])
+
+    let projectedCandidateId: string | null = null
+    const successfulRepository = createPgliteNormalizationRepository(database, {
+      async stagePassedCandidate(transaction) {
+        await expect(transaction.select().from(jobFactVersions)).resolves.toHaveLength(1)
+      },
+      async projectPassedCandidate(candidateId) {
+        await Promise.resolve()
+        projectedCandidateId = candidateId
+      },
+    })
+    await expect(successfulRepository.persist({
+      ...persistenceInput('normalization-run-atomic-committed', attempt),
+      candidate,
+      gate: {
+        status: 'passed',
+        policyVersion: 'normalization-gate@1',
+        evaluatedAt: NOW,
+        requiredFields: ['destinationUrl'],
+        missingFields: [],
+        conflictingFields: [],
+        candidate,
+      },
+    })).resolves.toMatchObject({ canonicalCandidate: candidate })
+    expect(projectedCandidateId).toBe(candidate.id)
   })
 
   it('converges identical writes, orders timestamp ties by id, and survives close and reopen', async () => {

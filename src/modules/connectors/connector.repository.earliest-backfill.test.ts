@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
-describe('connector repository earliest backfill date persistence', () => {
+describe.sequential('connector repository earliest backfill date persistence', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('defaults create from injected createdAt and preserves explicit earliest dates across updates', async () => {
     const { repository } = await createConnectorRepositoryTestContext()
 

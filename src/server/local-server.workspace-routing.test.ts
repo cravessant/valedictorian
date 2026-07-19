@@ -15,8 +15,6 @@ import { createLocalWorkspaceManager } from './local-workspaces'
 import {
   createBoundaryWorkspaceClient as createBoundaryTestClient,
   createLocalServerHttpTestFixture,
-  createSeededLocalClient as createLocalValedictorianClient,
-  createTempDatabasePath,
   createTempFilePath,
   readJson,
 } from './local-server.http-test-harness'
@@ -29,7 +27,7 @@ describe('local Valedictorian HTTP server', () => {
 
   it('serves health and local capabilities', async () => {
     const server = await fixture.start({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: createBoundaryTestClient(() => {}),
       host: '127.0.0.1',
       port: 0,
     })
@@ -480,18 +478,34 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('returns 404 for another workspace projection revision through the workspace manager', async () => {
+  it('auto-loads workspace data and returns 404 for another workspace projection revision', async () => {
     const rootA = fs.mkdtempSync(path.join(os.tmpdir(), 'projection-workspace-a-'))
     const rootB = fs.mkdtempSync(path.join(os.tmpdir(), 'projection-workspace-b-'))
     const workspaceA = initializeWorkspace(rootA, { createId: () => 'projection-a' })
     const workspaceB = initializeWorkspace(rootB, { createId: () => 'projection-b' })
     const manager = createLocalWorkspaceManager({
       registryStore: createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json')),
+      seedDataMode: 'sample',
     })
     await manager.open({ path: workspaceA.rootPath }); await manager.open({ path: workspaceB.rootPath })
     const server = await fixture.start({
       client: createBoundaryTestClient(() => {}), host: '127.0.0.1', port: 0, workspaceManager: manager,
     })
+
+    const applicationsResponse = await fetch(
+      `${server.url}/v1/workspaces/${workspaceA.id}/applications?status=needs_user_info&limit=25&offset=0`,
+    )
+    const applicationsPayload = (await readJson(applicationsResponse)) as {
+      items: Array<{ companyName: string; status: string }>
+      total: number
+    }
+    expect(applicationsResponse.status).toBe(200)
+    expect(applicationsPayload.total).toBe(1)
+    expect(applicationsPayload.items[0]).toMatchObject({
+      companyName: 'Astranis Space Technologies',
+      status: 'needs_user_info',
+    })
+
     const root = createHttpValedictorianClient({ baseUrl: server.url })
     const intake = await root.forWorkspace(workspaceA.id).sourcing.rawRecords.ingestBatch({ records: [{
       intakeItemId: 'workspace-a-projection',
@@ -581,40 +595,6 @@ describe('local Valedictorian HTTP server', () => {
     expect(fs.existsSync(path.join(workspaceRoot, '.valedictorian', 'manifest.json'))).toBe(true)
     await expect(registryStore.get()).resolves.toMatchObject({
       lastOpenedWorkspaceId: 'workspace-created',
-    })
-  })
-
-  it('auto-loads registered workspace data for workspace-scoped domain routes', async () => {
-    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-http-load-'))
-    const registryStore = createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json'))
-    const workspaceManager = createLocalWorkspaceManager({
-      createId: () => 'workspace-loaded',
-      now: () => new Date('2026-06-12T13:00:00.000Z'),
-      registryStore,
-      seedDataMode: 'sample',
-    })
-    await workspaceManager.open({ path: workspaceRoot })
-
-    const server = await fixture.start({
-      client: createBoundaryTestClient(() => {}),
-      host: '127.0.0.1',
-      port: 0,
-      workspaceManager,
-    })
-
-    const response = await fetch(
-      `${server.url}/v1/workspaces/workspace-loaded/applications?status=needs_user_info&limit=25&offset=0`,
-    )
-    const payload = (await readJson(response)) as {
-      items: Array<{ companyName: string; status: string }>
-      total: number
-    }
-
-    expect(response.status).toBe(200)
-    expect(payload.total).toBe(1)
-    expect(payload.items[0]).toMatchObject({
-      companyName: 'Astranis Space Technologies',
-      status: 'needs_user_info',
     })
   })
 

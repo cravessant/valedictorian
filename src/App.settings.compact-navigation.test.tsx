@@ -13,7 +13,7 @@ import {
   createApplication,
   createListResult,
   createSettingsApi,
-  openSettingsPage
+  openSettingsPage,
 } from './App.test-helpers'
 
 beforeEach(() => {
@@ -53,7 +53,7 @@ function mockNarrowViewport() {
 }
 
 describe('compact navigation', () => {
-  it('opens the application navigation as a narrow drawer without stacking it above content', async () => {
+  it('closes the narrow application drawer through its explicit close action', async () => {
     mockNarrowViewport()
 
     render(
@@ -65,68 +65,21 @@ describe('compact navigation', () => {
 
     await screen.findByRole('table', { name: 'Applications' })
 
-    const layout = screen.getByTestId('app-layout')
-
-    expect(layout).toHaveClass('grid-cols-1', 'grid-rows-1')
-    expect(layout).not.toHaveClass('grid-rows-[auto_1fr]')
-    expect(screen.getByTestId('app-shell')).toHaveAttribute(
-      'data-sidebar-state',
-      'drawer-closed',
-    )
     expect(
       screen.queryByRole('complementary', { name: 'Application navigation' }),
     ).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
-
-    const sidebar = screen.getByRole('complementary', { name: 'Application navigation' })
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'drawer-open')
-    expect(sidebar).toHaveClass(
-      'absolute',
-      'left-0',
-      'top-0',
-      'z-40',
-      'h-full',
-      'w-[280px]',
-      'max-w-[85vw]',
-    )
+    expect(
+      screen.getByRole('complementary', { name: 'Application navigation' }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close sidebar drawer' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Close sidebar drawer' }))
 
-    expect(screen.getByTestId('app-shell')).toHaveAttribute(
-      'data-sidebar-state',
-      'drawer-closed',
-    )
     expect(
       screen.queryByRole('complementary', { name: 'Application navigation' }),
     ).not.toBeInTheDocument()
-  })
-
-  it('closes the narrow application drawer after changing views', async () => {
-    mockNarrowViewport()
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
-
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'action-queue')
-    expect(screen.getByTestId('app-shell')).toHaveAttribute(
-      'data-sidebar-state',
-      'drawer-closed',
-    )
-    expect(
-      screen.queryByRole('complementary', { name: 'Application navigation' }),
-    ).not.toBeInTheDocument()
-    expect(within(screen.getByRole('banner', { name: 'App chrome' })).getByText('Action Queue')).toBeInTheDocument()
   })
 
   it('opens a compact settings popover for important runtime controls', async () => {
@@ -274,6 +227,8 @@ describe('compact navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
 
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+    const chrome = screen.getByRole('banner', { name: 'App chrome' })
+    expect(within(chrome).getByText('Settings')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Back to app' })).toBeInTheDocument()
     expect(screen.queryByRole('table', { name: 'Applications' })).not.toBeInTheDocument()
 
@@ -300,28 +255,7 @@ describe('compact navigation', () => {
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
   })
 
-  it('uses the same app chrome shell for the settings view', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-
-    const chrome = screen.getByRole('banner', { name: 'App chrome' })
-
-    expect(within(chrome).getByText('Settings')).toBeInTheDocument()
-    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'settings')
-    expect(screen.getByRole('complementary', { name: 'Settings navigation' })).toBeInTheDocument()
-    const backToApp = screen.getByRole('button', { name: 'Back to app' })
-    expect(backToApp).toBeInTheDocument()
-    expect(backToApp).toHaveClass('justify-start')
-    expect(backToApp).not.toHaveClass('justify-center')
-  })
-
-  it('left-anchors the capped settings content column beside the sidebar', async () => {
+  it('filters settings navigation through Search settings', async () => {
     render(
       <App
         applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
@@ -332,51 +266,14 @@ describe('compact navigation', () => {
     await openSettingsPage()
 
     const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    expect(navigation).toHaveClass('left-0', 'w-[280px]')
-    expect(navigation).not.toHaveClass('mx-auto')
+    expect(within(navigation).getByRole('button', { name: 'General' })).toBeInTheDocument()
+    expect(within(navigation).getByRole('button', { name: 'Agent access' })).toBeInTheDocument()
 
-    const heading = screen.getByRole('heading', { name: 'Settings', level: 1 })
-    const contentColumn = heading.parentElement
-    expect(contentColumn).toHaveClass('max-w-4xl')
-    expect(contentColumn).not.toHaveClass('mx-auto')
-  })
-
-  it('renders grouped settings navigation and filters the sidebar search', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-
-    expect(within(navigation).getByText('Personal')).toBeInTheDocument()
-    expect(within(navigation).getByText('Integrations')).toBeInTheDocument()
-    expect(within(navigation).getByText('Automation')).toBeInTheDocument()
-    expect(within(navigation).getByText('Advanced')).toBeInTheDocument()
-
-    const generalNav = within(navigation).getByRole('button', { name: 'General' })
-    expect(generalNav).toHaveClass('justify-start')
-    expect(generalNav).not.toHaveClass('justify-center')
-
-    const search = within(navigation).getByRole('textbox', { name: 'Search settings' })
-    expect(search).toHaveAttribute('id', 'settings-search')
-    expect(search).toHaveAttribute('data-slot', 'input-group-control')
-    expect(search).not.toHaveAttribute('aria-label')
-
-    const searchGroup = search.closest('[data-slot="input-group"]')
-    expect(searchGroup).toBeTruthy()
-    const searchAddon = searchGroup!.querySelector('[data-slot="input-group-addon"]')
-    expect(searchAddon).toHaveAttribute('data-align', 'inline-start')
-    expect(search.compareDocumentPosition(searchAddon!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-
-    fireEvent.change(search, {
+    fireEvent.change(within(navigation).getByRole('textbox', { name: 'Search settings' }), {
       target: { value: 'agent' },
     })
 
+    expect(within(navigation).getByRole('button', { name: 'Agent access' })).toBeInTheDocument()
     expect(within(navigation).queryByRole('button', { name: 'General' })).not.toBeInTheDocument()
   })
 

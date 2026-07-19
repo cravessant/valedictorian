@@ -31,14 +31,14 @@ import type { ConnectorSettingsRun } from './connector-settings.types'
 import type { RawNormalizationRunFilter } from '../modules/sourcing/raw-normalization.types'
 import { ownedLoadFailure, presentLoadFailure, type ErrorPresentation } from '../app/error-presentation'
 
-interface ConnectorRunHistoryItem {
+export interface ConnectorRunHistoryItem {
   connectorId: string
   connectorName: string
   run: ConnectorSettingsRun
 }
 
-const CONNECTOR_RUNS_PAGE_SIZE = 20
-const CONNECTOR_RUNS_MAX_FOCUS_PAGES = 25
+export const CONNECTOR_RUNS_PAGE_SIZE = 20
+export const CONNECTOR_RUNS_MAX_FOCUS_PAGES = 25
 
 async function loadConnectorRunHistoryPage(
   connectorsApi: ConnectorsPreloadApi,
@@ -71,7 +71,7 @@ async function loadConnectorRunHistoryPage(
   }
 }
 
-async function resolveFocusedConnectorRun(
+export async function resolveFocusedConnectorRun(
   connectorsApi: ConnectorsPreloadApi,
   focusedRunId: string,
   initialItems: ConnectorRunHistoryItem[],
@@ -138,8 +138,8 @@ export function ConnectorRunsPanel({
   useEffect(() => {
     const focusedChanged = focusedIdentityRef.current !== focusedRunId
     focusedIdentityRef.current = focusedRunId
-    focusedRunAppliedIdRef.current = null
     if (focusedChanged) {
+      focusedRunAppliedIdRef.current = null
       setItems([])
       itemsRef.current = []
       setLoadFailure(null)

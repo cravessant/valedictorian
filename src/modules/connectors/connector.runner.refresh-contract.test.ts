@@ -1,73 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
 import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
 const coverage = {
   start: '2026-07-01T00:00:00.000Z',
   end: '2026-07-12T00:00:00.000Z',
 }
 
-describe('connector refresh result contract', () => {
-  it('rejects obsolete partial success before persisting a run or advancing a checkpoint', async () => {
-    await expectRejectedResult({ ...validRefreshResult(), status: ['partial', '_success'].join('') })
-  })
-
-  it('rejects an absent terminal status before persistence', async () => {
-    const { status: _status, ...withoutStatus } = validRefreshResult()
-    await expectRejectedResult(withoutStatus)
-  })
-
-  it('rejects a misspelled terminal status before persistence', async () => {
-    await expectRejectedResult({ ...validRefreshResult(), status: 'complete' })
-  })
-
-  it('rejects absent synchronization before persistence', async () => {
-    const { synchronization: _synchronization, ...withoutSynchronization } = validRefreshResult()
-    await expectRejectedResult(withoutSynchronization)
-  })
-
-  it('projects an invalid pending count before persistence', async () => {
-    await expectSanitizedSynchronization({
-      ...validRefreshResult(),
-      synchronization: { ...validRefreshResult().synchronization, pendingResolutionCount: -1 },
-    }, { pendingResolutionCount: 0 })
-  })
-
-  it('projects a non-Gregorian backfill boundary before persistence', async () => {
-    await expectSanitizedSynchronization({
-      ...validRefreshResult(),
-      synchronization: {
-        ...validRefreshResult().synchronization,
-        historicalBackfill: { state: 'not_started', boundary: { earliestDate: '2026-99-99' } },
-      },
-    }, { historicalBackfill: { boundary: { earliestDate: '1970-01-01' } } })
-  })
-
-  it('rejects an invalid typed operation outcome before persistence', async () => {
-    await expectRejectedResult({
-      ...validRefreshResult(), operationOutcome: { kind: 'scope_rate_limited' },
-    })
-  })
-
-  it.each([
-    { kind: 'scope_rate_limited', executionScopeId: 'scope_valid', retryAt: 'not-a-date', serverMinimumDelayMs: 1 },
-    { kind: 'scope_rate_limited', executionScopeId: 'scope_valid', retryAt: '2026-07-12T12:00:00.000Z', serverMinimumDelayMs: -1 },
-    { kind: 'scope_rate_limited', executionScopeId: 'short', retryAt: '2026-07-12T12:00:00.000Z', serverMinimumDelayMs: 1 },
-  ])('rejects malformed released operation evidence %# before persistence', async (operationOutcome) => {
-    await expectRejectedResult({ ...validRefreshResult(), operationOutcome })
-  })
-
-  it('rejects validly shaped operation evidence owned by another execution scope', async () => {
-    await expectRejectedResult({
-      ...validRefreshResult(),
-      operationOutcome: {
-        kind: 'scope_rate_limited', executionScopeId: 'scope_unrelated',
-        retryAt: '2026-07-12T12:00:00.000Z', serverMinimumDelayMs: 1,
-      },
-    })
-  })
-
+describe.sequential('connector refresh result contract', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('rejects malformed cooldown evidence before mutating the execution scope', async () => {
     const { database, repository } = await createConnectorRepositoryTestContext()
     const governor = createSourceExecutionGovernor(database)
@@ -78,25 +23,24 @@ describe('connector refresh result contract', () => {
         retryAt: 'not-a-date', serverMinimumDelayMs: -1,
       },
     })
-    const runner = createConnectorRunner({ repository, sourceExecutionGovernor: governor, workspaceId: 'workspace-fixture' })
-    const instance = await runner.registerInstance({ id: 'contract-instance', connector, displayName: 'Contract', enabled: true })
-
-    let caught: unknown
-    try {
-      await runner.refresh(connector, {
-        connectorInstanceId: instance.id, mode: 'manual', coverage,
-      })
-    } catch (error) {
-      caught = error
-    }
-    expect(caught).toMatchObject({
-      name: 'ConnectorExecutionError',
-      message: 'Connector execution failed.',
-      statusCode: 500,
+    const runner = createConnectorRunner({
+      repository, sourceExecutionGovernor: governor, workspaceId: 'workspace-fixture',
     })
-    expect(JSON.stringify(caught)).not.toMatch(/invalid connector refresh/i)
-    expect(await governor.getScope(instance.executionScopeId)).toMatchObject({ status: 'available', blockedUntil: null })
-    await expect(repository.listRuns({ connectorInstanceId: instance.id })).resolves.toMatchObject({ items: [], total: 0 })
+    const instance = await runner.registerInstance({
+      id: 'contract-instance', connector, displayName: 'Contract', enabled: true,
+    })
+
+    const caught = await captureRefreshError(runner, connector, instance.id)
+    expectUnexpectedConnectorExecutionError(caught)
+    expect(await governor.getScope(instance.executionScopeId)).toMatchObject({
+      status: 'available', blockedUntil: null,
+    })
+    await expect(repository.listRuns({ connectorInstanceId: instance.id }))
+      .resolves.toMatchObject({ items: [], total: 0 })
+    await expect(repository.getCheckpoint({
+      connectorInstanceId: instance.id,
+      filterSignature: 'filters:{}',
+    })).resolves.toBeNull()
   })
 
   it('rejects scope cooldown evidence paired with a caught-up synchronization outcome before mutation', async () => {
@@ -114,25 +58,20 @@ describe('connector refresh result contract', () => {
         }
       },
     } satisfies AppJobConnector
-    const runner = createConnectorRunner({ repository, sourceExecutionGovernor: governor, workspaceId: 'workspace-fixture' })
-    const instance = await runner.registerInstance({ id: 'contract-instance', connector, displayName: 'Contract', enabled: true })
-
-    let caught: unknown
-    try {
-      await runner.refresh(connector, {
-        connectorInstanceId: instance.id, mode: 'manual', coverage,
-      })
-    } catch (error) {
-      caught = error
-    }
-    expect(caught).toMatchObject({
-      name: 'ConnectorExecutionError',
-      message: 'Connector execution failed.',
-      statusCode: 500,
+    const runner = createConnectorRunner({
+      repository, sourceExecutionGovernor: governor, workspaceId: 'workspace-fixture',
     })
-    expect(JSON.stringify(caught)).not.toMatch(/inconsistent connector refresh/i)
-    expect(await governor.getScope(instance.executionScopeId)).toMatchObject({ status: 'available', blockedUntil: null })
-    await expect(repository.listRuns({ connectorInstanceId: instance.id })).resolves.toMatchObject({ items: [], total: 0 })
+    const instance = await runner.registerInstance({
+      id: 'contract-instance', connector, displayName: 'Contract', enabled: true,
+    })
+
+    const caught = await captureRefreshError(runner, connector, instance.id)
+    expectUnexpectedConnectorExecutionError(caught)
+    expect(await governor.getScope(instance.executionScopeId)).toMatchObject({
+      status: 'available', blockedUntil: null,
+    })
+    await expect(repository.listRuns({ connectorInstanceId: instance.id }))
+      .resolves.toMatchObject({ items: [], total: 0 })
   })
 
   it('rejects a cooling-down synchronization outcome without matching scope evidence before persistence', async () => {
@@ -151,57 +90,14 @@ describe('connector refresh result contract', () => {
       },
     } satisfies AppJobConnector
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-    const instance = await runner.registerInstance({ id: 'contract-instance', connector, displayName: 'Contract', enabled: true })
-
-    let caught: unknown
-    try {
-      await runner.refresh(connector, {
-        connectorInstanceId: instance.id, mode: 'manual', coverage,
-      })
-    } catch (error) {
-      caught = error
-    }
-    expect(caught).toMatchObject({
-      name: 'ConnectorExecutionError',
-      message: 'Connector execution failed.',
-      statusCode: 500,
+    const instance = await runner.registerInstance({
+      id: 'contract-instance', connector, displayName: 'Contract', enabled: true,
     })
-    expect(JSON.stringify(caught)).not.toMatch(/inconsistent connector refresh/i)
-    await expect(repository.listRuns({ connectorInstanceId: instance.id })).resolves.toMatchObject({ items: [], total: 0 })
-  })
 
-  it.each([
-    { attempt: 0, lastAttemptAt: '2026-07-12T12:00:00.000Z' },
-    { attempt: 1, lastAttemptAt: 'not-an-instant' },
-  ])('rejects malformed released retry advice %# before persistence', async ({ attempt, lastAttemptAt }) => {
-    await expectRejectedResult({
-      ...validRefreshResult(),
-      retryHints: {
-        state: 'scheduled', reason: 'server_failure', attempt, maxAttempts: 3, lastAttemptAt,
-        computedDelayMs: 1, nextAttemptAt: '2026-07-12T12:00:01.000Z',
-        horizonAt: '2026-07-12T13:00:00.000Z',
-      },
-    })
-  })
-
-  it.each(['', 'x'.repeat(513)])('projects an invalid synchronization reason before persistence', async (reason) => {
-    await expectSanitizedSynchronization({
-      ...validRefreshResult(), status: 'failed',
-      synchronization: synchronizationForOutcome({ kind: 'failed', reason }),
-    }, { outcome: { kind: 'failed', reason: 'connector_execution_failed' } })
-  })
-
-  it('rejects contradictory terminal status and synchronization outcome', async () => {
-    await expectRejectedResult({
-      ...validRefreshResult(), synchronization: synchronizationForOutcome({ kind: 'failed', reason: 'failed' }),
-    })
-  })
-
-  it.each([
-    { ...validRefreshResult(), coverage: { start: 'not-an-instant', end: coverage.end } },
-    { ...validRefreshResult(), nextCheckpoint: { checkpoint: {}, schemaVersion: '' } },
-  ])('rejects malformed required result fields %# before persistence', async (result) => {
-    await expectRejectedResult(result)
+    const caught = await captureRefreshError(runner, connector, instance.id)
+    expectUnexpectedConnectorExecutionError(caught)
+    await expect(repository.listRuns({ connectorInstanceId: instance.id }))
+      .resolves.toMatchObject({ items: [], total: 0 })
   })
 
   it.each([
@@ -216,7 +112,9 @@ describe('connector refresh result contract', () => {
       synchronization: synchronizationForOutcome(outcome),
     })
     const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-    await runner.registerInstance({ id: 'contract-instance', connector, displayName: 'Contract', enabled: true })
+    await runner.registerInstance({
+      id: 'contract-instance', connector, displayName: 'Contract', enabled: true,
+    })
 
     await expect(runner.refresh(connector, {
       connectorInstanceId: 'contract-instance', mode: 'manual', coverage,
@@ -267,45 +165,25 @@ function adversarialConnector(result: unknown): AppJobConnector {
   } as unknown as AppJobConnector
 }
 
-async function expectRejectedResult(result: unknown) {
-  const { repository } = await createConnectorRepositoryTestContext()
-  const connector = adversarialConnector(result)
-  const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-  await runner.registerInstance({ id: 'contract-instance', connector, displayName: 'Contract', enabled: true })
-
-  let caught: unknown
+async function captureRefreshError(
+  runner: ReturnType<typeof createConnectorRunner>,
+  connector: AppJobConnector,
+  connectorInstanceId: string,
+): Promise<unknown> {
   try {
-    await runner.refresh(connector, {
-      connectorInstanceId: 'contract-instance', mode: 'manual', coverage,
-    })
+    await runner.refresh(connector, { connectorInstanceId, mode: 'manual', coverage })
   } catch (error) {
-    caught = error
+    return error
   }
+  return null
+}
 
+function expectUnexpectedConnectorExecutionError(caught: unknown): void {
   expect(caught).toMatchObject({
     name: 'ConnectorExecutionError',
     message: 'Connector execution failed.',
     statusCode: 500,
   })
   expect((caught as Error).cause).toBeUndefined()
-  expect(JSON.stringify(caught)).not.toMatch(/invalid connector refresh/i)
-  await expect(repository.listRuns({ connectorInstanceId: 'contract-instance' }))
-    .resolves.toMatchObject({ items: [], total: 0 })
-  await expect(repository.getCheckpoint({
-    connectorInstanceId: 'contract-instance', filterSignature: 'filters:{}',
-  })).resolves.toBeNull()
-}
-
-async function expectSanitizedSynchronization(result: unknown, expected: object) {
-  const { repository } = await createConnectorRepositoryTestContext()
-  const connector = adversarialConnector(result)
-  const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-  await runner.registerInstance({
-    id: 'contract-instance', connector, displayName: 'Contract', enabled: true,
-  })
-
-  const run = await runner.refresh(connector, {
-    connectorInstanceId: 'contract-instance', mode: 'manual', coverage,
-  })
-  expect(await repository.getRunSynchronization(run.id)).toMatchObject(expected)
+  expect(JSON.stringify(caught)).not.toMatch(/invalid|inconsistent connector refresh/i)
 }

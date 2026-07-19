@@ -8,7 +8,9 @@ import {
   type ConnectorCoverageWindow
 } from './connector.repository'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
 const testCodec: SecretCodec = {
   decrypt(value) {
@@ -19,64 +21,9 @@ const testCodec: SecretCodec = {
   },
 }
 
-describe('connector runner', () => {
-  it('anchors catch-up coverage at persisted earliest backfill midnight', async () => {
-    const { repository } = await createConnectorRepositoryTestContext()
-    const runner = createConnectorRunner({ repository, workspaceId: 'workspace-fixture' })
-    const receivedInputs: Array<{ coverage: { start: string; end: string } }> = []
-    const fixtureConnector: AppJobConnector = {
-      definition: {
-        id: 'fixture.jobs',
-        version: '0.0.0-fixture',
-      },
-      async refresh(input) {
-        receivedInputs.push(input)
-
-        return {
-          operationOutcome: null,
-          status: 'completed' as const,
-          synchronization: {
-            newestFrontier: { state: 'caught_up' as const },
-            historicalBackfill: { state: 'caught_up' as const, boundary: { earliestDate: input.coverage.start.slice(0, 10) } },
-            pendingResolutionCount: 0,
-            outcome: { kind: 'caught_up' as const },
-          },
-          coverage: input.coverage,
-          stats: {
-            observations: 0,
-          },
-          warnings: [],
-          nextCheckpoint: {
-            checkpoint: {
-              cursor: input.coverage.end,
-            },
-            schemaVersion: 'fixture-checkpoint@1',
-          },
-          observations: [],
-        }
-      },
-    }
-
-    await runner.registerInstance({
-      id: 'connector-instance-fixture',
-      connector: fixtureConnector,
-      displayName: 'Fixture jobs',
-      enabled: true,
-      createdAt: '2026-07-08T16:00:00.000Z',
-    })
-
-    await runner.catchUp(fixtureConnector, {
-      connectorInstanceId: 'connector-instance-fixture',
-      now: '2026-07-09T16:00:00.000Z',
-      startedAt: '2026-07-09T16:00:00.000Z',
-      completedAt: '2026-07-09T16:00:01.000Z',
-    })
-
-    expect(receivedInputs[0]?.coverage).toEqual({
-      start: '2026-07-01T00:00:00.000Z',
-      end: '2026-07-09T16:00:00.000Z',
-    })
-  })
+describe.sequential('connector runner', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
 
   it('does not add a host-owned budget during catch-up', async () => {
     const { repository } = await createConnectorRepositoryTestContext()

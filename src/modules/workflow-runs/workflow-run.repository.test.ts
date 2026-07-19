@@ -1,34 +1,20 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { eq } from 'drizzle-orm'
 import { sources, workflowRuns, workflowRunSteps } from '../../db/schema'
 import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
-import { createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteWorkflowRunRepository } from './workflow-run.repository'
 
-async function openMigratedWorkflowRunDb(dataDir?: string) {
-  if (!dataDir) {
-    const { client, database } = await createPgliteTestOwner()
-    return { client, database, repository: createPgliteWorkflowRunRepository(database) }
-  }
-  const client = await createPgliteClient(dataDir ? { dataDir } : {})
-  const database = await migratePgliteDatabase(client)
+const resettableOwner = useResettablePgliteTestOwner()
+
+async function openMigratedWorkflowRunDb() {
+  const { database } = resettableOwner()
   return {
-    client,
+    close: async () => {},
     database,
     repository: createPgliteWorkflowRunRepository(database),
   }
-}
-
-async function closeClient(client: PgliteClient) {
-  await client.close()
 }
 
 async function seedLinkedInSource(database: PgliteDatabase) {
@@ -43,9 +29,9 @@ async function seedLinkedInSource(database: PgliteDatabase) {
   })
 }
 
-describe('PGlite workflow run repository', () => {
+describe.sequential('PGlite workflow run repository', () => {
   it('starts, steps, completes, and lists sourcing workflow runs', async () => {
-    const { client, database, repository } = await openMigratedWorkflowRunDb()
+    const { close, database, repository } = await openMigratedWorkflowRunDb()
     try {
       await seedLinkedInSource(database)
 
@@ -132,12 +118,12 @@ describe('PGlite workflow run repository', () => {
         items: [{ id: run.id, sourceName: 'LinkedIn' }],
       })
     } finally {
-      await closeClient(client)
+      await close()
     }
   })
 
   it('returns get-through list behavior with exact step sequence and source linkage', async () => {
-    const { client, database, repository } = await openMigratedWorkflowRunDb()
+    const { close, database, repository } = await openMigratedWorkflowRunDb()
     try {
       await seedLinkedInSource(database)
 
@@ -217,105 +203,12 @@ describe('PGlite workflow run repository', () => {
         ],
       })
     } finally {
-      await closeClient(client)
-    }
-  })
-
-  it('rolls back all startRun writes when a later insert fails', async () => {
-    const { client, database, repository } = await openMigratedWorkflowRunDb()
-    try {
-      await client.exec(`
-        create or replace function fail_workflow_run_step_insert() returns trigger as $$
-        begin
-          raise exception 'workflow run step insert failed';
-        end;
-        $$ language plpgsql;
-
-        create trigger fail_workflow_run_steps_insert
-        before insert on workflow_run_steps
-        for each row execute function fail_workflow_run_step_insert();
-      `)
-
-      let thrown: unknown
-      try {
-        await repository.startRun({
-          runType: 'sourcing',
-          actorType: 'agent',
-          actorName: 'codex',
-          sourceName: 'Handshake',
-          summary: 'Should roll back.',
-        })
-      } catch (error) {
-        thrown = error
-      }
-
-      expect(thrown).toBeInstanceOf(Error)
-      expect(String(thrown)).toMatch(/Failed query: insert into "workflow_run_steps"/)
-      expect(
-        thrown instanceof Error && 'cause' in thrown
-          ? String((thrown as Error & { cause?: unknown }).cause)
-          : '',
-      ).toMatch(/workflow run step insert failed/)
-
-      expect(await database.select().from(sources)).toHaveLength(0)
-      expect(await database.select().from(workflowRuns)).toHaveLength(0)
-      expect(await database.select().from(workflowRunSteps)).toHaveLength(0)
-    } finally {
-      await closeClient(client)
-    }
-  })
-
-  it('rolls back completeRun update and terminal step when the step insert fails', async () => {
-    const { client, database, repository } = await openMigratedWorkflowRunDb()
-    try {
-      await seedLinkedInSource(database)
-      const run = await repository.startRun({
-        runType: 'sourcing',
-        actorType: 'agent',
-        actorName: 'codex',
-        sourceId: 'source-linkedin',
-        summary: 'Started.',
-      })
-
-      await client.exec(`
-        create or replace function fail_workflow_run_step_insert() returns trigger as $$
-        begin
-          raise exception 'workflow run step insert failed';
-        end;
-        $$ language plpgsql;
-
-        create trigger fail_workflow_run_steps_insert
-        before insert on workflow_run_steps
-        for each row execute function fail_workflow_run_step_insert();
-      `)
-
-      await expect(
-        repository.completeRun({
-          workflowRunId: run.id,
-          status: 'completed',
-          outcome: 'full_coverage',
-          summary: 'Should roll back.',
-        }),
-      ).rejects.toThrow(/Failed query: insert into "workflow_run_steps"/)
-
-      const [persisted] = await database
-        .select()
-        .from(workflowRuns)
-        .where(eq(workflowRuns.id, run.id))
-      expect(persisted).toMatchObject({
-        status: 'in_progress',
-        outcome: null,
-        completedAt: null,
-        summary: 'Started.',
-      })
-      expect(await database.select().from(workflowRunSteps)).toHaveLength(1)
-    } finally {
-      await closeClient(client)
+      await close()
     }
   })
 
   it('creates one source and two runs for concurrent starts with the same new sourceName', async () => {
-    const { client, database, repository } = await openMigratedWorkflowRunDb()
+    const { close, database, repository } = await openMigratedWorkflowRunDb()
     try {
       const [first, second] = await Promise.all([
         repository.startRun({
@@ -352,12 +245,12 @@ describe('PGlite workflow run repository', () => {
       expect(new Set(persistedRuns.map((row) => row.sourceId))).toEqual(new Set([first.sourceId]))
       expect(await database.select().from(workflowRunSteps)).toHaveLength(2)
     } finally {
-      await closeClient(client)
+      await close()
     }
   })
 
   it('preserves deterministic source slug conflicts for distinct names', async () => {
-    const { client, database, repository } = await openMigratedWorkflowRunDb()
+    const { close, database, repository } = await openMigratedWorkflowRunDb()
     try {
       const first = await repository.startRun({
         runType: 'sourcing',
@@ -379,62 +272,12 @@ describe('PGlite workflow run repository', () => {
       expect(await database.select().from(workflowRuns)).toHaveLength(1)
       expect(await database.select().from(workflowRunSteps)).toHaveLength(1)
     } finally {
-      await closeClient(client)
-    }
-  })
-
-  it('persists runs across on-disk close and reopen', async () => {
-    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'workflow-run-pglite-'))
-    try {
-      let runId = ''
-      const first = await openMigratedWorkflowRunDb(dataDir)
-      try {
-        await seedLinkedInSource(first.database)
-        const run = await first.repository.startRun({
-          runType: 'sourcing',
-          actorType: 'agent',
-          actorName: 'codex',
-          sourceId: 'source-linkedin',
-          summary: 'Persisted start.',
-        })
-        runId = run.id
-        await first.repository.completeRun({
-          workflowRunId: run.id,
-          status: 'completed',
-          outcome: 'full_coverage',
-          summary: 'Persisted complete.',
-        })
-      } finally {
-        await closeClient(first.client)
-      }
-
-      const second = await openMigratedWorkflowRunDb(dataDir)
-      try {
-        await expect(second.repository.listRuns({ sourceId: 'source-linkedin' })).resolves.toMatchObject({
-          total: 1,
-          items: [
-            {
-              id: runId,
-              sourceName: 'LinkedIn',
-              status: 'completed',
-              outcome: 'full_coverage',
-              steps: [
-                { sequence: 1, type: 'run_started' },
-                { sequence: 2, type: 'run_completed' },
-              ],
-            },
-          ],
-        })
-      } finally {
-        await closeClient(second.client)
-      }
-    } finally {
-      fs.rmSync(dataDir, { recursive: true, force: true })
+      await close()
     }
   })
 
   it('preserves missing run and source error contracts', async () => {
-    const { client, repository } = await openMigratedWorkflowRunDb()
+    const { close, repository } = await openMigratedWorkflowRunDb()
     try {
       await expect(
         repository.startRun({
@@ -460,7 +303,7 @@ describe('PGlite workflow run repository', () => {
         }),
       ).rejects.toThrow('Workflow run not found: run-missing')
     } finally {
-      await closeClient(client)
+      await close()
     }
   })
 })

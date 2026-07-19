@@ -5,47 +5,89 @@ import {
   render,
   screen,
   waitFor,
-  within
+  within,
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import App from './App'
+import { clearDestructiveToastDedupe } from '@/components/ui/use-toast'
 import {
-  createApplication,
-  createConnectorStatusResult,
-  createConnectorsApiWithJobrightDescriptor as createConnectorsApi,
-  createListResult,
+  createConnectorsApi,
+  createConnectorsApiWithJobrightDescriptor,
   createProfileApi,
-  createSettingsApi,
-  createSourcingResult,
-  lastCreatedConnectorInstanceId,
-  openConnectorDetails,
-  openConnectorEditor,
-  openSettingsPage,
   selectSoftwareEngineeringTaxonomy,
-} from './App.test-helpers'
+  stubCmdkEnvironment,
+} from '../App.test-helpers'
+import type { ConnectorScheduleUiApi } from './connector-schedule.types'
+import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'
+
+const sonnerToast = vi.hoisted(() => {
+  let nextId = 0
+  const toastFn = vi.fn(() => `toast-default-${nextId++}`)
+  return Object.assign(toastFn, {
+    dismiss: vi.fn(),
+    error: vi.fn(() => `toast-error-${nextId++}`),
+    success: vi.fn(() => `toast-success-${nextId++}`),
+    resetIds() {
+      nextId = 0
+    },
+  })
+})
+
+vi.mock('sonner', () => ({
+  Toaster: () => null,
+  toast: sonnerToast,
+}))
 
 beforeEach(() => {
+  stubCmdkEnvironment()
   HTMLElement.prototype.scrollIntoView = vi.fn()
+  clearDestructiveToastDedupe()
+  sonnerToast.resetIds()
+  sonnerToast.mockClear()
+  sonnerToast.error.mockClear()
+  sonnerToast.dismiss.mockClear()
+  sonnerToast.success.mockClear()
 })
 
-afterEach(() => {
-  cleanup()
-  vi.unstubAllGlobals()
-  delete (window as Window & { applications?: unknown }).applications
-  delete (window as Window & { sourcing?: unknown }).sourcing
-  delete (window as Window & { settings?: unknown }).settings
-  delete (window as Window & { profile?: unknown }).profile
-  delete (window as Window & { workspace?: unknown }).workspace
-  delete (window as Window & { valedictorianWindowChrome?: unknown }).valedictorianWindowChrome
-})
+afterEach(cleanup)
 
-async function authenticateJobrightInSettings({
+function createUnavailableScheduleApi(): ConnectorScheduleUiApi {
+  return {
+    getCapabilities: vi.fn(async () => ({
+      connectorScheduling: { available: false as const },
+    })),
+    getSchedule: vi.fn(async () => null),
+    upsertSchedule: vi.fn(async () => {
+      throw new Error('unavailable')
+    }),
+    pauseSchedule: vi.fn(async () => {
+      throw new Error('unavailable')
+    }),
+    resumeSchedule: vi.fn(async () => {
+      throw new Error('unavailable')
+    }),
+    deleteSchedule: vi.fn(async () => {
+      throw new Error('unavailable')
+    }),
+  }
+}
+
+async function openConnectorEditor(displayName = 'Jobright internslist') {
+  fireEvent.click(await screen.findByRole('button', {
+    name: `View ${displayName} details`,
+  }))
+  const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
+  await within(dialog).findByRole('button', { name: 'Cancel editing' })
+  return dialog
+}
+
+async function authenticateJobrightInPanel({
   connectorsApi,
   profileApi,
   email = 'demo@example.com',
   password = ' pass with spaces ',
 }: {
-  connectorsApi: ReturnType<typeof createConnectorsApi>
+  connectorsApi: ReturnType<typeof createConnectorsApiWithJobrightDescriptor>
   profileApi: ReturnType<typeof createProfileApi>
   email?: string
   password?: string
@@ -75,50 +117,11 @@ async function authenticateJobrightInSettings({
   })
 }
 
-describe('Jobright execution', () => {
-  it('runs an authenticated Jobright connector from settings', async () => {
-    const connectorsApi = createConnectorsApi()
-    const profileApi = createProfileApi()
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        connectorsApi={connectorsApi}
-        profileApi={profileApi}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await openSettingsPage()
-
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
-    const instanceId = lastCreatedConnectorInstanceId(connectorsApi)
-
-    await openConnectorDetails()
-    const runButtonBeforeAuth = await screen.findByRole('button', { name: 'Run Jobright now' })
-    expect(runButtonBeforeAuth).toBeDisabled()
-
-    await authenticateJobrightInSettings({ connectorsApi, profileApi })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-
-    await waitFor(() => {
-      expect(connectorsApi.runs.trigger).toHaveBeenCalledWith(expect.objectContaining({
-        connectorInstanceId: instanceId,
-        mode: 'manual',
-      }))
-    })
-    expect(await screen.findByText('Latest synchronization: Caught up')).toBeInTheDocument()
-  })
-
+describe('ConnectorSettingsPanel Jobright execution progress', () => {
   it('shows two persisted non-terminal progress snapshots before terminal connector counts', async () => {
-    const connectorsApi = createConnectorsApi()
+    const connectorsApi = createConnectorsApiWithJobrightDescriptor()
     const profileApi = createProfileApi()
-    const connectorStatusLoader = vi.fn(async () => createConnectorStatusResult([]))
-    const sourcingLoader = vi.fn(async () => createSourcingResult([]))
+    const onRunSettled = vi.fn()
     type ConnectorRun = Awaited<ReturnType<typeof connectorsApi.runs.trigger>>
     let resolveRun: ((run: ConnectorRun) => void) | undefined
     const pendingRun = new Promise<ConnectorRun>((resolve) => {
@@ -232,23 +235,25 @@ describe('Jobright execution', () => {
       })
 
     render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        connectorStatusLoader={connectorStatusLoader}
+      <ConnectorSettingsPanel
         connectorsApi={connectorsApi}
+        connectorScheduleApi={createUnavailableScheduleApi()}
+        onRunSettled={onRunSettled}
         profileApi={profileApi}
-        settingsApi={createSettingsApi()}
-        sourcingLoader={sourcingLoader}
+        workspaceId="workspace-1"
       />,
     )
 
-    await openSettingsPage()
-    const navigation = screen.getByRole('complementary', { name: 'Settings navigation' })
-    fireEvent.click(within(navigation).getByRole('button', { name: 'Connectors' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Add Jobright connector' }))
-    await authenticateJobrightInSettings({ connectorsApi, profileApi })
+    await waitFor(() => expect(connectorsApi.create).toHaveBeenCalled())
+    await authenticateJobrightInPanel({ connectorsApi, profileApi })
 
     fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+    await waitFor(() => {
+      expect(connectorsApi.runs.trigger).toHaveBeenCalledWith(expect.objectContaining({
+        mode: 'manual',
+      }))
+    })
 
     expect(await screen.findByRole('status', { name: 'Jobright internslist run progress' }))
       .toHaveTextContent('Checking newest')
@@ -329,17 +334,56 @@ describe('Jobright execution', () => {
     expect(screen.queryByText('Warnings: 1')).not.toBeInTheDocument()
     expect(screen.queryByText('Failures: 2')).not.toBeInTheDocument()
     expect(screen.queryByText('auth_required')).not.toBeInTheDocument()
-    expect(sourcingLoader).toHaveBeenCalledTimes(0)
-    expect(connectorStatusLoader).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Back to app' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Sourcing' }))
-    await waitFor(() => expect(sourcingLoader).toHaveBeenCalledTimes(1))
-    fireEvent.click(screen.getByRole('button', { name: 'Connectors' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Overview' }))
-    await waitFor(() => expect(connectorStatusLoader).toHaveBeenCalledOnce())
+    expect(onRunSettled).toHaveBeenCalled()
   })
 
+  it('clears optimistic Starting when the public trigger is rejected before persistence', async () => {
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({
+      items: [{
+        id: 'jobright-default',
+        connectorId: 'jobright.resolver',
+        connectorVersion: '0.11.0',
+        displayName: 'Jobright internslist',
+        enabled: true,
+        auth: [{
+          id: 'jobright',
+          mode: 'username_password' as const,
+          label: 'Jobright username and password',
+          configured: true,
+        }],
+        config: {},
+        filters: { country: 'US' },
+        earliestBackfillDate: '2026-07-02',
+        createdAt: '2026-07-09T15:00:00.000Z',
+        updatedAt: '2026-07-09T15:00:00.000Z',
+      }],
+    })
+    vi.mocked(connectorsApi.runs.trigger).mockRejectedValueOnce(
+      new Error('forced rejection'),
+    )
+
+    render(
+      <ConnectorSettingsPanel
+        connectorsApi={connectorsApi}
+        connectorScheduleApi={createUnavailableScheduleApi()}
+        onRunSettled={vi.fn()}
+        profileApi={createProfileApi()}
+        workspaceId="workspace-1"
+      />,
+    )
+
+    await openConnectorEditor()
+    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
+
+    await waitFor(() => {
+      expect(sonnerToast.error).toHaveBeenCalledWith(
+        'Action failed',
+        expect.objectContaining({
+          description: 'Jobright run could not be completed.',
+        }),
+      )
+    })
+    expect(screen.queryByText('Latest synchronization: Starting')).not.toBeInTheDocument()
+  })
 })

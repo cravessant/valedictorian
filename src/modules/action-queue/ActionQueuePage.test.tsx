@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ActionQueueBucket } from 'sparxie'
 
-import { createActionQueueResult } from '../../App.test-helpers'
+import { createActionQueueItem, createActionQueueResult } from '../../App.test-helpers'
 import { ActionQueuePage } from './ActionQueuePage'
 
 afterEach(cleanup)
@@ -118,5 +118,68 @@ describe('ActionQueuePage', () => {
     await user.click(applyNow)
     expect(onActionBucketChange).not.toHaveBeenCalled()
     expect(applyNow).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('pages through action queue results in labeled pagination', async () => {
+    const user = userEvent.setup()
+    const onNextPage = vi.fn()
+    const onPreviousPage = vi.fn()
+    const firstPage = {
+      ...createActionQueueResult([createActionQueueItem()]),
+      total: 80,
+      offset: 0,
+      hasMore: true,
+    }
+    const secondPage = {
+      ...firstPage,
+      offset: 50,
+      hasMore: false,
+    }
+
+    const { rerender } = render(
+      <ActionQueuePage
+        actionBucket={undefined}
+        contentColumnClass=""
+        error={null}
+        isLoading={false}
+        result={firstPage}
+        onActionBucketChange={vi.fn()}
+        onEditApplication={vi.fn()}
+        onOpenApplication={vi.fn()}
+        onPreviousPage={onPreviousPage}
+        onNextPage={onNextPage}
+      />,
+    )
+
+    const pagination = screen.getByRole('navigation', { name: 'Action Queue pagination' })
+    expect(within(pagination).getByRole('button', { name: 'Previous action queue page' })).toBeDisabled()
+    expect(within(pagination).getByRole('button', { name: 'Next action queue page' })).toBeEnabled()
+
+    await user.click(within(pagination).getByRole('button', { name: 'Next action queue page' }))
+    expect(onNextPage).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <ActionQueuePage
+        actionBucket={undefined}
+        contentColumnClass=""
+        error={null}
+        isLoading={false}
+        result={secondPage}
+        onActionBucketChange={vi.fn()}
+        onEditApplication={vi.fn()}
+        onOpenApplication={vi.fn()}
+        onPreviousPage={onPreviousPage}
+        onNextPage={onNextPage}
+      />,
+    )
+
+    const paginationAfterNext = screen.getByRole('navigation', { name: 'Action Queue pagination' })
+    expect(within(paginationAfterNext).getByRole('button', { name: 'Previous action queue page' })).toBeEnabled()
+    expect(within(paginationAfterNext).getByRole('button', { name: 'Next action queue page' })).toBeDisabled()
+
+    await user.click(
+      within(paginationAfterNext).getByRole('button', { name: 'Previous action queue page' }),
+    )
+    expect(onPreviousPage).toHaveBeenCalledTimes(1)
   })
 })

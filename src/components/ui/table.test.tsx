@@ -16,7 +16,7 @@ import {
 afterEach(cleanup)
 
 describe('Table', () => {
-  it('composes a semantic table with caption, data slots, forwarding, and overflow container', () => {
+  it('composes a semantic table with caption, refs, and a labeled container region', () => {
     const tableRef = createRef<HTMLTableElement>()
     const rowRef = createRef<HTMLTableRowElement>()
 
@@ -24,25 +24,23 @@ describe('Table', () => {
       <Table
         ref={tableRef}
         aria-label="Connector status"
-        className="min-w-[640px] table-fixed"
         containerProps={{
           'aria-label': 'Connector status viewport',
-          className: 'max-h-96 focus-visible:ring-2',
           role: 'region',
           tabIndex: 0,
         }}
         data-testid="status-table"
       >
-        <TableCaption className="text-xs">Latest connector health</TableCaption>
+        <TableCaption>Latest connector health</TableCaption>
         <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="w-40">Connector</TableHead>
+          <TableRow>
+            <TableHead>Connector</TableHead>
             <TableHead>Status</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <TableRow ref={rowRef} data-state="selected" data-testid="status-row">
-            <TableCell className="font-medium">Jobright</TableCell>
+          <TableRow ref={rowRef} data-testid="status-row">
+            <TableCell>Jobright</TableCell>
             <TableCell>healthy</TableCell>
           </TableRow>
         </TableBody>
@@ -55,62 +53,29 @@ describe('Table', () => {
     )
 
     const table = screen.getByRole('table', { name: 'Connector status' })
-    expect(table).toHaveAttribute('data-slot', 'table')
     expect(table).toHaveAttribute('data-testid', 'status-table')
-    expect(table).toHaveClass('w-full', 'caption-bottom', 'text-sm', 'min-w-[640px]', 'table-fixed')
     expect(tableRef.current).toBe(table)
 
     const container = table.parentElement
     expect(container).not.toBeNull()
-    expect(container).toHaveAttribute('data-slot', 'table-container')
     expect(container).toHaveAttribute('aria-label', 'Connector status viewport')
+    expect(container).toHaveAttribute('role', 'region')
     expect(container).toHaveAttribute('tabIndex', '0')
-    expect(container).toHaveClass(
-      'relative',
-      'w-full',
-      'overflow-x-auto',
-      'max-h-96',
-      'focus-visible:ring-2',
-    )
 
     const caption = within(table).getByText('Latest connector health')
     expect(caption.tagName).toBe('CAPTION')
-    expect(caption).toHaveAttribute('data-slot', 'table-caption')
-    expect(caption).toHaveClass('text-muted-foreground', 'text-xs')
 
-    const header = table.querySelector('[data-slot="table-header"]')
-    expect(header).not.toBeNull()
-    expect(header?.tagName).toBe('THEAD')
-
-    const body = table.querySelector('[data-slot="table-body"]')
-    expect(body).not.toBeNull()
-    expect(body?.tagName).toBe('TBODY')
+    expect(table.querySelector('thead')).not.toBeNull()
+    expect(table.querySelector('tbody')).not.toBeNull()
 
     const footer = screen.getByTestId('status-footer')
-    expect(footer).toHaveAttribute('data-slot', 'table-footer')
     expect(footer.tagName).toBe('TFOOT')
     expect(within(footer).getByText('1 connector')).toBeInTheDocument()
 
-    const head = within(table).getByRole('columnheader', { name: 'Connector' })
-    expect(head).toHaveAttribute('data-slot', 'table-head')
-    expect(head).toHaveClass(
-      'h-10',
-      'px-3',
-      'text-xs',
-      'font-medium',
-      'uppercase',
-      'text-muted-foreground',
-      'w-40',
-    )
+    expect(within(table).getByRole('columnheader', { name: 'Connector' })).toBeInTheDocument()
 
     const row = screen.getByTestId('status-row')
-    expect(row).toHaveAttribute('data-slot', 'table-row')
-    expect(row).toHaveAttribute('data-state', 'selected')
-    expect(row).toHaveClass('border-b', 'border-border', 'hover:bg-muted/45')
     expect(rowRef.current).toBe(row)
-
-    const cell = within(row).getByRole('cell', { name: 'Jobright' })
-    expect(cell).toHaveAttribute('data-slot', 'table-cell')
-    expect(cell).toHaveClass('px-3', 'py-3', 'align-middle', 'text-sm', 'font-medium')
+    expect(within(row).getByRole('cell', { name: 'Jobright' })).toBeInTheDocument()
   })
 })

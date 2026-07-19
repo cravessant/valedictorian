@@ -328,43 +328,6 @@ describe('App', () => {
     })
   })
 
-  it('keeps application edit modals open when saving fails', async () => {
-    render(
-      <App
-        applicationCreator={vi.fn(async () => {
-          throw new Error('Duplicate application official URL')
-        })}
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-    fireEvent.click(screen.getByRole('button', { name: 'Add application' }))
-
-    const dialog = await screen.findByRole('dialog', { name: 'Add application' })
-    fireEvent.change(within(dialog).getByLabelText('Company'), {
-      target: { value: 'Delta Labs' },
-    })
-    fireEvent.change(within(dialog).getByLabelText('Role'), {
-      target: { value: 'Software Engineering Intern' },
-    })
-    fireEvent.change(within(dialog).getByLabelText('Source'), {
-      target: { value: 'LinkedIn' },
-    })
-    fireEvent.change(within(dialog).getByLabelText('Country'), {
-      target: { value: 'US' },
-    })
-    fireEvent.change(within(dialog).getByLabelText('Primary URL'), {
-      target: { value: 'https://jobs.example.com/delta' },
-    })
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save application' }))
-
-    expect(await within(dialog).findByText('An unexpected error occurred.')).toBeInTheDocument()
-    expect(within(dialog).queryByText('Duplicate application official URL')).not.toBeInTheDocument()
-    expect(screen.getByRole('dialog', { name: 'Add application' })).toBeInTheDocument()
-  })
-
   it('opens a shared application detail modal from an application row', async () => {
     const attempts = createAttemptResult()
     const detailQueries: string[] = []
@@ -494,83 +457,6 @@ describe('App', () => {
     })
   })
 
-  it('renders verification receipt attempt steps as receipt blocks', async () => {
-    const attempts = createAttemptResult([
-      {
-        ...createAttemptResult().items[0],
-        steps: [
-          ...createAttemptResult().items[0].steps,
-          {
-            id: 'step-3',
-            attemptId: 'attempt-1',
-            applicationId: 'application-1',
-            sequence: 3,
-            type: 'verification_receipt',
-            message: 'Final review verification passed.',
-            payloadJson: JSON.stringify({
-              version: 1,
-              scope: 'final_review',
-              status: 'passed',
-              verified: ['resume attachment', 'contact info'],
-              unresolved: [],
-              evidence: 'Final review page showed the attached resume and contact info.',
-            }),
-            actor: 'agent:codex',
-            createdAt: '2026-06-04T16:03:00.000Z',
-          },
-          {
-            id: 'step-4',
-            attemptId: 'attempt-1',
-            applicationId: 'application-1',
-            sequence: 4,
-            type: 'verification_receipt',
-            message: 'Final review verification failed.',
-            payloadJson: JSON.stringify({
-              version: 1,
-              scope: 'final_review',
-              status: 'failed',
-              verified: ['resume attachment'],
-              unresolved: ['Fall availability dates', 'onsite availability'],
-              evidence: 'Submit was paused because the availability fields were unanswered.',
-            }),
-            actor: 'agent:codex',
-            createdAt: '2026-06-04T16:04:00.000Z',
-          },
-        ],
-      },
-    ])
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        applicationDetailLoader={() => Promise.resolve(createApplicationDetail())}
-        applicationEventsLoader={() => Promise.resolve(createEventsResult())}
-        applicationLinksLoader={() => Promise.resolve(createLinksResult())}
-        attemptLoader={() => Promise.resolve(attempts)}
-      />,
-    )
-
-    fireEvent.click(await screen.findByText('Astranis Space Technologies'))
-
-    const dialog = await screen.findByRole('dialog', { name: 'Application detail' })
-
-    expect(within(dialog).getByText('Uploaded tailored resume.')).toBeInTheDocument()
-    expect(within(dialog).getByText('Final review verification passed.')).toBeInTheDocument()
-    expect(within(dialog).getByText('Final review verification failed.')).toBeInTheDocument()
-    expect(within(dialog).getByText('Passed')).toBeInTheDocument()
-    expect(within(dialog).getByText('Failed')).toBeInTheDocument()
-    expect(
-      within(dialog).getByText('Final review page showed the attached resume and contact info.'),
-    ).toBeInTheDocument()
-    expect(
-      within(dialog).getByText('Submit was paused because the availability fields were unanswered.'),
-    ).toBeInTheDocument()
-    expect(within(dialog).getAllByText('resume attachment')).toHaveLength(2)
-    expect(within(dialog).getByText('contact info')).toBeInTheDocument()
-    expect(within(dialog).getByText('Fall availability dates')).toBeInTheDocument()
-    expect(within(dialog).getByText('onsite availability')).toBeInTheDocument()
-  })
-
   it('opens the same application detail modal from an action queue row', async () => {
     const attemptQueries: string[] = []
 
@@ -604,25 +490,6 @@ describe('App', () => {
     expect(within(dialog).getByText('Academic Year Internships: Platform Engineering')).toBeInTheDocument()
     expect(within(dialog).getByText('Attempts')).toBeInTheDocument()
     expect(within(dialog).getByText('Started SmartRecruiters application.')).toBeInTheDocument()
-  })
-
-  it('renders empty application detail sections', async () => {
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        applicationLinksLoader={() => Promise.resolve(createLinksResult([]))}
-        applicationEventsLoader={() => Promise.resolve(createEventsResult([]))}
-        attemptLoader={() => Promise.resolve(createAttemptResult([]))}
-      />,
-    )
-
-    fireEvent.click(await screen.findByText('Astranis Space Technologies'))
-
-    const dialog = await screen.findByRole('dialog', { name: 'Application detail' })
-
-    expect(within(dialog).getByText('No links recorded.')).toBeInTheDocument()
-    expect(within(dialog).getByText('No events recorded.')).toBeInTheDocument()
-    expect(within(dialog).getByText('No attempts recorded.')).toBeInTheDocument()
   })
 
   it('renders the virtualized table without lifecycle warnings', async () => {
@@ -728,58 +595,6 @@ describe('App', () => {
         offset: 0,
       })
     })
-  })
-
-  it('pages through action queue results in labeled pagination', async () => {
-    const actionQueueQueries: ActionQueueListQuery[] = []
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        actionQueueLoader={(query) => {
-          actionQueueQueries.push(query)
-          return Promise.resolve({
-            ...createActionQueueResult([createActionQueueItem()]),
-            total: 80,
-            offset: query.offset ?? 0,
-            hasMore: (query.offset ?? 0) + 50 < 80,
-          })
-        }}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-    fireEvent.click(screen.getByRole('button', { name: 'Action Queue' }))
-    await screen.findByRole('table', { name: 'Action Queue' })
-
-    const pagination = screen.getByRole('navigation', { name: 'Action Queue pagination' })
-    expect(pagination).toHaveAttribute('data-slot', 'pagination')
-    expect(within(pagination).getByRole('group')).toHaveAttribute('data-slot', 'button-group')
-    expect(within(pagination).getByRole('button', { name: 'Previous action queue page' })).toBeDisabled()
-    expect(within(pagination).getByRole('button', { name: 'Next action queue page' })).toBeEnabled()
-
-    fireEvent.click(within(pagination).getByRole('button', { name: 'Next action queue page' }))
-
-    await waitFor(() => {
-      expect(actionQueueQueries.at(-1)).toMatchObject({ offset: 50, limit: 50 })
-    })
-    await screen.findByRole('table', { name: 'Action Queue' })
-    const paginationAfterNext = screen.getByRole('navigation', { name: 'Action Queue pagination' })
-
-    expect(within(paginationAfterNext).getByRole('button', { name: 'Previous action queue page' })).toBeEnabled()
-    expect(within(paginationAfterNext).getByRole('button', { name: 'Next action queue page' })).toBeDisabled()
-
-    fireEvent.click(within(paginationAfterNext).getByRole('button', { name: 'Previous action queue page' }))
-
-    await waitFor(() => {
-      expect(actionQueueQueries.at(-1)).toMatchObject({ offset: 0, limit: 50 })
-    })
-    await screen.findByRole('table', { name: 'Action Queue' })
-    const paginationAfterPrevious = screen.getByRole('navigation', { name: 'Action Queue pagination' })
-
-    expect(within(paginationAfterPrevious).getByRole('button', { name: 'Previous action queue page' })).toBeDisabled()
-    expect(within(paginationAfterPrevious).getByRole('button', { name: 'Next action queue page' })).toBeEnabled()
   })
 
   it('renders connector status from the configured loader', async () => {

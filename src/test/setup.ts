@@ -1,4 +1,7 @@
-import '@testing-library/jest-dom/vitest'
-import { configure } from '@testing-library/react'
+if (typeof document !== 'undefined') {
+  await import('@testing-library/jest-dom/vitest')
+  const { configure } = await import('@testing-library/react')
+  configure({ asyncUtilTimeout: process.env.CI ? 15_000 : 1_000 })
+}
 
-configure({ asyncUtilTimeout: process.env.CI ? 15_000 : 1_000 })
+export {}

@@ -1,9 +1,9 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defaultPolicyConfig, type PolicyConfig } from 'sparxie'
 import { clearDestructiveToastDedupe } from '@/components/ui/use-toast'
 import { PolicySettingsPanel } from './PolicySettingsPanel'
 import { createPolicyApi } from '../App.test-helpers'
-import type { PolicyConfig } from 'sparxie'
 
 const sonnerToast = vi.hoisted(() => {
   let nextId = 0
@@ -78,5 +78,115 @@ describe('PolicySettingsPanel mutation target ownership', () => {
     expect(sonnerToast.success).not.toHaveBeenCalled()
     expect(screen.queryByDisplayValue('99')).not.toBeInTheDocument()
     expect(newApi.config.update).not.toHaveBeenCalled()
+  })
+
+  it('resets policy defaults only after alert confirmation and clears pending section saves', async () => {
+    const policyApi = createPolicyApi()
+    const initial = await policyApi.config.get()
+    vi.mocked(policyApi.config.get).mockResolvedValue({
+      ...initial,
+      scoring: { ...initial.scoring, applyCutoff: 5 },
+    })
+
+    render(<PolicySettingsPanel policyApi={policyApi} />)
+    expect(await screen.findByRole('button', { name: 'Save Action Queue decisions' }))
+      .toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Apply cutoff'), { target: { value: '9' } })
+    expect(screen.getByLabelText('Apply cutoff')).toHaveValue(9)
+    expect(screen.getByRole('button', { name: 'Save Action Queue decisions' })).toBeEnabled()
+    expect(policyApi.config.update).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset policy' }))
+    const cancelDialog = await screen.findByRole('alertdialog', { name: 'Reset policy?' })
+    expect(policyApi.config.reset).not.toHaveBeenCalled()
+    expect(cancelDialog).toHaveAccessibleDescription(
+      'This restores default policy buckets, gates, and sourcing windows.',
+    )
+    fireEvent.click(within(cancelDialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog', { name: 'Reset policy?' })).not.toBeInTheDocument()
+    })
+    expect(policyApi.config.reset).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Apply cutoff')).toHaveValue(9)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset policy' }))
+    const confirmDialog = await screen.findByRole('alertdialog', { name: 'Reset policy?' })
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Reset policy' }))
+
+    await waitFor(() => {
+      expect(policyApi.config.reset).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.getByLabelText('Apply cutoff')).toHaveValue(defaultPolicyConfig.scoring.applyCutoff)
+    expect(screen.getByRole('button', { name: 'Save Action Queue decisions' })).toBeDisabled()
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog', { name: 'Reset policy?' })).not.toBeInTheDocument()
+    })
+    expect(sonnerToast.success).toHaveBeenCalledWith('Policy reset.', expect.anything())
+  })
+
+  it('keeps the policy reset alert open with an error and disables confirm while pending', async () => {
+    const policyApi = createPolicyApi()
+    let rejectReset: ((reason?: unknown) => void) | undefined
+    policyApi.config.reset = vi.fn(
+      () =>
+        new Promise((_, reject) => {
+          rejectReset = reject
+        }),
+    )
+
+    render(<PolicySettingsPanel policyApi={policyApi} />)
+    expect(await screen.findByRole('button', { name: 'Reset policy' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset policy' }))
+    const dialog = await screen.findByRole('alertdialog', { name: 'Reset policy?' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reset policy' }))
+
+    await waitFor(() => {
+      expect(policyApi.config.reset).toHaveBeenCalledTimes(1)
+    })
+    expect(within(dialog).getByRole('button', { name: 'Resetting...' })).toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+
+    rejectReset?.(new Error('Policy store unavailable.'))
+
+    const alert = await within(dialog).findByRole('alert')
+    expect(alert).toHaveAttribute('data-slot', 'form-failure')
+    expect(alert).toHaveTextContent('An unexpected error occurred.')
+    expect(document.activeElement).toBe(alert)
+    expect(within(dialog).queryByText('Policy store unavailable.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Policy update failed')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Reset policy' })).toBeEnabled()
+    expect(screen.getByRole('alertdialog', { name: 'Reset policy?' })).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-slot="form-failure"]')).toHaveLength(1)
+    expect(sonnerToast.error).not.toHaveBeenCalled()
+    expect(sonnerToast.success).not.toHaveBeenCalled()
+  })
+
+  it('owns policy save failures with one form surface and never duplicates a toast', async () => {
+    const policyApi = createPolicyApi()
+    policyApi.config.update = vi.fn(async () => {
+      throw new Error('ENOENT /var/policy.json stack')
+    })
+
+    render(<PolicySettingsPanel policyApi={policyApi} />)
+    expect(await screen.findByRole('button', { name: 'Save Action Queue decisions' }))
+      .toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Apply cutoff'), { target: { value: '7' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Action Queue decisions' }))
+
+    await waitFor(() => {
+      expect(policyApi.config.update).toHaveBeenCalled()
+    })
+
+    const formFailure = await screen.findByRole('alert')
+    expect(formFailure).toHaveAttribute('data-slot', 'form-failure')
+    expect(formFailure).toHaveTextContent('An unexpected error occurred.')
+    expect(screen.queryByText('ENOENT /var/policy.json stack')).not.toBeInTheDocument()
+    expect(screen.queryByText('Policy update failed')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Apply cutoff')).toHaveValue(7)
+    expect(document.querySelectorAll('[data-slot="form-failure"]')).toHaveLength(1)
+    expect(sonnerToast.error).not.toHaveBeenCalled()
   })
 })

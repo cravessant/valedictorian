@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import { createPgliteClient, migratePgliteDatabase } from './pglite'
 
 /**
@@ -14,10 +15,14 @@ export const temporaryLifecycleParityShapes = [
   'retry_work collapsed scheduled-work identity uniqueness for connector_capture and normalization kinds',
 ] as const
 
+const resettableOwner = useResettablePgliteTestOwner()
+
 async function migratedClient() {
-  const client = await createPgliteClient()
-  await migratePgliteDatabase(client)
-  return client
+  const client = resettableOwner().client
+  return {
+    close: async () => {},
+    query: client.query.bind(client),
+  } as unknown as Awaited<ReturnType<typeof createPgliteClient>>
 }
 
 async function publicTables(client: Awaited<ReturnType<typeof createPgliteClient>>) {
@@ -27,7 +32,7 @@ async function publicTables(client: Awaited<ReturnType<typeof createPgliteClient
   return result.rows.map((row) => row.tablename)
 }
 
-describe('PGlite operational baseline', () => {
+describe.sequential('PGlite operational baseline', () => {
   it('applies the one PostgreSQL baseline to a fresh database', async () => {
     const client = await createPgliteClient()
     try {

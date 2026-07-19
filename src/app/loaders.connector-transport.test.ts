@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { RendererBackendState } from '../ipc/valedictorian-http.preload'
 import { JOBRIGHT_CONNECTOR_VERSION } from '../modules/connectors/jobright.constants'
 import {
-  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  createTestLocalValedictorianClient as createFreshLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
+  useResettablePgliteTestLocalValedictorianClient,
 } from '../runtime/local-valedictorian-client.test-harness'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from '../server/local-server'
 import { createTempDatabasePath } from '../server/local-server.http-test-harness'
@@ -16,7 +17,9 @@ afterEach(async () => {
   await Promise.all([...activeServers].map((server) => server.close()))
   activeServers.clear()
 })
-describe('renderer connector transport', () => {
+const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()
+
+describe.sequential('renderer connector transport', () => {
   it('reuses the renderer across an unreachable origin and recovery on a new endpoint', async () => {
     const client = await createConnectorClient()
     const first = await start(client)
@@ -74,10 +77,10 @@ describe('renderer connector transport', () => {
 
   it('atomically admits one of two concurrent same-id creates without losing the winner', async () => {
     const pgliteDataPath = createTempDatabasePath()
-    const firstClient = await createLocalValedictorianClient({ pgliteDataPath })
+    const firstClient = await createFreshLocalValedictorianClient({ pgliteDataPath })
     const clients = [
       firstClient,
-      await createLocalValedictorianClient({
+      await createFreshLocalValedictorianClient({
         database: getTestLocalValedictorianDatabase(firstClient),
         pgliteDataPath,
       }),
@@ -135,7 +138,5 @@ function jobrightCreateInput() {
   }
 }
 async function createConnectorClient() {
-  return await createLocalValedictorianClient({
-    pgliteDataPath: createTempDatabasePath(),
-  })
+  return await createLocalValedictorianClient()
 }

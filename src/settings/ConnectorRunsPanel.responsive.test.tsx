@@ -121,6 +121,59 @@ describe('connector status and run responsive inspectability', () => {
     })
   })
 
+  it('sanitizes authentication-expired run history and shows released credential retry guidance', async () => {
+    const connectorsApi = createConnectorsApi()
+    await connectorsApi.create({
+      id: 'jobright-auth-expired',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.11.0',
+      displayName: 'Jobright public jobs',
+      enabled: true,
+      auth: [],
+      config: {},
+      filters: {},
+    })
+    const run = runFixture({
+      id: 'connector-run-auth-expired',
+      connectorInstanceId: 'jobright-auth-expired',
+      status: 'failed',
+      warningCount: 1,
+      warnings: [{
+        code: 'auth.required',
+        label: 'sensitive raw warning label',
+        message: 'sensitive session handle from run history',
+        severity: 'blocked',
+      }],
+      newestFrontier: { state: 'not_started' },
+      outcome: {
+        kind: 'action_required',
+        operation: {
+          kind: 'authentication_expired',
+          executionScopeId: 'scope_fixture_responsive',
+          requestRefresh: true,
+        },
+      },
+    })
+    vi.mocked(connectorsApi.runs.list).mockResolvedValue({
+      items: [run],
+      total: 1,
+      limit: 20,
+      offset: 0,
+      hasMore: false,
+    })
+
+    render(<ConnectorRunsPanel connectorsApi={connectorsApi} />)
+
+    const article = await screen.findByRole('article')
+    expect(within(article).getByText(
+      'Update and validate Jobright credentials, then run again.',
+    )).toBeInTheDocument()
+    expect(screen.queryByText('sensitive raw warning label')).not.toBeInTheDocument()
+    expect(screen.queryByText(/sensitive session handle/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Connector synchronization state' }))
+      .toHaveTextContent('Authentication required')
+  })
+
   it('contains synchronization and lifecycle copy with overflow-safe wrapping', () => {
     render(
       <>

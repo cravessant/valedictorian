@@ -16,9 +16,13 @@ import {
   migratePgliteDatabase,
 } from '../../db/pglite'
 import { createPgliteConnectorRepository } from './connector.repository'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
-describe('PGlite connector repository bounded history', () => {
+describe.sequential('PGlite connector repository bounded history', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('keeps latest selection and a filtered one-row page bounded across legacy history', async () => {
     const { client } = await createConnectorRepositoryTestContext()
     const queries: string[] = []

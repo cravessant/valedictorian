@@ -14,13 +14,28 @@ import {
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import {
-  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
+  createTestLocalValedictorianClient as createFreshRuntimeLocalValedictorianClient,
   createTestPgliteDatabase,
   getTestLocalValedictorianDatabase,
+  useResettablePgliteTestLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
 
-async function createLocalValedictorianClient(options: Parameters<typeof createRuntimeLocalValedictorianClient>[0]) {
+const createRuntimeLocalValedictorianClient
+  = useResettablePgliteTestLocalValedictorianClient()
+
+async function createLocalValedictorianClient(
+  options: Parameters<typeof createRuntimeLocalValedictorianClient>[0] = {},
+) {
   return await createRuntimeLocalValedictorianClient({
+    seedDataMode: 'sample',
+    ...options,
+  })
+}
+
+async function createFreshLocalValedictorianClient(
+  options: Parameters<typeof createFreshRuntimeLocalValedictorianClient>[0],
+) {
+  return await createFreshRuntimeLocalValedictorianClient({
     seedDataMode: 'sample',
     ...options,
   })
@@ -31,7 +46,7 @@ function createTempDatabasePath() {
 }
 
 
-describe('runtime local Valedictorian client', () => {
+describe.sequential('runtime local Valedictorian client', () => {
   const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
 
   beforeEach(() => {
@@ -50,13 +65,11 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('starts with an empty application list by default', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const client = await createRuntimeLocalValedictorianClient({ pgliteDataPath })
+    const client = await createRuntimeLocalValedictorianClient()
 
     await expect(client.applications.list()).resolves.toMatchObject({
       items: [],
-      total: 0,
-    })
+      total: 0})
 
     const migrationRows = (await getTestLocalValedictorianDatabase(client).execute(sql`
       select table_name from information_schema.tables where table_name = 'applications'
@@ -67,60 +80,51 @@ describe('runtime local Valedictorian client', () => {
 
   it('requires an explicit path for reference tracker seeding', async () => {
     await expect(createRuntimeLocalValedictorianClient({
-        seedDataMode: 'reference-tracker',
-        pgliteDataPath: createTempDatabasePath(),
-      })).rejects.toThrow('VALEDICTORIAN_REFERENCE_TRACKER_PATH')
+        seedDataMode: 'reference-tracker'})).rejects.toThrow('VALEDICTORIAN_REFERENCE_TRACKER_PATH')
   })
 
   it('lists seeded applications with query filters and pagination', async () => {
-    const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
+    const client = await createLocalValedictorianClient()
 
     await expect(
       client.applications.list({
         limit: 1,
         minScore: 6,
-        status: 'needs_user_info',
-      }),
+        status: 'needs_user_info'}),
     ).resolves.toMatchObject({
       hasMore: false,
       items: [
         {
           companyName: 'Astranis Space Technologies',
           currentPriorityScore: 8,
-          status: 'needs_user_info',
-        },
+          status: 'needs_user_info'},
       ],
       limit: 1,
       offset: 0,
-      total: 1,
-    })
+      total: 1})
   })
 
   it('gets and updates application status through the local client', async () => {
-    const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
+    const client = await createLocalValedictorianClient()
 
     await expect(client.applications.get('application-astranis-backend')).resolves.toMatchObject({
       companyName: 'Astranis Space Technologies',
       primaryLink: {
-        label: 'official',
-      },
-    })
+        label: 'official'}})
 
     await expect(
       client.applications.updateStatus({
         applicationId: 'application-versant-platform',
         notes: 'Submitted from the local runtime client.',
-        status: 'submitted',
-      }),
+        status: 'submitted'}),
     ).resolves.toMatchObject({
       id: 'application-versant-platform',
       notes: 'Submitted from the local runtime client.',
-      status: 'submitted',
-    })
+      status: 'submitted'})
   })
 
   it('starts and lists application attempts through the local client', async () => {
-    const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
+    const client = await createLocalValedictorianClient()
 
     const attempt = await (client.applications as typeof client.applications & {
       attempts: {
@@ -138,13 +142,11 @@ describe('runtime local Valedictorian client', () => {
       applicationId: 'application-versant-platform',
       actorType: 'agent',
       actorName: 'codex',
-      summary: 'Started from local client.',
-    })
+      summary: 'Started from local client.'})
 
     expect(attempt).toMatchObject({
       status: 'in_progress',
-      steps: [{ type: 'attempt_started' }],
-    })
+      steps: [{ type: 'attempt_started' }]})
     await expect(
       (client.applications as typeof client.applications & {
         attempts: {
@@ -155,13 +157,11 @@ describe('runtime local Valedictorian client', () => {
       }).attempts.list({ applicationId: 'application-versant-platform' }),
     ).resolves.toMatchObject({
       total: 1,
-      items: [{ id: attempt.id }],
-    })
+      items: [{ id: attempt.id }]})
   })
 
   it('records scores and updates the current application score', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const client = await createLocalValedictorianClient({ pgliteDataPath })
+    const client = await createLocalValedictorianClient()
 
     await expect(client.scores.record({
       applicationId: 'application-jobster-analytics',
@@ -173,8 +173,7 @@ describe('runtime local Valedictorian client', () => {
       rationale: 'Now looks relevant after a closer review.',
       roleRelevance: 3,
       rubricVersion: 'test-rubric',
-      score: 7,
-    })).resolves.toMatchObject({
+      score: 7})).resolves.toMatchObject({
       applicationId: 'application-jobster-analytics',
       band: 'high',
       careerSignal: 2,
@@ -186,20 +185,18 @@ describe('runtime local Valedictorian client', () => {
       rubricVersion: 'test-rubric',
       score: 7,
       id: expect.any(String) as string,
-      createdAt: expect.any(String) as string,
-    })
+      createdAt: expect.any(String) as string})
 
     await expect(client.applications.get('application-jobster-analytics')).resolves.toMatchObject({
       currentPriorityBand: 'high',
-      currentPriorityScore: 7,
-    })
+      currentPriorityScore: 7})
 
     expect(await getTestLocalValedictorianDatabase(client)
       .select().from(applicationScores)).toHaveLength(4)
   })
 
   it('persists profile data and returns non-secret agent context', async () => {
-    const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
+    const client = await createLocalValedictorianClient()
 
     await client.profile.update({
       answers: [
@@ -208,19 +205,16 @@ describe('runtime local Valedictorian client', () => {
           includeInAgentContext: true,
           key: 'how_heard',
           label: 'How I heard about the role',
-          questionPattern: 'How did you hear about us?',
-        },
+          questionPattern: 'How did you hear about us?'},
         {
           answer: 'Private value.',
           includeInAgentContext: false,
           key: 'private',
           label: 'Private',
-          questionPattern: 'Sensitive question',
-        },
+          questionPattern: 'Sensitive question'},
       ],
       email: 'kenny@example.com',
-      fullName: 'Kenny Lin',
-    })
+      fullName: 'Kenny Lin'})
 
     await expect(client.profile.get()).resolves.toMatchObject({
       answers: [
@@ -228,8 +222,7 @@ describe('runtime local Valedictorian client', () => {
         expect.objectContaining({ key: 'private' }),
       ],
       email: 'kenny@example.com',
-      fullName: 'Kenny Lin',
-    })
+      fullName: 'Kenny Lin'})
     await expect(client.profile.agentContext.get()).resolves.toEqual({
       answers: [
         {
@@ -238,27 +231,23 @@ describe('runtime local Valedictorian client', () => {
           includeInAgentContext: true,
           key: 'how_heard',
           label: 'How I heard about the role',
-          questionPattern: 'How did you hear about us?',
-        },
+          questionPattern: 'How did you hear about us?'},
       ],
       basics: {
         email: 'kenny@example.com',
-        fullName: 'Kenny Lin',
-      },
-      education: [],
-    })
+        fullName: 'Kenny Lin'},
+      education: []})
   })
 
   it('starts workflow runs and promotes sourcing findings through the local client', async () => {
-    const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
+    const client = await createLocalValedictorianClient()
 
     const run = await client.runs.start({
       runType: 'sourcing',
       actorType: 'agent',
       actorName: 'codex',
       sourceName: 'LinkedIn',
-      summary: 'Started sourcing.',
-    })
+      summary: 'Started sourcing.'})
     const finding = await client.sourcing.findings.create({
       workflowRunId: run.id,
       sourceName: 'LinkedIn',
@@ -269,28 +258,24 @@ describe('runtime local Valedictorian client', () => {
       workMode: 'remote',
       officialUrl: 'https://jobs.example.com/delta',
       priorityScore: 7,
-      priorityBand: 'high',
-    })
+      priorityBand: 'high'})
 
     await expect(client.runs.list({ runType: 'sourcing', status: 'in_progress' })).resolves.toMatchObject({
       total: 1,
-      items: [{ id: run.id }],
-    })
+      items: [{ id: run.id }]})
     await expect(client.sourcing.findings.promote({ findingId: finding.id })).resolves.toMatchObject({
       mergeStatus: 'merged',
-      mergedApplicationId: expect.any(String),
-    })
+      mergedApplicationId: expect.any(String)})
   })
 
   it('processes sourcing candidates through the local client', async () => {
-    const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
+    const client = await createLocalValedictorianClient()
     const run = await client.runs.start({
       runType: 'sourcing',
       actorType: 'agent',
       actorName: 'codex',
       sourceId: 'source-linkedin',
-      summary: 'Started sourcing.',
-    })
+      summary: 'Started sourcing.'})
 
     await expect(
       client.sourcing.candidates.process({
@@ -311,14 +296,11 @@ describe('runtime local Valedictorian client', () => {
           compensationLogistics: 1,
           penalties: [],
           rationale: 'Strong fit.',
-          rubricVersion: 'local-client-test',
-        },
-        cutoffScore: 7,
-      }),
+          rubricVersion: 'local-client-test'},
+        cutoffScore: 7}),
     ).resolves.toMatchObject({
       mergeStatus: 'merged',
-      mergedApplicationId: expect.any(String),
-    })
+      mergedApplicationId: expect.any(String)})
   })
 
   it('does not seed sourcing findings when an existing local database already has applications', async () => {
@@ -374,7 +356,7 @@ describe('runtime local Valedictorian client', () => {
       })
     await setup.close()
 
-    const client = await createLocalValedictorianClient({ pgliteDataPath })
+    const client = await createFreshLocalValedictorianClient({ pgliteDataPath })
 
     const findings = await client.sourcing.findings.list()
 
@@ -435,7 +417,7 @@ describe('runtime local Valedictorian client', () => {
       })
     await setup.close()
 
-    const client = await createLocalValedictorianClient({ pgliteDataPath })
+    const client = await createFreshLocalValedictorianClient({ pgliteDataPath })
 
     const attempts = await client.applications.attempts.list({
       applicationId: 'application-astranis-backend',
@@ -466,8 +448,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('lists connector status summaries through the local client', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const client = await createRuntimeLocalValedictorianClient({ pgliteDataPath }) as Awaited<
+    const client = await createRuntimeLocalValedictorianClient() as Awaited<
       ReturnType<typeof createRuntimeLocalValedictorianClient>
     > & {
       connectors: {
@@ -526,11 +507,9 @@ describe('runtime local Valedictorian client', () => {
           id: 'fixture-session',
           label: 'Fixture session',
           mode: 'api_key',
-          secretKey: 'fixture-session-123',
-        },
+          secretKey: 'fixture-session-123'},
       ],
-      createdAt: '2026-07-08T15:00:00.000Z',
-    })
+      createdAt: '2026-07-08T15:00:00.000Z'})
     await connectorRepository.recordRefreshResult({
       connectorInstanceId: 'connector-instance-fixture',
       mode: 'manual',
@@ -543,12 +522,10 @@ describe('runtime local Valedictorian client', () => {
         ...completedConnectorRefreshContract('2026-07-08'),
         coverage: {
           start: '2026-07-08T16:00:00.000Z',
-          end: '2026-07-08T17:00:00.000Z',
-        },
+          end: '2026-07-08T17:00:00.000Z'},
         nextCheckpoint: {
           checkpoint: { cursor: 'latest-cursor' },
-          schemaVersion: 'fixture-checkpoint@1',
-        },
+          schemaVersion: 'fixture-checkpoint@1'},
         observations: [
           {
             connectorId: 'fixture.jobs',
@@ -560,60 +537,48 @@ describe('runtime local Valedictorian client', () => {
             links: {
               source: 'https://fixture.example/jobs/delta',
               intermediary: 'https://fixture.example/redirect/delta',
-              official: 'https://jobs.example.com/delta',
-            },
+              official: 'https://jobs.example.com/delta'},
             resolution: {
               status: 'resolved',
               method: 'api_key',
-              reason: null,
-            },
+              reason: null},
             dedupeKeys: ['official:https://jobs.example.com/delta'],
             evidence: [
               {
                 type: 'source_api',
                 capturedAt: '2026-07-08T16:30:00.000Z',
-                sourceUrl: 'https://fixture.example/jobs/delta',
-              },
-            ],
-          },
+                sourceUrl: 'https://fixture.example/jobs/delta'},
+            ]},
         ],
         retryHints: null,
         stats: {
-          observations: 0,
-        },
+          observations: 0},
         status: 'completed',
         warnings: [
           {
             code: 'auth.expired_session',
-            message: 'Expired API key fixture-session-123.',
-          },
-        ],
-      },
-    })
+            message: 'Expired API key fixture-session-123.'},
+        ]}})
 
     const status = await client.connectors.status.list()
     const instances = await client.connectors.list()
     const inspected = await client.connectors.inspect('connector-instance-fixture')
     const runs = await client.connectors.runs.list({
       connectorInstanceId: 'connector-instance-fixture',
-      limit: 10,
-    })
+      limit: 10})
     const checkpoints = await client.connectors.checkpoints.list({
       connectorInstanceId: 'connector-instance-fixture',
-      filterSignature: 'filters:{}',
-    })
+      filterSignature: 'filters:{}'})
     const observations = await client.connectors.observations.list({
       connectorInstanceId: 'connector-instance-fixture',
-      limit: 10,
-    })
+      limit: 10})
     await expect(
       client.connectors.runs.trigger({
         connectorInstanceId: 'connector-instance-fixture',
         coverageStartedAt: '2026-07-08T17:00:00.000Z',
         coverageEndedAt: '2026-07-08T18:00:00.000Z',
         filterSignature: 'filters:{}',
-        mode: 'manual',
-      }),
+        mode: 'manual'}),
     ).rejects.toThrow('Unsupported connector id: fixture.jobs')
 
     expect(status).toMatchObject({
@@ -621,21 +586,17 @@ describe('runtime local Valedictorian client', () => {
         {
           displayName: 'Fixture Jobs',
           status: 'caught_up',
-          summary: 'Newest jobs, historical backfill, and pending link resolution are caught up.',
-        },
-      ],
-    })
+          summary: 'Newest jobs, historical backfill, and pending link resolution are caught up.'},
+      ]})
     expect(instances.items).toMatchObject([
       {
         auth: [{ configured: true, id: 'fixture-session', mode: 'api_key' }],
-        id: 'connector-instance-fixture',
-      },
+        id: 'connector-instance-fixture'},
     ])
     expect(inspected).toMatchObject({
       actionRequired: [],
       auth: [{ configured: true, id: 'fixture-session', mode: 'api_key' }],
-      status: 'caught_up',
-    })
+      status: 'caught_up'})
     expect(runs).toMatchObject({
       items: [
         {
@@ -645,23 +606,18 @@ describe('runtime local Valedictorian client', () => {
               code: 'auth.expired_session',
               label: 'Expired session',
               message: 'Connector auth expired.',
-              severity: 'blocked',
-            },
-          ],
-        },
+              severity: 'blocked'},
+          ]},
       ],
-      total: 1,
-    })
+      total: 1})
     expect(checkpoints.items).toMatchObject([
       {
         checkpoint: { cursor: 'latest-cursor' },
-        filterSignature: 'filters:{}',
-      },
+        filterSignature: 'filters:{}'},
     ])
     expect(observations).toMatchObject({
       items: [{ companyName: 'Delta Labs', roleTitle: 'Software Engineering Intern' }],
-      total: 1,
-    })
+      total: 1})
     expect(JSON.stringify(status)).not.toContain('fixture-session-123')
     expect(JSON.stringify(instances)).not.toContain('fixture-session-123')
     expect(JSON.stringify(inspected)).not.toContain('fixture-session-123')

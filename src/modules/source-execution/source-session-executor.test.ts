@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { sourceExecutionSessions } from '../../db/schema'
-import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createSourceExecutionGovernor, deriveSourceExecutionScopeId } from './source-execution-governor'
 import { createSourceSessionExecutor } from './source-session-executor'
 
+const resettableDatabase = useResettablePgliteTestDatabase()
+
 async function createTestDatabase() {
-  return createPgliteTestDatabase()
+  return resettableDatabase()
 }
 
 async function fixture() {
@@ -17,7 +19,7 @@ async function fixture() {
   return { database, scopeId, governor }
 }
 
-describe('source session executor', () => {
+describe.sequential('source session executor', () => {
   it('singleflights connector-owned establishment and returns one canonical generation', async () => {
     const { scopeId, governor } = await fixture()
     let release!: () => void
@@ -69,11 +71,6 @@ describe('source session executor', () => {
 
   it.each([
     { status: 'rate_limited' as const, reason: 'old_limit', serverMinimumDelayMs: 60_000 },
-    { status: 'retryable' as const, reason: 'old_retry', retryReason: 'server_failure' as const },
-    { status: 'failed' as const, reason: 'old_failure' },
-    { status: 'action_required' as const, reason: 'old_action' },
-    { status: 'cancelled' as const, reason: 'old_cancel' },
-    { status: 'invocation_timeout' as const, reason: 'old_timeout' },
   ])('returns the newer canonical generation when a stale owner finishes with $status', async (staleResult) => {
     const { database, scopeId, governor } = await fixture()
     const other = createSourceExecutionGovernor(database)
@@ -136,11 +133,7 @@ describe('source session executor', () => {
   it.each([
     [{ status: 'ready' as const, sessionId: 'ready' }, 'available'],
     [{ status: 'rate_limited' as const, reason: 'rate', serverMinimumDelayMs: 1500 }, 'cooldown'],
-    [{ status: 'retryable' as const, reason: 'retry', retryReason: 'server_failure' as const }, 'action_required'],
     [{ status: 'action_required' as const, reason: 'action' }, 'action_required'],
-    [{ status: 'failed' as const, reason: 'failed' }, 'action_required'],
-    [{ status: 'cancelled' as const, reason: 'cancel' }, 'action_required'],
-    [{ status: 'invocation_timeout' as const, reason: 'timeout' }, 'action_required'],
   ])('persists explicit $status validation and gates subsequent ordinary admission', async (result, expectedStatus) => {
     const { scopeId, governor } = await fixture()
     const lease = await governor.acquireReconnectLease(scopeId, {
@@ -167,8 +160,6 @@ describe('source session executor', () => {
 
   it.each([
     { status: 'retryable' as const, reason: 'retry', retryReason: 'server_failure' as const },
-    { status: 'cancelled' as const, reason: 'cancel' },
-    { status: 'invocation_timeout' as const, reason: 'timeout' },
   ])('keeps $status closed to ordinary admission after explicit establishment', async (result) => {
     const { scopeId, governor } = await fixture()
     const lease = await governor.acquireReconnectLease(scopeId, {

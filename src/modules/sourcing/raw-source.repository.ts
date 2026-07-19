@@ -85,7 +85,7 @@ export function createPgliteRawSourceRepository(
     },
 
     async ingestBatch(input, options) {
-      const records = validateBatch(input)
+      const records = validateRawSourceBatchInput(input)
       const receivedAt = now().toISOString()
 
       return await database.transaction(async (transaction) => {
@@ -398,7 +398,7 @@ function canonicalJson(value: unknown): string {
   throw new Error('Raw source values must be JSON-safe')
 }
 
-function validateBatch(input: BatchRawSourceRecordsInput) {
+export function validateRawSourceBatchInput(input: BatchRawSourceRecordsInput) {
   assertNoSensitiveKeys(input, 'raw source batch')
 
   if (!input || typeof input !== 'object' || !Array.isArray(input.records)) {

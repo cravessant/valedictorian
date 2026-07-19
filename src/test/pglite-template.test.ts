@@ -58,9 +58,8 @@ describe('migrated PGlite test template', () => {
     const templatePath = createTempDirectory('valedictorian-pglite-template-')
     const targetPath = createTempDirectory('valedictorian-pglite-nonempty-')
     const sentinelPath = path.join(targetPath, 'sentinel.txt')
+    fs.writeFileSync(path.join(templatePath, 'placeholder'), 'template')
     fs.writeFileSync(sentinelPath, 'preserve me')
-
-    await createMigratedPgliteTemplate(templatePath)
 
     expect(() => cloneMigratedPgliteTemplate(templatePath, targetPath)).toThrow(
       'PGlite template target must be empty',

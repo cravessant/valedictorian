@@ -3,6 +3,7 @@ import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
+import { DurationBalancedSequencer } from './src/test/duration-balanced-sequencer'
 
 export const mainExternals = ['@electric-sql/pglite', 'undici']
 
@@ -19,6 +20,10 @@ export default defineConfig({
     globalSetup: './src/test/global-setup.ts',
     maxWorkers: 2,
     minWorkers: process.env.CI ? 2 : undefined,
+    pool: 'threads',
+    sequence: {
+      sequencer: DurationBalancedSequencer,
+    },
     setupFiles: './src/test/setup.ts',
     testTimeout: process.env.CI ? 30_000 : 5_000,
   },

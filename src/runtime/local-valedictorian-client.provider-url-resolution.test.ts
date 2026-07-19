@@ -1,6 +1,3 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { createJobrightConnector } from '@sparxie/valedictorian-connectors-jobright'
 import { describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
@@ -8,7 +5,7 @@ import { createPgliteConnectorRepository } from '../modules/connectors/connector
 import { createSourceExecutionGovernor } from '../modules/source-execution/source-execution-governor'
 import { createProviderUrlResolutionRuntime } from '../modules/sourcing/provider-url-resolution.runtime'
 import { createPgliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
-import { createPgliteTestOwner } from '../test/pglite-test-owner'
+import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import type {
   AppConnectorRuntime,
   AppJobConnector,
@@ -16,9 +13,12 @@ import type {
 import type { ProviderUrlResolverResult } from '../modules/sourcing/provider-url-resolution.outcome'
 import type { LocalScheduledWorkSource } from './local-scheduler'
 import {
-  createTestLocalValedictorianClient as createLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
+  useResettablePgliteTestLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
+
+const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()
+const resettableOwner = useResettablePgliteTestOwner()
 
 interface ProviderUrlResolverConnector extends AppJobConnector {
   providerUrlResolver: {
@@ -36,14 +36,13 @@ interface ProviderUrlResolverConnector extends AppJobConnector {
   }
 }
 
-describe('runtime provider URL resolution', () => {
+describe.sequential('runtime provider URL resolution', () => {
   it('does not invoke a disabled connector provider resolver', async () => {
     const fixture = await createProviderRuntimeFixture(false)
     const result = await fixture.runtime(fixture.work)
 
     expect(result).toEqual({ status: 'terminal', reason: 'provider_url_connector_disabled' })
     expect(fixture.resolve).not.toHaveBeenCalled()
-    await fixture.pglite.close()
   })
 
   it('does not invoke a provider resolver while its source scope is cooling down', async () => {
@@ -60,7 +59,6 @@ describe('runtime provider URL resolution', () => {
       status: 'retryable', reason: 'source_scope_cooldown', retryReason: 'rate_limit', serverMinimumDelayMs: 60_000,
     })
     expect(fixture.resolve).not.toHaveBeenCalled()
-    await fixture.pglite.close()
   })
 
   it('propagates provider Retry-After into the shared source governor', async () => {
@@ -76,7 +74,6 @@ describe('runtime provider URL resolution', () => {
     expect(await fixture.governor.getScope(fixture.scopeId)).toMatchObject({
       status: 'cooldown', blockedUntil: '2026-07-16T12:02:00.000Z',
     })
-    await fixture.pglite.close()
   })
 
   it('runs the published Jobright 0.14 connector as Capture then scheduled provider resolution', async () => {
@@ -149,7 +146,6 @@ describe('runtime provider URL resolution', () => {
       nowMs: () => clock.getTime(),
       random: () => 0,
     })
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'published-provider-url-'))
     const secretCodec = {
       encrypt: (value: string) => `enc:${value}`,
       decrypt: (value: string) => value.replace(/^enc:/, ''),
@@ -161,7 +157,6 @@ describe('runtime provider URL resolution', () => {
       registerScheduledWorkSource: (source) => registeredSources.push(source),
       secretCodec,
       seedDataMode: 'none',
-      pgliteDataPath,
       workspaceId: 'workspace-published-provider-url',
     })
     await client.secrets.upsert({
@@ -314,13 +309,11 @@ describe('runtime provider URL resolution', () => {
         }
       },
     }
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-runtime-'))
     const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => clock,
       registerScheduledWorkSource: (source) => registeredSources.push(source),
       seedDataMode: 'none',
-      pgliteDataPath,
       workspaceId: 'workspace-provider-url',
     })
     await client.connectors.create({
@@ -464,14 +457,12 @@ describe('runtime provider URL resolution', () => {
         }
       },
     }
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-url-redaction-'))
     const client = await createLocalValedictorianClient({
       connectorRegistry: createStaticConnectorRegistry([connector]),
       now: () => clock,
       registerScheduledWorkSource: (source) => registeredSources.push(source),
       secretCodec,
       seedDataMode: 'none',
-      pgliteDataPath,
       workspaceId: 'workspace-provider-url-redaction',
     })
     await client.secrets.upsert({
@@ -515,7 +506,7 @@ describe('runtime provider URL resolution', () => {
 
 async function createProviderRuntimeFixture(enabled: boolean) {
   const now = '2026-07-16T12:00:00.000Z'
-  const { client: pglite, database } = await createPgliteTestOwner()
+  const { database } = resettableOwner()
   const connectorRepository = createPgliteConnectorRepository(database)
   const resolve = vi.fn(async (): Promise<ProviderUrlResolverResult> => ({
     status: 'resolved',
@@ -555,7 +546,7 @@ async function createProviderRuntimeFixture(enabled: boolean) {
     providerRecordId: 'jobright.public:provider-runtime', resolverId: 'jobright.provider-url',
     resolverVersion: 'jobright-provider-url@1', serverMinimumDelayMs: null, retryWorkId: 'runtime-work',
   }
-  return { database, governor, now, pglite, resolve, runtime, scopeId: instance.executionScopeId, work }
+  return { database, governor, now, resolve, runtime, scopeId: instance.executionScopeId, work }
 }
 
 function requestUrl(input: RequestInfo | URL) {

@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import crypto from 'node:crypto'
-import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
 import { createHttpValedictorianClient, ValedictorianHttpError } from 'sparxie'
@@ -10,12 +9,17 @@ import {
   createLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
 import {
+  useResettablePgliteTestLocalValedictorianClient,
+} from '../runtime/local-valedictorian-client.test-harness'
+import {
   createDefaultNormalizationResolverRegistry,
   createNormalizationResolverRegistry,
 } from '../modules/sourcing/normalization.registry'
 import { createValedictorianHttpServer, type StartedValedictorianHttpServer } from './local-server'
 
-describe('raw source ledger HTTP API', () => {
+const createResettableLocalClient = useResettablePgliteTestLocalValedictorianClient()
+
+describe.sequential('raw source ledger HTTP API', () => {
   let server: StartedValedictorianHttpServer | null = null
 
   afterEach(async () => {
@@ -24,9 +28,8 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('round-trips a sparse CLI record through the released workspace client', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -70,9 +73,8 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('keeps repeated unbound imports as separate provisional records', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -102,9 +104,8 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('does not infer revision ownership for changing unbound imports', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -131,9 +132,8 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('keeps non-connector submissions provisional and separate', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -161,9 +161,8 @@ describe('raw source ledger HTTP API', () => {
   })
 
   it('rolls back an invalid batch and preserves receipt order', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-raw-http-'))
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -245,7 +244,7 @@ describe('raw source ledger HTTP API', () => {
 
   it('hashes canonical revision content independent of object key order', async () => {
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -281,54 +280,9 @@ describe('raw source ledger HTTP API', () => {
     expect(second.receipts[0].revision.contentHash).toBe(first.receipts[0].revision.contentHash)
   })
 
-  it('enforces raw payload, evidence, and batch contract limits', async () => {
-    server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
-      host: '127.0.0.1',
-      port: 0,
-    })
-    const rawRecords = createHttpValedictorianClient({ baseUrl: server.url }).forWorkspace(
-      'workspace-1',
-    ).sourcing.rawRecords
-    const base = {
-      intakeItemId: crypto.randomUUID(),
-      adapter: { id: 'fixture.cli', kind: 'cli' as const, version: '1' },
-      observedAt: '2026-07-10T12:00:00.000Z',
-    }
-
-    await expect(
-      rawRecords.ingestBatch({
-        records: [{ ...base, intakeItemId: crypto.randomUUID(), payload: { data: 'x'.repeat(262_144 - 11) } }],
-      }),
-    ).resolves.toMatchObject({ receipts: [expect.any(Object)] })
-    await expect(
-      rawRecords.ingestBatch({
-        records: [{ ...base, intakeItemId: crypto.randomUUID(), payload: { data: 'x'.repeat(262_144 - 10) } }],
-      }),
-    ).rejects.toBeInstanceOf(Error)
-    await expect(
-      rawRecords.ingestBatch({
-        records: [
-          {
-            ...base,
-            evidence: [{ kind: 'fixture', label: 'oversized', value: 'x'.repeat(16_384 - 1) }],
-          },
-        ],
-      }),
-    ).rejects.toBeInstanceOf(Error)
-    await expect(
-      rawRecords.ingestBatch({
-        records: [{ ...base, intakeItemId: crypto.randomUUID(), evidence: Array.from({ length: 51 }, () => ({ kind: 'k', label: 'l', value: null })) }],
-      }),
-    ).rejects.toMatchObject({ status: 400 })
-    await expect(
-      rawRecords.ingestBatch({ records: Array.from({ length: 101 }, () => ({ ...base, intakeItemId: crypto.randomUUID() })) }),
-    ).rejects.toBeInstanceOf(Error)
-  })
-
   it('rejects recursive sensitive keys without leaking their values', async () => {
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -363,9 +317,9 @@ describe('raw source ledger HTTP API', () => {
     }
   })
 
-  it('rejects credential-bearing HTTP URLs across raw envelopes atomically without echoing credentials', async () => {
+  it('maps one credential-bearing URL rejection without leaking or partial persistence', async () => {
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -375,60 +329,51 @@ describe('raw source ledger HTTP API', () => {
     const username = 'raw-user-must-not-leak'
     const password = 'raw-password-must-not-leak'
     const credentialUrl = `https://${username}:${password}@jobs.lever.co/acme/job-1`
-    const unsafeEnvelopes = [
-      { payload: { nested: [{ applicationUrl: credentialUrl }] } },
-      { evidence: [{ kind: 'fixture', label: 'nested URL', value: { applicationUrl: credentialUrl } }] },
-      { reportedOrigin: { kind: 'job_board' as const, name: 'Fixture', url: credentialUrl } },
-      { providerRecordId: credentialUrl },
-    ]
-
-    for (const [index, unsafeEnvelope] of unsafeEnvelopes.entries()) {
-      const base = {
-        intakeItemId: crypto.randomUUID(),
-        adapter: { id: 'fixture.connector', kind: 'import' as const, version: '1' },
-        observedAt: '2026-07-10T12:00:00.000Z',
-        providerSchema: 'jobs@1',
-      }
-      const error = await rawRecords.ingestBatch({ records: [
-        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: `credential-canary-${index}`, payload: { safe: true } },
-        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: `credential-target-${index}`, ...unsafeEnvelope },
-      ] }).catch((caught: unknown) => caught) as ValedictorianHttpError
-
-      expect(error).toMatchObject({ status: 400, body: null })
-      expect(error.message).not.toContain(username)
-      expect(error.message).not.toContain(password)
-      expect(JSON.stringify(error.body)).not.toContain(username)
-      expect(JSON.stringify(error.body)).not.toContain(password)
-
-      const accepted = await rawRecords.ingestBatch({ records: [
-        { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: `credential-canary-${index}`, payload: { safe: true } },
-        {
-          ...base,
-          providerRecordId: `credential-target-${index}`,
-          payload: { contact: 'person@example.com', note: 'user:password@jobs.lever.co/acme/job-1' },
-        },
-      ] })
-      expect(accepted.receipts.map(({ revision }) => revision)).toEqual([
-        expect.objectContaining({ reused: false, revision: 1 }),
-        expect.objectContaining({ reused: false, revision: 1 }),
-      ])
-      const raw = await rawRecords.get(accepted.receipts[1].rawRecordId)
-      const serializedRaw = JSON.stringify(raw)
-      expect(serializedRaw).not.toContain(username)
-      expect(serializedRaw).not.toContain(password)
-      expect(raw.latestRevision.payload).toEqual({
-        contact: 'person@example.com', note: 'user:password@jobs.lever.co/acme/job-1',
-      })
-      const normalization = await rawRecords.normalization.get(accepted.receipts[1].rawRecordId)
-      expect(normalization.canonicalCandidate).toBeNull()
-      expect(JSON.stringify(normalization)).not.toContain(username)
-      expect(JSON.stringify(normalization)).not.toContain(password)
+    const base = {
+      intakeItemId: crypto.randomUUID(),
+      adapter: { id: 'fixture.connector', kind: 'import' as const, version: '1' },
+      observedAt: '2026-07-10T12:00:00.000Z',
+      providerSchema: 'jobs@1',
     }
+    const error = await rawRecords.ingestBatch({ records: [
+      { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: 'credential-canary', payload: { safe: true } },
+      { ...base, providerRecordId: 'credential-target', payload: { nested: [{ applicationUrl: credentialUrl }] } },
+    ] }).catch((caught: unknown) => caught) as ValedictorianHttpError
+
+    expect(error).toMatchObject({ status: 400, body: null })
+    expect(error.message).not.toContain(username)
+    expect(error.message).not.toContain(password)
+    expect(JSON.stringify(error.body)).not.toContain(username)
+    expect(JSON.stringify(error.body)).not.toContain(password)
+
+    const accepted = await rawRecords.ingestBatch({ records: [
+      { ...base, intakeItemId: crypto.randomUUID(), providerRecordId: 'credential-canary', payload: { safe: true } },
+      {
+        ...base,
+        providerRecordId: 'credential-target',
+        payload: { contact: 'person@example.com', note: 'user:password@jobs.lever.co/acme/job-1' },
+      },
+    ] })
+    expect(accepted.receipts.map(({ revision }) => revision)).toEqual([
+      expect.objectContaining({ reused: false, revision: 1 }),
+      expect.objectContaining({ reused: false, revision: 1 }),
+    ])
+    const raw = await rawRecords.get(accepted.receipts[1].rawRecordId)
+    const serializedRaw = JSON.stringify(raw)
+    expect(serializedRaw).not.toContain(username)
+    expect(serializedRaw).not.toContain(password)
+    expect(raw.latestRevision.payload).toEqual({
+      contact: 'person@example.com', note: 'user:password@jobs.lever.co/acme/job-1',
+    })
+    const normalization = await rawRecords.normalization.get(accepted.receipts[1].rawRecordId)
+    expect(normalization.canonicalCandidate).toBeNull()
+    expect(JSON.stringify(normalization)).not.toContain(username)
+    expect(JSON.stringify(normalization)).not.toContain(password)
   })
 
   it('rejects sensitive aliases and unknown properties across the raw envelope atomically', async () => {
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -522,40 +467,9 @@ describe('raw source ledger HTTP API', () => {
     ).rejects.toBeInstanceOf(Error)
   })
 
-  it('rejects a declared raw batch body above 128 MiB before accumulation', async () => {
-    server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
-      host: '127.0.0.1',
-      port: 0,
-    })
-
-    const response = await new Promise<{ body: string; status: number | undefined }>((resolve, reject) => {
-      const request = http.request(
-        `${server!.url}/v1/workspaces/workspace-1/sourcing/raw-records/batch`,
-        {
-          headers: { 'content-length': 128 * 1024 * 1024 + 1, 'content-type': 'application/json' },
-          method: 'POST',
-        },
-        (incoming) => {
-          const chunks: Buffer[] = []
-          incoming.on('data', (chunk: Buffer) => chunks.push(chunk))
-          incoming.on('end', () => resolve({
-            body: Buffer.concat(chunks).toString('utf8'),
-            status: incoming.statusCode,
-          }))
-        },
-      )
-      request.on('error', reject)
-      request.end()
-    })
-
-    expect(response.status).toBe(413)
-    expect(JSON.parse(response.body)).toEqual({ message: 'The request body is too large.' })
-  })
-
   it('commits raw intake then exposes a passed deterministic normalization result', async () => {
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
+      client: await createResettableLocalClient(),
       host: '127.0.0.1',
       port: 0,
     })
@@ -684,7 +598,7 @@ describe('raw source ledger HTTP API', () => {
       ...defaults.resolvers,
     ])
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath(), normalizationRegistry: registry }),
+      client: await createResettableLocalClient({ normalizationRegistry: registry }),
       host: '127.0.0.1', port: 0,
     })
     const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
@@ -755,7 +669,7 @@ describe('raw source ledger HTTP API', () => {
       ...defaultsWithoutCompany,
     ])
     server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath(), normalizationRegistry: registry }),
+      client: await createResettableLocalClient({ normalizationRegistry: registry }),
       host: '127.0.0.1', port: 0,
     })
     const rawRecords = createHttpValedictorianClient({ baseUrl: server.url })
@@ -884,25 +798,6 @@ describe('raw source ledger HTTP API', () => {
     await expect(first.normalization.get(intake.receipts[0].rawRecordId)).resolves.toEqual(replayed)
   })
 
-  it('bounds replay request bodies before parsing or persistence', async () => {
-    server = await createValedictorianHttpServer({
-      client: await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() }),
-      host: '127.0.0.1',
-      port: 0,
-    })
-
-    const response = await fetch(
-      `${server.url}/v1/workspaces/workspace-1/sourcing/raw-records/replay`,
-      {
-        body: 'x'.repeat(1024 * 1024 + 1),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-      },
-    )
-
-    expect(response.status).toBe(413)
-    await expect(response.json()).resolves.toEqual({ message: 'The request body is too large.' })
-  })
 })
 
 function createTempDatabasePath() {

@@ -78,6 +78,20 @@ describe('connector re-add lifecycle through workspace HTTP and PGlite', () => {
     })
   })
 
+  it('rejects a second active Jobright with a different instance id', async () => {
+    const client = await createLocalValedictorianClient({ seedDataMode: 'none' })
+    const server = await start(client)
+    const workspace = createHttpValedictorianClient({ baseUrl: server.url })
+      .forWorkspace('workspace-transport')
+
+    await workspace.connectors.create(jobrightCreateInput('jobright-active-a'))
+    await expect(workspace.connectors.create(jobrightCreateInput('jobright-active-b')))
+      .rejects.toMatchObject({ status: 409, body: { code: 'already_configured' } })
+    await expect(workspace.connectors.list()).resolves.toMatchObject({
+      items: [{ id: 'jobright-active-a' }],
+    })
+  })
+
   it('re-adds Jobright after process restart without copying retired schedule or retry state', async () => {
     const pgliteDataPath = createTempDatabasePath()
     const retiredAt = '2026-07-13T16:00:00.000Z'

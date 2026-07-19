@@ -289,4 +289,41 @@ describe('connector validation and action-state synchronization', () => {
     expect(screen.queryByDisplayValue('write-only-fixture-password')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('operator@example.test')).not.toBeInTheDocument()
   })
+
+  it('blocks Run while enabled state is unsaved', async () => {
+    const descriptor = projectInstalledConnectorDescriptor(
+      createDefaultLocalConnectorRegistry().get('jobright.resolver')!,
+    )
+    const connectorsApi = await createFixtureApi(
+      {
+        jobTaxonomyList: [{ taxonomyId: 'software-engineering', title: 'Software Engineering' }],
+        country: 'US',
+      },
+      {},
+      { maxRunElapsedMs: 120_000 },
+      descriptor,
+    )
+    await connectorsApi.update({
+      connectorInstanceId: INSTANCE_ID,
+      auth: [{
+        id: 'jobright',
+        mode: 'username_password',
+        label: 'Jobright username and password',
+        secretKey: 'connector_jobright_credentials_fixture',
+      }],
+    })
+    vi.mocked(connectorsApi.update).mockClear()
+    vi.mocked(connectorsApi.runs.trigger).mockClear()
+
+    renderPanel(connectorsApi)
+
+    const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
+    expect(await within(card).findByText(/Auth verified/)).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
+
+    fireEvent.click(within(card).getByLabelText('Jobright connector enabled'))
+    expect(within(card).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
+    expect(connectorsApi.runs.trigger).not.toHaveBeenCalled()
+    expect(connectorsApi.update).not.toHaveBeenCalled()
+  })
 })

@@ -4,6 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach } from 'vitest'
 import { prepareConfiguredPgliteDataPath } from '../test/pglite-template'
+import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import {
   createPgliteClient,
   createPgliteDatabase,
@@ -43,12 +44,14 @@ export async function createTestLocalValedictorianClient(
 ) {
   const pgliteDataPath = options.pgliteDataPath
     ?? fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-test-pglite-'))
+  const profilePath = options.profilePath ?? path.join(pgliteDataPath, 'profile.json')
   if (!options.pgliteDataPath) activeTempPaths.add(pgliteDataPath)
   if (options.database) {
     const client = await createLocalValedictorianClient({
       ...options,
       database: options.database,
       pgliteDataPath,
+      profilePath,
     })
     databasesByClient.set(client, options.database)
     if (!options.pgliteDataPath) tempPathsByClient.set(client, pgliteDataPath)
@@ -62,7 +65,12 @@ export async function createTestLocalValedictorianClient(
     const database = clonedFromTemplate
       ? createPgliteDatabase(pglite)
       : await migratePgliteDatabase(pglite)
-    const client = await createLocalValedictorianClient({ ...options, database, pgliteDataPath })
+    const client = await createLocalValedictorianClient({
+      ...options,
+      database,
+      pgliteDataPath,
+      profilePath,
+    })
     databasesByClient.set(client, database)
     pgliteByClient.set(client, pglite)
     if (!options.pgliteDataPath) tempPathsByClient.set(client, pgliteDataPath)
@@ -73,6 +81,16 @@ export async function createTestLocalValedictorianClient(
     cleanTestPglitePath(pglite)
     throw error
   }
+}
+
+export function useResettablePgliteTestLocalValedictorianClient() {
+  const getOwner = useResettablePgliteTestOwner()
+  return (
+    options: Omit<TestLocalValedictorianClientOptions, 'database' | 'pgliteDataPath'> = {},
+  ) => createTestLocalValedictorianClient({
+    ...options,
+    database: getOwner().database,
+  })
 }
 
 export function getTestLocalValedictorianDatabase(client: LocalValedictorianClient) {

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
 function result(input: Parameters<AppJobConnector['refresh']>[0]) {
   return { observations: [], nextCheckpoint: { checkpoint: {}, schemaVersion: 'fixture@1' }, coverage: input.coverage,
@@ -10,7 +12,9 @@ function result(input: Parameters<AppJobConnector['refresh']>[0]) {
       boundary: { earliestDate: input.coverage.start.slice(0, 10) } }, pendingResolutionCount: 0, outcome: { kind: 'caught_up' as const } } }
 }
 
-describe('connector runner 0.10 auth boundary', () => {
+describe.sequential('connector runner 0.10 auth boundary', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('uses a persisted session without revealing missing credentials during healthy work', async () => {
     const { database, repository } = await createConnectorRepositoryTestContext()
     const governor = createSourceExecutionGovernor(database)

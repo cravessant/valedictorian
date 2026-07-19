@@ -198,6 +198,34 @@ describe('build configuration', () => {
     expect(viteConfig).toContain("globalSetup: './src/test/global-setup.ts'")
     expect(viteConfig).toContain('maxWorkers: 2')
     expect(viteConfig).toContain('minWorkers: process.env.CI ? 2 : undefined')
+    expect(viteConfig).toContain("pool: 'threads'")
+    expect(viteConfig).toContain('sequencer: DurationBalancedSequencer')
+    const sequencer = fs.readFileSync(
+      path.resolve('src/test/duration-balanced-sequencer.ts'),
+      'utf8',
+    )
+    expect(sequencer).toContain('override async sort(')
+    expect(sequencer).toContain('sortAssignedShardFilesByDescendingWeight')
+    expect(sequencer).toContain('sortWorkspaceSpecsByDescendingWeight')
+    expect(sequencer).toContain('assignWorkspaceSpecsToDurationBalancedShards')
+    expect(sequencer).toMatch(
+      /override async sort\(files: WorkspaceSpec\[]\) \{\n\s+return sortWorkspaceSpecsByDescendingWeight/,
+    )
+    expect(sequencer).toMatch(
+      /override async shard\(files: WorkspaceSpec\[]\) \{[\s\S]*?assignWorkspaceSpecsToDurationBalancedShards/,
+    )
+    const sortWorkspaceFn = sequencer.match(
+      /export function sortWorkspaceSpecsByDescendingWeight\([\s\S]*?\n\}/,
+    )?.[0]
+    expect(sortWorkspaceFn).toBeTruthy()
+    expect(sortWorkspaceFn).not.toContain('new Map')
+    expect(sortWorkspaceFn).toContain('left.index - right.index')
+    const assignWorkspaceFn = sequencer.match(
+      /export function assignWorkspaceSpecsToDurationBalancedShards\([\s\S]*?\n\}/,
+    )?.[0]
+    expect(assignWorkspaceFn).toBeTruthy()
+    expect(assignWorkspaceFn).not.toMatch(/new Map\(\s*files\.map/)
+    expect(assignWorkspaceFn).toContain('left.index - right.index')
     expect(normalizedPgliteHarness).toContain(
       'clonedFromTemplate ? createPgliteDatabase(pglite) : await migratePgliteDatabase(pglite)',
     )
@@ -214,7 +242,11 @@ describe('build configuration', () => {
     expect(testSetup).toContain(
       'configure({ asyncUtilTimeout: process.env.CI ? 15_000 : 1_000 })',
     )
-    expect(testSetup).toContain("from '@testing-library/react'")
+    expect(testSetup).toContain("if (typeof document !== 'undefined')")
+    expect(testSetup).toContain("await import('@testing-library/jest-dom/vitest')")
+    expect(testSetup).toContain("await import('@testing-library/react')")
+    expect(testSetup).not.toMatch(/^import .*@testing-library/m)
+    expect(testSetup).toContain('export {}')
     expect(viteConfig).toContain(
       "export const mainExternals = ['@electric-sql/pglite', 'undici']",
     )

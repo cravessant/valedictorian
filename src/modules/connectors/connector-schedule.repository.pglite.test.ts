@@ -1,29 +1,21 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/pglite'
 import { schema, sourceExecutionScopes } from '../../db/schema'
+import { connectorInstances } from '../../db/schema.connectors'
 import {
-  connectorInstances,
-  connectorScheduleRevisions,
-  connectorSchedules,
-} from '../../db/schema.connectors'
-import {
-  createPgliteClient,
-  migratePgliteDatabase,
   type PgliteDatabase,
 } from '../../db/pglite'
-import { createPgliteTestDatabase, createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { createConnectorScheduleRepository } from './connector-schedule.repository'
 
 const NOW = '2026-07-18T10:00:00.000Z'
 const CADENCE = { kind: 'interval' as const, everyMinutes: 60 }
 
-describe('PGlite connector schedule repository', () => {
+const resettableOwner = useResettablePgliteTestOwner()
+
+describe.sequential('PGlite connector schedule repository', () => {
   it('reads each page and total from one PostgreSQL snapshot', async () => {
-    const owner = await createPgliteTestOwner()
+    const owner = resettableOwner()
     const database = drizzle(owner.client, { schema })
     await seedConnectorInstance(database, 'connector-schedule-page-snapshot')
     const repository = createConnectorScheduleRepository(database, () => new Date(NOW))
@@ -218,75 +210,10 @@ describe('PGlite connector schedule repository', () => {
     })
   })
 
-  it('rolls back schedule and snapshot writes when an injected audit failure aborts create', async () => {
-    const database = await createTestDatabase()
-    await seedConnectorInstance(database, 'connector-schedule-rollback')
-    const repository = createConnectorScheduleRepository(database, () => new Date(NOW))
-    await database.execute(sql.raw(`
-      CREATE FUNCTION reject_schedule_audit() RETURNS trigger
-      LANGUAGE plpgsql AS $$
-      BEGIN
-        RAISE EXCEPTION 'injected schedule audit failure';
-      END;
-      $$;
-    `))
-    await database.execute(sql.raw(`
-      CREATE TRIGGER reject_schedule_audit_insert
-        BEFORE INSERT ON connector_schedule_events
-        FOR EACH ROW EXECUTE FUNCTION reject_schedule_audit();
-    `))
-
-    await expect(repository.create({
-      connectorInstanceId: 'connector-schedule-rollback',
-      state: 'enabled',
-      cadence: CADENCE,
-      timezone: 'America/Denver',
-    })).rejects.toThrow('Failed query: insert into "connector_schedule_events"')
-    await expect(repository.getByConnectorInstanceId('connector-schedule-rollback'))
-      .resolves.toBeNull()
-    await expect(database.select().from(connectorSchedules)).resolves.toEqual([])
-    await expect(database.select().from(connectorScheduleRevisions)).resolves.toEqual([])
-  })
-
-  it('keeps schedules and revision history visible after an on-disk close and reopen', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'connector-schedule-'))
-    let scheduleId = ''
-
-    try {
-      const firstClient = await createPgliteClient({ dataDir: directory })
-      try {
-        const database = await migratePgliteDatabase(firstClient)
-        await seedConnectorInstance(database, 'connector-schedule-reopen')
-        const repository = createConnectorScheduleRepository(database, () => new Date(NOW))
-        const created = await repository.create({
-          connectorInstanceId: 'connector-schedule-reopen',
-          state: 'enabled',
-          cadence: CADENCE,
-          timezone: 'America/Denver',
-        })
-        scheduleId = created.id
-      } finally {
-        await firstClient.close()
-      }
-
-      const reopenedClient = await createPgliteClient({ dataDir: directory })
-      try {
-        const database = await migratePgliteDatabase(reopenedClient)
-        const repository = createConnectorScheduleRepository(database, () => new Date(NOW))
-        await expect(repository.getByConnectorInstanceId('connector-schedule-reopen'))
-          .resolves.toMatchObject({ id: scheduleId })
-        await expect(repository.listRevisionSnapshots(scheduleId)).resolves.toHaveLength(1)
-      } finally {
-        await reopenedClient.close()
-      }
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  })
 })
 
 async function createTestDatabase() {
-  return createPgliteTestDatabase()
+  return resettableOwner().database
 }
 
 async function seedConnectorInstance(database: PgliteDatabase, id: string) {

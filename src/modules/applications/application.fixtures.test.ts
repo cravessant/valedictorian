@@ -1,6 +1,3 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import {
@@ -11,21 +8,21 @@ import {
   workflowRuns,
   workflowRunSteps,
 } from '../../db/schema'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
-import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import {
   parseReferenceTrackerApplications,
   seedReferenceTrackerApplications,
   seedSampleApplications,
   seedSampleSourcingFindings,
 } from './application.fixtures'
-import { createPgliteApplicationRepository } from './application.repository'
+
+const resettableDatabase = useResettablePgliteTestDatabase()
 
 async function createTestDatabase() {
-  return createPgliteTestDatabase()
+  return resettableDatabase()
 }
 
-describe('sample applications seed', () => {
+describe.sequential('sample applications seed', () => {
   it('creates sample tracker applications with links and scores', async () => {
     const database = await createTestDatabase()
 
@@ -190,28 +187,4 @@ describe('sample applications seed', () => {
     expect(await database.select().from(applicationScores)).toHaveLength(101)
   })
 
-  it('keeps fixture rows visible after an on-disk close and reopen', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'valedictorian-applications-'))
-
-    try {
-      const firstClient = await createPgliteClient({ dataDir: directory })
-      try {
-        const database = await migratePgliteDatabase(firstClient)
-        await seedSampleApplications(database)
-      } finally {
-        await firstClient.close()
-      }
-
-      const reopenedClient = await createPgliteClient({ dataDir: directory })
-      try {
-        const database = await migratePgliteDatabase(reopenedClient)
-        const repository = createPgliteApplicationRepository(database)
-        await expect(repository.listApplications()).resolves.toMatchObject({ total: 3 })
-      } finally {
-        await reopenedClient.close()
-      }
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  })
 })

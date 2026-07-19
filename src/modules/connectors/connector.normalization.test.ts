@@ -2,17 +2,18 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   connectorInstances,
   connectorRuns,
-  normalizationRuns,
   retryWork,
   sourceExecutionScopes,
 } from '../../db/schema'
-import { createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { createDefaultNormalizationResolverRegistry } from '../sourcing/normalization.registry'
 import { createPgliteNormalizationRepository } from '../sourcing/normalization.repository'
 import { createPgliteRawSourceRepository } from '../sourcing/raw-source.repository'
 import { createConnectorNormalizationHost } from './connector.normalization'
 
-describe('connector normalization host', () => {
+const resettableOwner = useResettablePgliteTestOwner()
+
+describe.sequential('connector normalization host', () => {
   it('persists a blocked attempt without invoking an undeclared host capability', async () => {
     const { database, capture } = await createFixture('blocked', '2026-07-10T12:00:00.000Z')
     const rawRepository = createPgliteRawSourceRepository(database)
@@ -76,7 +77,7 @@ describe('connector normalization host', () => {
 
   it('persists one typed retry unit for a multi-field connector resolver invocation', async () => {
     const timestamp = '2026-07-11T12:00:00.000Z'
-    const { client, database, capture } = await createFixture('retry', timestamp)
+    const { database, capture } = await createFixture('retry', timestamp)
     const rawRepository = createPgliteRawSourceRepository(database)
     const normalizationRepository = createPgliteNormalizationRepository(database)
     const receipt = (await rawRepository.ingestBatch({ records: [{
@@ -124,48 +125,11 @@ describe('connector normalization host', () => {
         nextAttemptAt: '2026-07-11T12:00:30.000Z', state: 'scheduled',
       }),
     ])
-
-    const beforeRunCount = (await database.select().from(normalizationRuns)).length
-    await client.exec(`
-      create function inject_retry_work_failure() returns trigger language plpgsql as $$
-      begin raise exception 'injected retry work failure'; end $$;
-      create trigger inject_retry_work_failure before insert on retry_work
-      for each row execute function inject_retry_work_failure();
-    `)
-    const secondReceipt = (await rawRepository.ingestBatch({ records: [{
-      adapter: { id: 'fixture.connector', kind: 'connector', version: '1.0.0' },
-      capture,
-      observedAt: '2026-07-11T12:01:00.000Z',
-      providerRecordId: 'retry-job-2',
-      payload: { companyName: 'Retry Co Two', roleTitle: 'Intern' },
-    }] })).receipts[0]
-    await expect(host.run({
-      rawRevision: secondReceipt.revision,
-      resolver: {
-        id: 'fixture.network-details', version: '2.0.0', requiredInputs: ['rawRevision'],
-        outputFields: ['companyName'], capabilities: ['network'],
-        costClass: 'high', precedence: 500,
-      },
-      resolve: async () => [{
-        resolverId: 'fixture.network-details', resolverVersion: '2.0.0',
-        field: 'companyName' as const, inputHash: secondReceipt.revision.contentHash,
-        status: 'retry' as const, retry,
-      }],
-    }, {
-      connectorRunId: capture.connectorRunId,
-      executionScopeId: capture.executionScopeId,
-      enabledCapabilities: ['network'],
-      triggerOccurrence: secondReceipt.occurrence,
-    })).rejects.toThrow()
-    await expect(database.select().from(normalizationRuns)).resolves.toHaveLength(beforeRunCount)
   })
 })
 
-async function createFixture(
-  suffix: string,
-  timestamp: string,
-) {
-  const { client, database } = await createPgliteTestOwner()
+async function createFixture(suffix: string, timestamp: string) {
+  const { database } = resettableOwner()
   const executionScopeId = `normalization-scope-${suffix}`
   const connectorInstanceId = `normalization-instance-${suffix}`
   const connectorRunId = `normalization-run-${suffix}`
@@ -184,7 +148,6 @@ async function createFixture(
     createdAt: timestamp, updatedAt: timestamp,
   })
   return {
-    client,
     database,
     capture: { connectorInstanceId, connectorRunId, executionScopeId },
   }

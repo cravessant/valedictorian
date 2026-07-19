@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import { workspaceSecrets } from '../../db/schema'
-import { createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteSecretService } from './secret.composition'
 import type { SecretCodec } from './secret.codec'
 import { createWorkspaceSecretScope } from './secret.scope'
@@ -9,6 +9,7 @@ import { createSecretService } from './secret.service'
 import type { SecretStore } from './secret.store'
 
 const testWorkspaceScope = createWorkspaceSecretScope('test-workspace')
+const resettableOwner = useResettablePgliteTestOwner()
 
 const testCodec: SecretCodec = {
   decrypt(value) {
@@ -29,137 +30,114 @@ const testCodec: SecretCodec = {
   },
 }
 
-async function createServiceFixture() {
-  const owner = await createPgliteTestOwner()
+function createServiceFixture() {
+  const owner = resettableOwner()
   return {
     database: owner.database,
     service: createPgliteSecretService(owner.database, testCodec, testWorkspaceScope),
-    async cleanup() {
-      await owner.close()
-    },
   }
 }
 
-describe('SecretService', () => {
+describe.sequential('SecretService', () => {
   it('lists summaries without values after normalized upsert', async () => {
-    const fixture = await createServiceFixture()
-    const { database, service } = fixture
-    try {
-      const summary = await service.upsert({
-        key: ' Greenhouse Password ',
-        kind: 'password',
-        label: ' Greenhouse password ',
-        value: 'correct horse battery staple',
-      })
+    const { database, service } = createServiceFixture()
+    const summary = await service.upsert({
+      key: ' Greenhouse Password ',
+      kind: 'password',
+      label: ' Greenhouse password ',
+      value: 'correct horse battery staple',
+    })
 
-      expect(summary).toEqual({
-        key: 'greenhouse_password',
-        kind: 'password',
-        label: 'Greenhouse password',
-        updatedAt: expect.any(String),
-      })
-      expect(summary).not.toHaveProperty('value')
-      expect(await service.list()).toEqual([summary])
+    expect(summary).toEqual({
+      key: 'greenhouse_password',
+      kind: 'password',
+      label: 'Greenhouse password',
+      updatedAt: expect.any(String),
+    })
+    expect(summary).not.toHaveProperty('value')
+    expect(await service.list()).toEqual([summary])
 
-      const [row] = await database.select().from(workspaceSecrets).limit(1)
-      expect(row?.encryptedValue).toBe('enc:correct horse battery staple')
-      expect(row?.key).toBe('greenhouse_password')
-    } finally {
-      await fixture.cleanup()
-    }
+    const [row] = await database.select().from(workspaceSecrets).limit(1)
+    expect(row?.encryptedValue).toBe('enc:correct horse battery staple')
+    expect(row?.key).toBe('greenhouse_password')
   })
 
   it('resolves plaintext immediately and returns null when missing', async () => {
-    const fixture = await createServiceFixture()
-    const { service } = fixture
-    try {
-      await service.upsert({
-        key: 'greenhouse_password',
-        kind: 'password',
-        label: 'Greenhouse password',
-        value: 'correct horse battery staple',
-      })
+    const { service } = createServiceFixture()
+    await service.upsert({
+      key: 'greenhouse_password',
+      kind: 'password',
+      label: 'Greenhouse password',
+      value: 'correct horse battery staple',
+    })
 
-      await expect(service.resolve('greenhouse_password')).resolves.toEqual({
-        key: 'greenhouse_password',
-        kind: 'password',
-        label: 'Greenhouse password',
-        updatedAt: expect.any(String),
-        value: 'correct horse battery staple',
-      })
-      await expect(service.resolve('missing')).resolves.toBeNull()
-    } finally {
-      await fixture.cleanup()
-    }
+    await expect(service.resolve('greenhouse_password')).resolves.toEqual({
+      key: 'greenhouse_password',
+      kind: 'password',
+      label: 'Greenhouse password',
+      updatedAt: expect.any(String),
+      value: 'correct horse battery staple',
+    })
+    await expect(service.resolve('missing')).resolves.toBeNull()
   })
 
   it('deletes secrets and propagates codec failures value-free', async () => {
-    const fixture = await createServiceFixture()
-    const { service } = fixture
-    try {
-      await service.upsert({
-        key: 'greenhouse_password',
-        kind: 'password',
-        label: 'Greenhouse password',
-        value: 'secret',
-      })
-      await service.delete('greenhouse_password')
-      expect(await service.list()).toEqual([])
-      await expect(service.resolve('greenhouse_password')).resolves.toBeNull()
+    const { service } = createServiceFixture()
+    await service.upsert({
+      key: 'greenhouse_password',
+      kind: 'password',
+      label: 'Greenhouse password',
+      value: 'secret',
+    })
+    await service.delete('greenhouse_password')
+    expect(await service.list()).toEqual([])
+    await expect(service.resolve('greenhouse_password')).resolves.toBeNull()
 
-      await expect(
-        service.upsert({
-          key: 'broken',
-          kind: 'token',
-          label: 'Broken',
-          value: 'trigger-unavailable',
-        }),
-      ).rejects.toMatchObject({ code: 'secure_storage_unavailable' })
-    } finally {
-      await fixture.cleanup()
-    }
+    await expect(
+      service.upsert({
+        key: 'broken',
+        kind: 'token',
+        label: 'Broken',
+        value: 'trigger-unavailable',
+      }),
+    ).rejects.toMatchObject({ code: 'secure_storage_unavailable' })
   })
 
   it('preserves secret plaintext byte-for-byte including whitespace and empty string', async () => {
-    const fixture = await createServiceFixture()
-    const { database, service } = fixture
-    try {
-      const spaced = await service.upsert({
-        key: 'spaced',
-        kind: 'password',
-        label: 'Spaced',
-        value: ' pass with spaces ',
-      })
-      const [spacedRow] = await database
-        .select()
-        .from(workspaceSecrets)
-        .where(eq(workspaceSecrets.key, 'spaced'))
-        .limit(1)
-      expect(spacedRow?.encryptedValue).toBe('enc: pass with spaces ')
-      await expect(service.resolve('spaced')).resolves.toEqual({
-        ...spaced,
-        value: ' pass with spaces ',
-      })
+    const { database, service } = createServiceFixture()
+    const spaced = await service.upsert({
+      key: 'spaced',
+      kind: 'password',
+      label: 'Spaced',
+      value: ' pass with spaces ',
+    })
+    const [spacedRow] = await database
+      .select()
+      .from(workspaceSecrets)
+      .where(eq(workspaceSecrets.key, 'spaced'))
+      .limit(1)
+    expect(spacedRow?.encryptedValue).toBe('enc: pass with spaces ')
+    await expect(service.resolve('spaced')).resolves.toEqual({
+      ...spaced,
+      value: ' pass with spaces ',
+    })
 
-      const empty = await service.upsert({
-        key: 'empty',
-        kind: 'token',
-        label: 'Empty',
-        value: '',
-      })
-      const [emptyRow] = await database
-        .select()
-        .from(workspaceSecrets)
-        .where(eq(workspaceSecrets.key, 'empty'))
-        .limit(1)
-      expect(emptyRow?.encryptedValue).toBe('enc:')
-      await expect(service.resolve('empty')).resolves.toEqual({
-        ...empty,
-        value: '',
-      })
-    } finally {
-      await fixture.cleanup()
-    }
+    const empty = await service.upsert({
+      key: 'empty',
+      kind: 'token',
+      label: 'Empty',
+      value: '',
+    })
+    const [emptyRow] = await database
+      .select()
+      .from(workspaceSecrets)
+      .where(eq(workspaceSecrets.key, 'empty'))
+      .limit(1)
+    expect(emptyRow?.encryptedValue).toBe('enc:')
+    await expect(service.resolve('empty')).resolves.toEqual({
+      ...empty,
+      value: '',
+    })
   })
 
   it('passes branded normalized key/kind/label and byte-exact value to the store port', async () => {

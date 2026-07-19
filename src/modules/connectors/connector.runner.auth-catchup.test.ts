@@ -8,7 +8,9 @@ import {
   type ConnectorObservationInput
 } from './connector.repository'
 import { createConnectorRunner, type AppJobConnector } from './connector.runner'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
 const testCodec: SecretCodec = {
   decrypt(value) {
@@ -19,7 +21,9 @@ const testCodec: SecretCodec = {
   },
 }
 
-describe('connector runner', () => {
+describe.sequential('connector runner', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('invokes a fixture connector through the app host and stores its refresh result', async () => {
     const { repository } = await createConnectorRepositoryTestContext()
     const delayInputs: unknown[] = []

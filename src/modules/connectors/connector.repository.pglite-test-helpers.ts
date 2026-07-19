@@ -8,6 +8,7 @@ import {
   type PgliteClient,
 } from '../../db/pglite'
 import { cloneConfiguredPgliteTemplate } from '../../test/pglite-template'
+import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteConnectorRepository } from './connector.repository'
 
 const clients = new Set<PgliteClient>()
@@ -31,6 +32,18 @@ export async function createConnectorRepositoryTestContext() {
     client,
     database,
     repository: createPgliteConnectorRepository(database),
+  }
+}
+
+export function useResettablePgliteTestConnectorRepositoryContext() {
+  const getOwner = useResettablePgliteTestOwner()
+  return async () => {
+    const { client, database } = getOwner()
+    return {
+      client,
+      database,
+      repository: createPgliteConnectorRepository(database),
+    }
   }
 }
 

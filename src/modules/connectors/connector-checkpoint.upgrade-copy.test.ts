@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
-describe('connector checkpoint upgrade copy', () => {
+describe.sequential('connector checkpoint upgrade copy', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('is idempotent and never overwrites a newer target checkpoint', async () => {
     const { repository } = await createConnectorRepositoryTestContext()
     await repository.upsertInstance({

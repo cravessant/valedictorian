@@ -1,22 +1,18 @@
-import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
+import os from 'node:os'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  createTestLocalValedictorianClient as createRuntimeLocalValedictorianClient,
   getTestLocalValedictorianDatabase,
+  useResettablePgliteTestLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import { createPgliteSecretService } from '../modules/secrets/secret.composition'
 import { createWorkspaceSecretScope } from '../modules/secrets/secret.scope'
 
-function createTempDatabasePath() {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-client-')), 'pglite')
-}
-
-
-describe('runtime local Valedictorian client', () => {
+describe.sequential('runtime local Valedictorian client', () => {
+  const createRuntimeLocalValedictorianClient
+    = useResettablePgliteTestLocalValedictorianClient()
   const originalReferenceTrackerPath = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
 
   beforeEach(() => {
@@ -35,10 +31,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('runs connector status reconnect and skip actions through the local client', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const client = await createRuntimeLocalValedictorianClient({
-      pgliteDataPath,
-    })
+    const client = await createRuntimeLocalValedictorianClient()
     const database = getTestLocalValedictorianDatabase(client)
     const connectorRepository = createPgliteConnectorRepository(database)
 
@@ -149,8 +142,7 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('returns unsupported reconnect when connector-owned validateAuth is unavailable', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    const client = await createRuntimeLocalValedictorianClient({ pgliteDataPath })
+    const client = await createRuntimeLocalValedictorianClient()
     const connectorRepository = createPgliteConnectorRepository(
       getTestLocalValedictorianDatabase(client),
     )
@@ -187,7 +179,6 @@ describe('runtime local Valedictorian client', () => {
   })
 
   it('validates Jobright credentials through connector-owned validateAuth without plaintext', async () => {
-    const pgliteDataPath = createTempDatabasePath()
     const secretValue = JSON.stringify({
       username: 'demo@example.com',
       password: ' pass with spaces ',
@@ -235,7 +226,6 @@ describe('runtime local Valedictorian client', () => {
         createJobrightConnector({ fetch: fetchImpl }),
       ]),
       secretCodec,
-      pgliteDataPath,
     })
     const database = getTestLocalValedictorianDatabase(client)
     const connectorRepository = createPgliteConnectorRepository(database)

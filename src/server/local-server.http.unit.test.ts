@@ -1,0 +1,99 @@
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { Readable } from 'node:stream'
+import { describe, expect, it, vi } from 'vitest'
+import { handleHttpRequestError } from './local-server.error-boundary'
+import { LocalHttpBodyTooLargeError, readJsonBody } from './local-server.http'
+
+function requestWith(body: string, headers: IncomingMessage['headers'] = {}) {
+  const request = Readable.from([Buffer.from(body)]) as IncomingMessage
+  request.headers = headers
+  return request
+}
+
+describe('local HTTP body limits', () => {
+  it('rejects a declared oversized body before parsing', async () => {
+    const request = requestWith('', { 'content-length': '11' })
+
+    await expect(readJsonBody(request, { maxBytes: 10 })).rejects.toEqual(
+      expect.objectContaining({
+        message: 'Request body exceeds the raw batch limit',
+        statusCode: 413,
+      }),
+    )
+  })
+
+  it('rejects accumulated bytes with the route-specific message', async () => {
+    const request = requestWith('123456')
+
+    await expect(readJsonBody(request, {
+      maxBytes: 5,
+      maxBytesMessage: 'Request body exceeds the raw replay limit',
+    })).rejects.toEqual(expect.objectContaining({
+      message: 'Request body exceeds the raw replay limit',
+      statusCode: 413,
+    }))
+  })
+
+  it('rejects a declared 2MiB body before accumulation', async () => {
+    const twoMiB = 2 * 1024 * 1024
+    const request = requestWith('', { 'content-length': String(twoMiB) })
+
+    await expect(readJsonBody(request, {
+      maxBytes: twoMiB - 1,
+      maxBytesMessage: 'The request body is too large.',
+    })).rejects.toEqual(expect.objectContaining({
+      name: 'LocalHttpBodyTooLargeError',
+      message: 'The request body is too large.',
+      statusCode: 413,
+    }))
+  })
+
+  it('rejects an accumulated 2MiB body with the fixed oversized mapping', async () => {
+    const twoMiB = 2 * 1024 * 1024
+    const request = requestWith('x'.repeat(twoMiB))
+
+    await expect(readJsonBody(request, {
+      maxBytes: twoMiB - 1,
+      maxBytesMessage: 'The request body is too large.',
+    })).rejects.toEqual(expect.objectContaining({
+      name: 'LocalHttpBodyTooLargeError',
+      message: 'The request body is too large.',
+      statusCode: 413,
+    }))
+  })
+
+  it('uses a typed error so the HTTP boundary can map both limits to 413', () => {
+    expect(new LocalHttpBodyTooLargeError('too large')).toMatchObject({
+      name: 'LocalHttpBodyTooLargeError',
+      statusCode: 413,
+    })
+  })
+
+  it('maps the released replay body limit to the fixed HTTP 413 response', async () => {
+    const request = requestWith('', { 'content-length': String(2 * 1024 * 1024) })
+    const error = await readJsonBody(request, {
+      maxBytes: 1024 * 1024,
+      maxBytesMessage: 'Request body exceeds the raw replay limit',
+    }).catch((caught: unknown) => caught)
+    const writeHead = vi.fn()
+    const end = vi.fn()
+    const response = { end, writeHead } as unknown as ServerResponse
+    const onRequestError = vi.fn()
+
+    handleHttpRequestError({
+      error,
+      isLocalSecretResolveRoute: false,
+      onRequestError,
+      pathname: '/v1/workspaces/workspace-1/sourcing/raw-records/replay',
+      request,
+      response,
+    })
+
+    expect(error).toBeInstanceOf(LocalHttpBodyTooLargeError)
+    expect(writeHead).toHaveBeenCalledWith(413, expect.objectContaining({
+      'content-type': 'application/json',
+    }))
+    expect(end).toHaveBeenCalledWith(JSON.stringify({ message: 'The request body is too large.' }))
+    expect(onRequestError).not.toHaveBeenCalled()
+  })
+})

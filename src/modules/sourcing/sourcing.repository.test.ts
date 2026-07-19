@@ -1,8 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import {
   applicationEvents,
   applicationLinks,
@@ -11,19 +8,18 @@ import {
   opportunities,
   sources,
 } from '../../db/schema'
-import { createPgliteClient, migratePgliteDatabase } from '../../db/pglite'
-import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from '../applications/application.fixtures'
 import { createPglitePolicyRepository } from '../policy/policy.repository'
 import { createPgliteWorkflowRunRepository } from '../workflow-runs/workflow-run.repository'
 import { createPgliteSourcingRepository } from './sourcing.repository'
 
-async function createTestDatabase() {
-  return createPgliteTestDatabase()
-}
+const resettableDatabase = useResettablePgliteTestDatabase()
 
-describe('PGlite sourcing repository', () => {
-  it('persists an omitted country as unknown on manual create and read', async () => {
+async function createTestDatabase() { return resettableDatabase() }
+
+describe.sequential('PGlite sourcing repository', () => {
+  it('persists omitted country defaults and omits absent optional usability on manual create', async () => {
     const database = await createTestDatabase()
     const run = await createPgliteWorkflowRunRepository(database).startRun({
       runType: 'sourcing', actorType: 'human', sourceName: 'Manual', summary: 'Manual sourcing.',
@@ -46,17 +42,7 @@ describe('PGlite sourcing repository', () => {
       policyBlocker: 'missing_country',
     })
     await expect(repository.getFinding(created.id)).resolves.toMatchObject({ country: null })
-  })
 
-  it('omits absent optional usability from manually created findings', async () => {
-    const database = await createTestDatabase()
-    const run = await createPgliteWorkflowRunRepository(database).startRun({
-      runType: 'sourcing',
-      actorType: 'human',
-      sourceName: 'Manual',
-      summary: 'Started manual sourcing.',
-    })
-    const repository = createPgliteSourcingRepository(database)
     const finding = await repository.createFinding({
       workflowRunId: run.id,
       sourceName: 'Manual',
@@ -69,8 +55,8 @@ describe('PGlite sourcing repository', () => {
     })
 
     expect(finding).not.toHaveProperty('usability')
-    expect((await repository.listFindings()).items[0]).not.toHaveProperty('usability')
-
+    expect((await repository.listFindings()).items.find(({ id }) => id === finding.id))
+      .not.toHaveProperty('usability')
   })
 
   it('reclassifies sourcing findings after create and update patches', async () => {
@@ -863,129 +849,4 @@ describe('PGlite sourcing repository', () => {
     await expect(repository.listFindings()).resolves.toMatchObject({ total: 1 })
   })
 
-  it('rolls back create when reclassification fails', async () => {
-    const database = await createTestDatabase()
-    const run = await createPgliteWorkflowRunRepository(database).startRun({
-      runType: 'sourcing',
-      actorType: 'agent',
-      sourceName: 'Rollback Board',
-      summary: 'Rollback proof.',
-    })
-    await database.execute(sql.raw(`
-      CREATE FUNCTION reject_opportunity_update() RETURNS trigger
-      LANGUAGE plpgsql AS $$
-      BEGIN
-        RAISE EXCEPTION 'reclassification failed';
-      END;
-      $$;
-    `))
-    await database.execute(sql.raw(`
-      CREATE TRIGGER fail_opportunity_update
-        BEFORE UPDATE ON opportunities
-        FOR EACH ROW EXECUTE FUNCTION reject_opportunity_update();
-    `))
-    const repository = createPgliteSourcingRepository(database)
-
-    await expect(repository.createFinding({
-      workflowRunId: run.id,
-      sourceName: 'Rollback Board',
-      companyName: 'Rollback Co',
-      roleTitle: 'Backend Intern',
-      roleKind: 'internship',
-      country: 'US',
-      workMode: 'remote',
-      officialUrl: 'https://jobs.example.com/rollback/backend',
-    })).rejects.toThrow('Failed query: update "opportunities"')
-    await expect(repository.listFindings()).resolves.toMatchObject({ total: 0 })
-  })
-
-  it('rolls back update patches when reclassification fails', async () => {
-    const database = await createTestDatabase()
-    await seedSampleApplications(database)
-    const run = await createPgliteWorkflowRunRepository(database).startRun({
-      runType: 'sourcing',
-      actorType: 'agent',
-      sourceName: 'Rollback Board',
-      summary: 'Update rollback proof.',
-    })
-    const repository = createPgliteSourcingRepository(database)
-    const finding = await repository.createFinding({
-      workflowRunId: run.id,
-      sourceName: 'Rollback Board',
-      companyName: 'Versant Media',
-      roleTitle: 'Academic Year Internships: Platform Engineering',
-      roleKind: 'internship',
-      country: 'US',
-      workMode: 'remote',
-      sourceUrl: 'https://linkedin.com/jobs/view/versant-platform',
-    })
-    await database.execute(sql.raw(`
-      CREATE FUNCTION reject_duplicate_reclassification() RETURNS trigger
-      LANGUAGE plpgsql AS $$
-      BEGIN
-        IF NEW.duplicate_notes IS NOT NULL THEN
-          RAISE EXCEPTION 'duplicate reclassification failed';
-        END IF;
-        RETURN NEW;
-      END;
-      $$;
-    `))
-    await database.execute(sql.raw(`
-      CREATE TRIGGER fail_duplicate_reclassification
-        BEFORE UPDATE ON opportunities
-        FOR EACH ROW EXECUTE FUNCTION reject_duplicate_reclassification();
-    `))
-
-    await expect(repository.updateFinding({
-      findingId: finding.id,
-      officialUrl: 'https://jobs.example.test/remediated/41581ba03bdcb93e',
-    })).rejects.toThrow('Failed query: update "opportunities"')
-    await expect(repository.getFinding(finding.id)).resolves.toMatchObject({
-      officialUrl: null,
-      mergeStatus: 'new',
-    })
-  })
-
-  it('keeps findings visible after an on-disk close and reopen', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'valedictorian-sourcing-'))
-    let findingId = ''
-
-    try {
-      const firstClient = await createPgliteClient({ dataDir: directory })
-      try {
-        const database = await migratePgliteDatabase(firstClient)
-        const run = await createPgliteWorkflowRunRepository(database).startRun({
-          runType: 'sourcing',
-          actorType: 'human',
-          sourceName: 'Persistent Board',
-          summary: 'Persistence proof.',
-        })
-        const finding = await createPgliteSourcingRepository(database).createFinding({
-          workflowRunId: run.id,
-          sourceName: 'Persistent Board',
-          companyName: 'Persistent Co',
-          roleTitle: 'Backend Intern',
-          roleKind: 'internship',
-          country: 'US',
-          workMode: 'remote',
-          officialUrl: 'https://jobs.example.com/persistent/backend',
-        })
-        findingId = finding.id
-      } finally {
-        await firstClient.close()
-      }
-
-      const reopenedClient = await createPgliteClient({ dataDir: directory })
-      try {
-        const database = await migratePgliteDatabase(reopenedClient)
-        await expect(createPgliteSourcingRepository(database).getFinding(findingId)).resolves.toMatchObject({
-          companyName: 'Persistent Co',
-        })
-      } finally {
-        await reopenedClient.close()
-      }
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  })
 })

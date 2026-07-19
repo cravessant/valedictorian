@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { connectorRuns, sourceExecutionScopes, opportunities } from '../../db/schema'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+import {
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 
 const obsoleteBrowserMode = ['browser', '_session'].join('')
 const obsoleteSessionField = ['session', 'Key'].join('')
 
-describe('PGlite connector repository', () => {
+describe.sequential('PGlite connector repository', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it('rejects run admission when disable commits after an enabled preflight read', async () => {
     const { repository } = await createConnectorRepositoryTestContext()
     const input = {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { eq, sql } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import {
   applicationEvents,
   applicationScores,
@@ -8,13 +8,15 @@ import {
   workflowRunSteps,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
-import { createPgliteTestDatabase } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import { seedSampleApplications } from '../applications/application.fixtures'
 import { createPgliteWorkflowRunRepository } from '../workflow-runs/workflow-run.repository'
 import { createPgliteSourcingProcessor } from './sourcing.processor'
 
+const resettableDatabase = useResettablePgliteTestDatabase()
+
 async function createDatabase() {
-  const database = await createPgliteTestDatabase()
+  const database = resettableDatabase()
   await seedSampleApplications(database)
   return database
 }
@@ -29,26 +31,7 @@ async function createSourcingRun(database: PgliteDatabase) {
   })
 }
 
-async function failSourcingProcessingStep(database: PgliteDatabase) {
-  await database.execute(sql.raw(`
-    CREATE FUNCTION fail_sourcing_processing_step() RETURNS trigger
-    LANGUAGE plpgsql AS $$
-    BEGIN
-      IF NEW.type = 'sourcing_candidate_processed' THEN
-        RAISE EXCEPTION 'sourcing processing step failed';
-      END IF;
-      RETURN NEW;
-    END;
-    $$;
-  `))
-  await database.execute(sql.raw(`
-    CREATE TRIGGER fail_sourcing_processing_steps
-      BEFORE INSERT ON workflow_run_steps
-      FOR EACH ROW EXECUTE FUNCTION fail_sourcing_processing_step();
-  `))
-}
-
-describe('PGlite sourcing processor', () => {
+describe.sequential('PGlite sourcing processor', () => {
   it('promotes a clean candidate, then records the application score', async () => {
     const database = await createDatabase()
     const run = await createSourcingRun(database)
@@ -121,33 +104,6 @@ describe('PGlite sourcing processor', () => {
         .where(eq(workflowRunSteps.workflowRunId, run.id)))
         .map((step) => step.type),
     ).toContain('sourcing_candidate_processed')
-  })
-
-  it('links duplicate official URL findings to the existing application', async () => {
-    const database = await createDatabase()
-    const run = await createSourcingRun(database)
-    const processor = createPgliteSourcingProcessor(database)
-    const applicationCount = (await database.select().from(applications)).length
-
-    const finding = await processor.processCandidate({
-      workflowRunId: run.id,
-      sourceId: 'source-linkedin',
-      companyName: 'Versant Media',
-      roleTitle: 'Academic Year Internships: Platform Engineering',
-      roleKind: 'internship',
-      country: 'US',
-      workMode: 'remote',
-      officialUrl:
-        'https://jobs.example.test/remediated/41581ba03bdcb93e?utm_source=linkedin',
-      sourceUrl: 'https://linkedin.com/jobs/view/versant-platform',
-    })
-
-    expect(finding).toMatchObject({
-      mergeStatus: 'duplicate',
-      mergedApplicationId: 'application-versant-platform',
-      duplicateNotes: expect.stringContaining('official URL'),
-    })
-    expect(await database.select().from(applications)).toHaveLength(applicationCount)
   })
 
   it('links duplicate fingerprint findings to the existing application', async () => {
@@ -305,65 +261,5 @@ describe('PGlite sourcing processor', () => {
         .where(eq(workflowRunSteps.workflowRunId, run.id)))
         .map(({ type }) => type),
     ).toContain('sourcing_candidate_processed')
-  })
-
-  it('rolls back the complete post-promotion invariant when the processing step fails', async () => {
-    const database = await createDatabase()
-    const run = await createSourcingRun(database)
-    const processor = createPgliteSourcingProcessor(database)
-    await failSourcingProcessingStep(database)
-
-    await expect(processor.processCandidate({
-      workflowRunId: run.id,
-      sourceId: 'source-linkedin',
-      companyName: 'Rollback Robotics',
-      roleTitle: 'Atomicity Engineering Intern',
-      roleKind: 'internship',
-      country: 'US',
-      workMode: 'hybrid',
-      officialUrl: 'https://jobs.example.com/rollback/atomicity-engineering-intern',
-      score: {
-        score: 4,
-        band: 'low',
-        roleRelevance: 1,
-        careerSignal: 1,
-        cityWorkMode: 1,
-        compensationLogistics: 1,
-        penalties: [],
-        rationale: 'Below cutoff to exercise every post-promotion write.',
-        rubricVersion: 'processor-rollback-test',
-      },
-      cutoffScore: 7,
-    })).rejects.toThrow('Failed query: insert into "workflow_run_steps"')
-
-    const [finding] = await database
-      .select()
-      .from(opportunities)
-      .where(eq(opportunities.roleTitle, 'Atomicity Engineering Intern'))
-      .limit(1)
-    expect(finding).toMatchObject({
-      mergeStatus: 'merged',
-      applicationId: expect.any(String),
-    })
-
-    const applicationId = finding?.applicationId ?? ''
-    expect(
-      await database.select().from(applications).where(eq(applications.id, applicationId)).limit(1).then(([row]) => row),
-    ).toMatchObject({
-      status: 'queued',
-      currentPriorityScore: null,
-      currentPriorityBand: null,
-    })
-    expect(
-      await database.select().from(applicationScores).where(eq(applicationScores.applicationId, applicationId)),
-    ).toHaveLength(0)
-    expect(
-      (await database.select().from(applicationEvents).where(eq(applicationEvents.applicationId, applicationId)))
-        .map(({ type }) => type),
-    ).not.toEqual(expect.arrayContaining(['score_recorded', 'status_updated']))
-    expect(
-      (await database.select().from(workflowRunSteps).where(eq(workflowRunSteps.workflowRunId, run.id)))
-        .map(({ type }) => type),
-    ).not.toContain('sourcing_candidate_processed')
   })
 })

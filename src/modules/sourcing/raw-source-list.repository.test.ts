@@ -19,10 +19,12 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
-import { createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPgliteRawSourceRepository } from './raw-source.repository'
 
-describe('raw source repository list', () => {
+const resettableOwner = useResettablePgliteTestOwner()
+
+describe.sequential('raw source repository list', () => {
   it('returns strict sparse summaries without arbitrary raw payload data', async () => {
     const { repository } = await createTestContext(
       () => new Date('2026-07-10T14:00:00.000Z'),
@@ -439,7 +441,7 @@ describe('raw source repository list', () => {
 })
 
 async function createTestContext(now?: () => Date) {
-  const { client, database } = await createPgliteTestOwner()
+  const { client, database } = resettableOwner()
   return {
     client,
     database,

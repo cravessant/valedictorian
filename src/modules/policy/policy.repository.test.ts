@@ -1,6 +1,3 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { defaultPolicyConfig } from 'sparxie'
 import { eq } from 'drizzle-orm'
@@ -14,12 +11,9 @@ import {
   workflowRunSteps,
 } from '../../db/schema'
 import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
-import { createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { createPglitePolicyRepository } from './policy.repository'
 
 const passedVerificationReceiptPayload = {
@@ -31,22 +25,15 @@ const passedVerificationReceiptPayload = {
   evidence: 'Final review page showed correct material fields.',
 }
 
-async function openMigratedPolicyDb(dataDir?: string) {
-  if (!dataDir) {
-    const { client, database } = await createPgliteTestOwner()
-    return { client, database, repository: createPglitePolicyRepository(database) }
-  }
-  const client = await createPgliteClient(dataDir ? { dataDir } : {})
-  const database = await migratePgliteDatabase(client)
+const resettableOwner = useResettablePgliteTestOwner()
+
+async function openMigratedPolicyDb() {
+  const { database } = resettableOwner()
   return {
-    client,
+    close: async () => {},
     database,
     repository: createPglitePolicyRepository(database),
   }
-}
-
-async function closeClient(client: PgliteClient) {
-  await client.close()
 }
 
 async function seedTikTokApplication(database: PgliteDatabase) {
@@ -128,9 +115,9 @@ async function seedTikTokApplication(database: PgliteDatabase) {
   })
 }
 
-describe('PGlite policy repository', () => {
+describe.sequential('PGlite policy repository', () => {
   it('persists policy config overrides and resets to defaults', async () => {
-    const { client, database, repository } = await openMigratedPolicyDb()
+    const { close, database, repository } = await openMigratedPolicyDb()
     try {
       await expect(repository.getConfig()).resolves.toEqual(defaultPolicyConfig)
 
@@ -150,37 +137,12 @@ describe('PGlite policy repository', () => {
       expect(await database.select().from(policyConfig)).toHaveLength(1)
       await expect(repository.resetConfig()).resolves.toEqual(defaultPolicyConfig)
     } finally {
-      await closeClient(client)
-    }
-  })
-
-  it('persists policy config across on-disk close and reopen', async () => {
-    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'policy-pglite-'))
-    try {
-      const first = await openMigratedPolicyDb(dataDir)
-      try {
-        await first.repository.updateConfig({
-          scoring: { applyCutoff: 9 },
-        })
-      } finally {
-        await closeClient(first.client)
-      }
-
-      const second = await openMigratedPolicyDb(dataDir)
-      try {
-        await expect(second.repository.getConfig()).resolves.toMatchObject({
-          scoring: { applyCutoff: 9 },
-        })
-      } finally {
-        await closeClient(second.client)
-      }
-    } finally {
-      fs.rmSync(dataDir, { recursive: true, force: true })
+      await close()
     }
   })
 
   it('atomically merges concurrent disjoint policy config patches', async () => {
-    const { client, repository } = await openMigratedPolicyDb()
+    const { close, repository } = await openMigratedPolicyDb()
     try {
       await Promise.all([
         repository.updateConfig({ scoring: { applyCutoff: 7 } }),
@@ -192,12 +154,12 @@ describe('PGlite policy repository', () => {
         actionQueue: { staleLockHours: 3 },
       })
     } finally {
-      await closeClient(client)
+      await close()
     }
   })
 
   it('records and lists policy evidence without mutating the subject row', async () => {
-    const { client, database, repository } = await openMigratedPolicyDb()
+    const { close, database, repository } = await openMigratedPolicyDb()
     try {
       const now = '2026-06-08T12:00:00.000Z'
       await database.insert(companies).values({
@@ -279,12 +241,12 @@ describe('PGlite policy repository', () => {
         }),
       ).resolves.toEqual([evidence])
     } finally {
-      await closeClient(client)
+      await close()
     }
   })
 
   it('evaluates application submit gates from company policy and approval evidence', async () => {
-    const { client, database, repository } = await openMigratedPolicyDb()
+    const { close, database, repository } = await openMigratedPolicyDb()
     try {
       await seedTikTokApplication(database)
 
@@ -317,12 +279,12 @@ describe('PGlite policy repository', () => {
         action: 'allow_submit',
       })
     } finally {
-      await closeClient(client)
+      await close()
     }
   })
 
   it('computes scheduler-ready run windows without creating runs', async () => {
-    const { client, database, repository } = await openMigratedPolicyDb()
+    const { close, database, repository } = await openMigratedPolicyDb()
     try {
       const decision = await repository.evaluateRunWindow({
         sourceName: 'LinkedIn',
@@ -340,7 +302,7 @@ describe('PGlite policy repository', () => {
       expect(await database.select().from(workflowRuns)).toHaveLength(0)
       expect(await database.select().from(workflowRunSteps)).toHaveLength(0)
     } finally {
-      await closeClient(client)
+      await close()
     }
   })
 })

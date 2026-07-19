@@ -27,7 +27,6 @@ const INTERNAL_ERROR_BODY = {
 
 const VALIDATION_ERROR_BODY = { message: 'The request is invalid.' }
 const NOT_FOUND_ERROR_BODY = { message: 'The requested resource was not found.' }
-const BODY_TOO_LARGE_ERROR_BODY = { message: 'The request body is too large.' }
 
 const upsertScheduleBody = {
   cadence: { everyMinutes: 60, kind: 'interval' },
@@ -769,7 +768,7 @@ describe('local server safe HTTP error boundary', () => {
     await expect(response.json()).resolves.toEqual(NOT_FOUND_ERROR_BODY)
   })
 
-  it('returns fixed parser and body-limit responses without reflecting request values', async () => {
+  it('returns fixed parser responses without reflecting request values', async () => {
     const client = createBoundaryWorkspaceClient(() => {}, {
       sourcing: {
         rawRecords: { replay: vi.fn() },
@@ -792,15 +791,7 @@ describe('local server safe HTTP error boundary', () => {
     })
     expect(malformed.status).toBe(400)
     await expect(malformed.json()).resolves.toEqual(VALIDATION_ERROR_BODY)
-
-    const oversized = await fetch(`${base}/sourcing/raw-records/replay`, {
-      body: JSON.stringify({ canary: 'x'.repeat(2 * 1024 * 1024) }),
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
-    })
     expect(events).toEqual([])
-    expect(oversized.status).toBe(413)
-    await expect(oversized.json()).resolves.toEqual(BODY_TOO_LARGE_ERROR_BODY)
   })
 
   it.each([

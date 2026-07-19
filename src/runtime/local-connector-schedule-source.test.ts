@@ -5,8 +5,11 @@ import { describe, expect, it } from 'vitest'
 import type { ConnectorScheduleSummary, ConnectorSchedulingCapability } from 'sparxie'
 import {
   closeTestLocalValedictorianClient,
-  createTestLocalValedictorianClient as createLocalValedictorianClient,
+  createTestLocalValedictorianClient as createFreshLocalValedictorianClient,
+  useResettablePgliteTestLocalValedictorianClient,
 } from './local-valedictorian-client.test-harness'
+
+const createLocalValedictorianClient = useResettablePgliteTestLocalValedictorianClient()
 import { createLocalScheduler, type LocalScheduledWorkSource } from './local-scheduler'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
@@ -21,7 +24,7 @@ const availableSchedulingCapability: Extract<ConnectorSchedulingCapability, { av
   missedOccurrencePolicy: 'coalesce_one',
 }
 
-describe('local connector schedule source', () => {
+describe.sequential('local connector schedule source', () => {
   it('waits for an active dispatch to settle without starting later due work after shutdown', async () => {
     let now = new Date('2026-07-15T12:00:00.000Z')
     const timers: Array<() => void> = []
@@ -117,7 +120,6 @@ describe('local connector schedule source', () => {
   })
 
   it('discovers and executes a due persisted connector schedule through the existing dispatch path', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-source-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     let source: LocalScheduledWorkSource | undefined
@@ -133,7 +135,6 @@ describe('local connector schedule source', () => {
         if (candidate.id === 'connector-schedules') source = candidate
       },
       seedDataMode: 'none',
-      pgliteDataPath,
       workspaceId: 'scheduler-source-workspace',
     })
 
@@ -160,7 +161,6 @@ describe('local connector schedule source', () => {
   })
 
   it('retries a due schedule after a concurrent manual run releases the single-flight guard', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-collision-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     let releaseManual: (() => void) | undefined
@@ -183,7 +183,7 @@ describe('local connector schedule source', () => {
       },
     })
     let source: LocalScheduledWorkSource | undefined
-    const client = await createLocalValedictorianClient({
+    const client = await createFreshLocalValedictorianClient({
       connectorRegistry: {
         get(connectorId) {
           return connectorId === 'fixture.jobs'
@@ -205,7 +205,6 @@ describe('local connector schedule source', () => {
         scheduler.register(candidate)
       },
       seedDataMode: 'none',
-      pgliteDataPath,
       workspaceId: 'scheduler-collision-workspace',
     })
 
@@ -243,7 +242,6 @@ describe('local connector schedule source', () => {
   })
 
   it('wakes blocked due work when a disabled connector is re-enabled', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-reenable-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     const scheduler = createLocalScheduler({ now: () => clock })
@@ -260,7 +258,6 @@ describe('local connector schedule source', () => {
       onScheduledWorkChanged: () => scheduler.signal(),
       registerScheduledWorkSource: (candidate) => scheduler.register(candidate),
       seedDataMode: 'none',
-      pgliteDataPath,
       workspaceId: 'scheduler-reenable-workspace',
     })
 
@@ -308,7 +305,7 @@ describe('local connector schedule source', () => {
           : null
       },
     }
-    const initialClient = await createLocalValedictorianClient({
+    const initialClient = await createFreshLocalValedictorianClient({
       connectorRegistry,
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -337,7 +334,7 @@ describe('local connector schedule source', () => {
     await closeTestLocalValedictorianClient(initialClient)
     clock = new Date('2026-07-15T12:01:00.000Z')
     const scheduler = createLocalScheduler({ now: () => clock })
-    const reopenedClient = await createLocalValedictorianClient({
+    const reopenedClient = await createFreshLocalValedictorianClient({
       connectorRegistry,
       connectorScheduling: availableSchedulingCapability,
       now: () => clock,
@@ -374,7 +371,6 @@ describe('local connector schedule source', () => {
   })
 
   it('continues cadence after Capture backfill reaches the configured date without redoing checkpoint work', async () => {
-    const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-scheduler-complete-'))
     let clock = new Date('2026-07-15T11:00:00.000Z')
     let refreshCalls = 0
     const checkpoints: unknown[] = []
@@ -440,7 +436,6 @@ describe('local connector schedule source', () => {
       onScheduledWorkChanged: () => scheduler.signal(),
       registerScheduledWorkSource: (candidate) => scheduler.register(candidate),
       seedDataMode: 'none',
-      pgliteDataPath,
       workspaceId: 'scheduler-complete-workspace',
     })
 

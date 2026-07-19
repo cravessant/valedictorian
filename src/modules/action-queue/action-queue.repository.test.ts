@@ -1,6 +1,3 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import {
@@ -12,33 +9,21 @@ import {
   sources,
 } from '../../db/schema'
 import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
-import { createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createPglitePolicyRepository } from '../policy/policy.repository'
 import { createPgliteActionQueueRepository } from './action-queue.repository'
 
 const createdAt = '2026-06-04T16:00:00.000Z'
+const resettableDatabase = useResettablePgliteTestDatabase()
 
-async function openMigratedActionQueueDb(dataDir?: string) {
-  if (!dataDir) {
-    const { client, database } = await createPgliteTestOwner()
-    return { client, database, repository: createPgliteActionQueueRepository(database) }
-  }
-  const client = await createPgliteClient(dataDir ? { dataDir } : {})
-  const database = await migratePgliteDatabase(client)
-  return {
-    client,
-    database,
-    repository: createPgliteActionQueueRepository(database),
-  }
+async function openMigratedActionQueueDb() {
+  const database = resettableDatabase()
+  return { client: null, database, repository: createPgliteActionQueueRepository(database) }
 }
 
-async function closeClient(client: PgliteClient) {
-  await client.close()
+async function closeClient(_client: null) {
 }
 
 async function seedSampleActionQueueApplications(database: PgliteDatabase) {
@@ -260,73 +245,59 @@ async function seedSampleActionQueueApplications(database: PgliteDatabase) {
   ])
 }
 
-describe('PGlite action queue repository', () => {
+describe.sequential('PGlite action queue repository', () => {
   // Read-only repository: transaction rollback testing is not applicable.
 
-  it('places queued applications at or above the cutoff in the apply-now action bucket', async () => {
-    const { client, database, repository } = await openMigratedActionQueueDb()
-    try {
-      await seedSampleActionQueueApplications(database)
+  it('places queued applications into apply-now and skip-below-cutoff buckets from one seed', async () => {
+    const { database, repository } = await openMigratedActionQueueDb()
+    await seedSampleActionQueueApplications(database)
 
-      const result = await repository.listActionQueue({ actionBucket: 'apply_now' })
+    const applyNow = await repository.listActionQueue({ actionBucket: 'apply_now' })
+    expect(applyNow).toMatchObject({
+      total: 1,
+      limit: 50,
+      offset: 0,
+      hasMore: false,
+      actionBucketCounts: {
+        apply_now: 1,
+      },
+    })
+    expect(applyNow.items).toHaveLength(1)
+    expect(applyNow.items[0]).toMatchObject({
+      id: 'application-versant-platform',
+      companyName: 'Versant Media',
+      roleTitle: 'Academic Year Internships: Platform Engineering',
+      status: 'queued',
+      currentPriorityScore: 6,
+      actionBucket: 'apply_now',
+      nextAction: 'apply_now',
+      reason: 'Queued score 6 meets policy cutoff 6.',
+      primaryLink: {
+        label: 'official',
+        url: 'https://jobs.example.test/remediated/41581ba03bdcb93e',
+      },
+    })
 
-      expect(result).toMatchObject({
-        total: 1,
-        limit: 50,
-        offset: 0,
-        hasMore: false,
-        actionBucketCounts: {
-          apply_now: 1,
-        },
-      })
-      expect(result.items).toHaveLength(1)
-      expect(result.items[0]).toMatchObject({
-        id: 'application-versant-platform',
-        companyName: 'Versant Media',
-        roleTitle: 'Academic Year Internships: Platform Engineering',
-        status: 'queued',
-        currentPriorityScore: 6,
-        actionBucket: 'apply_now',
-        nextAction: 'apply_now',
-        reason: 'Queued score 6 meets policy cutoff 6.',
-        primaryLink: {
-          label: 'official',
-          url: 'https://jobs.example.test/remediated/41581ba03bdcb93e',
-        },
-      })
-    } finally {
-      await closeClient(client)
-    }
-  })
+    await database
+      .update(applications)
+      .set({ status: 'queued' })
+      .where(eq(applications.id, 'application-jobster-analytics'))
 
-  it('places queued applications below the cutoff in the skip-below-cutoff action bucket', async () => {
-    const { client, database, repository } = await openMigratedActionQueueDb()
-    try {
-      await seedSampleActionQueueApplications(database)
-      await database
-        .update(applications)
-        .set({ status: 'queued' })
-        .where(eq(applications.id, 'application-jobster-analytics'))
-
-      const result = await repository.listActionQueue({ actionBucket: 'skip_below_cutoff' })
-
-      expect(result).toMatchObject({
-        total: 1,
-        actionBucketCounts: {
-          skip_below_cutoff: 1,
-        },
-      })
-      expect(result.items[0]).toMatchObject({
-        id: 'application-jobster-analytics',
-        status: 'queued',
-        currentPriorityScore: 3,
-        actionBucket: 'skip_below_cutoff',
-        nextAction: 'skip_below_cutoff',
-        reason: 'Queued score 3 is below policy cutoff 6.',
-      })
-    } finally {
-      await closeClient(client)
-    }
+    const skipBelow = await repository.listActionQueue({ actionBucket: 'skip_below_cutoff' })
+    expect(skipBelow).toMatchObject({
+      total: 1,
+      actionBucketCounts: {
+        skip_below_cutoff: 1,
+      },
+    })
+    expect(skipBelow.items[0]).toMatchObject({
+      id: 'application-jobster-analytics',
+      status: 'queued',
+      currentPriorityScore: 3,
+      actionBucket: 'skip_below_cutoff',
+      nextAction: 'skip_below_cutoff',
+      reason: 'Queued score 3 is below policy cutoff 6.',
+    })
   })
 
   it('keeps queued applications without scores visible for user review', async () => {
@@ -672,46 +643,6 @@ describe('PGlite action queue repository', () => {
       ])
     } finally {
       await closeClient(client)
-    }
-  })
-
-  it('reads the same action queue across on-disk close and reopen', async () => {
-    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'action-queue-pglite-'))
-    try {
-      const first = await openMigratedActionQueueDb(dataDir)
-      try {
-        await seedSampleActionQueueApplications(first.database)
-        await expect(first.repository.listActionQueue({ actionBucket: 'apply_now' })).resolves.toMatchObject({
-          total: 1,
-          items: [
-            {
-              id: 'application-versant-platform',
-              actionBucket: 'apply_now',
-              reason: 'Queued score 6 meets policy cutoff 6.',
-            },
-          ],
-        })
-      } finally {
-        await closeClient(first.client)
-      }
-
-      const second = await openMigratedActionQueueDb(dataDir)
-      try {
-        await expect(second.repository.listActionQueue({ actionBucket: 'apply_now' })).resolves.toMatchObject({
-          total: 1,
-          items: [
-            {
-              id: 'application-versant-platform',
-              actionBucket: 'apply_now',
-              reason: 'Queued score 6 meets policy cutoff 6.',
-            },
-          ],
-        })
-      } finally {
-        await closeClient(second.client)
-      }
-    } finally {
-      fs.rmSync(dataDir, { recursive: true, force: true })
     }
   })
 

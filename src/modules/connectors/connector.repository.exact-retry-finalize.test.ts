@@ -1,6 +1,3 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { drizzle } from 'drizzle-orm/pglite'
 import { describe, expect, it } from 'vitest'
 import {
@@ -14,12 +11,10 @@ import {
   retryWork,
   schema,
 } from '../../db/schema'
+import type { PgliteDatabase } from '../../db/pglite'
 import {
-  createPgliteClient,
-  migratePgliteDatabase,
-  type PgliteDatabase,
-} from '../../db/pglite'
-import { createConnectorRepositoryTestContext } from './connector.repository.pglite-test-helpers'
+  useResettablePgliteTestConnectorRepositoryContext,
+} from './connector.repository.pglite-test-helpers'
 import { createPgliteConnectorRepository } from './connector.repository'
 import { mapConnectorRunSummary, publicConnectorRunSummary } from '../../runtime/local-connector-public-run'
 import {
@@ -32,84 +27,77 @@ const RESOLVER_VERSION = 'jobright-authenticated-destination@1'
 const INPUT_HASH = 'sha256:finalize-failed-destination'
 const FILTER_SIGNATURE = 'provider-state:jobright.resolver@0.11.0'
 
-describe('exact acquired normalization retry finalization success gate', () => {
+describe.sequential('exact acquired normalization retry finalization success gate', () => {
+  const createConnectorRepositoryTestContext
+    = useResettablePgliteTestConnectorRepositoryContext()
   it.each([
     { exactSuccess: true, expectedRunStatus: 'completed', expectedWorkState: 'completed' },
     { exactSuccess: false, expectedRunStatus: 'failed', expectedWorkState: 'scheduled' },
   ] as const)(
     'lets only one shared-owner caller own the $expectedRunStatus terminal transition',
     async ({ exactSuccess, expectedRunStatus, expectedWorkState }) => {
-      const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'exact-retry-finalize-race-'))
-      const dataDir = path.join(temporaryRoot, 'pglite')
-      const firstClient = await createPgliteClient({ dataDir })
-
-      try {
-        await migratePgliteDatabase(firstClient)
-        const queries: string[] = []
-        const firstDatabase = drizzle(firstClient, {
-          schema,
-          logger: { logQuery(query) { queries.push(query) } },
-        })
-        const firstRepository = createPgliteConnectorRepository(firstDatabase)
-        const fixture = await seedTerminalRace(firstDatabase, firstRepository, exactSuccess)
-        const secondRepository = createPgliteConnectorRepository(firstDatabase)
-        const finalization = {
-          acquiredRetryWork: fixture.acquiredRetryWork,
-          checkpoint: {
-            schemaVersion: 'jobright-resolution-checkpoint@5',
-            checkpoint: { pendingDetailRetries: [], retryState: [] },
-          },
-          completedAt: '2026-07-11T12:00:03.000Z',
-          connectorInstanceId: fixture.connectorInstanceId,
-          connectorRunId: fixture.connectorRunId,
-          coverage: { start: fixture.startedAt, end: fixture.startedAt },
-          filterSignature: FILTER_SIGNATURE,
-          finalizationMode: exactSuccess
-            ? 'require-persisted-exact-success' as const
-            : 'complete-only-on-persisted-exact-success' as const,
-          savedAt: '2026-07-11T12:00:03.000Z',
-          terminalStatus: 'failed' as const,
-        }
-
-        const results = await Promise.allSettled([
-          firstRepository.finalizeExactAcquiredNormalizationRetry(finalization),
-          secondRepository.finalizeExactAcquiredNormalizationRetry(finalization),
-        ])
-
-        const fulfilled = results.filter(
-          (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof firstRepository.finalizeExactAcquiredNormalizationRetry>>> =>
-            result.status === 'fulfilled',
-        )
-        expect(fulfilled).toHaveLength(1)
-        expect(fulfilled[0]!.value).toMatchObject({
-          id: fixture.connectorRunId,
-          status: expectedRunStatus,
-        })
-        expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(1)
-
-        const [persistedRun] = await firstDatabase.select().from(connectorRuns)
-        const [persistedWork] = await firstDatabase.select().from(retryWork)
-        expect(persistedRun).toMatchObject({
-          id: fixture.connectorRunId,
-          status: expectedRunStatus,
-        })
-        expect(persistedWork).toMatchObject({
-          id: fixture.acquiredRetryWork.retryWorkId,
-          state: expectedWorkState,
-          acquisitionRunId: null,
-        })
-        expect(queries.some((query) => /from "connector_runs"[\s\S]*for update/i.test(query)))
-          .toBe(true)
-        expect(queries.some((query) => /from "retry_work"[\s\S]*for update/i.test(query)))
-          .toBe(true)
-        expect(queries.some((query) => /update "retry_work"[\s\S]*returning/i.test(query)))
-          .toBe(true)
-        expect(queries.some((query) => /update "connector_runs"[\s\S]*returning/i.test(query)))
-          .toBe(true)
-      } finally {
-        await firstClient.close()
-        await fs.promises.rm(temporaryRoot, { recursive: true, force: true })
+      const { client } = await createConnectorRepositoryTestContext()
+      const queries: string[] = []
+      const firstDatabase = drizzle(client, {
+        schema,
+        logger: { logQuery(query) { queries.push(query) } },
+      })
+      const firstRepository = createPgliteConnectorRepository(firstDatabase)
+      const fixture = await seedTerminalRace(firstDatabase, firstRepository, exactSuccess)
+      const secondRepository = createPgliteConnectorRepository(firstDatabase)
+      const finalization = {
+        acquiredRetryWork: fixture.acquiredRetryWork,
+        checkpoint: {
+          schemaVersion: 'jobright-resolution-checkpoint@5',
+          checkpoint: { pendingDetailRetries: [], retryState: [] },
+        },
+        completedAt: '2026-07-11T12:00:03.000Z',
+        connectorInstanceId: fixture.connectorInstanceId,
+        connectorRunId: fixture.connectorRunId,
+        coverage: { start: fixture.startedAt, end: fixture.startedAt },
+        filterSignature: FILTER_SIGNATURE,
+        finalizationMode: exactSuccess
+          ? 'require-persisted-exact-success' as const
+          : 'complete-only-on-persisted-exact-success' as const,
+        savedAt: '2026-07-11T12:00:03.000Z',
+        terminalStatus: 'failed' as const,
       }
+
+      const results = await Promise.allSettled([
+        firstRepository.finalizeExactAcquiredNormalizationRetry(finalization),
+        secondRepository.finalizeExactAcquiredNormalizationRetry(finalization),
+      ])
+
+      const fulfilled = results.filter(
+        (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof firstRepository.finalizeExactAcquiredNormalizationRetry>>> =>
+          result.status === 'fulfilled',
+      )
+      expect(fulfilled).toHaveLength(1)
+      expect(fulfilled[0]!.value).toMatchObject({
+        id: fixture.connectorRunId,
+        status: expectedRunStatus,
+      })
+      expect(results.filter(({ status }) => status === 'rejected')).toHaveLength(1)
+
+      const [persistedRun] = await firstDatabase.select().from(connectorRuns)
+      const [persistedWork] = await firstDatabase.select().from(retryWork)
+      expect(persistedRun).toMatchObject({
+        id: fixture.connectorRunId,
+        status: expectedRunStatus,
+      })
+      expect(persistedWork).toMatchObject({
+        id: fixture.acquiredRetryWork.retryWorkId,
+        state: expectedWorkState,
+        acquisitionRunId: null,
+      })
+      expect(queries.some((query) => /from "connector_runs"[\s\S]*for update/i.test(query)))
+        .toBe(true)
+      expect(queries.some((query) => /from "retry_work"[\s\S]*for update/i.test(query)))
+        .toBe(true)
+      expect(queries.some((query) => /update "retry_work"[\s\S]*returning/i.test(query)))
+        .toBe(true)
+      expect(queries.some((query) => /update "connector_runs"[\s\S]*returning/i.test(query)))
+        .toBe(true)
     },
   )
 

@@ -6,7 +6,6 @@ import { profileDocumentSchemaVersion } from 'sparxie'
 import { resolveWorkspaceLayout } from '../../workspace/workspace.paths'
 import type { SecretCodec } from '../secrets/secret.codec'
 import {
-  createJsonProfileService,
   prepareWorkspaceProfileCapabilities,
 } from './profile.composition'
 import { serializeProfileJsonDocument } from './profile.json.document'
@@ -28,30 +27,6 @@ describe('profile composition', () => {
     }
   })
 
-  it('prepares one JSON profile and scoped secret capability before use and disposes it', async () => {
-    const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-composition-'))
-    cleanupPaths.push(rootPath)
-    const layout = resolveWorkspaceLayout(rootPath)
-    fs.mkdirSync(layout.pgliteDataPath, { recursive: true })
-
-    const prepared = await prepareWorkspaceProfileCapabilities({
-      profilePath: layout.profilePath,
-      secretCodec: codec,
-      pgliteDataPath: layout.pgliteDataPath,
-      workspaceId: 'workspace-composition',
-    })
-
-    expect(createJsonProfileService).toEqual(expect.any(Function))
-    expect(await prepared.profileService.get()).toMatchObject({ answers: [], education: [] })
-    expect(prepared.secretService.scope.workspaceId).toBe('workspace-composition')
-    expect(fs.existsSync(layout.profilePath)).toBe(true)
-
-    await prepared.dispose()
-    await expect(prepared.profileService.get()).rejects.toMatchObject({
-      code: 'profile_document_unavailable',
-    })
-  })
-
   it('observes external edits, fails closed on invalid JSON, restores, restarts, and keeps profile tables absent', async () => {
     const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-composition-integration-'))
     cleanupPaths.push(rootPath)
@@ -64,6 +39,11 @@ describe('profile composition', () => {
       workspaceId: 'workspace-composition-integration',
     }
     const prepared = await prepareWorkspaceProfileCapabilities(options)
+
+    expect(await prepared.profileService.get()).toMatchObject({ answers: [], education: [] })
+    expect(prepared.secretService.scope.workspaceId).toBe('workspace-composition-integration')
+    expect(fs.existsSync(layout.profilePath)).toBe(true)
+
     const profile = await prepared.profileService.update({
       dateOfBirth: '1990-02-03',
       email: 'first@example.test',
@@ -99,6 +79,9 @@ describe('profile composition', () => {
     await prepared.profileService.update({ email: 'restart@example.test' })
     await expectOperationalDatabaseHasNoProfileTables(prepared.pgliteClient)
     await prepared.dispose()
+    await expect(prepared.profileService.get()).rejects.toMatchObject({
+      code: 'profile_document_unavailable',
+    })
 
     const restarted = await prepareWorkspaceProfileCapabilities(options)
     await expect(restarted.profileService.get()).resolves.toMatchObject({

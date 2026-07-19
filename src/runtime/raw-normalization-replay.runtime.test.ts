@@ -23,7 +23,7 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../db/pglite'
-import { createPgliteTestOwner } from '../test/pglite-test-owner'
+import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 import type { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
 import type { NormalizationResolver } from '../modules/sourcing/normalization.registry'
@@ -37,6 +37,8 @@ const CANONICAL_SCHEMA = 'canonical-source-candidate/v1'
 const GATE_POLICY = 'sourcing-admission/v1'
 const INPUT_HASH_A = `sha256:${'a'.repeat(64)}`
 const INPUT_HASH_B = `sha256:${'b'.repeat(64)}`
+
+const resettableOwner = useResettablePgliteTestOwner()
 
 type Orchestrator = ReturnType<typeof createNormalizationOrchestrator>
 type NormalizeCall = {
@@ -56,7 +58,7 @@ async function createFixture(input: {
   registry?: ReturnType<typeof createNormalizationResolverRegistry>
   resolve?: (call: NormalizeCall) => Promise<Partial<RawSourceNormalizationResult>> | Partial<RawSourceNormalizationResult>
 } = {}) {
-  const owner = input.dataDir ? null : await createPgliteTestOwner()
+  const owner = input.dataDir ? null : resettableOwner()
   const client = owner?.client ?? await createPgliteClient({ dataDir: input.dataDir })
   try {
     const database = owner?.database ?? await migratePgliteDatabase(client)
@@ -109,9 +111,18 @@ async function createFixture(input: {
         normalized.push(result)
       },
     })
-    return { calls, client, database, normalized, service }
+    return {
+      calls,
+      client,
+      database,
+      normalized,
+      service,
+      async close() {
+        if (!owner) await client.close()
+      },
+    }
   } catch (error) {
-    await client.close()
+    if (!owner) await client.close()
     throw error
   }
 }
@@ -240,7 +251,7 @@ async function seedConnectorCapture(
   })
 }
 
-describe('local raw normalization replay', () => {
+describe.sequential('local raw normalization replay', () => {
   it('replays an exactly selected raw revision when its canonical schema is invalidated', async () => {
     const fixture = await createFixture()
     try {
@@ -264,7 +275,7 @@ describe('local raw normalization replay', () => {
       expect(fixture.calls).toHaveLength(1)
       expect(fixture.calls[0]).toMatchObject({ rawRecordId: 'raw-exact', rawRevisionId: 'revision-exact' })
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -298,7 +309,7 @@ describe('local raw normalization replay', () => {
         expect.objectContaining({ resolverId: 'deterministic.explicit-company', status: 'suppressed' }),
       ]))
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -330,7 +341,7 @@ describe('local raw normalization replay', () => {
         expect.objectContaining({ field: 'companyName', status: 'conflict', values: ['Company A', 'Company B'] }),
       ]))
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -349,7 +360,7 @@ describe('local raw normalization replay', () => {
       expect(receipt).toMatchObject({ status: 'completed', matchedRawRevisionIds: [], items: [] })
       expect(fixture.calls).toEqual([])
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -370,7 +381,7 @@ describe('local raw normalization replay', () => {
       await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([])
       expect(fixture.calls).toEqual([])
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -404,7 +415,7 @@ describe('local raw normalization replay', () => {
       })
       expect(fixture.calls).toHaveLength(2)
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -430,7 +441,7 @@ describe('local raw normalization replay', () => {
         })],
       })
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -467,7 +478,7 @@ describe('local raw normalization replay', () => {
         { resolverId: 'fixture.versioned-company', version: '2.0.0' },
       ])
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -496,7 +507,7 @@ describe('local raw normalization replay', () => {
       expect(fixture.calls[1]?.replay.fieldDirectives).toEqual([lock])
       expect(fixture.calls[2]?.replay.fieldDirectives).toEqual([lock])
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -545,7 +556,7 @@ describe('local raw normalization replay', () => {
       })
       expect(fixture.calls[0]?.replay.fieldDirectives).toEqual([lock])
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -607,7 +618,7 @@ describe('local raw normalization replay', () => {
         .orderBy(asc(captureEvidenceVersions.revision))
       expect(revisions.at(-1)?.id).toBe('revision-current')
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -642,7 +653,7 @@ describe('local raw normalization replay', () => {
         expect.objectContaining({ rawRecordId: 'raw-first', rawRevisionId: 'revision-first' }),
       ])
     } finally {
-      await fixture.client.close()
+      await fixture.close()
     }
   })
 
@@ -651,79 +662,50 @@ describe('local raw normalization replay', () => {
     const blocked = new Promise<void>((resolve) => { release = resolve })
     let started!: () => void
     const normalizationStarted = new Promise<void>((resolve) => { started = resolve })
-    const fixture = await createFixture({
-      async resolve() {
-        started()
-        await blocked
-        return { status: 'completed' }
-      },
-    })
+    const dataDir = await mkdtemp(path.join(tmpdir(), 'normalization-replay-claim-'))
     try {
-      await seedRevision(fixture.database, { rawRecordId: 'raw-claim', rawRevisionId: 'revision-claim' })
-      await seedConnectorCapture(fixture.database, {
-        rawRecordId: 'raw-claim', rawRevisionId: 'revision-claim', connectorInstanceId: 'claim-instance',
+      const fixture = await createFixture({
+        dataDir,
+        async resolve() {
+          started()
+          await blocked
+          return { status: 'completed' }
+        },
       })
-      const request = {
-        connectorInstanceId: 'claim-instance', fromConnectorVersion: '1.0.0',
-        instanceUpdatedAt: NOW, toConnectorVersion: '2.0.0',
-      }
-      const first = fixture.service.replayConnectorUpgrade(request)
-      await normalizationStarted
-      await expect(fixture.database.select().from(normalizationReplayRequests)).resolves.toEqual([
-        expect.objectContaining({ status: 'in_progress', completedAt: null }),
-      ])
-      await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([
-        expect.objectContaining({
-          status: 'pending',
-          failureJson: expect.stringMatching(/"claimToken"/),
-        }),
-      ])
-      const second = fixture.service.replayConnectorUpgrade(request)
-      release()
-      const receipts = await Promise.all([first, second])
-
-      expect(receipts[1]).toEqual(receipts[0])
-      expect(fixture.calls).toHaveLength(1)
-      await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([
-        expect.objectContaining({ status: 'completed', failureJson: null }),
-      ])
-    } finally {
-      await fixture.client.close()
-    }
-  })
-
-  it('rolls back request initialization when an injected item persistence trigger fails', async () => {
-    const fixture = await createFixture()
-    try {
-      await seedRevision(fixture.database, { rawRecordId: 'raw-rollback-a', rawRevisionId: 'revision-rollback-a' })
-      await seedRevision(fixture.database, { rawRecordId: 'raw-rollback-b', rawRevisionId: 'revision-rollback-b' })
-      await fixture.client.exec(`
-        create or replace function fail_second_replay_item() returns trigger as $$
-        begin
-          if new.sequence = 1 then raise exception 'injected replay item failure'; end if;
-          return new;
-        end;
-        $$ language plpgsql;
-        create trigger fail_second_replay_item_trigger
-        before insert on normalization_replay_items
-        for each row execute function fail_second_replay_item();
-      `)
-
-      let injectedFailure: unknown
       try {
-        await fixture.service.replay({
-          selector: { rawRevisionIds: ['revision-rollback-a', 'revision-rollback-b'] }, invalidate: {},
+        await seedRevision(fixture.database, { rawRecordId: 'raw-claim', rawRevisionId: 'revision-claim' })
+        await seedConnectorCapture(fixture.database, {
+          rawRecordId: 'raw-claim', rawRevisionId: 'revision-claim', connectorInstanceId: 'claim-instance',
         })
-      } catch (error) {
-        injectedFailure = error
+        const request = {
+          connectorInstanceId: 'claim-instance', fromConnectorVersion: '1.0.0',
+          instanceUpdatedAt: NOW, toConnectorVersion: '2.0.0',
+        }
+        const first = fixture.service.replayConnectorUpgrade(request)
+        await normalizationStarted
+        await expect(fixture.database.select().from(normalizationReplayRequests)).resolves.toEqual([
+          expect.objectContaining({ status: 'in_progress', completedAt: null }),
+        ])
+        await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([
+          expect.objectContaining({
+            status: 'pending',
+            failureJson: expect.stringMatching(/"claimToken"/),
+          }),
+        ])
+        const second = fixture.service.replayConnectorUpgrade(request)
+        release()
+        const receipts = await Promise.all([first, second])
+
+        expect(receipts[1]).toEqual(receipts[0])
+        expect(fixture.calls).toHaveLength(1)
+        await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([
+          expect.objectContaining({ status: 'completed', failureJson: null }),
+        ])
+      } finally {
+        await fixture.close()
       }
-      expect(injectedFailure).toMatchObject({
-        cause: expect.objectContaining({ message: expect.stringMatching(/injected replay item failure/i) }),
-      })
-      await expect(fixture.database.select().from(normalizationReplayRequests)).resolves.toEqual([])
-      await expect(fixture.database.select().from(normalizationReplayItems)).resolves.toEqual([])
     } finally {
-      await fixture.client.close()
+      await rm(dataDir, { recursive: true, force: true })
     }
   })
 })

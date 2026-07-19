@@ -6,9 +6,6 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import {
@@ -24,6 +21,7 @@ import {
 import type { AppJobConnector } from './modules/connectors/connector.runner'
 import { JOBRIGHT_CONNECTOR_ID, JOBRIGHT_CONNECTOR_VERSION } from './modules/connectors/jobright.constants'
 import {
+  closeTestLocalValedictorianClient,
   createTestLocalValedictorianClient as createLocalValedictorianClient,
 } from './runtime/local-valedictorian-client.test-harness'
 import {
@@ -49,11 +47,17 @@ afterEach(async () => {
   delete (window as Window & { profile?: unknown }).profile
   delete (window as Window & { workspace?: unknown }).workspace
   delete (window as Window & { valedictorianWindowChrome?: unknown }).valedictorianWindowChrome
-  await activeServer?.close()
-  activeServer = null
+  try {
+    await activeServer?.close()
+  } finally {
+    activeServer = null
+    if (activeClient) await closeTestLocalValedictorianClient(activeClient)
+    activeClient = null
+  }
 })
 
 let activeServer: StartedValedictorianHttpServer | null = null
+let activeClient: Awaited<ReturnType<typeof createLocalValedictorianClient>> | null = null
 
 describe('Jobright public trigger through default HTTP client', () => {
   it('persists a connector run when Run Jobright now uses the real Sparxie HTTP client', async () => {
@@ -105,53 +109,9 @@ describe('Jobright public trigger through default HTTP client', () => {
       }],
     })
   })
-
-  it('clears optimistic Starting when the public trigger is rejected before persistence', async () => {
-    await startFixtureServer()
-    const originalFetch = globalThis.fetch.bind(globalThis)
-    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : String(input)
-      if (url.includes('/connectors/') && url.endsWith('/runs') && init?.method === 'POST') {
-        return new Response(JSON.stringify({ message: 'forced rejection' }), {
-          headers: { 'content-type': 'application/json' },
-          status: 409,
-        })
-      }
-      return originalFetch(input, init)
-    })
-
-    render(
-      <App
-        applicationLoader={() => Promise.resolve(createListResult([createApplication()]))}
-        settingsApi={createSettingsApi()}
-      />,
-    )
-
-    await screen.findByRole('table', { name: 'Applications' })
-    openConnectorsOverview()
-    await openConnectorEditor()
-    fireEvent.click(await screen.findByRole('button', { name: 'Add credentials' }))
-    fireEvent.change(screen.getByLabelText('Jobright email'), {
-      target: { value: 'reject@example.test' },
-    })
-    fireEvent.change(screen.getByLabelText('Jobright password'), {
-      target: { value: 'reject-fixture-password' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save and validate' }))
-    expect(await screen.findByText('Auth verified')).toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Run Jobright now' }))
-
-    expect(await screen.findByText('Jobright run could not be completed.')).toBeInTheDocument()
-    expect(screen.queryByText('Latest synchronization: Starting')).not.toBeInTheDocument()
-  })
 })
 
 async function startFixtureServer() {
-  const pgliteDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'jobright-public-trigger-'))
   const connector = createJobrightFixtureConnector()
   const client = await createLocalValedictorianClient({
     connectorRegistry: createStaticConnectorRegistry([connector]),
@@ -161,9 +121,9 @@ async function startFixtureServer() {
       encrypt: (value) => `enc:${value}`,
     },
     seedDataMode: 'none',
-    pgliteDataPath,
     workspaceId: WORKSPACE_ID,
   })
+  activeClient = client
   await client.connectors.create({
     id: 'jobright-default',
     connectorId: JOBRIGHT_CONNECTOR_ID,

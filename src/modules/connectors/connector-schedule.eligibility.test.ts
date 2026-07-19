@@ -184,6 +184,49 @@ describe('connector schedule recurrence engine', () => {
     })).toBe('2026-11-01T05:30:00.000Z')
   })
 
+  it('admits a daily spring-forward gap nominal at the first valid local instant after the gap', () => {
+    // Mar 8 02:30 America/New_York does not exist; eligibility is 03:00 EDT.
+    expect(computeNextEligibleAt({
+      cadence: { kind: 'daily', localTime: '02:30' },
+      now: new Date('2026-03-07T12:00:00.000Z'),
+      timezone: 'America/New_York',
+    })).toBe('2026-03-08T07:00:00.000Z')
+  })
+
+  it('admits a weekly fall-back overlap nominal at the earlier repeated local instant', () => {
+    expect(computeNextEligibleAt({
+      cadence: { kind: 'weekly', dayOfWeek: 7, localTime: '01:30' },
+      now: new Date('2026-10-25T12:00:00.000Z'),
+      timezone: 'America/New_York',
+    })).toBe('2026-11-01T05:30:00.000Z')
+  })
+
+  it('coalesces missed daily nominals across a spring-forward gap using IANA local time', () => {
+    const resolved = resolveMissedNominals({
+      cadence: { kind: 'daily', localTime: '02:30' },
+      nextEligibleAt: '2026-03-07T07:30:00.000Z',
+      now: new Date('2026-03-09T12:00:00.000Z'),
+      maximumCatchUpAgeMinutes: 7 * 24 * 60,
+      timezone: 'America/New_York',
+    })
+
+    expect(resolved.inHorizon).toEqual(['2026-03-09T06:30:00.000Z'])
+    expect(resolved.futureEligibleAt).toBe('2026-03-10T06:30:00.000Z')
+  })
+
+  it('coalesces missed weekly nominals choosing the earlier fall-back overlap instant', () => {
+    const resolved = resolveMissedNominals({
+      cadence: { kind: 'weekly', dayOfWeek: 7, localTime: '01:30' },
+      nextEligibleAt: '2026-11-01T05:30:00.000Z',
+      now: new Date('2026-11-08T12:00:00.000Z'),
+      maximumCatchUpAgeMinutes: 21 * 24 * 60,
+      timezone: 'America/New_York',
+    })
+
+    expect(resolved.inHorizon).toEqual(['2026-11-08T06:30:00.000Z'])
+    expect(resolved.futureEligibleAt).toBe('2026-11-15T06:30:00.000Z')
+  })
+
   it('classifies multi-miss catch-up and skips expired horizon prefix without burst replay', () => {
     const resolved = resolveMissedNominals({
       cadence: { kind: 'interval', everyMinutes: 60 },
@@ -211,6 +254,32 @@ describe('connector schedule recurrence engine', () => {
     expect(resolved.missed.length).toBeGreaterThan(1)
     expect(resolved.inHorizon).toEqual([])
     // Anchored grid: 13/14/15 expired; first future on the series is 16:00 — not now+interval (16:59).
+    expect(resolved.futureEligibleAt).toBe('2026-07-11T16:00:00.000Z')
+  })
+
+  it('coalesces multiple missed interval nominals into one catch_up admission', () => {
+    const resolved = resolveMissedNominals({
+      cadence: { kind: 'interval', everyMinutes: 60 },
+      nextEligibleAt: '2026-07-11T13:00:00.000Z',
+      now: new Date('2026-07-11T15:30:00.000Z'),
+      maximumCatchUpAgeMinutes: 24 * 60,
+      timezone: 'UTC',
+    })
+
+    expect(resolved.inHorizon).toEqual(['2026-07-11T15:00:00.000Z'])
+    expect(resolved.futureEligibleAt).toBe('2026-07-11T16:00:00.000Z')
+  })
+
+  it('advances eligibility without admitting when all missed nominals are outside the catch-up horizon', () => {
+    const resolved = resolveMissedNominals({
+      cadence: { kind: 'interval', everyMinutes: 60 },
+      nextEligibleAt: '2026-07-11T13:00:00.000Z',
+      now: new Date('2026-07-11T15:59:00.000Z'),
+      maximumCatchUpAgeMinutes: 30,
+      timezone: 'UTC',
+    })
+
+    expect(resolved.inHorizon).toEqual([])
     expect(resolved.futureEligibleAt).toBe('2026-07-11T16:00:00.000Z')
   })
 

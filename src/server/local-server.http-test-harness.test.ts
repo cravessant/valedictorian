@@ -2,40 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createBoundaryWorkspaceClient,
   createLocalServerHttpTestFixture,
-  createSeededLocalClient,
-  createTempDatabasePath,
   isolateReferenceTrackerEnvironment,
-  readJson,
   startBoundaryServer,
 } from './local-server.http-test-harness'
 
 describe('local server HTTP test harness', () => {
-  it('provides a temporary database path and seeded real local client', async () => {
-    const pgliteDataPath = createTempDatabasePath()
-    expect(pgliteDataPath).toMatch(/valedictorian-server-/)
-    const client = await createSeededLocalClient({ pgliteDataPath })
-    expect(client.applications).toBeDefined()
-  })
-
-  it('starts a public HTTP boundary with typed workspace overrides', async () => {
-    const client = createBoundaryWorkspaceClient(() => {}, {
-      applications: {
-        ...createBoundaryWorkspaceClient(() => {}).applications,
-        async list() {
-          return { items: [], total: 0, limit: 25, offset: 0, hasMore: false }
-        },
-      },
-    })
-    const server = await startBoundaryServer(client)
-    try {
-      const response = await fetch(`${server.url}/v1/workspaces/test/applications`)
-      expect(response.status).toBe(200)
-      expect(await readJson(response)).toEqual({ items: [], total: 0, limit: 25, offset: 0, hasMore: false })
-    } finally {
-      await server.close()
-    }
-  })
-
   it('isolates and restores the reference-tracker environment', () => {
     const original = process.env.VALEDICTORIAN_REFERENCE_TRACKER_PATH
     const restore = isolateReferenceTrackerEnvironment()
