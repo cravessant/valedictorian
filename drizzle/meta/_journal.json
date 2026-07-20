@@ -8,6 +8,13 @@
       "when": 1784358603238,
       "tag": "0000_pglite_operational_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784533231270,
+      "tag": "0001_lifecycle_capture_job",
+      "breakpoints": true
     }
   ]
 }

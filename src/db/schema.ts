@@ -34,6 +34,72 @@ export {
   connectorSchedules,
 } from './schema.connectors'
 
+// #298 journaled lifecycle aggregates (Capture, Job, Opportunity, Application),
+// owned by their per-module schema files behind this barrel. Canonical roots use
+// interim `lifecycle_*` physical names during coexistence with the legacy tables.
+import {
+  captureEvidenceItems,
+  captureRevisions,
+  lifecycleCaptures,
+} from '../modules/capture/capture.schema'
+import {
+  jobCaptureEvidenceReferences,
+  jobExternalIdentities,
+  jobHistory,
+  lifecycleJobs,
+} from '../modules/job/job.schema'
+import { lifecycleOpportunities, opportunityHistory } from '../modules/opportunity/opportunity.schema'
+import {
+  applicationAttemptRecords,
+  applicationEventRecords,
+  applicationHistory,
+  lifecycleApplications,
+  pursuitLinks,
+} from '../modules/application/application.schema'
+
+export {
+  captureEvidenceItems,
+  captureRevisions,
+  lifecycleCaptures,
+} from '../modules/capture/capture.schema'
+export {
+  jobCaptureEvidenceReferences,
+  jobExternalIdentities,
+  jobHistory,
+  lifecycleJobs,
+} from '../modules/job/job.schema'
+export { lifecycleOpportunities, opportunityHistory } from '../modules/opportunity/opportunity.schema'
+export {
+  applicationAttemptRecords,
+  applicationEventRecords,
+  applicationHistory,
+  lifecycleApplications,
+  pursuitLinks,
+} from '../modules/application/application.schema'
+
+// #298 durable scheduled-work identities (one per operation kind), owned by the
+// scheduling module. Replaces the legacy retry_work collapse.
+import {
+  connectorCaptureWork,
+  hostedResultPollingWork,
+  hostedSubmissionWork,
+  normalizationWork,
+  providerUrlResolutionWork,
+} from '../modules/scheduling/scheduling.schema'
+
+export {
+  connectorCaptureWork,
+  hostedResultPollingWork,
+  hostedSubmissionWork,
+  normalizationWork,
+  providerUrlResolutionWork,
+} from '../modules/scheduling/scheduling.schema'
+
+// #298 workspace ownership root + migration integrity report.
+import { lifecycleMigrationReport, workspaces } from './workspaces.schema'
+
+export { DEFAULT_WORKSPACE_ID, lifecycleMigrationReport, workspaces } from './workspaces.schema'
+
 const timestamps = {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
@@ -925,4 +991,28 @@ export const schema = {
   sources,
   workflowRunSteps,
   workflowRuns,
+  // #298 lifecycle aggregates.
+  lifecycleCaptures,
+  captureRevisions,
+  captureEvidenceItems,
+  lifecycleJobs,
+  jobExternalIdentities,
+  jobCaptureEvidenceReferences,
+  jobHistory,
+  lifecycleOpportunities,
+  opportunityHistory,
+  lifecycleApplications,
+  pursuitLinks,
+  applicationAttemptRecords,
+  applicationEventRecords,
+  applicationHistory,
+  // #298 scheduled-work identities.
+  connectorCaptureWork,
+  normalizationWork,
+  providerUrlResolutionWork,
+  hostedSubmissionWork,
+  hostedResultPollingWork,
+  // #298 workspace ownership + migration report.
+  workspaces,
+  lifecycleMigrationReport,
 }

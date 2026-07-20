@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { ProcessSourcingCandidateInput, SourcingFinding } from 'sparxie'
-import { applicationEvents, applications, opportunities } from '../../db/schema'
+import { applications, opportunities } from '../../db/schema'
+import { updateOpportunities } from '../opportunity/opportunity.repository'
+import { insertApplicationEvents } from '../applications/application.cross-writes'
 import type { PgliteDatabase, PgliteRepositoryDatabase } from '../../db/pglite'
 import { createPgliteApplicationRepository } from '../applications/application.repository'
 import { createPgliteScoringRepository } from '../scoring/scoring.repository'
@@ -11,6 +13,15 @@ import {
   findDuplicateApplication,
 } from './sourcing.repository'
 
+/**
+ * The transaction-owning lifecycle orchestration conversation (issue #298, AC8).
+ *
+ * Cross-phase flows (Capture -> ... -> Opportunity -> Application) are composed
+ * here from the owning modules' public repositories. This conversation opens the
+ * transaction boundary for the cross-aggregate work and delegates every write to
+ * a module repository; it issues no direct lifecycle-table writes of its own, so
+ * the state-ownership scanner needs no orchestrator exemption.
+ */
 export function createPgliteSourcingProcessor(database: PgliteDatabase) {
   const sourcingRepository = createPgliteSourcingRepository(database)
   const workflowRunRepository = createPgliteWorkflowRunRepository(database)
@@ -131,8 +142,7 @@ async function updateFindingDecision(
 ) {
   const now = new Date().toISOString()
 
-  const [changed] = await database
-    .update(opportunities)
+  const [changed] = await updateOpportunities(database)
     .set({
       blocker: patch.blocker ?? null,
       duplicateNotes: patch.duplicateNotes ?? null,
@@ -198,8 +208,7 @@ async function insertScoreEvent(
     throw new Error(`Application not found: ${applicationId}`)
   }
 
-  await database
-    .insert(applicationEvents)
+  await insertApplicationEvents(database)
     .values({
       id: randomUUID(),
       applicationId,

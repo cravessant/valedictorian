@@ -27,8 +27,9 @@ import {
   captureLineages,
   captureEvidenceVersions,
   jobs,
-  jobIdentities,
 } from '../../db/schema'
+import { insertCaptureEvidenceVersions, insertCaptureLineages, insertCaptures } from '../capture/capture.repository'
+import { insertJobIdentities, insertJobs } from '../job/job.repository'
 import type { PgliteDatabase } from '../../db/pglite'
 import { listRawSourceRecords } from './raw-source-list.repository'
 
@@ -165,7 +166,7 @@ async function ingestRecord(
       record.providerSchema ?? null,
     )
     const proposedEntityId = crypto.randomUUID()
-    const [insertedEntity] = await database.insert(jobs).values({
+    const [insertedEntity] = await insertJobs(database).values({
       id: proposedEntityId,
       identityKind: PROVIDER_JOB_IDENTITY_KIND,
       identityNamespace,
@@ -195,7 +196,7 @@ async function ingestRecord(
     }
 
     const proposedRawRecordId = crypto.randomUUID()
-    const [insertedRawRecord] = await database.insert(captureLineages).values({
+    const [insertedRawRecord] = await insertCaptureLineages(database).values({
       id: proposedRawRecordId,
       jobId: sourceEntityId,
       createdAt: receivedAt,
@@ -216,7 +217,7 @@ async function ingestRecord(
 
   if (!rawRecordId) {
     rawRecordId = crypto.randomUUID()
-    const [rawRecord] = await database.insert(captureLineages).values({
+    const [rawRecord] = await insertCaptureLineages(database).values({
       id: rawRecordId,
       jobId: sourceEntityId,
       createdAt: receivedAt,
@@ -257,7 +258,7 @@ async function ingestRecord(
     const revisionId = crypto.randomUUID()
     const origin = record.reportedOrigin ?? null
 
-    const [insertedRevision] = await database.insert(captureEvidenceVersions).values({
+    const [insertedRevision] = await insertCaptureEvidenceVersions(database).values({
       id: revisionId,
       captureLineageId: rawRecordId,
       revision: revisionNumber,
@@ -306,7 +307,7 @@ async function ingestRecord(
   }
 
   if (sourceEntityId && capturedIdentity) {
-    await database.insert(jobIdentities).values({
+    await insertJobIdentities(database).values({
       id: crypto.randomUUID(),
       jobId: sourceEntityId,
       identityKind: PROVIDER_JOB_IDENTITY_KIND,
@@ -334,7 +335,7 @@ async function ingestRecord(
     observedAt: record.observedAt,
     receivedAt,
   }
-  await database.insert(captures).values(occurrence)
+  await insertCaptures(database).values(occurrence)
 
   return {
     intakeItemId: record.intakeItemId ?? crypto.randomUUID(),

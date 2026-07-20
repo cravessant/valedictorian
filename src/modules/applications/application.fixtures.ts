@@ -9,6 +9,7 @@ import {
   workflowRuns,
   workflowRunSteps,
 } from '../../db/schema'
+import { insertOpportunities } from '../opportunity/opportunity.repository'
 import type { PgliteDatabase } from '../../db/pglite'
 
 const createdAt = '2026-06-04T16:00:00.000Z'
@@ -473,8 +474,7 @@ export async function seedSampleSourcingFindings(database: PgliteDatabase) {
       ])
   }
 
-  await database
-    .insert(opportunities)
+  await insertOpportunities(database)
     .values([
       {
         id: 'sourcing-finding-delta-labs',

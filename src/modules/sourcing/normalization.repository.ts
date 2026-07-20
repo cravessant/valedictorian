@@ -26,6 +26,7 @@ import {
   jobIdentities,
   jobIdentityConflicts,
 } from '../../db/schema'
+import { insertJobFactVersions, insertJobIdentities, insertJobIdentityConflicts, insertJobs } from '../job/job.repository'
 import type { PgliteDatabase } from '../../db/pglite'
 import { classifyExplicitIntermediaryAlias, DESTINATION_TAXONOMY_VERSION } from './destination-classifier'
 import { deriveSourceExecutionScopeId } from '../source-execution/source-execution-governor'
@@ -208,7 +209,7 @@ export function createPgliteNormalizationRepository(
             identityValue: canonical.value,
             createdAt: input.createdAt,
           }
-          const [insertedOwner] = await transaction.insert(jobs).values(owner)
+          const [insertedOwner] = await insertJobs(transaction).values(owner)
             .onConflictDoNothing().returning()
           if (!insertedOwner) {
             [owner] = await transaction.select().from(jobs).where(eq(jobs.id, targetOwnerId)).limit(1)
@@ -296,7 +297,7 @@ export function createPgliteNormalizationRepository(
         }
 
         for (const { identity } of newIdentities) {
-          const [insertedIdentity] = await transaction.insert(jobIdentities).values({
+          const [insertedIdentity] = await insertJobIdentities(transaction).values({
             id: crypto.randomUUID(), jobId: owner.id,
             identityKind: identity.kind, identityNamespace: identity.namespace, identityValue: identity.value,
             provenanceKind: 'normalization', provenanceVersion: SOURCE_IDENTITY_RECONCILIATION_VERSION,
@@ -474,7 +475,7 @@ async function persistNormalization(
     }
     await synchronizeNormalizationRetryWork(transaction, input, attempt)
   }
-  if (input.candidate) await transaction.insert(jobFactVersions).values({
+  if (input.candidate) await insertJobFactVersions(transaction).values({
     id: input.candidate.id, runId: input.runId, jobId: input.candidate.sourceEntityId,
     captureLineageId: input.rawRecordId, captureEvidenceVersionId: input.rawRevisionId, schemaVersion: input.canonicalSchemaVersion,
     jobFactVersionJson: JSON.stringify(input.candidate), createdAt: input.now,
@@ -716,7 +717,7 @@ async function recordIdentityConflict(
   database: PgliteTransaction,
   input: Omit<typeof jobIdentityConflicts.$inferInsert, 'id' | 'provenanceVersion'>,
 ) {
-  await database.insert(jobIdentityConflicts).values({
+  await insertJobIdentityConflicts(database).values({
     id: crypto.randomUUID(),
     ...input,
     provenanceVersion: SOURCE_IDENTITY_RECONCILIATION_VERSION,

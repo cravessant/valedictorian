@@ -9,6 +9,7 @@ import {
   opportunities,
   sourcingProjectionOutcomes,
 } from '../../db/schema'
+import { insertSourcingProjectionOutcomes, updateSourcingProjectionOutcomes } from '../opportunity/opportunity.repository'
 import type { PgliteDatabase } from '../../db/pglite'
 
 type Transaction = Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0]
@@ -21,7 +22,7 @@ export function createPgliteProjectionOutcomeRepository(database: PgliteDatabase
       canonicalCandidateId: string
       now: string
     }) {
-      await transaction.insert(sourcingProjectionOutcomes).values({
+      await insertSourcingProjectionOutcomes(transaction).values({
         id: crypto.randomUUID(),
         captureLineageId: input.rawRecordId,
         captureEvidenceVersionId: input.rawRevisionId,
@@ -43,7 +44,7 @@ export function createPgliteProjectionOutcomeRepository(database: PgliteDatabase
       findingId: string,
       projectedAt: string,
     ) {
-      const [updated] = await transaction.update(sourcingProjectionOutcomes).set({
+      const [updated] = await updateSourcingProjectionOutcomes(transaction).set({
         status: 'projected', opportunityId: findingId, projectedAt, updatedAt: projectedAt,
       }).where(and(
         eq(sourcingProjectionOutcomes.jobFactVersionId, canonicalCandidateId),
@@ -52,7 +53,7 @@ export function createPgliteProjectionOutcomeRepository(database: PgliteDatabase
       if (!updated) throw new Error('Pending projection outcome was not found')
     },
     async markFailed(canonicalCandidateId: string, failedAt: string) {
-      const [updated] = await database.update(sourcingProjectionOutcomes).set({
+      const [updated] = await updateSourcingProjectionOutcomes(database).set({
         status: 'failed', failureCode: 'projection_failed', failureRetryable: false,
         failedAt, updatedAt: failedAt,
       }).where(and(

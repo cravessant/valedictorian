@@ -21,7 +21,6 @@ import {
   stringifyJobTerms,
 } from 'sparxie'
 import {
-  applicationEvents,
   applicationLinks,
   applications,
   companies,
@@ -29,6 +28,8 @@ import {
   opportunities,
   workflowRuns,
 } from '../../db/schema'
+import { insertOpportunities, updateOpportunities } from '../opportunity/opportunity.repository'
+import { insertApplicationEvents } from '../applications/application.cross-writes'
 import type { PgliteDatabase, PgliteRepositoryDatabase } from '../../db/pglite'
 import {
   canonicalizeApplicationUrl,
@@ -120,8 +121,7 @@ export function createPgliteSourcingRepository(database: PgliteRepositoryDatabas
 
         const findingId = randomUUID()
 
-        await transaction
-          .insert(opportunities)
+        await insertOpportunities(transaction)
           .values({
             id: findingId,
             workflowRunId: normalizedInput.workflowRunId,
@@ -337,8 +337,7 @@ export function createPgliteSourcingRepository(database: PgliteRepositoryDatabas
       }
 
       return database.transaction(async (transaction) => {
-        await transaction
-          .update(opportunities)
+        await updateOpportunities(transaction)
           .set(patch)
           .where(eq(opportunities.id, input.findingId))
 
@@ -352,8 +351,7 @@ export function createPgliteSourcingRepository(database: PgliteRepositoryDatabas
 
       const now = new Date().toISOString()
 
-      const [changed] = await database
-        .update(opportunities)
+      const [changed] = await updateOpportunities(database)
         .set({
           blocker: null,
           duplicateNotes: null,
@@ -399,8 +397,7 @@ export function createPgliteSourcingRepository(database: PgliteRepositoryDatabas
       const duplicate = await findDuplicateApplication(database, finding)
 
       if (duplicate) {
-        await database
-          .update(opportunities)
+        await updateOpportunities(database)
           .set({
             mergeStatus: 'duplicate',
             applicationId: duplicate.applicationId,
@@ -457,8 +454,7 @@ export function createPgliteSourcingRepository(database: PgliteRepositoryDatabas
         })
       }
 
-      await database
-        .insert(applicationEvents)
+      await insertApplicationEvents(database)
         .values({
           id: randomUUID(),
           applicationId: application.id,
@@ -469,8 +465,7 @@ export function createPgliteSourcingRepository(database: PgliteRepositoryDatabas
           createdAt: now,
         })
 
-      await database
-        .update(opportunities)
+      await updateOpportunities(database)
         .set({
           mergeStatus: 'merged',
           applicationId: application.id,
@@ -521,8 +516,7 @@ async function reclassifySourcingFinding(
 
   const classification = await classifySourcingFinding(database as PgliteDatabase, finding)
 
-  await database
-    .update(opportunities)
+  await updateOpportunities(database)
     .set({
       blocker: classification.blocker,
       duplicateNotes: classification.duplicateNotes,

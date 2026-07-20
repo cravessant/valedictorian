@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { ScoreInput, ScoreRecord } from 'sparxie'
-import { applicationScores, applications } from '../../db/schema'
+import { applications } from '../../db/schema'
+import { insertApplicationScores, updateApplications } from '../applications/application.cross-writes'
 import type { PgliteRepositoryDatabase } from '../../db/pglite'
 
 export type { ScoreInput } from 'sparxie'
@@ -17,7 +18,7 @@ export function createPgliteScoringRepository(database: PgliteRepositoryDatabase
       const id = randomUUID()
 
       await database.transaction(async (tx) => {
-        await tx.insert(applicationScores).values({
+        await insertApplicationScores(tx).values({
           id,
           applicationId: input.applicationId,
           score: input.score,
@@ -32,8 +33,7 @@ export function createPgliteScoringRepository(database: PgliteRepositoryDatabase
           createdAt,
         })
 
-        await tx
-          .update(applications)
+        await updateApplications(tx)
           .set({
             currentPriorityScore: input.score,
             currentPriorityBand: input.band,

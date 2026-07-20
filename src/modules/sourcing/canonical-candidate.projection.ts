@@ -11,6 +11,7 @@ import {
   opportunities,
   workflowRuns,
 } from '../../db/schema'
+import { insertOpportunities, updateOpportunities } from '../opportunity/opportunity.repository'
 import type { PgliteDatabase } from '../../db/pglite'
 
 export const SOURCING_PROJECTION_POLICY_VERSION = 'canonical-sourcing-policy/v1'
@@ -121,7 +122,7 @@ export function createCanonicalCandidateProjectionService(
             .where(eq(captureEvidenceVersions.id, existing.captureEvidenceVersionId))
             .limit(1)
           if (currentRevision && !isNewerSourceRevision(persisted, currentRevision)) {
-            const [updated] = await transaction.update(opportunities).set({ projectionAliasesJson })
+            const [updated] = await updateOpportunities(transaction).set({ projectionAliasesJson })
               .where(eq(opportunities.id, existing.id))
               .returning({ id: opportunities.id })
             if (!updated) throw new Error(`Sourcing finding not found: ${existing.id}`)
@@ -315,7 +316,7 @@ export function createCanonicalCandidateProjectionService(
         } as const
 
         if (existing) {
-          const [updated] = await transaction.update(opportunities).set(values)
+          const [updated] = await updateOpportunities(transaction).set(values)
             .where(eq(opportunities.id, existing.id))
             .returning({ id: opportunities.id })
           if (!updated) throw new Error(`Sourcing finding not found: ${existing.id}`)
@@ -323,7 +324,7 @@ export function createCanonicalCandidateProjectionService(
         }
 
         const findingId = randomUUID()
-        const [inserted] = await transaction.insert(opportunities).values({
+        const [inserted] = await insertOpportunities(transaction).values({
           id: findingId,
           ...values,
           createdAt: timestamp,
