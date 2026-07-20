@@ -19,6 +19,7 @@
     "lint:profile-secret-import-policy": "node scripts/profile-secret-import-policy.mjs",
     "lint:pglite-cutover-policy": "node scripts/pglite-cutover-policy.mjs",
     "inspect:pglite-runtime": "node scripts/inspect-pglite-runtime-assets.mjs",
+    "smoke:connector-modal-scroll": "node scripts/run-connector-modal-scroll-probe.mjs",
     "smoke:pglite-package": "node scripts/run-packaged-pglite-smoke.mjs",
     "preview": "vite preview",
     "test": "NODE_OPTIONS=\"--disable-warning=DEP0176 --disable-warning=DEP0205\" vitest run",

@@ -186,6 +186,7 @@ jobs:
           pnpm exec vite build
           CSC_IDENTITY_AUTO_DISCOVERY=false ${{ matrix.package_command }}
           pnpm run smoke:pglite-package
+          pnpm run smoke:connector-modal-scroll
 
       - name: Build Windows application bundles
         if: runner.os == 'Windows'

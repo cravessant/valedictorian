@@ -27,3 +27,6 @@ release
 *.sln
 *.sw?
 .node-compile-cache
+
+# #309 connector-modal scroll probe harness build output
+electron/scroll-probe/dist

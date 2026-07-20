@@ -355,7 +355,7 @@ export function ConnectorSettingsInstanceCard({
       </Collapsible>
 
       <DialogContent
-        className="max-h-[calc(100vh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-5xl"
+        className="flex max-h-[calc(100vh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
         data-testid={editing ? `connector-instance-card-${instance.id}` : undefined}
         onEscapeKeyDown={(event) => {
           if (editing) event.preventDefault()
@@ -391,7 +391,8 @@ export function ConnectorSettingsInstanceCard({
           </div>
         </DialogHeader>
 
-        <div className="grid min-h-0 gap-0 overflow-y-auto px-6 pb-6 text-sm">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid gap-0 px-6 pb-6 text-sm">
 
       <section
         aria-labelledby={`${cardHeadingId} ${credentialsHeadingId}`}
@@ -799,6 +800,7 @@ export function ConnectorSettingsInstanceCard({
           </p>
         )}
       </section>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
