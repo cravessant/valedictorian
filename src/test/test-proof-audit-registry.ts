@@ -102,7 +102,6 @@ export const testProofAuditRegistry: TestProofAuditEntry[] = [
   {"path":"src/components/ui/checkbox.test.tsx","boundary":"component","classification":"unique-behavior","proof":"exposes its shadcn slot and accessible name as a focusable checkbox"},
   {"path":"src/components/ui/collapsible.test.tsx","boundary":"component","classification":"unique-behavior","proof":"exposes accessible trigger/content slots and toggles via click and Enter"},
   {"path":"src/components/ui/combobox.test.tsx","boundary":"component","classification":"unique-behavior","proof":"exposes an accessible combobox name and opens a searchable list"},
-  {"path":"src/components/ui/command.test.tsx","boundary":"component","classification":"unique-behavior","proof":"exposes its shadcn slots and searchable list with an accessible name"},
   {"path":"src/components/ui/dialog.test.tsx","boundary":"component","classification":"unique-behavior","proof":"portals open content into document.body outside the trigger tree"},
   {"path":"src/components/ui/dropdown-menu.test.tsx","boundary":"component","classification":"unique-behavior","proof":"exposes an accessible asChild trigger that opens a labeled menu"},
   {"path":"src/components/ui/error-primitives.test.tsx","boundary":"component","classification":"unique-behavior","proof":"focuses each failure primitive when newly presented and keeps Retry wired"},

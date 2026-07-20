@@ -19,7 +19,6 @@ describe('error presentation primitives', () => {
       <FormFailureAlert message="Policy settings failed to save." />,
     )
     const formAlert = screen.getByRole('alert')
-    expect(formAlert).toHaveAttribute('data-slot', 'form-failure')
     expect(formAlert).toHaveAttribute('tabIndex', '-1')
     expect(document.activeElement).toBe(formAlert)
     expect(formAlert).toHaveTextContent('Could not save')
@@ -32,7 +31,6 @@ describe('error presentation primitives', () => {
       />,
     )
     const loadAlert = screen.getByRole('alert')
-    expect(loadAlert).toHaveAttribute('data-slot', 'scoped-load-failure')
     expect(loadAlert).toHaveAttribute('tabIndex', '-1')
     expect(document.activeElement).toBe(loadAlert)
     expect(loadAlert).toHaveTextContent('Opportunities could not be loaded.')
@@ -46,7 +44,6 @@ describe('error presentation primitives', () => {
       />,
     )
     const globalAlert = screen.getByRole('alert')
-    expect(globalAlert).toHaveAttribute('data-slot', 'global-failure')
     expect(globalAlert).toHaveAttribute('aria-live', 'assertive')
     expect(globalAlert).toHaveAttribute('tabIndex', '-1')
     expect(document.activeElement).toBe(globalAlert)
@@ -61,7 +58,6 @@ describe('error presentation primitives', () => {
       />,
     )
     const authAlert = screen.getByRole('alert')
-    expect(authAlert).toHaveAttribute('data-slot', 'authentication-failure')
     expect(authAlert).toHaveAttribute('tabIndex', '-1')
     expect(document.activeElement).toBe(authAlert)
     expect(authAlert).toHaveTextContent('Authentication required')

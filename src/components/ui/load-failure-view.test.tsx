@@ -45,8 +45,7 @@ describe('LoadFailureView surface ownership', () => {
       />,
     )
 
-    const alert = screen.getByRole('alert')
-    expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')
+    screen.getByRole('alert')
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
 
     rerender(

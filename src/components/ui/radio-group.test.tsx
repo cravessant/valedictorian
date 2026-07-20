@@ -9,7 +9,7 @@ import { RadioGroup, RadioGroupItem } from './radio-group'
 afterEach(cleanup)
 
 describe('RadioGroup', () => {
-  it('exposes its shadcn slot and accessible name as a focusable radio', async () => {
+  it('exposes an accessible name as a focusable radio', async () => {
     const user = userEvent.setup()
     render(
       <RadioGroup aria-label="Backend mode" defaultValue="local-desktop">
@@ -25,18 +25,8 @@ describe('RadioGroup', () => {
     )
 
     const radio = screen.getByRole('radio', { name: 'Local desktop' })
-    expect(radio).toHaveAttribute('data-slot', 'radio-group-item')
     expect(radio).toHaveAttribute('data-state', 'checked')
-    expect(radio).toHaveClass(
-      'border-input',
-      'bg-input/30',
-      'text-primary',
-      'focus-visible:ring-ring/50',
-    )
-    expect(screen.getByRole('radiogroup', { name: 'Backend mode' })).toHaveAttribute(
-      'data-slot',
-      'radio-group',
-    )
+    expect(screen.getByRole('radiogroup', { name: 'Backend mode' })).toBeInTheDocument()
 
     await user.tab()
     expect(radio).toHaveFocus()
@@ -218,21 +208,6 @@ describe('RadioGroup', () => {
     expect(screen.getByLabelText('Remote')).not.toBeChecked()
     expect(screen.getByLabelText('Remote')).toBeDisabled()
     expect(screen.getByLabelText('Local desktop')).toBeChecked()
-  })
-
-  it('marks invalid radios with destructive border and ring classes', () => {
-    render(
-      <RadioGroup aria-label="Backend mode">
-        <RadioGroupItem aria-invalid aria-label="Remote" id="runtime-mode-remote" value="remote" />
-      </RadioGroup>,
-    )
-
-    const radio = screen.getByRole('radio', { name: 'Remote' })
-    expect(radio).toHaveAttribute('aria-invalid', 'true')
-    expect(radio).toHaveClass(
-      'aria-invalid:border-destructive',
-      'aria-invalid:ring-destructive/20',
-    )
   })
 
   it('keeps an unset group with no selected radio for empty controlled value', () => {

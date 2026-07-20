@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -27,36 +27,9 @@ describe('Pagination', () => {
       </Pagination>,
     )
 
-    const navigation = screen.getByRole('navigation', { name: 'Application pagination' })
-    expect(navigation).toHaveAttribute('data-slot', 'pagination')
-  })
-
-  it('composes content and item slots around previous and next controls', () => {
-    render(
-      <Pagination aria-label="Sourcing pagination">
-        <PaginationContent>
-          <PaginationItem>
-            <PaginationPrevious aria-label="Previous sourcing page">Previous</PaginationPrevious>
-          </PaginationItem>
-          <PaginationItem>
-            <PaginationNext aria-label="Next sourcing page">Next</PaginationNext>
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>,
-    )
-
-    const navigation = screen.getByRole('navigation', { name: 'Sourcing pagination' })
-    const content = navigation.querySelector('[data-slot="pagination-content"]')
-    expect(content).not.toBeNull()
-    expect(content?.tagName).toBe('UL')
-
-    const items = navigation.querySelectorAll('[data-slot="pagination-item"]')
-    expect(items).toHaveLength(2)
-    expect(items[0]?.tagName).toBe('LI')
-    expect(items[1]?.tagName).toBe('LI')
-
-    expect(within(items[0] as HTMLElement).getByRole('button', { name: 'Previous sourcing page' })).toBeInTheDocument()
-    expect(within(items[1] as HTMLElement).getByRole('button', { name: 'Next sourcing page' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('navigation', { name: 'Application pagination' }),
+    ).toBeInTheDocument()
   })
 
   it('activates previous and next callbacks from button controls', async () => {

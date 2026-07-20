@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { Button } from './button'
 import { ButtonGroup } from './button-group'
@@ -39,28 +39,5 @@ describe('ButtonGroup', () => {
     await user.keyboard('{ArrowRight}')
     expect(screen.getByRole('button', { name: 'Next' })).toHaveFocus()
     expect(screen.getByRole('button', { name: 'Previous' })).not.toHaveFocus()
-  })
-
-  it('leaves a disabled child button disabled and unfocusable', async () => {
-    const user = userEvent.setup()
-    const onPrevious = vi.fn()
-
-    render(
-      <ButtonGroup aria-label="Pagination">
-        <Button type="button" disabled onClick={onPrevious}>
-          Previous
-        </Button>
-        <Button type="button">Next</Button>
-      </ButtonGroup>,
-    )
-
-    const previous = screen.getByRole('button', { name: 'Previous' })
-    expect(previous).toBeDisabled()
-
-    await user.tab()
-    expect(screen.getByRole('button', { name: 'Next' })).toHaveFocus()
-
-    await user.click(previous)
-    expect(onPrevious).not.toHaveBeenCalled()
   })
 })

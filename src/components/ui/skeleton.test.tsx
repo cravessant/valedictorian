@@ -17,10 +17,4 @@ describe('Skeleton', () => {
 
     expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'false')
   })
-
-  it('disables pulse animation under reduced motion', () => {
-    const { container } = render(<Skeleton />)
-
-    expect(container.firstElementChild).toHaveClass('motion-reduce:animate-none')
-  })
 })

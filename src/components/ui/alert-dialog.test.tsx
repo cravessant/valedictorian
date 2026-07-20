@@ -43,16 +43,7 @@ describe('AlertDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Open alert' }))
 
     const dialog = await screen.findByRole('alertdialog', { name: 'Delete item' })
-    expect(dialog).toHaveAttribute('data-slot', 'alert-dialog-content')
     expect(dialog).toHaveAccessibleDescription('This permanently removes the item.')
-    expect(within(dialog).getByRole('button', { name: 'Delete' })).toHaveAttribute(
-      'data-slot',
-      'alert-dialog-action',
-    )
-    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveAttribute(
-      'data-slot',
-      'alert-dialog-cancel',
-    )
   })
 
   it('cancels on Escape and Cancel, returns focus to the trigger, and ignores outside pointer down', async () => {
@@ -134,7 +125,6 @@ describe('AlertDialog', () => {
     })
 
     const confirm = within(dialog).getByRole('button', { name: 'Delete' })
-    expect(confirm).toHaveAttribute('data-variant', 'destructive')
     await user.click(confirm)
 
     await waitFor(() => {

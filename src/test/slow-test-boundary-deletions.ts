@@ -1,3 +1,5 @@
+import { uiComponentDeletions295 } from './slow-test-boundary-deletions.ui-295'
+
 export const testBoundaryDeletions = [
   {
     source: 'src/modules/connectors/connector.runner.budgets-validate-auth.test.ts',
@@ -991,4 +993,8 @@ export const testBoundaryDeletions = [
     retainedCase: 'opens settings navigation as the same narrow drawer and closes it after panel changes',
     reason: 'Backend patch persistence and the resulting restart marker are merged into the retained narrow-drawer AppShell proof.',
   },
+  // #295 UI-only completion pass: redundant-proof, framework-only, and implementation-coupled
+  // shadcn/token cases removed from src/components/ui after the four non-UI sweeps returned null.
+  // Authored in a sibling module to keep this file within the 1000-line policy ceiling.
+  ...uiComponentDeletions295,
 ] as const

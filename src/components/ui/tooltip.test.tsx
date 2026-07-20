@@ -70,39 +70,4 @@ describe('Tooltip', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close settings' })).toBeInTheDocument()
   })
-
-  it('exposes provider/trigger/content data slots with class and prop forwarding', async () => {
-    render(
-      <TooltipProvider delayDuration={0}>
-        <Tooltip>
-          <TooltipTrigger data-testid="tooltip-trigger">Help</TooltipTrigger>
-          <TooltipContent
-            className="max-w-xs"
-            data-testid="tooltip-content"
-            id="help-tip"
-          >
-            Help tip
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>,
-    )
-
-    const trigger = screen.getByTestId('tooltip-trigger')
-    expect(trigger).toHaveAttribute('data-slot', 'tooltip-trigger')
-    trigger.focus()
-
-    const content = await screen.findByTestId('tooltip-content')
-    expect(content).toHaveAttribute('data-slot', 'tooltip-content')
-    expect(content).toHaveAttribute('id', 'help-tip')
-    expect(content).toHaveClass(
-      'bg-foreground',
-      'text-background',
-      'animate-in',
-      'motion-reduce:animate-none',
-      'motion-reduce:transition-none',
-      'max-w-xs',
-    )
-    expect(content.querySelector('svg')).not.toBeNull()
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Help tip')
-  })
 })

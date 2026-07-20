@@ -27,12 +27,10 @@ describe('ToggleGroup', () => {
 
     render(<Harness />)
 
-    const group = screen.getByRole('radiogroup', { name: 'Action Buckets' })
-    expect(group).toHaveAttribute('data-slot', 'toggle-group')
+    screen.getByRole('radiogroup', { name: 'Action Buckets' })
 
     const all = screen.getByRole('radio', { name: 'All' })
     const applyNow = screen.getByRole('radio', { name: 'Apply now' })
-    expect(all).toHaveAttribute('data-slot', 'toggle-group-item')
     expect(all).toHaveAttribute('aria-checked', 'true')
     expect(all).toHaveAttribute('data-state', 'on')
     expect(applyNow).toHaveAttribute('aria-checked', 'false')
@@ -74,42 +72,6 @@ describe('ToggleGroup', () => {
     await user.keyboard(' ')
     expect(screen.getByRole('radio', { name: 'Apply now' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'false')
-  })
-
-  it('keeps disabled items out of keyboard focus and blocks selection', async () => {
-    const user = userEvent.setup()
-    function Harness() {
-      const [value, setValue] = React.useState('all')
-      return (
-        <>
-          <ToggleGroup
-            type="single"
-            aria-label="Action Buckets"
-            value={value}
-            onValueChange={(next) => {
-              if (next) setValue(next)
-            }}
-          >
-            <ToggleGroupItem value="all">All</ToggleGroupItem>
-            <ToggleGroupItem value="blocked" disabled>
-              Blocked
-            </ToggleGroupItem>
-          </ToggleGroup>
-          <button type="button">Next action</button>
-        </>
-      )
-    }
-
-    render(<Harness />)
-    await user.tab()
-    expect(screen.getByRole('radio', { name: 'All' })).toHaveFocus()
-    await user.tab()
-    expect(screen.getByRole('button', { name: 'Next action' })).toHaveFocus()
-
-    await user.click(screen.getByRole('radio', { name: 'Blocked' }))
-    expect(screen.getByRole('radio', { name: 'Blocked' })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: 'Blocked' })).toHaveAttribute('aria-checked', 'false')
-    expect(screen.getByRole('radio', { name: 'All' })).toHaveAttribute('aria-checked', 'true')
   })
 
   it('does not clear the selected item when it is reactivated', async () => {

@@ -538,6 +538,34 @@ describe('test pyramid policy', () => {
     }
   })
 
+  it('forbids regrown class and data-attribute assertions in #295 UI component tests', () => {
+    // Scoped strictly to src/components/ui: container-query and layout class assertions
+    // elsewhere (e.g. src/settings) remain legitimate product contracts.
+    const uiRelativeDir = 'src/components/ui'
+    const uiDirectory = path.join(repositoryRoot, uiRelativeDir)
+    const uiTestFiles = fs
+      .readdirSync(uiDirectory, { encoding: 'utf8' })
+      .filter((file) => file.endsWith('.test.tsx'))
+      .sort()
+
+    expect(uiTestFiles.length).toBeGreaterThan(0)
+    expect(uiTestFiles).not.toContain('command.test.tsx')
+    expect(fs.existsSync(path.join(uiDirectory, 'command.test.tsx'))).toBe(false)
+
+    const forbiddenClassAssertion = /toHaveClass\(/
+    const forbiddenDataAttributeAssertion =
+      /toHaveAttribute\(\s*['"]data-(?:slot|size|variant)['"]/
+
+    for (const file of uiTestFiles) {
+      const source = read(path.join(uiRelativeDir, file))
+      expect(forbiddenClassAssertion.test(source), `${file}: toHaveClass regrowth`).toBe(false)
+      expect(
+        forbiddenDataAttributeAssertion.test(source),
+        `${file}: data-slot/size/variant attribute assertion regrowth`,
+      ).toBe(false)
+    }
+  })
+
   it('keeps named unit and domain tests free of heavyweight boundaries', () => {
     const sourceRoot = path.join(repositoryRoot, 'src')
     const testFiles = fs.readdirSync(sourceRoot, { recursive: true, encoding: 'utf8' })

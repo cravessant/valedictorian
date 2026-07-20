@@ -36,7 +36,6 @@ describe('Dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Open dialog' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Dialog title' })
-    expect(dialog).toHaveAttribute('data-slot', 'dialog-content')
     expect(within(dialog).getByText('Dialog body')).toBeInTheDocument()
     expect(container.querySelector('[data-testid="dialog-host"]')?.contains(dialog)).toBe(false)
     expect(document.body.contains(dialog)).toBe(true)
@@ -60,11 +59,6 @@ describe('Dialog', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Confirm archive' })
     expect(dialog).toHaveAccessibleDescription('Archived applications stay recoverable.')
-    expect(screen.getByText('Confirm archive')).toHaveAttribute('data-slot', 'dialog-title')
-    expect(screen.getByText('Archived applications stay recoverable.')).toHaveAttribute(
-      'data-slot',
-      'dialog-description',
-    )
   })
 
   it('moves initial focus into the dialog when opened from a trigger', async () => {

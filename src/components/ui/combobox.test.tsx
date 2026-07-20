@@ -44,7 +44,6 @@ describe('Combobox', () => {
     render(<Harness />)
 
     const trigger = screen.getByRole('combobox', { name: 'Timezone' })
-    expect(trigger).toHaveAttribute('data-slot', 'combobox-trigger')
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
     expect(trigger).toHaveTextContent('UTC')
 
@@ -146,10 +145,6 @@ describe('Combobox', () => {
     const trigger = screen.getByRole('combobox', { name: 'Birth year' })
     expect(trigger).toBeDisabled()
     expect(trigger).toHaveAttribute('aria-invalid', 'true')
-    expect(trigger).toHaveClass(
-      'aria-invalid:border-destructive',
-      'aria-invalid:ring-destructive/20',
-    )
 
     await user.tab()
     expect(screen.getByRole('button', { name: 'Next action' })).toHaveFocus()

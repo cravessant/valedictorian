@@ -35,41 +35,4 @@ describe('Label', () => {
     await user.click(screen.getByText('Remote API URL'))
     expect(input).toHaveFocus()
   })
-
-  it('keeps peer-disabled styling so a disabled sibling control dims the label', () => {
-    render(
-      <div>
-        <input className="peer" disabled id="schedule-mode" />
-        <Label htmlFor="schedule-mode">Schedule mode</Label>
-      </div>,
-    )
-
-    const label = screen.getByText('Schedule mode')
-    expect(label).toHaveAttribute('data-slot', 'label')
-    expect(label).toHaveClass(
-      'peer-disabled:cursor-not-allowed',
-      'peer-disabled:opacity-50',
-      'group-data-[disabled=true]:pointer-events-none',
-      'group-data-[disabled=true]:opacity-50',
-    )
-  })
-
-  it('merges layout classes while preserving an accessible name for nested disabled controls', () => {
-    render(
-      <Label className="grid gap-1 text-xs text-muted-foreground">
-        Local API sharing
-        <input aria-label="Local API sharing" disabled type="checkbox" />
-      </Label>,
-    )
-
-    const checkbox = screen.getByLabelText('Local API sharing')
-    expect(checkbox).toBeDisabled()
-    expect(checkbox.closest('[data-slot="label"]')).toHaveClass(
-      'grid',
-      'gap-1',
-      'text-xs',
-      'text-muted-foreground',
-      'font-medium',
-    )
-  })
 })

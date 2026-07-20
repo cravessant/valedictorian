@@ -5,10 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Input } from './input'
 import {
   Field,
-  FieldContent,
   FieldDescription,
   FieldError,
-  FieldGroup,
   FieldLabel,
 } from './field'
 
@@ -24,13 +22,8 @@ describe('Field', () => {
       </Field>,
     )
 
-    const field = screen.getByRole('group')
-    expect(field).toHaveAttribute('data-slot', 'field')
-    expect(field).toHaveAttribute('data-orientation', 'vertical')
-
     const input = screen.getByLabelText('Workspace name')
     expect(input).toHaveAttribute('id', 'workspace-name')
-    expect(screen.getByText('Workspace name')).toHaveAttribute('data-slot', 'field-label')
 
     await user.click(screen.getByText('Workspace name'))
     expect(input).toHaveFocus()
@@ -54,10 +47,6 @@ describe('Field', () => {
       'aria-describedby',
       'remote-api-url-description',
     )
-    expect(screen.getByText('Used by the local backend health check.')).toHaveAttribute(
-      'data-slot',
-      'field-description',
-    )
 
     rerender(
       <Field data-invalid>
@@ -75,76 +64,7 @@ describe('Field', () => {
     const error = screen.getByRole('alert')
     expect(input).toHaveAttribute('aria-invalid', 'true')
     expect(input).toHaveAttribute('aria-describedby', error.id)
-    expect(error).toHaveAttribute('data-slot', 'field-error')
     expect(error).toHaveTextContent('URL must start with http.')
-    expect(screen.getByRole('group')).toHaveAttribute('data-invalid', 'true')
-  })
-
-  it('applies orientation contracts for horizontal and responsive layouts', () => {
-    const { rerender } = render(
-      <Field orientation="horizontal">
-        <FieldLabel htmlFor="schedule-mode">Schedule mode</FieldLabel>
-        <FieldContent>
-          <Input id="schedule-mode" />
-        </FieldContent>
-      </Field>,
-    )
-
-    let field = screen.getByRole('group')
-    expect(field).toHaveAttribute('data-orientation', 'horizontal')
-    expect(field).toHaveClass('flex-row', 'items-center')
-    expect(screen.getByRole('group').querySelector('[data-slot="field-content"]')).toHaveClass(
-      'group/field-content',
-      'flex-1',
-    )
-
-    rerender(
-      <Field orientation="responsive">
-        <FieldLabel htmlFor="schedule-mode">Schedule mode</FieldLabel>
-        <Input id="schedule-mode" />
-      </Field>,
-    )
-
-    field = screen.getByRole('group')
-    expect(field).toHaveAttribute('data-orientation', 'responsive')
-    expect(field).toHaveClass('@md/field-group:flex-row')
-  })
-
-  it('dims FieldLabel when the field group is marked disabled', () => {
-    render(
-      <Field data-disabled>
-        <FieldLabel htmlFor="locked-path">Workspace path</FieldLabel>
-        <Input disabled id="locked-path" />
-      </Field>,
-    )
-
-    expect(screen.getByRole('group')).toHaveAttribute('data-disabled', 'true')
-    expect(screen.getByText('Workspace path')).toHaveClass(
-      'group-data-[disabled=true]/field:opacity-50',
-    )
-    expect(screen.getByLabelText('Workspace path')).toBeDisabled()
-  })
-
-  it('groups related fields through FieldGroup without owning page layout grids', () => {
-    const { container } = render(
-      <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="jobright-email">Email</FieldLabel>
-          <Input id="jobright-email" />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="jobright-password">Password</FieldLabel>
-          <Input id="jobright-password" type="password" />
-        </Field>
-      </FieldGroup>,
-    )
-
-    const group = container.querySelector('[data-slot="field-group"]')
-    expect(group).not.toBeNull()
-    expect(group).toHaveClass('flex', 'flex-col', 'gap-7', '@container/field-group')
-    expect(group!.querySelectorAll('[data-slot="field"]')).toHaveLength(2)
-    expect(screen.getByLabelText('Email')).toHaveAttribute('id', 'jobright-email')
-    expect(screen.getByLabelText('Password')).toHaveAttribute('id', 'jobright-password')
   })
 
   it('renders FieldError from an errors list and deduplicates repeated messages', () => {

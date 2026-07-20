@@ -30,14 +30,12 @@ describe('DropdownMenu', () => {
     )
 
     const trigger = screen.getByRole('button', { name: 'Columns' })
-    expect(trigger).toHaveAttribute('data-slot', 'dropdown-menu-trigger')
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
 
     await user.click(trigger)
 
     const menu = await screen.findByRole('menu', { name: 'Column visibility' })
-    expect(menu).toHaveAttribute('data-slot', 'dropdown-menu-content')
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
     expect(
       within(menu).getByRole('menuitemcheckbox', { name: 'Source' }),
@@ -211,30 +209,5 @@ describe('DropdownMenu', () => {
 
     await user.click(timing)
     expect(timing).toBeChecked()
-  })
-
-  it('closes on Escape and returns focus to the trigger', async () => {
-    const user = userEvent.setup()
-    render(
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button">Columns</Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent aria-label="Column visibility">
-          <DropdownMenuCheckboxItem checked>Source</DropdownMenuCheckboxItem>
-        </DropdownMenuContent>
-      </DropdownMenu>,
-    )
-
-    const trigger = screen.getByRole('button', { name: 'Columns' })
-    trigger.focus()
-    await user.keyboard('{Enter}')
-    expect(await screen.findByRole('menu', { name: 'Column visibility' })).toBeInTheDocument()
-
-    await user.keyboard('{Escape}')
-    await waitFor(() => {
-      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-    })
-    expect(trigger).toHaveFocus()
   })
 })
