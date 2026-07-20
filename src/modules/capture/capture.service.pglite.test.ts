@@ -335,4 +335,32 @@ describe.sequential('Capture module contract (#299)', () => {
     )
     expect(resolved?.id).toBe(v1.capture.id)
   })
+
+  it('shares one implementation between the standalone accept and the composable acceptOn (#300 tx-composability)', async () => {
+    const { database, service } = await setup()
+
+    // Standalone path: create then idempotent re-accept.
+    const s1 = await service.accept(acceptInput({ provenance: { ...connectorProvenance, providerRecordId: 'standalone-rec' } }))
+    const s2 = await service.accept(acceptInput({ provenance: { ...connectorProvenance, providerRecordId: 'standalone-rec' } }))
+    expect(s1.ok && s2.ok).toBe(true)
+    if (!s1.ok || !s2.ok) return
+
+    // Composable path (in a caller's transaction): same idempotency + result shape.
+    const composed = { ...connectorProvenance, providerRecordId: 'composed-rec' }
+    const c1 = await database.transaction((tx) => service.acceptOn(tx, acceptInput({ provenance: composed })))
+    const c2 = await database.transaction((tx) => service.acceptOn(tx, acceptInput({ provenance: composed })))
+    expect(c1.ok && c2.ok).toBe(true)
+    if (!c1.ok || !c2.ok) return
+
+    expect({ created: s2.created, sameId: s2.capture.id === s1.capture.id })
+      .toEqual({ created: c2.created, sameId: c2.capture.id === c1.capture.id })
+    expect(c2.created).toBe(false)
+    expect(c2.capture.id).toBe(c1.capture.id)
+
+    // Validation + evidence-mode immutability are identical on both paths.
+    expect(await service.accept(acceptInput({ evidenceMode: 'nope' as never })))
+      .toEqual(await database.transaction((tx) => service.acceptOn(tx, acceptInput({ evidenceMode: 'nope' as never }))))
+    expect(await service.accept(acceptInput({ provenance: composed, evidenceMode: 'ats_details_provided' })))
+      .toEqual(await database.transaction((tx) => service.acceptOn(tx, acceptInput({ provenance: composed, evidenceMode: 'ats_details_provided' }))))
+  })
 })

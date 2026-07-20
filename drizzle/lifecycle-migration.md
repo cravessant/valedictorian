@@ -101,6 +101,41 @@ dual-write. So #299 splits along a substrate seam:
   module in #299 enqueue NO scheduled work — promotion and its scheduling arrive
   with #300. Nothing to resume is nothing deferred.
 
+### #300 adoption refinement (recorded when #300 landed)
+
+Same substrate split as #299 — canonical writes for the new user-controlled +
+promotion paths, legacy runtime untouched:
+
+- **In #300 (canonical writes):** the user-controlled **Job module contract**
+  (`src/modules/job/job.service.ts`) writes `lifecycle_jobs` + append-only
+  `job_history` with **app-side UUIDv7** ids (`src/db/uuidv7.ts`; the migration's
+  `mint_job_uuid` stays migration-only). External identities (establish +
+  strengthen provisional→strong), conflict inspection, and deterministic
+  attach/merge use the strong-uniqueness index on `job_external_identities` as the
+  DB-level "one Job per strong identity". The **Capture→Job promotion**
+  orchestration composes the #299 Capture contract and the Job contract in one
+  transaction and links contributing Captures via the #299
+  `job_capture_evidence_references` seam.
+- **Deferred to #304 (co-sequenced with the read cutover):** the **legacy inline
+  job mint** (`raw-source.repository.ts` — UUIDv4, provider identity, in the
+  intake tx), the **legacy normalization identity-reconcile** (`job_identities` /
+  `job_identity_conflicts` / `job_fact_versions`), and the legacy
+  `job_fact_versions → opportunities` projection stay live and untouched. #300
+  reuses none of that reconcile code; canonical conflict handling is the strong
+  unique index, not the legacy manual conflict-recording. Canonical Jobs are
+  populated-but-not-yet-read by the legacy projection until #301/#304.
+- **Boundary-owned retrieval (AC5):** explicit promotion retrieves synchronously
+  inside the Capture→Job boundary by composing the existing #233 provider-URL
+  resolver port (opaque `providerRecordId` in, validated canonical destination
+  out — intermediary URLs are structurally excluded from the resolver call). The
+  legacy scheduler-deferred resolution path stays until #304.
+- **Deferred to #303:** the **hosted-resolution writer** (`hosted_submission_work`
+  / `hosted_result_polling_work`, scheduling-owned) and the **intermediary-URL
+  leak guard**. The `hosted_submission_work` `canonicalUrlHash` subject key is the
+  structural enforcement point #303 must build against (the hosted resolver keys
+  on the canonical URL hash, never the intermediary URL). #300 builds no hosted
+  writer.
+
 ## Who finishes the cutover
 
 - **#307** — the exhaustive clean cutover, drop, and packaged proof. It

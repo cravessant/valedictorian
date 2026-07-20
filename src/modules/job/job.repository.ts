@@ -1,23 +1,56 @@
 /**
- * Job aggregate write ownership (issue #298, AC8). See capture.repository.ts for
- * the module-boundary rationale (legacy-backed now; the Job leaf #300 repoints
- * these onto the canonical `lifecycle_*` tables — drizzle/lifecycle-migration.md).
+ * Job aggregate write ownership (issue #298 AC8, adopted by #300).
+ *
+ * Two write surfaces coexist during the umbrella cutover:
+ *  - LEGACY conversations (`insertJobs` / `insertJobIdentities` /
+ *    `insertJobIdentityConflicts` / `insertJobFactVersions`) back the still-live
+ *    connector intake + normalization identity-reconcile path. #300 does NOT
+ *    repoint these — the legacy inline mint, reconcile, and job→opportunity
+ *    projection stay live until #304 (see drizzle/lifecycle-migration.md), because
+ *    a dual-write is forbidden and the reads stay on legacy.
+ *  - CANONICAL conversations (`insertLifecycleJobs` / `insertJobHistory` /
+ *    `updateLifecycleJobs`, plus the #299 lineage seam) back the new
+ *    user-controlled Job aggregate + Capture→Job promotion (#300), writing the
+ *    canonical `lifecycle_*` tables through the Job service and orchestration.
  */
 import {
   jobCaptureEvidenceReferences,
+  jobExternalIdentities,
   jobFactVersions,
+  jobHistory,
   jobIdentities,
   jobIdentityConflicts,
   jobs,
+  lifecycleJobs,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 
+/** Insert-only surface (the workspace database or an open transaction). */
 export type JobWriteExecutor = Pick<PgliteDatabase, 'insert'>
+/** Insert + update surface, for canonical Job head mutations (versions, tombstone). */
+export type JobMutateExecutor = Pick<PgliteDatabase, 'insert' | 'update'>
+/** Insert + update + delete surface, for the merge lineage re-point. */
+export type JobDeleteExecutor = Pick<PgliteDatabase, 'insert' | 'update' | 'delete'>
 
+// Legacy (connector intake + normalization reconcile; repointed at #304, not #300).
 export const insertJobs = (exec: JobWriteExecutor) => exec.insert(jobs)
 export const insertJobIdentities = (exec: JobWriteExecutor) => exec.insert(jobIdentities)
 export const insertJobIdentityConflicts = (exec: JobWriteExecutor) => exec.insert(jobIdentityConflicts)
 export const insertJobFactVersions = (exec: JobWriteExecutor) => exec.insert(jobFactVersions)
+
+// Canonical (the #300 user-controlled Job aggregate).
+export const insertLifecycleJobs = (exec: JobWriteExecutor) => exec.insert(lifecycleJobs)
+export const insertJobHistory = (exec: JobWriteExecutor) => exec.insert(jobHistory)
+export const updateLifecycleJobs = (exec: JobMutateExecutor) => exec.update(lifecycleJobs)
+export const insertJobExternalIdentities = (exec: JobWriteExecutor) => exec.insert(jobExternalIdentities)
+// Job external identities are append-only except the one-way removal transition
+// (set removed_at); the enforce trigger rejects any other update. Strengthen and
+// merge tombstone-then-insert rather than mutating in place.
+export const updateJobExternalIdentities = (exec: JobMutateExecutor) => exec.update(jobExternalIdentities)
+// Lineage re-point (merge): job_capture_evidence_references permits delete (only a
+// workspace-consistency trigger guards it), so the loser's references are deleted
+// after being re-inserted on the winner.
+export const deleteJobCaptureEvidenceReferences = (exec: JobDeleteExecutor) => exec.delete(jobCaptureEvidenceReferences)
 
 /**
  * Canonical Capture→Job lineage minting conversation (#299 slice 2 seam).

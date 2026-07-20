@@ -161,6 +161,15 @@ export interface CaptureService {
   correct(input: CorrectCaptureInput): Promise<MutateCaptureResult>
   remove(input: CaptureMutationInput): Promise<MutateCaptureResult>
   restore(input: CaptureMutationInput): Promise<MutateCaptureResult>
+  /**
+   * Composable cores for lifecycle orchestration: run a SINGLE attempt on the
+   * caller's transaction executor (no internal transaction) so a promotion can
+   * compose Capture + Job writes in one atomic boundary. Same validation and
+   * idempotency semantics as the standalone `accept`/`correct` (one shared
+   * implementation); may THROW a unique-violation for the caller to retry.
+   */
+  acceptOn(exec: CaptureExec, input: AcceptCaptureInput): Promise<AcceptCaptureResult>
+  correctOn(exec: CaptureExec, input: CorrectCaptureInput): Promise<MutateCaptureResult>
   get(workspaceId: string, captureId: string): Promise<CaptureRecord | null>
   getByProvenance(
     workspaceId: string,
@@ -323,6 +332,9 @@ function toRecord(row: CaptureRow): CaptureRecord {
   }
 }
 
+/** A read+write executor — the workspace database OR an open transaction. */
+export type CaptureExec = Pick<PgliteDatabase, 'select' | 'insert' | 'update'>
+
 export function createPgliteCaptureService(
   database: PgliteDatabase,
   options: CaptureServiceOptions = {},
@@ -330,8 +342,8 @@ export function createPgliteCaptureService(
   const nowIso = () => (options.now?.() ?? new Date()).toISOString()
   const newId = options.newId ?? (() => randomUUID())
 
-  async function selectById(workspaceId: string, captureId: string): Promise<CaptureRow | null> {
-    const [row] = await database
+  async function selectById(exec: CaptureExec, workspaceId: string, captureId: string): Promise<CaptureRow | null> {
+    const [row] = await exec
       .select()
       .from(lifecycleCaptures)
       .where(and(eq(lifecycleCaptures.workspaceId, workspaceId), eq(lifecycleCaptures.id, captureId)))
@@ -340,12 +352,13 @@ export function createPgliteCaptureService(
   }
 
   async function selectByProvenance(
+    exec: CaptureExec,
     workspaceId: string,
     adapterId: string,
     providerSchema: string | null,
     providerRecordId: string,
   ): Promise<CaptureRow | null> {
-    const [row] = await database
+    const [row] = await exec
       .select()
       .from(lifecycleCaptures)
       .where(
@@ -390,7 +403,7 @@ export function createPgliteCaptureService(
   }
 
   async function appendObservation(
-    tx: Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0],
+    tx: CaptureExec,
     existing: CaptureRow,
     provenance: ReturnType<typeof validateProvenance>,
     evidenceMode: CaptureEvidenceMode,
@@ -429,7 +442,7 @@ export function createPgliteCaptureService(
   }
 
   async function createCapture(
-    tx: Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0],
+    tx: CaptureExec,
     input: AcceptCaptureInput,
     provenance: ReturnType<typeof validateProvenance>,
     evidence: ReturnType<typeof validateEvidence>,
@@ -503,7 +516,11 @@ export function createPgliteCaptureService(
     }
   }
 
-  async function commitRevision(
+  // Composable core: single-attempt commit on the caller's executor. May THROW a
+  // unique-violation (revision race) for the caller to handle; the standalone
+  // wrapper converts it to a typed revision_conflict.
+  async function commitRevisionOn(
+    exec: CaptureExec,
     loaded: Extract<LoadedMutation, { ok: true }>,
     kind: CaptureRevisionKind,
     snapshotJson: string,
@@ -511,91 +528,112 @@ export function createPgliteCaptureService(
   ): Promise<MutateCaptureResult> {
     const createdAt = nowIso()
     const revision = loaded.row.revision + 1
+    await insertCaptureRevisions(exec).values({
+      captureId: loaded.captureId,
+      revision,
+      kind,
+      snapshotJson,
+      auditJson: auditJson(loaded.actor),
+      createdAt,
+    })
+    const set: { revision: number; updatedAt: string; removedAt?: string | null } = { revision, updatedAt: createdAt }
+    let nextRemovedAt = loaded.row.removedAt
+    if (removedAt === 'set') {
+      set.removedAt = createdAt
+      nextRemovedAt = createdAt
+    } else if (removedAt === 'clear') {
+      set.removedAt = null
+      nextRemovedAt = null
+    }
+    await updateLifecycleCaptures(exec).set(set).where(eq(lifecycleCaptures.id, loaded.captureId))
+    return { ok: true as const, capture: toRecord({ ...loaded.row, revision, updatedAt: createdAt, removedAt: nextRemovedAt }) }
+  }
+
+  async function commitRevision(
+    loaded: Extract<LoadedMutation, { ok: true }>,
+    kind: CaptureRevisionKind,
+    snapshotJson: string,
+    removedAt: 'set' | 'clear' | 'keep',
+  ): Promise<MutateCaptureResult> {
     try {
-      return await database.transaction(async (tx) => {
-        await insertCaptureRevisions(tx).values({
-          captureId: loaded.captureId,
-          revision,
-          kind,
-          snapshotJson,
-          auditJson: auditJson(loaded.actor),
-          createdAt,
-        })
-        const set: { revision: number; updatedAt: string; removedAt?: string | null } = { revision, updatedAt: createdAt }
-        let nextRemovedAt = loaded.row.removedAt
-        if (removedAt === 'set') {
-          set.removedAt = createdAt
-          nextRemovedAt = createdAt
-        } else if (removedAt === 'clear') {
-          set.removedAt = null
-          nextRemovedAt = null
-        }
-        await updateLifecycleCaptures(tx).set(set).where(eq(lifecycleCaptures.id, loaded.captureId))
-        return { ok: true as const, capture: toRecord({ ...loaded.row, revision, updatedAt: createdAt, removedAt: nextRemovedAt }) }
-      })
+      return await database.transaction((tx) => commitRevisionOn(tx, loaded, kind, snapshotJson, removedAt))
     } catch (error) {
-      // A concurrent mutation already claimed revision N+1 (capture_revisions PK).
       if (isUniqueViolation(error)) return fail('revision_conflict', 'capture was modified concurrently')
       throw error
     }
   }
 
-  return {
-    async accept(input) {
-      let provenance: ReturnType<typeof validateProvenance>
-      let evidence: ReturnType<typeof validateEvidence>
-      let actor: CaptureActor
-      let workspaceId: string
-      let evidenceMode: CaptureEvidenceMode
-      try {
-        workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
-        if (!(captureEvidenceModes as readonly string[]).includes(input.evidenceMode)) {
-          throw new CaptureInputError('invalid_input', 'evidenceMode is invalid')
-        }
-        evidenceMode = input.evidenceMode
-        provenance = validateProvenance(input.provenance)
-        evidence = validateEvidence(input.evidence)
-        actor = requireActor(input.actor)
-        if (input.payload !== undefined && input.payload !== null) {
-          boundedJson(input.payload, 'payload', PAYLOAD_MAX)
-        }
-      } catch (error) {
-        if (error instanceof CaptureInputError) return fail(error.code, error.message)
-        throw error
+  // Composable core: single-attempt accept on the caller's executor (idempotent by
+  // provenance). May THROW a unique-violation for the caller to retry; validation +
+  // idempotency semantics are shared with the standalone wrapper (one implementation).
+  async function acceptOn(exec: CaptureExec, input: AcceptCaptureInput): Promise<AcceptCaptureResult> {
+    let provenance: ReturnType<typeof validateProvenance>
+    let evidence: ReturnType<typeof validateEvidence>
+    let actor: CaptureActor
+    let workspaceId: string
+    let evidenceMode: CaptureEvidenceMode
+    try {
+      workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
+      if (!(captureEvidenceModes as readonly string[]).includes(input.evidenceMode)) {
+        throw new CaptureInputError('invalid_input', 'evidenceMode is invalid')
       }
+      evidenceMode = input.evidenceMode
+      provenance = validateProvenance(input.provenance)
+      evidence = validateEvidence(input.evidence)
+      actor = requireActor(input.actor)
+      if (input.payload !== undefined && input.payload !== null) {
+        boundedJson(input.payload, 'payload', PAYLOAD_MAX)
+      }
+    } catch (error) {
+      if (error instanceof CaptureInputError) return fail(error.code, error.message)
+      throw error
+    }
 
-      const normalized: AcceptCaptureInput = { ...input, workspaceId, evidenceMode }
-      const providerRecordId = provenance.providerRecordId
+    const normalized: AcceptCaptureInput = { ...input, workspaceId, evidenceMode }
+    const providerRecordId = provenance.providerRecordId
+    const existing = providerRecordId
+      ? await selectByProvenance(exec, workspaceId, provenance.adapterId, provenance.providerSchema, providerRecordId)
+      : null
+    if (existing && existing.evidenceMode !== evidenceMode) {
+      return fail('evidence_mode_conflict', 'evidence mode is immutable for this capture')
+    }
+    const createdAt = nowIso()
+    if (existing) {
+      const capture = await appendObservation(exec, existing, provenance, evidenceMode, evidence, actor, createdAt)
+      return { ok: true, capture, created: false }
+    }
+    const capture = await createCapture(exec, normalized, provenance, evidence, actor, createdAt)
+    return { ok: true, capture, created: true }
+  }
 
+  async function correctOn(exec: CaptureExec, input: CorrectCaptureInput): Promise<MutateCaptureResult> {
+    let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
+    let correctionJson: string
+    try {
+      ids = validateMutationIds(input)
+      correctionJson = boundedJson(input.correction, 'correction', SNAPSHOT_MAX)
+    } catch (error) {
+      if (error instanceof CaptureInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const loaded = loadForMutation(input, await selectById(exec, ids.workspaceId, ids.captureId), ids)
+    if (!loaded.ok) return loaded.failure
+    // Corrections append a user-attributed revision; observed evidence is untouched.
+    return commitRevisionOn(exec, loaded, 'corrected', correctionJson, 'keep')
+  }
+
+  return {
+    acceptOn,
+    correctOn,
+
+    async accept(input) {
+      // Thin wrapper: open a transaction around the composable core, retrying on a
+      // provenance/revision race (the row now exists / advanced, so acceptOn appends).
       for (let attempt = 0; attempt < 3; attempt += 1) {
-        const existing = providerRecordId
-          ? await selectByProvenance(workspaceId, provenance.adapterId, provenance.providerSchema, providerRecordId)
-          : null
-        if (existing && existing.evidenceMode !== evidenceMode) {
-          return fail('evidence_mode_conflict', 'evidence mode is immutable for this capture')
-        }
-        const createdAt = nowIso()
         try {
-          return await database.transaction(async (tx) => {
-            if (existing) {
-              const capture = await appendObservation(
-                tx,
-                existing,
-                provenance,
-                evidenceMode,
-                evidence,
-                actor,
-                createdAt,
-              )
-              return { ok: true as const, capture, created: false }
-            }
-            const capture = await createCapture(tx, normalized, provenance, evidence, actor, createdAt)
-            return { ok: true as const, capture, created: true }
-          })
+          return await database.transaction((tx) => acceptOn(tx, input))
         } catch (error) {
-          // Two racing intakes for the same provenance identity, or two racing
-          // re-observations: roll back and retry — the row now exists / advanced.
-          if (isUniqueViolation(error) && providerRecordId) continue
+          if (isUniqueViolation(error)) continue
           throw error
         }
       }
@@ -603,19 +641,12 @@ export function createPgliteCaptureService(
     },
 
     async correct(input) {
-      let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
-      let correctionJson: string
       try {
-        ids = validateMutationIds(input)
-        correctionJson = boundedJson(input.correction, 'correction', SNAPSHOT_MAX)
+        return await database.transaction((tx) => correctOn(tx, input))
       } catch (error) {
-        if (error instanceof CaptureInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'capture was modified concurrently')
         throw error
       }
-      const loaded = loadForMutation(input, await selectById(ids.workspaceId, ids.captureId), ids)
-      if (!loaded.ok) return loaded.failure
-      // Corrections append a user-attributed revision; observed evidence is untouched.
-      return commitRevision(loaded, 'corrected', correctionJson, 'keep')
     },
 
     async remove(input) {
@@ -626,7 +657,7 @@ export function createPgliteCaptureService(
         if (error instanceof CaptureInputError) return fail(error.code, error.message)
         throw error
       }
-      const loaded = loadForMutation(input, await selectById(ids.workspaceId, ids.captureId), ids)
+      const loaded = loadForMutation(input, await selectById(database, ids.workspaceId, ids.captureId), ids)
       if (!loaded.ok) return loaded.failure
       if (loaded.row.removedAt !== null) return { ok: true, capture: toRecord(loaded.row) }
       const snapshot = JSON.stringify({ kind: 'removed', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 })
@@ -641,7 +672,7 @@ export function createPgliteCaptureService(
         if (error instanceof CaptureInputError) return fail(error.code, error.message)
         throw error
       }
-      const loaded = loadForMutation(input, await selectById(ids.workspaceId, ids.captureId), ids)
+      const loaded = loadForMutation(input, await selectById(database, ids.workspaceId, ids.captureId), ids)
       if (!loaded.ok) return loaded.failure
       if (loaded.row.removedAt === null) return { ok: true, capture: toRecord(loaded.row) }
       const snapshot = JSON.stringify({ kind: 'restored', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 })
@@ -649,17 +680,17 @@ export function createPgliteCaptureService(
     },
 
     async get(workspaceId, captureId) {
-      const row = await selectById(workspaceId, captureId)
+      const row = await selectById(database, workspaceId, captureId)
       return row ? toRecord(row) : null
     },
 
     async getByProvenance(workspaceId, adapterId, providerSchema, providerRecordId) {
-      const row = await selectByProvenance(workspaceId, adapterId, providerSchema, providerRecordId)
+      const row = await selectByProvenance(database, workspaceId, adapterId, providerSchema, providerRecordId)
       return row ? toRecord(row) : null
     },
 
     async history(workspaceId, captureId) {
-      const existing = await selectById(workspaceId, captureId)
+      const existing = await selectById(database, workspaceId, captureId)
       if (!existing) return []
       const rows = await database
         .select()
@@ -682,7 +713,7 @@ export function createPgliteCaptureService(
     },
 
     async evidence(workspaceId, captureId) {
-      const existing = await selectById(workspaceId, captureId)
+      const existing = await selectById(database, workspaceId, captureId)
       if (!existing) return null
       const rows = await database
         .select()
