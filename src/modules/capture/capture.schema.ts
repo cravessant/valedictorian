@@ -40,6 +40,20 @@ export const lifecycleCaptures = pgTable(
   },
   (table) => ({
     workspaceIdx: index('idx_lifecycle_captures_workspace').on(table.workspaceId, table.createdAt),
+    // #299: provenance identity resolves to exactly one Capture id forever. The
+    // key includes provider_schema (coalesced) to match the legacy connector
+    // lineage identity (adapterId, providerSchema, providerRecordId) — so the same
+    // adapter re-observing a provider record under a bumped schema stays a distinct
+    // capture, exactly as legacy semantics treated it, and 0001's schema-divergent
+    // migrated rows do not collide. A partial unique lets manual captures (null
+    // provider_record_id) coexist without colliding; connector/import re-observation
+    // resolves idempotently to the existing Capture, including 0001-migrated rows
+    // (which reused the legacy lineage id). The tombstone is NOT excluded: a removed
+    // Capture keeps owning its provenance identity, so re-intake appends to it
+    // without clearing removed_at.
+    provenanceIdx: uniqueIndex('idx_lifecycle_captures_provenance')
+      .on(table.workspaceId, table.adapterId, sql`coalesce(${table.providerSchema}, '')`, table.providerRecordId)
+      .where(sql`${table.providerRecordId} is not null`),
     workspaceCheck: check('chk_lifecycle_captures_workspace', sql`length(${table.workspaceId}) between 1 and 200`),
     evidenceModeCheck: check('chk_lifecycle_captures_evidence_mode', sql`${table.evidenceMode} in ('reported','ats_details_provided')`),
     adapterKindCheck: check('chk_lifecycle_captures_adapter_kind', sql`${table.adapterKind} in ('connector','cli','manual','import')`),

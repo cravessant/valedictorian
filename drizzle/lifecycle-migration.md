@@ -64,6 +64,43 @@ Two consequences that are **by design and inert**:
   Until then the app serves the OLD sparxie `0.26.1` DTOs, which is why the read
   paths cannot move onto the canonical tables inside #298.
 
+### #299 adoption refinement (recorded when #299 landed)
+
+The original one-line plan above ("#299 repoints its write conversations onto the
+canonical tables") oversimplified: the connector raw-source intake is an
+interleaved read-modify-write on the legacy tables, and ~10 downstream reads (the
+sparxie DTO surface **and** the whole normalization/projection/replay pipeline)
+read those same legacy tables. Moving the connector capture write onto canonical
+while reads stay legacy would either starve those reads or force the forbidden
+dual-write. So #299 splits along a substrate seam:
+
+- **In #299 (canonical writes):** a new user-controlled **Capture module
+  contract** (`src/modules/capture/capture.service.ts`) writes the canonical
+  `lifecycle_captures` / `capture_revisions` / `capture_evidence_items` tables for
+  user/manual/import/CLI provenance. Migration `0002` adds a partial unique index
+  on `(workspace_id, adapter_id, provider_record_id) WHERE provider_record_id IS
+  NOT NULL` so provenance identity resolves to one Capture id forever — including
+  rows `0001` migrated under the reused legacy lineage id. Re-intake of a
+  tombstoned Capture appends occurrences/revisions to the same id but never clears
+  `removed_at`.
+- **Deferred to #304 (co-sequenced with the read cutover):** the **connector
+  raw-source capture write move** onto canonical, and **persisted intake-receipt
+  rows** (a canonical concept). These land only when the DTO + pipeline reads move
+  too, because they are one inseparable cutover and a dual-write is forbidden. The
+  legacy `captures` / `capture_lineages` / `capture_evidence_versions` writers in
+  `capture.repository.ts` therefore stay live through #299.
+- **In #299 on the LEGACY substrate (behavior, not table move):** frontier/backfill
+  acknowledgement decouples from normalization — the frontier checkpoint commits
+  atomically with durable legacy capture intake, normalization is scheduled (the
+  existing legacy `retry_work` normalization kind) rather than executed inline in
+  connector refresh, and projection/normalization failures stop failing runs. The
+  orchestration shape survives the later substrate swap. #299 does NOT touch the
+  canonical `normalization_work` on the connector path (its FKs to
+  `lifecycle_captures` are exactly why — canonical scheduled-work adoption is #303).
+- **Scheduled work for canonical Captures:** captures created through the new
+  module in #299 enqueue NO scheduled work — promotion and its scheduling arrive
+  with #300. Nothing to resume is nothing deferred.
+
 ## Who finishes the cutover
 
 - **#307** — the exhaustive clean cutover, drop, and packaged proof. It

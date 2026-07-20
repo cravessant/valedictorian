@@ -4,7 +4,7 @@ import {
   JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION,
   JOBRIGHT_CONNECTOR_ID,
 } from '../modules/connectors/jobright.constants'
-import { dispatchAcquiredNormalizationWork } from './local-connector-retry-dispatch'
+import { dispatchAcquiredNormalizationWork, finalizeDeferredConnectorRefreshRecord } from './local-connector-retry-dispatch'
 
 describe('local connector normalization retry dispatch', () => {
   it('awaits persisted normalization context before replaying the acquired work', async () => {
@@ -167,3 +167,42 @@ function dispatchFixture(overrides: {
     startedAt: '2026-07-18T08:00:00.000Z',
   } as never
 }
+
+describe('connector run finalization (#299 slice 3-prime)', () => {
+  it('marks the run connector.finalize_failed and rethrows when the checkpoint write fails', async () => {
+    const markRunFailed = vi.fn(async () => ({ id: 'run-final', status: 'failed' }))
+    const completeRun = vi.fn(async () => ({ id: 'run-final', status: 'completed' }))
+    const connectorRepository = {
+      updateRunProgress: vi.fn(async () => ({ id: 'run-final', status: 'running' })),
+      recordCheckpoint: vi.fn(async () => {
+        throw new Error('checkpoint write failed')
+      }),
+      completeRun,
+      markRunFailed,
+    } as never
+
+    await expect(finalizeDeferredConnectorRefreshRecord({
+      checkpoint: {
+        connectorInstanceId: 'instance-final',
+        filterSignature: 'filters:{}',
+        checkpoint: { checkpoint: {}, schemaVersion: 'fixture@1' },
+        coverage: { start: '2026-07-18T00:00:00.000Z', end: '2026-07-18T08:00:00.000Z' },
+        savedAt: '2026-07-18T08:00:00.000Z',
+      } as never,
+      connectorRepository,
+      now: () => new Date('2026-07-18T08:00:00.000Z'),
+      run: { id: 'run-final', status: 'running' } as never,
+      terminalStatus: 'completed',
+    })).rejects.toThrow('checkpoint write failed')
+
+    // The #299 truthful code: this catch guards a finalize DB write, not a
+    // projection — normalization/projection are deferred off the refresh path.
+    expect(markRunFailed).toHaveBeenCalledWith(expect.objectContaining({
+      connectorRunId: 'run-final',
+      warning: expect.objectContaining({ code: 'connector.finalize_failed' }),
+    }))
+    // The run is not falsely completed; durable intake (committed earlier in its
+    // own transaction) is untouched by this failure.
+    expect(completeRun).not.toHaveBeenCalled()
+  })
+})

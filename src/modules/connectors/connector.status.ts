@@ -439,10 +439,10 @@ function safeWarningForCode(code: string): ConnectorStatusWarningView {
       message: 'The app closed before this connector run finished.',
       severity: 'warning',
     },
-    'connector.projection_failed': {
-      code: 'connector.projection_failed',
-      label: 'Projection failed',
-      message: 'Connector observations could not be projected.',
+    'connector.finalize_failed': {
+      code: 'connector.finalize_failed',
+      label: 'Run finalization failed',
+      message: 'The connector captured durable intake but could not finalize its checkpoint.',
       severity: 'warning',
     },
     'source.rate_limited': {

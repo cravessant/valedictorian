@@ -388,7 +388,7 @@ function safeRunWarningLabel(code: string): string {
     'auth.required': 'Authentication required',
     'connector.execution_failed': 'Connector execution failed',
     'connector.interrupted': 'Run interrupted',
-    'connector.projection_failed': 'Projection failed',
+    'connector.finalize_failed': 'Run finalization failed',
     jobright_auth_failed: 'Jobright authentication failed',
     jobright_auth_required: 'Jobright authentication required',
     jobright_auth_retryable: 'Jobright authentication unavailable',

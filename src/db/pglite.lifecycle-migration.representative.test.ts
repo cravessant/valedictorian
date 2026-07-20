@@ -136,4 +136,40 @@ describe.sequential('lifecycle migration representative data', () => {
     expect(await count(c, 'applications')).toBe(2)
     expect(await count(c, 'retry_work')).toBe(6)
   })
+
+  // #299 slice-4 correction: the 0002 provenance index is keyed on provider_schema
+  // (matching the legacy connector lineage identity), with a pre-index quarantine of
+  // residual true duplicates. Schema-divergent observations survive as distinct
+  // captures; a true duplicate is deduped with a migration-report entry.
+  it('keeps schema-divergent captures distinct and quarantines a true provenance duplicate (#299 0002)', async () => {
+    const c = await createPgliteClient()
+    client = c
+    await applyBaselineOnly(c)
+    const T0 = '2026-07-10T12:00:00.000Z'
+    const T1 = '2026-07-10T12:00:01.000Z'
+    const lineage = (id: string, createdAt: string) =>
+      c.query(`insert into capture_lineages (id, job_id, created_at) values ('${id}',null,'${createdAt}')`)
+    const cev = (id: string, lin: string, hash: string, schema: string, record: string, createdAt: string) =>
+      c.query(`insert into capture_evidence_versions (id, capture_lineage_id, revision, content_hash, adapter_id, adapter_kind, adapter_version, observed_at, provider_record_id, provider_schema, payload_json, evidence_json, created_at)
+        values ('${id}','${lin}',1,'${hash}','jobright','connector','1','${T0}','${record}','${schema}','{}','[]','${createdAt}')`)
+
+    // Schema-divergent pair: same adapter + provider_record_id, DIFFERENT provider_schema.
+    await lineage('lin-sd1', T0); await cev('cev-sd1', 'lin-sd1', 'h-sd1', 'jobright.v1', 'pr-shared', T0)
+    await lineage('lin-sd2', T0); await cev('cev-sd2', 'lin-sd2', 'h-sd2', 'jobright.v2', 'pr-shared', T0)
+    // True duplicate pair: identical (adapter, schema, record); earliest created_at (lin-dup1) wins.
+    await lineage('lin-dup1', T0); await cev('cev-dup1', 'lin-dup1', 'h-dup1', 'jobright.v1', 'pr-dup', T0)
+    await lineage('lin-dup2', T1); await cev('cev-dup2', 'lin-dup2', 'h-dup2', 'jobright.v1', 'pr-dup', T1)
+
+    await applyLifecycleMigration(c)
+
+    const divergent = await c.query<{ provider_schema: string }>(
+      `select provider_schema from lifecycle_captures where provider_record_id = 'pr-shared' order by provider_schema`,
+    )
+    expect(divergent.rows.map((row) => row.provider_schema)).toEqual(['jobright.v1', 'jobright.v2'])
+
+    expect(await count(c, 'lifecycle_captures', `where provider_record_id = 'pr-dup'`)).toBe(1)
+    const survivor = await c.query<{ id: string }>(`select id from lifecycle_captures where provider_record_id = 'pr-dup'`)
+    expect(survivor.rows[0]?.id).toBe('lin-dup1')
+    expect(await count(c, 'lifecycle_migration_report', `where category = 'quarantine' and source_id = 'lin-dup2'`)).toBe(1)
+  })
 })

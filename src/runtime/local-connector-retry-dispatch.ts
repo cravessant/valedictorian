@@ -538,8 +538,15 @@ export async function finalizeDeferredConnectorRefreshRecord({
       completedAt: now().toISOString(),
       retryHints: null,
       warning: {
-        code: 'connector.sourcing_projection_failed',
-        message: 'Canonical sourcing projection failed.',
+        // The frontier/backfill decoupling (#233/#234) moved normalization and
+        // projection off the refresh path, so this catch no longer guards a
+        // projection: it fires only when the finalize DB writes (checkpoint /
+        // completeRun) themselves fail after durable intake already committed.
+        // #299 names it truthfully; persisted historical runs still carry the old
+        // `connector.sourcing_projection_failed` string, which renders via the
+        // generic warning fallback exactly as before.
+        code: 'connector.finalize_failed',
+        message: 'Connector captured durable intake but failed to finalize its checkpoint.',
       },
     })
     throw error

@@ -45,6 +45,49 @@ describe('provider URL resolution PGlite repository', () => {
     await expect(database.select().from(retryWork)).resolves.toHaveLength(1)
   })
 
+  it('rolls back the scheduled normalization enqueue when the intake transaction fails', async () => {
+    // #299 slice 3-prime: the intake stage composes enqueue inside the raw-source
+    // transaction, so a durable Capture and its scheduled normalization work commit
+    // (or roll back) atomically — proven by the tx handle threaded into enqueue.
+    const { database } = await createPgliteTestOwner()
+    const timestamp = '2026-07-16T12:00:00.000Z'
+    await database.insert(sourceExecutionScopes).values({
+      id: 'scope-atomic', createdAt: timestamp, updatedAt: timestamp,
+    })
+    await database.insert(connectorInstances).values({
+      id: 'connector-atomic', executionScopeId: 'scope-atomic', connectorId: 'jobright.resolver',
+      connectorVersion: '1.0.0', displayName: 'Jobright', enabled: true, configJson: '{}',
+      createdAt: timestamp, updatedAt: timestamp,
+    })
+    await database.insert(captureLineages).values({ id: 'raw-atomic', createdAt: timestamp })
+    await database.insert(captureEvidenceVersions).values({
+      id: 'revision-atomic', captureLineageId: 'raw-atomic', revision: 1,
+      contentHash: 'sha256:atomic', adapterId: 'jobright.resolver', adapterKind: 'connector',
+      adapterVersion: '1.0.0', evidenceJson: '[]', observedAt: timestamp,
+      providerRecordId: 'provider-atomic', payloadJson: '{}', createdAt: timestamp,
+    })
+    const repository = createProviderUrlResolutionRepository(database, () => new Date(timestamp))
+    const input = {
+      captureEvidenceVersionId: 'revision-atomic', connectorInstanceId: 'connector-atomic',
+      executionScopeId: 'scope-atomic', inputHash: 'sha256:atomic',
+      intermediaryUrl: 'https://jobright.ai/jobs/info/provider-atomic',
+      providerRecordId: 'provider-atomic', resolverId: 'jobright.provider-url',
+      resolverVersion: 'jobright-provider-url@1',
+    }
+
+    await expect(database.transaction(async (tx) => {
+      await repository.enqueue(input, tx)
+      throw new Error('intake staging failed')
+    })).rejects.toThrow('intake staging failed')
+    await expect(database.select().from(retryWork)).resolves.toHaveLength(0)
+
+    // Control: the same enqueue committed in its transaction persists.
+    await database.transaction(async (tx) => {
+      await repository.enqueue(input, tx)
+    })
+    await expect(database.select().from(retryWork)).resolves.toHaveLength(1)
+  })
+
   it('rolls back an acquisition when PostgreSQL rejects the claimed transition', async () => {
     const { client, database } = await createPgliteTestOwner()
     const timestamp = '2026-07-16T12:00:00.000Z'
