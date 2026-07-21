@@ -57,6 +57,13 @@ export interface CreateJobInput {
   readonly facts: JsonValue
   readonly availability?: JobAvailabilityInput
   readonly actor: JobActor
+  /**
+   * #304: caller-supplied create-dedup key. Re-issuing the same create with the
+   * same (workspace, key) converges to the already-created Job (created:false)
+   * instead of minting a duplicate. Persisted on the aggregate row and enforced by
+   * the partial unique index idx_lifecycle_jobs_idempotency.
+   */
+  readonly idempotencyKey?: string
 }
 
 export interface CorrectJobFactsInput {
@@ -105,7 +112,7 @@ export interface JobHistoryEntry {
   readonly createdAt: string
 }
 
-export type CreateJobResult = { readonly ok: true; readonly job: JobRecord } | JobFailure
+export type CreateJobResult = { readonly ok: true; readonly job: JobRecord; readonly created: boolean } | JobFailure
 export type MutateJobResult = { readonly ok: true; readonly job: JobRecord } | JobFailure
 
 /** A read+write executor — the workspace database OR an open transaction. */
@@ -135,6 +142,7 @@ export interface JobServiceOptions {
 
 const FACTS_MAX = 262_144
 const TIMESTAMP_MAX = 100
+const IDEMPOTENCY_KEY_MAX = 200
 
 function requireAvailabilityState(value: unknown, field: string): JobAvailabilityState {
   if (typeof value !== 'string' || !(jobAvailabilityStates as readonly string[]).includes(value)) {
@@ -154,6 +162,7 @@ interface JobRow {
   createdAt: string
   updatedAt: string
   removedAt: string | null
+  idempotencyKey?: string | null
 }
 
 function toRecord(row: JobRow): JobRecord {
@@ -185,6 +194,17 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       .select()
       .from(lifecycleJobs)
       .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .limit(1)
+    return (row as JobRow | undefined) ?? null
+  }
+
+  // Dedup lookup on the caller's executor (workspace DB or an open promotion tx), so
+  // create-dedup composes atomically inside a promotion boundary.
+  async function selectByIdempotencyKey(exec: JobExec, workspaceId: string, key: string): Promise<JobRow | null> {
+    const [row] = await exec
+      .select()
+      .from(lifecycleJobs)
+      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.idempotencyKey, key)))
       .limit(1)
     return (row as JobRow | undefined) ?? null
   }
@@ -241,10 +261,14 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     let actor: JobActor
     let availabilityState: JobAvailabilityState
     let availabilityObservedAt: string
+    let idempotencyKey: string | null
     try {
       workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
       factsJson = boundedJson(input.facts, 'facts', FACTS_MAX)
       actor = requireActor(input.actor)
+      idempotencyKey = input.idempotencyKey === undefined
+        ? null
+        : requireText(input.idempotencyKey, 'idempotencyKey', 1, IDEMPOTENCY_KEY_MAX)
       if (input.availability) {
         availabilityState = requireAvailabilityState(input.availability.state, 'availability.state')
         availabilityObservedAt = requireText(input.availability.observedAt, 'availability.observedAt', 1, TIMESTAMP_MAX)
@@ -255,6 +279,12 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     } catch (error) {
       if (error instanceof JobInputError) return fail(error.code, error.message)
       throw error
+    }
+    // Create-dedup: an existing row under this (workspace, key) short-circuits before
+    // minting a new id, so re-issuing the same create converges (created:false).
+    if (idempotencyKey !== null) {
+      const existing = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
+      if (existing) return { ok: true, job: toRecord(existing), created: false }
     }
     const createdAt = nowIso()
     const row: JobRow = {
@@ -268,8 +298,19 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       createdAt,
       updatedAt: createdAt,
       removedAt: null,
+      idempotencyKey,
     }
-    await insertLifecycleJobs(exec).values(row)
+    try {
+      await insertLifecycleJobs(exec).values(row)
+    } catch (error) {
+      // Concurrent create with the same key lost the unique-index race: converge to
+      // the winner rather than surface a conflict (idempotent create semantics).
+      if (idempotencyKey !== null && isUniqueViolation(error)) {
+        const winner = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
+        if (winner) return { ok: true, job: toRecord(winner), created: false }
+      }
+      throw error
+    }
     await insertJobHistory(exec).values({
       id: newId(),
       jobId: row.id,
@@ -279,7 +320,7 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       auditJson: auditJson(actor),
       createdAt,
     })
-    return { ok: true, job: toRecord(row) }
+    return { ok: true, job: toRecord(row), created: true }
   }
 
   return {
