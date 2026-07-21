@@ -639,6 +639,7 @@ describe('test pyramid policy', () => {
       ['src/runtime/local-valedictorian-client.connector-retirement.test.ts', false],
       ['src/runtime/local-valedictorian-client.connector-runs.test.ts', false],
       ['src/runtime/local-connector-frontier-decoupling.contract.test.ts', false],
+      ['src/runtime/local-lifecycle-methods.applications.pglite.test.ts', false],
       ['src/runtime/local-lifecycle-methods.captures.pglite.test.ts', false],
       ['src/runtime/local-lifecycle-methods.jobs.pglite.test.ts', false],
       ['src/runtime/local-lifecycle-methods.opportunities.pglite.test.ts', false],

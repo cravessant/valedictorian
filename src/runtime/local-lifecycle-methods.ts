@@ -46,6 +46,16 @@ import {
   restoreInputSchema,
   restoreJobInputSchema,
   updateJobAvailabilityInputSchema,
+  createApplicationInputSchema,
+  lifecycleApplicationListInputSchema,
+  updateApplicationCompanyInputSchema,
+  updateApplicationSourceInputSchema,
+  updatePursuitApplicationStatusInputSchema,
+  createPursuitLinkInputSchema,
+  updatePursuitLinkInputSchema,
+  removePursuitLinkInputSchema,
+  refreshApplicationSnapshotInputSchema,
+  applicationTechnicalListInputSchema,
   type Capture,
   type CaptureHistoryResult,
   type CaptureListResult,
@@ -56,6 +66,11 @@ import {
   type JobMutationResult,
   type LifecycleWorkspaceClient,
   type Application,
+  type ApplicationMutationResult,
+  type ApplicationAttemptsListResult,
+  type ApplicationEventsListResult,
+  type LifecycleApplicationHistoryResult,
+  type LifecycleApplicationListResult,
   type Opportunity,
   type OpportunityHistoryResult,
   type OpportunityListResult,
@@ -80,6 +95,7 @@ import { createPgliteJobService } from '../modules/job/job.service'
 import { createPgliteJobReadModel } from '../modules/job/job.read-model'
 import { createPgliteJobIdentityService } from '../modules/job/job.identity'
 import { createLifecycleJobOrchestration, type JobWriteFailure } from '../modules/lifecycle/job.orchestration'
+import { createLifecycleApplicationOrchestration, type ApplicationWriteFailure } from '../modules/lifecycle/application.orchestration'
 import { createPgliteJobPromotion } from '../modules/lifecycle/capture-to-job.promotion'
 import { createPgliteJobToOpportunityPromotion } from '../modules/lifecycle/job-to-opportunity.promotion'
 import { createPgliteOpportunityService } from '../modules/opportunity/opportunity.service'
@@ -114,7 +130,12 @@ import {
 import type { MutationBlocked } from '../modules/lifecycle/mutation.dto'
 import { lifecycleJobs, jobCaptureEvidenceReferences } from '../modules/job/job.schema'
 import { lifecycleOpportunities } from '../modules/opportunity/opportunity.schema'
-import { lifecycleApplications } from '../modules/application/application.schema'
+import {
+  lifecycleApplications,
+  pursuitLinks,
+  applicationEventRecords,
+  applicationAttemptRecords,
+} from '../modules/application/application.schema'
 
 /**
  * A composition-boundary transport error. The routes map it to an HTTP `{status, body}`; the
@@ -159,8 +180,8 @@ export interface LocalLifecycleMethodsOptions {
   readonly now?: () => Date
 }
 
-/** The aggregate surface implemented so far (captures + jobs + opportunities; grows per the ratified sequencing). */
-export type LocalLifecycleMethods = Pick<LifecycleWorkspaceClient, 'captures' | 'jobs' | 'opportunities'>
+/** The aggregate surface implemented so far (captures + jobs + opportunities + applications). */
+export type LocalLifecycleMethods = Pick<LifecycleWorkspaceClient, 'captures' | 'jobs' | 'opportunities' | 'applications'>
 
 export function createLocalLifecycleMethods(
   database: PgliteDatabase,
@@ -180,6 +201,7 @@ export function createLocalLifecycleMethods(
   const opportunityReadModel = createPgliteOpportunityReadModel(database)
   const applicationReadModel = createPgliteApplicationReadModel(database)
   const jobOrchestration = createLifecycleJobOrchestration(database, { jobService, jobIdentityService, now })
+  const applicationOrchestration = createLifecycleApplicationOrchestration(database, { applicationService }, { now })
   const capturePromotion = createPgliteJobPromotion(database, captureService, jobService, { now, jobIdentityService })
   const jobPromotion = createPgliteJobToOpportunityPromotion(database, opportunityService, { now })
   const opportunityPromotion = createPgliteOpportunityToApplicationPromotion(database, {
@@ -822,7 +844,286 @@ export function createLocalLifecycleMethods(
     },
   }
 
-  return { captures, jobs, opportunities }
+  // --- Applications vertical (#304, item 3c) ---
+
+  /** Active immediate child dependents of an application (its own links/events/attempts). Read-only. */
+  async function activeDependentChildIds(applicationId: string): Promise<string[]> {
+    const [links, events, attempts] = await Promise.all([
+      database.select({ id: pursuitLinks.id }).from(pursuitLinks).where(eq(pursuitLinks.applicationId, applicationId)),
+      database.select({ id: applicationEventRecords.id }).from(applicationEventRecords).where(eq(applicationEventRecords.applicationId, applicationId)),
+      database.select({ id: applicationAttemptRecords.id }).from(applicationAttemptRecords).where(eq(applicationAttemptRecords.applicationId, applicationId)),
+    ])
+    return [...links, ...events, ...attempts].map((row) => row.id)
+  }
+
+  /** The active application for an opportunity (the deterministic-duplicate conflict target on create). */
+  async function activeApplicationForOpportunity(opportunityId: string): Promise<string | null> {
+    const [row] = await database
+      .select({ id: lifecycleApplications.id })
+      .from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.opportunityId, opportunityId), isNull(lifecycleApplications.removedAt)))
+      .limit(1)
+    return row?.id ?? null
+  }
+
+  async function renderApplicationRemoval(
+    result: RemoveLifecycleResult,
+    id: string,
+    actor: LifecycleActor,
+  ): Promise<RemovalResult> {
+    if (result.ok) {
+      const head = await applicationReadModel.getApplication(workspaceId, id)
+      return toRemovedResult(result, { removedAt: head?.removedAt ?? nowIso(), actor: toContractActor(actor) })
+    }
+    const classified = classifyRemovalFailure(result)
+    if (classified.surface === 'blocked') {
+      return toBlockedRemovalResult({
+        id,
+        message: 'removal blocked by active dependents',
+        dependentIds: await activeDependentChildIds(id),
+      })
+    }
+    if (classified.surface === 'not_found') throw new LifecycleHttpError(404, NOT_FOUND_BODY)
+    throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
+  }
+
+  async function renderApplicationRestore(
+    result: RestoreLifecycleResult,
+    id: string,
+    actor: LifecycleActor,
+  ): Promise<RestoreResult> {
+    if (result.ok) {
+      const head = await applicationReadModel.getApplication(workspaceId, id)
+      return toRestoredResult(result, { restoredAt: head?.updatedAt ?? nowIso(), actor: toContractActor(actor) })
+    }
+    const classified = classifyRemovalFailure(result)
+    if (classified.surface === 'blocked') return toBlockedRestoreResult({ id, message: 'restore blocked' })
+    if (classified.surface === 'not_found') throw new LifecycleHttpError(404, NOT_FOUND_BODY)
+    throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
+  }
+
+  /**
+   * Map an Application create failure onto the mutation surface. A `deterministic_duplicate`
+   * carries the conflicting application id + the attach/merge resolutions; every other blocker
+   * code is a plain 200 blocked body; existence/concurrency raise a typed HTTP error.
+   */
+  async function applicationWriteFailureToBlockedOrThrow(
+    failure: ApplicationWriteFailure,
+    context: { opportunityId?: string } = {},
+  ): Promise<ApplicationMutationResult> {
+    const classified = classifyMutationFailure(failure.code)
+    if (classified.surface === 'blocked') {
+      if (classified.code === 'deterministic_duplicate') {
+        const conflicting = context.opportunityId ? (await activeApplicationForOpportunity(context.opportunityId)) ?? undefined : undefined
+        return toBlockedMutationResult({
+          code: 'deterministic_duplicate',
+          message: failure.message,
+          conflictingResourceId: conflicting,
+          allowedDuplicateResolutions: ['attach', 'merge'],
+        })
+      }
+      return toBlockedMutationResult({ code: classified.code, message: failure.message })
+    }
+    throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
+  }
+
+  /** Map an Application edit/status/link/refresh failure onto the mutation surface. */
+  function applicationMutateFailureToBlockedOrThrow(failure: { code: string; message: string }): ApplicationMutationResult {
+    const classified = classifyMutationFailure(failure.code)
+    if (classified.surface === 'blocked') return toBlockedMutationResult({ code: classified.code, message: failure.message })
+    throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
+  }
+
+  const applications: LocalLifecycleMethods['applications'] = {
+    async list(input = {}): Promise<LifecycleApplicationListResult> {
+      return applicationReadModel.listApplications(workspaceId, parseInput(lifecycleApplicationListInputSchema, input))
+    },
+
+    async get(applicationId): Promise<Application | null> {
+      return applicationReadModel.getApplication(workspaceId, applicationId)
+    },
+
+    async create(input): Promise<ApplicationMutationResult> {
+      const parsed = parseInput(createApplicationInputSchema, input)
+      const outcome = await applicationOrchestration.createApplication({
+        workspaceId,
+        actor: toDomainActor(parsed.actor),
+        opportunityId: parsed.opportunityId,
+        // Ruling 3c: the contract's create `jobId` maps to the domain's `expectedJobId` lineage guard.
+        expectedJobId: parsed.jobId,
+        expectedJobFactsRevision: parsed.expectedJobFactsRevision,
+        idempotencyKey: parsed.idempotencyKey,
+        initialLinks: parsed.initialLinks,
+        override: parsed.override,
+        duplicateResolution: parsed.duplicateResolution,
+      })
+      if (!outcome.ok) return applicationWriteFailureToBlockedOrThrow(outcome.failure, { opportunityId: parsed.opportunityId })
+      return toSucceededMutationResult(await requireApplicationResource(outcome.applicationId), {
+        actor: parsed.actor,
+        timestamp: outcome.timestamp,
+        duplicateResolution: parsed.duplicateResolution ?? null,
+        audit: parsed.override ? { override: parsed.override } : undefined,
+      })
+    },
+
+    async updateStatus(input): Promise<ApplicationMutationResult> {
+      const parsed = parseInput(updatePursuitApplicationStatusInputSchema, input)
+      // `rationale` has no domain slot on a status transition (the audit records the actor); dropped, no protocol echo.
+      const result = await applicationService.transitionStatus({
+        workspaceId,
+        applicationId: parsed.applicationId,
+        status: parsed.status,
+        actor: toDomainActor(parsed.actor),
+        expectedRevision: parsed.expectedRevision,
+      })
+      if (!result.ok) return applicationMutateFailureToBlockedOrThrow(result)
+      return toSucceededMutationResult(await requireApplicationResource(result.application.id), {
+        actor: parsed.actor,
+        timestamp: result.application.updatedAt,
+      })
+    },
+
+    async updateCompany(input): Promise<ApplicationMutationResult> {
+      const parsed = parseInput(updateApplicationCompanyInputSchema, input)
+      // `rationale` has no domain slot on editCompany; dropped, no protocol echo.
+      const result = await applicationService.editCompany({
+        workspaceId,
+        applicationId: parsed.applicationId,
+        companyName: parsed.companyName,
+        actor: toDomainActor(parsed.actor),
+        expectedRevision: parsed.expectedRevision,
+      })
+      if (!result.ok) return applicationMutateFailureToBlockedOrThrow(result)
+      return toSucceededMutationResult(await requireApplicationResource(result.application.id), {
+        actor: parsed.actor,
+        timestamp: result.application.updatedAt,
+      })
+    },
+
+    async updateSource(input): Promise<ApplicationMutationResult> {
+      const parsed = parseInput(updateApplicationSourceInputSchema, input)
+      // `rationale` has no domain slot on editSource; dropped, no protocol echo.
+      const result = await applicationService.editSource({
+        workspaceId,
+        applicationId: parsed.applicationId,
+        sourceName: parsed.sourceName,
+        actor: toDomainActor(parsed.actor),
+        expectedRevision: parsed.expectedRevision,
+      })
+      if (!result.ok) return applicationMutateFailureToBlockedOrThrow(result)
+      return toSucceededMutationResult(await requireApplicationResource(result.application.id), {
+        actor: parsed.actor,
+        timestamp: result.application.updatedAt,
+      })
+    },
+
+    links: {
+      async create(input): Promise<ApplicationMutationResult> {
+        const parsed = parseInput(createPursuitLinkInputSchema, input)
+        // `expectedRevision` has no domain slot on the additive link core (self-consistent
+        // revision bump); dropped, documented scoped reading.
+        const result = await applicationService.addLink({
+          workspaceId,
+          applicationId: parsed.applicationId,
+          link: { kind: parsed.link.kind, label: parsed.link.label, url: parsed.link.url, isPrimary: parsed.primary },
+          actor: toDomainActor(parsed.actor),
+        })
+        if (!result.ok) return applicationMutateFailureToBlockedOrThrow(result)
+        return toSucceededMutationResult(await requireApplicationResource(result.application.id), {
+          actor: parsed.actor,
+          timestamp: result.application.updatedAt,
+        })
+      },
+
+      async update(input): Promise<ApplicationMutationResult> {
+        const parsed = parseInput(updatePursuitLinkInputSchema, input)
+        const result = await applicationService.updateLink({
+          workspaceId,
+          applicationId: parsed.applicationId,
+          linkId: parsed.linkId,
+          patch: { kind: parsed.link.kind, label: parsed.link.label, url: parsed.link.url, isPrimary: parsed.primary },
+          actor: toDomainActor(parsed.actor),
+        })
+        if (!result.ok) return applicationMutateFailureToBlockedOrThrow(result)
+        return toSucceededMutationResult(await requireApplicationResource(result.application.id), {
+          actor: parsed.actor,
+          timestamp: result.application.updatedAt,
+        })
+      },
+
+      async remove(input): Promise<ApplicationMutationResult> {
+        const parsed = parseInput(removePursuitLinkInputSchema, input)
+        // `rationale`/`expectedRevision` have no domain slot on removeLink; dropped.
+        const result = await applicationService.removeLink({
+          workspaceId,
+          applicationId: parsed.applicationId,
+          linkId: parsed.linkId,
+          actor: toDomainActor(parsed.actor),
+        })
+        if (!result.ok) return applicationMutateFailureToBlockedOrThrow(result)
+        return toSucceededMutationResult(await requireApplicationResource(result.application.id), {
+          actor: parsed.actor,
+          timestamp: result.application.updatedAt,
+        })
+      },
+    },
+
+    async refreshSnapshot(input): Promise<ApplicationMutationResult> {
+      const parsed = parseInput(refreshApplicationSnapshotInputSchema, input)
+      // `rationale` has no domain slot on refreshSnapshot; dropped. The preserve flags are
+      // threaded into the service (red-first extension, caller-driven reconciliation).
+      const result = await applicationService.refreshSnapshot({
+        workspaceId,
+        applicationId: parsed.applicationId,
+        actor: toDomainActor(parsed.actor),
+        expectedRevision: parsed.expectedRevision,
+        expectedJobFactsRevision: parsed.expectedJobFactsRevision,
+        preserveCompanyEdit: parsed.preserveCompanyEdit,
+        preserveSourceEdit: parsed.preserveSourceEdit,
+        preserveLinkEdits: parsed.preserveLinkEdits,
+      })
+      if (!result.ok) return applicationMutateFailureToBlockedOrThrow(result)
+      return toSucceededMutationResult(await requireApplicationResource(result.application.id), {
+        actor: parsed.actor,
+        timestamp: result.application.updatedAt,
+      })
+    },
+
+    async remove(input): Promise<RemovalResult> {
+      const parsed = parseInput(removalInputSchema, input)
+      const actor = toOrchestrationActor(parsed.actor)
+      const result = await orchestration.remove({ workspaceId, aggregate: 'application', resourceId: parsed.id, choice: parsed.choice, actor })
+      return renderApplicationRemoval(result, parsed.id, actor)
+    },
+
+    async restore(input): Promise<RestoreResult> {
+      const parsed = parseInput(restoreInputSchema, input)
+      const actor = toOrchestrationActor(parsed.actor)
+      const result = await orchestration.restore({ workspaceId, aggregate: 'application', resourceId: parsed.id, actor })
+      return renderApplicationRestore(result, parsed.id, actor)
+    },
+
+    async history(input): Promise<LifecycleApplicationHistoryResult> {
+      const parsed = parseInput(historyListInputSchema, input)
+      return applicationReadModel.historyApplications(workspaceId, { id: parsed.id, limit: parsed.limit, cursor: parsed.cursor })
+    },
+
+    attempts: {
+      async list(input): Promise<ApplicationAttemptsListResult> {
+        const parsed = parseInput(applicationTechnicalListInputSchema, input)
+        return applicationReadModel.listAttempts(workspaceId, { applicationId: parsed.applicationId, limit: parsed.limit, cursor: parsed.cursor })
+      },
+    },
+
+    events: {
+      async list(input): Promise<ApplicationEventsListResult> {
+        const parsed = parseInput(applicationTechnicalListInputSchema, input)
+        return applicationReadModel.listEvents(workspaceId, { applicationId: parsed.applicationId, limit: parsed.limit, cursor: parsed.cursor })
+      },
+    },
+  }
+
+  return { captures, jobs, opportunities, applications }
 }
 
 /** Re-exported so the domain actor type is available to callers assembling audit context. */

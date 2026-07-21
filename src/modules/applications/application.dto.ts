@@ -16,9 +16,11 @@
  *    #300-scoped placeholder-facts defect never yields an invalid snapshot;
  *    `capturedAt` prefers the stored value (honest create/refresh time), falling back
  *    to the head createdAt for rows written before that field existed; `initialLinks`
- *    is always [] (scoped reading #304: creation-time links are added by their own
- *    commands after createOn and hard-deleted thereafter, so they are not durably
- *    attributable in #304 storage — the note carries to the PR and #307).
+ *    prefers the creation-time links frozen additively in the stored snapshot blob
+ *    (#304 upgrade: the Application service stamps them at create and carries them
+ *    forward unchanged on refresh), falling back to [] for rows written before the
+ *    field existed — so creation-time links stay durably attributable even after the
+ *    mutable `pursuit_links` set is edited.
  *  - companyName/sourceName/status are head columns; `links` are the current
  *    `pursuit_links` rows. Attempt/event records mirror their sidecar tables (events
  *    reassemble the actor from the actor_id/type/display_name columns).
@@ -194,6 +196,30 @@ function deriveDestination(value: unknown): PursuitSnapshot['initialDestination'
 }
 
 /**
+ * #304 initialLinks upgrade: prefer the creation-time links frozen in the stored
+ * snapshot blob (persisted additively by the Application service at create), falling
+ * back to [] for rows written before the field existed. Only well-formed entries
+ * (non-empty kind/label/url strings) are surfaced, so the strict contract snapshot
+ * schema always parses.
+ */
+function deriveInitialLinks(value: unknown): PursuitSnapshot['initialLinks'] {
+  if (!Array.isArray(value)) return []
+  const links: PursuitSnapshot['initialLinks'][number][] = []
+  for (const entry of value) {
+    const record = asObject(entry)
+    if (
+      typeof record.kind === 'string' && record.kind.trim().length > 0
+      && typeof record.label === 'string' && record.label.trim().length > 0
+      && typeof record.url === 'string' && record.url.trim().length > 0
+    ) {
+      links.push({ kind: record.kind, label: record.label, url: record.url })
+    }
+    if (links.length >= 50) break
+  }
+  return links
+}
+
+/**
  * Derive the contract `applicationPursuitSnapshot` from the head's stored
  * `{ job: { facts, factsRevision }, capturedAt }` blob (fork resolution #304).
  * Every enum/string field falls back to a schema-valid default; `capturedAt` prefers
@@ -222,7 +248,7 @@ export function deriveApplicationSnapshot(head: ApplicationHeadRow): PursuitSnap
     location: deriveLocation(facts.location),
     workMode: enumOr(facts.workMode, WORK_MODES, 'unknown'),
     initialDestination: deriveDestination(facts.destination),
-    initialLinks: [],
+    initialLinks: deriveInitialLinks(stored.initialLinks),
   }
 }
 

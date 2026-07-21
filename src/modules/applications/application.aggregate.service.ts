@@ -136,6 +136,13 @@ export interface CreateApplicationInput {
   readonly override?: ApplicationWarningOverrideInput | null
   /** #304: attach/merge onto the one active Application for this (workspace, opportunity). */
   readonly duplicateResolution?: ApplicationDuplicateResolutionInput
+  /**
+   * #304: creation-time links, frozen into the snapshot blob as `initialLinks`. The
+   * caller (the create orchestration) ALSO materializes these as durable `pursuit_links`
+   * rows via `addLinkOn` in the same transaction; this field only records the immutable
+   * creation-time copy so the read-model can present it truthfully thereafter.
+   */
+  readonly initialLinks?: readonly { readonly kind: string; readonly label: string; readonly url: string }[]
 }
 
 export interface EditCompanyInput {
@@ -173,6 +180,22 @@ export interface RefreshSnapshotInput {
    * typed revision_conflict, so a refresh never silently snapshots an unexpected revision.
    */
   readonly expectedJobFactsRevision?: number
+  /**
+   * #304 caller-driven refresh reconciliation (same "the contract forces the domain to
+   * accept caller inputs" pattern as job→opp evaluation). A refresh re-captures the Job
+   * facts into the snapshot blob; these flags tell the domain what to do with the head's
+   * caller-editable display fields:
+   *  - `preserveCompanyEdit` — when explicitly `false`, the refresh ADOPTS the refreshed
+   *    Job company into `companyName`; `true` (or undefined, the legacy default) keeps a
+   *    prior `editCompany`.
+   *  - `preserveSourceEdit` — same, for `sourceName`.
+   *  - `preserveLinkEdits` — accepted and recorded; a guaranteed no-op because a refresh
+   *    never sources links from Job facts, so the mutable `pursuit_links` set is always
+   *    preserved (documented scoped reading: refresh is non-lossy for links).
+   */
+  readonly preserveCompanyEdit?: boolean
+  readonly preserveSourceEdit?: boolean
+  readonly preserveLinkEdits?: boolean
 }
 
 export interface ApplicationLinkInput {
@@ -409,6 +432,15 @@ function deriveCompany(facts: JsonValue): string {
   return 'Unknown'
 }
 
+/** #304: the Job's source name, used when a refresh adopts the refreshed source; keeps the current head value when facts carry none. */
+function deriveSource(facts: JsonValue, current: string): string {
+  if (facts !== null && typeof facts === 'object' && !Array.isArray(facts)) {
+    const candidate = facts.sourceName
+    if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate.trim().slice(0, DISPLAY_MAX)
+  }
+  return current
+}
+
 type HeadUpdate = Partial<Pick<ApplicationRow, 'status' | 'companyName' | 'sourceName' | 'snapshotJson' | 'jobFactsRevision' | 'removedAt'>>
 
 export function createPgliteApplicationAggregateService(
@@ -477,13 +509,44 @@ export function createPgliteApplicationAggregateService(
   // or the most recent refreshSnapshot), rather than falling back to the head createdAt
   // which a refresh would render false. No migration: it is a new JSON field on a blob
   // both create and refresh already write.
+  //
+  // #304 initialLinks upgrade: the creation-time links are ALSO persisted additively
+  // into the snapshot blob (the same mechanism as `capturedAt`). The HTTP read-model
+  // prefers these stored values for `applicationPursuitSnapshot.initialLinks`, so the
+  // frozen creation-time links remain durably attributable even after the mutable
+  // `pursuit_links` set is edited. A refresh carries the prior initialLinks forward
+  // unchanged (they are the CREATION-time links, not the current set).
   function buildSnapshot(
     jobFacts: JsonValue,
     jobFactsRevision: number,
     capturedAt: string,
     scores?: JsonValue,
+    initialLinks?: readonly { readonly kind: string; readonly label: string; readonly url: string }[],
   ): JsonValue {
-    return { job: { facts: jobFacts, factsRevision: jobFactsRevision }, capturedAt, scores: scores ?? null }
+    return {
+      job: { facts: jobFacts, factsRevision: jobFactsRevision },
+      capturedAt,
+      scores: scores ?? null,
+      initialLinks: (initialLinks ?? []).map((link) => ({ kind: link.kind, label: link.label, url: link.url })),
+    }
+  }
+
+  /** Read the creation-time `initialLinks` frozen in a stored snapshot blob (empty if absent). */
+  function priorInitialLinks(snapshotJson: string): { kind: string; label: string; url: string }[] {
+    const parsed = safeParse(snapshotJson)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+    const raw = (parsed as Record<string, unknown>).initialLinks
+    if (!Array.isArray(raw)) return []
+    const links: { kind: string; label: string; url: string }[] = []
+    for (const entry of raw) {
+      if (entry !== null && typeof entry === 'object' && !Array.isArray(entry)) {
+        const record = entry as Record<string, unknown>
+        if (typeof record.kind === 'string' && typeof record.label === 'string' && typeof record.url === 'string') {
+          links.push({ kind: record.kind, label: record.label, url: record.url })
+        }
+      }
+    }
+    return links
   }
 
   async function appendHistory(
@@ -686,7 +749,7 @@ export function createPgliteApplicationAggregateService(
       const createdAt = nowIso()
       let snapshotJson: string
       try {
-        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, createdAt, scores), 'snapshot', SNAPSHOT_MAX)
+        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, createdAt, scores, input.initialLinks), 'snapshot', SNAPSHOT_MAX)
       } catch (error) {
         if (error instanceof ApplicationInputError) return fail(error.code, error.message)
         throw error
@@ -809,20 +872,36 @@ export function createPgliteApplicationAggregateService(
         return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.scores ?? null : null
       })()
       // A refresh re-captures now; capturedAt reflects this refresh, not the create.
+      // The creation-time initialLinks are carried forward unchanged (they freeze the
+      // create, not the current mutable link set).
       const capturedAt = nowIso()
       let snapshotJson: string
       try {
-        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, capturedAt, priorScores), 'snapshot', SNAPSHOT_MAX)
+        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, capturedAt, priorScores, priorInitialLinks(row.snapshotJson)), 'snapshot', SNAPSHOT_MAX)
       } catch (error) {
         if (error instanceof ApplicationInputError) return fail(error.code, error.message)
         throw error
       }
+      // #304 caller-driven reconciliation: adopt the refreshed Job company/source into the
+      // head display fields only when the caller did NOT pin the corresponding preserve
+      // flag. `undefined` (legacy callers) preserves — the head is untouched, matching the
+      // pre-#304 refresh behavior. Links are never sourced from facts, so preserveLinkEdits
+      // has no head effect (documented no-op).
+      const headUpdate: HeadUpdate = { snapshotJson, jobFactsRevision: lineage.jobFactsRevision }
+      if (input.preserveCompanyEdit === false) headUpdate.companyName = deriveCompany(lineage.jobFacts)
+      if (input.preserveSourceEdit === false) headUpdate.sourceName = deriveSource(lineage.jobFacts, row.sourceName)
       return commit(
         row,
         resolved.actor,
         'snapshot_refreshed',
-        { jobFactsRevision: lineage.jobFactsRevision, priorJobFactsRevision: row.jobFactsRevision },
-        { snapshotJson, jobFactsRevision: lineage.jobFactsRevision },
+        {
+          jobFactsRevision: lineage.jobFactsRevision,
+          priorJobFactsRevision: row.jobFactsRevision,
+          preserveCompanyEdit: input.preserveCompanyEdit ?? true,
+          preserveSourceEdit: input.preserveSourceEdit ?? true,
+          preserveLinkEdits: input.preserveLinkEdits ?? true,
+        },
+        headUpdate,
         eq(lifecycleApplications.revision, row.revision),
         'revision_conflict',
       )
