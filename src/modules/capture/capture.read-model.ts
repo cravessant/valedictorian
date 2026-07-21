@@ -10,15 +10,23 @@
  * composes read + write without either reaching into the other's SQL.
  */
 import { and, asc, eq, gt, isNull, or } from 'drizzle-orm'
-import type { Capture, CaptureListInput, CaptureListResult } from 'sparxie'
+import type {
+  Capture,
+  CaptureHistoryResult,
+  CaptureListInput,
+  CaptureListResult,
+  HistoryListInput,
+} from 'sparxie'
 import type { PgliteDatabase } from '../../db/pglite'
-import { captureEvidenceItems, lifecycleCaptures } from './capture.schema'
+import { captureEvidenceItems, captureRevisions, lifecycleCaptures } from './capture.schema'
 import {
   decodeCaptureCursor,
+  reconstructCaptureHistory,
   toCaptureListResult,
   toCaptureResource,
   type CaptureEvidenceRow,
   type CaptureHeadRow,
+  type CaptureRevisionRow,
 } from './capture.dto'
 
 const DEFAULT_LIST_LIMIT = 50
@@ -30,13 +38,17 @@ export type CaptureReadExec = Pick<PgliteDatabase, 'select'>
 export interface CaptureReadModel {
   getCapture(workspaceId: string, captureId: string): Promise<Capture | null>
   listCaptures(workspaceId: string, input?: CaptureListInput): Promise<CaptureListResult>
+  historyCaptures(workspaceId: string, input: HistoryListInput): Promise<CaptureHistoryResult>
 }
 
-function clampLimit(requested: number | undefined): number {
-  if (requested === undefined || !Number.isFinite(requested)) return DEFAULT_LIST_LIMIT
+const DEFAULT_HISTORY_LIMIT = 50
+const MAX_HISTORY_LIMIT = 200
+
+function clampLimit(requested: number | undefined, max: number = MAX_LIST_LIMIT): number {
+  if (requested === undefined || !Number.isFinite(requested)) return Math.min(DEFAULT_LIST_LIMIT, max)
   const floored = Math.floor(requested)
   if (floored < 1) return 1
-  if (floored > MAX_LIST_LIMIT) return MAX_LIST_LIMIT
+  if (floored > max) return max
   return floored
 }
 
@@ -125,6 +137,30 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
       const evidence = await selectEvidence(database, pageRows.map((row) => row.id))
       const items = pageRows.map((row) => toCaptureResource(row, evidence.get(row.id) ?? []))
       return toCaptureListResult(items, limit, hasMore)
+    },
+
+    async historyCaptures(workspaceId, input) {
+      const limit = clampLimit(input.limit ?? DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT)
+      const head = await selectHead(workspaceId, input.id)
+      if (!head) return { limit, nextCursor: null, items: [] }
+
+      const revisionRows = (await database
+        .select({
+          revision: captureRevisions.revision,
+          kind: captureRevisions.kind,
+          auditJson: captureRevisions.auditJson,
+          createdAt: captureRevisions.createdAt,
+        })
+        .from(captureRevisions)
+        .where(eq(captureRevisions.captureId, input.id))
+        .orderBy(asc(captureRevisions.revision))) as CaptureRevisionRow[]
+
+      const evidence = await selectEvidence(database, [input.id])
+      const afterRevision = input.cursor !== undefined ? Number.parseInt(input.cursor, 10) : undefined
+      return reconstructCaptureHistory(head, revisionRows, evidence.get(input.id) ?? [], {
+        limit,
+        afterRevision: afterRevision !== undefined && Number.isFinite(afterRevision) ? afterRevision : undefined,
+      })
     },
   }
 }

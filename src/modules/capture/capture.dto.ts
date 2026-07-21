@@ -16,7 +16,14 @@
  *  - `evidence` mirrors the service `evidence()` view: every evidence item
  *    across revisions, ordered by (captureRevision, evidenceIndex).
  */
-import type { Capture, CaptureListResult } from 'sparxie'
+import type {
+  Capture,
+  CaptureHistoryResult,
+  CaptureListResult,
+  CaptureRevision,
+  LifecycleActor,
+  LifecycleAuditEvidence,
+} from 'sparxie'
 
 /** The subset of `lifecycle_captures` the read-model selects for a resource. */
 export interface CaptureHeadRow {
@@ -95,6 +102,109 @@ export function toCaptureResource(
     createdAt: head.createdAt,
     updatedAt: head.updatedAt,
     removedAt: head.removedAt,
+  }
+}
+
+/**
+ * Map a persisted lifecycle actor onto the strict sparxie `LifecycleActor`.
+ *
+ * The domain records actor id as nullable (system/agent actors are commonly
+ * stored without an id), but the contract requires a non-empty id. When no id
+ * was recorded the actor's `type` IS its identity, so we surface the type as the
+ * id rather than fabricating an identifier. Shared by every lifecycle audit
+ * serializer; hoist to a cross-aggregate module when the other aggregates land.
+ */
+export function toContractActor(raw: unknown): LifecycleActor {
+  const record = (typeof raw === 'object' && raw !== null ? raw : {}) as {
+    id?: unknown
+    type?: unknown
+    displayName?: unknown
+  }
+  const type = (record.type === 'user' || record.type === 'agent' || record.type === 'system'
+    ? record.type
+    : 'system') as LifecycleActor['type']
+  const id = typeof record.id === 'string' && record.id.trim().length > 0 ? record.id : type
+  return typeof record.displayName === 'string' && record.displayName.trim().length > 0
+    ? { id, type, displayName: record.displayName }
+    : { id, type }
+}
+
+/** Build the minimal lifecycle audit envelope (actor + timestamp) from stored JSON. */
+function toCaptureAudit(auditJson: string, timestamp: string): LifecycleAuditEvidence {
+  let parsed: unknown = null
+  try {
+    parsed = JSON.parse(auditJson)
+  } catch {
+    parsed = null
+  }
+  const actorSource = (typeof parsed === 'object' && parsed !== null
+    ? (parsed as { actor?: unknown }).actor
+    : null)
+  return { actor: toContractActor(actorSource), timestamp }
+}
+
+/** One capture revision row as loaded from `capture_revisions`, ordered ascending. */
+export interface CaptureRevisionRow {
+  readonly revision: number
+  readonly kind: string
+  readonly auditJson: string
+  readonly createdAt: string
+}
+
+/**
+ * Reconstruct the per-revision `CaptureRevision` history from the head row, the
+ * ascending revision rows, and all evidence rows.
+ *
+ * Every snapshot is a full `Capture`. The fields that never change after create
+ * (adapter, observedAt, receivedAt, provider*, payload, evidenceMode, createdAt)
+ * come from the head — matching what `toCaptureResource` presents. The fields
+ * that DO vary are reconstructed as of each revision: `revision`, `updatedAt`
+ * (the revision's own timestamp), `removedAt` (the tombstone state after the
+ * revision's kind is applied), and `evidence` (cumulative through the revision).
+ */
+export function reconstructCaptureHistory(
+  head: CaptureHeadRow,
+  revisions: readonly CaptureRevisionRow[],
+  evidence: readonly CaptureEvidenceRow[],
+  options: { readonly limit: number; readonly afterRevision?: number },
+): CaptureHistoryResult {
+  const ordered = orderEvidence(evidence)
+  const sortedRevisions = [...revisions].sort((left, right) => left.revision - right.revision)
+
+  // Reconstruct every snapshot first: tombstone and cumulative evidence state at a
+  // given revision depend on all earlier revisions, so the page cannot be windowed
+  // before reconstruction. Cursor/limit slicing is applied to the finished list.
+  const all: CaptureRevision[] = []
+  let tombstonedAt: string | null = null
+  for (const revision of sortedRevisions) {
+    if (revision.kind === 'removed') tombstonedAt = revision.createdAt
+    else if (revision.kind === 'restored') tombstonedAt = null
+    const cumulativeEvidence = ordered.filter((item) => item.captureRevision <= revision.revision)
+    const snapshot: Capture = {
+      ...toCaptureResource(head, cumulativeEvidence),
+      revision: revision.revision,
+      updatedAt: revision.createdAt,
+      removedAt: tombstonedAt,
+    }
+    all.push({
+      captureId: head.id,
+      revision: revision.revision,
+      kind: revision.kind as CaptureRevision['kind'],
+      snapshot,
+      audit: toCaptureAudit(revision.auditJson, revision.createdAt),
+    })
+  }
+
+  const afterRevision = options.afterRevision
+  const windowed = afterRevision === undefined
+    ? all
+    : all.filter((item) => item.revision > afterRevision)
+  const page = windowed.slice(0, options.limit)
+  const hasMore = windowed.length > options.limit
+  return {
+    limit: options.limit,
+    nextCursor: hasMore ? String(page.at(-1)?.revision ?? '') : null,
+    items: page,
   }
 }
 

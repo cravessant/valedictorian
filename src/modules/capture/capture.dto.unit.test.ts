@@ -8,14 +8,17 @@
  * `CaptureListResult.nextCursor` only when a further page exists.
  */
 import { describe, expect, it } from 'vitest'
-import { captureSchema } from 'sparxie'
+import { captureHistoryResultSchema, captureSchema } from 'sparxie'
 import {
   decodeCaptureCursor,
   encodeCaptureCursor,
+  reconstructCaptureHistory,
   toCaptureListResult,
   toCaptureResource,
+  toContractActor,
   type CaptureEvidenceRow,
   type CaptureHeadRow,
+  type CaptureRevisionRow,
 } from './capture.dto'
 
 const head: CaptureHeadRow = {
@@ -65,6 +68,65 @@ describe('toCaptureResource', () => {
     expect(dto.payload).toBeNull()
     expect(dto.removedAt).toBe('2026-07-20T00:00:20.000Z')
     expect(dto.evidence.map((item) => item.kind)).toEqual(['a0', 'a1', 'b'])
+  })
+})
+
+describe('toContractActor', () => {
+  it('surfaces the actor type as the id when none was recorded', () => {
+    expect(toContractActor({ type: 'system', id: null })).toEqual({ id: 'system', type: 'system' })
+    expect(toContractActor({ type: 'agent' })).toEqual({ id: 'agent', type: 'agent' })
+  })
+
+  it('preserves a recorded id and optional displayName', () => {
+    expect(toContractActor({ type: 'user', id: 'u-1', displayName: 'Ada' })).toEqual({
+      id: 'u-1',
+      type: 'user',
+      displayName: 'Ada',
+    })
+  })
+
+  it('defaults an unknown/malformed actor to a system actor', () => {
+    expect(toContractActor(null)).toEqual({ id: 'system', type: 'system' })
+    expect(toContractActor({ type: 'root' })).toEqual({ id: 'system', type: 'system' })
+  })
+})
+
+describe('reconstructCaptureHistory', () => {
+  const revisions: CaptureRevisionRow[] = [
+    { revision: 1, kind: 'created', auditJson: '{"actor":{"type":"system","id":null}}', createdAt: '2026-07-20T00:00:01.000Z' },
+    { revision: 2, kind: 'corrected', auditJson: '{"actor":{"type":"user","id":"u-1"}}', createdAt: '2026-07-20T00:00:02.000Z' },
+    { revision: 3, kind: 'removed', auditJson: '{"actor":{"type":"user","id":"u-1"}}', createdAt: '2026-07-20T00:00:03.000Z' },
+    { revision: 4, kind: 'restored', auditJson: '{"actor":{"type":"user","id":"u-1"}}', createdAt: '2026-07-20T00:00:04.000Z' },
+  ]
+  const evidence: CaptureEvidenceRow[] = [
+    { captureRevision: 1, evidenceIndex: 0, kind: 'title', label: 'Title', valueJson: '"v1"' },
+    { captureRevision: 2, evidenceIndex: 0, kind: 'note', label: 'Note', valueJson: '"v2"' },
+  ]
+
+  it('reconstructs schema-valid per-revision snapshots with tombstone + cumulative evidence', () => {
+    const result = reconstructCaptureHistory(head, revisions, evidence, { limit: 50 })
+    expect(() => captureHistoryResultSchema.parse(result)).not.toThrow()
+    expect(result.items.map((item) => item.revision)).toEqual([1, 2, 3, 4])
+    // Cumulative evidence: rev 1 sees one item, rev 2+ see both.
+    expect(result.items[0]!.snapshot.evidence).toHaveLength(1)
+    expect(result.items[1]!.snapshot.evidence).toHaveLength(2)
+    // Tombstone set at the removed revision, cleared at restore.
+    expect(result.items[2]!.snapshot.removedAt).toBe('2026-07-20T00:00:03.000Z')
+    expect(result.items[3]!.snapshot.removedAt).toBeNull()
+    // updatedAt tracks each revision's own timestamp.
+    expect(result.items[1]!.snapshot.updatedAt).toBe('2026-07-20T00:00:02.000Z')
+    // Null-id system actor surfaces its type as the id.
+    expect(result.items[0]!.audit.actor).toEqual({ id: 'system', type: 'system' })
+  })
+
+  it('windows on the afterRevision cursor and reports the next anchor', () => {
+    const first = reconstructCaptureHistory(head, revisions, evidence, { limit: 2 })
+    expect(first.items.map((item) => item.revision)).toEqual([1, 2])
+    expect(first.nextCursor).toBe('2')
+
+    const next = reconstructCaptureHistory(head, revisions, evidence, { limit: 2, afterRevision: 2 })
+    expect(next.items.map((item) => item.revision)).toEqual([3, 4])
+    expect(next.nextCursor).toBeNull()
   })
 })
 

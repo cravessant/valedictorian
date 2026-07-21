@@ -8,7 +8,7 @@
  * includeRemoved gating, and keyset pagination that walks every row exactly once.
  */
 import { describe, expect, it } from 'vitest'
-import { captureListResultSchema, captureSchema } from 'sparxie'
+import { captureHistoryResultSchema, captureListResultSchema, captureSchema } from 'sparxie'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import {
@@ -131,6 +131,31 @@ describe.sequential('Capture read-model (#304)', () => {
 
     const withRemoved = await readModel.listCaptures('ws-a', { includeRemoved: true })
     expect(withRemoved.items.some((item) => item.id === removed.capture.id)).toBe(true)
+  })
+
+  it('reconstructs the create->correct->remove->restore history as schema-valid snapshots', async () => {
+    const { service, readModel } = await setup()
+    const created = await accept(service)
+    const captureId = created.capture.id
+    const actor = { type: 'user' as const, id: 'u-1' }
+    await service.correct({ workspaceId: 'ws-a', captureId, correction: { note: 'fix' }, actor })
+    await service.remove({ workspaceId: 'ws-a', captureId, actor })
+    await service.restore({ workspaceId: 'ws-a', captureId, actor })
+
+    const history = await readModel.historyCaptures('ws-a', { id: captureId })
+    expect(() => captureHistoryResultSchema.parse(history)).not.toThrow()
+    expect(history.items.map((item) => item.kind)).toEqual(['created', 'corrected', 'removed', 'restored'])
+    expect(history.items[2]!.snapshot.removedAt).not.toBeNull()
+    expect(history.items[3]!.snapshot.removedAt).toBeNull()
+    // Every snapshot carries the capture identity the client's protocol guard checks.
+    for (const item of history.items) {
+      expect(item.snapshot.id).toBe(captureId)
+      expect(item.snapshot.workspaceId).toBe('ws-a')
+    }
+
+    // Missing capture yields an empty page, never a throw.
+    const empty = await readModel.historyCaptures('ws-a', { id: 'nope' })
+    expect(empty.items).toEqual([])
   })
 
   it('paginates the full result set exactly once via the keyset cursor', async () => {
