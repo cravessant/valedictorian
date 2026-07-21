@@ -36,6 +36,7 @@ import type {
   DuplicateResolutionInput,
   OpportunityActor,
   OpportunityCutoff,
+  OpportunityDisposition,
   OpportunityFailure,
   OpportunityFit,
   OpportunityService,
@@ -82,6 +83,18 @@ export interface PromoteJobInput {
   readonly actor: OpportunityActor
   /** #304: create-dedup key threaded onto the minted Opportunity (a keyed re-promote converges). */
   readonly idempotencyKey?: string
+  /**
+   * #304: the caller-supplied evaluation projected onto the minted Opportunity. The
+   * HTTP contract is caller-driven — the promoter states the fit/rank/cutoff and the
+   * initial disposition — so a provided evaluation is authoritative and bypasses the
+   * (automation-only) policy port. Omitted, the port or durable defaults apply.
+   */
+  readonly evaluation?: {
+    readonly fit: OpportunityFit
+    readonly rank: number | null
+    readonly cutoff: OpportunityCutoff
+    readonly disposition: OpportunityDisposition
+  }
   /** #304: optimistic lineage guard — the Job facts revision the caller evaluated against. */
   readonly expectedJobFactsRevision?: number
   /** #304: warning override recorded on the minted Opportunity's resource. */
@@ -198,8 +211,14 @@ export function createPgliteJobToOpportunityPromotion(
               return { ok: true as const, opportunityId: linked, jobId, attached: true, created: false, warnings: [] }
             }
 
+            // A caller-supplied evaluation is authoritative (caller-driven HTTP contract);
+            // otherwise the automation policy port, then durable defaults, apply.
             let evaluation: OpportunityEvaluation
-            if (evaluationPort) {
+            let disposition: OpportunityDisposition | undefined
+            if (input.evaluation) {
+              evaluation = { fit: input.evaluation.fit, rank: input.evaluation.rank, cutoff: input.evaluation.cutoff, signals: [] }
+              disposition = input.evaluation.disposition
+            } else if (evaluationPort) {
               evaluation = await evaluationPort.evaluate({ workspaceId, jobId, facts: safeFacts(job.facts) })
             } else {
               evaluation = { fit: 'unknown', rank: null, cutoff: 'not_evaluated', signals: ['missing_optional_facts'] }
@@ -210,6 +229,7 @@ export function createPgliteJobToOpportunityPromotion(
               workspaceId,
               jobId,
               evaluation: { fit: evaluation.fit, rank: evaluation.rank ?? null, cutoff: evaluation.cutoff },
+              disposition,
               actor,
               idempotencyKey: input.idempotencyKey,
               expectedJobFactsRevision: input.expectedJobFactsRevision,

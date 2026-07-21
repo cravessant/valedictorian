@@ -640,6 +640,7 @@ describe('test pyramid policy', () => {
       ['src/runtime/local-valedictorian-client.connector-runs.test.ts', false],
       ['src/runtime/local-connector-frontier-decoupling.contract.test.ts', false],
       ['src/runtime/local-lifecycle-methods.captures.pglite.test.ts', false],
+      ['src/runtime/local-lifecycle-methods.jobs.pglite.test.ts', false],
       ['src/runtime/local-valedictorian-client.provider-url-resolution.test.ts', false],
       ['src/runtime/local-valedictorian-client.run-guards.test.ts', false],
       ['src/runtime/local-valedictorian-client.workspace-domain.test.ts', false],
