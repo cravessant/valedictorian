@@ -116,7 +116,7 @@ describe.sequential('Opportunity module contract (#301)', () => {
     expect(reran.opportunity).toMatchObject({ fit: 'not_fit', cutoff: 'below', disposition: 'pursue' })
   })
 
-  it('persists actor, rationale, prior + default disposition, and resulting state on an explicit override', async () => {
+  it('changes disposition with an audit-trail rationale and leaves the warning override untouched (#304 reshape)', async () => {
     const { jobs, opportunities } = await setup()
     const jobId = await makeJob(jobs)
     const opportunity = await makeOpportunity(opportunities, jobId)
@@ -126,14 +126,28 @@ describe.sequential('Opportunity module contract (#301)', () => {
     expect(decided).toMatchObject({ ok: true })
     if (!decided.ok) return
     expect(decided.opportunity.disposition).toBe('declined')
-    expect(decided.opportunity.override).toMatchObject({
-      actor: { type: 'user', id: 'user-1' },
-      rationale: 'relocation required',
-      priorDisposition: 'reviewing',
-      defaultDisposition: 'reviewing',
-      resultingDisposition: 'declined',
-    })
+    // The #304 resource override is the contract warning override, not the disposition
+    // rationale: with no warning override supplied it stays null; the rationale is an
+    // append-only history-audit fact.
+    expect(decided.opportunity.override).toBeNull()
     expect((await opportunities.history('ws-a', opportunity.id)).map((e) => e.kind)).toEqual(['created', 'disposition_changed'])
+  })
+
+  it('records the contract warning override ({actor, rationale, warningCodes}) on the resource', async () => {
+    const { jobs, opportunities } = await setup()
+    const jobId = await makeJob(jobs)
+    const opportunity = await makeOpportunity(opportunities, jobId)
+    const overridden = await opportunities.setDisposition({
+      workspaceId: 'ws-a', opportunityId: opportunity.id, disposition: 'pursue', rationale: 'strong interest', actor: ACTOR,
+      override: { actor: { id: 'user-1', type: 'user' }, rationale: 'overrode the fit and cutoff warnings', warningCodes: ['fit', 'cutoff'] },
+    })
+    expect(overridden.ok).toBe(true)
+    if (!overridden.ok) return
+    expect(overridden.opportunity.override).toEqual({
+      actor: { id: 'user-1', type: 'user' },
+      rationale: 'overrode the fit and cutoff warnings',
+      warningCodes: ['fit', 'cutoff'],
+    })
   })
 
   it('removes and restores with tombstone semantics, and remove/restore are idempotent', async () => {
