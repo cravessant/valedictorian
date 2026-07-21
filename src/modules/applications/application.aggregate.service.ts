@@ -30,7 +30,7 @@
 import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
-import { pursuitApplicationStatuses } from '../../db/lifecycle-vocabulary'
+import { lifecycleWarningCodes, pursuitApplicationStatuses } from '../../db/lifecycle-vocabulary'
 import { lifecycleJobs } from '../job/job.schema'
 import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
 import {
@@ -103,6 +103,21 @@ export type ApplicationHistoryKind =
 const attemptStates = ['pending', 'running', 'succeeded', 'failed'] as const
 export type ApplicationAttemptState = (typeof attemptStates)[number]
 
+export type ApplicationWarningCode = (typeof lifecycleWarningCodes)[number]
+
+/** #304: the contract warning override, recorded in the application's history audit. */
+export interface ApplicationWarningOverrideInput {
+  readonly actor: { readonly id: string; readonly type: ApplicationActorType; readonly displayName?: string }
+  readonly rationale: string
+  readonly warningCodes: readonly ApplicationWarningCode[]
+}
+
+/** #304: attach/merge onto an existing Application when (workspace, opportunity) collides. */
+export interface ApplicationDuplicateResolutionInput {
+  readonly action: 'attach' | 'merge'
+  readonly targetResourceId: string
+}
+
 export interface CreateApplicationInput {
   readonly workspaceId: string
   readonly opportunityId: string
@@ -111,6 +126,16 @@ export interface CreateApplicationInput {
   readonly status?: ApplicationStatus
   readonly scores?: JsonValue
   readonly actor: ApplicationActor
+  /** #304: create-dedup key — a keyed re-create converges (created:false). */
+  readonly idempotencyKey?: string
+  /** #304: optimistic lineage guard — the Job's facts revision the caller evaluated. */
+  readonly expectedJobFactsRevision?: number
+  /** #304: lineage-identity guard — the Job the caller expects the Opportunity to point at. */
+  readonly expectedJobId?: string
+  /** #304: warning override recorded in the created-history audit envelope. */
+  readonly override?: ApplicationWarningOverrideInput | null
+  /** #304: attach/merge onto the one active Application for this (workspace, opportunity). */
+  readonly duplicateResolution?: ApplicationDuplicateResolutionInput
 }
 
 export interface EditCompanyInput {
@@ -264,7 +289,7 @@ export interface ApplicationHistoryEntry {
   readonly createdAt: string
 }
 
-export type CreateApplicationResult = { readonly ok: true; readonly application: ApplicationRecord } | ApplicationFailure
+export type CreateApplicationResult = { readonly ok: true; readonly application: ApplicationRecord; readonly created: boolean } | ApplicationFailure
 export type MutateApplicationResult = { readonly ok: true; readonly application: ApplicationRecord } | ApplicationFailure
 export type AddLinkResult = { readonly ok: true; readonly link: ApplicationLinkRecord; readonly application: ApplicationRecord } | ApplicationFailure
 
@@ -319,6 +344,33 @@ interface ApplicationRow {
   createdAt: string
   updatedAt: string
   removedAt: string | null
+  idempotencyKey?: string | null
+}
+
+const IDEMPOTENCY_KEY_MAX = 200
+const OVERRIDE_MAX = 16_384
+const APPLICATION_ACTOR_TYPES = ['user', 'agent', 'system'] as const
+
+/**
+ * Validate the contract warning override to a plain object recorded in the history
+ * audit envelope (the Application resource carries no override column), or null when
+ * absent. Throws a typed ApplicationInputError on a malformed override.
+ */
+function validateApplicationOverride(
+  override: ApplicationWarningOverrideInput | null | undefined,
+): { actor: { id: string; type: ApplicationActorType; displayName?: string }; rationale: string; warningCodes: ApplicationWarningCode[] } | null {
+  if (override === undefined || override === null) return null
+  const type = requireOneOf(override.actor?.type, APPLICATION_ACTOR_TYPES, 'override.actor.type')
+  const id = requireText(override.actor?.id, 'override.actor.id', 1, WORKSPACE_MAX)
+  const rationale = requireText(override.rationale, 'override.rationale', 1, SUMMARY_MAX)
+  if (!Array.isArray(override.warningCodes)) {
+    throw new ApplicationInputError('invalid_input', 'override.warningCodes must be an array')
+  }
+  const warningCodes = override.warningCodes.map((code) => requireOneOf(code, lifecycleWarningCodes, 'override.warningCodes'))
+  const displayName = override.actor.displayName === undefined
+    ? undefined
+    : requireText(override.actor.displayName, 'override.actor.displayName', 1, WORKSPACE_MAX)
+  return { actor: displayName === undefined ? { id, type } : { id, type, displayName }, rationale, warningCodes }
 }
 
 function toRecord(row: ApplicationRow): ApplicationRecord {
@@ -366,6 +418,29 @@ export function createPgliteApplicationAggregateService(
     return (row as ApplicationRow | undefined) ?? null
   }
 
+  async function selectByIdempotencyKey(exec: ApplicationExec, workspaceId: string, key: string): Promise<ApplicationRow | null> {
+    const [row] = await exec
+      .select()
+      .from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.idempotencyKey, key)))
+      .limit(1)
+    return (row as ApplicationRow | undefined) ?? null
+  }
+
+  /** The single active (non-tombstoned) Application for an Opportunity — the attach target. */
+  async function selectActiveByOpportunity(exec: ApplicationExec, workspaceId: string, opportunityId: string): Promise<ApplicationRow | null> {
+    const [row] = await exec
+      .select()
+      .from(lifecycleApplications)
+      .where(and(
+        eq(lifecycleApplications.workspaceId, workspaceId),
+        eq(lifecycleApplications.opportunityId, opportunityId),
+        isNull(lifecycleApplications.removedAt),
+      ))
+      .limit(1)
+    return (row as ApplicationRow | undefined) ?? null
+  }
+
   async function resolveLineage(exec: Pick<PgliteDatabase, 'select'>, workspaceId: string, opportunityId: string) {
     const [opportunity] = await exec
       .select({ id: lifecycleOpportunities.id, jobId: lifecycleOpportunities.jobId, removedAt: lifecycleOpportunities.removedAt })
@@ -399,13 +474,19 @@ export function createPgliteApplicationAggregateService(
     snapshot: JsonValue,
     actor: ApplicationActor,
     createdAt: string,
+    override?: ReturnType<typeof validateApplicationOverride>,
   ) {
+    // #304: the warning override rides in the audit envelope (the resource has no
+    // override column). auditJson bounds the actor; the override extends it bounded.
+    const auditValue = override
+      ? boundedJson({ actor: { type: actor.type, id: actor.id ?? null }, override }, 'audit', OVERRIDE_MAX)
+      : auditJson(actor)
     await insertApplicationHistoryRecords(exec).values({
       applicationId,
       revision,
       kind,
       snapshotJson: boundedJson(snapshot, 'snapshot', SNAPSHOT_MAX),
-      auditJson: auditJson(actor),
+      auditJson: auditValue,
       createdAt,
     })
   }
@@ -467,6 +548,8 @@ export function createPgliteApplicationAggregateService(
       let companyOverride: string | null
       let sourceOverride: string | null
       let scores: JsonValue | undefined
+      let idempotencyKey: string | null
+      let override: ReturnType<typeof validateApplicationOverride>
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         opportunityId = requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX)
@@ -475,13 +558,41 @@ export function createPgliteApplicationAggregateService(
         companyOverride = optionalText(input.companyName, 'companyName', DISPLAY_MAX)
         sourceOverride = optionalText(input.sourceName, 'sourceName', DISPLAY_MAX)
         scores = input.scores
+        idempotencyKey = input.idempotencyKey === undefined ? null : requireText(input.idempotencyKey, 'idempotencyKey', 1, IDEMPOTENCY_KEY_MAX)
+        override = validateApplicationOverride(input.override)
       } catch (error) {
         if (error instanceof ApplicationInputError) return fail(error.code, error.message)
         throw error
       }
+      // Create-dedup: a keyed re-create converges to the existing Application.
+      if (idempotencyKey !== null) {
+        const existing = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
+        if (existing) return { ok: true, application: toRecord(existing), created: false }
+      }
       const lineage = await resolveLineage(exec, workspaceId, opportunityId)
       if (!lineage) return fail('missing_lineage', 'opportunity or its job not found in this workspace')
       if (lineage.opportunityRemoved) return fail('missing_lineage', 'opportunity is removed')
+      // #304 optimistic lineage guards: the Opportunity must still point at the expected
+      // Job, and the Job's facts must not have advanced since the caller evaluated them.
+      if (input.expectedJobId !== undefined && input.expectedJobId !== lineage.jobId) {
+        return fail('missing_lineage', 'opportunity no longer points at the expected job')
+      }
+      if (input.expectedJobFactsRevision !== undefined && input.expectedJobFactsRevision !== lineage.jobFactsRevision) {
+        return fail('revision_conflict', 'job facts advanced since evaluation; refresh before promoting')
+      }
+      // Duplicate pre-check (attach/merge): resolve BEFORE inserting since an aborted
+      // unique violation cannot recover on the same transaction. attach/merge reduce to
+      // the same target for this 1:1 (workspace, opportunity) aggregate.
+      const activeForOpportunity = await selectActiveByOpportunity(exec, workspaceId, opportunityId)
+      if (activeForOpportunity) {
+        if (input.duplicateResolution) {
+          if (input.duplicateResolution.targetResourceId !== activeForOpportunity.id) {
+            return fail('invalid_input', 'duplicateResolution.targetResourceId does not match the existing application for this opportunity')
+          }
+          return { ok: true, application: toRecord(activeForOpportunity), created: false }
+        }
+        return fail('deterministic_duplicate', 'an active application already exists for this opportunity')
+      }
       const createdAt = nowIso()
       let snapshotJson: string
       try {
@@ -504,10 +615,11 @@ export function createPgliteApplicationAggregateService(
         createdAt,
         updatedAt: createdAt,
         removedAt: null,
+        idempotencyKey,
       }
       await insertLifecycleApplications(exec).values(row)
-      await appendHistory(exec, row.id, 1, 'created', { status, opportunityId, jobId: lineage.jobId }, actor, createdAt)
-      return { ok: true, application: toRecord(row) }
+      await appendHistory(exec, row.id, 1, 'created', { status, opportunityId, jobId: lineage.jobId }, actor, createdAt, override)
+      return { ok: true, application: toRecord(row), created: true }
     },
 
     async create(input) {
