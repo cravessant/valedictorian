@@ -32,8 +32,14 @@ import {
   historyListInputSchema,
   jobHistoryInputSchema,
   jobListInputSchema,
+  createOpportunityInputSchema,
+  opportunityHistoryInputSchema,
+  opportunityListInputSchema,
   promoteCaptureToJobInputSchema,
   promoteJobToOpportunityInputSchema,
+  promoteOpportunityToApplicationInputSchema,
+  updateOpportunityDispositionInputSchema,
+  updateOpportunityEvaluationInputSchema,
   removalInputSchema,
   removeJobExternalIdentityInputSchema,
   removeJobInputSchema,
@@ -49,9 +55,14 @@ import {
   type JobListResult,
   type JobMutationResult,
   type LifecycleWorkspaceClient,
+  type Application,
   type Opportunity,
+  type OpportunityHistoryResult,
+  type OpportunityListResult,
+  type OpportunityMutationResult,
   type PromoteCaptureToJobResult,
   type PromoteJobToOpportunityResult,
+  type PromoteOpportunityToApplicationResult,
   type RemovalResult,
   type RestoreResult,
 } from 'sparxie'
@@ -74,6 +85,8 @@ import { createPgliteJobToOpportunityPromotion } from '../modules/lifecycle/job-
 import { createPgliteOpportunityService } from '../modules/opportunity/opportunity.service'
 import { createPgliteOpportunityReadModel } from '../modules/opportunity/opportunity.read-model'
 import { createPgliteApplicationAggregateService } from '../modules/applications/application.aggregate.service'
+import { createPgliteApplicationReadModel } from '../modules/applications/application.read-model'
+import { createPgliteOpportunityToApplicationPromotion } from '../modules/lifecycle/opportunity-to-application.promotion'
 import {
   createLifecycleRemovalOrchestration,
   type LifecycleActor,
@@ -101,6 +114,7 @@ import {
 import type { MutationBlocked } from '../modules/lifecycle/mutation.dto'
 import { lifecycleJobs, jobCaptureEvidenceReferences } from '../modules/job/job.schema'
 import { lifecycleOpportunities } from '../modules/opportunity/opportunity.schema'
+import { lifecycleApplications } from '../modules/application/application.schema'
 
 /**
  * A composition-boundary transport error. The routes map it to an HTTP `{status, body}`; the
@@ -145,8 +159,8 @@ export interface LocalLifecycleMethodsOptions {
   readonly now?: () => Date
 }
 
-/** The aggregate surface implemented so far (captures + jobs; grows per the ratified sequencing). */
-export type LocalLifecycleMethods = Pick<LifecycleWorkspaceClient, 'captures' | 'jobs'>
+/** The aggregate surface implemented so far (captures + jobs + opportunities; grows per the ratified sequencing). */
+export type LocalLifecycleMethods = Pick<LifecycleWorkspaceClient, 'captures' | 'jobs' | 'opportunities'>
 
 export function createLocalLifecycleMethods(
   database: PgliteDatabase,
@@ -164,9 +178,16 @@ export function createLocalLifecycleMethods(
   const captureReadModel = createPgliteCaptureReadModel(database)
   const jobReadModel = createPgliteJobReadModel(database)
   const opportunityReadModel = createPgliteOpportunityReadModel(database)
+  const applicationReadModel = createPgliteApplicationReadModel(database)
   const jobOrchestration = createLifecycleJobOrchestration(database, { jobService, jobIdentityService, now })
   const capturePromotion = createPgliteJobPromotion(database, captureService, jobService, { now, jobIdentityService })
   const jobPromotion = createPgliteJobToOpportunityPromotion(database, opportunityService, { now })
+  const opportunityPromotion = createPgliteOpportunityToApplicationPromotion(database, {
+    captureService,
+    jobService,
+    opportunityService,
+    applicationService,
+  }, { now })
   const orchestration = createLifecycleRemovalOrchestration(database, {
     captureService,
     jobService,
@@ -311,6 +332,92 @@ export function createLocalLifecycleMethods(
     const resource = await jobReadModel.getJob(workspaceId, jobId)
     if (!resource) throw new LifecycleHttpError(500, INTERNAL_BODY)
     return resource
+  }
+
+  async function requireApplicationResource(applicationId: string): Promise<Application> {
+    const resource = await applicationReadModel.getApplication(workspaceId, applicationId)
+    if (!resource) throw new LifecycleHttpError(500, INTERNAL_BODY)
+    return resource
+  }
+
+  /** Active immediate dependents of an opportunity (applications pursuing it). Read-only. */
+  async function activeDependentApplicationIds(opportunityId: string): Promise<string[]> {
+    const rows = await database
+      .select({ id: lifecycleApplications.id })
+      .from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.opportunityId, opportunityId), isNull(lifecycleApplications.removedAt)))
+    return [...new Set(rows.map((row) => row.id))]
+  }
+
+  /** The active opportunity for a job (the deterministic-duplicate conflict target on create). */
+  async function activeOpportunityForJob(jobId: string): Promise<string | null> {
+    const [row] = await database
+      .select({ id: lifecycleOpportunities.id })
+      .from(lifecycleOpportunities)
+      .where(and(eq(lifecycleOpportunities.jobId, jobId), isNull(lifecycleOpportunities.removedAt)))
+      .limit(1)
+    return row?.id ?? null
+  }
+
+  async function renderOpportunityRemoval(
+    result: RemoveLifecycleResult,
+    id: string,
+    actor: LifecycleActor,
+  ): Promise<RemovalResult> {
+    if (result.ok) {
+      const head = await opportunityReadModel.getOpportunity(workspaceId, id)
+      return toRemovedResult(result, { removedAt: head?.removedAt ?? nowIso(), actor: toContractActor(actor) })
+    }
+    const classified = classifyRemovalFailure(result)
+    if (classified.surface === 'blocked') {
+      return toBlockedRemovalResult({
+        id,
+        message: 'removal blocked by active dependents',
+        dependentIds: await activeDependentApplicationIds(id),
+      })
+    }
+    if (classified.surface === 'not_found') throw new LifecycleHttpError(404, NOT_FOUND_BODY)
+    throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
+  }
+
+  async function renderOpportunityRestore(
+    result: RestoreLifecycleResult,
+    id: string,
+    actor: LifecycleActor,
+  ): Promise<RestoreResult> {
+    if (result.ok) {
+      const head = await opportunityReadModel.getOpportunity(workspaceId, id)
+      return toRestoredResult(result, { restoredAt: head?.updatedAt ?? nowIso(), actor: toContractActor(actor) })
+    }
+    const classified = classifyRemovalFailure(result)
+    if (classified.surface === 'blocked') return toBlockedRestoreResult({ id, message: 'restore blocked' })
+    if (classified.surface === 'not_found') throw new LifecycleHttpError(404, NOT_FOUND_BODY)
+    throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
+  }
+
+  /**
+   * Map an Opportunity write failure onto the mutation surface. A `deterministic_duplicate`
+   * carries the conflicting opportunity id + the attach/merge resolutions the blocker schema
+   * requires; every other blocker code is a plain 200 blocked body; existence/concurrency raise.
+   */
+  async function opportunityWriteFailureToBlockedOrThrow(
+    failure: { code: string; message: string },
+    context: { jobId?: string } = {},
+  ): Promise<OpportunityMutationResult> {
+    const classified = classifyMutationFailure(failure.code)
+    if (classified.surface === 'blocked') {
+      if (classified.code === 'deterministic_duplicate') {
+        const conflicting = context.jobId ? (await activeOpportunityForJob(context.jobId)) ?? undefined : undefined
+        return toBlockedMutationResult({
+          code: 'deterministic_duplicate',
+          message: failure.message,
+          conflictingResourceId: conflicting,
+          allowedDuplicateResolutions: ['attach', 'merge'],
+        })
+      }
+      return toBlockedMutationResult({ code: classified.code, message: failure.message })
+    }
+    throw new LifecycleHttpError(classified.status, errorBodyFor(classified.status))
   }
 
   const captures: LocalLifecycleMethods['captures'] = {
@@ -600,7 +707,122 @@ export function createLocalLifecycleMethods(
     return resource
   }
 
-  return { captures, jobs }
+  const opportunities: LocalLifecycleMethods['opportunities'] = {
+    async list(input = {}): Promise<OpportunityListResult> {
+      return opportunityReadModel.listOpportunities(workspaceId, parseInput(opportunityListInputSchema, input))
+    },
+
+    async get(opportunityId): Promise<Opportunity | null> {
+      return opportunityReadModel.getOpportunity(workspaceId, opportunityId)
+    },
+
+    async create(input): Promise<OpportunityMutationResult> {
+      const parsed = parseInput(createOpportunityInputSchema, input)
+      const result = await opportunityService.create({
+        workspaceId,
+        jobId: parsed.jobId,
+        evaluation: { fit: parsed.fit, rank: parsed.rank, cutoff: parsed.cutoff },
+        disposition: parsed.disposition,
+        actor: toDomainActor(parsed.actor),
+        idempotencyKey: parsed.idempotencyKey,
+        expectedJobFactsRevision: parsed.expectedJobFactsRevision,
+        override: parsed.override,
+        duplicateResolution: parsed.duplicateResolution,
+      })
+      if (!result.ok) return opportunityWriteFailureToBlockedOrThrow(result, { jobId: parsed.jobId })
+      return toSucceededMutationResult(await requireOpportunityResource(result.opportunity.id), {
+        actor: parsed.actor,
+        timestamp: result.opportunity.updatedAt,
+        duplicateResolution: parsed.duplicateResolution ?? null,
+        audit: parsed.override ? { override: parsed.override } : undefined,
+      })
+    },
+
+    async updateEvaluation(input): Promise<OpportunityMutationResult> {
+      const parsed = parseInput(updateOpportunityEvaluationInputSchema, input)
+      const result = await opportunityService.correct({
+        workspaceId,
+        opportunityId: parsed.opportunityId,
+        fit: parsed.fit,
+        rank: parsed.rank,
+        cutoff: parsed.cutoff,
+        actor: toDomainActor(parsed.actor),
+        expectedRevision: parsed.expectedRevision,
+        override: parsed.override,
+      })
+      if (!result.ok) return opportunityWriteFailureToBlockedOrThrow(result)
+      return toSucceededMutationResult(await requireOpportunityResource(result.opportunity.id), {
+        actor: parsed.actor,
+        timestamp: result.opportunity.updatedAt,
+        audit: parsed.override ? { override: parsed.override } : undefined,
+      })
+    },
+
+    async updateDisposition(input): Promise<OpportunityMutationResult> {
+      const parsed = parseInput(updateOpportunityDispositionInputSchema, input)
+      const result = await opportunityService.setDisposition({
+        workspaceId,
+        opportunityId: parsed.opportunityId,
+        disposition: parsed.disposition,
+        rationale: parsed.rationale,
+        actor: toDomainActor(parsed.actor),
+        expectedRevision: parsed.expectedRevision,
+        override: parsed.override,
+      })
+      if (!result.ok) return opportunityWriteFailureToBlockedOrThrow(result)
+      return toSucceededMutationResult(await requireOpportunityResource(result.opportunity.id), {
+        actor: parsed.actor,
+        timestamp: result.opportunity.updatedAt,
+        audit: parsed.override ? { override: parsed.override } : undefined,
+      })
+    },
+
+    async remove(input): Promise<RemovalResult> {
+      const parsed = parseInput(removalInputSchema, input)
+      const actor = toOrchestrationActor(parsed.actor)
+      const result = await orchestration.remove({ workspaceId, aggregate: 'opportunity', resourceId: parsed.id, choice: parsed.choice, actor })
+      return renderOpportunityRemoval(result, parsed.id, actor)
+    },
+
+    async restore(input): Promise<RestoreResult> {
+      const parsed = parseInput(restoreInputSchema, input)
+      const actor = toOrchestrationActor(parsed.actor)
+      const result = await orchestration.restore({ workspaceId, aggregate: 'opportunity', resourceId: parsed.id, actor })
+      return renderOpportunityRestore(result, parsed.id, actor)
+    },
+
+    async history(input): Promise<OpportunityHistoryResult> {
+      const parsed = parseInput(opportunityHistoryInputSchema, input)
+      return opportunityReadModel.historyOpportunities(workspaceId, { id: parsed.id, limit: parsed.limit, cursor: parsed.cursor })
+    },
+
+    async promoteToApplication(input): Promise<PromoteOpportunityToApplicationResult> {
+      const parsed = parseInput(promoteOpportunityToApplicationInputSchema, input)
+      const result = await opportunityPromotion.promoteOpportunity({
+        workspaceId,
+        opportunityId: parsed.opportunityId,
+        actor: toDomainActor(parsed.actor),
+        idempotencyKey: parsed.idempotencyKey,
+        expectedJobId: parsed.expectedJobId,
+        links: parsed.initialLinks?.map((link) => ({ kind: link.kind, label: link.label, url: link.url, isPrimary: false })),
+        override: parsed.override,
+        duplicateResolution: parsed.duplicateResolution,
+      })
+      if (!('ok' in result) || !result.ok) {
+        return promotionFailureToBlockedOrThrow(result)
+      }
+      return toPromotedResult(await requireApplicationResource(result.applicationId), {
+        created: result.created,
+        actor: parsed.actor,
+        timestamp: nowIso(),
+        warnings: [],
+        override: parsed.override,
+        duplicateResolution: parsed.duplicateResolution ?? null,
+      })
+    },
+  }
+
+  return { captures, jobs, opportunities }
 }
 
 /** Re-exported so the domain actor type is available to callers assembling audit context. */
