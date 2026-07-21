@@ -583,6 +583,7 @@ describe('test pyramid policy', () => {
     const suites = [
       ['src/modules/sourcing/raw-source.repository.test.ts', true],
       ['src/modules/sourcing/raw-source-list.repository.test.ts', true],
+      ['src/modules/applications/application.aggregate.pglite.test.ts', false],
       ['src/modules/applications/application.repository.test.ts', false],
       ['src/modules/applications/application.fixtures.test.ts', false],
       ['src/modules/applications/application.repository.attempts.test.ts', false],
@@ -595,6 +596,7 @@ describe('test pyramid policy', () => {
       ['src/modules/job/job.service.pglite.test.ts', false],
       ['src/modules/lifecycle/capture-to-job.promotion.pglite.test.ts', false],
       ['src/modules/lifecycle/job-to-opportunity.promotion.pglite.test.ts', false],
+      ['src/modules/lifecycle/opportunity-to-application.promotion.pglite.test.ts', false],
       ['src/modules/opportunity/opportunity.service.pglite.test.ts', false],
       ['src/modules/connectors/connector-checkpoint.upgrade-copy.test.ts', false],
       ['src/modules/connectors/connector.overview.repository.test.ts', false],

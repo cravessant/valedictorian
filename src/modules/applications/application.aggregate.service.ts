@@ -1,0 +1,909 @@
+/**
+ * Canonical Application aggregate — the user-controlled module contract (issue #302).
+ *
+ * Users create, read/list, edit company/source, manage links (add/update/unlink with
+ * a single-primary rule), transition status, refresh the Job/Opportunity snapshot,
+ * generate attempt/event records, remove/restore with an explicit dependent choice,
+ * and inspect history through this service. It writes the canonical
+ * `lifecycle_applications`, `pursuit_links`, `application_attempt_records`,
+ * `application_event_records`, and append-only `application_history` tables
+ * (Application-owned; see application.aggregate.repository.ts).
+ *
+ * Direct lineage (AC2): every Application references BOTH its originating Opportunity
+ * and Job; `jobId` is DERIVED from the Opportunity so the database
+ * `enforce_application_lineage` trigger (opportunity.job_id == job_id AND same
+ * workspace) always holds. Identity is the normalized `(workspace, opportunity)`
+ * partial unique key — one active Application per Opportunity (AC6).
+ *
+ * Snapshot/refresh (AC3): create copies the Job facts at `jobFactsRevision`; a later
+ * Job correction NEVER rewrites an active Application — only an explicit
+ * `refreshSnapshot` re-snapshots and advances `jobFactsRevision`.
+ *
+ * `revision` is a single monotonic version: every head-field or link mutation
+ * increments it and appends an `application_history` row at that revision (the
+ * conditional `WHERE revision = <pre-read>` update is the optimistic guard, the
+ * history `(application_id, revision)` primary key the race backstop). Attempt/event
+ * records are sidecars and do not append history. The `createOn` / `addLinkOn` /
+ * `recordEventOn` composable cores let the Opportunity→Application promotion compose
+ * the whole boundary write in one atomic, idempotent transaction (AC5).
+ */
+import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm'
+import type { PgliteDatabase } from '../../db/pglite'
+import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
+import { pursuitApplicationStatuses } from '../../db/lifecycle-vocabulary'
+import { lifecycleJobs } from '../job/job.schema'
+import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
+import {
+  applicationAttemptRecords,
+  applicationEventRecords,
+  applicationHistory,
+  lifecycleApplications,
+  pursuitLinks,
+} from '../application/application.schema'
+import {
+  deleteApplicationAttemptRecords,
+  deleteApplicationEventRecords,
+  deletePursuitLinks,
+  insertApplicationAttemptRecords,
+  insertApplicationEventRecords,
+  insertApplicationHistoryRecords,
+  insertLifecycleApplications,
+  insertPursuitLinks,
+  updateLifecycleApplications,
+  updatePursuitLinks,
+} from './application.aggregate.repository'
+import {
+  type ApplicationActor,
+  type ApplicationActorType,
+  type ApplicationFailure,
+  type ApplicationStatus,
+  type JsonValue,
+  ApplicationInputError,
+  DISPLAY_MAX,
+  EVENT_TYPE_MAX,
+  LINK_KIND_MAX,
+  LINK_LABEL_MAX,
+  LINK_URL_MAX,
+  LINKS_LIMIT,
+  SNAPSHOT_MAX,
+  SUMMARY_MAX,
+  TIMESTAMP_MAX,
+  WORKSPACE_MAX,
+  auditJson,
+  boundedJson,
+  fail,
+  isUniqueViolation,
+  optionalText,
+  requireActor,
+  requireOneOf,
+  requireText,
+  safeParse,
+} from './application.aggregate.validation'
+
+export type {
+  ApplicationActor,
+  ApplicationFailure,
+  ApplicationFailureCode,
+  ApplicationStatus,
+  JsonValue,
+} from './application.aggregate.validation'
+
+export type ApplicationHistoryKind =
+  | 'created'
+  | 'status_changed'
+  | 'company_edited'
+  | 'source_edited'
+  | 'link_created'
+  | 'link_updated'
+  | 'link_removed'
+  | 'snapshot_refreshed'
+  | 'removed'
+  | 'restored'
+
+const attemptStates = ['pending', 'running', 'succeeded', 'failed'] as const
+export type ApplicationAttemptState = (typeof attemptStates)[number]
+
+export interface CreateApplicationInput {
+  readonly workspaceId: string
+  readonly opportunityId: string
+  readonly companyName?: string
+  readonly sourceName?: string
+  readonly status?: ApplicationStatus
+  readonly scores?: JsonValue
+  readonly actor: ApplicationActor
+}
+
+export interface EditCompanyInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly companyName: string
+  readonly actor: ApplicationActor
+  readonly expectedRevision?: number
+}
+
+export interface EditSourceInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly sourceName: string
+  readonly actor: ApplicationActor
+  readonly expectedRevision?: number
+}
+
+export interface TransitionStatusInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly status: ApplicationStatus
+  readonly actor: ApplicationActor
+  readonly expectedRevision?: number
+}
+
+export interface RefreshSnapshotInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly actor: ApplicationActor
+  readonly expectedRevision?: number
+}
+
+export interface ApplicationLinkInput {
+  readonly kind: string
+  readonly label: string
+  readonly url: string
+  readonly isPrimary: boolean
+}
+
+export interface AddLinkInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly link: ApplicationLinkInput
+  readonly actor: ApplicationActor
+}
+
+export interface UpdateLinkInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly linkId: string
+  readonly patch: Partial<ApplicationLinkInput>
+  readonly actor: ApplicationActor
+}
+
+export interface RemoveLinkInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly linkId: string
+  readonly actor: ApplicationActor
+}
+
+export interface RecordEventInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly event: { readonly type: string; readonly summary: string; readonly occurredAt?: string }
+  readonly actor: ApplicationActor
+}
+
+export interface RecordAttemptInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly attempt: {
+    readonly state: ApplicationAttemptState
+    readonly startedAt: string
+    readonly completedAt?: string | null
+    readonly summary?: string | null
+  }
+  readonly actor: ApplicationActor
+}
+
+export interface RemoveApplicationInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly actor: ApplicationActor
+  /** Explicit downstream-dependent choice (AC7); required when dependents exist. */
+  readonly dependents?: 'cascade' | 'preserve'
+}
+
+export interface ApplicationMutationInput {
+  readonly workspaceId: string
+  readonly applicationId: string
+  readonly actor: ApplicationActor
+}
+
+export interface ApplicationListQuery {
+  readonly includeRemoved?: boolean
+  readonly limit?: number
+}
+
+export interface ApplicationRecord {
+  readonly id: string
+  readonly workspaceId: string
+  readonly opportunityId: string
+  readonly jobId: string
+  readonly revision: number
+  readonly status: ApplicationStatus
+  readonly jobFactsRevision: number
+  readonly snapshot: JsonValue
+  readonly companyName: string
+  readonly sourceName: string
+  readonly createdAt: string
+  readonly updatedAt: string
+  readonly removedAt: string | null
+}
+
+export interface ApplicationLinkRecord {
+  readonly id: string
+  readonly applicationId: string
+  readonly kind: string
+  readonly label: string
+  readonly url: string
+  readonly isPrimary: boolean
+  readonly createdAt: string
+}
+
+export interface ApplicationEventRecord {
+  readonly id: string
+  readonly applicationId: string
+  readonly type: string
+  readonly occurredAt: string
+  readonly summary: string
+  readonly actor: ApplicationActor
+  readonly createdAt: string
+}
+
+export interface ApplicationAttemptRecord {
+  readonly id: string
+  readonly applicationId: string
+  readonly state: ApplicationAttemptState
+  readonly startedAt: string
+  readonly completedAt: string | null
+  readonly summary: string | null
+  readonly createdAt: string
+}
+
+export interface ApplicationHistoryEntry {
+  readonly revision: number
+  readonly kind: ApplicationHistoryKind
+  readonly actor: ApplicationActor
+  readonly createdAt: string
+}
+
+export type CreateApplicationResult = { readonly ok: true; readonly application: ApplicationRecord } | ApplicationFailure
+export type MutateApplicationResult = { readonly ok: true; readonly application: ApplicationRecord } | ApplicationFailure
+export type AddLinkResult = { readonly ok: true; readonly link: ApplicationLinkRecord; readonly application: ApplicationRecord } | ApplicationFailure
+
+/** A read+write executor — the workspace database OR an open transaction. */
+export type ApplicationExec = Pick<PgliteDatabase, 'select' | 'insert' | 'update'>
+/** A read+write+delete executor, for cascade removal of dependent children. */
+export type ApplicationDeleteExec = Pick<PgliteDatabase, 'select' | 'insert' | 'update' | 'delete'>
+
+export interface ApplicationAggregateService {
+  create(input: CreateApplicationInput): Promise<CreateApplicationResult>
+  /** Composable core: mint on the caller's transaction executor (no internal tx). */
+  createOn(exec: ApplicationExec, input: CreateApplicationInput): Promise<CreateApplicationResult>
+  get(workspaceId: string, applicationId: string): Promise<ApplicationRecord | null>
+  list(workspaceId: string, query?: ApplicationListQuery): Promise<readonly ApplicationRecord[]>
+  editCompany(input: EditCompanyInput): Promise<MutateApplicationResult>
+  editSource(input: EditSourceInput): Promise<MutateApplicationResult>
+  transitionStatus(input: TransitionStatusInput): Promise<MutateApplicationResult>
+  refreshSnapshot(input: RefreshSnapshotInput): Promise<MutateApplicationResult>
+  addLink(input: AddLinkInput): Promise<AddLinkResult>
+  /** Composable core for the promotion's initial links (no internal tx). */
+  addLinkOn(exec: ApplicationExec, input: AddLinkInput): Promise<AddLinkResult>
+  updateLink(input: UpdateLinkInput): Promise<MutateApplicationResult>
+  removeLink(input: RemoveLinkInput): Promise<MutateApplicationResult>
+  listLinks(workspaceId: string, applicationId: string): Promise<readonly ApplicationLinkRecord[]>
+  recordEvent(input: RecordEventInput): Promise<{ readonly ok: true; readonly event: ApplicationEventRecord } | ApplicationFailure>
+  /** Composable core for the promotion's initial event (no internal tx). */
+  recordEventOn(exec: ApplicationExec, input: RecordEventInput): Promise<{ readonly ok: true; readonly event: ApplicationEventRecord } | ApplicationFailure>
+  listEvents(workspaceId: string, applicationId: string): Promise<readonly ApplicationEventRecord[]>
+  recordAttempt(input: RecordAttemptInput): Promise<{ readonly ok: true; readonly attempt: ApplicationAttemptRecord } | ApplicationFailure>
+  listAttempts(workspaceId: string, applicationId: string): Promise<readonly ApplicationAttemptRecord[]>
+  remove(input: RemoveApplicationInput): Promise<MutateApplicationResult>
+  restore(input: ApplicationMutationInput): Promise<MutateApplicationResult>
+  history(workspaceId: string, applicationId: string): Promise<readonly ApplicationHistoryEntry[]>
+}
+
+export interface ApplicationAggregateServiceOptions {
+  readonly now?: Clock
+  readonly newId?: UuidV7Generator
+}
+
+interface ApplicationRow {
+  id: string
+  workspaceId: string
+  opportunityId: string
+  jobId: string
+  revision: number
+  status: string
+  jobFactsRevision: number
+  snapshotJson: string
+  companyName: string
+  sourceName: string
+  createdAt: string
+  updatedAt: string
+  removedAt: string | null
+}
+
+function toRecord(row: ApplicationRow): ApplicationRecord {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    opportunityId: row.opportunityId,
+    jobId: row.jobId,
+    revision: row.revision,
+    status: row.status as ApplicationStatus,
+    jobFactsRevision: row.jobFactsRevision,
+    snapshot: safeParse(row.snapshotJson),
+    companyName: row.companyName,
+    sourceName: row.sourceName,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    removedAt: row.removedAt,
+  }
+}
+
+function deriveCompany(facts: JsonValue): string {
+  if (facts !== null && typeof facts === 'object' && !Array.isArray(facts)) {
+    const candidate = facts.companyName ?? facts.company
+    if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate.trim().slice(0, DISPLAY_MAX)
+  }
+  return 'Unknown'
+}
+
+type HeadUpdate = Partial<Pick<ApplicationRow, 'status' | 'companyName' | 'sourceName' | 'snapshotJson' | 'jobFactsRevision' | 'removedAt'>>
+
+export function createPgliteApplicationAggregateService(
+  database: PgliteDatabase,
+  options: ApplicationAggregateServiceOptions = {},
+): ApplicationAggregateService {
+  const clock = options.now ?? (() => new Date())
+  const nowIso = () => clock().toISOString()
+  const newId = options.newId ?? createUuidV7Generator(clock)
+
+  async function selectById(workspaceId: string, applicationId: string): Promise<ApplicationRow | null> {
+    const [row] = await database
+      .select()
+      .from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.id, applicationId)))
+      .limit(1)
+    return (row as ApplicationRow | undefined) ?? null
+  }
+
+  async function resolveLineage(exec: Pick<PgliteDatabase, 'select'>, workspaceId: string, opportunityId: string) {
+    const [opportunity] = await exec
+      .select({ id: lifecycleOpportunities.id, jobId: lifecycleOpportunities.jobId, removedAt: lifecycleOpportunities.removedAt })
+      .from(lifecycleOpportunities)
+      .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.id, opportunityId)))
+      .limit(1)
+    if (!opportunity) return null
+    const [job] = await exec
+      .select({ factsRevision: lifecycleJobs.factsRevision, factsJson: lifecycleJobs.factsJson })
+      .from(lifecycleJobs)
+      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, opportunity.jobId)))
+      .limit(1)
+    if (!job) return null
+    return {
+      jobId: opportunity.jobId,
+      opportunityRemoved: opportunity.removedAt !== null,
+      jobFactsRevision: job.factsRevision,
+      jobFacts: safeParse(job.factsJson),
+    }
+  }
+
+  function buildSnapshot(jobFacts: JsonValue, jobFactsRevision: number, scores?: JsonValue): JsonValue {
+    return { job: { facts: jobFacts, factsRevision: jobFactsRevision }, scores: scores ?? null }
+  }
+
+  async function appendHistory(
+    exec: ApplicationExec,
+    applicationId: string,
+    revision: number,
+    kind: ApplicationHistoryKind,
+    snapshot: JsonValue,
+    actor: ApplicationActor,
+    createdAt: string,
+  ) {
+    await insertApplicationHistoryRecords(exec).values({
+      applicationId,
+      revision,
+      kind,
+      snapshotJson: boundedJson(snapshot, 'snapshot', SNAPSHOT_MAX),
+      auditJson: auditJson(actor),
+      createdAt,
+    })
+  }
+
+  async function commit(
+    row: ApplicationRow,
+    actor: ApplicationActor,
+    kind: ApplicationHistoryKind,
+    snapshot: JsonValue,
+    headUpdate: HeadUpdate,
+    guard: SQL,
+    onUnique: 'revision_conflict' | 'deterministic_duplicate',
+  ): Promise<MutateApplicationResult> {
+    const createdAt = nowIso()
+    const nextRevision = row.revision + 1
+    try {
+      return await database.transaction(async (tx) => {
+        const updated = await updateLifecycleApplications(tx)
+          .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
+          .where(and(eq(lifecycleApplications.id, row.id), guard))
+          .returning({ id: lifecycleApplications.id })
+        if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
+        await appendHistory(tx, row.id, nextRevision, kind, snapshot, actor, createdAt)
+        return { ok: true as const, application: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
+      })
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return onUnique === 'deterministic_duplicate'
+          ? fail('deterministic_duplicate', 'an active application already exists for this opportunity')
+          : fail('revision_conflict', 'application was modified concurrently')
+      }
+      throw error
+    }
+  }
+
+  async function ids(input: { workspaceId: unknown; applicationId: unknown; actor: unknown }) {
+    return {
+      workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+      applicationId: requireText(input.applicationId, 'applicationId', 1, WORKSPACE_MAX),
+      actor: requireActor(input.actor),
+    }
+  }
+
+  async function linkRows(applicationId: string) {
+    const rows = await database
+      .select()
+      .from(pursuitLinks)
+      .where(eq(pursuitLinks.applicationId, applicationId))
+      .orderBy(asc(pursuitLinks.createdAt), asc(pursuitLinks.id))
+    return rows
+  }
+
+  const service: ApplicationAggregateService = {
+    async createOn(exec, input) {
+      let workspaceId: string
+      let opportunityId: string
+      let actor: ApplicationActor
+      let status: ApplicationStatus
+      let companyOverride: string | null
+      let sourceOverride: string | null
+      let scores: JsonValue | undefined
+      try {
+        workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
+        opportunityId = requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX)
+        actor = requireActor(input.actor)
+        status = input.status === undefined ? 'active' : requireOneOf(input.status, pursuitApplicationStatuses, 'status')
+        companyOverride = optionalText(input.companyName, 'companyName', DISPLAY_MAX)
+        sourceOverride = optionalText(input.sourceName, 'sourceName', DISPLAY_MAX)
+        scores = input.scores
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const lineage = await resolveLineage(exec, workspaceId, opportunityId)
+      if (!lineage) return fail('missing_lineage', 'opportunity or its job not found in this workspace')
+      if (lineage.opportunityRemoved) return fail('missing_lineage', 'opportunity is removed')
+      const createdAt = nowIso()
+      let snapshotJson: string
+      try {
+        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, scores), 'snapshot', SNAPSHOT_MAX)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row: ApplicationRow = {
+        id: newId(),
+        workspaceId,
+        opportunityId,
+        jobId: lineage.jobId,
+        revision: 1,
+        status,
+        jobFactsRevision: lineage.jobFactsRevision,
+        snapshotJson,
+        companyName: companyOverride ?? deriveCompany(lineage.jobFacts),
+        sourceName: sourceOverride ?? 'Unknown',
+        createdAt,
+        updatedAt: createdAt,
+        removedAt: null,
+      }
+      await insertLifecycleApplications(exec).values(row)
+      await appendHistory(exec, row.id, 1, 'created', { status, opportunityId, jobId: lineage.jobId }, actor, createdAt)
+      return { ok: true, application: toRecord(row) }
+    },
+
+    async create(input) {
+      try {
+        return await database.transaction((tx) => service.createOn(tx, input))
+      } catch (error) {
+        if (isUniqueViolation(error)) return fail('deterministic_duplicate', 'an active application already exists for this opportunity')
+        throw error
+      }
+    },
+
+    async get(workspaceId, applicationId) {
+      const row = await selectById(workspaceId, applicationId)
+      return row ? toRecord(row) : null
+    },
+
+    async list(workspaceId, query) {
+      const rows = await database
+        .select()
+        .from(lifecycleApplications)
+        .where(
+          query?.includeRemoved
+            ? eq(lifecycleApplications.workspaceId, workspaceId)
+            : and(eq(lifecycleApplications.workspaceId, workspaceId), isNull(lifecycleApplications.removedAt)),
+        )
+        .orderBy(desc(lifecycleApplications.createdAt), asc(lifecycleApplications.id))
+        .limit(query?.limit ?? 200)
+      return (rows as ApplicationRow[]).map(toRecord)
+    },
+
+    async editCompany(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let companyName: string
+      try {
+        resolved = await ids(input)
+        companyName = requireText(input.companyName, 'companyName', 1, DISPLAY_MAX)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
+      return commit(row, resolved.actor, 'company_edited', { companyName }, { companyName }, eq(lifecycleApplications.revision, row.revision), 'revision_conflict')
+    },
+
+    async editSource(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let sourceName: string
+      try {
+        resolved = await ids(input)
+        sourceName = requireText(input.sourceName, 'sourceName', 1, DISPLAY_MAX)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
+      return commit(row, resolved.actor, 'source_edited', { sourceName }, { sourceName }, eq(lifecycleApplications.revision, row.revision), 'revision_conflict')
+    },
+
+    async transitionStatus(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let status: ApplicationStatus
+      try {
+        resolved = await ids(input)
+        status = requireOneOf(input.status, pursuitApplicationStatuses, 'status')
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
+      return commit(row, resolved.actor, 'status_changed', { status, priorStatus: row.status }, { status }, eq(lifecycleApplications.revision, row.revision), 'revision_conflict')
+    },
+
+    async refreshSnapshot(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      try {
+        resolved = await ids(input)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
+      const lineage = await resolveLineage(database, resolved.workspaceId, row.opportunityId)
+      if (!lineage) return fail('missing_lineage', 'opportunity or its job no longer resolvable')
+      const priorScores = (() => {
+        const parsed = safeParse(row.snapshotJson)
+        return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.scores ?? null : null
+      })()
+      let snapshotJson: string
+      try {
+        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, priorScores), 'snapshot', SNAPSHOT_MAX)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      return commit(
+        row,
+        resolved.actor,
+        'snapshot_refreshed',
+        { jobFactsRevision: lineage.jobFactsRevision, priorJobFactsRevision: row.jobFactsRevision },
+        { snapshotJson, jobFactsRevision: lineage.jobFactsRevision },
+        eq(lifecycleApplications.revision, row.revision),
+        'revision_conflict',
+      )
+    },
+
+    async addLinkOn(exec, input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let link: ApplicationLinkInput
+      try {
+        resolved = await ids(input)
+        link = {
+          kind: requireText(input.link?.kind, 'link.kind', 1, LINK_KIND_MAX),
+          label: requireText(input.link?.label, 'link.label', 1, LINK_LABEL_MAX),
+          url: requireText(input.link?.url, 'link.url', 1, LINK_URL_MAX),
+          isPrimary: Boolean(input.link?.isPrimary),
+        }
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const [row] = await exec
+        .select()
+        .from(lifecycleApplications)
+        .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId)))
+        .limit(1)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      const [{ existing }] = await exec
+        .select({ existing: sql<number>`count(*)` })
+        .from(pursuitLinks)
+        .where(eq(pursuitLinks.applicationId, resolved.applicationId))
+      if (Number(existing) >= LINKS_LIMIT) return fail('links_limit_exceeded', `an application may have at most ${LINKS_LIMIT} links`)
+      const createdAt = nowIso()
+      const nextRevision = (row as ApplicationRow).revision + 1
+      if (link.isPrimary) {
+        await updatePursuitLinks(exec).set({ isPrimary: false }).where(and(eq(pursuitLinks.applicationId, resolved.applicationId), eq(pursuitLinks.isPrimary, true)))
+      }
+      const linkId = newId()
+      await insertPursuitLinks(exec).values({ id: linkId, applicationId: resolved.applicationId, kind: link.kind, label: link.label, url: link.url, isPrimary: link.isPrimary, createdAt })
+      const updated = await updateLifecycleApplications(exec)
+        .set({ revision: nextRevision, updatedAt: createdAt })
+        .where(and(eq(lifecycleApplications.id, resolved.applicationId), eq(lifecycleApplications.revision, (row as ApplicationRow).revision)))
+        .returning({ id: lifecycleApplications.id })
+      if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
+      await appendHistory(exec, resolved.applicationId, nextRevision, 'link_created', { linkId, kind: link.kind, isPrimary: link.isPrimary }, resolved.actor, createdAt)
+      const record: ApplicationLinkRecord = { id: linkId, applicationId: resolved.applicationId, kind: link.kind, label: link.label, url: link.url, isPrimary: link.isPrimary, createdAt }
+      return { ok: true, link: record, application: toRecord({ ...(row as ApplicationRow), revision: nextRevision, updatedAt: createdAt }) }
+    },
+
+    async addLink(input) {
+      try {
+        return await database.transaction((tx) => service.addLinkOn(tx, input))
+      } catch (error) {
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'application was modified concurrently')
+        throw error
+      }
+    },
+
+    async updateLink(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let linkId: string
+      try {
+        resolved = await ids(input)
+        linkId = requireText(input.linkId, 'linkId', 1, WORKSPACE_MAX)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      const [existing] = await database.select().from(pursuitLinks).where(and(eq(pursuitLinks.id, linkId), eq(pursuitLinks.applicationId, resolved.applicationId))).limit(1)
+      if (!existing) return fail('not_found', 'link not found on this application')
+      let patch: { kind?: string; label?: string; url?: string; isPrimary?: boolean }
+      try {
+        patch = {}
+        if (input.patch.kind !== undefined) patch.kind = requireText(input.patch.kind, 'link.kind', 1, LINK_KIND_MAX)
+        if (input.patch.label !== undefined) patch.label = requireText(input.patch.label, 'link.label', 1, LINK_LABEL_MAX)
+        if (input.patch.url !== undefined) patch.url = requireText(input.patch.url, 'link.url', 1, LINK_URL_MAX)
+        if (input.patch.isPrimary !== undefined) patch.isPrimary = Boolean(input.patch.isPrimary)
+        if (Object.keys(patch).length === 0) throw new ApplicationInputError('invalid_input', 'link patch is empty')
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const createdAt = nowIso()
+      const nextRevision = row.revision + 1
+      try {
+        return await database.transaction(async (tx) => {
+          if (patch.isPrimary === true) {
+            await updatePursuitLinks(tx).set({ isPrimary: false }).where(and(eq(pursuitLinks.applicationId, resolved.applicationId), eq(pursuitLinks.isPrimary, true)))
+          }
+          await updatePursuitLinks(tx).set(patch).where(eq(pursuitLinks.id, linkId))
+          const updated = await updateLifecycleApplications(tx).set({ revision: nextRevision, updatedAt: createdAt }).where(and(eq(lifecycleApplications.id, row.id), eq(lifecycleApplications.revision, row.revision))).returning({ id: lifecycleApplications.id })
+          if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
+          await appendHistory(tx, row.id, nextRevision, 'link_updated', { linkId }, resolved.actor, createdAt)
+          return { ok: true as const, application: toRecord({ ...row, revision: nextRevision, updatedAt: createdAt }) }
+        })
+      } catch (error) {
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'application was modified concurrently')
+        throw error
+      }
+    },
+
+    async removeLink(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let linkId: string
+      try {
+        resolved = await ids(input)
+        linkId = requireText(input.linkId, 'linkId', 1, WORKSPACE_MAX)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      const [existing] = await database.select().from(pursuitLinks).where(and(eq(pursuitLinks.id, linkId), eq(pursuitLinks.applicationId, resolved.applicationId))).limit(1)
+      if (!existing) return fail('not_found', 'link not found on this application')
+      const createdAt = nowIso()
+      const nextRevision = row.revision + 1
+      return database.transaction(async (tx) => {
+        await deletePursuitLinks(tx).where(eq(pursuitLinks.id, linkId))
+        const updated = await updateLifecycleApplications(tx).set({ revision: nextRevision, updatedAt: createdAt }).where(and(eq(lifecycleApplications.id, row.id), eq(lifecycleApplications.revision, row.revision))).returning({ id: lifecycleApplications.id })
+        if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
+        await appendHistory(tx, row.id, nextRevision, 'link_removed', { linkId }, resolved.actor, createdAt)
+        return { ok: true as const, application: toRecord({ ...row, revision: nextRevision, updatedAt: createdAt }) }
+      })
+    },
+
+    async listLinks(workspaceId, applicationId) {
+      const row = await selectById(workspaceId, applicationId)
+      if (!row) return []
+      const rows = await linkRows(applicationId)
+      return rows.map((r) => ({ id: r.id, applicationId: r.applicationId, kind: r.kind, label: r.label, url: r.url, isPrimary: r.isPrimary, createdAt: r.createdAt }))
+    },
+
+    async recordEventOn(exec, input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let type: string
+      let summary: string
+      let occurredAt: string
+      try {
+        resolved = await ids(input)
+        type = requireText(input.event?.type, 'event.type', 1, EVENT_TYPE_MAX)
+        summary = requireText(input.event?.summary, 'event.summary', 1, SUMMARY_MAX)
+        occurredAt = input.event?.occurredAt === undefined ? nowIso() : requireText(input.event.occurredAt, 'event.occurredAt', 1, TIMESTAMP_MAX)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const [row] = await exec
+        .select({ id: lifecycleApplications.id })
+        .from(lifecycleApplications)
+        .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId)))
+        .limit(1)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      const createdAt = nowIso()
+      const id = newId()
+      await insertApplicationEventRecords(exec).values({
+        id,
+        workspaceId: resolved.workspaceId,
+        applicationId: resolved.applicationId,
+        type,
+        occurredAt,
+        actorId: resolved.actor.id ?? resolved.actor.type,
+        actorType: resolved.actor.type,
+        actorDisplayName: null,
+        summary,
+        createdAt,
+      })
+      return { ok: true, event: { id, applicationId: resolved.applicationId, type, occurredAt, summary, actor: resolved.actor, createdAt } }
+    },
+
+    async recordEvent(input) {
+      return database.transaction((tx) => service.recordEventOn(tx, input))
+    },
+
+    async listEvents(workspaceId, applicationId) {
+      const row = await selectById(workspaceId, applicationId)
+      if (!row) return []
+      const rows = await database.select().from(applicationEventRecords).where(eq(applicationEventRecords.applicationId, applicationId)).orderBy(asc(applicationEventRecords.occurredAt), asc(applicationEventRecords.id))
+      return rows.map((r) => ({ id: r.id, applicationId: r.applicationId, type: r.type, occurredAt: r.occurredAt, summary: r.summary, actor: { type: r.actorType as ApplicationActorType, id: r.actorId }, createdAt: r.createdAt }))
+    },
+
+    async recordAttempt(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      let state: ApplicationAttemptState
+      let startedAt: string
+      let completedAt: string | null
+      let summary: string | null
+      try {
+        resolved = await ids(input)
+        state = requireOneOf(input.attempt?.state, attemptStates, 'attempt.state')
+        startedAt = requireText(input.attempt?.startedAt, 'attempt.startedAt', 1, TIMESTAMP_MAX)
+        completedAt = optionalText(input.attempt?.completedAt, 'attempt.completedAt', TIMESTAMP_MAX)
+        summary = optionalText(input.attempt?.summary, 'attempt.summary', SUMMARY_MAX)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      const createdAt = nowIso()
+      const id = newId()
+      await insertApplicationAttemptRecords(database).values({ id, workspaceId: resolved.workspaceId, applicationId: resolved.applicationId, state, startedAt, completedAt, summary, createdAt })
+      return { ok: true, attempt: { id, applicationId: resolved.applicationId, state, startedAt, completedAt, summary, createdAt } }
+    },
+
+    async listAttempts(workspaceId, applicationId) {
+      const row = await selectById(workspaceId, applicationId)
+      if (!row) return []
+      const rows = await database.select().from(applicationAttemptRecords).where(eq(applicationAttemptRecords.applicationId, applicationId)).orderBy(asc(applicationAttemptRecords.startedAt), asc(applicationAttemptRecords.id))
+      return rows.map((r) => ({ id: r.id, applicationId: r.applicationId, state: r.state as ApplicationAttemptState, startedAt: r.startedAt, completedAt: r.completedAt, summary: r.summary, createdAt: r.createdAt }))
+    },
+
+    async remove(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      try {
+        resolved = await ids(input)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      if (row.removedAt !== null) return { ok: true, application: toRecord(row) }
+      const [{ dependents }] = await database
+        .select({ dependents: sql<number>`
+          (select count(*) from ${pursuitLinks} where ${pursuitLinks.applicationId} = ${row.id})
+          + (select count(*) from ${applicationEventRecords} where ${applicationEventRecords.applicationId} = ${row.id})
+          + (select count(*) from ${applicationAttemptRecords} where ${applicationAttemptRecords.applicationId} = ${row.id})` })
+        .from(lifecycleApplications)
+        .where(eq(lifecycleApplications.id, row.id))
+      const dependentCount = Number(dependents)
+      if (dependentCount > 0 && input.dependents === undefined) {
+        return fail('dependent_choice_required', 'application has dependent links/events/attempts; pass dependents: cascade | preserve')
+      }
+      const createdAt = nowIso()
+      const nextRevision = row.revision + 1
+      return database.transaction(async (tx) => {
+        if (input.dependents === 'cascade') {
+          await deletePursuitLinks(tx).where(eq(pursuitLinks.applicationId, row.id))
+          await deleteApplicationEventRecords(tx).where(eq(applicationEventRecords.applicationId, row.id))
+          await deleteApplicationAttemptRecords(tx).where(eq(applicationAttemptRecords.applicationId, row.id))
+        }
+        const updated = await updateLifecycleApplications(tx).set({ removedAt: createdAt, revision: nextRevision, updatedAt: createdAt }).where(and(eq(lifecycleApplications.id, row.id), isNull(lifecycleApplications.removedAt))).returning({ id: lifecycleApplications.id })
+        if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
+        await appendHistory(tx, row.id, nextRevision, 'removed', { dependents: input.dependents ?? 'none' }, resolved.actor, createdAt)
+        return { ok: true as const, application: toRecord({ ...row, removedAt: createdAt, revision: nextRevision, updatedAt: createdAt }) }
+      })
+    },
+
+    async restore(input) {
+      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+      try {
+        resolved = await ids(input)
+      } catch (error) {
+        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const row = await selectById(resolved.workspaceId, resolved.applicationId)
+      if (!row) return fail('not_found', 'application not found in this workspace')
+      if (row.removedAt === null) return { ok: true, application: toRecord(row) }
+      return commit(
+        row,
+        resolved.actor,
+        'restored',
+        { kind: 'restored', priorRevision: row.revision },
+        { removedAt: null },
+        sql`${lifecycleApplications.removedAt} is not null`,
+        'deterministic_duplicate',
+      )
+    },
+
+    async history(workspaceId, applicationId) {
+      const row = await selectById(workspaceId, applicationId)
+      if (!row) return []
+      const rows = await database.select().from(applicationHistory).where(eq(applicationHistory.applicationId, applicationId)).orderBy(asc(applicationHistory.revision))
+      return rows.map((entry) => {
+        const audit = safeParse(entry.auditJson)
+        const actor = (audit as { actor?: { type?: string; id?: string | null } }).actor
+        return {
+          revision: entry.revision,
+          kind: entry.kind as ApplicationHistoryKind,
+          actor: { type: (actor?.type ?? 'system') as ApplicationActorType, id: actor?.id ?? null },
+          createdAt: entry.createdAt,
+        }
+      })
+    },
+  }
+
+  return service
+}
