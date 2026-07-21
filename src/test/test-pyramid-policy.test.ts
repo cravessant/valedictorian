@@ -594,6 +594,8 @@ describe('test pyramid policy', () => {
       ['src/modules/job/job.identity.pglite.test.ts', false],
       ['src/modules/job/job.service.pglite.test.ts', false],
       ['src/modules/lifecycle/capture-to-job.promotion.pglite.test.ts', false],
+      ['src/modules/lifecycle/job-to-opportunity.promotion.pglite.test.ts', false],
+      ['src/modules/opportunity/opportunity.service.pglite.test.ts', false],
       ['src/modules/connectors/connector-checkpoint.upgrade-copy.test.ts', false],
       ['src/modules/connectors/connector.overview.repository.test.ts', false],
       ['src/modules/connectors/connector.repository.bounded-history.test.ts', false],
