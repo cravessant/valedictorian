@@ -35,7 +35,7 @@ import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
 import { jobCaptureEvidenceReferences, jobHistory, lifecycleJobs } from '../../db/schema'
 import { lifecycleWarningCodes } from '../../db/lifecycle-vocabulary'
-import { captureEvidenceItems, lifecycleCaptures } from '../capture/capture.schema'
+import { captureEvidenceItems, captureRevisions, lifecycleCaptures } from '../capture/capture.schema'
 import type { CaptureEvidenceInput, CaptureFailure, CaptureService, JsonValue } from '../capture/capture.service'
 import type { JobActor, JobActorType, JobService } from '../job/job.service'
 import {
@@ -86,6 +86,21 @@ export interface PromoteCaptureInput {
   readonly workspaceId: string
   readonly captureId: string
   readonly actor: JobActor
+  /**
+   * #304: the contract-valid Job facts to promote with (sparxie `jobFactsSchema`,
+   * validated at the promotion boundary). Fixes the #300 placeholder-facts defect:
+   * a promoted Job now carries real, schema-valid facts. When omitted (a domain
+   * caller with no selected facts, e.g. the manual chain) strict-schema-valid
+   * defaults are derived and a `missing_optional_facts` warning is emitted, so the
+   * minted Job still satisfies the strict contract.
+   */
+  readonly selectedFacts?: JsonValue
+  /**
+   * #304: the Capture revision to bind the produced lineage to. Defaults to the
+   * evidence-bearing revision when omitted. A revision that does not exist on the
+   * Capture is a typed invalid_input.
+   */
+  readonly captureRevision?: number
   /** #304: create-dedup key threaded onto the minted Job (a keyed re-promote converges). */
   readonly idempotencyKey?: string
   /**
@@ -153,6 +168,34 @@ interface ResolvedIdentity {
   readonly account: string | null
   readonly value: string
   readonly strength: 'strong' | 'provisional'
+}
+
+/**
+ * A strict-schema-valid default Job facts blob (sparxie `jobFactsSchema`) for a
+ * promotion that carries no `selectedFacts`. Every required string is non-empty
+ * and every enum is a valid literal, so the minted Job passes the contract's
+ * strict protocol check; the emptiness is signalled to the caller as a
+ * `missing_optional_facts` warning rather than a block.
+ */
+function deriveDefaultJobFacts(sourceName: string): JsonValue {
+  return {
+    companyName: 'Unknown',
+    roleTitle: 'Unknown',
+    sourceName: sourceName.trim().length > 0 ? sourceName : 'unknown',
+    roleKind: 'other',
+    term: null,
+    terms: [],
+    timingMode: 'unknown',
+    startDate: null,
+    endDate: null,
+    location: null,
+    workMode: 'unknown',
+    employmentType: 'unknown',
+    seniority: 'unknown',
+    compensation: null,
+    postedAt: null,
+    destination: null,
+  }
 }
 
 export function createPgliteJobPromotion(
@@ -232,6 +275,25 @@ export function createPgliteJobPromotion(
     const revision = rows[0]!.revision
     const indexes = rows.filter((r) => r.revision === revision).map((r) => r.index).sort((a, b) => a - b)
     return { revision, indexes }
+  }
+
+  /** The sorted evidence indexes recorded at a specific Capture revision (empty at a correction revision). */
+  async function evidenceIndexesAt(captureId: string, revision: number): Promise<number[]> {
+    const rows = await database
+      .select({ index: captureEvidenceItems.evidenceIndex })
+      .from(captureEvidenceItems)
+      .where(and(eq(captureEvidenceItems.captureId, captureId), eq(captureEvidenceItems.captureRevision, revision)))
+    return rows.map((r) => r.index).sort((a, b) => a - b)
+  }
+
+  /** Whether a Capture revision exists (the lineage FK targets `capture_revisions`). */
+  async function revisionExists(captureId: string, revision: number): Promise<boolean> {
+    const [rev] = await database
+      .select({ revision: captureRevisions.revision })
+      .from(captureRevisions)
+      .where(and(eq(captureRevisions.captureId, captureId), eq(captureRevisions.revision, revision)))
+      .limit(1)
+    return rev !== undefined
   }
 
   async function appendHistory(tx: Tx, jobId: string, kind: string, snapshotJson: string, actor: JobActor, createdAt: string) {
@@ -367,6 +429,22 @@ export function createPgliteJobPromotion(
       if (!bearing) return fail('invalid_input', 'capture has no observed evidence to promote')
       const expectedFactsRevision = input.expectedJobFactsRevision
 
+      // #304: bind the produced lineage to the caller's captureRevision (default: the
+      // evidence-bearing revision). A revision absent on the Capture is invalid_input.
+      let link = bearing
+      if (input.captureRevision !== undefined && input.captureRevision !== bearing.revision) {
+        if (!(await revisionExists(captureId, input.captureRevision))) {
+          return fail('invalid_input', 'captureRevision does not exist for this capture')
+        }
+        link = { revision: input.captureRevision, indexes: await evidenceIndexesAt(captureId, input.captureRevision) }
+      }
+      // #304: promote with the caller's contract-valid facts, or strict-schema-valid
+      // defaults plus a missing_optional_facts warning (fixes the #300 placeholder defect).
+      const promotionFacts = input.selectedFacts ?? deriveDefaultJobFacts(capture.provenance.adapterId)
+      const factsWarning: PromotionWarning | null = input.selectedFacts === undefined
+        ? { code: 'missing_optional_facts', message: 'promoted with derived default facts; no selected facts were provided' }
+        : null
+
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const outcome = await database.transaction(async (tx) => {
@@ -388,7 +466,7 @@ export function createPgliteJobPromotion(
               if (expectedFactsRevision !== undefined && expectedFactsRevision !== target.factsRevision) {
                 throw new PromotionAbort(fail('revision_conflict', 'target job facts advanced since evaluation'))
               }
-              await linkCapture(tx, target.id, captureId, bearing.revision, bearing.indexes, nowIso())
+              await linkCapture(tx, target.id, captureId, link.revision, link.indexes, nowIso())
               return { ok: true as const, jobId: target.id, captureId, attached: true, created: false, warnings: [] as PromotionWarning[] }
             }
 
@@ -409,13 +487,14 @@ export function createPgliteJobPromotion(
                   throw new PromotionAbort(fail('revision_conflict', 'resolved owner job facts advanced since evaluation'))
                 }
               }
-              await linkCapture(tx, owner.jobId, captureId, bearing.revision, bearing.indexes, createdAt)
+              await linkCapture(tx, owner.jobId, captureId, link.revision, link.indexes, createdAt)
               return { ok: true as const, jobId: owner.jobId, captureId, attached: true, created: false, warnings }
             }
-            const created = await jobService.createOn(tx, { workspaceId, facts: { source: 'promotion', captureId, evidenceMode: capture.evidenceMode }, actor, idempotencyKey })
+            if (factsWarning) warnings.push(factsWarning)
+            const created = await jobService.createOn(tx, { workspaceId, facts: promotionFacts, actor, idempotencyKey })
             if (!created.ok) throw new PromotionAbort(created)
-            await establishPromotionIdentity(tx, created.job.id, captureId, bearing.revision, validated, actor, createdAt)
-            await linkCapture(tx, created.job.id, captureId, bearing.revision, bearing.indexes, createdAt)
+            await establishPromotionIdentity(tx, created.job.id, captureId, link.revision, validated, actor, createdAt)
+            await linkCapture(tx, created.job.id, captureId, link.revision, link.indexes, createdAt)
             return { ok: true as const, jobId: created.job.id, captureId, attached: false, created: created.created, warnings }
           })
 

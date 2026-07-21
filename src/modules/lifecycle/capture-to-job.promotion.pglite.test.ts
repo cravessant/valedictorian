@@ -8,6 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
+import { jobFactsSchema } from 'sparxie'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { captureEvidenceItems, lifecycleCaptures } from '../capture/capture.schema'
@@ -322,5 +323,52 @@ describe.sequential('Capture→Job promotion #304 threading', () => {
       workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR,
       override: { actor: { id: 'u', type: 'user' }, rationale: 'because', warningCodes: ['not_a_real_code'] },
     })).toMatchObject({ ok: false, code: 'invalid_input' })
+  })
+
+  it('promotes with the caller-selected contract-valid facts and emits no missing-facts warning', async () => {
+    const { captures, jobs, promotion } = await setup()
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-facts' })
+    const selectedFacts = {
+      companyName: 'Acme', roleTitle: 'Staff Engineer', sourceName: 'greenhouse', roleKind: 'experienced',
+      term: null, terms: [], timingMode: 'unknown', startDate: null, endDate: null, location: null,
+      workMode: 'remote', employmentType: 'full_time', seniority: 'senior', compensation: null, postedAt: null, destination: null,
+    }
+    const result = await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR, selectedFacts })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings.map((w) => w.code)).not.toContain('missing_optional_facts')
+    const job = await jobs.get('ws-a', result.jobId)
+    expect(() => jobFactsSchema.parse(job?.facts)).not.toThrow()
+    expect(job?.facts).toMatchObject({ companyName: 'Acme', roleTitle: 'Staff Engineer' })
+  })
+
+  it('derives strict-schema-valid default facts + a missing_optional_facts warning when selectedFacts is omitted (fixes #300 placeholder defect)', async () => {
+    const { captures, jobs, promotion } = await setup()
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-def' })
+    const result = await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings.map((w) => w.code)).toContain('missing_optional_facts')
+    const job = await jobs.get('ws-a', result.jobId)
+    // The minted Job's facts satisfy the strict contract schema — the promoted Job would
+    // pass the read-model's jobSchema protocol check (the placeholder facts never would).
+    expect(() => jobFactsSchema.parse(job?.facts)).not.toThrow()
+  })
+
+  it('binds the produced lineage to the provided captureRevision', async () => {
+    const { database, captures, promotion } = await setup()
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-rev' })
+    const result = await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR, captureRevision: capture.revision })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const [ref] = await database.select().from(jobCaptureEvidenceReferences).where(eq(jobCaptureEvidenceReferences.jobId, result.jobId))
+    expect(ref?.captureRevision).toBe(capture.revision)
+  })
+
+  it('rejects a captureRevision absent on the capture as a typed invalid_input', async () => {
+    const { captures, promotion } = await setup()
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-badrev' })
+    expect(await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR, captureRevision: 99 }))
+      .toMatchObject({ ok: false, code: 'invalid_input' })
   })
 })
