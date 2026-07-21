@@ -472,8 +472,18 @@ export function createPgliteApplicationAggregateService(
     }
   }
 
-  function buildSnapshot(jobFacts: JsonValue, jobFactsRevision: number, scores?: JsonValue): JsonValue {
-    return { job: { facts: jobFacts, factsRevision: jobFactsRevision }, scores: scores ?? null }
+  // #304: `capturedAt` is persisted additively so the HTTP read-model can present the
+  // contract `applicationPursuitSnapshot.capturedAt` as the honest capture time (create
+  // or the most recent refreshSnapshot), rather than falling back to the head createdAt
+  // which a refresh would render false. No migration: it is a new JSON field on a blob
+  // both create and refresh already write.
+  function buildSnapshot(
+    jobFacts: JsonValue,
+    jobFactsRevision: number,
+    capturedAt: string,
+    scores?: JsonValue,
+  ): JsonValue {
+    return { job: { facts: jobFacts, factsRevision: jobFactsRevision }, capturedAt, scores: scores ?? null }
   }
 
   async function appendHistory(
@@ -676,7 +686,7 @@ export function createPgliteApplicationAggregateService(
       const createdAt = nowIso()
       let snapshotJson: string
       try {
-        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, scores), 'snapshot', SNAPSHOT_MAX)
+        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, createdAt, scores), 'snapshot', SNAPSHOT_MAX)
       } catch (error) {
         if (error instanceof ApplicationInputError) return fail(error.code, error.message)
         throw error
@@ -798,9 +808,11 @@ export function createPgliteApplicationAggregateService(
         const parsed = safeParse(row.snapshotJson)
         return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.scores ?? null : null
       })()
+      // A refresh re-captures now; capturedAt reflects this refresh, not the create.
+      const capturedAt = nowIso()
       let snapshotJson: string
       try {
-        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, priorScores), 'snapshot', SNAPSHOT_MAX)
+        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, capturedAt, priorScores), 'snapshot', SNAPSHOT_MAX)
       } catch (error) {
         if (error instanceof ApplicationInputError) return fail(error.code, error.message)
         throw error

@@ -12,7 +12,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteJobService } from '../job/job.service'
 import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
-import { applicationHistory } from '../application/application.schema'
+import { applicationHistory, lifecycleApplications } from '../application/application.schema'
 import { createPgliteApplicationAggregateService } from './application.aggregate.service'
 
 const resettableOwner = useResettablePgliteTestOwner()
@@ -53,6 +53,32 @@ describe.sequential('Application 0.27 create bridge (#304)', () => {
     expect(first.created).toBe(true)
     expect(again.created).toBe(false)
     expect(again.application.id).toBe(first.application.id)
+  })
+
+  it('persists capturedAt in the stored snapshot at create and advances it on refreshSnapshot (#304)', async () => {
+    const { database, jobs, opportunities, applications } = await setup()
+    const { jobId, opportunityId } = await makeLineage(jobs, opportunities)
+    const created = await applications.create({ workspaceId: 'ws-a', opportunityId, actor: ACTOR })
+    if (!created.ok) throw new Error('expected ok')
+
+    const readSnapshot = async () => {
+      const [row] = await database
+        .select({ snapshotJson: lifecycleApplications.snapshotJson })
+        .from(lifecycleApplications)
+        .where(eq(lifecycleApplications.id, created.application.id))
+      return JSON.parse(row!.snapshotJson) as { capturedAt?: string }
+    }
+
+    const atCreate = await readSnapshot()
+    expect(typeof atCreate.capturedAt).toBe('string')
+    expect(atCreate.capturedAt).toBe(created.application.createdAt)
+
+    // A refresh re-captures now, so capturedAt advances past the create time.
+    await jobs.correctFacts({ workspaceId: 'ws-a', jobId, facts: { company: 'Acme', title: 'Principal' }, actor: ACTOR })
+    const refreshed = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR })
+    expect(refreshed.ok).toBe(true)
+    const afterRefresh = await readSnapshot()
+    expect(afterRefresh.capturedAt! > atCreate.capturedAt!).toBe(true)
   })
 
   it('enforces the expectedJobFactsRevision and expectedJobId lineage guards', async () => {

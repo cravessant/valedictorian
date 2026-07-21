@@ -604,6 +604,7 @@ describe('test pyramid policy', () => {
       ['src/modules/opportunity/opportunity.stage2-bridge.pglite.test.ts', false],
       ['src/modules/opportunity/opportunity.read-model.pglite.test.ts', false],
       ['src/modules/applications/application.stage2-bridge.pglite.test.ts', false],
+      ['src/modules/applications/application.read-model.pglite.test.ts', false],
       ['src/modules/opportunity/opportunity.service.pglite.test.ts', false],
       ['src/modules/connectors/connector-checkpoint.upgrade-copy.test.ts', false],
       ['src/modules/connectors/connector.overview.repository.test.ts', false],
