@@ -113,4 +113,21 @@ describe.sequential('Application 0.27 create bridge (#304)', () => {
       warningCodes: ['third_party_destination'],
     })
   })
+
+  it('guards refreshSnapshot with expectedJobFactsRevision: a stale pin is a revision_conflict, the current one refreshes', async () => {
+    const { jobs, opportunities, applications } = await setup()
+    const { jobId, opportunityId } = await makeLineage(jobs, opportunities)
+    const created = await applications.create({ workspaceId: 'ws-a', opportunityId, actor: ACTOR })
+    if (!created.ok) throw new Error('expected ok')
+    expect(created.application.jobFactsRevision).toBe(1)
+    // Advance the Job facts so the application snapshot is stale (still at revision 1).
+    const corrected = await jobs.correctFacts({ workspaceId: 'ws-a', jobId, facts: { company: 'Acme', title: 'Principal' }, actor: ACTOR })
+    if (!corrected.ok) throw new Error('correct failed')
+    const stale = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR, expectedJobFactsRevision: 1 })
+    expect(stale.ok).toBe(false)
+    if (!stale.ok) expect(stale.code).toBe('revision_conflict')
+    const refreshed = await applications.refreshSnapshot({ workspaceId: 'ws-a', applicationId: created.application.id, actor: ACTOR, expectedJobFactsRevision: 2 })
+    expect(refreshed.ok).toBe(true)
+    if (refreshed.ok) expect(refreshed.application.jobFactsRevision).toBe(2)
+  })
 })

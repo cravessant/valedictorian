@@ -14,6 +14,7 @@ import { captureEvidenceItems, lifecycleCaptures } from '../capture/capture.sche
 import { jobCaptureEvidenceReferences, lifecycleJobs } from '../job/job.schema'
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
 import { createPgliteJobService } from '../job/job.service'
+import { createPgliteJobIdentityService } from '../job/job.identity'
 import {
   createPgliteJobPromotion,
   type DestinationResolution,
@@ -237,5 +238,89 @@ describe.sequential('Capture→Job promotion (#300)', () => {
     expect(result).toMatchObject({ ok: false, code: 'bounded_data_violation' })
     expect(await database.select().from(lifecycleCaptures)).toHaveLength(0)
     expect(await countJobs(database, 'ws-a')).toBe(0)
+  })
+})
+
+describe.sequential('Capture→Job promotion #304 threading', () => {
+  it('threads idempotencyKey onto the minted Job: two provider-less captures under one key converge to ONE Job', async () => {
+    const { database, captures, promotion } = await setup() // reported, no resolution → provisional identities → createOn path
+    const capA = await acceptCapture(captures, { providerRecordId: null, evidenceMode: 'reported' })
+    const capB = await acceptCapture(captures, { providerRecordId: null, evidenceMode: 'reported' })
+    const first = await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: capA.id, actor: ACTOR, idempotencyKey: 'k-1' })
+    const second = await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: capB.id, actor: ACTOR, idempotencyKey: 'k-1' })
+    expect(first).toMatchObject({ ok: true, created: true })
+    expect(second).toMatchObject({ ok: true, created: false })
+    if (!first.ok || !second.ok) return
+    expect(second.jobId).toBe(first.jobId)
+    expect(await countJobs(database, 'ws-a')).toBe(1) // dedup key collapsed both promotions onto one Job
+  })
+
+  it('duplicateResolution attach: links the Capture directly to the caller-identified Job, minting none', async () => {
+    const { database, captures, jobs, promotion } = await setup()
+    const target = await jobs.create({ workspaceId: 'ws-a', facts: { title: 'Target' }, actor: ACTOR })
+    if (!target.ok) throw new Error('target create failed')
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-att' })
+    const result = await promotion.promoteCapture({
+      workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR,
+      duplicateResolution: { action: 'attach', targetResourceId: target.job.id },
+    })
+    expect(result).toMatchObject({ ok: true, attached: true, created: false })
+    if (!result.ok) return
+    expect(result.jobId).toBe(target.job.id)
+    const links = await database.select().from(jobCaptureEvidenceReferences).where(and(eq(jobCaptureEvidenceReferences.jobId, target.job.id), eq(jobCaptureEvidenceReferences.captureId, capture.id)))
+    expect(links).toHaveLength(1)
+    expect(await countJobs(database, 'ws-a')).toBe(1) // only the target Job exists
+  })
+
+  it('duplicateResolution attach: an absent/foreign target is a typed not_found; a stale expectedJobFactsRevision is a revision_conflict', async () => {
+    const { captures, jobs, promotion } = await setup()
+    const target = await jobs.create({ workspaceId: 'ws-a', facts: { title: 'Target' }, actor: ACTOR })
+    if (!target.ok) throw new Error('target create failed')
+    const cap1 = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-x1' })
+    expect(await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: cap1.id, actor: ACTOR, duplicateResolution: { action: 'attach', targetResourceId: 'nope' } }))
+      .toMatchObject({ ok: false, code: 'not_found' })
+    const cap2 = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-x2' })
+    expect(await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: cap2.id, actor: ACTOR, expectedJobFactsRevision: 99, duplicateResolution: { action: 'attach', targetResourceId: target.job.id } }))
+      .toMatchObject({ ok: false, code: 'revision_conflict' })
+  })
+
+  it('duplicateResolution merge: composes jobIdentityService.merge, reconciling onto the deterministic winner', async () => {
+    const { database, captures, jobs } = await setup()
+    const identities = createPgliteJobIdentityService(database, { now: monotonicClock() })
+    const merging = createPgliteJobPromotion(database, captures, jobs, { now: monotonicClock(), jobIdentityService: identities })
+    // Target Job created FIRST → deterministic merge winner (earliest created_at).
+    const target = await jobs.create({ workspaceId: 'ws-a', facts: { title: 'Winner' }, actor: ACTOR })
+    if (!target.ok) throw new Error('target create failed')
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-merge' })
+    const result = await merging.promoteCapture({
+      workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR,
+      duplicateResolution: { action: 'merge', targetResourceId: target.job.id },
+    })
+    expect(result).toMatchObject({ ok: true, attached: true })
+    if (!result.ok) return
+    expect(result.jobId).toBe(target.job.id) // winner
+    // The freshly minted Job (loser) is tombstoned; the winner survives active.
+    const active = await jobs.list('ws-a')
+    expect(active.map((j) => j.id)).toContain(target.job.id)
+    expect(active).toHaveLength(1)
+    // The capture's evidence lineage moved onto the winner.
+    const links = await database.select().from(jobCaptureEvidenceReferences).where(eq(jobCaptureEvidenceReferences.jobId, target.job.id))
+    expect(links.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('duplicateResolution merge without a wired identity service is a typed invalid_input', async () => {
+    const { captures, promotion } = await setup() // no jobIdentityService wired
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-nomerge' })
+    expect(await promotion.promoteCapture({ workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR, duplicateResolution: { action: 'merge', targetResourceId: 'whatever' } }))
+      .toMatchObject({ ok: false, code: 'invalid_input' })
+  })
+
+  it('validates the override shape without persisting it: a bad warning code is a typed invalid_input', async () => {
+    const { captures, promotion } = await setup()
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-ovr' })
+    expect(await promotion.promoteCapture({
+      workspaceId: 'ws-a', captureId: capture.id, actor: ACTOR,
+      override: { actor: { id: 'u', type: 'user' }, rationale: 'because', warningCodes: ['not_a_real_code'] },
+    })).toMatchObject({ ok: false, code: 'invalid_input' })
   })
 })

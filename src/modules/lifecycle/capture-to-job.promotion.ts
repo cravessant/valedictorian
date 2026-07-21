@@ -33,22 +33,25 @@
 import { and, desc, eq } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
-import { jobCaptureEvidenceReferences, jobHistory } from '../../db/schema'
+import { jobCaptureEvidenceReferences, jobHistory, lifecycleJobs } from '../../db/schema'
+import { lifecycleWarningCodes } from '../../db/lifecycle-vocabulary'
 import { captureEvidenceItems, lifecycleCaptures } from '../capture/capture.schema'
 import type { CaptureEvidenceInput, CaptureFailure, CaptureService, JsonValue } from '../capture/capture.service'
-import type { JobActor, JobService } from '../job/job.service'
+import type { JobActor, JobActorType, JobService } from '../job/job.service'
 import {
+  AUDIT_MAX,
   type JobFailure,
   type JobFailureCode,
   JobInputError,
   WORKSPACE_MAX,
   auditJson,
+  boundedJson,
   fail,
   isUniqueViolation,
   requireActor,
   requireText,
 } from '../job/job.validation'
-import { resolveStrongIdentityOwner } from '../job/job.identity'
+import { resolveStrongIdentityOwner, type JobIdentityService } from '../job/job.identity'
 import { insertJobCaptureEvidenceReferences, insertJobExternalIdentities, insertJobHistory } from '../job/job.repository'
 
 /** Boundary-owned retrieval port — composes the #233 provider-URL resolver. */
@@ -66,10 +69,47 @@ export interface PromotionWarning {
   readonly message: string
 }
 
+/** #304: the contract warning override — recorded on the promotion's job-history audit (Job has no override column). */
+export interface JobWarningOverrideInput {
+  readonly actor: { readonly id: string; readonly type: JobActorType; readonly displayName?: string }
+  readonly rationale: string
+  readonly warningCodes: readonly string[]
+}
+
+/** #304: attach/merge onto an explicit existing Job when the caller identifies a duplicate. */
+export interface JobDuplicateResolutionInput {
+  readonly action: 'attach' | 'merge'
+  readonly targetResourceId: string
+}
+
 export interface PromoteCaptureInput {
   readonly workspaceId: string
   readonly captureId: string
   readonly actor: JobActor
+  /** #304: create-dedup key threaded onto the minted Job (a keyed re-promote converges). */
+  readonly idempotencyKey?: string
+  /**
+   * #304: optimistic lineage guard applied on the ATTACH path — the facts revision the
+   * caller expects the resolved owner Job to hold. A mismatch is a typed revision_conflict.
+   * A freshly created Job is always at revision 1, so the guard is inert on the create path.
+   */
+  readonly expectedJobFactsRevision?: number
+  /**
+   * #304: warning override. The accepted design places override persistence ONLY on
+   * the Opportunity resource and the Application history audit — the Job aggregate has
+   * no override column and no history kind for it. So the override is VALIDATED here
+   * (bounded, well-formed, warningCodes in-vocabulary) — a malformed override is a
+   * typed invalid_input — but not persisted on the Job. Capture→Job never blocks on a
+   * policy warning, so no override is required to proceed.
+   */
+  readonly override?: JobWarningOverrideInput | null
+  /**
+   * #304: explicit duplicate resolution onto `targetResourceId` (a JobId). `attach`
+   * links this Capture's evidence directly to the target within the promotion tx;
+   * `merge` runs the normal create/resolve then composes jobIdentityService.merge to
+   * reconcile the two Jobs (merge owns its own transaction — see createManualJob notes).
+   */
+  readonly duplicateResolution?: JobDuplicateResolutionInput
 }
 
 export interface CreateManualJobInput {
@@ -93,6 +133,8 @@ export interface JobPromotionOptions {
   readonly now?: Clock
   readonly newId?: UuidV7Generator
   readonly resolutionPort?: JobResolutionPort
+  /** #304: wired only to service `duplicateResolution: { action: 'merge' }`; attach needs no identity service. */
+  readonly jobIdentityService?: JobIdentityService
 }
 
 type Tx = Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0]
@@ -123,6 +165,51 @@ export function createPgliteJobPromotion(
   const nowIso = () => clock().toISOString()
   const newId = options.newId ?? createUuidV7Generator(clock)
   const resolutionPort = options.resolutionPort
+  const jobIdentityService = options.jobIdentityService
+
+  const ACTOR_TYPES = ['user', 'agent', 'system'] as const
+
+  /**
+   * Validate the contract warning override shape (bounded actor/rationale, in-vocabulary
+   * warning codes) so a malformed override is a typed invalid_input. The validated value
+   * is not persisted on the Job (no override surface — see PromoteCaptureInput.override).
+   */
+  function validatePromotionOverride(override: JobWarningOverrideInput | null | undefined): JobFailure | null {
+    if (override === undefined || override === null) return null
+    try {
+      const type = override.actor?.type
+      if (typeof type !== 'string' || !(ACTOR_TYPES as readonly string[]).includes(type)) {
+        throw new JobInputError('invalid_input', 'override.actor.type is invalid')
+      }
+      requireText(override.actor?.id, 'override.actor.id', 1, WORKSPACE_MAX)
+      requireText(override.rationale, 'override.rationale', 1, 4_096)
+      if (!Array.isArray(override.warningCodes)) {
+        throw new JobInputError('invalid_input', 'override.warningCodes must be an array')
+      }
+      for (const code of override.warningCodes) {
+        if (typeof code !== 'string' || !(lifecycleWarningCodes as readonly string[]).includes(code)) {
+          throw new JobInputError('invalid_input', 'override.warningCodes contains an unknown code')
+        }
+      }
+      if (override.actor.displayName !== undefined) requireText(override.actor.displayName, 'override.actor.displayName', 1, WORKSPACE_MAX)
+      boundedJson({ rationale: override.rationale, warningCodes: [...override.warningCodes] } as unknown as JsonValue, 'override', AUDIT_MAX)
+      return null
+    } catch (error) {
+      if (error instanceof JobInputError) return fail(error.code, error.message)
+      throw error
+    }
+  }
+
+  /** Load an existing target Job for duplicate resolution (workspace-scoped, non-removed). */
+  async function loadTargetJob(exec: Tx, workspaceId: string, jobId: string): Promise<{ id: string; factsRevision: number } | null> {
+    const [row] = await exec
+      .select({ id: lifecycleJobs.id, factsRevision: lifecycleJobs.factsRevision, removedAt: lifecycleJobs.removedAt })
+      .from(lifecycleJobs)
+      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .limit(1)
+    if (!row || row.removedAt !== null) return null
+    return { id: row.id, factsRevision: row.factsRevision }
+  }
 
   async function existingLineageJob(exec: Tx, captureId: string): Promise<string | null> {
     const [row] = await exec
@@ -251,28 +338,59 @@ export function createPgliteJobPromotion(
       let workspaceId: string
       let captureId: string
       let actor: JobActor
+      let idempotencyKey: string | undefined
+      let dedup: JobDuplicateResolutionInput | undefined
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         captureId = requireText(input.captureId, 'captureId', 1, WORKSPACE_MAX)
         actor = requireActor(input.actor)
+        idempotencyKey = input.idempotencyKey === undefined ? undefined : requireText(input.idempotencyKey, 'idempotencyKey', 1, 200)
+        if (input.duplicateResolution !== undefined) {
+          const action = input.duplicateResolution.action
+          if (action !== 'attach' && action !== 'merge') throw new JobInputError('invalid_input', 'duplicateResolution.action must be attach or merge')
+          const targetResourceId = requireText(input.duplicateResolution.targetResourceId, 'duplicateResolution.targetResourceId', 1, WORKSPACE_MAX)
+          dedup = { action, targetResourceId }
+        }
       } catch (error) {
+        if (error instanceof JobInputError) return fail(error.code, error.message)
         return fail('invalid_input', error instanceof Error ? error.message : 'invalid input')
+      }
+      // Validate the (non-persisted) override shape up front.
+      const overrideFailure = validatePromotionOverride(input.override)
+      if (overrideFailure) return overrideFailure
+      if (dedup?.action === 'merge' && !jobIdentityService) {
+        return fail('invalid_input', 'duplicateResolution: merge requires a wired job identity service')
       }
       const capture = await captureService.get(workspaceId, captureId)
       if (!capture) return fail('not_found', 'capture not found in this workspace')
       const bearing = await evidenceBearingRevision(captureId)
       if (!bearing) return fail('invalid_input', 'capture has no observed evidence to promote')
+      const expectedFactsRevision = input.expectedJobFactsRevision
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          return await database.transaction(async (tx) => {
+          const outcome = await database.transaction(async (tx) => {
             // Serialize concurrent promotions of THIS capture on real Postgres.
             await tx.select({ id: lifecycleCaptures.id }).from(lifecycleCaptures)
               .where(and(eq(lifecycleCaptures.workspaceId, workspaceId), eq(lifecycleCaptures.id, captureId)))
               .for('update')
             // Idempotency BEFORE any boundary retrieval.
             const linked = await existingLineageJob(tx, captureId)
-            if (linked) return { ok: true as const, jobId: linked, captureId, attached: true, created: false, warnings: [] }
+            if (linked) return { ok: true as const, jobId: linked, captureId, attached: true, created: false, warnings: [] as PromotionWarning[] }
+
+            // Explicit ATTACH: link the Capture directly to the caller-identified Job,
+            // skipping identity resolution/creation entirely (composes the Job-owned
+            // linkCapture helper — scanner-clean). MERGE falls through to create/resolve
+            // and reconciles after the transaction commits.
+            if (dedup?.action === 'attach') {
+              const target = await loadTargetJob(tx, workspaceId, dedup.targetResourceId)
+              if (!target) throw new PromotionAbort(fail('not_found', 'duplicateResolution.targetResourceId is not an active job in this workspace'))
+              if (expectedFactsRevision !== undefined && expectedFactsRevision !== target.factsRevision) {
+                throw new PromotionAbort(fail('revision_conflict', 'target job facts advanced since evaluation'))
+              }
+              await linkCapture(tx, target.id, captureId, bearing.revision, bearing.indexes, nowIso())
+              return { ok: true as const, jobId: target.id, captureId, attached: true, created: false, warnings: [] as PromotionWarning[] }
+            }
 
             const warnings: PromotionWarning[] = []
             const resolved = await resolveIdentity(workspaceId, capture, warnings)
@@ -285,15 +403,32 @@ export function createPgliteJobPromotion(
               : null
             const createdAt = nowIso()
             if (owner) {
+              if (expectedFactsRevision !== undefined) {
+                const target = await loadTargetJob(tx, workspaceId, owner.jobId)
+                if (target && expectedFactsRevision !== target.factsRevision) {
+                  throw new PromotionAbort(fail('revision_conflict', 'resolved owner job facts advanced since evaluation'))
+                }
+              }
               await linkCapture(tx, owner.jobId, captureId, bearing.revision, bearing.indexes, createdAt)
               return { ok: true as const, jobId: owner.jobId, captureId, attached: true, created: false, warnings }
             }
-            const created = await jobService.createOn(tx, { workspaceId, facts: { source: 'promotion', captureId, evidenceMode: capture.evidenceMode }, actor })
+            const created = await jobService.createOn(tx, { workspaceId, facts: { source: 'promotion', captureId, evidenceMode: capture.evidenceMode }, actor, idempotencyKey })
             if (!created.ok) throw new PromotionAbort(created)
             await establishPromotionIdentity(tx, created.job.id, captureId, bearing.revision, validated, actor, createdAt)
             await linkCapture(tx, created.job.id, captureId, bearing.revision, bearing.indexes, createdAt)
-            return { ok: true as const, jobId: created.job.id, captureId, attached: false, created: true, warnings }
+            return { ok: true as const, jobId: created.job.id, captureId, attached: false, created: created.created, warnings }
           })
+
+          // MERGE reconciliation: the promotion produced a Job for this Capture; merge it
+          // with the caller-identified duplicate. merge() owns its own transaction, so this
+          // is a post-commit reconciliation (deterministic + idempotent), not composed into
+          // the promotion tx.
+          if (dedup?.action === 'merge' && outcome.ok) {
+            const merged = await jobIdentityService!.merge({ workspaceId, jobIdA: outcome.jobId, jobIdB: dedup.targetResourceId, actor })
+            if (!merged.ok) return merged
+            return { ok: true as const, jobId: merged.winnerJobId, captureId, attached: true, created: false, warnings: outcome.warnings }
+          }
+          return outcome
         } catch (error) {
           if (error instanceof PromotionAbort) return error.failure
           // Cross-capture strong-index ATTACH race: another capture claimed the same

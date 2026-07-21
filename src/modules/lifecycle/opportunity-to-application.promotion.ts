@@ -42,9 +42,11 @@ import type {
   AddLinkInput,
   ApplicationAggregateService,
   ApplicationActor,
+  ApplicationDuplicateResolutionInput,
   ApplicationFailure,
   ApplicationFailureCode,
   ApplicationLinkInput,
+  ApplicationWarningOverrideInput,
   JsonValue,
 } from '../applications/application.aggregate.service'
 import {
@@ -78,6 +80,16 @@ export interface PromoteOpportunityInput {
   readonly scores?: JsonValue
   readonly links?: readonly ApplicationLinkInput[]
   readonly event?: PromotionEventInput
+  /** #304: create-dedup key threaded onto the minted Application (a keyed re-promote converges). */
+  readonly idempotencyKey?: string
+  /** #304: optimistic lineage guard — the Job facts revision the caller evaluated against. */
+  readonly expectedJobFactsRevision?: number
+  /** #304: lineage-identity guard — the Job the caller expects the Opportunity to point at. */
+  readonly expectedJobId?: string
+  /** #304: warning override recorded in the minted Application's created-history audit. */
+  readonly override?: ApplicationWarningOverrideInput | null
+  /** #304: attach/merge onto the active Application when (workspace, opportunity) collides. */
+  readonly duplicateResolution?: ApplicationDuplicateResolutionInput
 }
 
 export interface CreateManualApplicationInput {
@@ -229,6 +241,11 @@ export function createPgliteOpportunityToApplicationPromotion(
               sourceName: input.sourceName,
               scores: input.scores,
               actor,
+              idempotencyKey: input.idempotencyKey,
+              expectedJobFactsRevision: input.expectedJobFactsRevision,
+              expectedJobId: input.expectedJobId,
+              override: input.override,
+              duplicateResolution: input.duplicateResolution,
             })
             if (!created.ok) throw new PromotionAbort(created)
             await addInitialDependents(tx, workspaceId, created.application.id, actor, input.links, input.event)

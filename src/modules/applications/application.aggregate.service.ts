@@ -167,6 +167,12 @@ export interface RefreshSnapshotInput {
   readonly applicationId: string
   readonly actor: ApplicationActor
   readonly expectedRevision?: number
+  /**
+   * #304: optimistic lineage guard — the Job facts revision the caller intends to
+   * refresh to. A mismatch (the Job's facts advanced past the caller's read) is a
+   * typed revision_conflict, so a refresh never silently snapshots an unexpected revision.
+   */
+  readonly expectedJobFactsRevision?: number
 }
 
 export interface ApplicationLinkInput {
@@ -711,6 +717,9 @@ export function createPgliteApplicationAggregateService(
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
       const lineage = await resolveLineage(database, resolved.workspaceId, row.opportunityId)
       if (!lineage) return fail('missing_lineage', 'opportunity or its job no longer resolvable')
+      if (input.expectedJobFactsRevision !== undefined && input.expectedJobFactsRevision !== lineage.jobFactsRevision) {
+        return fail('revision_conflict', 'job facts advanced since evaluation; re-read before refreshing')
+      }
       const priorScores = (() => {
         const parsed = safeParse(row.snapshotJson)
         return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.scores ?? null : null

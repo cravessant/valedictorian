@@ -33,11 +33,13 @@ import { type Clock } from '../../db/uuidv7'
 import { lifecycleJobs } from '../job/job.schema'
 import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
 import type {
+  DuplicateResolutionInput,
   OpportunityActor,
   OpportunityCutoff,
   OpportunityFailure,
   OpportunityFit,
   OpportunityService,
+  WarningOverrideInput,
 } from '../opportunity/opportunity.service'
 import {
   WORKSPACE_MAX,
@@ -78,6 +80,14 @@ export interface PromoteJobInput {
   readonly workspaceId: string
   readonly jobId: string
   readonly actor: OpportunityActor
+  /** #304: create-dedup key threaded onto the minted Opportunity (a keyed re-promote converges). */
+  readonly idempotencyKey?: string
+  /** #304: optimistic lineage guard — the Job facts revision the caller evaluated against. */
+  readonly expectedJobFactsRevision?: number
+  /** #304: warning override recorded on the minted Opportunity's resource. */
+  readonly override?: WarningOverrideInput | null
+  /** #304: attach/merge onto the active Opportunity when (workspace, job) collides. */
+  readonly duplicateResolution?: DuplicateResolutionInput
 }
 
 export type PromotionResult =
@@ -201,6 +211,10 @@ export function createPgliteJobToOpportunityPromotion(
               jobId,
               evaluation: { fit: evaluation.fit, rank: evaluation.rank ?? null, cutoff: evaluation.cutoff },
               actor,
+              idempotencyKey: input.idempotencyKey,
+              expectedJobFactsRevision: input.expectedJobFactsRevision,
+              override: input.override,
+              duplicateResolution: input.duplicateResolution,
             })
             if (!created.ok) throw new PromotionAbort(created)
             return { ok: true as const, opportunityId: created.opportunity.id, jobId, attached: false, created: true, warnings }

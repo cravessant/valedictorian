@@ -152,3 +152,44 @@ describe.sequential('Job→Opportunity promotion (#301)', () => {
       .toMatchObject({ ok: false, code: 'not_found' })
   })
 })
+
+describe.sequential('Job→Opportunity promotion #304 threading', () => {
+  it('threads a warning override onto the minted Opportunity resource', async () => {
+    const { jobs, opportunities, promotion } = await setup()
+    const jobId = await makeJob(jobs)
+    const result = await promotion.promoteJob({
+      workspaceId: 'ws-a', jobId, actor: ACTOR,
+      override: { actor: { id: 'u', type: 'user' }, rationale: 'accepting the cutoff', warningCodes: ['cutoff'] },
+    })
+    expect(result).toMatchObject({ ok: true, created: true })
+    if (!result.ok) return
+    const opportunity = await opportunities.get('ws-a', result.opportunityId)
+    expect(opportunity?.override).toMatchObject({ rationale: 'accepting the cutoff', warningCodes: ['cutoff'] })
+  })
+
+  it('threads a stale expectedJobFactsRevision into a typed revision_conflict', async () => {
+    const { jobs, promotion } = await setup()
+    const jobId = await makeJob(jobs)
+    await jobs.correctFacts({ workspaceId: 'ws-a', jobId, facts: { title: 'Staff Engineer II' }, actor: ACTOR }) // factsRevision 1 → 2
+    expect(await promotion.promoteJob({ workspaceId: 'ws-a', jobId, actor: ACTOR, expectedJobFactsRevision: 1 }))
+      .toMatchObject({ ok: false, code: 'revision_conflict' })
+    // The current revision (2) promotes cleanly.
+    expect(await promotion.promoteJob({ workspaceId: 'ws-a', jobId, actor: ACTOR, expectedJobFactsRevision: 2 }))
+      .toMatchObject({ ok: true })
+  })
+
+  it('duplicateResolution attach converges to the active Opportunity for the job', async () => {
+    const { database, jobs, promotion } = await setup()
+    const jobId = await makeJob(jobs)
+    const first = await promotion.promoteJob({ workspaceId: 'ws-a', jobId, actor: ACTOR })
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+    const attach = await promotion.promoteJob({
+      workspaceId: 'ws-a', jobId, actor: ACTOR,
+      duplicateResolution: { action: 'attach', targetResourceId: first.opportunityId },
+    })
+    expect(attach).toMatchObject({ ok: true })
+    if (attach.ok) expect(attach.opportunityId).toBe(first.opportunityId)
+    expect(await countOpportunities(database, jobId)).toBe(1)
+  })
+})
