@@ -213,7 +213,11 @@ export interface OpportunityService {
   reevaluate(input: ChangeEvaluationInput): Promise<MutateOpportunityResult>
   setDisposition(input: SetDispositionInput): Promise<MutateOpportunityResult>
   remove(input: OpportunityMutationInput): Promise<MutateOpportunityResult>
+  /** Composable tombstone core: run a single Opportunity tombstone on the caller's transaction executor (no internal tx). */
+  removeOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult>
   restore(input: OpportunityMutationInput): Promise<MutateOpportunityResult>
+  /** Composable restore core: clear an Opportunity tombstone on the caller's transaction executor (no internal tx). */
+  restoreOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult>
   history(workspaceId: string, opportunityId: string): Promise<readonly OpportunityHistoryEntry[]>
 }
 
@@ -376,6 +380,30 @@ export function createPgliteOpportunityService(
     })
   }
 
+  // Composable commit core: conditional head update + history append on the caller's
+  // executor (no internal tx) so the removal orchestration composes an Opportunity
+  // tombstone into ONE atomic cross-aggregate transaction. May THROW a unique-violation
+  // for the caller's boundary to map.
+  async function commitOn(
+    exec: OpportunityExec,
+    row: OpportunityRow,
+    actor: OpportunityActor,
+    kind: OpportunityHistoryKind,
+    snapshot: JsonValue,
+    headUpdate: HeadUpdate,
+    guard: SQL,
+  ): Promise<MutateOpportunityResult> {
+    const createdAt = nowIso()
+    const nextRevision = row.revision + 1
+    const updated = await updateLifecycleOpportunities(exec)
+      .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
+      .where(and(eq(lifecycleOpportunities.id, row.id), guard))
+      .returning({ id: lifecycleOpportunities.id })
+    if (updated.length === 0) return fail('revision_conflict', 'opportunity was modified concurrently')
+    await appendHistory(exec, row.id, nextRevision, kind, snapshot, actor, createdAt)
+    return { ok: true as const, opportunity: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
+  }
+
   async function commit(
     row: OpportunityRow,
     actor: OpportunityActor,
@@ -385,18 +413,8 @@ export function createPgliteOpportunityService(
     guard: SQL,
     onUnique: 'revision_conflict' | 'deterministic_duplicate',
   ): Promise<MutateOpportunityResult> {
-    const createdAt = nowIso()
-    const nextRevision = row.revision + 1
     try {
-      return await database.transaction(async (tx) => {
-        const updated = await updateLifecycleOpportunities(tx)
-          .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
-          .where(and(eq(lifecycleOpportunities.id, row.id), guard))
-          .returning({ id: lifecycleOpportunities.id })
-        if (updated.length === 0) return fail('revision_conflict', 'opportunity was modified concurrently')
-        await appendHistory(tx, row.id, nextRevision, kind, snapshot, actor, createdAt)
-        return { ok: true as const, opportunity: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
-      })
+      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshot, headUpdate, guard))
     } catch (error) {
       if (isUniqueViolation(error)) {
         return onUnique === 'deterministic_duplicate'
@@ -405,6 +423,50 @@ export function createPgliteOpportunityService(
       }
       throw error
     }
+  }
+
+  // Composable tombstone/restore cores for the removal orchestration.
+  async function removeOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult> {
+    let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+    } catch (error) {
+      if (error instanceof OpportunityInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleOpportunities)
+      .where(and(eq(lifecycleOpportunities.workspaceId, ids.workspaceId), eq(lifecycleOpportunities.id, ids.opportunityId))).limit(1)
+    const typed = (row as OpportunityRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'opportunity not found in this workspace')
+    if (typed.removedAt !== null) return { ok: true, opportunity: toRecord(typed) }
+    return commitOn(exec, typed, ids.actor, 'removed', { kind: 'removed', priorRevision: typed.revision },
+      { removedAt: nowIso() }, sql`${lifecycleOpportunities.removedAt} is null`)
+  }
+
+  async function restoreOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult> {
+    let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+    } catch (error) {
+      if (error instanceof OpportunityInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleOpportunities)
+      .where(and(eq(lifecycleOpportunities.workspaceId, ids.workspaceId), eq(lifecycleOpportunities.id, ids.opportunityId))).limit(1)
+    const typed = (row as OpportunityRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'opportunity not found in this workspace')
+    if (typed.removedAt === null) return { ok: true, opportunity: toRecord(typed) }
+    // The (workspace, job) partial unique index is the deterministic-duplicate guard on restore.
+    return commitOn(exec, typed, ids.actor, 'restored', { kind: 'restored', priorRevision: typed.revision },
+      { removedAt: null }, sql`${lifecycleOpportunities.removedAt} is not null`)
   }
 
   async function changeEvaluation(input: ChangeEvaluationInput): Promise<MutateOpportunityResult> {
@@ -595,59 +657,28 @@ export function createPgliteOpportunityService(
       )
     },
 
+    removeOn,
+    restoreOn,
+
     async remove(input) {
-      let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
+        return await database.transaction((tx) => removeOn(tx, input))
       } catch (error) {
-        if (error instanceof OpportunityInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'opportunity was modified concurrently')
         throw error
       }
-      const row = await selectById(ids.workspaceId, ids.opportunityId)
-      if (!row) return fail('not_found', 'opportunity not found in this workspace')
-      if (row.removedAt !== null) return { ok: true, opportunity: toRecord(row) }
-      return commit(
-        row,
-        ids.actor,
-        'removed',
-        { kind: 'removed', priorRevision: row.revision },
-        { removedAt: nowIso() },
-        sql`${lifecycleOpportunities.removedAt} is null`,
-        'revision_conflict',
-      )
     },
 
     async restore(input) {
-      let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
-      try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
-      } catch (error) {
-        if (error instanceof OpportunityInputError) return fail(error.code, error.message)
-        throw error
-      }
-      const row = await selectById(ids.workspaceId, ids.opportunityId)
-      if (!row) return fail('not_found', 'opportunity not found in this workspace')
-      if (row.removedAt === null) return { ok: true, opportunity: toRecord(row) }
       // The (workspace, job) partial unique index is the deterministic duplicate
       // guard: restoring while another active Opportunity owns the Job raises a
       // unique violation, mapped here to a typed deterministic_duplicate.
-      return commit(
-        row,
-        ids.actor,
-        'restored',
-        { kind: 'restored', priorRevision: row.revision },
-        { removedAt: null },
-        sql`${lifecycleOpportunities.removedAt} is not null`,
-        'deterministic_duplicate',
-      )
+      try {
+        return await database.transaction((tx) => restoreOn(tx, input))
+      } catch (error) {
+        if (isUniqueViolation(error)) return fail('deterministic_duplicate', 'an active opportunity already exists for this job')
+        throw error
+      }
     },
 
     async history(workspaceId, opportunityId) {

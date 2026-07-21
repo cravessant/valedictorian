@@ -327,7 +327,11 @@ export interface ApplicationAggregateService {
   recordAttempt(input: RecordAttemptInput): Promise<{ readonly ok: true; readonly attempt: ApplicationAttemptRecord } | ApplicationFailure>
   listAttempts(workspaceId: string, applicationId: string): Promise<readonly ApplicationAttemptRecord[]>
   remove(input: RemoveApplicationInput): Promise<MutateApplicationResult>
+  /** Composable tombstone core: tombstone an Application (with its dependent choice) on the caller's transaction executor (no internal tx). */
+  removeOn(exec: ApplicationDeleteExec, input: RemoveApplicationInput): Promise<MutateApplicationResult>
   restore(input: ApplicationMutationInput): Promise<MutateApplicationResult>
+  /** Composable restore core: clear an Application tombstone on the caller's transaction executor (no internal tx). */
+  restoreOn(exec: ApplicationExec, input: ApplicationMutationInput): Promise<MutateApplicationResult>
   history(workspaceId: string, applicationId: string): Promise<readonly ApplicationHistoryEntry[]>
 }
 
@@ -497,6 +501,29 @@ export function createPgliteApplicationAggregateService(
     })
   }
 
+  // Composable commit core: conditional head update + history append on the caller's
+  // executor (no internal tx) so the removal orchestration composes an Application
+  // tombstone into ONE atomic cross-aggregate transaction. May THROW a unique-violation.
+  async function commitOn(
+    exec: ApplicationExec,
+    row: ApplicationRow,
+    actor: ApplicationActor,
+    kind: ApplicationHistoryKind,
+    snapshot: JsonValue,
+    headUpdate: HeadUpdate,
+    guard: SQL,
+  ): Promise<MutateApplicationResult> {
+    const createdAt = nowIso()
+    const nextRevision = row.revision + 1
+    const updated = await updateLifecycleApplications(exec)
+      .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
+      .where(and(eq(lifecycleApplications.id, row.id), guard))
+      .returning({ id: lifecycleApplications.id })
+    if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
+    await appendHistory(exec, row.id, nextRevision, kind, snapshot, actor, createdAt)
+    return { ok: true as const, application: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
+  }
+
   async function commit(
     row: ApplicationRow,
     actor: ApplicationActor,
@@ -506,18 +533,8 @@ export function createPgliteApplicationAggregateService(
     guard: SQL,
     onUnique: 'revision_conflict' | 'deterministic_duplicate',
   ): Promise<MutateApplicationResult> {
-    const createdAt = nowIso()
-    const nextRevision = row.revision + 1
     try {
-      return await database.transaction(async (tx) => {
-        const updated = await updateLifecycleApplications(tx)
-          .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
-          .where(and(eq(lifecycleApplications.id, row.id), guard))
-          .returning({ id: lifecycleApplications.id })
-        if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
-        await appendHistory(tx, row.id, nextRevision, kind, snapshot, actor, createdAt)
-        return { ok: true as const, application: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
-      })
+      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshot, headUpdate, guard))
     } catch (error) {
       if (isUniqueViolation(error)) {
         return onUnique === 'deterministic_duplicate'
@@ -526,6 +543,63 @@ export function createPgliteApplicationAggregateService(
       }
       throw error
     }
+  }
+
+  /** Count an Application's own dependents (links + events + attempts) on the caller's executor. */
+  async function countOwnDependents(exec: ApplicationExec, applicationId: string): Promise<number> {
+    const [{ dependents }] = await exec
+      .select({ dependents: sql<number>`
+        (select count(*) from ${pursuitLinks} where ${pursuitLinks.applicationId} = ${applicationId})
+        + (select count(*) from ${applicationEventRecords} where ${applicationEventRecords.applicationId} = ${applicationId})
+        + (select count(*) from ${applicationAttemptRecords} where ${applicationAttemptRecords.applicationId} = ${applicationId})` })
+      .from(lifecycleApplications)
+      .where(eq(lifecycleApplications.id, applicationId))
+    return Number(dependents)
+  }
+
+  // Composable tombstone/restore cores for the removal orchestration. removeOn needs a
+  // delete-capable executor for the 'cascade' dependent choice.
+  async function removeOn(exec: ApplicationDeleteExec, input: RemoveApplicationInput): Promise<MutateApplicationResult> {
+    let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+    try {
+      resolved = await ids(input)
+    } catch (error) {
+      if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId))).limit(1)
+    const typed = (row as ApplicationRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'application not found in this workspace')
+    if (typed.removedAt !== null) return { ok: true, application: toRecord(typed) }
+    const dependentCount = await countOwnDependents(exec, typed.id)
+    if (dependentCount > 0 && input.dependents === undefined) {
+      return fail('dependent_choice_required', 'application has dependent links/events/attempts; pass dependents: cascade | preserve')
+    }
+    if (input.dependents === 'cascade') {
+      await deletePursuitLinks(exec).where(eq(pursuitLinks.applicationId, typed.id))
+      await deleteApplicationEventRecords(exec).where(eq(applicationEventRecords.applicationId, typed.id))
+      await deleteApplicationAttemptRecords(exec).where(eq(applicationAttemptRecords.applicationId, typed.id))
+    }
+    return commitOn(exec, typed, resolved.actor, 'removed', { dependents: input.dependents ?? 'none' },
+      { removedAt: nowIso() }, isNull(lifecycleApplications.removedAt))
+  }
+
+  async function restoreOn(exec: ApplicationExec, input: ApplicationMutationInput): Promise<MutateApplicationResult> {
+    let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+    try {
+      resolved = await ids(input)
+    } catch (error) {
+      if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId))).limit(1)
+    const typed = (row as ApplicationRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'application not found in this workspace')
+    if (typed.removedAt === null) return { ok: true, application: toRecord(typed) }
+    return commitOn(exec, typed, resolved.actor, 'restored', { kind: 'restored', priorRevision: typed.revision },
+      { removedAt: null }, sql`${lifecycleApplications.removedAt} is not null`)
   }
 
   async function ids(input: { workspaceId: unknown; applicationId: unknown; actor: unknown }) {
@@ -950,63 +1024,25 @@ export function createPgliteApplicationAggregateService(
       return rows.map((r) => ({ id: r.id, applicationId: r.applicationId, state: r.state as ApplicationAttemptState, startedAt: r.startedAt, completedAt: r.completedAt, summary: r.summary, createdAt: r.createdAt }))
     },
 
+    removeOn,
+    restoreOn,
+
     async remove(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
       try {
-        resolved = await ids(input)
+        return await database.transaction((tx) => removeOn(tx, input))
       } catch (error) {
-        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'application was modified concurrently')
         throw error
       }
-      const row = await selectById(resolved.workspaceId, resolved.applicationId)
-      if (!row) return fail('not_found', 'application not found in this workspace')
-      if (row.removedAt !== null) return { ok: true, application: toRecord(row) }
-      const [{ dependents }] = await database
-        .select({ dependents: sql<number>`
-          (select count(*) from ${pursuitLinks} where ${pursuitLinks.applicationId} = ${row.id})
-          + (select count(*) from ${applicationEventRecords} where ${applicationEventRecords.applicationId} = ${row.id})
-          + (select count(*) from ${applicationAttemptRecords} where ${applicationAttemptRecords.applicationId} = ${row.id})` })
-        .from(lifecycleApplications)
-        .where(eq(lifecycleApplications.id, row.id))
-      const dependentCount = Number(dependents)
-      if (dependentCount > 0 && input.dependents === undefined) {
-        return fail('dependent_choice_required', 'application has dependent links/events/attempts; pass dependents: cascade | preserve')
-      }
-      const createdAt = nowIso()
-      const nextRevision = row.revision + 1
-      return database.transaction(async (tx) => {
-        if (input.dependents === 'cascade') {
-          await deletePursuitLinks(tx).where(eq(pursuitLinks.applicationId, row.id))
-          await deleteApplicationEventRecords(tx).where(eq(applicationEventRecords.applicationId, row.id))
-          await deleteApplicationAttemptRecords(tx).where(eq(applicationAttemptRecords.applicationId, row.id))
-        }
-        const updated = await updateLifecycleApplications(tx).set({ removedAt: createdAt, revision: nextRevision, updatedAt: createdAt }).where(and(eq(lifecycleApplications.id, row.id), isNull(lifecycleApplications.removedAt))).returning({ id: lifecycleApplications.id })
-        if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
-        await appendHistory(tx, row.id, nextRevision, 'removed', { dependents: input.dependents ?? 'none' }, resolved.actor, createdAt)
-        return { ok: true as const, application: toRecord({ ...row, removedAt: createdAt, revision: nextRevision, updatedAt: createdAt }) }
-      })
     },
 
     async restore(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
       try {
-        resolved = await ids(input)
+        return await database.transaction((tx) => restoreOn(tx, input))
       } catch (error) {
-        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('deterministic_duplicate', 'an active application already exists for this opportunity')
         throw error
       }
-      const row = await selectById(resolved.workspaceId, resolved.applicationId)
-      if (!row) return fail('not_found', 'application not found in this workspace')
-      if (row.removedAt === null) return { ok: true, application: toRecord(row) }
-      return commit(
-        row,
-        resolved.actor,
-        'restored',
-        { kind: 'restored', priorRevision: row.revision },
-        { removedAt: null },
-        sql`${lifecycleApplications.removedAt} is not null`,
-        'deterministic_duplicate',
-      )
     },
 
     async history(workspaceId, applicationId) {
