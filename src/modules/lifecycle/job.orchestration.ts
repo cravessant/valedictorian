@@ -37,7 +37,7 @@
  * into transport errors; existence/concurrency remain typed errors — the facade's
  * shared classifier draws that line.
  */
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
 import { captureRevisions, lifecycleCaptures } from '../capture/capture.schema'
@@ -55,7 +55,6 @@ import {
   JobInputError,
   WORKSPACE_MAX,
   auditJson,
-  fail,
   isUniqueViolation,
   requireActor,
   requireText,

@@ -32,11 +32,26 @@ import type {
 import { lifecycleBlockerCodes } from 'sparxie'
 import { toContractActor, toLifecycleBlocker, type LifecycleBlockerInput } from './lifecycle-audit.dto'
 
+/** The branded aggregate id carried by a lifecycle resource `T`. */
+type LifecycleResourceId<T> = T extends { readonly id: infer Id } ? Id : never
+
+/**
+ * A duplicate-resolution decision whose `targetResourceId` is branded to the
+ * resource `T`'s own id type. On a succeeded mutation attach/merge collapses the
+ * duplicate onto the returned resource, so every per-aggregate contract brands the
+ * target to that aggregate's id. The shared, unbranded `DuplicateResolutionDecision`
+ * remains the loose *input* the mappers accept; this is the branded *output* shape.
+ */
+export interface DuplicateResolutionDecisionFor<T> {
+  readonly action: DuplicateResolutionDecision['action']
+  readonly targetResourceId: LifecycleResourceId<T>
+}
+
 /** The `succeeded` branch of a mutation result, generic over the aggregate resource. */
 export interface MutationSucceeded<T> {
   readonly status: 'succeeded'
   readonly resource: T
-  readonly duplicateResolution: DuplicateResolutionDecision | null
+  readonly duplicateResolution: DuplicateResolutionDecisionFor<T> | null
   readonly audit: LifecycleAuditEvidence
 }
 
@@ -75,7 +90,10 @@ export function toSucceededMutationResult<T>(
   return {
     status: 'succeeded',
     resource,
-    duplicateResolution: context.duplicateResolution ?? null,
+    // Loose input -> branded output: the parsed input already carries this
+    // aggregate's branded id (parseInput brands it at the seam), so the brand
+    // assertion is truthful and lives here, at the shared mapper source.
+    duplicateResolution: (context.duplicateResolution ?? null) as DuplicateResolutionDecisionFor<T> | null,
     audit,
   }
 }

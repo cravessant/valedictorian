@@ -31,6 +31,7 @@ import type {
 import { toContractActor, toLifecycleBlocker, type LifecycleBlockerInput } from './lifecycle-audit.dto'
 import {
   classifyMutationFailure,
+  type DuplicateResolutionDecisionFor,
   type MutationAuditExtras,
   type MutationBlocked,
   type MutationHttpFailure,
@@ -42,9 +43,12 @@ export interface PromotionPromoted<T> {
   readonly status: 'promoted'
   readonly resource: T
   readonly created: boolean
-  readonly warnings: readonly LifecycleWarning[]
+  // Mutable array element type: the contract's promoted branch (z.infer of a
+  // ZodArray) is a mutable `LifecycleWarning[]`; a `readonly` array would not be
+  // assignable to it. `toContractWarnings` already returns a fresh mutable array.
+  readonly warnings: LifecycleWarning[]
   readonly override: WarningOverride | null
-  readonly duplicateResolution: DuplicateResolutionDecision | null
+  readonly duplicateResolution: DuplicateResolutionDecisionFor<T> | null
   readonly audit: LifecycleAuditEvidence
 }
 
@@ -130,7 +134,9 @@ export function toPromotedResult<T>(resource: T, context: PromotedContext): Prom
     created: context.created,
     warnings: toContractWarnings(context.warnings ?? []),
     override,
-    duplicateResolution: context.duplicateResolution ?? null,
+    // Loose input -> branded output, mirroring toSucceededMutationResult: the
+    // promoted resource's aggregate brands the collapsed duplicate target.
+    duplicateResolution: (context.duplicateResolution ?? null) as DuplicateResolutionDecisionFor<T> | null,
     audit,
   }
 }
