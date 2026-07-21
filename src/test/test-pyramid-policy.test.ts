@@ -591,6 +591,7 @@ describe('test pyramid policy', () => {
       ['src/modules/applications/application.repository.list.test.ts', false],
       ['src/modules/capture/capture.provenance-parity.pglite.test.ts', false],
       ['src/modules/capture/capture.service.pglite.test.ts', false],
+      ['src/modules/capture/capture.read-model.pglite.test.ts', false],
       ['src/modules/job/job.capture-lineage.pglite.test.ts', false],
       ['src/modules/job/job.identity.pglite.test.ts', false],
       ['src/modules/job/job.service.pglite.test.ts', false],
