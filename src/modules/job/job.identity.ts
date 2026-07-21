@@ -123,11 +123,29 @@ export type MergeJobsResult =
   | { readonly ok: true; readonly winnerJobId: string; readonly loserJobId: string }
   | JobFailure
 
+/**
+ * One-way removal of an external identity (the enforce trigger permits only the
+ * removed_at transition). The contract remove carries the full identity tuple; the
+ * match is on the active (job, kind, provider, coalesce(account,''), value) row —
+ * a job holds at most one such active row (idx_job_external_identities_per_job).
+ */
+export interface RemoveJobIdentityInput {
+  readonly workspaceId: string
+  readonly jobId: string
+  readonly identity: IdentityTuple
+  readonly actor: JobActor
+}
+
+export type RemoveJobIdentityResult =
+  | { readonly ok: true; readonly jobId: string; readonly identityId: string }
+  | JobFailure
+
 export interface JobIdentityService {
   establish(input: EstablishIdentityInput): Promise<EstablishIdentityResult>
   strengthen(input: StrengthenIdentityInput): Promise<EstablishIdentityResult>
   listIdentities(workspaceId: string, jobId: string): Promise<readonly JobIdentityRecord[]>
   inspectOwner(workspaceId: string, tuple: IdentityTuple): Promise<IdentityOwner | null>
+  remove(input: RemoveJobIdentityInput): Promise<RemoveJobIdentityResult>
   merge(input: MergeJobsInput): Promise<MergeJobsResult>
 }
 
@@ -403,6 +421,53 @@ export function createPgliteJobIdentityService(
         provider: tuple.provider.trim().toLowerCase(),
         account,
         value: tuple.value,
+      })
+    },
+
+    async remove(input) {
+      let workspaceId: string
+      let jobId: string
+      let actor: JobActor
+      let kind: JobIdentityKind
+      let provider: string
+      let account: string | null
+      let value: string
+      try {
+        workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
+        jobId = requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX)
+        actor = requireActor(input.actor)
+        kind = requireOneOf(input.identity.kind, jobExternalIdentityKinds, 'identity.kind')
+        provider = requireText(input.identity.provider, 'identity.provider', 1, PROVIDER_MAX).toLowerCase()
+        account = input.identity.account === undefined || input.identity.account === null
+          ? null
+          : requireText(input.identity.account, 'identity.account', 1, ACCOUNT_MAX).toLowerCase()
+        value = requireText(input.identity.value, 'identity.value', 1, VALUE_MAX)
+      } catch (error) {
+        if (error instanceof JobInputError) return fail(error.code, error.message)
+        throw error
+      }
+      const job = await jobExists(workspaceId, jobId)
+      if (!job) return fail('not_found', 'job not found in this workspace')
+      const [active] = await database
+        .select({ id: jobExternalIdentities.id })
+        .from(jobExternalIdentities)
+        .where(and(
+          eq(jobExternalIdentities.jobId, jobId),
+          eq(jobExternalIdentities.kind, kind),
+          eq(jobExternalIdentities.provider, provider),
+          sql`coalesce(${jobExternalIdentities.account}, '') = ${account ?? ''}`,
+          eq(jobExternalIdentities.value, value),
+          isNull(jobExternalIdentities.removedAt),
+        ))
+        .limit(1)
+      if (!active) return fail('not_found', 'active identity not found on this job')
+      const createdAt = nowIso()
+      return await database.transaction(async (tx) => {
+        await updateJobExternalIdentities(tx)
+          .set({ removedAt: createdAt })
+          .where(eq(jobExternalIdentities.id, active.id))
+        await appendHistory(tx, jobId, 'identity_removed', JSON.stringify({ kind, provider, account, value }), actor, createdAt)
+        return { ok: true as const, jobId, identityId: active.id }
       })
     },
 

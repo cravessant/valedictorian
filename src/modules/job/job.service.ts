@@ -129,7 +129,16 @@ export interface JobService {
   get(workspaceId: string, jobId: string): Promise<JobRecord | null>
   list(workspaceId: string, query?: JobListQuery): Promise<readonly JobRecord[]>
   correctFacts(input: CorrectJobFactsInput): Promise<MutateJobResult>
+  /**
+   * Composable facts-correction core: bump facts on the caller's transaction
+   * executor (no internal tx), so the job orchestration composes a facts
+   * correction atomically with the corrected facts' supporting evidence-reference
+   * links. Same validation + optimistic guard as `correctFacts`.
+   */
+  correctFactsOn(exec: JobExec, input: CorrectJobFactsInput): Promise<MutateJobResult>
   updateAvailability(input: UpdateJobAvailabilityInput): Promise<MutateJobResult>
+  /** Composable availability core: bump availability on the caller's transaction executor (no internal tx). */
+  updateAvailabilityOn(exec: JobExec, input: UpdateJobAvailabilityInput): Promise<MutateJobResult>
   remove(input: JobMutationInput): Promise<MutateJobResult>
   /** Composable tombstone core: run a single Job tombstone on the caller's transaction executor (no internal tx). */
   removeOn(exec: JobExec, input: JobMutationInput): Promise<MutateJobResult>
@@ -193,13 +202,83 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
   const nowIso = () => clock().toISOString()
   const newId = options.newId ?? createUuidV7Generator(clock)
 
-  async function selectById(workspaceId: string, jobId: string): Promise<JobRow | null> {
-    const [row] = await database
+  async function selectByIdOn(exec: JobExec, workspaceId: string, jobId: string): Promise<JobRow | null> {
+    const [row] = await exec
       .select()
       .from(lifecycleJobs)
       .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
       .limit(1)
     return (row as JobRow | undefined) ?? null
+  }
+
+  async function selectById(workspaceId: string, jobId: string): Promise<JobRow | null> {
+    return selectByIdOn(database, workspaceId, jobId)
+  }
+
+  // Composable facts-correction / availability cores: single attempt on the caller's
+  // executor (no internal tx) so the job orchestration composes the head mutation
+  // atomically with the write's supporting evidence-reference links. May THROW a
+  // unique-violation (history-sequence race) for the caller's boundary to map.
+  async function correctFactsOn(exec: JobExec, input: CorrectJobFactsInput): Promise<MutateJobResult> {
+    let ids: { workspaceId: string; jobId: string; actor: JobActor }
+    let factsJson: string
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+      factsJson = boundedJson(input.facts, 'facts', FACTS_MAX)
+    } catch (error) {
+      if (error instanceof JobInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const row = await selectByIdOn(exec, ids.workspaceId, ids.jobId)
+    if (!row) return fail('not_found', 'job not found in this workspace')
+    if (input.expectedFactsRevision !== undefined && input.expectedFactsRevision !== row.factsRevision) {
+      return fail('revision_conflict', 'job facts were modified concurrently')
+    }
+    return commitOn(
+      exec,
+      row,
+      ids.actor,
+      'facts_corrected',
+      factsJson,
+      { factsJson, factsRevision: row.factsRevision + 1 },
+      eq(lifecycleJobs.factsRevision, row.factsRevision),
+    )
+  }
+
+  async function updateAvailabilityOn(exec: JobExec, input: UpdateJobAvailabilityInput): Promise<MutateJobResult> {
+    let ids: { workspaceId: string; jobId: string; actor: JobActor }
+    let state: JobAvailabilityState
+    let observedAt: string
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+      state = requireAvailabilityState(input.state, 'state')
+      observedAt = requireText(input.observedAt, 'observedAt', 1, TIMESTAMP_MAX)
+    } catch (error) {
+      if (error instanceof JobInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const row = await selectByIdOn(exec, ids.workspaceId, ids.jobId)
+    if (!row) return fail('not_found', 'job not found in this workspace')
+    if (input.expectedAvailabilityRevision !== undefined && input.expectedAvailabilityRevision !== row.availabilityRevision) {
+      return fail('revision_conflict', 'job availability was modified concurrently')
+    }
+    return commitOn(
+      exec,
+      row,
+      ids.actor,
+      'availability_changed',
+      JSON.stringify({ state, observedAt }),
+      { availabilityState: state, availabilityObservedAt: observedAt, availabilityRevision: row.availabilityRevision + 1 },
+      eq(lifecycleJobs.availabilityRevision, row.availabilityRevision),
+    )
   }
 
   // Dedup lookup on the caller's executor (workspace DB or an open promotion tx), so
@@ -251,23 +330,6 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       createdAt,
     })
     return { ok: true as const, job: toRecord({ ...row, ...headUpdate, updatedAt: createdAt }) }
-  }
-
-  async function commit(
-    row: JobRow,
-    actor: JobActor,
-    kind: JobHistoryKind,
-    snapshotJson: string,
-    headUpdate: HeadUpdate,
-    guard: SQL,
-  ): Promise<MutateJobResult> {
-    try {
-      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshotJson, headUpdate, guard))
-    } catch (error) {
-      // Fallback: a concurrent mutation claimed the same job_history sequence.
-      if (isUniqueViolation(error)) return fail('revision_conflict', 'job was modified concurrently')
-      throw error
-    }
   }
 
   // Composable tombstone/restore cores: single attempt on the caller's executor so the
@@ -413,64 +475,25 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       return (rows as JobRow[]).map(toRecord)
     },
 
+    correctFactsOn,
+    updateAvailabilityOn,
+
     async correctFacts(input) {
-      let ids: { workspaceId: string; jobId: string; actor: JobActor }
-      let factsJson: string
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
-        factsJson = boundedJson(input.facts, 'facts', FACTS_MAX)
+        return await database.transaction((tx) => correctFactsOn(tx, input))
       } catch (error) {
-        if (error instanceof JobInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'job was modified concurrently')
         throw error
       }
-      const row = await selectById(ids.workspaceId, ids.jobId)
-      if (!row) return fail('not_found', 'job not found in this workspace')
-      if (input.expectedFactsRevision !== undefined && input.expectedFactsRevision !== row.factsRevision) {
-        return fail('revision_conflict', 'job facts were modified concurrently')
-      }
-      return commit(
-        row,
-        ids.actor,
-        'facts_corrected',
-        factsJson,
-        { factsJson, factsRevision: row.factsRevision + 1 },
-        eq(lifecycleJobs.factsRevision, row.factsRevision),
-      )
     },
 
     async updateAvailability(input) {
-      let ids: { workspaceId: string; jobId: string; actor: JobActor }
-      let state: JobAvailabilityState
-      let observedAt: string
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
-        state = requireAvailabilityState(input.state, 'state')
-        observedAt = requireText(input.observedAt, 'observedAt', 1, TIMESTAMP_MAX)
+        return await database.transaction((tx) => updateAvailabilityOn(tx, input))
       } catch (error) {
-        if (error instanceof JobInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'job was modified concurrently')
         throw error
       }
-      const row = await selectById(ids.workspaceId, ids.jobId)
-      if (!row) return fail('not_found', 'job not found in this workspace')
-      if (input.expectedAvailabilityRevision !== undefined && input.expectedAvailabilityRevision !== row.availabilityRevision) {
-        return fail('revision_conflict', 'job availability was modified concurrently')
-      }
-      return commit(
-        row,
-        ids.actor,
-        'availability_changed',
-        JSON.stringify({ state, observedAt }),
-        { availabilityState: state, availabilityObservedAt: observedAt, availabilityRevision: row.availabilityRevision + 1 },
-        eq(lifecycleJobs.availabilityRevision, row.availabilityRevision),
-      )
     },
 
     removeOn,

@@ -597,6 +597,7 @@ describe('test pyramid policy', () => {
       ['src/modules/job/job.identity.pglite.test.ts', false],
       ['src/modules/job/job.service.pglite.test.ts', false],
       ['src/modules/lifecycle/capture-to-job.promotion.pglite.test.ts', false],
+      ['src/modules/lifecycle/job.orchestration.pglite.test.ts', false],
       ['src/modules/lifecycle/job-to-opportunity.promotion.pglite.test.ts', false],
       ['src/modules/lifecycle/opportunity-to-application.promotion.pglite.test.ts', false],
       ['src/modules/lifecycle/removal.orchestration.pglite.test.ts', false],
