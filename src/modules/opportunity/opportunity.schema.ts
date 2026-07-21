@@ -35,9 +35,15 @@ export const lifecycleOpportunities = pgTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     removedAt: text('removed_at'),
+    // #304: create-dedup key (see capture.schema for the partial-index rationale).
+    idempotencyKey: text('idempotency_key'),
   },
   (table) => ({
     jobIdx: uniqueIndex('idx_lifecycle_opportunities_job').on(table.workspaceId, table.jobId).where(sql`${table.removedAt} is null`),
+    idempotencyIdx: uniqueIndex('idx_lifecycle_opportunities_idempotency')
+      .on(table.workspaceId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} is not null`),
+    idempotencyKeyCheck: check('chk_lifecycle_opportunities_idempotency_key', sql`${table.idempotencyKey} is null or length(${table.idempotencyKey}) between 1 and 200`),
     jobRefIdx: index('idx_lifecycle_opportunities_job_ref').on(table.jobId),
     jobFk: foreignKey({ name: 'fk_lifecycle_opportunities_job', columns: [table.jobId], foreignColumns: [lifecycleJobs.id] }),
     workspaceCheck: check('chk_lifecycle_opportunities_workspace', sql`length(${table.workspaceId}) between 1 and 200`),
