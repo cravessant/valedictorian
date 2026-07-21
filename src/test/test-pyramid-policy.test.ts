@@ -616,6 +616,7 @@ describe('test pyramid policy', () => {
       ['src/modules/source-execution/source-session-executor.test.ts', false],
       ['src/modules/action-queue/action-queue.repository.test.ts', false],
       ['src/modules/secrets/secret.service.test.ts', false],
+      ['src/modules/scheduling/scheduled-work.pglite.test.ts', false],
       ['src/modules/secrets/secret.pglite.store.test.ts', false],
       ['src/modules/secrets/secret.identity.test.ts', false],
       ['src/modules/sourcing/normalization.repository.exact-success.test.ts', false],
