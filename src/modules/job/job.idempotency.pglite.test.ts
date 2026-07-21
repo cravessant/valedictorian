@@ -28,7 +28,7 @@ function input(overrides: Partial<CreateJobInput> = {}): CreateJobInput {
   return { workspaceId: 'ws-a', facts: { title: 'Staff Engineer', company: 'Acme' }, actor: { type: 'user', id: 'user-1' }, ...overrides }
 }
 
-describe('Job create-dedup by idempotencyKey', () => {
+describe.sequential('Job create-dedup by idempotencyKey', () => {
   it('mints once and converges a repeated keyed create onto the same Job', async () => {
     const service = await setup()
     const first = await service.create(input({ idempotencyKey: 'k1' }))
