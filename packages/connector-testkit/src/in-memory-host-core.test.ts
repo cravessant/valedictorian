@@ -135,16 +135,16 @@ describe("in-memory connector host — core", () => {
         version: "0.0.0-fixture",
       },
       async refresh(input, runtime): Promise<ConnectorRefreshResult> {
-        if (!runtime.rawSourceIntake) {
+        if (!runtime.captureIntake) {
           throw new Error("raw source intake is required")
         }
-        const receipt = await runtime.rawSourceIntake.capture({
+        const receipt = await runtime.captureIntake.capture({
           observedAt,
           providerRecordId: "provider-job-1",
           providerSchema: "fixture-provider@1",
           payload: { title: "Software Engineer" },
         })
-        expect(receipt.revision.rawRecordId).toBe(receipt.rawRecordId)
+        expect(receipt.revision.captureId).toBe(receipt.captureId)
         return emptyRefreshResult(input)
       },
     }
@@ -166,38 +166,41 @@ describe("in-memory connector host — core", () => {
       coverage: { start: observedAt, end: observedAt },
     })
 
-    expect(host.snapshot().rawCaptures).toEqual([
+    expect(host.snapshot().captures).toEqual([
       expect.objectContaining({
         input: {
+          evidenceMode: "reported",
           adapter: {
             id: "fixture.raw-jobs",
             kind: "connector",
             version: "0.0.0-fixture",
           },
-          capture: {
-            connectorInstanceId: "instance_raw_fixture",
-            connectorRunId: "run_1",
-            executionScopeId: "connector.instance_raw_fixture",
-          },
-          intakeItemId: "run_1:item:1",
           observedAt,
           providerRecordId: "provider-job-1",
           providerSchema: "fixture-provider@1",
           payload: { title: "Software Engineer" },
+          evidence: [],
         },
+        provenance: {
+          connectorInstanceId: "instance_raw_fixture",
+          connectorRunId: "run_1",
+          executionScopeId: "connector.instance_raw_fixture",
+          reportedOrigin: null,
+        },
+        captureItemId: "run_1:item:1",
       }),
     ])
   })
 
   it("reuses an unchanged raw revision while appending re-observation occurrences", async () => {
     const observedAt = "2026-07-08T16:00:00.000Z"
-    const receipts: import("@sparxie/valedictorian-connectors-core").RawSourceIntakeReceipt[] = []
+    const receipts: import("@sparxie/valedictorian-connectors-core").ConnectorCaptureReceipt[] = []
     const connector: JobConnector = {
       definition: { id: "fixture.reobserved", version: "0.0.0-fixture" },
       async refresh(input, runtime): Promise<ConnectorRefreshResult> {
-        if (!runtime.rawSourceIntake) throw new Error("raw intake required")
+        if (!runtime.captureIntake) throw new Error("raw intake required")
         receipts.push(
-          await runtime.rawSourceIntake.capture({
+          await runtime.captureIntake.capture({
             observedAt,
             providerRecordId: "provider-job-1",
             providerSchema: "fixture-provider@1",
@@ -229,7 +232,7 @@ describe("in-memory connector host — core", () => {
 
     expect(receipts).toHaveLength(2)
     expect(receipts[1]).toMatchObject({
-      rawRecordId: receipts[0]?.rawRecordId,
+      captureId: receipts[0]?.captureId,
       revision: {
         id: receipts[0]?.revision.id,
         revision: 1,
@@ -248,17 +251,17 @@ describe("in-memory connector host — core", () => {
     const connector: JobConnector = {
       definition: { id: "fixture.resolved-raw", version: "0.0.0-fixture" },
       async refresh(input, runtime): Promise<ConnectorRefreshResult> {
-        if (!runtime.rawSourceIntake || !runtime.normalization) {
+        if (!runtime.captureIntake || !runtime.normalization) {
           throw new Error("raw normalization runtime is required")
         }
-        const receipt = await runtime.rawSourceIntake.capture({
+        const receipt = await runtime.captureIntake.capture({
           observedAt,
           providerRecordId: "provider-job-1",
           providerSchema: "fixture-provider@1",
           payload: { employmentType: "FT" },
         })
         await runtime.normalization.run({
-          rawRevision: receipt.revision,
+          captureRevision: receipt.revision,
           resolver: {
             id: "fixture.employment",
             version: "fixture-employment@1",
@@ -306,7 +309,7 @@ describe("in-memory connector host — core", () => {
 
     expect(host.snapshot().normalizations).toEqual([
       expect.objectContaining({
-        rawRevisionId: "raw_revision_1",
+        captureRevisionId: "capture_revision_1",
         resolver: expect.objectContaining({
           id: "fixture.employment",
           version: "fixture-employment@1",
@@ -328,14 +331,14 @@ describe("in-memory connector host — core", () => {
     const connector: JobConnector = {
       definition: { id: "fixture.raw-order", version: "0.0.0-fixture" },
       async refresh(input, runtime): Promise<ConnectorRefreshResult> {
-        if (!runtime.rawSourceIntake) throw new Error("raw intake required")
-        await runtime.rawSourceIntake.capture({ observedAt, payload: { id: 1 } })
+        if (!runtime.captureIntake) throw new Error("raw intake required")
+        await runtime.captureIntake.capture({ observedAt, payload: { id: 1 } })
         events.push("acknowledged")
         return emptyRefreshResult(input)
       },
     }
     const host = createInMemoryConnectorHost({
-      async onRawCapture() {
+      async onCapture() {
         events.push("persisting")
         await Promise.resolve()
         events.push("persisted")
@@ -373,9 +376,9 @@ describe("in-memory connector host — core", () => {
     const connector: JobConnector = {
       definition: { id: "fixture.concurrent-runs", version: "0.0.0-fixture" },
       async refresh(input, runtime): Promise<ConnectorRefreshResult> {
-        if (!runtime.rawSourceIntake) throw new Error("raw intake required")
-        await runtime.rawSourceIntake.capture({
-          observedAt: input.coverage.end,
+        if (!runtime.captureIntake) throw new Error("raw intake required")
+        await runtime.captureIntake.capture({
+          observedAt: "2026-07-08T16:00:00.000Z",
           providerRecordId: input.coverage.end,
           payload: { run: input.coverage.end },
         })
@@ -428,9 +431,9 @@ describe("in-memory connector host — core", () => {
 
     const snapshot = host.snapshot()
     expect(
-      snapshot.rawCaptures.map(({ input }) => ({
+      snapshot.captures.map(({ input, provenance }) => ({
         providerRecordId: input.providerRecordId,
-        runId: input.capture?.connectorRunId,
+        runId: provenance.connectorRunId,
       })),
     ).toEqual([
       { providerRecordId: "first", runId: "run_1" },
@@ -481,8 +484,8 @@ describe("in-memory connector host — core", () => {
     expect(
       host
         .snapshot()
-        .rawCaptures.slice(-2)
-        .map(({ input }) => input.capture?.connectorRunId),
+        .captures.slice(-2)
+        .map(({ provenance }) => provenance.connectorRunId),
     ).toEqual(["run_3", "run_4"])
     expect(host.snapshot().runs.at(-1)?.id).toBe("run_4")
     expect(host.snapshot().runs.at(-2)).toMatchObject({
@@ -498,9 +501,9 @@ describe("in-memory connector host — core", () => {
         if (input.coverage.end === "before-capture") {
           throw new Error("secret-bearing upstream failure")
         }
-        if (!runtime.rawSourceIntake) throw new Error("raw intake required")
-        await runtime.rawSourceIntake.capture({
-          observedAt: input.coverage.end,
+        if (!runtime.captureIntake) throw new Error("raw intake required")
+        await runtime.captureIntake.capture({
+          observedAt: "2026-07-08T16:00:00.000Z",
           providerRecordId: "after-failure",
           payload: { ok: true },
         })
@@ -543,8 +546,51 @@ describe("in-memory connector host — core", () => {
     expect(JSON.stringify(snapshot.runs[0])).not.toContain(
       "secret-bearing upstream failure",
     )
-    expect(snapshot.rawCaptures).toHaveLength(1)
-    expect(snapshot.rawCaptures[0]?.input.capture?.connectorRunId).toBe("run_2")
+    expect(snapshot.captures).toHaveLength(1)
+    expect(snapshot.captures[0]?.provenance.connectorRunId).toBe("run_2")
     expect(snapshot.runs[1]).toMatchObject({ id: "run_2", status: "completed" })
+  })
+
+  it("fails closed and persists nothing when a capture fails createCaptureInputSchema", async () => {
+    const persisted: unknown[] = []
+    const observedAt = "2026-07-08T16:00:00.000Z"
+    const connector: JobConnector = {
+      definition: { id: "fixture.invalid-capture", version: "0.0.0-fixture" },
+      async refresh(input, runtime): Promise<ConnectorRefreshResult> {
+        if (!runtime.captureIntake) throw new Error("capture intake required")
+        await runtime.captureIntake.capture({
+          observedAt: "not-a-timestamp",
+          providerRecordId: "provider-job-1",
+          payload: { id: 1 },
+        })
+        return emptyRefreshResult(input)
+      },
+    }
+    const host = createInMemoryConnectorHost({
+      onCapture(envelope) {
+        persisted.push(envelope)
+      },
+    })
+    host.registerInstance({
+      connectorId: connector.definition.id,
+      connectorVersion: connector.definition.version,
+      id: "instance_invalid_capture",
+      workspaceId: "workspace_alpha",
+      displayName: "Invalid capture",
+      enabled: true,
+      createdAt: observedAt,
+    })
+
+    await expect(
+      host.refresh(connector, {
+        connectorInstanceId: "instance_invalid_capture",
+        workspaceId: "workspace_alpha",
+        mode: "manual",
+        coverage: { start: observedAt, end: observedAt },
+      }),
+    ).rejects.toMatchObject({ code: "connector_execution_failed" })
+
+    expect(host.snapshot().captures).toHaveLength(0)
+    expect(persisted).toHaveLength(0)
   })
 })
