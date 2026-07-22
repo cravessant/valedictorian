@@ -40,6 +40,7 @@ import {
   connectorRunSummarySchema,
   createCaptureInputSchema,
 } from "sparxie"
+import { cloneJsonLike, stableJsonStringify } from "./stable-json.js"
 import {
   sanitizeConnectorRunCoverage,
   sanitizeConnectorRunLifecycle,
@@ -254,6 +255,7 @@ export type InMemoryConnectorHostSnapshot = {
   observations: HostObservationRecord[]
   captures: InMemoryCaptureRecord[]
   normalizations: InMemoryNormalizationRecord[]
+  providerFieldResolutions: InMemoryNormalizationRecord[]
 }
 
 export type InMemoryCaptureRecord = ConnectorCaptureEnvelope & {
@@ -289,6 +291,10 @@ export type InMemoryConnectorHost = {
     connector: JobConnector,
     request: InMemoryConnectorHostValidateAuthRequest,
   ) => Promise<ConnectorAuthValidationResult>
+  resolveProviderFields: (
+    connector: JobConnector,
+    captureRevisionId: string,
+  ) => FieldResolutionOutcome[]
   snapshot: () => InMemoryConnectorHostSnapshot
 }
 
@@ -318,6 +324,7 @@ export function createInMemoryConnectorHost(
   let observations: HostObservationRecord[] = []
   const captures: InMemoryCaptureRecord[] = []
   const normalizations: InMemoryNormalizationRecord[] = []
+  const providerFieldResolutions: InMemoryNormalizationRecord[] = []
   const captureIdsByIdentity = new Map<string, string>()
   const captureRevisionsByContent = new Map<string, ConnectorCaptureRevision>()
   const revisionCountsByCapture = new Map<string, number>()
@@ -557,6 +564,44 @@ export function createInMemoryConnectorHost(
       }
     },
 
+    resolveProviderFields(connector, captureRevisionId) {
+      const resolver = connector.providerFieldResolver
+      if (!resolver) {
+        throw new Error(`Connector does not support provider-field resolution: ${connector.definition.id}`)
+      }
+      const captureRecord = captures.find((c) => c.receipt.revision.id === captureRevisionId)
+      if (!captureRecord) {
+        throw new Error(`Unknown capture revision: ${captureRevisionId}`)
+      }
+      const revision = captureRecord.receipt.revision
+      const adapter = captureRecord.input.adapter
+      const providerSchema = captureRecord.input.providerSchema
+      const payload = captureRecord.input.payload
+      const decl = resolver.declaration
+      const applicable = adapter.kind === "connector" && adapter.id === connector.definition.id &&
+        (!decl.supportedAdapters?.kinds || decl.supportedAdapters.kinds.includes(adapter.kind)) &&
+        (!decl.supportedAdapters?.ids || decl.supportedAdapters.ids.includes(adapter.id)) &&
+        (!decl.supportedAdapters?.versions || decl.supportedAdapters.versions.includes(adapter.version)) &&
+        (!decl.supportedProviderSchemas || (providerSchema !== null && decl.supportedProviderSchemas.includes(providerSchema))) &&
+        (!decl.requiredInputs.includes("payload") || payload !== null)
+      if (!applicable) {
+        throw new Error(`Resolver not applicable to capture revision: ${captureRevisionId}`)
+      }
+      const clonedInput = {
+        captureRevision: cloneJsonLike(revision),
+        adapter: cloneJsonLike(adapter),
+        providerSchema,
+        payload: payload === null ? null : cloneJsonLike(payload),
+      }
+      const outcomes = cloneJsonLike(resolver.resolve(clonedInput))
+      providerFieldResolutions.push({
+        captureRevisionId: revision.id,
+        resolver: cloneJsonLike(resolver.declaration),
+        outcomes: cloneJsonLike(outcomes),
+      })
+      return outcomes
+    },
+
     snapshot() {
       return {
         instances: [...instances.values()],
@@ -565,6 +610,7 @@ export function createInMemoryConnectorHost(
         observations: [...observations],
         captures: cloneJsonLike(captures),
         normalizations: cloneJsonLike(normalizations),
+        providerFieldResolutions: cloneJsonLike(providerFieldResolutions),
       }
     },
   }
@@ -995,23 +1041,4 @@ function hostTimestamp(
     return notBefore ?? new Date(candidateEpoch).toISOString()
   }
   return new Date(candidateEpoch).toISOString()
-}
-
-function cloneJsonLike<T>(value: T): T {
-  return JSON.parse(stableJsonStringify(value)) as T
-}
-
-function stableJsonStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableJsonStringify(item)).join(",")}]`
-  }
-
-  if (value && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableJsonStringify(item)}`)
-      .join(",")}}`
-  }
-
-  return JSON.stringify(value)
 }
