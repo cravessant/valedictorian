@@ -65,6 +65,13 @@ export interface LifecycleRowAction<Row> {
   readonly confirm?: LifecycleRowActionConfirm
   readonly disabled?: (row: Row) => boolean
   readonly onActivate: (row: Row) => Promise<void> | void
+  /**
+   * When true, the action opens a modal (or otherwise defers mutation
+   * feedback to the modal). The shared table suppresses its own pending/
+   * success/failure announcement so the modal submission owns mutation
+   * feedback and the opener does not announce a fake mutation success.
+   */
+  readonly modal?: boolean
 }
 
 export interface LifecycleTableConfig<Row> {
@@ -127,11 +134,15 @@ export function LifecycleTable<Row>({
   const actions = configuredActions(config)
   const fallbackFocusRef = useRef<HTMLElement>(null)
   async function runAction<Row2>(row: Row2, action: LifecycleRowAction<Row2>, trigger: HTMLButtonElement | null) {
+    if (action.modal) {
+      await Promise.resolve(action.onActivate(row))
+      return
+    }
     setMutation({ kind: 'pending', label: pendingLabel(action.label) })
     try {
       await Promise.resolve(action.onActivate(row))
-      setMutation({ kind: 'succeeded', label: successLabel(action.label) })
       await Promise.resolve(onRefresh?.())
+      setMutation({ kind: 'succeeded', label: successLabel(action.label) })
       restoreFocus(trigger, fallbackFocusRef.current)
     } catch (error) {
       setMutation({

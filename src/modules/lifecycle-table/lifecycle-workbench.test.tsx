@@ -129,4 +129,20 @@ describe('LifecycleWorkbench', () => {
       }))
     }
   })
+
+  it('does not strand an unrelated phase when a selected-phase refresh supersedes its own load', async () => {
+    const user = userEvent.setup()
+    const { client, lists } = makeClient()
+    let resolveJobs: ((page: TestPage) => void) | undefined
+    lists.jobs.mockImplementationOnce(() => new Promise<TestPage>((resolve) => { resolveJobs = resolve }))
+    render(<LifecycleWorkbench client={client} />)
+
+    expect(await screen.findByText('No captures')).toBeInTheDocument()
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(lists.captures).toHaveBeenCalledTimes(2))
+    await act(async () => resolveJobs?.(emptyPage()))
+
+    await user.click(screen.getByRole('button', { name: /Jobs/ }))
+    expect(await screen.findByText('No jobs')).toBeInTheDocument()
+  })
 })
