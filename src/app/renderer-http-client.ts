@@ -60,6 +60,12 @@ export function getRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient |
   return rootClient.forWorkspace(config.workspaceId)
 }
 
+export function onRendererBackendStateChanged(
+  listener: (state: { status: string }) => void,
+): () => void {
+  return getRendererHttpConfig()?.onBackendStateChanged?.(listener) ?? (() => {})
+}
+
 export function requireRendererHttpWorkspaceClient(): ValedictorianWorkspaceClient {
   const workspaceClient = getRendererHttpWorkspaceClient()
 

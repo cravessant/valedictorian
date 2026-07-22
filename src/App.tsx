@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { useAppBootstrapLoads } from './app/use-app-bootstrap-loads'
+import { LifecycleWorkbench } from './modules/lifecycle-table/lifecycle-workbench'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import { defaultAppSettings } from './settings/app-settings'
@@ -65,7 +66,7 @@ export default function App({
   return (
     <TooltipProvider>
       <main className="min-h-screen bg-background px-6 py-10 text-foreground" data-testid="app-shell">
-        <section className="mx-auto max-w-4xl rounded-lg border border-border bg-card p-6 shadow-sm">
+        <section className="mx-auto max-w-6xl rounded-lg border border-border bg-card p-6 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Valedictorian
           </p>
@@ -74,7 +75,7 @@ export default function App({
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
             Canonical Captures, Jobs, Opportunities, and Applications are available through the
-            local HTTP API and typed workspace client. Desktop lifecycle views will use this same
+            local HTTP API and typed workspace client. Desktop lifecycle views use this same
             contract.
           </p>
           {settingsLoadFailure || workspaceLoadFailure ? (
@@ -82,6 +83,9 @@ export default function App({
               Some workspace settings could not be loaded.
             </p>
           ) : null}
+        </section>
+        <section className="mx-auto mt-6 max-w-6xl">
+          <LifecycleWorkbench />
         </section>
       </main>
       <Toaster />
