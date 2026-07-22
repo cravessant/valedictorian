@@ -55,7 +55,7 @@ valedictorian-cli --json applications history <application-id> --workspace "$VAL
 
 ## Lifecycle Commands
 
-The four command groups mirror the `sparxie@0.27.0` workspace client:
+The four command groups mirror the `sparxie@0.27.1` workspace client:
 
 - `captures list|get|create|correct|remove|restore|history|promote-to-job`
 - `jobs list|get|create|correct-facts|update-availability|external-identities add|remove|remove|restore|history|promote-to-opportunity`

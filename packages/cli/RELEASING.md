@@ -41,6 +41,20 @@ git push --tags
 
 The tag must be `vX.Y.Z-alpha.N` and match `package.json`.
 
+## Lifecycle Cutover Release Order
+
+The `0.1.0-alpha.18` preparation stays on the newest installable compatible
+contract package, `sparxie@0.27.1`, so frozen installs and hosted CI resolve
+only published registry artifacts. Do not add the prepared but unpublished
+`sparxie@0.28.0` dependency to the CLI.
+
+After the human publication gate opens, release in this order:
+
+1. Publish and tag `sparxie@0.28.0`.
+2. Bump the CLI dependency and lockfile to the published `sparxie@0.28.0`.
+3. Rerun the CLI lifecycle selectors and full release verification.
+4. Tag the verified CLI version; the tag-triggered workflow publishes it.
+
 Tagged GitHub Actions releases publish through npm Trusted Publishing. Because the
 GitHub repository is private, the workflow omits npm provenance; npm provenance
 currently requires a public GitHub source repository. If this repository becomes

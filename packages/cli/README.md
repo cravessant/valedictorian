@@ -35,7 +35,7 @@ valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli secrets run --workspace "$VALEDICTORIAN_WORKSPACE" --env TOKEN=secret://greenhouse_password -- some-tool --flag
 ```
 
-The lifecycle command tree mirrors `sparxie@0.27.0`:
+The lifecycle command tree mirrors `sparxie@0.27.1`:
 
 - `captures`: `list`, `get`, `create`, `correct`, `remove`, `restore`, `history`, `promote-to-job`
 - `jobs`: `list`, `get`, `create`, `correct-facts`, `update-availability`, `external-identities add|remove`, `remove`, `restore`, `history`, `promote-to-opportunity`
