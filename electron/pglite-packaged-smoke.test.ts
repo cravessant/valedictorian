@@ -4,21 +4,18 @@ import { runPackagedPgliteSmoke } from './pglite-packaged-smoke'
 describe('packaged PGlite smoke', () => {
   it('writes in one invocation and verifies persistence in a later invocation', async () => {
     const events: string[] = []
-    const persisted: Array<{ companyName: string }> = []
+    let persistedCaptures = 0
     const openOwner = vi.fn(async (dataDirectory: string) => ({
       close: async () => {
         events.push('close')
       },
-      repository: {
-        createApplication: async (input: { companyName: string }) => {
-          events.push('create')
-          persisted.push(input)
-          return { id: 'packaged-smoke-application' }
-        },
-        listApplications: async () => {
-          events.push('list')
-          return { items: persisted, total: persisted.length }
-        },
+      write: async () => {
+        events.push('write')
+        persistedCaptures += 1
+      },
+      read: async () => {
+        events.push('read')
+        return { found: persistedCaptures > 0, total: persistedCaptures }
       },
       dataDirectory,
     }))
@@ -35,20 +32,13 @@ describe('packaged PGlite smoke', () => {
       phase: 'verify',
       openOwner,
     })).resolves.toEqual({
-      companyName: 'Packaged PGlite Smoke',
-      persistedApplications: 1,
+      persistedCaptures: 1,
       phase: 'verify',
     })
 
     expect(openOwner).toHaveBeenNthCalledWith(1, '/tmp/packaged-smoke/pglite')
     expect(openOwner).toHaveBeenNthCalledWith(2, '/tmp/packaged-smoke/pglite')
-    expect(persisted[0]).toMatchObject({
-      primaryLink: {
-        kind: 'official',
-        url: 'https://example.test/packaged-pglite-smoke',
-      },
-    })
-    expect(events).toEqual(['create', 'close', 'list', 'close'])
+    expect(events).toEqual(['write', 'close', 'read', 'close'])
   })
 
   it('closes the owner when persistence verification fails', async () => {
@@ -56,10 +46,8 @@ describe('packaged PGlite smoke', () => {
     const openOwner = vi.fn()
       .mockResolvedValueOnce({
         close,
-        repository: {
-          createApplication: async () => ({ id: 'packaged-smoke-application' }),
-          listApplications: async () => ({ items: [], total: 0 }),
-        },
+        write: async () => undefined,
+        read: async () => ({ found: false, total: 0 }),
       })
 
     await expect(runPackagedPgliteSmoke({

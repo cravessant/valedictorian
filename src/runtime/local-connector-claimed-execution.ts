@@ -4,7 +4,6 @@ import type { createPgliteConnectorRepository, ConnectorRunRecord } from '../mod
 import type { createConnectorRunner, AppConnectorRefreshRecord } from '../modules/connectors/connector.runner'
 import { finalizeDeferredConnectorRefreshRecord } from './local-connector-retry-dispatch'
 import { reconcileConnectorPackageUpgrade } from './local-connector-upgrade-reconciliation'
-import type { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 
 export async function executeClaimedConnectorRun({
   connectorRegistry,
@@ -15,7 +14,6 @@ export async function executeClaimedConnectorRun({
   executionIntent = 'ordinary',
   mode,
   now,
-  replayConnectorUpgrade,
   signal,
   startedAt,
 }: {
@@ -27,7 +25,6 @@ export async function executeClaimedConnectorRun({
   executionIntent?: 'ordinary' | 'deferred_refresh'
   mode: ConnectorRefreshMode
   now: () => Date
-  replayConnectorUpgrade: ReturnType<typeof createNormalizationReplayService>['replayConnectorUpgrade']
   signal?: AbortSignal
   startedAt: string
 }): Promise<ConnectorRunRecord> {
@@ -53,7 +50,6 @@ export async function executeClaimedConnectorRun({
       connector,
       connectorRepository,
       instance,
-      replayConnectorUpgrade,
     })
 
     const coverageStartedAt = await persistedClaimedCoverageStart(

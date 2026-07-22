@@ -1,7 +1,7 @@
 import type {
   EvaluateApplicationPolicyInput,
+  EvaluateOpportunityPolicyInput,
   EvaluateRunWindowPolicyInput,
-  EvaluateSourcingCandidatePolicyInput,
   PolicyConfig,
   PolicyConfigPatch,
   PolicyDecision,
@@ -27,7 +27,7 @@ export interface PolicyPreloadApi {
   }
   evaluate: {
     application: (input: EvaluateApplicationPolicyInput) => Promise<PolicyDecision>
-    sourcingCandidate: (input: EvaluateSourcingCandidatePolicyInput) => Promise<PolicyDecision>
+    opportunity: (input: EvaluateOpportunityPolicyInput) => Promise<PolicyDecision>
     runWindow: (input: EvaluateRunWindowPolicyInput) => Promise<PolicyRunWindowDecision>
   }
 }
@@ -49,8 +49,8 @@ export function createPolicyPreloadApi(ipcRenderer: IpcRendererLike): PolicyPrel
     evaluate: {
       application: (input) =>
         ipcRenderer.invoke('policy:evaluate:application', input) as Promise<PolicyDecision>,
-      sourcingCandidate: (input) =>
-        ipcRenderer.invoke('policy:evaluate:sourcing-candidate', input) as Promise<PolicyDecision>,
+      opportunity: (input) =>
+        ipcRenderer.invoke('policy:evaluate:opportunity', input) as Promise<PolicyDecision>,
       runWindow: (input) =>
         ipcRenderer.invoke('policy:evaluate:run-window', input) as Promise<PolicyRunWindowDecision>,
     },

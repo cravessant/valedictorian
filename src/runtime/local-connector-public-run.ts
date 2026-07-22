@@ -181,9 +181,9 @@ export function publicConnectorRunLifecycleCounts(
       unclassified: destination.unclassified,
       invariant: destination.invariant,
     },
-    sourcing: {
-      findingsAdded: sourcing.added,
-      canonicalDuplicates: sourcing.queueDuplicate,
+    opportunity: {
+      opportunitiesCreated: sourcing.added,
+      existingJobMatches: sourcing.queueDuplicate,
       notFit: sourcing.notFit,
       rejected: sourcing.rejected,
       actionableReview: sourcing.actionableReview,

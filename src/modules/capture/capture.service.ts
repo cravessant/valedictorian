@@ -170,6 +170,10 @@ export interface CaptureService {
    */
   acceptOn(exec: CaptureExec, input: AcceptCaptureInput): Promise<AcceptCaptureResult>
   correctOn(exec: CaptureExec, input: CorrectCaptureInput): Promise<MutateCaptureResult>
+  /** Composable tombstone core: run a single Capture tombstone on the caller's transaction executor (no internal tx). */
+  removeOn(exec: CaptureExec, input: CaptureMutationInput): Promise<MutateCaptureResult>
+  /** Composable restore core: clear a Capture tombstone on the caller's transaction executor (no internal tx). */
+  restoreOn(exec: CaptureExec, input: CaptureMutationInput): Promise<MutateCaptureResult>
   get(workspaceId: string, captureId: string): Promise<CaptureRecord | null>
   getByProvenance(
     workspaceId: string,
@@ -549,20 +553,6 @@ export function createPgliteCaptureService(
     return { ok: true as const, capture: toRecord({ ...loaded.row, revision, updatedAt: createdAt, removedAt: nextRemovedAt }) }
   }
 
-  async function commitRevision(
-    loaded: Extract<LoadedMutation, { ok: true }>,
-    kind: CaptureRevisionKind,
-    snapshotJson: string,
-    removedAt: 'set' | 'clear' | 'keep',
-  ): Promise<MutateCaptureResult> {
-    try {
-      return await database.transaction((tx) => commitRevisionOn(tx, loaded, kind, snapshotJson, removedAt))
-    } catch (error) {
-      if (isUniqueViolation(error)) return fail('revision_conflict', 'capture was modified concurrently')
-      throw error
-    }
-  }
-
   // Composable core: single-attempt accept on the caller's executor (idempotent by
   // provenance). May THROW a unique-violation for the caller to retry; validation +
   // idempotency semantics are shared with the standalone wrapper (one implementation).
@@ -622,9 +612,43 @@ export function createPgliteCaptureService(
     return commitRevisionOn(exec, loaded, 'corrected', correctionJson, 'keep')
   }
 
+  // Composable tombstone/restore cores: single attempt on the caller's executor so the
+  // removal orchestration composes a Capture tombstone atomically with its dependents.
+  async function removeOn(exec: CaptureExec, input: CaptureMutationInput): Promise<MutateCaptureResult> {
+    let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
+    try {
+      ids = validateMutationIds(input)
+    } catch (error) {
+      if (error instanceof CaptureInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const loaded = loadForMutation(input, await selectById(exec, ids.workspaceId, ids.captureId), ids)
+    if (!loaded.ok) return loaded.failure
+    if (loaded.row.removedAt !== null) return { ok: true, capture: toRecord(loaded.row) }
+    const snapshot = JSON.stringify({ kind: 'removed', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 })
+    return commitRevisionOn(exec, loaded, 'removed', snapshot, 'set')
+  }
+
+  async function restoreOn(exec: CaptureExec, input: CaptureMutationInput): Promise<MutateCaptureResult> {
+    let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
+    try {
+      ids = validateMutationIds(input)
+    } catch (error) {
+      if (error instanceof CaptureInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const loaded = loadForMutation(input, await selectById(exec, ids.workspaceId, ids.captureId), ids)
+    if (!loaded.ok) return loaded.failure
+    if (loaded.row.removedAt === null) return { ok: true, capture: toRecord(loaded.row) }
+    const snapshot = JSON.stringify({ kind: 'restored', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 })
+    return commitRevisionOn(exec, loaded, 'restored', snapshot, 'clear')
+  }
+
   return {
     acceptOn,
     correctOn,
+    removeOn,
+    restoreOn,
 
     async accept(input) {
       // Thin wrapper: open a transaction around the composable core, retrying on a
@@ -650,33 +674,21 @@ export function createPgliteCaptureService(
     },
 
     async remove(input) {
-      let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
       try {
-        ids = validateMutationIds(input)
+        return await database.transaction((tx) => removeOn(tx, input))
       } catch (error) {
-        if (error instanceof CaptureInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'capture was modified concurrently')
         throw error
       }
-      const loaded = loadForMutation(input, await selectById(database, ids.workspaceId, ids.captureId), ids)
-      if (!loaded.ok) return loaded.failure
-      if (loaded.row.removedAt !== null) return { ok: true, capture: toRecord(loaded.row) }
-      const snapshot = JSON.stringify({ kind: 'removed', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 })
-      return commitRevision(loaded, 'removed', snapshot, 'set')
     },
 
     async restore(input) {
-      let ids: { workspaceId: string; captureId: string; actor: CaptureActor }
       try {
-        ids = validateMutationIds(input)
+        return await database.transaction((tx) => restoreOn(tx, input))
       } catch (error) {
-        if (error instanceof CaptureInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'capture was modified concurrently')
         throw error
       }
-      const loaded = loadForMutation(input, await selectById(database, ids.workspaceId, ids.captureId), ids)
-      if (!loaded.ok) return loaded.failure
-      if (loaded.row.removedAt === null) return { ok: true, capture: toRecord(loaded.row) }
-      const snapshot = JSON.stringify({ kind: 'restored', priorRevision: loaded.row.revision, revision: loaded.row.revision + 1 })
-      return commitRevision(loaded, 'restored', snapshot, 'clear')
     },
 
     async get(workspaceId, captureId) {

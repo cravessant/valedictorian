@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import {
   createValedictorianHttpServer,
@@ -36,7 +37,7 @@ export function isolateReferenceTrackerEnvironment() {
   }
 }
 
-export function startBoundaryServer(client: ValedictorianWorkspaceClient): Promise<StartedValedictorianHttpServer> {
+export function startBoundaryServer(client: LocalValedictorianClient): Promise<StartedValedictorianHttpServer> {
   return createValedictorianHttpServer({ client, host: '127.0.0.1', port: 0 })
 }
 

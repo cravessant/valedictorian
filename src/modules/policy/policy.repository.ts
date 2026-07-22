@@ -6,8 +6,8 @@ import {
   isPolicySubjectType,
   normalizePolicyConfig,
   type EvaluateApplicationPolicyInput,
+  type EvaluateOpportunityPolicyInput,
   type EvaluateRunWindowPolicyInput,
-  type EvaluateSourcingCandidatePolicyInput,
   type PolicyConfig,
   type PolicyConfigPatch,
   type PolicyDecision,
@@ -26,7 +26,6 @@ import {
   workflowRunSteps,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
-import { isPassedFinalReviewReceipt } from '../applications/application.repository.helpers'
 
 const ACTIVE_POLICY_CONFIG_ID = 'active'
 const DEFAULT_POLICY_EVIDENCE_LIMIT = 100
@@ -120,8 +119,8 @@ export function createPglitePolicyRepository(database: PgliteDatabase) {
     async evaluateApplication(input: EvaluateApplicationPolicyInput): Promise<PolicyDecision> {
       return evaluateApplicationPolicy(database, await readPolicyConfig(database), input)
     },
-    async evaluateSourcingCandidate(input: EvaluateSourcingCandidatePolicyInput): Promise<PolicyDecision> {
-      return evaluateSourcingCandidatePolicy(database, await readPolicyConfig(database), input)
+    async evaluateOpportunity(input: EvaluateOpportunityPolicyInput): Promise<PolicyDecision> {
+      return evaluateOpportunityPolicy(database, input)
     },
     async evaluateRunWindow(input: EvaluateRunWindowPolicyInput): Promise<PolicyRunWindowDecision> {
       return evaluateRunWindowPolicy(await readPolicyConfig(database), input)
@@ -204,56 +203,41 @@ async function writePolicyConfig(database: PolicyWriteDatabase, config: PolicyCo
   return normalized
 }
 
-export async function evaluateSourcingCandidatePolicy(
+/**
+ * Opportunity promotion policy (0.27). The contract collapsed the caller-supplied inputs
+ * (officialUrl/sourceUrl/priorityScore/findingId) down to `{ opportunityId }`, so the legacy
+ * official-path and below-cutoff gates — which depended on those removed fields — no longer apply
+ * here; that gating now lives in the opportunity aggregate's evaluation/disposition. This surface
+ * remains an evidence-driven check keyed on the `opportunity` policy subject, honoring an explicit
+ * do-not-submit gate without ever converting warnings into failures.
+ */
+export async function evaluateOpportunityPolicy(
   database: PolicyQueryDatabase,
-  config: PolicyConfig,
-  input: EvaluateSourcingCandidatePolicyInput,
+  input: EvaluateOpportunityPolicyInput,
 ): Promise<PolicyDecision> {
-  const evidence = input.findingId
-    ? await listEvidenceForSubject(database, 'sourcing_finding', input.findingId)
-    : input.evidence ?? []
+  const evidence = await listEvidenceForSubject(database, 'opportunity', input.opportunityId)
   const evidenceTags = tagSet(evidence)
 
-  if (!input.officialUrl && !input.sourceUrl) {
+  if (evidenceTags.has('do_not_submit')) {
     return decision({
-      action: 'block_sourcing_candidate',
-      status: 'needs_evidence',
+      action: 'block_opportunity',
+      status: 'deny',
       reasons: [
         {
-          code: 'official_path_missing',
-          message: 'Candidate requires an officialUrl or sourceUrl before promotion.',
+          code: 'do_not_submit',
+          message: 'Policy evidence marks this opportunity as do-not-submit.',
         },
       ],
-      requiredEvidence: ['official_path_verified'],
-    })
-  }
-
-  if (
-    input.priorityScore !== undefined &&
-    input.priorityScore !== null &&
-    input.priorityScore < config.scoring.applyCutoff &&
-    !evidenceTags.has('apply_cutoff_override')
-  ) {
-    return decision({
-      action: 'skip_below_cutoff',
-      status: 'skip',
-      reasons: [
-        {
-          code: 'below_policy_cutoff',
-          message: `Priority score ${input.priorityScore} is below policy cutoff ${config.scoring.applyCutoff}.`,
-        },
-      ],
-      requiredEvidence: ['apply_cutoff_override'],
     })
   }
 
   return decision({
-    action: 'promote_sourcing_candidate',
+    action: 'promote_opportunity',
     status: 'allow',
     reasons: [
       {
-        code: 'sourcing_candidate_eligible',
-        message: 'Candidate satisfies policy requirements for promotion.',
+        code: 'opportunity_eligible',
+        message: 'Opportunity satisfies policy requirements for promotion.',
       },
     ],
   })
@@ -591,6 +575,18 @@ function deepMerge(left: unknown, right: unknown): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function isPassedFinalReviewReceipt(value: unknown): boolean {
+  if (!isRecord(value) || value.scope !== 'final_review' || value.status !== 'passed') {
+    return false
+  }
+  if (typeof value.evidence !== 'string' || value.evidence.trim().length === 0) {
+    return false
+  }
+  return Array.isArray(value.verified)
+    && value.verified.some((item) => typeof item === 'string' && item.trim().length > 0)
+    && Array.isArray(value.unresolved)
 }
 
 function requiredText(value: string, fieldName: string) {

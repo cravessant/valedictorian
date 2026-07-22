@@ -14,16 +14,8 @@ import type { ConnectorAuthGrant, ConnectorAuthMode, ConnectorAuthReference,
   ConnectorRuntime,
   ConnectorProgressRuntime,
   ConnectorProgressSnapshot,
-  ConnectorNormalizationInput,
   JobConnector,
 } from '@sparxie/valedictorian-connectors-core'
-import type {
-  FieldResolutionOutcome,
-  RawSourceIntakeReceipt,
-  RawSourceOccurrenceReceipt,
-  RawSourceRecordInput,
-  ResolverCapability,
-} from 'sparxie'
 import type {
   ConnectorCheckpointPayload,
   ConnectorInstanceRecord,
@@ -37,8 +29,8 @@ import * as connectorCheckpointSignatureModule from './connector.checkpoint-sign
 import { restoreUnacquiredJobrightV5RetryEntries } from './connector.jobright-checkpoint-merge'
 import {
   createBoundConnectorDataRuntime,
-  type AcquiredNormalizationReplayIdentity,
 } from './connector.runner.bound-data-runtime'
+import type { AppConnectorCaptureHost } from './connector.capture-host'
 import type { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 import { createSourceSessionExecutor } from '../source-execution/source-session-executor'
 import { finalizeReconnectValidation } from './connector.auth-validation-finalization'
@@ -58,26 +50,6 @@ export interface AppConnectorSecretResolver {
 }
 export interface AppConnectorAuthHost {
   secrets?: AppConnectorSecretResolver
-}
-export interface AppConnectorRawSourceHost {
-  ingest(record: RawSourceRecordInput): Promise<RawSourceIntakeReceipt>
-}
-export interface AppConnectorNormalizationHost {
-  run(
-    input: ConnectorNormalizationInput,
-    context: {
-      acquiredRetryWork?: {
-        acquisitionRunId: string
-        executionScopeId: string
-        retryWorkId: string
-      }
-      connectorRunId: string
-      deferAcquiredRetryCompletion?: boolean
-      enabledCapabilities: readonly ResolverCapability[]
-      triggerOccurrence?: RawSourceOccurrenceReceipt | null
-    },
-  ): Promise<FieldResolutionOutcome[]>
-  release?(connectorRunId: string): void
 }
 export type AppConnectorRuntimePorts = {
   cancellation?: ConnectorCancellationRuntime
@@ -128,7 +100,7 @@ export interface RunConnectorRefreshInput {
     acquiredProviderRecordId: string
     originalCheckpoint: unknown
   }
-  acquiredNormalizationReplay?: AcquiredNormalizationReplayIdentity; signal?: AbortSignal
+  signal?: AbortSignal
 }
 export interface RunConnectorCatchUpInput {
   connectorRunId?: string
@@ -143,7 +115,7 @@ export interface RunConnectorCatchUpInput {
     acquiredProviderRecordId: string
     originalCheckpoint: unknown
   }
-  acquiredNormalizationReplay?: AcquiredNormalizationReplayIdentity; signal?: AbortSignal
+  signal?: AbortSignal
 }
 export interface AppConnectorPendingCheckpoint {
   connectorInstanceId: string
@@ -159,8 +131,7 @@ export interface AppConnectorRefreshRecord {
 }
 export interface CreateConnectorRunnerOptions {
   auth?: AppConnectorAuthHost
-  normalization?: AppConnectorNormalizationHost
-  rawSource?: AppConnectorRawSourceHost
+  captureHost?: AppConnectorCaptureHost
   repository: ReturnType<typeof createPgliteConnectorRepository>
   sourceExecutionGovernor?: ReturnType<typeof createSourceExecutionGovernor>
   runtime?: AppConnectorRuntimePorts
@@ -171,8 +142,7 @@ export interface CreateConnectorRunnerOptions {
 const REDACTED_SECRET_VALUE = '[redacted-secret]'
 export function createConnectorRunner({
   auth,
-  normalization,
-  rawSource,
+  captureHost,
   repository,
   sourceExecutionGovernor,
   runtime = {},
@@ -217,15 +187,12 @@ export function createConnectorRunner({
         ? createPersistedProgressRuntime(repository, input.connectorRunId, now, runtime.progress)
         : runtime.progress,
       input.connectorRunId
-        ? createBoundConnectorDataRuntime({
-            acquiredNormalizationReplay: input.acquiredNormalizationReplay,
+          ? createBoundConnectorDataRuntime({
+            captureHost,
             connector,
             connectorInstanceId: connectorInstance.id,
             connectorRunId: input.connectorRunId,
             executionScopeId: connectorInstance.executionScopeId,
-            normalization,
-            rawSource,
-            workspaceId,
           })
         : undefined,
     )
@@ -264,9 +231,7 @@ export function createConnectorRunner({
         })
       }
     } finally {
-      if (input.connectorRunId) {
-        normalization?.release?.(input.connectorRunId)
-      }
+      // Canonical capture intake owns no per-run normalization resources.
     }
     const safeResult = withRunProgressStats(redactRefreshResult(result, sensitiveValues))
     const nextCheckpoint = input.restoreUnacquiredJobrightRetryEntries
@@ -287,7 +252,7 @@ export function createConnectorRunner({
       filters: runFilters,
       filterSignature,
       checkpointPersistence: options.checkpointPersistence,
-      preserveAcquiredNormalizationWork: Boolean(input.acquiredNormalizationReplay),
+      preserveAcquiredNormalizationWork: false,
       result: {
         ...safeResult,
         status: terminalConnectorRunStatus(safeResult.status),
@@ -339,9 +304,6 @@ export function createConnectorRunner({
           : {}),
         ...(input.restoreUnacquiredJobrightRetryEntries
           ? { restoreUnacquiredJobrightRetryEntries: input.restoreUnacquiredJobrightRetryEntries }
-          : {}),
-        ...(input.acquiredNormalizationReplay
-          ? { acquiredNormalizationReplay: input.acquiredNormalizationReplay }
           : {}),
         ...(input.signal ? { signal: input.signal } : {}),
       },
@@ -641,7 +603,7 @@ export function createRunRuntime(
   sessionExecutor: ReturnType<typeof createSourceSessionExecutor> | null,
   allowActionRequiredRefresh: boolean,
   progress: ConnectorProgressRuntime | undefined,
-  dataRuntime?: Pick<AppConnectorRuntime, 'normalization' | 'rawSourceIntake'>,
+  dataRuntime?: Pick<AppConnectorRuntime, 'rawSourceIntake'>,
   reconnectToken?: string,
   onReconnectRefresh?: () => void,
 ): AppConnectorRuntime {

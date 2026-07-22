@@ -32,10 +32,6 @@ import {
   selectPendingRetryWork,
   synchronizeConnectorRetryWork,
 } from './connector.retry-work'
-import {
-  finalizeExactAcquiredNormalizationRetry,
-  releaseAcquiredNormalizationWorkForRun,
-} from './connector.repository.exact-retry-finalize'
 import { recoverInterruptedConnectorRuns } from './connector.repository.recovery'
 import { connectorDisabledExecutionError } from './connector-execution.errors'
 export type * from './connector-instance.persistence-types'
@@ -303,15 +299,6 @@ export function createPgliteConnectorRepository(
     },
     async copyCheckpointIfAbsent(input: Parameters<typeof copyConnectorCheckpointIfAbsent>[1]) {
       await copyConnectorCheckpointIfAbsent(database, input, new Date().toISOString())
-    },
-    async releaseAcquiredNormalizationWorkForRun(input: {
-      connectorRunId: string
-      completedAt: string
-    }): Promise<void> {
-      await releaseAcquiredNormalizationWorkForRun(database, input)
-    },
-    async finalizeExactAcquiredNormalizationRetry(input: Parameters<typeof finalizeExactAcquiredNormalizationRetry>[1]): Promise<ConnectorRunRecord> {
-      return finalizeExactAcquiredNormalizationRetry(database, input)
     },
     async recordRunRequest(
       input: RecordConnectorRunRequestInput,

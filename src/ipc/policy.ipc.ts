@@ -1,7 +1,7 @@
 import type {
   EvaluateApplicationPolicyInput,
+  EvaluateOpportunityPolicyInput,
   EvaluateRunWindowPolicyInput,
-  EvaluateSourcingCandidatePolicyInput,
   ValedictorianWorkspaceClient,
   PolicyConfigPatch,
   PolicyEvidenceInput,
@@ -30,8 +30,8 @@ export function registerPolicyIpc(client: ValedictorianWorkspaceClient, ipcMain:
   ipcMain.handle('policy:evaluate:application', (_event, input) =>
     client.policy.evaluate.application(input as EvaluateApplicationPolicyInput),
   )
-  ipcMain.handle('policy:evaluate:sourcing-candidate', (_event, input) =>
-    client.policy.evaluate.sourcingCandidate(input as EvaluateSourcingCandidatePolicyInput),
+  ipcMain.handle('policy:evaluate:opportunity', (_event, input) =>
+    client.policy.evaluate.opportunity(input as EvaluateOpportunityPolicyInput),
   )
   ipcMain.handle('policy:evaluate:run-window', (_event, input) =>
     client.policy.evaluate.runWindow(input as EvaluateRunWindowPolicyInput),

@@ -83,10 +83,10 @@ describe('connectors IPC registration', () => {
       },
       preservedLineage: {
         connectorRuns: true as const,
-        rawSourceRecords: true as const,
+        captures: true as const,
         normalizationAttempts: true as const,
-        canonicalCandidates: true as const,
-        sourcingFindings: true as const,
+        jobs: true as const,
+        opportunities: true as const,
       },
     }))
     const inspect = vi.fn(async (connectorInstanceId: string) => ({
@@ -398,8 +398,8 @@ function connectorRunWithLocalFields() {
         unresolved: 0, pending: 0, gateRejected: 0, unclassified: 0,
         invariant: 'reconciled',
       },
-      sourcing: {
-        findingsAdded: 1, canonicalDuplicates: 0, notFit: 0, rejected: 0,
+      opportunity: {
+        opportunitiesCreated: 1, existingJobMatches: 0, notFit: 0, rejected: 0,
         actionableReview: 0, unclassified: 0, invariant: 'reconciled',
       },
     },

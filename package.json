@@ -65,7 +65,7 @@
     "react-day-picker": "8.10.1",
     "react-dom": "^18.2.0",
     "sonner": "^2.0.7",
-    "sparxie": "0.26.1",
+    "sparxie": "0.27.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
     "umzug": "^3.8.3",

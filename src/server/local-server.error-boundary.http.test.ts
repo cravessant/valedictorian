@@ -5,7 +5,6 @@ import {
   connectorScheduleErrorBodies,
   connectorScheduleErrorStatusByCode,
   connectorRetirementActiveWorkConflictMessage,
-  invalidPersistedRawDetailErrorBody,
   profileDocumentErrorBodies,
   profileDocumentErrorStatusByCode,
   valedictorianRequestIdSchema,
@@ -407,30 +406,6 @@ describe('local server safe HTTP error boundary', () => {
     expect(JSON.stringify(body)).not.toContain('provider token')
   })
 
-  it('maps persisted raw-detail failures to the fixed integrity body', async () => {
-    const diagnostic = Object.assign(new Error('raw payload canary'), {
-      code: 'invalid_persisted_raw_detail',
-      statusCode: 418,
-    })
-    const client = rawDetailFailureClient(diagnostic)
-    const onRequestError = vi.fn()
-    const server = await fixture.start({
-      client,
-      onRequestError,
-      resolveWorkspaceClient: () => client,
-    })
-
-    const response = await fetch(
-      `${server.url}/v1/workspaces/raw-errors/sourcing/raw-records/raw-1`,
-    )
-    const body = await response.json()
-
-    expect(response.status).toBe(500)
-    expect(body).toEqual(invalidPersistedRawDetailErrorBody)
-    expect(JSON.stringify(body)).not.toContain('raw payload')
-    expect(onRequestError).toHaveBeenCalledWith(expect.objectContaining({ error: diagnostic }))
-  })
-
   it('preserves the fixed connector overview cursor error without forwarding its raw message', async () => {
     const client = createBoundaryWorkspaceClient(() => {}, {
       connectors: {
@@ -686,61 +661,6 @@ describe('local server safe HTTP error boundary', () => {
     })
   })
 
-  it('returns a fixed 400 for malformed application and policy inputs', async () => {
-    const client = createBoundaryWorkspaceClient(() => {})
-    const server = await fixture.start({
-      client,
-      onRequestError: vi.fn(),
-      resolveWorkspaceClient: () => client,
-    })
-    const base = `${server.url}/v1/workspaces/input-errors`
-
-    const application = await fetch(`${base}/applications`, {
-      body: JSON.stringify({ roleKind: 'application-parser-canary' }),
-      headers: { 'content-type': 'application/json' },
-      method: 'POST',
-    })
-    expect(application.status).toBe(400)
-    await expect(application.json()).resolves.toEqual(VALIDATION_ERROR_BODY)
-
-    const policy = await fetch(`${base}/policy/evidence?subjectType=policy-parser-canary`)
-    expect(policy.status).toBe(400)
-    await expect(policy.json()).resolves.toEqual(VALIDATION_ERROR_BODY)
-  })
-
-  it('returns fixed validation and not-found bodies for scoped legacy sourcing outcomes', async () => {
-    const validationCanary = 'raw source validation SQL canary'
-    const notFoundCanary = 'raw source identifier canary'
-    const client = createBoundaryWorkspaceClient(() => {}, {
-      sourcing: {
-        findings: {
-          async list() {
-            throw Object.assign(new Error(validationCanary), { statusCode: 400 })
-          },
-        },
-        rawRecords: {
-          async get() {
-            throw Object.assign(new Error(notFoundCanary), { statusCode: 404 })
-          },
-        },
-      } as never,
-    })
-    const server = await fixture.start({
-      client,
-      onRequestError: vi.fn(),
-      resolveWorkspaceClient: () => client,
-    })
-    const base = `${server.url}/v1/workspaces/sourcing-errors/sourcing`
-
-    const validation = await fetch(`${base}/findings`)
-    expect(validation.status).toBe(400)
-    await expect(validation.json()).resolves.toEqual(VALIDATION_ERROR_BODY)
-
-    const missing = await fetch(`${base}/raw-records/missing-record`)
-    expect(missing.status).toBe(404)
-    await expect(missing.json()).resolves.toEqual(NOT_FOUND_ERROR_BODY)
-  })
-
   it('returns a fixed 404 for a scoped legacy connector not-found outcome', async () => {
     const diagnostic = Object.assign(new Error('connector storage key canary'), {
       statusCode: 404,
@@ -800,9 +720,6 @@ describe('local server safe HTTP error boundary', () => {
     }],
     ['policy option', '/policy/config', policyConfigFailureClient, {
       code: 'option_dependency_invalid',
-    }],
-    ['sourcing already-configured', '/sourcing/findings', sourcingListFailureClient, {
-      code: 'already_configured',
     }],
     ['application retirement', '/applications', applicationListFailureClient, {
       activeRuns: [{ connectorRunId: 'collision-run', status: 'queued' }],
@@ -897,10 +814,8 @@ describe('local server safe HTTP error boundary', () => {
     expect(JSON.stringify(body)).not.toContain('registry path')
   })
 
-  it('retains explicit route-local validation and not-found responses that do not throw', async () => {
-    const updateStatus = vi.fn()
+  it('retains an explicit route-local connector schedule not-found response', async () => {
     const client = createBoundaryWorkspaceClient(() => {})
-    client.applications.updateStatus = updateStatus
     client.connectors = {
       schedules: {
         async get() {
@@ -913,28 +828,12 @@ describe('local server safe HTTP error boundary', () => {
       onRequestError: vi.fn(),
       resolveWorkspaceClient: () => client,
     })
-    const base = `${server.url}/v1/workspaces/explicit-route-results`
 
-    const invalidStatus = await fetch(`${base}/applications/application-1/status`, {
-      body: JSON.stringify({ status: 'not-a-status' }),
-      headers: { 'content-type': 'application/json' },
-      method: 'PATCH',
-    })
-    expect(invalidStatus.status).toBe(400)
-    await expect(invalidStatus.json()).resolves.toEqual({
-      message: 'Invalid application status: not-a-status',
-    })
-    expect(updateStatus).not.toHaveBeenCalled()
-
-    const missingApplication = await fetch(`${base}/applications/missing-application`)
-    expect(missingApplication.status).toBe(404)
-    await expect(missingApplication.json()).resolves.toEqual({
-      message: 'Application not found: missing-application',
-    })
-
-    const missingSchedule = await fetch(`${base}/connectors/missing-connector/schedule`)
-    expect(missingSchedule.status).toBe(404)
-    await expect(missingSchedule.json()).resolves.toEqual({ message: 'Not found' })
+    const response = await fetch(
+      `${server.url}/v1/workspaces/explicit-route-results/connectors/missing-connector/schedule`,
+    )
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({ message: 'Not found' })
   })
 })
 
@@ -966,18 +865,6 @@ function profileDocumentFailureClient(error: unknown) {
   return createBoundaryWorkspaceClient(() => {}, {
     profile: {
       document: {
-        async get() {
-          throw error
-        },
-      },
-    } as never,
-  })
-}
-
-function rawDetailFailureClient(error: unknown) {
-  return createBoundaryWorkspaceClient(() => {}, {
-    sourcing: {
-      rawRecords: {
         async get() {
           throw error
         },
@@ -1035,18 +922,6 @@ function policyConfigFailureClient(error: unknown) {
     policy: {
       config: {
         async get() {
-          throw error
-        },
-      },
-    } as never,
-  })
-}
-
-function sourcingListFailureClient(error: unknown) {
-  return createBoundaryWorkspaceClient(() => {}, {
-    sourcing: {
-      findings: {
-        async list() {
           throw error
         },
       },

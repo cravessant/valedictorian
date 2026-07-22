@@ -37,9 +37,17 @@ export const lifecycleCaptures = pgTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     removedAt: text('removed_at'),
+    // #304: create-dedup key. Nullable + excluded from the partial index when null,
+    // so migrated rows and keyless creates are inert; a keyed re-create converges to
+    // the winning row via idx_lifecycle_captures_idempotency.
+    idempotencyKey: text('idempotency_key'),
   },
   (table) => ({
     workspaceIdx: index('idx_lifecycle_captures_workspace').on(table.workspaceId, table.createdAt),
+    idempotencyIdx: uniqueIndex('idx_lifecycle_captures_idempotency')
+      .on(table.workspaceId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} is not null`),
+    idempotencyKeyCheck: check('chk_lifecycle_captures_idempotency_key', sql`${table.idempotencyKey} is null or length(${table.idempotencyKey}) between 1 and 200`),
     // #299: provenance identity resolves to exactly one Capture id forever. The
     // key includes provider_schema (coalesced) to match the legacy connector
     // lineage identity (adapterId, providerSchema, providerRecordId) — so the same

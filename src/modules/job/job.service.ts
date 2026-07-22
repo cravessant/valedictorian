@@ -57,6 +57,13 @@ export interface CreateJobInput {
   readonly facts: JsonValue
   readonly availability?: JobAvailabilityInput
   readonly actor: JobActor
+  /**
+   * #304: caller-supplied create-dedup key. Re-issuing the same create with the
+   * same (workspace, key) converges to the already-created Job (created:false)
+   * instead of minting a duplicate. Persisted on the aggregate row and enforced by
+   * the partial unique index idx_lifecycle_jobs_idempotency.
+   */
+  readonly idempotencyKey?: string
 }
 
 export interface CorrectJobFactsInput {
@@ -105,7 +112,7 @@ export interface JobHistoryEntry {
   readonly createdAt: string
 }
 
-export type CreateJobResult = { readonly ok: true; readonly job: JobRecord } | JobFailure
+export type CreateJobResult = { readonly ok: true; readonly job: JobRecord; readonly created: boolean } | JobFailure
 export type MutateJobResult = { readonly ok: true; readonly job: JobRecord } | JobFailure
 
 /** A read+write executor — the workspace database OR an open transaction. */
@@ -122,9 +129,22 @@ export interface JobService {
   get(workspaceId: string, jobId: string): Promise<JobRecord | null>
   list(workspaceId: string, query?: JobListQuery): Promise<readonly JobRecord[]>
   correctFacts(input: CorrectJobFactsInput): Promise<MutateJobResult>
+  /**
+   * Composable facts-correction core: bump facts on the caller's transaction
+   * executor (no internal tx), so the job orchestration composes a facts
+   * correction atomically with the corrected facts' supporting evidence-reference
+   * links. Same validation + optimistic guard as `correctFacts`.
+   */
+  correctFactsOn(exec: JobExec, input: CorrectJobFactsInput): Promise<MutateJobResult>
   updateAvailability(input: UpdateJobAvailabilityInput): Promise<MutateJobResult>
+  /** Composable availability core: bump availability on the caller's transaction executor (no internal tx). */
+  updateAvailabilityOn(exec: JobExec, input: UpdateJobAvailabilityInput): Promise<MutateJobResult>
   remove(input: JobMutationInput): Promise<MutateJobResult>
+  /** Composable tombstone core: run a single Job tombstone on the caller's transaction executor (no internal tx). */
+  removeOn(exec: JobExec, input: JobMutationInput): Promise<MutateJobResult>
   restore(input: JobMutationInput): Promise<MutateJobResult>
+  /** Composable restore core: clear a Job tombstone on the caller's transaction executor (no internal tx). */
+  restoreOn(exec: JobExec, input: JobMutationInput): Promise<MutateJobResult>
   history(workspaceId: string, jobId: string): Promise<readonly JobHistoryEntry[]>
 }
 
@@ -135,6 +155,7 @@ export interface JobServiceOptions {
 
 const FACTS_MAX = 262_144
 const TIMESTAMP_MAX = 100
+const IDEMPOTENCY_KEY_MAX = 200
 
 function requireAvailabilityState(value: unknown, field: string): JobAvailabilityState {
   if (typeof value !== 'string' || !(jobAvailabilityStates as readonly string[]).includes(value)) {
@@ -154,6 +175,7 @@ interface JobRow {
   createdAt: string
   updatedAt: string
   removedAt: string | null
+  idempotencyKey?: string | null
 }
 
 function toRecord(row: JobRow): JobRecord {
@@ -180,8 +202,8 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
   const nowIso = () => clock().toISOString()
   const newId = options.newId ?? createUuidV7Generator(clock)
 
-  async function selectById(workspaceId: string, jobId: string): Promise<JobRow | null> {
-    const [row] = await database
+  async function selectByIdOn(exec: JobExec, workspaceId: string, jobId: string): Promise<JobRow | null> {
+    const [row] = await exec
       .select()
       .from(lifecycleJobs)
       .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
@@ -189,7 +211,93 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     return (row as JobRow | undefined) ?? null
   }
 
-  async function commit(
+  async function selectById(workspaceId: string, jobId: string): Promise<JobRow | null> {
+    return selectByIdOn(database, workspaceId, jobId)
+  }
+
+  // Composable facts-correction / availability cores: single attempt on the caller's
+  // executor (no internal tx) so the job orchestration composes the head mutation
+  // atomically with the write's supporting evidence-reference links. May THROW a
+  // unique-violation (history-sequence race) for the caller's boundary to map.
+  async function correctFactsOn(exec: JobExec, input: CorrectJobFactsInput): Promise<MutateJobResult> {
+    let ids: { workspaceId: string; jobId: string; actor: JobActor }
+    let factsJson: string
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+      factsJson = boundedJson(input.facts, 'facts', FACTS_MAX)
+    } catch (error) {
+      if (error instanceof JobInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const row = await selectByIdOn(exec, ids.workspaceId, ids.jobId)
+    if (!row) return fail('not_found', 'job not found in this workspace')
+    if (input.expectedFactsRevision !== undefined && input.expectedFactsRevision !== row.factsRevision) {
+      return fail('revision_conflict', 'job facts were modified concurrently')
+    }
+    return commitOn(
+      exec,
+      row,
+      ids.actor,
+      'facts_corrected',
+      factsJson,
+      { factsJson, factsRevision: row.factsRevision + 1 },
+      eq(lifecycleJobs.factsRevision, row.factsRevision),
+    )
+  }
+
+  async function updateAvailabilityOn(exec: JobExec, input: UpdateJobAvailabilityInput): Promise<MutateJobResult> {
+    let ids: { workspaceId: string; jobId: string; actor: JobActor }
+    let state: JobAvailabilityState
+    let observedAt: string
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+      state = requireAvailabilityState(input.state, 'state')
+      observedAt = requireText(input.observedAt, 'observedAt', 1, TIMESTAMP_MAX)
+    } catch (error) {
+      if (error instanceof JobInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const row = await selectByIdOn(exec, ids.workspaceId, ids.jobId)
+    if (!row) return fail('not_found', 'job not found in this workspace')
+    if (input.expectedAvailabilityRevision !== undefined && input.expectedAvailabilityRevision !== row.availabilityRevision) {
+      return fail('revision_conflict', 'job availability was modified concurrently')
+    }
+    return commitOn(
+      exec,
+      row,
+      ids.actor,
+      'availability_changed',
+      JSON.stringify({ state, observedAt }),
+      { availabilityState: state, availabilityObservedAt: observedAt, availabilityRevision: row.availabilityRevision + 1 },
+      eq(lifecycleJobs.availabilityRevision, row.availabilityRevision),
+    )
+  }
+
+  // Dedup lookup on the caller's executor (workspace DB or an open promotion tx), so
+  // create-dedup composes atomically inside a promotion boundary.
+  async function selectByIdempotencyKey(exec: JobExec, workspaceId: string, key: string): Promise<JobRow | null> {
+    const [row] = await exec
+      .select()
+      .from(lifecycleJobs)
+      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.idempotencyKey, key)))
+      .limit(1)
+    return (row as JobRow | undefined) ?? null
+  }
+
+  // Composable commit core: run the conditional head update + history append on the
+  // caller's executor (no internal transaction) so the removal orchestration composes
+  // a Job tombstone into ONE atomic cross-aggregate transaction. May THROW a
+  // unique-violation (history-sequence race) for the caller's boundary to map.
+  async function commitOn(
+    exec: JobExec,
     row: JobRow,
     actor: JobActor,
     kind: JobHistoryKind,
@@ -198,38 +306,76 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     guard: SQL,
   ): Promise<MutateJobResult> {
     const createdAt = nowIso()
+    // Conditional update on the pre-read head state is the optimistic concurrency
+    // guard: if another mutation advanced it first, 0 rows update and this mutation
+    // loses. (pglite serializes transactions, so a plain read-then-write would let
+    // both succeed — the guard prevents that.)
+    const updated = await updateLifecycleJobs(exec)
+      .set({ ...headUpdate, updatedAt: createdAt })
+      .where(and(eq(lifecycleJobs.id, row.id), guard))
+      .returning({ id: lifecycleJobs.id })
+    if (updated.length === 0) return fail('revision_conflict', 'job was modified concurrently')
+    const [seqRow] = await exec
+      .select({ maxSeq: sql<number>`coalesce(max(${jobHistory.sequence}), 0)` })
+      .from(jobHistory)
+      .where(eq(jobHistory.jobId, row.id))
+    const sequence = Number(seqRow?.maxSeq ?? 0) + 1
+    await insertJobHistory(exec).values({
+      id: newId(),
+      jobId: row.id,
+      sequence,
+      kind,
+      snapshotJson,
+      auditJson: auditJson(actor),
+      createdAt,
+    })
+    return { ok: true as const, job: toRecord({ ...row, ...headUpdate, updatedAt: createdAt }) }
+  }
+
+  // Composable tombstone/restore cores: single attempt on the caller's executor so the
+  // removal orchestration composes a Job tombstone atomically with its dependents.
+  async function removeOn(exec: JobExec, input: JobMutationInput): Promise<MutateJobResult> {
+    let ids: { workspaceId: string; jobId: string; actor: JobActor }
     try {
-      return await database.transaction(async (tx) => {
-        // Conditional update on the pre-read head state is the optimistic
-        // concurrency guard: if another mutation advanced it first, 0 rows update
-        // and this mutation loses. (pglite serializes transactions, so a plain
-        // read-then-write would let both succeed — the guard prevents that.)
-        const updated = await updateLifecycleJobs(tx)
-          .set({ ...headUpdate, updatedAt: createdAt })
-          .where(and(eq(lifecycleJobs.id, row.id), guard))
-          .returning({ id: lifecycleJobs.id })
-        if (updated.length === 0) return fail('revision_conflict', 'job was modified concurrently')
-        const [seqRow] = await tx
-          .select({ maxSeq: sql<number>`coalesce(max(${jobHistory.sequence}), 0)` })
-          .from(jobHistory)
-          .where(eq(jobHistory.jobId, row.id))
-        const sequence = Number(seqRow?.maxSeq ?? 0) + 1
-        await insertJobHistory(tx).values({
-          id: newId(),
-          jobId: row.id,
-          sequence,
-          kind,
-          snapshotJson,
-          auditJson: auditJson(actor),
-          createdAt,
-        })
-        return { ok: true as const, job: toRecord({ ...row, ...headUpdate, updatedAt: createdAt }) }
-      })
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
     } catch (error) {
-      // Fallback: a concurrent mutation claimed the same job_history sequence.
-      if (isUniqueViolation(error)) return fail('revision_conflict', 'job was modified concurrently')
+      if (error instanceof JobInputError) return fail(error.code, error.message)
       throw error
     }
+    const [row] = await exec.select().from(lifecycleJobs)
+      .where(and(eq(lifecycleJobs.workspaceId, ids.workspaceId), eq(lifecycleJobs.id, ids.jobId))).limit(1)
+    const typed = (row as JobRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'job not found in this workspace')
+    if (typed.removedAt !== null) return { ok: true, job: toRecord(typed) }
+    return commitOn(exec, typed, ids.actor, 'removed',
+      JSON.stringify({ kind: 'removed', priorFactsRevision: typed.factsRevision }),
+      { removedAt: nowIso() }, sql`${lifecycleJobs.removedAt} is null`)
+  }
+
+  async function restoreOn(exec: JobExec, input: JobMutationInput): Promise<MutateJobResult> {
+    let ids: { workspaceId: string; jobId: string; actor: JobActor }
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+    } catch (error) {
+      if (error instanceof JobInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleJobs)
+      .where(and(eq(lifecycleJobs.workspaceId, ids.workspaceId), eq(lifecycleJobs.id, ids.jobId))).limit(1)
+    const typed = (row as JobRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'job not found in this workspace')
+    if (typed.removedAt === null) return { ok: true, job: toRecord(typed) }
+    return commitOn(exec, typed, ids.actor, 'restored',
+      JSON.stringify({ kind: 'restored', priorFactsRevision: typed.factsRevision }),
+      { removedAt: null }, sql`${lifecycleJobs.removedAt} is not null`)
   }
 
   // Composable core: mint a Job on the caller's executor (no internal transaction)
@@ -241,10 +387,14 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     let actor: JobActor
     let availabilityState: JobAvailabilityState
     let availabilityObservedAt: string
+    let idempotencyKey: string | null
     try {
       workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
       factsJson = boundedJson(input.facts, 'facts', FACTS_MAX)
       actor = requireActor(input.actor)
+      idempotencyKey = input.idempotencyKey === undefined
+        ? null
+        : requireText(input.idempotencyKey, 'idempotencyKey', 1, IDEMPOTENCY_KEY_MAX)
       if (input.availability) {
         availabilityState = requireAvailabilityState(input.availability.state, 'availability.state')
         availabilityObservedAt = requireText(input.availability.observedAt, 'availability.observedAt', 1, TIMESTAMP_MAX)
@@ -255,6 +405,12 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     } catch (error) {
       if (error instanceof JobInputError) return fail(error.code, error.message)
       throw error
+    }
+    // Create-dedup: an existing row under this (workspace, key) short-circuits before
+    // minting a new id, so re-issuing the same create converges (created:false).
+    if (idempotencyKey !== null) {
+      const existing = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
+      if (existing) return { ok: true, job: toRecord(existing), created: false }
     }
     const createdAt = nowIso()
     const row: JobRow = {
@@ -268,8 +424,19 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       createdAt,
       updatedAt: createdAt,
       removedAt: null,
+      idempotencyKey,
     }
-    await insertLifecycleJobs(exec).values(row)
+    try {
+      await insertLifecycleJobs(exec).values(row)
+    } catch (error) {
+      // Concurrent create with the same key lost the unique-index race: converge to
+      // the winner rather than surface a conflict (idempotent create semantics).
+      if (idempotencyKey !== null && isUniqueViolation(error)) {
+        const winner = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
+        if (winner) return { ok: true, job: toRecord(winner), created: false }
+      }
+      throw error
+    }
     await insertJobHistory(exec).values({
       id: newId(),
       jobId: row.id,
@@ -279,7 +446,7 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       auditJson: auditJson(actor),
       createdAt,
     })
-    return { ok: true, job: toRecord(row) }
+    return { ok: true, job: toRecord(row), created: true }
   }
 
   return {
@@ -308,114 +475,46 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       return (rows as JobRow[]).map(toRecord)
     },
 
+    correctFactsOn,
+    updateAvailabilityOn,
+
     async correctFacts(input) {
-      let ids: { workspaceId: string; jobId: string; actor: JobActor }
-      let factsJson: string
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
-        factsJson = boundedJson(input.facts, 'facts', FACTS_MAX)
+        return await database.transaction((tx) => correctFactsOn(tx, input))
       } catch (error) {
-        if (error instanceof JobInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'job was modified concurrently')
         throw error
       }
-      const row = await selectById(ids.workspaceId, ids.jobId)
-      if (!row) return fail('not_found', 'job not found in this workspace')
-      if (input.expectedFactsRevision !== undefined && input.expectedFactsRevision !== row.factsRevision) {
-        return fail('revision_conflict', 'job facts were modified concurrently')
-      }
-      return commit(
-        row,
-        ids.actor,
-        'facts_corrected',
-        factsJson,
-        { factsJson, factsRevision: row.factsRevision + 1 },
-        eq(lifecycleJobs.factsRevision, row.factsRevision),
-      )
     },
 
     async updateAvailability(input) {
-      let ids: { workspaceId: string; jobId: string; actor: JobActor }
-      let state: JobAvailabilityState
-      let observedAt: string
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
-        state = requireAvailabilityState(input.state, 'state')
-        observedAt = requireText(input.observedAt, 'observedAt', 1, TIMESTAMP_MAX)
+        return await database.transaction((tx) => updateAvailabilityOn(tx, input))
       } catch (error) {
-        if (error instanceof JobInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'job was modified concurrently')
         throw error
       }
-      const row = await selectById(ids.workspaceId, ids.jobId)
-      if (!row) return fail('not_found', 'job not found in this workspace')
-      if (input.expectedAvailabilityRevision !== undefined && input.expectedAvailabilityRevision !== row.availabilityRevision) {
-        return fail('revision_conflict', 'job availability was modified concurrently')
-      }
-      return commit(
-        row,
-        ids.actor,
-        'availability_changed',
-        JSON.stringify({ state, observedAt }),
-        { availabilityState: state, availabilityObservedAt: observedAt, availabilityRevision: row.availabilityRevision + 1 },
-        eq(lifecycleJobs.availabilityRevision, row.availabilityRevision),
-      )
     },
 
+    removeOn,
+    restoreOn,
+
     async remove(input) {
-      let ids: { workspaceId: string; jobId: string; actor: JobActor }
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
+        return await database.transaction((tx) => removeOn(tx, input))
       } catch (error) {
-        if (error instanceof JobInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'job was modified concurrently')
         throw error
       }
-      const row = await selectById(ids.workspaceId, ids.jobId)
-      if (!row) return fail('not_found', 'job not found in this workspace')
-      if (row.removedAt !== null) return { ok: true, job: toRecord(row) }
-      return commit(
-        row,
-        ids.actor,
-        'removed',
-        JSON.stringify({ kind: 'removed', priorFactsRevision: row.factsRevision }),
-        { removedAt: nowIso() },
-        sql`${lifecycleJobs.removedAt} is null`,
-      )
     },
 
     async restore(input) {
-      let ids: { workspaceId: string; jobId: string; actor: JobActor }
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          jobId: requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
+        return await database.transaction((tx) => restoreOn(tx, input))
       } catch (error) {
-        if (error instanceof JobInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'job was modified concurrently')
         throw error
       }
-      const row = await selectById(ids.workspaceId, ids.jobId)
-      if (!row) return fail('not_found', 'job not found in this workspace')
-      if (row.removedAt === null) return { ok: true, job: toRecord(row) }
-      return commit(
-        row,
-        ids.actor,
-        'restored',
-        JSON.stringify({ kind: 'restored', priorFactsRevision: row.factsRevision }),
-        { removedAt: null },
-        sql`${lifecycleJobs.removedAt} is not null`,
-      )
     },
 
     async history(workspaceId, jobId) {

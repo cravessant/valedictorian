@@ -58,7 +58,22 @@ import {
   requireText,
   safeParse,
 } from './opportunity.validation'
-import { opportunityCutoffStates, opportunityDispositions, opportunityFitStates } from '../../db/lifecycle-vocabulary'
+import { lifecycleWarningCodes, opportunityCutoffStates, opportunityDispositions, opportunityFitStates } from '../../db/lifecycle-vocabulary'
+
+export type OpportunityWarningCode = (typeof lifecycleWarningCodes)[number]
+
+/** The contract warning-override input: actor attribution + rationale + overridden codes. */
+export interface WarningOverrideInput {
+  readonly actor: { readonly id: string; readonly type: OpportunityActorType; readonly displayName?: string }
+  readonly rationale: string
+  readonly warningCodes: readonly OpportunityWarningCode[]
+}
+
+/** Applied duplicate resolution: attach or merge onto an explicit target. */
+export interface DuplicateResolutionInput {
+  readonly action: 'attach' | 'merge'
+  readonly targetResourceId: string
+}
 
 export type {
   JsonValue,
@@ -94,6 +109,17 @@ export interface CreateOpportunityInput {
   readonly evaluation?: OpportunityEvaluationInput
   readonly disposition?: OpportunityDisposition
   readonly actor: OpportunityActor
+  /** #304: create-dedup key (see Job) — a keyed re-create converges (created:false). */
+  readonly idempotencyKey?: string
+  /**
+   * #304: optimistic lineage guard — the Job facts revision the caller evaluated
+   * against. A mismatch (the Job's facts advanced concurrently) is a typed conflict.
+   */
+  readonly expectedJobFactsRevision?: number
+  /** #304: warning override recorded on the resource ({actor, rationale, warningCodes}). */
+  readonly override?: WarningOverrideInput | null
+  /** #304: attach/merge onto an existing Opportunity when (workspace, job) collides. */
+  readonly duplicateResolution?: DuplicateResolutionInput
 }
 
 export interface ChangeEvaluationInput {
@@ -104,6 +130,8 @@ export interface ChangeEvaluationInput {
   readonly cutoff?: OpportunityCutoff
   readonly actor: OpportunityActor
   readonly expectedRevision?: number
+  /** #304: optional warning override recorded on the resource alongside the evaluation. */
+  readonly override?: WarningOverrideInput | null
 }
 
 export interface SetDispositionInput {
@@ -113,6 +141,8 @@ export interface SetDispositionInput {
   readonly rationale?: string | null
   readonly actor: OpportunityActor
   readonly expectedRevision?: number
+  /** #304: optional warning override recorded on the resource alongside the disposition. */
+  readonly override?: WarningOverrideInput | null
 }
 
 export interface OpportunityMutationInput {
@@ -126,13 +156,16 @@ export interface OpportunityListQuery {
   readonly limit?: number
 }
 
+/**
+ * #304: the contract warning override persisted on the resource. Replaces the #301
+ * disposition-override shape (prior/default/resulting) — a disposition change's
+ * rationale now lives in the append-only history audit, while this override records
+ * which policy warnings an actor consciously overrode.
+ */
 export interface OpportunityOverride {
-  readonly actor: { readonly type: OpportunityActorType; readonly id: string | null }
-  readonly rationale: string | null
-  readonly priorDisposition: OpportunityDisposition
-  readonly defaultDisposition: OpportunityDisposition
-  readonly resultingDisposition: OpportunityDisposition
-  readonly at: string
+  readonly actor: { readonly id: string; readonly type: OpportunityActorType; readonly displayName?: string }
+  readonly rationale: string
+  readonly warningCodes: readonly OpportunityWarningCode[]
 }
 
 export interface OpportunityRecord {
@@ -157,7 +190,7 @@ export interface OpportunityHistoryEntry {
   readonly createdAt: string
 }
 
-export type CreateOpportunityResult = { readonly ok: true; readonly opportunity: OpportunityRecord } | OpportunityFailure
+export type CreateOpportunityResult = { readonly ok: true; readonly opportunity: OpportunityRecord; readonly created: boolean } | OpportunityFailure
 export type MutateOpportunityResult = { readonly ok: true; readonly opportunity: OpportunityRecord } | OpportunityFailure
 
 /** A read+write executor — the workspace database OR an open transaction. */
@@ -180,7 +213,11 @@ export interface OpportunityService {
   reevaluate(input: ChangeEvaluationInput): Promise<MutateOpportunityResult>
   setDisposition(input: SetDispositionInput): Promise<MutateOpportunityResult>
   remove(input: OpportunityMutationInput): Promise<MutateOpportunityResult>
+  /** Composable tombstone core: run a single Opportunity tombstone on the caller's transaction executor (no internal tx). */
+  removeOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult>
   restore(input: OpportunityMutationInput): Promise<MutateOpportunityResult>
+  /** Composable restore core: clear an Opportunity tombstone on the caller's transaction executor (no internal tx). */
+  restoreOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult>
   history(workspaceId: string, opportunityId: string): Promise<readonly OpportunityHistoryEntry[]>
 }
 
@@ -202,6 +239,34 @@ interface OpportunityRow {
   createdAt: string
   updatedAt: string
   removedAt: string | null
+  idempotencyKey?: string | null
+}
+
+const IDEMPOTENCY_KEY_MAX = 200
+const OPPORTUNITY_ACTOR_TYPES = ['user', 'agent', 'system'] as const
+
+/**
+ * Validate + serialize the contract warning override to bounded JSON, or null when
+ * absent. Throws a typed OpportunityInputError on a malformed override.
+ */
+function serializeOverride(override: WarningOverrideInput | null | undefined): string | null {
+  if (override === undefined || override === null) return null
+  const type = requireOneOf(override.actor?.type, OPPORTUNITY_ACTOR_TYPES, 'override.actor.type')
+  const id = requireText(override.actor?.id, 'override.actor.id', 1, WORKSPACE_MAX)
+  const rationale = requireText(override.rationale, 'override.rationale', 1, RATIONALE_MAX)
+  if (!Array.isArray(override.warningCodes)) {
+    throw new OpportunityInputError('invalid_input', 'override.warningCodes must be an array')
+  }
+  const warningCodes = override.warningCodes.map((code) => requireOneOf(code, lifecycleWarningCodes, 'override.warningCodes'))
+  const displayName = override.actor.displayName === undefined
+    ? undefined
+    : requireText(override.actor.displayName, 'override.actor.displayName', 1, WORKSPACE_MAX)
+  const value: OpportunityOverride = {
+    actor: displayName === undefined ? { id, type } : { id, type, displayName },
+    rationale,
+    warningCodes,
+  }
+  return boundedJson(value as unknown as JsonValue, 'override', OVERRIDE_MAX)
 }
 
 function toRecord(row: OpportunityRow): OpportunityRecord {
@@ -263,13 +328,37 @@ export function createPgliteOpportunityService(
     return (row as OpportunityRow | undefined) ?? null
   }
 
-  async function jobInWorkspace(exec: Pick<PgliteDatabase, 'select'>, workspaceId: string, jobId: string): Promise<boolean> {
+  /** Returns the Job's current facts revision, or null when it is absent/foreign. */
+  async function jobFactsRevision(exec: Pick<PgliteDatabase, 'select'>, workspaceId: string, jobId: string): Promise<number | null> {
     const [row] = await exec
-      .select({ id: lifecycleJobs.id })
+      .select({ factsRevision: lifecycleJobs.factsRevision })
       .from(lifecycleJobs)
       .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
       .limit(1)
-    return Boolean(row)
+    return row ? row.factsRevision : null
+  }
+
+  async function selectByIdempotencyKey(exec: OpportunityExec, workspaceId: string, key: string): Promise<OpportunityRow | null> {
+    const [row] = await exec
+      .select()
+      .from(lifecycleOpportunities)
+      .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.idempotencyKey, key)))
+      .limit(1)
+    return (row as OpportunityRow | undefined) ?? null
+  }
+
+  /** The single active (non-tombstoned) Opportunity for a Job, if any — the attach target. */
+  async function selectActiveByJob(exec: OpportunityExec, workspaceId: string, jobId: string): Promise<OpportunityRow | null> {
+    const [row] = await exec
+      .select()
+      .from(lifecycleOpportunities)
+      .where(and(
+        eq(lifecycleOpportunities.workspaceId, workspaceId),
+        eq(lifecycleOpportunities.jobId, jobId),
+        sql`${lifecycleOpportunities.removedAt} is null`,
+      ))
+      .limit(1)
+    return (row as OpportunityRow | undefined) ?? null
   }
 
   async function appendHistory(
@@ -291,6 +380,30 @@ export function createPgliteOpportunityService(
     })
   }
 
+  // Composable commit core: conditional head update + history append on the caller's
+  // executor (no internal tx) so the removal orchestration composes an Opportunity
+  // tombstone into ONE atomic cross-aggregate transaction. May THROW a unique-violation
+  // for the caller's boundary to map.
+  async function commitOn(
+    exec: OpportunityExec,
+    row: OpportunityRow,
+    actor: OpportunityActor,
+    kind: OpportunityHistoryKind,
+    snapshot: JsonValue,
+    headUpdate: HeadUpdate,
+    guard: SQL,
+  ): Promise<MutateOpportunityResult> {
+    const createdAt = nowIso()
+    const nextRevision = row.revision + 1
+    const updated = await updateLifecycleOpportunities(exec)
+      .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
+      .where(and(eq(lifecycleOpportunities.id, row.id), guard))
+      .returning({ id: lifecycleOpportunities.id })
+    if (updated.length === 0) return fail('revision_conflict', 'opportunity was modified concurrently')
+    await appendHistory(exec, row.id, nextRevision, kind, snapshot, actor, createdAt)
+    return { ok: true as const, opportunity: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
+  }
+
   async function commit(
     row: OpportunityRow,
     actor: OpportunityActor,
@@ -300,18 +413,8 @@ export function createPgliteOpportunityService(
     guard: SQL,
     onUnique: 'revision_conflict' | 'deterministic_duplicate',
   ): Promise<MutateOpportunityResult> {
-    const createdAt = nowIso()
-    const nextRevision = row.revision + 1
     try {
-      return await database.transaction(async (tx) => {
-        const updated = await updateLifecycleOpportunities(tx)
-          .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
-          .where(and(eq(lifecycleOpportunities.id, row.id), guard))
-          .returning({ id: lifecycleOpportunities.id })
-        if (updated.length === 0) return fail('revision_conflict', 'opportunity was modified concurrently')
-        await appendHistory(tx, row.id, nextRevision, kind, snapshot, actor, createdAt)
-        return { ok: true as const, opportunity: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
-      })
+      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshot, headUpdate, guard))
     } catch (error) {
       if (isUniqueViolation(error)) {
         return onUnique === 'deterministic_duplicate'
@@ -320,6 +423,50 @@ export function createPgliteOpportunityService(
       }
       throw error
     }
+  }
+
+  // Composable tombstone/restore cores for the removal orchestration.
+  async function removeOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult> {
+    let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+    } catch (error) {
+      if (error instanceof OpportunityInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleOpportunities)
+      .where(and(eq(lifecycleOpportunities.workspaceId, ids.workspaceId), eq(lifecycleOpportunities.id, ids.opportunityId))).limit(1)
+    const typed = (row as OpportunityRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'opportunity not found in this workspace')
+    if (typed.removedAt !== null) return { ok: true, opportunity: toRecord(typed) }
+    return commitOn(exec, typed, ids.actor, 'removed', { kind: 'removed', priorRevision: typed.revision },
+      { removedAt: nowIso() }, sql`${lifecycleOpportunities.removedAt} is null`)
+  }
+
+  async function restoreOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult> {
+    let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
+    try {
+      ids = {
+        workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
+        opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
+        actor: requireActor(input.actor),
+      }
+    } catch (error) {
+      if (error instanceof OpportunityInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleOpportunities)
+      .where(and(eq(lifecycleOpportunities.workspaceId, ids.workspaceId), eq(lifecycleOpportunities.id, ids.opportunityId))).limit(1)
+    const typed = (row as OpportunityRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'opportunity not found in this workspace')
+    if (typed.removedAt === null) return { ok: true, opportunity: toRecord(typed) }
+    // The (workspace, job) partial unique index is the deterministic-duplicate guard on restore.
+    return commitOn(exec, typed, ids.actor, 'restored', { kind: 'restored', priorRevision: typed.revision },
+      { removedAt: null }, sql`${lifecycleOpportunities.removedAt} is not null`)
   }
 
   async function changeEvaluation(input: ChangeEvaluationInput): Promise<MutateOpportunityResult> {
@@ -332,6 +479,8 @@ export function createPgliteOpportunityService(
         actor: requireActor(input.actor),
       }
       resolved = evaluationUpdate(input)
+      // #304: an evaluation change may carry a warning override for the resource.
+      if (input.override !== undefined) resolved.update.overrideJson = serializeOverride(input.override)
     } catch (error) {
       if (error instanceof OpportunityInputError) return fail(error.code, error.message)
       throw error
@@ -361,6 +510,8 @@ export function createPgliteOpportunityService(
       let cutoff: OpportunityCutoff
       let rank: number | null
       let disposition: OpportunityDisposition
+      let idempotencyKey: string | null
+      let overrideJson: string | null
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         jobId = requireText(input.jobId, 'jobId', 1, WORKSPACE_MAX)
@@ -369,12 +520,36 @@ export function createPgliteOpportunityService(
         cutoff = input.evaluation?.cutoff === undefined ? DEFAULT_CUTOFF : requireOneOf(input.evaluation.cutoff, opportunityCutoffStates, 'cutoff')
         rank = optionalRank(input.evaluation?.rank, 'rank')
         disposition = input.disposition === undefined ? DEFAULT_DISPOSITION : requireOneOf(input.disposition, opportunityDispositions, 'disposition')
+        idempotencyKey = input.idempotencyKey === undefined ? null : requireText(input.idempotencyKey, 'idempotencyKey', 1, IDEMPOTENCY_KEY_MAX)
+        overrideJson = serializeOverride(input.override)
       } catch (error) {
         if (error instanceof OpportunityInputError) return fail(error.code, error.message)
         throw error
       }
-      if (!(await jobInWorkspace(exec, workspaceId, jobId))) {
-        return fail('missing_lineage', 'job not found in this workspace')
+      // Create-dedup: a keyed re-create converges to the existing Opportunity.
+      if (idempotencyKey !== null) {
+        const existing = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
+        if (existing) return { ok: true, opportunity: toRecord(existing), created: false }
+      }
+      // Lineage + optimistic Job-facts guard (AC3): the Job must exist in the workspace,
+      // and — when the caller pins a revision — its facts must not have advanced.
+      const factsRevision = await jobFactsRevision(exec, workspaceId, jobId)
+      if (factsRevision === null) return fail('missing_lineage', 'job not found in this workspace')
+      if (input.expectedJobFactsRevision !== undefined && input.expectedJobFactsRevision !== factsRevision) {
+        return fail('revision_conflict', 'job facts advanced since evaluation; re-evaluate before promoting')
+      }
+      // Duplicate pre-check (attach/merge): an aborted unique-violation cannot be
+      // recovered on the same transaction, so resolve BEFORE inserting. attach/merge
+      // reduce to the same target for this 1:1 (workspace, job) aggregate.
+      const activeForJob = await selectActiveByJob(exec, workspaceId, jobId)
+      if (activeForJob) {
+        if (input.duplicateResolution) {
+          if (input.duplicateResolution.targetResourceId !== activeForJob.id) {
+            return fail('invalid_input', 'duplicateResolution.targetResourceId does not match the existing opportunity for this job')
+          }
+          return { ok: true, opportunity: toRecord(activeForJob), created: false }
+        }
+        return fail('deterministic_duplicate', 'an active opportunity already exists for this job')
       }
       const createdAt = nowIso()
       const row: OpportunityRow = {
@@ -386,14 +561,17 @@ export function createPgliteOpportunityService(
         rank,
         cutoff,
         disposition,
-        overrideJson: null,
+        overrideJson,
         createdAt,
         updatedAt: createdAt,
         removedAt: null,
+        idempotencyKey,
       }
+      // A (workspace, job) unique violation still PROPAGATES (the promotion retries and
+      // attaches the winner); the pre-check only handles the non-racing common path.
       await insertLifecycleOpportunities(exec).values(row)
       await appendHistory(exec, row.id, 1, 'created', { fit, rank, cutoff, disposition }, actor, createdAt)
-      return { ok: true, opportunity: toRecord(row) }
+      return { ok: true, opportunity: toRecord(row), created: true }
     },
 
     async create(input) {
@@ -453,90 +631,54 @@ export function createPgliteOpportunityService(
         if (error instanceof OpportunityInputError) return fail(error.code, error.message)
         throw error
       }
+      // #304: the disposition rationale is an audit-trail fact (history snapshot); the
+      // resource `override_json` now holds only the contract warning override, set
+      // explicitly via `override` (undefined leaves the current override untouched).
+      let overrideUpdate: Pick<HeadUpdate, 'overrideJson'> = {}
+      try {
+        if (input.override !== undefined) overrideUpdate = { overrideJson: serializeOverride(input.override) }
+      } catch (error) {
+        if (error instanceof OpportunityInputError) return fail(error.code, error.message)
+        throw error
+      }
       const row = await selectById(ids.workspaceId, ids.opportunityId)
       if (!row) return fail('not_found', 'opportunity not found in this workspace')
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) {
         return fail('revision_conflict', 'opportunity was modified concurrently')
       }
-      const override: OpportunityOverride = {
-        actor: { type: ids.actor.type, id: ids.actor.id ?? null },
-        rationale,
-        priorDisposition: row.disposition as OpportunityDisposition,
-        defaultDisposition: DEFAULT_DISPOSITION,
-        resultingDisposition: disposition,
-        at: nowIso(),
-      }
-      let overrideJson: string
-      try {
-        overrideJson = boundedJson(override as unknown as JsonValue, 'override', OVERRIDE_MAX)
-      } catch (error) {
-        if (error instanceof OpportunityInputError) return fail(error.code, error.message)
-        throw error
-      }
       return commit(
         row,
         ids.actor,
         'disposition_changed',
-        { disposition, priorDisposition: row.disposition },
-        { disposition, overrideJson },
+        { disposition, priorDisposition: row.disposition, rationale },
+        { disposition, ...overrideUpdate },
         eq(lifecycleOpportunities.revision, row.revision),
         'revision_conflict',
       )
     },
 
+    removeOn,
+    restoreOn,
+
     async remove(input) {
-      let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
       try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
+        return await database.transaction((tx) => removeOn(tx, input))
       } catch (error) {
-        if (error instanceof OpportunityInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'opportunity was modified concurrently')
         throw error
       }
-      const row = await selectById(ids.workspaceId, ids.opportunityId)
-      if (!row) return fail('not_found', 'opportunity not found in this workspace')
-      if (row.removedAt !== null) return { ok: true, opportunity: toRecord(row) }
-      return commit(
-        row,
-        ids.actor,
-        'removed',
-        { kind: 'removed', priorRevision: row.revision },
-        { removedAt: nowIso() },
-        sql`${lifecycleOpportunities.removedAt} is null`,
-        'revision_conflict',
-      )
     },
 
     async restore(input) {
-      let ids: { workspaceId: string; opportunityId: string; actor: OpportunityActor }
-      try {
-        ids = {
-          workspaceId: requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX),
-          opportunityId: requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX),
-          actor: requireActor(input.actor),
-        }
-      } catch (error) {
-        if (error instanceof OpportunityInputError) return fail(error.code, error.message)
-        throw error
-      }
-      const row = await selectById(ids.workspaceId, ids.opportunityId)
-      if (!row) return fail('not_found', 'opportunity not found in this workspace')
-      if (row.removedAt === null) return { ok: true, opportunity: toRecord(row) }
       // The (workspace, job) partial unique index is the deterministic duplicate
       // guard: restoring while another active Opportunity owns the Job raises a
       // unique violation, mapped here to a typed deterministic_duplicate.
-      return commit(
-        row,
-        ids.actor,
-        'restored',
-        { kind: 'restored', priorRevision: row.revision },
-        { removedAt: null },
-        sql`${lifecycleOpportunities.removedAt} is not null`,
-        'deterministic_duplicate',
-      )
+      try {
+        return await database.transaction((tx) => restoreOn(tx, input))
+      } catch (error) {
+        if (isUniqueViolation(error)) return fail('deterministic_duplicate', 'an active opportunity already exists for this job')
+        throw error
+      }
     },
 
     async history(workspaceId, opportunityId) {

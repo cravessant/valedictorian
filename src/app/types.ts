@@ -1,32 +1,4 @@
-import type { ApplicationLinkSummary, ApplicationListSort } from '../modules/applications/application.types'
-
 export const PAGE_LIMIT = 50
-
-export interface FilterState {
-  search: string
-  status: string
-  priorityBand: string
-  minScore: string
-  workMode: string
-  sort: ApplicationListSort
-  createdFrom: string
-  createdTo: string
-  updatedFrom: string
-  updatedTo: string
-}
-
-export const defaultFilters: FilterState = {
-  search: '',
-  status: '',
-  priorityBand: '',
-  minScore: '',
-  workMode: '',
-  sort: 'priority_desc',
-  createdFrom: '',
-  createdTo: '',
-  updatedFrom: '',
-  updatedTo: '',
-}
 
 export const APP_VIEWS = {
   APPLICATIONS: 'applications',
@@ -46,7 +18,7 @@ export type MainAppView = Exclude<AppView, typeof APP_VIEWS.SETTINGS>
 export interface ApplicationDetailSeed {
   id: string
   companyName: string
-  primaryLink: ApplicationLinkSummary | null
+  primaryLink: { label: string; url: string } | null
   roleTitle: string
   sourceName: string
   status: string

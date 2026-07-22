@@ -9,14 +9,14 @@
  * Application chain minted atomically in one transaction (AC4).
  */
 import { describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteCaptureService } from '../capture/capture.service'
 import { createPgliteJobService, type JobService } from '../job/job.service'
 import { createPgliteOpportunityService, type OpportunityService } from '../opportunity/opportunity.service'
 import { createPgliteApplicationAggregateService } from '../applications/application.aggregate.service'
-import { lifecycleApplications, pursuitLinks, applicationEventRecords } from '../application/application.schema'
+import { lifecycleApplications, pursuitLinks, applicationEventRecords, applicationHistory } from '../application/application.schema'
 import { lifecycleCaptures } from '../capture/capture.schema'
 import { lifecycleJobs } from '../job/job.schema'
 import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
@@ -181,5 +181,41 @@ describe.sequential('Opportunity→Application promotion (#302)', () => {
     })
     expect(ok).toMatchObject({ ok: true })
     expect((await database.select().from(lifecycleApplications)).length).toBe(1)
+  })
+})
+
+describe.sequential('Opportunity→Application promotion #304 threading', () => {
+  it('threads a stale expectedJobFactsRevision into a typed revision_conflict', async () => {
+    const { jobs, opportunities, promotion } = await setup()
+    const { jobId, opportunityId } = await makeOpportunity(jobs, opportunities)
+    await jobs.correctFacts({ workspaceId: 'ws-a', jobId, facts: { company: 'Acme', title: 'Principal' }, actor: ACTOR }) // → factsRevision 2
+    expect(await promotion.promoteOpportunity({ workspaceId: 'ws-a', opportunityId, actor: ACTOR, expectedJobFactsRevision: 1 }))
+      .toMatchObject({ ok: false, code: 'revision_conflict' })
+    expect(await promotion.promoteOpportunity({ workspaceId: 'ws-a', opportunityId, actor: ACTOR, expectedJobFactsRevision: 2 }))
+      .toMatchObject({ ok: true })
+  })
+
+  it('threads a mismatched expectedJobId into a typed missing_lineage', async () => {
+    const { jobs, opportunities, promotion } = await setup()
+    const { opportunityId } = await makeOpportunity(jobs, opportunities)
+    expect(await promotion.promoteOpportunity({ workspaceId: 'ws-a', opportunityId, actor: ACTOR, expectedJobId: 'some-other-job' }))
+      .toMatchObject({ ok: false, code: 'missing_lineage' })
+  })
+
+  it('threads a warning override into the minted Application created-history audit', async () => {
+    const { database, jobs, opportunities, promotion } = await setup()
+    const { opportunityId } = await makeOpportunity(jobs, opportunities)
+    const result = await promotion.promoteOpportunity({
+      workspaceId: 'ws-a', opportunityId, actor: ACTOR,
+      override: { actor: { id: 'u', type: 'user' }, rationale: 'accept unknown fit', warningCodes: ['fit'] },
+    })
+    expect(result).toMatchObject({ ok: true, created: true })
+    if (!result.ok) return
+    const [row] = await database
+      .select({ auditJson: applicationHistory.auditJson })
+      .from(applicationHistory)
+      .where(and(eq(applicationHistory.applicationId, result.applicationId), eq(applicationHistory.revision, 1)))
+    const audit = JSON.parse(row!.auditJson) as { override?: { rationale: string; warningCodes: string[] } }
+    expect(audit.override).toMatchObject({ rationale: 'accept unknown fit', warningCodes: ['fit'] })
   })
 })

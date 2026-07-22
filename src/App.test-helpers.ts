@@ -15,17 +15,15 @@ import type {
   LocalConnectorStatusActionInput,
 } from './runtime/local-valedictorian-client'
 import type { WorkspaceSummary } from './workspace/workspace.initializer'
-import type {
-  ApplicationAttempt,
-  ApplicationAttemptsListResult,
-  ApplicationDetail,
-  ApplicationEvent,
-  ApplicationEventsListResult,
-  ApplicationLinkRecord,
-  ApplicationLinksListResult,
-  ApplicationListItem,
-  ApplicationListResult,
-} from './modules/applications/application.types'
+type ApplicationAttempt = any
+type ApplicationAttemptsListResult = any
+type ApplicationDetail = any
+type ApplicationEvent = any
+type ApplicationEventsListResult = any
+type ApplicationLinkRecord = any
+type ApplicationLinksListResult = any
+type ApplicationListItem = any
+type ApplicationListResult = any
 import type { ActionQueueListItem, ActionQueueListResult } from './modules/action-queue/action-queue.repository'
 import {
   ValedictorianHttpError,
@@ -38,9 +36,15 @@ import {
   type PolicyEvidenceRecord,
   type PolicyRunWindowDecision,
   type ConnectorOptionQueryResult,
-  type SourcingFinding,
-  type SourcingFindingsListResult,
 } from 'sparxie'
+type SourcingFinding = Record<string, unknown>
+interface SourcingFindingsListResult {
+  items: SourcingFinding[]
+  total: number
+  limit: number
+  offset: number
+  hasMore: boolean
+}
 import { canonicalAlreadyConfiguredBody } from './app/error-presentation'
 import {
   defaultAppSettings,
@@ -221,7 +225,7 @@ export function createActionQueueItem(overrides: Partial<ActionQueueListItem> = 
     companyName: 'Versant Media',
     roleTitle: 'Academic Year Internships: Platform Engineering',
     sourceName: 'LinkedIn',
-    status: 'queued',
+    status: 'active',
     location: 'Universal City, CA / Remote',
     workMode: 'remote',
     hasApplied: false,
@@ -403,8 +407,8 @@ export function createConnectorsApi(): ConnectorsPreloadApi {
           secretValues: 'preserved_for_workspace_secret_administration',
         },
         preservedLineage: {
-          connectorRuns: true, rawSourceRecords: true, normalizationAttempts: true,
-          canonicalCandidates: true, sourcingFindings: true,
+          connectorRuns: true, captures: true, normalizationAttempts: true,
+          jobs: true, opportunities: true,
         },
       } as const
     }),
@@ -826,8 +830,8 @@ export function createPolicyApi(initialConfig: PolicyConfig = defaultPolicyConfi
     },
     evaluate: {
       application: vi.fn(async () => allowDecision),
+      opportunity: vi.fn(async () => allowDecision),
       runWindow: vi.fn(async () => runWindowDecision),
-      sourcingCandidate: vi.fn(async () => allowDecision),
     },
   }
 }

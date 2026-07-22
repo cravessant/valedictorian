@@ -12,7 +12,14 @@ export function mapConnectorCheckpoint(record: ConnectorCheckpointRecord) {
 }
 
 export function mapConnectorObservation(record: ConnectorObservationRecord): ConnectorObservation {
-  return { ...record, locationRaw: record.locationRaw ?? null, descriptionText: record.descriptionText ?? null, pay: record.pay ?? null }
+  const { sourcingFindingId: _retiredSourcingFindingId, ...observation } = record
+  return {
+    ...observation,
+    opportunityId: null,
+    locationRaw: record.locationRaw ?? null,
+    descriptionText: record.descriptionText ?? null,
+    pay: record.pay ?? null,
+  }
 }
 
 export function publicRunStatus(status: string): ConnectorRunSummary['status'] {

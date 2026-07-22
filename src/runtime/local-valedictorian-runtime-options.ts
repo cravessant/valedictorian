@@ -3,7 +3,6 @@ import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connec
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppConnectorRuntimePorts } from '../modules/connectors/connector.runner'
 import type { SecretCodec } from '../modules/secrets/secret.codec'
-import type { NormalizationResolverRegistry } from '../modules/sourcing/normalization.registry'
 import type { PgliteDatabase } from '../db/pglite'
 import type { ProfileService } from '../modules/profile/profile.service'
 import type { SecretService } from '../modules/secrets/secret.service'
@@ -20,12 +19,6 @@ export interface LocalValedictorianClientOptions {
   now?: () => Date
   onScheduledWorkChanged?: () => void
   registerScheduledWorkSource?: (source: LocalScheduledWorkSource) => void
-  normalizationRegistry?: NormalizationResolverRegistry
-  projectCanonicalCandidate?: (
-    transaction: Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0],
-    candidateId: string,
-    rawRevisionId: string,
-  ) => Promise<string> | string
   referenceTrackerPath?: string
   seedDataMode?: ValedictorianSeedDataMode
   secretCodec?: SecretCodec

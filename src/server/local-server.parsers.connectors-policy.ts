@@ -8,8 +8,8 @@ import {
   type CreateConnectorInstanceInput,
   type ConnectorOverviewListQuery,
   type EvaluateApplicationPolicyInput,
+  type EvaluateOpportunityPolicyInput,
   type EvaluateRunWindowPolicyInput,
-  type EvaluateSourcingCandidatePolicyInput,
   type PolicyConfigPatch,
   type PolicyEvidenceInput,
   type PolicyEvidenceListInput,
@@ -20,7 +20,6 @@ import {
 import {
   readOptionalBooleanField,
   readOptionalNullableStringField,
-  readOptionalNumberField,
   readOptionalStringField,
   readRecord,
   readStringField,
@@ -302,26 +301,33 @@ export function parseEvaluateApplicationPolicyInput(
   body: unknown,
 ): EvaluateApplicationPolicyInput {
   const record = readRecord(body)
+  const outcome = readOptionalNullableStringField(record, 'outcome')
+
+  if (outcome !== undefined && outcome !== null && !isPursuitApplicationStatus(outcome)) {
+    throw localHttpValidationError(`Invalid application outcome: ${outcome}`)
+  }
 
   return {
     applicationId: readStringField(record, 'applicationId'),
     attemptId: readOptionalNullableStringField(record, 'attemptId'),
-    outcome: readOptionalNullableStringField(record, 'outcome'),
+    outcome,
   }
 }
 
-export function parseEvaluateSourcingCandidatePolicyInput(
+function isPursuitApplicationStatus(
+  value: string,
+): value is NonNullable<EvaluateApplicationPolicyInput['outcome']> {
+  return ['active', 'submitted', 'interviewing', 'offered', 'withdrawn', 'rejected', 'accepted']
+    .includes(value)
+}
+
+export function parseEvaluateOpportunityPolicyInput(
   body: unknown,
-): EvaluateSourcingCandidatePolicyInput {
+): EvaluateOpportunityPolicyInput {
   const record = readRecord(body)
 
   return {
-    findingId: readOptionalNullableStringField(record, 'findingId'),
-    companyName: readOptionalNullableStringField(record, 'companyName'),
-    roleTitle: readOptionalNullableStringField(record, 'roleTitle'),
-    officialUrl: readOptionalNullableStringField(record, 'officialUrl'),
-    sourceUrl: readOptionalNullableStringField(record, 'sourceUrl'),
-    priorityScore: readOptionalNumberField(record, 'priorityScore'),
+    opportunityId: readStringField(record, 'opportunityId'),
   }
 }
 

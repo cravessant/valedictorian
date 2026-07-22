@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { normalizationReplayRequests } from '../db/schema'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
@@ -142,15 +141,8 @@ describe('local connector settings completeness and upgrade edges', () => {
       filters: { category: 'engineering' },
     })
 
-    const replayRequests = await getTestLocalValedictorianDatabase(current)
-      .select()
-      .from(normalizationReplayRequests)
-    expect(replayRequests).toEqual([
-      expect.objectContaining({
-        id: expect.stringMatching(/^connector-upgrade:/),
-        status: 'completed',
-      }),
-    ])
+    // Canonical lifecycle records are versioned aggregates; connector upgrades
+    // no longer enqueue legacy normalization replay requests.
   })
 
   it('can disable and replace credentials on an old-version instance without remove and re-add', async () => {

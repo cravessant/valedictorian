@@ -170,13 +170,13 @@ export function ConnectorRunLifecycleDetails({
                 : []),
             ]} />
             <RunCountStage title="Opportunities" values={[
-              ['Opportunities added', lifecycle.sourcing.findingsAdded],
-              ['Canonical duplicates', lifecycle.sourcing.canonicalDuplicates],
-              ['Not fit', lifecycle.sourcing.notFit],
-              ['Cutoff / rejected', lifecycle.sourcing.rejected],
-              ['Actionable review', lifecycle.sourcing.actionableReview],
-              ...(lifecycle.sourcing.unclassified > 0
-                ? [['Unclassified', lifecycle.sourcing.unclassified] as const]
+              ['Opportunities added', lifecycle.opportunity.opportunitiesCreated],
+              ['Existing Job matches', lifecycle.opportunity.existingJobMatches],
+              ['Not fit', lifecycle.opportunity.notFit],
+              ['Cutoff / rejected', lifecycle.opportunity.rejected],
+              ['Actionable review', lifecycle.opportunity.actionableReview],
+              ...(lifecycle.opportunity.unclassified > 0
+                ? [['Unclassified', lifecycle.opportunity.unclassified] as const]
                 : []),
             ]} />
           </div>
@@ -237,7 +237,7 @@ export function ConnectorRunLifecycleDetails({
           <p>Opportunity outcomes partition normalized Jobs; only a persisted concrete question counts as actionable review.</p>
           {lifecycle ? (
             <p>
-              Visible exceptions: capture shortfall {lifecycle.provider.captureShortfall}; provider unclassified {lifecycle.provider.unclassifiedRows}; destination unclassified {lifecycle.destination.unclassified}; Opportunity unclassified {lifecycle.sourcing.unclassified}.
+              Visible exceptions: capture shortfall {lifecycle.provider.captureShortfall}; provider unclassified {lifecycle.provider.unclassifiedRows}; destination unclassified {lifecycle.destination.unclassified}; Opportunity unclassified {lifecycle.opportunity.unclassified}.
             </p>
           ) : null}
         </div>
@@ -272,7 +272,7 @@ function hasLifecycleReconciliationWarning(
 ) {
   return lifecycle.provider.invariant !== 'reconciled'
     || lifecycle.destination.invariant !== 'reconciled'
-    || lifecycle.sourcing.invariant !== 'reconciled'
+    || lifecycle.opportunity.invariant !== 'reconciled'
     || lifecycle.provider.captureShortfall > 0
 }
 
@@ -281,7 +281,7 @@ function hasExplicitUnclassifiedRows(
 ) {
   return lifecycle.provider.unclassifiedRows > 0
     || lifecycle.destination.unclassified > 0
-    || lifecycle.sourcing.unclassified > 0
+    || lifecycle.opportunity.unclassified > 0
 }
 
 function numericRunMetric(

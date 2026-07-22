@@ -7,9 +7,8 @@ import {
   sources,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
-import type { ApplicationStatus, WorkMode } from '../applications/application.types'
 import { readPolicyConfig } from '../policy/policy.repository'
-import type { PolicyConfig, PolicyReason } from 'sparxie'
+import type { JobWorkMode, PolicyConfig, PolicyReason, PursuitApplicationStatus } from 'sparxie'
 
 export const actionQueueBuckets = [
   'apply_now',
@@ -35,9 +34,9 @@ export interface ActionQueueListItem {
   companyName: string
   roleTitle: string
   sourceName: string
-  status: ApplicationStatus
+  status: PursuitApplicationStatus
   location: string
-  workMode: WorkMode
+  workMode: JobWorkMode
   hasApplied: boolean
   currentPriorityScore: number | null
   currentPriorityBand: string | null
@@ -332,9 +331,9 @@ function createActionQueueItem({
     companyName: row.companyName,
     roleTitle: row.roleTitle,
     sourceName: row.sourceName,
-    status: row.status as ApplicationStatus,
+    status: row.status as PursuitApplicationStatus,
     location: row.locationRaw ?? [row.city, row.region, row.country].filter(Boolean).join(', '),
-    workMode: row.workMode as WorkMode,
+    workMode: row.workMode as JobWorkMode,
     hasApplied: row.hasApplied,
     currentPriorityScore: row.currentPriorityScore,
     currentPriorityBand: row.currentPriorityBand,

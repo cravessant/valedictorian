@@ -1,11 +1,11 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
 import {
   createLocalValedictorianClient,
   type LocalValedictorianClientOptions,
 } from '../runtime/local-valedictorian-client'
+import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
 import {
   createDefaultLocalConnectorPorts,
   type DefaultLocalConnectorPorts,
@@ -57,7 +57,7 @@ export interface LocalWorkspaceManager {
   create(input: LocalWorkspaceCreateInput): Promise<LocalWorkspaceListItem>
   list(): Promise<LocalWorkspaceListResult>
   open(input: LocalWorkspaceOpenInput): Promise<LocalWorkspaceListItem>
-  resolveClient(workspaceId: string): Promise<ValedictorianWorkspaceClient>
+  resolveClient(workspaceId: string): Promise<LocalValedictorianClient>
 }
 
 export interface LocalWorkspaceCreateInput {
@@ -73,7 +73,7 @@ export interface LocalWorkspaceOpenInput {
 export interface CreateLocalWorkspaceManagerOptions {
   createClient?: (
     options: LocalValedictorianClientOptions,
-  ) => Promise<ValedictorianWorkspaceClient> | ValedictorianWorkspaceClient
+  ) => Promise<LocalValedictorianClient> | LocalValedictorianClient
   createConnectorPorts?: (workspaceId?: string) => DefaultLocalConnectorPorts
   createId?: () => string
   connectorRunRecovery?: ConnectorRunRecoveryLifecycle
@@ -97,8 +97,8 @@ export function createLocalWorkspaceManager({
   secretCodec,
   seedDataMode = 'none',
 }: CreateLocalWorkspaceManagerOptions): LocalWorkspaceManager {
-  const clientCache = new Map<string, ValedictorianWorkspaceClient>()
-  const clientInflight = new Map<string, Promise<ValedictorianWorkspaceClient>>()
+  const clientCache = new Map<string, LocalValedictorianClient>()
+  const clientInflight = new Map<string, Promise<LocalValedictorianClient>>()
   const capabilityCache = new Map<string, PreparedWorkspaceProfileCapabilities>()
   const recoveryScopeCache = new Map<string, { pgliteDataPath: string; workspaceId: string }>()
   let closeInflight: Promise<void> | null = null

@@ -509,12 +509,13 @@ describe.sequential('local connector schedule source', () => {
     expect(persistedCheckpoints.items).toHaveLength(1)
     expect(persistedCheckpoints.items[0]?.checkpoint).toEqual({ cursor: 'cursor-3' })
 
-    const acceptedCaptures = await client.sourcing.rawRecords.list({
-      connectorInstanceId: 'scheduler-complete-connector',
+    const acceptedCaptures = await client.captures.list({
+      adapterId: 'fixture.jobs',
       limit: 10,
     })
     expect(acceptedCaptures.items).toHaveLength(3)
     expect(acceptedCaptures.items.map(({ providerRecordId }) => providerRecordId)
+      .filter((providerRecordId): providerRecordId is string => providerRecordId !== null)
       .sort((left, right) => left.localeCompare(right))).toEqual([
       'accepted-capture-1',
       'accepted-capture-2',

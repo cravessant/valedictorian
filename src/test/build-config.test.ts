@@ -197,7 +197,7 @@ describe('build configuration', () => {
 
     expect(viteConfig).toContain("globalSetup: './src/test/global-setup.ts'")
     expect(viteConfig).toContain('maxWorkers: 2')
-    expect(viteConfig).toContain('minWorkers: process.env.CI ? 2 : undefined')
+    expect(viteConfig).toContain('minWorkers: process.env.CI ? 2 : 1')
     expect(viteConfig).toContain("pool: 'threads'")
     expect(viteConfig).toContain('sequencer: DurationBalancedSequencer')
     const sequencer = fs.readFileSync(

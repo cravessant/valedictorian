@@ -38,7 +38,7 @@ describe('local Valedictorian HTTP server', () => {
       agentWorkflows: false,
       workflowRuns: true,
       applicationAttempts: true,
-      sourcing: true,
+      sourcing: false,
       connectors: true,
       hostedSync: false,
     })
@@ -82,7 +82,7 @@ describe('local Valedictorian HTTP server', () => {
     expect(response.headers.get('access-control-allow-methods')).toContain('OPTIONS')
   })
 
-  it('routes workspace-scoped application lists through the selected workspace client', async () => {
+  it('routes workspace-scoped canonical application lists through the selected workspace client', async () => {
     const rootClient = createBoundaryTestClient(() => {})
     const workspaceClient = createBoundaryTestClient(() => {})
     const listCalls: unknown[] = []
@@ -103,7 +103,7 @@ describe('local Valedictorian HTTP server', () => {
     })
 
     const response = await fetch(
-      `${server.url}/v1/workspaces/workspace-1/applications?status=queued&limit=10&offset=0`,
+      `${server.url}/v1/workspaces/workspace-1/applications?limit=10&offset=0`,
     )
 
     await expect(readJson(response)).resolves.toEqual({
@@ -114,7 +114,7 @@ describe('local Valedictorian HTTP server', () => {
       total: 0,
     })
     expect(response.status).toBe(200)
-    expect(listCalls).toEqual([{ limit: 10, offset: 0, status: 'queued' }])
+    expect(listCalls).toEqual([{ limit: 10, offset: 0 }])
   })
 
   it('routes workspace-scoped connector contract requests through the selected workspace client', async () => {
@@ -215,8 +215,8 @@ describe('local Valedictorian HTTP server', () => {
                 unresolved: 0, pending: 0, gateRejected: 0, unclassified: 0,
                 invariant: 'reconciled',
               },
-              sourcing: {
-                findingsAdded: 0, canonicalDuplicates: 0, notFit: 0,
+              opportunity: {
+                opportunitiesCreated: 0, existingJobMatches: 0, notFit: 0,
                 rejected: 0, actionableReview: 0, unclassified: 0,
                 invariant: 'reconciled',
               },
@@ -478,45 +478,40 @@ describe('local Valedictorian HTTP server', () => {
     })
   })
 
-  it('auto-loads workspace data and returns 404 for another workspace projection revision', async () => {
-    const rootA = fs.mkdtempSync(path.join(os.tmpdir(), 'projection-workspace-a-'))
-    const rootB = fs.mkdtempSync(path.join(os.tmpdir(), 'projection-workspace-b-'))
-    const workspaceA = initializeWorkspace(rootA, { createId: () => 'projection-a' })
-    const workspaceB = initializeWorkspace(rootB, { createId: () => 'projection-b' })
+  it('auto-loads workspace data and isolates canonical Captures by workspace', async () => {
+    const rootA = fs.mkdtempSync(path.join(os.tmpdir(), 'capture-workspace-a-'))
+    const rootB = fs.mkdtempSync(path.join(os.tmpdir(), 'capture-workspace-b-'))
+    const workspaceA = initializeWorkspace(rootA, { createId: () => 'capture-a' })
+    const workspaceB = initializeWorkspace(rootB, { createId: () => 'capture-b' })
     const manager = createLocalWorkspaceManager({
       registryStore: createFileWorkspaceRegistryStore(createTempFilePath('workspaces.json')),
-      seedDataMode: 'sample',
+      seedDataMode: 'none',
     })
-    await manager.open({ path: workspaceA.rootPath }); await manager.open({ path: workspaceB.rootPath })
+    await manager.open({ path: workspaceA.rootPath })
+    await manager.open({ path: workspaceB.rootPath })
     const server = await fixture.start({
-      client: createBoundaryTestClient(() => {}), host: '127.0.0.1', port: 0, workspaceManager: manager,
-    })
-
-    const applicationsResponse = await fetch(
-      `${server.url}/v1/workspaces/${workspaceA.id}/applications?status=needs_user_info&limit=25&offset=0`,
-    )
-    const applicationsPayload = (await readJson(applicationsResponse)) as {
-      items: Array<{ companyName: string; status: string }>
-      total: number
-    }
-    expect(applicationsResponse.status).toBe(200)
-    expect(applicationsPayload.total).toBe(1)
-    expect(applicationsPayload.items[0]).toMatchObject({
-      companyName: 'Astranis Space Technologies',
-      status: 'needs_user_info',
+      client: createBoundaryTestClient(() => {}),
+      host: '127.0.0.1',
+      port: 0,
+      workspaceManager: manager,
     })
 
     const root = createHttpValedictorianClient({ baseUrl: server.url })
-    const intake = await root.forWorkspace(workspaceA.id).sourcing.rawRecords.ingestBatch({ records: [{
-      intakeItemId: 'workspace-a-projection',
-      adapter: { id: 'manual', kind: 'manual', version: '1.0.0' }, observedAt: '2026-07-10T12:00:00.000Z',
-      payload: { company: 'A', title: 'Intern', url: 'https://jobs.lever.co/a/role' },
-    }] })
-    await expect(root.forWorkspace(workspaceA.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).resolves.toMatchObject({ rawRevisionId: intake.receipts[0].revision.id })
-    await expect(root.forWorkspace(workspaceB.id).sourcing.rawRevisions.projection.get(intake.receipts[0].revision.id)).rejects.toMatchObject({
-      status: 404,
-      body: null,
+    const created = await root.forWorkspace(workspaceA.id).captures.create({
+      evidenceMode: 'reported',
+      adapter: { id: 'manual', kind: 'manual', version: '1.0.0' },
+      observedAt: '2026-07-10T12:00:00.000Z',
+      providerRecordId: 'workspace-a-capture',
+      providerSchema: 'manual@1',
+      payload: { company: 'A', title: 'Intern' },
+      evidence: [],
     })
+    expect(created.status).toBe('succeeded')
+    if (created.status !== 'succeeded') throw new Error('Expected Capture creation')
+    await expect(root.forWorkspace(workspaceA.id).captures.get(created.resource.id))
+      .resolves.toMatchObject({ id: created.resource.id })
+    await expect(root.forWorkspace(workspaceB.id).captures.get(created.resource.id))
+      .resolves.toBeNull()
     await manager.close()
   })
 

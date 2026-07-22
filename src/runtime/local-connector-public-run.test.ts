@@ -5,7 +5,7 @@ import {
 } from './local-connector-public-run'
 
 describe('public connector run projection', () => {
-  it('translates internal sourcing totals into released lifecycle counts', () => {
+  it('translates internal sourcing totals into released opportunity counts', () => {
     expect(publicConnectorRunLifecycleCounts({
       lifecycleCounts: {
         version: 'connector-run-lifecycle-counts/v1',
@@ -49,9 +49,9 @@ describe('public connector run projection', () => {
       },
     }, 'run-1', 'scope_connector_1')).toMatchObject({
       source: 'live_current',
-      sourcing: {
-        findingsAdded: 2,
-        canonicalDuplicates: 1,
+      opportunity: {
+        opportunitiesCreated: 2,
+        existingJobMatches: 1,
       },
     })
   })
@@ -84,13 +84,13 @@ describe('public connector run projection', () => {
             gaps: [gap],
           },
           sourcing: {
-            added: lifecycle.sourcing.findingsAdded,
-            queueDuplicate: lifecycle.sourcing.canonicalDuplicates,
-            notFit: lifecycle.sourcing.notFit,
-            rejected: lifecycle.sourcing.rejected,
-            actionableReview: lifecycle.sourcing.actionableReview,
-            unclassified: lifecycle.sourcing.unclassified,
-            invariant: lifecycle.sourcing.invariant,
+            added: lifecycle.opportunity.opportunitiesCreated,
+            queueDuplicate: lifecycle.opportunity.existingJobMatches,
+            notFit: lifecycle.opportunity.notFit,
+            rejected: lifecycle.opportunity.rejected,
+            actionableReview: lifecycle.opportunity.actionableReview,
+            unclassified: lifecycle.opportunity.unclassified,
+            invariant: lifecycle.opportunity.invariant,
           },
         },
       }, 'run-1', 'scope_connector_1')).toMatchObject({
@@ -185,9 +185,9 @@ function lifecycleCounts() {
       unclassified: 0,
       invariant: 'reconciled',
     },
-    sourcing: {
-      findingsAdded: 2,
-      canonicalDuplicates: 1,
+    opportunity: {
+      opportunitiesCreated: 2,
+      existingJobMatches: 1,
       notFit: 0,
       rejected: 0,
       actionableReview: 0,

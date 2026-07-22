@@ -51,18 +51,18 @@ describe('lifecycle state-ownership policy', () => {
     expect(violations).toEqual([])
   })
 
-  it('routes cross-aggregate flows through the single transaction-owning orchestration', () => {
-    const orchestrationPath = 'src/modules/sourcing/sourcing.processor.ts'
-    const source = fs.readFileSync(path.join(repositoryRoot, orchestrationPath), 'utf8')
-    // Owns the transaction boundary for the cross-aggregate (Opportunity -> Application) flow.
-    expect(source).toContain('database.transaction(')
-    // Composes the owning modules' repositories inside that transaction.
-    expect(source).toContain('createPgliteApplicationRepository(transaction)')
-    expect(source).toContain('createPgliteScoringRepository(transaction)')
-    // Issues no direct lifecycle-table writes of its own (no orchestrator exemption needed).
-    const violations = findLifecycleStateOwnershipViolations([
-      { path: orchestrationPath, module: 'sourcing', source },
-    ])
-    expect(violations).toEqual([])
+  it('routes every promotion through canonical transaction-owning orchestration', () => {
+    const orchestrationPaths = [
+      'src/modules/lifecycle/capture-to-job.promotion.ts',
+      'src/modules/lifecycle/job-to-opportunity.promotion.ts',
+      'src/modules/lifecycle/opportunity-to-application.promotion.ts',
+    ]
+    const sources = orchestrationPaths.map((orchestrationPath) => ({
+      path: orchestrationPath,
+      module: 'lifecycle',
+      source: fs.readFileSync(path.join(repositoryRoot, orchestrationPath), 'utf8'),
+    }))
+    for (const { source } of sources) expect(source).toContain('database.transaction(')
+    expect(findLifecycleStateOwnershipViolations(sources)).toEqual([])
   })
 })

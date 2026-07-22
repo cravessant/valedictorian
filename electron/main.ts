@@ -9,14 +9,11 @@ import { runLegacyJobrightBrowserPartitionCleanup } from './legacy-jobright-part
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
 import { createRuntimeQuitBarrier, stopRuntimeLifecycle } from './runtime-lifecycle'
-import { registerApplicationIpc } from '../src/ipc/applications.ipc'
 import { registerPolicyIpc } from '../src/ipc/policy.ipc'
 import { registerProfileIpc } from '../src/ipc/profile.ipc'
-import { registerActionQueueIpc } from '../src/ipc/action-queue.ipc'
 import { registerConnectorsIpc } from '../src/ipc/connectors.ipc'
 import { registerScoresIpc } from '../src/ipc/scores.ipc'
 import { registerSettingsIpc } from '../src/ipc/settings.ipc'
-import { registerSourcingIpc } from '../src/ipc/sourcing.ipc'
 import { registerUpdatesIpc } from '../src/ipc/updates.ipc'
 import {
   createBoundValedictorianHttpTransport,
@@ -264,15 +261,12 @@ async function registerRuntimeServices(
       usePrivilegedTransport: config.mode === 'remote' || Boolean(config.apiToken),
     }
   }
-  registerApplicationIpc(runtime.client, ipcMain)
   registerPolicyIpc(runtime.client, ipcMain)
   if (runtime.profileService && runtime.secretService) {
     registerProfileIpc(runtime.profileService, runtime.secretService, ipcMain)
   }
-  registerActionQueueIpc(runtime.client, ipcMain)
   registerConnectorsIpc(runtime.connectors, ipcMain)
   registerScoresIpc(runtime.client, ipcMain)
-  registerSourcingIpc(runtime.client, ipcMain)
   registerSettingsIpc(settingsStore, ipcMain, {
     onSettingsUpdated: (nextSettings) => {
       activeResolvedTheme = resolveTheme(nextSettings.theme)

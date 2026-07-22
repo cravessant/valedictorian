@@ -1,6 +1,5 @@
 import { useEffect, useState, type ComponentProps } from 'react'
-import App from './App'
-import { defaultWorkspaceApi } from './app/loaders'
+import App, { rendererWorkspaceApi } from './App'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import { WorkspaceLauncherPage } from './workspace/WorkspaceLauncherPage'
 import type { WorkspaceLaunchState } from './workspace/workspace.service'
@@ -12,7 +11,7 @@ interface AppRootProps {
 
 function AppRoot({
   appProps = {},
-  workspaceApi = defaultWorkspaceApi,
+  workspaceApi = rendererWorkspaceApi(),
 }: AppRootProps) {
   const [launchState, setLaunchState] = useState<WorkspaceLaunchState | null>(null)
 

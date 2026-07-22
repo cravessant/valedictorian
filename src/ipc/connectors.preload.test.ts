@@ -207,10 +207,10 @@ function retirementResult() {
     },
     preservedLineage: {
       connectorRuns: true as const,
-      rawSourceRecords: true as const,
+      captures: true as const,
       normalizationAttempts: true as const,
-      canonicalCandidates: true as const,
-      sourcingFindings: true as const,
+      jobs: true as const,
+      opportunities: true as const,
     },
   }
 }

@@ -1,32 +1,14 @@
-import { createPgliteApplicationRepository } from '../src/modules/applications/application.repository'
 import { createPgliteClient, migratePgliteDatabase } from '../src/db/pglite'
+import { createPgliteCaptureReadModel } from '../src/modules/capture/capture.read-model'
+import { createPgliteCaptureService } from '../src/modules/capture/capture.service'
 
-const smokeCompanyName = 'Packaged PGlite Smoke'
-
-interface PackagedPgliteSmokeRepository {
-  createApplication(input: {
-    companyName: string
-    country: string
-    primaryLink: {
-      kind: 'official'
-      label: string
-      url: string
-    }
-    roleKind: 'internship'
-    roleTitle: string
-    sourceName: string
-    status: 'queued'
-    workMode: 'remote'
-  }): Promise<unknown>
-  listApplications(): Promise<{
-    items: Array<{ companyName?: string }>
-    total: number
-  }>
-}
+const smokeProviderRecordId = 'packaged-pglite-smoke'
+const smokeWorkspaceId = 'packaged-smoke-workspace'
 
 interface PackagedPgliteSmokeOwner {
   close(): Promise<void>
-  repository: PackagedPgliteSmokeRepository
+  write(): Promise<void>
+  read(): Promise<{ found: boolean; total: number }>
 }
 
 export interface RunPackagedPgliteSmokeOptions {
@@ -43,47 +25,55 @@ export async function runPackagedPgliteSmoke({
   const owner = await openOwner(dataDirectory)
   try {
     if (phase === 'write') {
-      await owner.repository.createApplication({
-        companyName: smokeCompanyName,
-        country: 'US',
-        primaryLink: {
-          kind: 'official',
-          label: 'Packaged smoke fixture',
-          url: 'https://example.test/packaged-pglite-smoke',
-        },
-        roleKind: 'internship',
-        roleTitle: 'Runtime Asset Verification',
-        sourceName: 'Packaged smoke',
-        status: 'queued',
-        workMode: 'remote',
-      })
+      await owner.write()
       return { phase }
     }
 
-    const applications = await owner.repository.listApplications()
-    if (!applications.items.some((item) => item.companyName === smokeCompanyName)) {
-      throw new Error('Packaged PGlite smoke record did not persist across application restart')
+    const captures = await owner.read()
+    if (!captures.found) {
+      throw new Error('Packaged PGlite smoke capture did not persist across application restart')
     }
-    return {
-      companyName: smokeCompanyName,
-      persistedApplications: applications.total,
-      phase,
-    }
+    return { persistedCaptures: captures.total, phase }
   } finally {
     await owner.close()
   }
 }
 
-async function openPackagedPgliteSmokeOwner(dataDirectory: string) {
+async function openPackagedPGlite(dataDirectory: string) {
   const client = await createPgliteClient({ dataDir: dataDirectory })
-  try {
-    const database = await migratePgliteDatabase(client)
-    return {
-      close: () => client.close(),
-      repository: createPgliteApplicationRepository(database),
-    }
-  } catch (error) {
-    await client.close()
-    throw error
+  const database = await migratePgliteDatabase(client)
+  return { client, database }
+}
+
+async function openPackagedPgliteSmokeOwner(dataDirectory: string): Promise<PackagedPgliteSmokeOwner> {
+  const { client, database } = await openPackagedPGlite(dataDirectory)
+  const captures = createPgliteCaptureService(database)
+  const readModel = createPgliteCaptureReadModel(database)
+  return {
+    close: () => client.close(),
+    async write() {
+      const result = await captures.accept({
+        workspaceId: smokeWorkspaceId,
+        provenance: {
+          adapterId: 'packaged-smoke',
+          adapterKind: 'import',
+          adapterVersion: '1.0.0',
+          providerRecordId: smokeProviderRecordId,
+          providerSchema: 'packaged-smoke/v1',
+          observedAt: new Date().toISOString(),
+        },
+        evidenceMode: 'reported',
+        evidence: [{ kind: 'smoke', label: 'Packaged PGlite', value: smokeProviderRecordId }],
+        actor: { type: 'system', id: 'packaged-smoke' },
+      })
+      if (!result.ok) throw new Error(`Packaged PGlite smoke write failed: ${result.code}`)
+    },
+    async read() {
+      const result = await readModel.listCaptures(smokeWorkspaceId, { limit: 100 })
+      return {
+        found: result.items.some((capture) => capture.providerRecordId === smokeProviderRecordId),
+        total: result.items.length,
+      }
+    },
   }
 }

@@ -117,8 +117,8 @@ importers:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       sparxie:
-        specifier: 0.26.1
-        version: 0.26.1
+        specifier: 0.27.0
+        version: 0.27.0
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -3750,12 +3750,12 @@ packages:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
 
-  sparxie@0.26.0:
-    resolution: {integrity: sha512-uwxsg03yofYDTg3ot6q1agA/fKRG+7FMT+eI6n1ZGVy0Frut7pN25tKmZMAro0HKjhIHgFLiwhMChpk7OQmM5A==}
-    engines: {node: '>=22.12.0'}
-
   sparxie@0.26.1:
     resolution: {integrity: sha512-mWLJ2ExP3fAMLtIKvb+XUPjjEC2r3TOK2XSts9sFVLaKVyOCce7KEitmzL9X5ERgejMeEp41QVF/6Q0YqCX/LA==}
+    engines: {node: '>=22.12.0'}
+
+  sparxie@0.27.0:
+    resolution: {integrity: sha512-SMUr2wZ4RwEvhjaJ8pQjXmHTpifw92mUmpHj19H0yQyMg5gRrL5rPhkSfA6HYQG6pt+h2sChOy83l7TJ2b9bmg==}
     engines: {node: '>=22.12.0'}
 
   sprintf-js@1.0.3:
@@ -5395,7 +5395,7 @@ snapshots:
 
   '@sparxie/valedictorian-connectors-core@0.16.0':
     dependencies:
-      sparxie: 0.26.0
+      sparxie: 0.26.1
 
   '@sparxie/valedictorian-connectors-jobright@0.16.0':
     dependencies:
@@ -5404,7 +5404,7 @@ snapshots:
   '@sparxie/valedictorian-connectors-test-harness@0.16.0':
     dependencies:
       '@sparxie/valedictorian-connectors-core': 0.16.0
-      sparxie: 0.26.0
+      sparxie: 0.26.1
 
   '@szmarczak/http-timer@4.0.6':
     dependencies:
@@ -7348,11 +7348,11 @@ snapshots:
 
   source-map@0.6.1: {}
 
-  sparxie@0.26.0:
+  sparxie@0.26.1:
     dependencies:
       zod: 4.4.3
 
-  sparxie@0.26.1:
+  sparxie@0.27.0:
     dependencies:
       zod: 4.4.3
 

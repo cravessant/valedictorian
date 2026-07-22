@@ -30,7 +30,7 @@
 import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
-import { pursuitApplicationStatuses } from '../../db/lifecycle-vocabulary'
+import { lifecycleWarningCodes, pursuitApplicationStatuses } from '../../db/lifecycle-vocabulary'
 import { lifecycleJobs } from '../job/job.schema'
 import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
 import {
@@ -103,6 +103,21 @@ export type ApplicationHistoryKind =
 const attemptStates = ['pending', 'running', 'succeeded', 'failed'] as const
 export type ApplicationAttemptState = (typeof attemptStates)[number]
 
+export type ApplicationWarningCode = (typeof lifecycleWarningCodes)[number]
+
+/** #304: the contract warning override, recorded in the application's history audit. */
+export interface ApplicationWarningOverrideInput {
+  readonly actor: { readonly id: string; readonly type: ApplicationActorType; readonly displayName?: string }
+  readonly rationale: string
+  readonly warningCodes: readonly ApplicationWarningCode[]
+}
+
+/** #304: attach/merge onto an existing Application when (workspace, opportunity) collides. */
+export interface ApplicationDuplicateResolutionInput {
+  readonly action: 'attach' | 'merge'
+  readonly targetResourceId: string
+}
+
 export interface CreateApplicationInput {
   readonly workspaceId: string
   readonly opportunityId: string
@@ -111,6 +126,23 @@ export interface CreateApplicationInput {
   readonly status?: ApplicationStatus
   readonly scores?: JsonValue
   readonly actor: ApplicationActor
+  /** #304: create-dedup key — a keyed re-create converges (created:false). */
+  readonly idempotencyKey?: string
+  /** #304: optimistic lineage guard — the Job's facts revision the caller evaluated. */
+  readonly expectedJobFactsRevision?: number
+  /** #304: lineage-identity guard — the Job the caller expects the Opportunity to point at. */
+  readonly expectedJobId?: string
+  /** #304: warning override recorded in the created-history audit envelope. */
+  readonly override?: ApplicationWarningOverrideInput | null
+  /** #304: attach/merge onto the one active Application for this (workspace, opportunity). */
+  readonly duplicateResolution?: ApplicationDuplicateResolutionInput
+  /**
+   * #304: creation-time links, frozen into the snapshot blob as `initialLinks`. The
+   * caller (the create orchestration) ALSO materializes these as durable `pursuit_links`
+   * rows via `addLinkOn` in the same transaction; this field only records the immutable
+   * creation-time copy so the read-model can present it truthfully thereafter.
+   */
+  readonly initialLinks?: readonly { readonly kind: string; readonly label: string; readonly url: string }[]
 }
 
 export interface EditCompanyInput {
@@ -142,6 +174,28 @@ export interface RefreshSnapshotInput {
   readonly applicationId: string
   readonly actor: ApplicationActor
   readonly expectedRevision?: number
+  /**
+   * #304: optimistic lineage guard — the Job facts revision the caller intends to
+   * refresh to. A mismatch (the Job's facts advanced past the caller's read) is a
+   * typed revision_conflict, so a refresh never silently snapshots an unexpected revision.
+   */
+  readonly expectedJobFactsRevision?: number
+  /**
+   * #304 caller-driven refresh reconciliation (same "the contract forces the domain to
+   * accept caller inputs" pattern as job→opp evaluation). A refresh re-captures the Job
+   * facts into the snapshot blob; these flags tell the domain what to do with the head's
+   * caller-editable display fields:
+   *  - `preserveCompanyEdit` — when explicitly `false`, the refresh ADOPTS the refreshed
+   *    Job company into `companyName`; `true` (or undefined, the legacy default) keeps a
+   *    prior `editCompany`.
+   *  - `preserveSourceEdit` — same, for `sourceName`.
+   *  - `preserveLinkEdits` — accepted and recorded; a guaranteed no-op because a refresh
+   *    never sources links from Job facts, so the mutable `pursuit_links` set is always
+   *    preserved (documented scoped reading: refresh is non-lossy for links).
+   */
+  readonly preserveCompanyEdit?: boolean
+  readonly preserveSourceEdit?: boolean
+  readonly preserveLinkEdits?: boolean
 }
 
 export interface ApplicationLinkInput {
@@ -264,7 +318,7 @@ export interface ApplicationHistoryEntry {
   readonly createdAt: string
 }
 
-export type CreateApplicationResult = { readonly ok: true; readonly application: ApplicationRecord } | ApplicationFailure
+export type CreateApplicationResult = { readonly ok: true; readonly application: ApplicationRecord; readonly created: boolean } | ApplicationFailure
 export type MutateApplicationResult = { readonly ok: true; readonly application: ApplicationRecord } | ApplicationFailure
 export type AddLinkResult = { readonly ok: true; readonly link: ApplicationLinkRecord; readonly application: ApplicationRecord } | ApplicationFailure
 
@@ -296,7 +350,11 @@ export interface ApplicationAggregateService {
   recordAttempt(input: RecordAttemptInput): Promise<{ readonly ok: true; readonly attempt: ApplicationAttemptRecord } | ApplicationFailure>
   listAttempts(workspaceId: string, applicationId: string): Promise<readonly ApplicationAttemptRecord[]>
   remove(input: RemoveApplicationInput): Promise<MutateApplicationResult>
+  /** Composable tombstone core: tombstone an Application (with its dependent choice) on the caller's transaction executor (no internal tx). */
+  removeOn(exec: ApplicationDeleteExec, input: RemoveApplicationInput): Promise<MutateApplicationResult>
   restore(input: ApplicationMutationInput): Promise<MutateApplicationResult>
+  /** Composable restore core: clear an Application tombstone on the caller's transaction executor (no internal tx). */
+  restoreOn(exec: ApplicationExec, input: ApplicationMutationInput): Promise<MutateApplicationResult>
   history(workspaceId: string, applicationId: string): Promise<readonly ApplicationHistoryEntry[]>
 }
 
@@ -319,6 +377,33 @@ interface ApplicationRow {
   createdAt: string
   updatedAt: string
   removedAt: string | null
+  idempotencyKey?: string | null
+}
+
+const IDEMPOTENCY_KEY_MAX = 200
+const OVERRIDE_MAX = 16_384
+const APPLICATION_ACTOR_TYPES = ['user', 'agent', 'system'] as const
+
+/**
+ * Validate the contract warning override to a plain object recorded in the history
+ * audit envelope (the Application resource carries no override column), or null when
+ * absent. Throws a typed ApplicationInputError on a malformed override.
+ */
+function validateApplicationOverride(
+  override: ApplicationWarningOverrideInput | null | undefined,
+): { actor: { id: string; type: ApplicationActorType; displayName?: string }; rationale: string; warningCodes: ApplicationWarningCode[] } | null {
+  if (override === undefined || override === null) return null
+  const type = requireOneOf(override.actor?.type, APPLICATION_ACTOR_TYPES, 'override.actor.type')
+  const id = requireText(override.actor?.id, 'override.actor.id', 1, WORKSPACE_MAX)
+  const rationale = requireText(override.rationale, 'override.rationale', 1, SUMMARY_MAX)
+  if (!Array.isArray(override.warningCodes)) {
+    throw new ApplicationInputError('invalid_input', 'override.warningCodes must be an array')
+  }
+  const warningCodes = override.warningCodes.map((code) => requireOneOf(code, lifecycleWarningCodes, 'override.warningCodes'))
+  const displayName = override.actor.displayName === undefined
+    ? undefined
+    : requireText(override.actor.displayName, 'override.actor.displayName', 1, WORKSPACE_MAX)
+  return { actor: displayName === undefined ? { id, type } : { id, type, displayName }, rationale, warningCodes }
 }
 
 function toRecord(row: ApplicationRow): ApplicationRecord {
@@ -347,6 +432,15 @@ function deriveCompany(facts: JsonValue): string {
   return 'Unknown'
 }
 
+/** #304: the Job's source name, used when a refresh adopts the refreshed source; keeps the current head value when facts carry none. */
+function deriveSource(facts: JsonValue, current: string): string {
+  if (facts !== null && typeof facts === 'object' && !Array.isArray(facts)) {
+    const candidate = facts.sourceName
+    if (typeof candidate === 'string' && candidate.trim().length > 0) return candidate.trim().slice(0, DISPLAY_MAX)
+  }
+  return current
+}
+
 type HeadUpdate = Partial<Pick<ApplicationRow, 'status' | 'companyName' | 'sourceName' | 'snapshotJson' | 'jobFactsRevision' | 'removedAt'>>
 
 export function createPgliteApplicationAggregateService(
@@ -362,6 +456,29 @@ export function createPgliteApplicationAggregateService(
       .select()
       .from(lifecycleApplications)
       .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.id, applicationId)))
+      .limit(1)
+    return (row as ApplicationRow | undefined) ?? null
+  }
+
+  async function selectByIdempotencyKey(exec: ApplicationExec, workspaceId: string, key: string): Promise<ApplicationRow | null> {
+    const [row] = await exec
+      .select()
+      .from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.idempotencyKey, key)))
+      .limit(1)
+    return (row as ApplicationRow | undefined) ?? null
+  }
+
+  /** The single active (non-tombstoned) Application for an Opportunity — the attach target. */
+  async function selectActiveByOpportunity(exec: ApplicationExec, workspaceId: string, opportunityId: string): Promise<ApplicationRow | null> {
+    const [row] = await exec
+      .select()
+      .from(lifecycleApplications)
+      .where(and(
+        eq(lifecycleApplications.workspaceId, workspaceId),
+        eq(lifecycleApplications.opportunityId, opportunityId),
+        isNull(lifecycleApplications.removedAt),
+      ))
       .limit(1)
     return (row as ApplicationRow | undefined) ?? null
   }
@@ -387,8 +504,49 @@ export function createPgliteApplicationAggregateService(
     }
   }
 
-  function buildSnapshot(jobFacts: JsonValue, jobFactsRevision: number, scores?: JsonValue): JsonValue {
-    return { job: { facts: jobFacts, factsRevision: jobFactsRevision }, scores: scores ?? null }
+  // #304: `capturedAt` is persisted additively so the HTTP read-model can present the
+  // contract `applicationPursuitSnapshot.capturedAt` as the honest capture time (create
+  // or the most recent refreshSnapshot), rather than falling back to the head createdAt
+  // which a refresh would render false. No migration: it is a new JSON field on a blob
+  // both create and refresh already write.
+  //
+  // #304 initialLinks upgrade: the creation-time links are ALSO persisted additively
+  // into the snapshot blob (the same mechanism as `capturedAt`). The HTTP read-model
+  // prefers these stored values for `applicationPursuitSnapshot.initialLinks`, so the
+  // frozen creation-time links remain durably attributable even after the mutable
+  // `pursuit_links` set is edited. A refresh carries the prior initialLinks forward
+  // unchanged (they are the CREATION-time links, not the current set).
+  function buildSnapshot(
+    jobFacts: JsonValue,
+    jobFactsRevision: number,
+    capturedAt: string,
+    scores?: JsonValue,
+    initialLinks?: readonly { readonly kind: string; readonly label: string; readonly url: string }[],
+  ): JsonValue {
+    return {
+      job: { facts: jobFacts, factsRevision: jobFactsRevision },
+      capturedAt,
+      scores: scores ?? null,
+      initialLinks: (initialLinks ?? []).map((link) => ({ kind: link.kind, label: link.label, url: link.url })),
+    }
+  }
+
+  /** Read the creation-time `initialLinks` frozen in a stored snapshot blob (empty if absent). */
+  function priorInitialLinks(snapshotJson: string): { kind: string; label: string; url: string }[] {
+    const parsed = safeParse(snapshotJson)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+    const raw = (parsed as Record<string, unknown>).initialLinks
+    if (!Array.isArray(raw)) return []
+    const links: { kind: string; label: string; url: string }[] = []
+    for (const entry of raw) {
+      if (entry !== null && typeof entry === 'object' && !Array.isArray(entry)) {
+        const record = entry as Record<string, unknown>
+        if (typeof record.kind === 'string' && typeof record.label === 'string' && typeof record.url === 'string') {
+          links.push({ kind: record.kind, label: record.label, url: record.url })
+        }
+      }
+    }
+    return links
   }
 
   async function appendHistory(
@@ -399,15 +557,44 @@ export function createPgliteApplicationAggregateService(
     snapshot: JsonValue,
     actor: ApplicationActor,
     createdAt: string,
+    override?: ReturnType<typeof validateApplicationOverride>,
   ) {
+    // #304: the warning override rides in the audit envelope (the resource has no
+    // override column). auditJson bounds the actor; the override extends it bounded.
+    const auditValue = override
+      ? boundedJson({ actor: { type: actor.type, id: actor.id ?? null }, override }, 'audit', OVERRIDE_MAX)
+      : auditJson(actor)
     await insertApplicationHistoryRecords(exec).values({
       applicationId,
       revision,
       kind,
       snapshotJson: boundedJson(snapshot, 'snapshot', SNAPSHOT_MAX),
-      auditJson: auditJson(actor),
+      auditJson: auditValue,
       createdAt,
     })
+  }
+
+  // Composable commit core: conditional head update + history append on the caller's
+  // executor (no internal tx) so the removal orchestration composes an Application
+  // tombstone into ONE atomic cross-aggregate transaction. May THROW a unique-violation.
+  async function commitOn(
+    exec: ApplicationExec,
+    row: ApplicationRow,
+    actor: ApplicationActor,
+    kind: ApplicationHistoryKind,
+    snapshot: JsonValue,
+    headUpdate: HeadUpdate,
+    guard: SQL,
+  ): Promise<MutateApplicationResult> {
+    const createdAt = nowIso()
+    const nextRevision = row.revision + 1
+    const updated = await updateLifecycleApplications(exec)
+      .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
+      .where(and(eq(lifecycleApplications.id, row.id), guard))
+      .returning({ id: lifecycleApplications.id })
+    if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
+    await appendHistory(exec, row.id, nextRevision, kind, snapshot, actor, createdAt)
+    return { ok: true as const, application: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
   }
 
   async function commit(
@@ -419,18 +606,8 @@ export function createPgliteApplicationAggregateService(
     guard: SQL,
     onUnique: 'revision_conflict' | 'deterministic_duplicate',
   ): Promise<MutateApplicationResult> {
-    const createdAt = nowIso()
-    const nextRevision = row.revision + 1
     try {
-      return await database.transaction(async (tx) => {
-        const updated = await updateLifecycleApplications(tx)
-          .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
-          .where(and(eq(lifecycleApplications.id, row.id), guard))
-          .returning({ id: lifecycleApplications.id })
-        if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
-        await appendHistory(tx, row.id, nextRevision, kind, snapshot, actor, createdAt)
-        return { ok: true as const, application: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
-      })
+      return await database.transaction((tx) => commitOn(tx, row, actor, kind, snapshot, headUpdate, guard))
     } catch (error) {
       if (isUniqueViolation(error)) {
         return onUnique === 'deterministic_duplicate'
@@ -439,6 +616,63 @@ export function createPgliteApplicationAggregateService(
       }
       throw error
     }
+  }
+
+  /** Count an Application's own dependents (links + events + attempts) on the caller's executor. */
+  async function countOwnDependents(exec: ApplicationExec, applicationId: string): Promise<number> {
+    const [{ dependents }] = await exec
+      .select({ dependents: sql<number>`
+        (select count(*) from ${pursuitLinks} where ${pursuitLinks.applicationId} = ${applicationId})
+        + (select count(*) from ${applicationEventRecords} where ${applicationEventRecords.applicationId} = ${applicationId})
+        + (select count(*) from ${applicationAttemptRecords} where ${applicationAttemptRecords.applicationId} = ${applicationId})` })
+      .from(lifecycleApplications)
+      .where(eq(lifecycleApplications.id, applicationId))
+    return Number(dependents)
+  }
+
+  // Composable tombstone/restore cores for the removal orchestration. removeOn needs a
+  // delete-capable executor for the 'cascade' dependent choice.
+  async function removeOn(exec: ApplicationDeleteExec, input: RemoveApplicationInput): Promise<MutateApplicationResult> {
+    let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+    try {
+      resolved = await ids(input)
+    } catch (error) {
+      if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId))).limit(1)
+    const typed = (row as ApplicationRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'application not found in this workspace')
+    if (typed.removedAt !== null) return { ok: true, application: toRecord(typed) }
+    const dependentCount = await countOwnDependents(exec, typed.id)
+    if (dependentCount > 0 && input.dependents === undefined) {
+      return fail('dependent_choice_required', 'application has dependent links/events/attempts; pass dependents: cascade | preserve')
+    }
+    if (input.dependents === 'cascade') {
+      await deletePursuitLinks(exec).where(eq(pursuitLinks.applicationId, typed.id))
+      await deleteApplicationEventRecords(exec).where(eq(applicationEventRecords.applicationId, typed.id))
+      await deleteApplicationAttemptRecords(exec).where(eq(applicationAttemptRecords.applicationId, typed.id))
+    }
+    return commitOn(exec, typed, resolved.actor, 'removed', { dependents: input.dependents ?? 'none' },
+      { removedAt: nowIso() }, isNull(lifecycleApplications.removedAt))
+  }
+
+  async function restoreOn(exec: ApplicationExec, input: ApplicationMutationInput): Promise<MutateApplicationResult> {
+    let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
+    try {
+      resolved = await ids(input)
+    } catch (error) {
+      if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+      throw error
+    }
+    const [row] = await exec.select().from(lifecycleApplications)
+      .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId))).limit(1)
+    const typed = (row as ApplicationRow | undefined) ?? null
+    if (!typed) return fail('not_found', 'application not found in this workspace')
+    if (typed.removedAt === null) return { ok: true, application: toRecord(typed) }
+    return commitOn(exec, typed, resolved.actor, 'restored', { kind: 'restored', priorRevision: typed.revision },
+      { removedAt: null }, sql`${lifecycleApplications.removedAt} is not null`)
   }
 
   async function ids(input: { workspaceId: unknown; applicationId: unknown; actor: unknown }) {
@@ -467,6 +701,8 @@ export function createPgliteApplicationAggregateService(
       let companyOverride: string | null
       let sourceOverride: string | null
       let scores: JsonValue | undefined
+      let idempotencyKey: string | null
+      let override: ReturnType<typeof validateApplicationOverride>
       try {
         workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
         opportunityId = requireText(input.opportunityId, 'opportunityId', 1, WORKSPACE_MAX)
@@ -475,17 +711,45 @@ export function createPgliteApplicationAggregateService(
         companyOverride = optionalText(input.companyName, 'companyName', DISPLAY_MAX)
         sourceOverride = optionalText(input.sourceName, 'sourceName', DISPLAY_MAX)
         scores = input.scores
+        idempotencyKey = input.idempotencyKey === undefined ? null : requireText(input.idempotencyKey, 'idempotencyKey', 1, IDEMPOTENCY_KEY_MAX)
+        override = validateApplicationOverride(input.override)
       } catch (error) {
         if (error instanceof ApplicationInputError) return fail(error.code, error.message)
         throw error
       }
+      // Create-dedup: a keyed re-create converges to the existing Application.
+      if (idempotencyKey !== null) {
+        const existing = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
+        if (existing) return { ok: true, application: toRecord(existing), created: false }
+      }
       const lineage = await resolveLineage(exec, workspaceId, opportunityId)
       if (!lineage) return fail('missing_lineage', 'opportunity or its job not found in this workspace')
       if (lineage.opportunityRemoved) return fail('missing_lineage', 'opportunity is removed')
+      // #304 optimistic lineage guards: the Opportunity must still point at the expected
+      // Job, and the Job's facts must not have advanced since the caller evaluated them.
+      if (input.expectedJobId !== undefined && input.expectedJobId !== lineage.jobId) {
+        return fail('missing_lineage', 'opportunity no longer points at the expected job')
+      }
+      if (input.expectedJobFactsRevision !== undefined && input.expectedJobFactsRevision !== lineage.jobFactsRevision) {
+        return fail('revision_conflict', 'job facts advanced since evaluation; refresh before promoting')
+      }
+      // Duplicate pre-check (attach/merge): resolve BEFORE inserting since an aborted
+      // unique violation cannot recover on the same transaction. attach/merge reduce to
+      // the same target for this 1:1 (workspace, opportunity) aggregate.
+      const activeForOpportunity = await selectActiveByOpportunity(exec, workspaceId, opportunityId)
+      if (activeForOpportunity) {
+        if (input.duplicateResolution) {
+          if (input.duplicateResolution.targetResourceId !== activeForOpportunity.id) {
+            return fail('invalid_input', 'duplicateResolution.targetResourceId does not match the existing application for this opportunity')
+          }
+          return { ok: true, application: toRecord(activeForOpportunity), created: false }
+        }
+        return fail('deterministic_duplicate', 'an active application already exists for this opportunity')
+      }
       const createdAt = nowIso()
       let snapshotJson: string
       try {
-        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, scores), 'snapshot', SNAPSHOT_MAX)
+        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, createdAt, scores, input.initialLinks), 'snapshot', SNAPSHOT_MAX)
       } catch (error) {
         if (error instanceof ApplicationInputError) return fail(error.code, error.message)
         throw error
@@ -504,10 +768,11 @@ export function createPgliteApplicationAggregateService(
         createdAt,
         updatedAt: createdAt,
         removedAt: null,
+        idempotencyKey,
       }
       await insertLifecycleApplications(exec).values(row)
-      await appendHistory(exec, row.id, 1, 'created', { status, opportunityId, jobId: lineage.jobId }, actor, createdAt)
-      return { ok: true, application: toRecord(row) }
+      await appendHistory(exec, row.id, 1, 'created', { status, opportunityId, jobId: lineage.jobId }, actor, createdAt, override)
+      return { ok: true, application: toRecord(row), created: true }
     },
 
     async create(input) {
@@ -599,23 +864,44 @@ export function createPgliteApplicationAggregateService(
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
       const lineage = await resolveLineage(database, resolved.workspaceId, row.opportunityId)
       if (!lineage) return fail('missing_lineage', 'opportunity or its job no longer resolvable')
+      if (input.expectedJobFactsRevision !== undefined && input.expectedJobFactsRevision !== lineage.jobFactsRevision) {
+        return fail('revision_conflict', 'job facts advanced since evaluation; re-read before refreshing')
+      }
       const priorScores = (() => {
         const parsed = safeParse(row.snapshotJson)
         return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed.scores ?? null : null
       })()
+      // A refresh re-captures now; capturedAt reflects this refresh, not the create.
+      // The creation-time initialLinks are carried forward unchanged (they freeze the
+      // create, not the current mutable link set).
+      const capturedAt = nowIso()
       let snapshotJson: string
       try {
-        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, priorScores), 'snapshot', SNAPSHOT_MAX)
+        snapshotJson = boundedJson(buildSnapshot(lineage.jobFacts, lineage.jobFactsRevision, capturedAt, priorScores, priorInitialLinks(row.snapshotJson)), 'snapshot', SNAPSHOT_MAX)
       } catch (error) {
         if (error instanceof ApplicationInputError) return fail(error.code, error.message)
         throw error
       }
+      // #304 caller-driven reconciliation: adopt the refreshed Job company/source into the
+      // head display fields only when the caller did NOT pin the corresponding preserve
+      // flag. `undefined` (legacy callers) preserves — the head is untouched, matching the
+      // pre-#304 refresh behavior. Links are never sourced from facts, so preserveLinkEdits
+      // has no head effect (documented no-op).
+      const headUpdate: HeadUpdate = { snapshotJson, jobFactsRevision: lineage.jobFactsRevision }
+      if (input.preserveCompanyEdit === false) headUpdate.companyName = deriveCompany(lineage.jobFacts)
+      if (input.preserveSourceEdit === false) headUpdate.sourceName = deriveSource(lineage.jobFacts, row.sourceName)
       return commit(
         row,
         resolved.actor,
         'snapshot_refreshed',
-        { jobFactsRevision: lineage.jobFactsRevision, priorJobFactsRevision: row.jobFactsRevision },
-        { snapshotJson, jobFactsRevision: lineage.jobFactsRevision },
+        {
+          jobFactsRevision: lineage.jobFactsRevision,
+          priorJobFactsRevision: row.jobFactsRevision,
+          preserveCompanyEdit: input.preserveCompanyEdit ?? true,
+          preserveSourceEdit: input.preserveSourceEdit ?? true,
+          preserveLinkEdits: input.preserveLinkEdits ?? true,
+        },
+        headUpdate,
         eq(lifecycleApplications.revision, row.revision),
         'revision_conflict',
       )
@@ -829,63 +1115,25 @@ export function createPgliteApplicationAggregateService(
       return rows.map((r) => ({ id: r.id, applicationId: r.applicationId, state: r.state as ApplicationAttemptState, startedAt: r.startedAt, completedAt: r.completedAt, summary: r.summary, createdAt: r.createdAt }))
     },
 
+    removeOn,
+    restoreOn,
+
     async remove(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
       try {
-        resolved = await ids(input)
+        return await database.transaction((tx) => removeOn(tx, input))
       } catch (error) {
-        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('revision_conflict', 'application was modified concurrently')
         throw error
       }
-      const row = await selectById(resolved.workspaceId, resolved.applicationId)
-      if (!row) return fail('not_found', 'application not found in this workspace')
-      if (row.removedAt !== null) return { ok: true, application: toRecord(row) }
-      const [{ dependents }] = await database
-        .select({ dependents: sql<number>`
-          (select count(*) from ${pursuitLinks} where ${pursuitLinks.applicationId} = ${row.id})
-          + (select count(*) from ${applicationEventRecords} where ${applicationEventRecords.applicationId} = ${row.id})
-          + (select count(*) from ${applicationAttemptRecords} where ${applicationAttemptRecords.applicationId} = ${row.id})` })
-        .from(lifecycleApplications)
-        .where(eq(lifecycleApplications.id, row.id))
-      const dependentCount = Number(dependents)
-      if (dependentCount > 0 && input.dependents === undefined) {
-        return fail('dependent_choice_required', 'application has dependent links/events/attempts; pass dependents: cascade | preserve')
-      }
-      const createdAt = nowIso()
-      const nextRevision = row.revision + 1
-      return database.transaction(async (tx) => {
-        if (input.dependents === 'cascade') {
-          await deletePursuitLinks(tx).where(eq(pursuitLinks.applicationId, row.id))
-          await deleteApplicationEventRecords(tx).where(eq(applicationEventRecords.applicationId, row.id))
-          await deleteApplicationAttemptRecords(tx).where(eq(applicationAttemptRecords.applicationId, row.id))
-        }
-        const updated = await updateLifecycleApplications(tx).set({ removedAt: createdAt, revision: nextRevision, updatedAt: createdAt }).where(and(eq(lifecycleApplications.id, row.id), isNull(lifecycleApplications.removedAt))).returning({ id: lifecycleApplications.id })
-        if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
-        await appendHistory(tx, row.id, nextRevision, 'removed', { dependents: input.dependents ?? 'none' }, resolved.actor, createdAt)
-        return { ok: true as const, application: toRecord({ ...row, removedAt: createdAt, revision: nextRevision, updatedAt: createdAt }) }
-      })
     },
 
     async restore(input) {
-      let resolved: { workspaceId: string; applicationId: string; actor: ApplicationActor }
       try {
-        resolved = await ids(input)
+        return await database.transaction((tx) => restoreOn(tx, input))
       } catch (error) {
-        if (error instanceof ApplicationInputError) return fail(error.code, error.message)
+        if (isUniqueViolation(error)) return fail('deterministic_duplicate', 'an active application already exists for this opportunity')
         throw error
       }
-      const row = await selectById(resolved.workspaceId, resolved.applicationId)
-      if (!row) return fail('not_found', 'application not found in this workspace')
-      if (row.removedAt === null) return { ok: true, application: toRecord(row) }
-      return commit(
-        row,
-        resolved.actor,
-        'restored',
-        { kind: 'restored', priorRevision: row.revision },
-        { removedAt: null },
-        sql`${lifecycleApplications.removedAt} is not null`,
-        'deterministic_duplicate',
-      )
     },
 
     async history(workspaceId, applicationId) {

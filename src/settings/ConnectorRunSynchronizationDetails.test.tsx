@@ -243,9 +243,9 @@ describe('ConnectorRunSynchronizationDetails', () => {
           unclassified: 0,
           invariant: 'reconciled',
         },
-        sourcing: {
-          findingsAdded: 0,
-          canonicalDuplicates: 0,
+        opportunity: {
+          opportunitiesCreated: 0,
+          existingJobMatches: 0,
           notFit: 0,
           rejected: 0,
           actionableReview: 0,
@@ -272,7 +272,7 @@ describe('ConnectorRunSynchronizationDetails', () => {
     expect(screen.getByText('Stage-specific synchronization counts')).toBeInTheDocument()
     expect(screen.getByText('Provider returned rows: 0')).toBeInTheDocument()
     expect(screen.getByText('Capture lineages: 0')).toBeInTheDocument()
-    expect(screen.getByText('Canonical duplicates: 0')).toBeInTheDocument()
+    expect(screen.getByText('Existing Job matches: 0')).toBeInTheDocument()
     expect(screen.getByText('Opportunities added: 0')).toBeInTheDocument()
     expect(screen.queryByText('Carried connector cycle')).not.toBeInTheDocument()
     expect(screen.queryByText('Discovered jobs: 50')).not.toBeInTheDocument()
@@ -334,9 +334,9 @@ describe('ConnectorRunSynchronizationDetails', () => {
           unclassified: 0,
           invariant: 'reconciled',
         },
-        sourcing: {
-          findingsAdded: 0,
-          canonicalDuplicates: 0,
+        opportunity: {
+          opportunitiesCreated: 0,
+          existingJobMatches: 0,
           notFit: 0,
           rejected: 0,
           actionableReview: 0,
@@ -408,9 +408,9 @@ describe('ConnectorRunSynchronizationDetails', () => {
           unclassified: 0,
           invariant: 'reconciled',
         },
-        sourcing: {
-          findingsAdded: 0,
-          canonicalDuplicates: 0,
+        opportunity: {
+          opportunitiesCreated: 0,
+          existingJobMatches: 0,
           notFit: 0,
           rejected: 0,
           actionableReview: 0,
@@ -477,9 +477,9 @@ describe('ConnectorRunSynchronizationDetails', () => {
             unclassified: 0,
             invariant: 'reconciled',
           },
-          sourcing: {
-            findingsAdded: 0,
-            canonicalDuplicates: 0,
+          opportunity: {
+            opportunitiesCreated: 0,
+            existingJobMatches: 0,
             notFit: 0,
             rejected: 0,
             actionableReview: 0,
@@ -571,9 +571,9 @@ function lifecycleFixture(
       unclassified: 0,
       invariant: 'reconciled',
     },
-    sourcing: {
-      findingsAdded: 0,
-      canonicalDuplicates: 0,
+    opportunity: {
+      opportunitiesCreated: 0,
+      existingJobMatches: 0,
       notFit: 0,
       rejected: 0,
       actionableReview: 0,
@@ -614,9 +614,9 @@ function installedReconciledLifecycleFixture(): NonNullable<ConnectorSettingsRun
       unclassified: 0,
       invariant: 'reconciled',
     },
-    sourcing: {
-      findingsAdded: 0,
-      canonicalDuplicates: 2,
+    opportunity: {
+      opportunitiesCreated: 0,
+      existingJobMatches: 2,
       notFit: 0,
       rejected: 0,
       actionableReview: 3,

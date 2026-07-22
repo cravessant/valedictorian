@@ -91,7 +91,7 @@ describe('shared claimed connector run executor', () => {
       },
       startedAt: '2026-07-13T16:00:00.000Z',
     })).resolves.toMatchObject({ id: queued.id, status: 'completed' })
-    expect(upgradeReplayCount).toBe(1)
+    expect(upgradeReplayCount).toBe(0)
     expect(receivedCheckpoint).toEqual({ cursor: 60 })
     await expect(connectorRepository.getInstance('claimed-upgrade')).resolves.toMatchObject({
       id: 'claimed-upgrade',
