@@ -58,7 +58,7 @@ describe('SettingsPage developer and panel navigation', () => {
         workspaceLoadFailure={null}
         onRetryWorkspaceLoad={vi.fn()}
         onConnectorRunSettled={vi.fn()}
-        onOpenSourcingRuns={vi.fn()}
+        onOpenConnectorRuns={vi.fn()}
         onSettingsPatch={onSettingsPatch}
       />,
     )
@@ -91,7 +91,7 @@ describe('SettingsPage developer and panel navigation', () => {
         workspaceLoadFailure={null}
         onRetryWorkspaceLoad={vi.fn()}
         onConnectorRunSettled={vi.fn()}
-        onOpenSourcingRuns={vi.fn()}
+        onOpenConnectorRuns={vi.fn()}
         onSettingsPatch={onSettingsPatch}
       />,
     )
@@ -125,7 +125,7 @@ describe('SettingsPage developer and panel navigation', () => {
       workspaceLoadFailure: null,
       onRetryWorkspaceLoad: vi.fn(),
       onConnectorRunSettled: vi.fn(),
-      onOpenSourcingRuns: vi.fn(),
+      onOpenConnectorRuns: vi.fn(),
       onSettingsPatch,
     } as const
 
@@ -209,7 +209,7 @@ describe('SettingsPage developer and panel navigation', () => {
         workspaceLoadFailure={null}
         onRetryWorkspaceLoad={vi.fn()}
         onConnectorRunSettled={vi.fn()}
-        onOpenSourcingRuns={vi.fn()}
+        onOpenConnectorRuns={vi.fn()}
         onSettingsPatch={onSettingsPatch}
       />,
     )

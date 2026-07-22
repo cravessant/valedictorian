@@ -56,6 +56,8 @@ export async function seedLegacyDataset(client: PgliteClient) {
   await q(`insert into source_execution_scopes (id, status, backoff_attempt, auth_generation, created_at, updated_at) values ('scope-xxxxxxxx','available',0,0,'${T}','${T}')`)
   await q(`insert into connector_instances (id, execution_scope_id, connector_id, connector_version, display_name, enabled, config_json, auth_json, filters_json, created_at, updated_at)
     values ('ci-1','scope-xxxxxxxx','jobright','1','Jobright',true,'{}','[]','{}','${T}','${T}')`)
+  await q(`insert into connector_runs (id, execution_scope_id, connector_instance_id, mode, status, started_at, completed_at, config_json, filters_json, filter_signature, observation_count, warning_count, stats_json, warnings_json, retry_hints_json, created_at, updated_at)
+    values ('run-legacy','scope-xxxxxxxx','ci-1','manual','completed','${T}','${T}','{}','{}','filters:{}',1,0,'{}','[]','null','${T}','${T}')`)
 
   // Jobs first (capture_lineages.job_id FKs to jobs).
   await q(`insert into jobs (id, identity_kind, identity_namespace, identity_value, created_at) values ('job-A','provider_job','adapter:8:jobright','pr-1','${T}')`)
@@ -64,9 +66,12 @@ export async function seedLegacyDataset(client: PgliteClient) {
   // Capture lineage A: normal, with two evidence revisions; owns job-A.
   await q(`insert into capture_lineages (id, job_id, created_at) values ('lin-A','job-A','${T}')`)
   await q(`insert into capture_evidence_versions (id, capture_lineage_id, revision, content_hash, adapter_id, adapter_kind, adapter_version, observed_at, provider_record_id, provider_schema, payload_json, evidence_json, created_at)
-    values ('cev-A1','lin-A',1,'h1','jobright','connector','1','${T}','pr-1','schema-1','{"role":"eng"}','[{"kind":"title","label":"Title","value":"Engineer"}]','${T}')`)
+    values ('cev-A1','lin-A',1,'sha256:3c9439421e82995a55064b78eeb7fee2e189d8482d3185b2edd1ff0e8b0ea894','jobright','connector','1','${T}','pr-1','schema-1','{"role":"eng"}','[{"kind":"title","label":"Title","value":"Engineer"}]','${T}')`)
   await q(`insert into capture_evidence_versions (id, capture_lineage_id, revision, content_hash, adapter_id, adapter_kind, adapter_version, observed_at, provider_record_id, provider_schema, payload_json, evidence_json, created_at)
     values ('cev-A2','lin-A',2,'h2','jobright','connector','1','${T}','pr-1','schema-1','{"role":"eng2"}','[{"kind":"title","label":"Title","value":"Engineer II"}]','${T}')`)
+  await q(`update capture_evidence_versions set reported_origin_kind = 'job_board', reported_origin_name = 'Jobright' where id = 'cev-A1'`)
+  await q(`insert into captures (id, capture_lineage_id, capture_evidence_version_id, connector_instance_id, connector_run_id, execution_scope_id, observed_at, received_at)
+    values ('capture-legacy','lin-A','cev-A1','ci-1','run-legacy','scope-xxxxxxxx','${T}','${T}')`)
 
   // Capture lineage B: divergent lineage (lineage says job-B, facts say job-A).
   await q(`insert into capture_lineages (id, job_id, created_at) values ('lin-B','job-B','${T}')`)

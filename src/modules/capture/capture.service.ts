@@ -33,7 +33,11 @@
  * The contract is exercised red-first through its public commands/queries.
  */
 import { and, asc, eq, sql } from 'drizzle-orm'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import {
+  captureConnectorProvenanceSchema,
+  type CaptureConnectorProvenance,
+} from 'sparxie'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
   captureEvidenceModes,
@@ -48,6 +52,7 @@ import {
 } from './capture.schema'
 import {
   insertCaptureEvidenceItems,
+  insertCaptureOccurrences,
   insertCaptureRevisions,
   insertLifecycleCaptures,
   updateLifecycleCaptures,
@@ -86,6 +91,7 @@ export interface AcceptCaptureInput {
   readonly evidenceMode: CaptureEvidenceMode
   readonly evidence: readonly CaptureEvidenceInput[]
   readonly payload?: JsonValue | null
+  readonly connectorProvenance?: CaptureConnectorProvenance | null
   readonly actor: CaptureActor
 }
 
@@ -150,8 +156,22 @@ export interface CaptureFailure {
   readonly message: string
 }
 
+export interface AcceptedConnectorRevision {
+  readonly revision: number
+  readonly contentHash: string
+  readonly reused: boolean
+  readonly createdAt: string
+  readonly occurrenceId: string
+  readonly occurrenceReceivedAt: string
+}
+
 export type AcceptCaptureResult =
-  | { readonly ok: true; readonly capture: CaptureRecord; readonly created: boolean }
+  | {
+      readonly ok: true
+      readonly capture: CaptureRecord
+      readonly created: boolean
+      readonly connectorRevision?: AcceptedConnectorRevision
+    }
   | CaptureFailure
 
 export type MutateCaptureResult = { readonly ok: true; readonly capture: CaptureRecord } | CaptureFailure
@@ -291,6 +311,55 @@ function validateEvidence(evidence: readonly CaptureEvidenceInput[]) {
   }))
 }
 
+function validateConnectorProvenance(
+  provenance: CaptureConnectorProvenance | null | undefined,
+): CaptureConnectorProvenance | null {
+  if (provenance === undefined || provenance === null) return null
+  try {
+    return captureConnectorProvenanceSchema.parse(provenance)
+  } catch {
+    throw new CaptureInputError('invalid_input', 'connectorProvenance is invalid')
+  }
+}
+
+function stableJsonStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJsonStringify(item)).join(',')}]`
+  }
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJsonStringify(item)}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
+function connectorContentHash(
+  input: AcceptCaptureInput,
+  provenance: ReturnType<typeof validateProvenance>,
+  evidence: ReturnType<typeof validateEvidence>,
+  connectorProvenance: CaptureConnectorProvenance,
+): string {
+  const canonical = stableJsonStringify({
+    adapter: {
+      id: provenance.adapterId,
+      kind: provenance.adapterKind,
+      version: provenance.adapterVersion,
+    },
+    evidence: evidence.map((item) => ({
+      kind: item.kind,
+      label: item.label,
+      value: JSON.parse(item.valueJson) as JsonValue,
+    })),
+    payload: input.payload ?? null,
+    providerRecordId: provenance.providerRecordId,
+    providerSchema: provenance.providerSchema,
+    reportedOrigin: connectorProvenance.reportedOrigin ?? null,
+  })
+  return `sha256:${createHash('sha256').update(canonical).digest('hex')}`
+}
+
 function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false
   const record = error as { code?: unknown; cause?: { code?: unknown }; message?: unknown }
@@ -381,6 +450,43 @@ export function createPgliteCaptureService(
     return (row as CaptureRow | undefined) ?? null
   }
 
+  async function selectRevisionByContent(
+    exec: CaptureExec,
+    captureId: string,
+    contentHash: string,
+  ): Promise<{ revision: number; createdAt: string } | null> {
+    const [row] = await exec
+      .select({ revision: captureRevisions.revision, createdAt: captureRevisions.createdAt })
+      .from(captureRevisions)
+      .where(and(eq(captureRevisions.captureId, captureId), eq(captureRevisions.contentHash, contentHash)))
+      .limit(1)
+    return row ?? null
+  }
+
+  async function recordConnectorOccurrence(
+    exec: CaptureExec,
+    input: {
+      captureId: string
+      captureRevision: number
+      connectorProvenance: CaptureConnectorProvenance
+      observedAt: string
+      receivedAt: string
+    },
+  ): Promise<string> {
+    const occurrenceId = newId()
+    await insertCaptureOccurrences(exec).values({
+      id: occurrenceId,
+      captureId: input.captureId,
+      captureRevision: input.captureRevision,
+      connectorInstanceId: input.connectorProvenance.connectorInstanceId,
+      connectorRunId: input.connectorProvenance.connectorRunId,
+      executionScopeId: input.connectorProvenance.executionScopeId,
+      observedAt: input.observedAt,
+      receivedAt: input.receivedAt,
+    })
+    return occurrenceId
+  }
+
   function auditJson(actor: CaptureActor): string {
     return JSON.stringify({ actor: { type: actor.type, id: actor.id ?? null } })
   }
@@ -413,6 +519,8 @@ export function createPgliteCaptureService(
     evidenceMode: CaptureEvidenceMode,
     evidence: ReturnType<typeof validateEvidence>,
     actor: CaptureActor,
+    connectorProvenance: CaptureConnectorProvenance | null,
+    contentHash: string | null,
     createdAt: string,
   ): Promise<CaptureRecord> {
     const revision = existing.revision + 1
@@ -422,6 +530,13 @@ export function createPgliteCaptureService(
       kind: 'corrected',
       snapshotJson: observedSnapshot(provenance, evidenceMode, revision),
       auditJson: auditJson(actor),
+      connectorInstanceId: connectorProvenance?.connectorInstanceId ?? null,
+      connectorRunId: connectorProvenance?.connectorRunId ?? null,
+      executionScopeId: connectorProvenance?.executionScopeId ?? null,
+      reportedOriginJson: connectorProvenance?.reportedOrigin === undefined
+        ? null
+        : JSON.stringify(connectorProvenance.reportedOrigin),
+      contentHash,
       createdAt,
     })
     if (evidence.length > 0) {
@@ -451,6 +566,8 @@ export function createPgliteCaptureService(
     provenance: ReturnType<typeof validateProvenance>,
     evidence: ReturnType<typeof validateEvidence>,
     actor: CaptureActor,
+    connectorProvenance: CaptureConnectorProvenance | null,
+    contentHash: string | null,
     createdAt: string,
   ): Promise<CaptureRecord> {
     const id = newId()
@@ -481,6 +598,13 @@ export function createPgliteCaptureService(
       kind: 'created',
       snapshotJson: observedSnapshot(provenance, input.evidenceMode, 1),
       auditJson: auditJson(actor),
+      connectorInstanceId: connectorProvenance?.connectorInstanceId ?? null,
+      connectorRunId: connectorProvenance?.connectorRunId ?? null,
+      executionScopeId: connectorProvenance?.executionScopeId ?? null,
+      reportedOriginJson: connectorProvenance?.reportedOrigin === undefined
+        ? null
+        : JSON.stringify(connectorProvenance.reportedOrigin),
+      contentHash,
       createdAt,
     })
     if (evidence.length > 0) {
@@ -560,6 +684,7 @@ export function createPgliteCaptureService(
     let provenance: ReturnType<typeof validateProvenance>
     let evidence: ReturnType<typeof validateEvidence>
     let actor: CaptureActor
+    let connectorProvenance: CaptureConnectorProvenance | null
     let workspaceId: string
     let evidenceMode: CaptureEvidenceMode
     try {
@@ -571,6 +696,10 @@ export function createPgliteCaptureService(
       provenance = validateProvenance(input.provenance)
       evidence = validateEvidence(input.evidence)
       actor = requireActor(input.actor)
+      connectorProvenance = validateConnectorProvenance(input.connectorProvenance)
+      if (connectorProvenance && provenance.adapterKind !== 'connector') {
+        throw new CaptureInputError('invalid_input', 'connectorProvenance requires a connector adapter')
+      }
       if (input.payload !== undefined && input.payload !== null) {
         boundedJson(input.payload, 'payload', PAYLOAD_MAX)
       }
@@ -588,12 +717,99 @@ export function createPgliteCaptureService(
       return fail('evidence_mode_conflict', 'evidence mode is immutable for this capture')
     }
     const createdAt = nowIso()
+    const contentHash = connectorProvenance
+      ? connectorContentHash(normalized, provenance, evidence, connectorProvenance)
+      : null
     if (existing) {
-      const capture = await appendObservation(exec, existing, provenance, evidenceMode, evidence, actor, createdAt)
-      return { ok: true, capture, created: false }
+      if (connectorProvenance && contentHash) {
+        const reused = await selectRevisionByContent(exec, existing.id, contentHash)
+        if (reused) {
+          const occurrenceId = await recordConnectorOccurrence(exec, {
+            captureId: existing.id,
+            captureRevision: reused.revision,
+            connectorProvenance,
+            observedAt: provenance.observedAt,
+            receivedAt: createdAt,
+          })
+          return {
+            ok: true,
+            capture: toRecord(existing),
+            created: false,
+            connectorRevision: {
+              revision: reused.revision,
+              contentHash,
+              reused: true,
+              createdAt: reused.createdAt,
+              occurrenceId,
+              occurrenceReceivedAt: createdAt,
+            },
+          }
+        }
+      }
+      const capture = await appendObservation(
+        exec,
+        existing,
+        provenance,
+        evidenceMode,
+        evidence,
+        actor,
+        connectorProvenance,
+        contentHash,
+        createdAt,
+      )
+      if (!connectorProvenance || !contentHash) return { ok: true, capture, created: false }
+      const occurrenceId = await recordConnectorOccurrence(exec, {
+        captureId: capture.id,
+        captureRevision: capture.revision,
+        connectorProvenance,
+        observedAt: provenance.observedAt,
+        receivedAt: createdAt,
+      })
+      return {
+        ok: true,
+        capture,
+        created: false,
+        connectorRevision: {
+          revision: capture.revision,
+          contentHash,
+          reused: false,
+          createdAt,
+          occurrenceId,
+          occurrenceReceivedAt: createdAt,
+        },
+      }
     }
-    const capture = await createCapture(exec, normalized, provenance, evidence, actor, createdAt)
-    return { ok: true, capture, created: true }
+    const capture = await createCapture(
+      exec,
+      normalized,
+      provenance,
+      evidence,
+      actor,
+      connectorProvenance,
+      contentHash,
+      createdAt,
+    )
+    if (!connectorProvenance || !contentHash) return { ok: true, capture, created: true }
+    const occurrenceId = await recordConnectorOccurrence(exec, {
+      captureId: capture.id,
+      captureRevision: capture.revision,
+      connectorProvenance,
+      observedAt: provenance.observedAt,
+      receivedAt: createdAt,
+    })
+    return {
+      ok: true,
+      capture,
+      created: true,
+      connectorRevision: {
+        revision: capture.revision,
+        contentHash,
+        reused: false,
+        createdAt,
+        occurrenceId,
+        occurrenceReceivedAt: createdAt,
+      },
+    }
   }
 
   async function correctOn(exec: CaptureExec, input: CorrectCaptureInput): Promise<MutateCaptureResult> {

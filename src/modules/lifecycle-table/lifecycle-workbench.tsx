@@ -31,9 +31,16 @@ import {
 import { useLifecycleInvalidation } from './use-lifecycle-invalidation'
 import { useActionQueue } from './use-action-queue'
 import { ActionQueueMode } from './action-queue-mode'
+import { CaptureProcessingMode } from './capture-processing-mode'
+import {
+  onOpenCapturesForRun,
+  type CaptureRunFilter,
+  type ConnectorProvenanceTarget,
+} from '@/app/capture-navigation'
 
 type Phase = 'captures' | 'jobs' | 'opportunities' | 'applications'
 type ApplicationMode = 'all' | 'action-queue'
+type CaptureMode = 'all' | 'processing'
 
 interface PhaseState<Row> {
   readonly data: ReadonlyArray<Row> | null
@@ -49,6 +56,9 @@ interface WorkbenchState {
 
 interface WorkbenchProps {
   readonly client?: ValedictorianWorkspaceClient | null
+  readonly initialConnectorRunId?: string | null
+  readonly onConnectorRunFilterChange?: (filter: CaptureRunFilter | null) => void
+  readonly onOpenConnectorProvenance?: (target: ConnectorProvenanceTarget) => void
 }
 
 const initial: WorkbenchState = {
@@ -58,11 +68,18 @@ const initial: WorkbenchState = {
   applications: { data: null, load: { status: 'loading' } },
 }
 
-export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): ReactElement {
+export function LifecycleWorkbench({
+  client: suppliedClient,
+  initialConnectorRunId = null,
+  onConnectorRunFilterChange,
+  onOpenConnectorProvenance,
+}: WorkbenchProps): ReactElement {
   const [client, setClient] = useState<ValedictorianWorkspaceClient | null>(() =>
     suppliedClient === undefined ? getRendererHttpWorkspaceClient() : suppliedClient)
   const [selected, setSelected] = useState<Phase>('captures')
   const [applicationMode, setApplicationMode] = useState<ApplicationMode>('all')
+  const [captureMode, setCaptureMode] = useState<CaptureMode>('all')
+  const [connectorRunId, setConnectorRunId] = useState<string | null>(initialConnectorRunId)
   const [showRemoved, setShowRemoved] = useState(false)
   const [captures, setCaptures] = useState<PhaseState<Capture>>(initial.captures)
   const [jobs, setJobs] = useState<PhaseState<Job>>(initial.jobs)
@@ -84,6 +101,13 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
     resolveClient()
     return onRendererBackendStateChanged(resolveClient)
   }, [suppliedClient])
+
+  useEffect(() => onOpenCapturesForRun((filter) => {
+    setConnectorRunId(filter.connectorRunId)
+    onConnectorRunFilterChange?.(filter)
+    setCaptureMode('all')
+    setSelected('captures')
+  }), [onConnectorRunFilterChange])
 
   const actionQueue = useActionQueue({
     client,
@@ -116,6 +140,7 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
     await Promise.all([
       loadAll((cursor) => captureConfig.list(client, {
         cursor,
+        ...(connectorRunId ? { connectorRunId } : {}),
         includeRemoved: showRemoved,
         limit: 100,
       })).then(
@@ -159,7 +184,7 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
         })) },
       ),
     ])
-  }, [client, showRemoved])
+  }, [client, connectorRunId, showRemoved])
 
   useEffect(() => { void load() }, [load])
 
@@ -175,6 +200,7 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
       setCaptures((prev) => ({ data: prev.data, load: { status: 'loading' } }))
       await loadAll((cursor) => captureConfig.list(client, {
         cursor,
+        ...(connectorRunId ? { connectorRunId } : {}),
         includeRemoved: showRemoved,
         limit: 100,
       })).then(
@@ -224,21 +250,27 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
         },
       )
     }
-  }, [client, showRemoved])
+  }, [client, connectorRunId, showRemoved])
 
+  const refreshCaptures = useCallback(() => refreshPhase('captures'), [refreshPhase])
+  const refreshJobs = useCallback(() => refreshPhase('jobs'), [refreshPhase])
+  const refreshOpportunities = useCallback(() => refreshPhase('opportunities'), [refreshPhase])
+  const refreshApplications = useCallback(() => refreshPhase('applications'), [refreshPhase])
+  const refreshCaptureProcessing = useCallback(async () => {
+    await Promise.all([refreshCaptures(), refreshJobs(), refreshOpportunities()])
+  }, [refreshCaptures, refreshJobs, refreshOpportunities])
   const refreshSelected = useCallback(
     () => {
+      if (selected === 'captures' && captureMode === 'processing') {
+        return refreshCaptureProcessing()
+      }
       if (selected === 'applications' && applicationMode === 'action-queue') {
         return actionQueue.refresh()
       }
       return refreshPhase(selected)
     },
-    [actionQueue, applicationMode, refreshPhase, selected],
+    [actionQueue, applicationMode, captureMode, refreshCaptureProcessing, refreshPhase, selected],
   )
-  const refreshCaptures = useCallback(() => refreshPhase('captures'), [refreshPhase])
-  const refreshJobs = useCallback(() => refreshPhase('jobs'), [refreshPhase])
-  const refreshOpportunities = useCallback(() => refreshPhase('opportunities'), [refreshPhase])
-  const refreshApplications = useCallback(() => refreshPhase('applications'), [refreshPhase])
   const refreshApplicationPresentations = useCallback(async () => {
     await Promise.all([refreshApplications(), actionQueue.refresh()])
   }, [actionQueue, refreshApplications])
@@ -256,9 +288,21 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
     void refreshSelected().catch(() => {})
   }, [refreshSelected])
 
+  const captureProcessingState = useMemo<LifecycleLoadState>(() => {
+    const phases = [captures.load, jobs.load, opportunities.load]
+    return phases.find((state) => state.status === 'failure')
+      ?? (phases.some((state) => state.status === 'loading') ? { status: 'loading' } : { status: 'loaded' })
+  }, [captures.load, jobs.load, opportunities.load])
+
   useLifecycleInvalidation(refreshSelected, { enabled: Boolean(client), intervalMs: 60_000 })
 
-  const captureController = useCaptureController({ client, refresh: refreshCaptures, refreshDestination: refreshJobs, refreshAll })
+  const captureController = useCaptureController({
+    client,
+    refresh: refreshCaptures,
+    refreshDestination: refreshJobs,
+    refreshAll,
+    onOpenConnectorProvenance,
+  })
   const jobController = useJobController({ client, refresh: refreshJobs, refreshDestination: refreshOpportunities, refreshAll })
   const opportunityController = useOpportunityController({ client, refresh: refreshOpportunities, refreshDestination: refreshApplications, refreshAll })
   const applicationController = useApplicationController({ client, refresh: refreshApplicationPresentations, refreshAll })
@@ -289,15 +333,68 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
+      <header aria-labelledby="lifecycle-view-title" className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Job lifecycle
+        </p>
+        <h2 id="lifecycle-view-title" className="text-xl font-semibold">
+          {selected === 'captures' && captureMode === 'processing'
+            ? 'Capture processing'
+            : phaseLabel(selected)}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {selected === 'captures' && captureMode === 'processing'
+            ? 'Operational detail for Capture → Job normalization, admission, and projection.'
+            : `${phaseLabel(selected)} are a first-class stage of the Job lifecycle.`}
+        </p>
+      </header>
       <LifecycleRail selected={selected} onSelect={setSelected} counts={counts} />
       {selected === 'captures' ? (
-        <LifecycleTable
-          config={captureTable}
-          data={captures.data}
-          state={captures.load}
-          onRefresh={refreshSelected}
-          toolbar={<RefreshToolbar caption="Captures" total={counts.captures} loading={captures.load.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={showRemoved} onShowRemovedChange={setShowRemoved} onAdd={captureController.openCreate} addLabel="Add capture" />}
-        />
+        <div className="flex min-w-0 flex-col gap-4">
+          <ToggleGroup
+            type="single"
+            aria-label="Captures view mode"
+            variant="outline"
+            size="sm"
+            className="w-fit flex-wrap"
+            value={captureMode}
+            onValueChange={(value) => {
+              if (value) setCaptureMode(value as CaptureMode)
+            }}
+          >
+            <ToggleGroupItem value="all">All</ToggleGroupItem>
+            <ToggleGroupItem value="processing">Processing</ToggleGroupItem>
+          </ToggleGroup>
+          {connectorRunId ? (
+            <div role="status" className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+              <span>Filtered to connector run {connectorRunId}</span>
+              <Button type="button" variant="ghost" size="sm" onClick={() => {
+                setConnectorRunId(null)
+                onConnectorRunFilterChange?.(null)
+              }}>
+                Clear run filter
+              </Button>
+            </div>
+          ) : null}
+          {captureMode === 'all' ? (
+            <LifecycleTable
+              config={captureTable}
+              data={captures.data}
+              state={captures.load}
+              onRefresh={refreshSelected}
+              toolbar={<RefreshToolbar caption="Captures" total={counts.captures} loading={captures.load.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={showRemoved} onShowRemovedChange={setShowRemoved} onAdd={captureController.openCreate} addLabel="Add capture" />}
+            />
+          ) : (
+            <CaptureProcessingMode
+              captures={captures.data}
+              jobs={jobs.data}
+              opportunities={opportunities.data}
+              state={captureProcessingState}
+              onRefresh={refreshCaptureProcessing}
+              toolbar={<RefreshToolbar caption="Capture processing" total={counts.captures} loading={captureProcessingState.status === 'loading'} onRefresh={() => { void refreshCaptureProcessing().catch(() => {}) }} showRemoved={showRemoved} onShowRemovedChange={setShowRemoved} />}
+            />
+          )}
+        </div>
       ) : null}
       {selected === 'jobs' ? (
         <LifecycleTable
@@ -405,6 +502,13 @@ function LifecycleRail({ selected, onSelect, counts }: LifecycleRailProps): Reac
       })}
     </nav>
   )
+}
+
+function phaseLabel(phase: Phase): string {
+  if (phase === 'captures') return 'Captures'
+  if (phase === 'jobs') return 'Jobs'
+  if (phase === 'opportunities') return 'Opportunities'
+  return 'Applications'
 }
 
 interface RefreshToolbarProps {

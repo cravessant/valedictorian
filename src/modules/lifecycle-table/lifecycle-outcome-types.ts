@@ -47,7 +47,7 @@ export interface HistoryEntrySummary {
   readonly kind: string
   readonly actor: { id: string; type: string; displayName?: string }
   readonly timestamp: string
-  readonly summary: string
+  readonly summary: ReactNode
 }
 
 export interface LifecycleOutcomeProps {

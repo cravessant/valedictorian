@@ -1,4 +1,5 @@
 import { createPgliteClient, migratePgliteDatabase } from '../src/db/pglite'
+import { workspaces } from '../src/db/workspaces.schema'
 import { createPgliteCaptureReadModel } from '../src/modules/capture/capture.read-model'
 import { createPgliteCaptureService } from '../src/modules/capture/capture.service'
 
@@ -47,6 +48,13 @@ async function openPackagedPGlite(dataDirectory: string) {
 
 async function openPackagedPgliteSmokeOwner(dataDirectory: string): Promise<PackagedPgliteSmokeOwner> {
   const { client, database } = await openPackagedPGlite(dataDirectory)
+  const openedAt = new Date().toISOString()
+  await database.insert(workspaces).values({
+    id: smokeWorkspaceId,
+    name: smokeWorkspaceId,
+    createdAt: openedAt,
+    updatedAt: openedAt,
+  }).onConflictDoNothing()
   const captures = createPgliteCaptureService(database)
   const readModel = createPgliteCaptureReadModel(database)
   return {

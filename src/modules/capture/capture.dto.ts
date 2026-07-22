@@ -18,6 +18,7 @@
  */
 import type {
   Capture,
+  CaptureConnectorProvenance,
   CaptureHistoryResult,
   CaptureListResult,
   CaptureRevision,
@@ -111,7 +112,29 @@ export interface CaptureRevisionRow {
   readonly revision: number
   readonly kind: string
   readonly auditJson: string
+  readonly connectorInstanceId?: string | null
+  readonly connectorRunId?: string | null
+  readonly executionScopeId?: string | null
+  readonly reportedOriginJson?: string | null
   readonly createdAt: string
+}
+
+function toConnectorProvenance(
+  row: CaptureRevisionRow,
+): CaptureConnectorProvenance | null {
+  if (
+    row.connectorInstanceId == null
+    || row.connectorRunId == null
+    || row.executionScopeId == null
+  ) {
+    return null
+  }
+  return {
+    connectorInstanceId: row.connectorInstanceId,
+    connectorRunId: row.connectorRunId,
+    executionScopeId: row.executionScopeId,
+    reportedOrigin: parseJson(row.reportedOriginJson ?? null) as CaptureConnectorProvenance['reportedOrigin'],
+  }
 }
 
 /**
@@ -149,12 +172,14 @@ export function reconstructCaptureHistory(
       updatedAt: revision.createdAt,
       removedAt: tombstonedAt,
     }
+    const connectorProvenance = toConnectorProvenance(revision)
     all.push({
       captureId: head.id,
       revision: revision.revision,
       kind: revision.kind as CaptureRevision['kind'],
       snapshot,
       audit: toLifecycleAuditFromJson(revision.auditJson, revision.createdAt),
+      ...(connectorProvenance ? { connectorProvenance } : {}),
     })
   }
 

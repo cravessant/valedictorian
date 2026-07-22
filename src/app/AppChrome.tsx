@@ -14,6 +14,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sidebar,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -206,10 +209,6 @@ function AppSidebar({
   onSettingsPatch,
 }: AppSidebarProps) {
   const connectorsChildrenId = useId()
-  const sourcingChildrenId = useId()
-  const sourcingChildActive = currentView === APP_VIEWS.SOURCING
-    || currentView === APP_VIEWS.SOURCING_NORMALIZATION
-  const [sourcingExpanded, setSourcingExpanded] = useState(sourcingChildActive)
   const connectorsChildActive =
     currentView === APP_VIEWS.CONNECTORS || currentView === APP_VIEWS.CONNECTOR_RUNS
   const [connectorsExpanded, setConnectorsExpanded] = useState(connectorsChildActive)
@@ -219,10 +218,6 @@ function AppSidebar({
       setConnectorsExpanded(true)
     }
   }, [connectorsChildActive])
-
-  useEffect(() => {
-    if (sourcingChildActive) setSourcingExpanded(true)
-  }, [sourcingChildActive])
 
   return (
     <Sidebar
@@ -257,72 +252,59 @@ function AppSidebar({
                   Profile
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  type="button"
-                  isActive={currentView === APP_VIEWS.APPLICATIONS}
-                  aria-current={currentView === APP_VIEWS.APPLICATIONS ? 'page' : undefined}
-                  onClick={() => onViewChange(APP_VIEWS.APPLICATIONS)}
-                >
-                  <Database className="h-4 w-4" aria-hidden="true" />
-                  Applications
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <Collapsible
-                asChild
-                open={sourcingExpanded}
-                onOpenChange={setSourcingExpanded}
-              >
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      type="button"
-                      aria-controls={sourcingChildrenId}
-                      isActive={sourcingChildActive}
-                      onClick={() => onViewChange(APP_VIEWS.SOURCING)}
-                    >
-                      <Search className="h-4 w-4" aria-hidden="true" />
-                      Sourcing
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent id={sourcingChildrenId}>
-                    <SidebarMenuSub className="mx-0 ml-4 translate-x-0 px-0 py-0 pl-2">
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton
-                          asChild
-                          isActive={currentView === APP_VIEWS.SOURCING}
-                        >
-                          <button
-                            type="button"
-                            aria-current={
-                              currentView === APP_VIEWS.SOURCING ? 'page' : undefined
-                            }
-                            onClick={() => onViewChange(APP_VIEWS.SOURCING)}
-                          >
-                            Opportunities
-                          </button>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
-                        <SidebarMenuSubButton
-                          asChild
-                          isActive={currentView === APP_VIEWS.SOURCING_NORMALIZATION}
-                        >
-                          <button
-                            type="button"
-                            aria-current={
-                              currentView === APP_VIEWS.SOURCING_NORMALIZATION ? 'page' : undefined
-                            }
-                            onClick={() => onViewChange(APP_VIEWS.SOURCING_NORMALIZATION)}
-                          >
-                            Normalization
-                          </button>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+            </SidebarMenu>
+              <SidebarGroup className="px-0 py-2">
+                <SidebarGroupLabel className="h-auto px-2 py-1">Job lifecycle</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        type="button"
+                        isActive={currentView === APP_VIEWS.CAPTURES}
+                        aria-current={currentView === APP_VIEWS.CAPTURES ? 'page' : undefined}
+                        onClick={() => onViewChange(APP_VIEWS.CAPTURES)}
+                      >
+                        <Database className="h-4 w-4" aria-hidden="true" />
+                        Captures
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        type="button"
+                        isActive={currentView === APP_VIEWS.JOBS}
+                        aria-current={currentView === APP_VIEWS.JOBS ? 'page' : undefined}
+                        onClick={() => onViewChange(APP_VIEWS.JOBS)}
+                      >
+                        <Server className="h-4 w-4" aria-hidden="true" />
+                        Jobs
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        type="button"
+                        isActive={currentView === APP_VIEWS.OPPORTUNITIES}
+                        aria-current={currentView === APP_VIEWS.OPPORTUNITIES ? 'page' : undefined}
+                        onClick={() => onViewChange(APP_VIEWS.OPPORTUNITIES)}
+                      >
+                        <Search className="h-4 w-4" aria-hidden="true" />
+                        Opportunities
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        type="button"
+                        isActive={currentView === APP_VIEWS.APPLICATIONS}
+                        aria-current={currentView === APP_VIEWS.APPLICATIONS ? 'page' : undefined}
+                        onClick={() => onViewChange(APP_VIEWS.APPLICATIONS)}
+                      >
+                        <Globe2 className="h-4 w-4" aria-hidden="true" />
+                        Applications
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            <SidebarMenu>
               <Collapsible
                 asChild
                 open={connectorsExpanded}

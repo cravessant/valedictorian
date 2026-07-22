@@ -603,7 +603,7 @@ export function createRunRuntime(
   sessionExecutor: ReturnType<typeof createSourceSessionExecutor> | null,
   allowActionRequiredRefresh: boolean,
   progress: ConnectorProgressRuntime | undefined,
-  dataRuntime?: Pick<AppConnectorRuntime, 'rawSourceIntake'>,
+  dataRuntime?: Pick<AppConnectorRuntime, 'captureIntake'>,
   reconnectToken?: string,
   onReconnectRefresh?: () => void,
 ): AppConnectorRuntime {

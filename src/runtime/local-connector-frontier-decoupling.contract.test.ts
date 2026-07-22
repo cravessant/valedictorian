@@ -11,11 +11,11 @@
  * regress.)
  *
  * Re-derivation after a crash is safe because Capture provenance identity is
- * idempotent: re-observation appends a revision to the same aggregate.
+ * idempotent: re-observation reuses identical content on the same aggregate.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { captureRevisions, lifecycleCaptures } from '../db/schema'
+import { captureOccurrences, captureRevisions, lifecycleCaptures } from '../db/schema'
 import type { AppConnectorRuntime, AppJobConnector } from '../modules/connectors/connector.runner'
 import {
   getTestLocalValedictorianDatabase,
@@ -55,7 +55,7 @@ function createCapturingConnector(clockRef: { value: Date }) {
     },
     providerUrlResolver: { id: 'jobright.provider-url', version: 'jobright-provider-url@1', resolve },
     async refresh(input, runtime) {
-      await runtime.rawSourceIntake?.capture({
+      await runtime.captureIntake?.capture({
         observedAt: clockRef.value.toISOString(),
         providerRecordId: 'provider-one',
         providerSchema: 'jobright-authenticated-search@1',
@@ -128,7 +128,7 @@ describe.sequential('connector frontier/backfill ↔ canonical lifecycle decoupl
     expect(await database.select().from(captureRevisions)).toHaveLength(1)
   })
 
-  it('re-derives the frontier idempotently by appending to the same Capture', async () => {
+  it('re-derives the frontier idempotently by reusing the same Capture revision', async () => {
     const clockRef = { value: new Date('2026-07-16T12:00:00.000Z') }
     const { connector, resolve } = createCapturingConnector(clockRef)
     const client = await startClient(connector, () => clockRef.value)
@@ -152,9 +152,11 @@ describe.sequential('connector frontier/backfill ↔ canonical lifecycle decoupl
     })
     expect(rerun.status).toBe('completed')
 
-    // Provenance identity keeps one aggregate and records the re-observation.
+    // Provenance identity keeps one aggregate and one content revision while
+    // preserving each run observation independently.
     expect(await database.select().from(lifecycleCaptures)).toHaveLength(1)
-    expect(await database.select().from(captureRevisions)).toHaveLength(2)
+    expect(await database.select().from(captureRevisions)).toHaveLength(1)
+    expect(await database.select().from(captureOccurrences)).toHaveLength(2)
     expect(resolve).not.toHaveBeenCalled()
   })
 })

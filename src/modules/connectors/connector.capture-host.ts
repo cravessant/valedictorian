@@ -1,39 +1,16 @@
-import { createHash, randomUUID } from 'node:crypto'
-import type { ConnectorRawSourceCaptureInput } from '@sparxie/valedictorian-connectors-core'
+import type {
+  ConnectorCaptureInput,
+  ConnectorCaptureReceipt,
+} from '@sparxie/valedictorian-connectors-core'
+import { createCaptureInputSchema } from 'sparxie'
 import type { CaptureService, JsonValue } from '../capture/capture.service'
-
-export interface ConnectorCaptureReceipt {
-  readonly intakeItemId: string
-  readonly rawRecordId: string
-  readonly sourceEntityId: null
-  readonly revision: {
-    readonly id: string
-    readonly rawRecordId: string
-    readonly revision: number
-    readonly contentHash: string
-    readonly reused: boolean
-    readonly createdAt: string
-  }
-  readonly occurrence: {
-    readonly id: string
-    readonly rawRecordId: string
-    readonly rawRevisionId: string
-    readonly capture: {
-      readonly connectorInstanceId: string
-      readonly connectorRunId: string
-      readonly executionScopeId: string
-    }
-    readonly observedAt: string
-    readonly receivedAt: string
-  }
-}
 
 export interface ConnectorCaptureHostInput {
   readonly adapter: { readonly id: string; readonly version: string }
   readonly connectorInstanceId: string
   readonly connectorRunId: string
   readonly executionScopeId: string
-  readonly input: ConnectorRawSourceCaptureInput
+  readonly input: ConnectorCaptureInput
 }
 
 export interface AppConnectorCaptureHost {
@@ -42,7 +19,6 @@ export interface AppConnectorCaptureHost {
 
 export function createConnectorCaptureHost({
   captureService,
-  now = () => new Date(),
   workspaceId,
 }: {
   captureService: CaptureService
@@ -51,69 +27,73 @@ export function createConnectorCaptureHost({
 }): AppConnectorCaptureHost {
   return {
     async capture({ adapter, connectorInstanceId, connectorRunId, executionScopeId, input }) {
+      const captureInput = createCaptureInputSchema.parse({
+        evidenceMode: input.evidenceMode ?? 'reported',
+        adapter: { ...adapter, kind: 'connector' },
+        observedAt: input.observedAt,
+        providerRecordId: input.providerRecordId ?? null,
+        providerSchema: input.providerSchema ?? null,
+        payload: input.payload ?? null,
+        evidence: input.evidence ?? [],
+      })
+      const connectorProvenance = {
+        connectorInstanceId,
+        connectorRunId,
+        executionScopeId,
+        reportedOrigin: input.reportedOrigin ?? null,
+      }
       const accepted = await captureService.accept({
         workspaceId,
         provenance: {
           adapterId: adapter.id,
           adapterKind: 'connector',
           adapterVersion: adapter.version,
-          providerRecordId: input.providerRecordId ?? null,
-          providerSchema: input.providerSchema ?? null,
-          observedAt: input.observedAt,
+          providerRecordId: captureInput.providerRecordId,
+          providerSchema: captureInput.providerSchema,
+          observedAt: captureInput.observedAt,
         },
-        evidenceMode: 'reported',
-        evidence: (input.evidence ?? []).map((item) => ({
+        evidenceMode: captureInput.evidenceMode,
+        evidence: captureInput.evidence.map((item) => ({
           kind: item.kind,
           label: item.label,
           value: item.value as JsonValue,
         })),
-        payload: (input.payload ?? null) as JsonValue,
+        payload: captureInput.payload as JsonValue,
+        connectorProvenance,
         actor: { type: 'system', id: connectorInstanceId },
       })
       if (!accepted.ok) {
         throw new Error(`connector_capture_${accepted.code}`)
       }
+      if (!accepted.connectorRevision) {
+        throw new Error('connector_capture_revision_missing')
+      }
 
-      const receivedAt = accepted.capture.updatedAt || now().toISOString()
-      const rawRecordId = accepted.capture.id
-      const revisionId = `${rawRecordId}:${accepted.capture.revision}`
-      const occurrenceId = randomUUID()
+      const captureId = accepted.capture.id
+      const acceptedRevision = accepted.connectorRevision
+      const revisionId = `${captureId}:${acceptedRevision.revision}`
+      const occurrenceId = acceptedRevision.occurrenceId
       return {
-        intakeItemId: occurrenceId,
-        rawRecordId,
+        captureItemId: occurrenceId,
+        captureId,
         sourceEntityId: null,
         revision: {
           id: revisionId,
-          rawRecordId,
-          revision: accepted.capture.revision,
-          contentHash: contentHash(input),
-          reused: !accepted.created,
-          createdAt: receivedAt,
+          captureId,
+          revision: acceptedRevision.revision,
+          contentHash: acceptedRevision.contentHash,
+          reused: acceptedRevision.reused,
+          createdAt: acceptedRevision.createdAt,
         },
         occurrence: {
           id: occurrenceId,
-          rawRecordId,
-          rawRevisionId: revisionId,
+          captureId,
+          captureRevisionId: revisionId,
           capture: { connectorInstanceId, connectorRunId, executionScopeId },
           observedAt: input.observedAt,
-          receivedAt,
+          receivedAt: acceptedRevision.occurrenceReceivedAt,
         },
       }
     },
   }
-}
-
-function contentHash(input: ConnectorRawSourceCaptureInput): string {
-  return createHash('sha256').update(stableJson(input)).digest('hex')
-}
-
-function stableJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
-  if (value && typeof value === 'object') {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
-      .join(',')}}`
-  }
-  return JSON.stringify(value) ?? 'null'
 }

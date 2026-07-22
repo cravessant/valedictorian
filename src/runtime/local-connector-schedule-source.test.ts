@@ -394,7 +394,7 @@ describe.sequential('local connector schedule source', () => {
             async refresh(input, runtime) {
               refreshCalls += 1
               checkpoints.push(input.checkpoint)
-              await runtime.rawSourceIntake?.capture({
+              await runtime.captureIntake?.capture({
                 observedAt: clock.toISOString(),
                 providerRecordId: `accepted-capture-${refreshCalls}`,
                 providerSchema: 'fixture-provider@1',

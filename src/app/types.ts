@@ -1,13 +1,14 @@
 export const PAGE_LIMIT = 50
 
 export const APP_VIEWS = {
+  CAPTURES: 'captures',
+  JOBS: 'jobs',
+  OPPORTUNITIES: 'opportunities',
   APPLICATIONS: 'applications',
   PROFILE: 'profile',
   CONNECTORS: 'connectors',
   CONNECTOR_RUNS: 'connector-runs',
   SETTINGS: 'settings',
-  SOURCING: 'sourcing',
-  SOURCING_NORMALIZATION: 'sourcing-normalization',
 } as const
 
 export type AppView = typeof APP_VIEWS[keyof typeof APP_VIEWS]

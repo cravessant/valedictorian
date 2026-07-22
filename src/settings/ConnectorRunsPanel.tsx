@@ -29,16 +29,16 @@ import {
 import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
 import { ownedLoadFailure, presentLoadFailure, type ErrorPresentation } from '../app/error-presentation'
+import {
+  openCapturesForRun,
+  type CaptureRunFilter,
+  type ConnectorProvenanceTarget,
+} from '../app/capture-navigation'
 
 export interface ConnectorRunHistoryItem {
   connectorId: string
   connectorName: string
   run: ConnectorSettingsRun
-}
-
-export interface RawNormalizationRunFilter {
-  connectorInstanceId: string
-  connectorRunId: string
 }
 
 export const CONNECTOR_RUNS_PAGE_SIZE = 20
@@ -120,14 +120,17 @@ type FocusedConnectorRunLookup =
 export function ConnectorRunsPanel({
   connectorsApi,
   focusedRunId = null,
+  focusedProvenanceTarget = null,
   showDebugData = false,
-  onInspectNormalization,
+  onViewCaptures,
 }: {
   connectorsApi: ConnectorsPreloadApi
   focusedRunId?: string | null
+  focusedProvenanceTarget?: ConnectorProvenanceTarget | null
   showDebugData?: boolean
-  onInspectNormalization?: (filter: RawNormalizationRunFilter) => void
+  onViewCaptures?: (filter: CaptureRunFilter) => void
 }) {
+  const viewCaptures = onViewCaptures ?? openCapturesForRun
   const [items, setItems] = useState<ConnectorRunHistoryItem[]>([])
   const [loadFailure, setLoadFailure] = useState<ErrorPresentation | null>(null)
   const [focusedRunLookup, setFocusedRunLookup] = useState<FocusedConnectorRunLookup>('idle')
@@ -228,7 +231,10 @@ export function ConnectorRunsPanel({
       return
     }
 
-    if (focusedRunAppliedIdRef.current === focusedRunId) {
+    const focusIdentity = focusedProvenanceTarget?.connectorRunId === focusedRunId
+      ? `${focusedRunId}:${focusedProvenanceTarget.kind}:${focusedProvenanceTarget.id}`
+      : focusedRunId
+    if (focusedRunAppliedIdRef.current === focusIdentity) {
       return
     }
 
@@ -237,10 +243,15 @@ export function ConnectorRunsPanel({
       return
     }
 
-    focusedRunAppliedIdRef.current = focusedRunId
+    focusedRunAppliedIdRef.current = focusIdentity
     node.scrollIntoView({ block: 'nearest' })
-    node.focus()
-  }, [focusedRunId, focusedRunLookup, isLoading, items])
+    const provenanceNode = focusedProvenanceTarget?.connectorRunId === focusedRunId
+      ? [...node.querySelectorAll<HTMLElement>('[data-connector-provenance-kind]')].find((candidate) =>
+          candidate.dataset.connectorProvenanceKind === focusedProvenanceTarget.kind
+          && candidate.dataset.connectorProvenanceId === focusedProvenanceTarget.id)
+      : null
+    ;(provenanceNode ?? node).focus()
+  }, [focusedProvenanceTarget, focusedRunId, focusedRunLookup, isLoading, items])
 
   return (
     <section aria-labelledby="connector-runs-title" className="space-y-7">
@@ -342,22 +353,45 @@ export function ConnectorRunsPanel({
                     </CardAction>
                   </CardHeader>
                   <CardContent className="min-w-0 space-y-3 px-0">
+                    <dl className="flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                      {([
+                        ['instance', 'Connector instance', run.connectorInstanceId],
+                        ['run', 'Connector run', run.id],
+                        ['scope', 'Execution scope', run.executionScopeId],
+                      ] as const).map(([kind, label, id]) => (
+                        <div className="min-w-0" key={kind}>
+                          <dt className="font-medium">{label}</dt>
+                          <dd
+                            className="break-all font-mono"
+                            data-connector-provenance-id={id}
+                            data-connector-provenance-kind={kind}
+                            tabIndex={
+                              isFocused
+                              && focusedProvenanceTarget?.kind === kind
+                              && focusedProvenanceTarget.id === id
+                                ? -1
+                                : undefined
+                            }
+                          >
+                            {id}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
                     <ConnectorRunSynchronizationDetails run={run} />
                     <ConnectorRunLifecycleDetails run={run} showDebugData={showDebugData} />
-                    {onInspectNormalization ? (
-                      <Button
+                    <Button
                         type="button"
                         className="max-w-full min-w-0 whitespace-normal"
                         size="sm"
                         variant="outline"
-                        onClick={() => onInspectNormalization({
+                        onClick={() => viewCaptures({
                           connectorInstanceId: run.connectorInstanceId,
                           connectorRunId: run.id,
                         })}
                       >
-                        Inspect normalization rows from {run.id}
-                      </Button>
-                    ) : null}
+                        View Captures from {run.id}
+                    </Button>
                     {warningLabels.length > 0 ? (
                       <div className="flex min-w-0 flex-wrap gap-2">
                         {warningLabels.map((label) => (

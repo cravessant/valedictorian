@@ -158,6 +158,60 @@ describe.sequential('Capture read-model (#304)', () => {
     expect(empty.items).toEqual([])
   })
 
+  it('filters by any connector run occurrence and returns lossless revision provenance', async () => {
+    const { service, readModel } = await setup()
+    const connectorProvenance = {
+      connectorInstanceId: 'jobright/session one',
+      connectorRunId: 'run/one',
+      executionScopeId: 'scope.run-one',
+      reportedOrigin: {
+        kind: 'job_board' as const,
+        name: '  Jobright  ',
+        providerId: '',
+        url: 'jobright-internal://record/1',
+      },
+    }
+    const created = await accept(service, {
+      provenance: { ...acceptInput().provenance, adapterVersion: '0.17.0' },
+      connectorProvenance,
+    })
+    await accept(service, {
+      provenance: { ...acceptInput().provenance, adapterVersion: '0.17.0' },
+      connectorProvenance: {
+        ...connectorProvenance,
+        connectorRunId: 'run/two',
+        executionScopeId: 'scope.run-two',
+        reportedOrigin: null,
+      },
+    })
+    await service.correct({
+      workspaceId: 'ws-a',
+      captureId: created.capture.id,
+      correction: { note: 'user correction' },
+      actor: { type: 'user', id: 'u-1' },
+    })
+    await accept(service, {
+      workspaceId: 'ws-b',
+      provenance: { ...acceptInput().provenance, providerRecordId: 'workspace-b-record' },
+      connectorProvenance,
+    })
+
+    const firstRun = await readModel.listCaptures('ws-a', { connectorRunId: 'run/one' })
+    expect(firstRun.items.map((item) => item.id)).toEqual([created.capture.id])
+    const secondRun = await readModel.listCaptures('ws-a', { connectorRunId: 'run/two' })
+    expect(secondRun.items.map((item) => item.id)).toEqual([created.capture.id])
+    expect(await readModel.listCaptures('ws-a', { connectorRunId: 'missing' })).toMatchObject({ items: [] })
+
+    const history = await readModel.historyCaptures('ws-a', { id: created.capture.id })
+    expect(() => captureHistoryResultSchema.parse(history)).not.toThrow()
+    expect(history.items[0]?.connectorProvenance).toEqual(connectorProvenance)
+    expect(history.items[1]?.connectorProvenance).toMatchObject({
+      connectorRunId: 'run/two',
+      reportedOrigin: null,
+    })
+    expect(history.items[2]?.connectorProvenance).toBeUndefined()
+  })
+
   it('paginates the full result set exactly once via the keyset cursor', async () => {
     const { service, readModel } = await setup()
     const ids: string[] = []

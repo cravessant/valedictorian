@@ -210,6 +210,49 @@ async function openRowMenu(user: ReturnType<typeof userEvent.setup>, rowLabel: s
 describe('LifecycleWorkbench action matrices and modal flows', () => {
   beforeEach(() => { __resetLifecycleActorCounterForTests() })
 
+  it('reports live lineage without inventing technical processing revisions', async () => {
+    const user = userEvent.setup()
+    const capture = makeCapture('cap-1')
+    const job = makeJob('job-1', {
+      factsRevision: 3,
+      captureEvidenceReferences: [{
+        captureId: capture.id,
+        captureRevision: capture.revision,
+        evidenceIndexes: [],
+      }],
+    })
+    const opportunity = makeOpportunity('opp-1', { jobId: job.id, revision: 2 })
+    const { client } = makeClient({ captures: [capture], jobs: [job], opportunities: [opportunity] })
+    render(<LifecycleWorkbench client={client} />)
+    await screen.findByRole('table', { name: 'Captures' })
+
+    await user.click(screen.getByRole('radio', { name: 'Processing' }))
+    const row = within(screen.getByRole('table', { name: 'Capture processing' }))
+      .getByRole('row', { name: /jobright/ })
+    expect(row).toHaveTextContent('Linked to job-1; processing status unavailable')
+    expect(row).toHaveTextContent('Technical status unavailable')
+    expect(row).toHaveTextContent('Admitted as opp-1')
+    expect(row).toHaveTextContent('Technical status unavailable')
+    expect(row).not.toHaveTextContent('Normalized facts revision 3')
+    expect(row).not.toHaveTextContent('Projection revision 2')
+  })
+
+  it('keeps unavailable technical stages distinct from aggregate admission', async () => {
+    const user = userEvent.setup()
+    const capture = makeCapture('cap-pending')
+    const { client } = makeClient({ captures: [capture] })
+    render(<LifecycleWorkbench client={client} />)
+    await screen.findByRole('table', { name: 'Captures' })
+
+    await user.click(screen.getByRole('radio', { name: 'Processing' }))
+    const row = within(screen.getByRole('table', { name: 'Capture processing' }))
+      .getByRole('row', { name: /jobright/ })
+    expect(row).toHaveTextContent('No linked Job; processing status unavailable')
+    expect(row).toHaveTextContent('Technical status unavailable')
+    expect(row).toHaveTextContent('No linked Job')
+    expect(row).toHaveTextContent('Technical status unavailable')
+  })
+
   it('exposes Add/Correct/Remove/Restore/History/Promote actions for Capture and routes each to the typed client method', async () => {
     const user = userEvent.setup()
     const { client, captures } = makeClient({ captures: [makeCapture('cap-1')] })
@@ -251,7 +294,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     await waitFor(() => expect(captures.create).toHaveBeenCalledTimes(1))
     expect(captures.create).toHaveBeenCalledWith(expect.objectContaining({
       evidenceMode: 'reported',
-      adapter: { id: 'jobright', kind: 'connector', version: '0.1.0' },
+      adapter: { id: 'jobright', kind: 'manual', version: '0.1.0' },
       observedAt: '2025-01-01T00:00',
     }))
   })
@@ -576,6 +619,33 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     await waitFor(() => expect(captures.list).toHaveBeenCalledTimes(2))
   })
 
+  it('refreshes Capture, Job, and Opportunity data while Processing is active', async () => {
+    const user = userEvent.setup()
+    const { client, captures, jobs, opportunities } = makeClient({ captures: [makeCapture('cap-1')] })
+    render(<LifecycleWorkbench client={client} />)
+    await screen.findByRole('table', { name: 'Captures' })
+    await user.click(screen.getByRole('radio', { name: 'Processing' }))
+    const callsBefore = {
+      captures: captures.list.mock.calls.length,
+      jobs: jobs.list.mock.calls.length,
+      opportunities: opportunities.list.mock.calls.length,
+    }
+
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => {
+      expect(captures.list).toHaveBeenCalledTimes(callsBefore.captures + 1)
+      expect(jobs.list).toHaveBeenCalledTimes(callsBefore.jobs + 1)
+      expect(opportunities.list).toHaveBeenCalledTimes(callsBefore.opportunities + 1)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => {
+      expect(captures.list).toHaveBeenCalledTimes(callsBefore.captures + 2)
+      expect(jobs.list).toHaveBeenCalledTimes(callsBefore.jobs + 2)
+      expect(opportunities.list).toHaveBeenCalledTimes(callsBefore.opportunities + 2)
+    })
+  })
+
   it('coalesces overlapping focus events into a single refresh', async () => {
     const { client, captures } = makeClient({ captures: [makeCapture('cap-1')] })
     render(<LifecycleWorkbench client={client} />)
@@ -595,15 +665,36 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
         captureId: 'cap-1', revision: 1, kind: 'created',
         snapshot: makeCapture('cap-1'),
         audit: { actor: DESKTOP_USER_ACTOR, timestamp: '2025-01-01T00:00:00Z' },
+        connectorProvenance: {
+          connectorInstanceId: 'jobright-one',
+          connectorRunId: 'run-one',
+          executionScopeId: 'scope.run-one',
+          reportedOrigin: { kind: 'job_board', name: 'Jobright' },
+        },
       }],
       limit: 50, nextCursor: null,
     })
-    render(<LifecycleWorkbench client={client} />)
+    const openProvenance = vi.fn()
+    render(<LifecycleWorkbench client={client} onOpenConnectorProvenance={openProvenance} />)
     await screen.findByRole('table', { name: 'Captures' })
     const menu = await openRowMenu(user, 'jobright')
     await user.click(within(menu).getByRole('menuitem', { name: 'View history' }))
     await screen.findByRole('dialog', { name: /History · cap-1/ })
     await waitFor(() => expect(captures.history).toHaveBeenCalledWith(expect.objectContaining({ id: 'cap-1', limit: 50 })))
+    await user.click(screen.getByRole('button', { name: 'Open connector run run-one' }))
+    await user.click(screen.getByRole('button', { name: 'Open connector instance jobright-one' }))
+    await user.click(screen.getByRole('button', { name: 'Open connector scope scope.run-one' }))
+    expect(openProvenance).toHaveBeenCalledTimes(3)
+    expect(openProvenance).toHaveBeenNthCalledWith(1, {
+      connectorRunId: 'run-one', id: 'run-one', kind: 'run',
+    })
+    expect(openProvenance).toHaveBeenNthCalledWith(2, {
+      connectorRunId: 'run-one', id: 'jobright-one', kind: 'instance',
+    })
+    expect(openProvenance).toHaveBeenNthCalledWith(3, {
+      connectorRunId: 'run-one', id: 'scope.run-one', kind: 'scope',
+    })
+    expect(screen.getByText(/reported by Jobright/)).toBeInTheDocument()
   })
 
   it('ignores a stale history completion after closing one row and opening another', async () => {

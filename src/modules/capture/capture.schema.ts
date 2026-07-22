@@ -82,6 +82,11 @@ export const captureRevisions = pgTable(
     kind: text('kind').notNull(),
     snapshotJson: text('snapshot_json').notNull(),
     auditJson: text('audit_json').notNull(),
+    connectorInstanceId: text('connector_instance_id'),
+    connectorRunId: text('connector_run_id'),
+    executionScopeId: text('execution_scope_id'),
+    reportedOriginJson: text('reported_origin_json'),
+    contentHash: text('content_hash'),
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
@@ -92,6 +97,38 @@ export const captureRevisions = pgTable(
     snapshotBoundCheck: check('chk_capture_revisions_snapshot_bound', sql`length(${table.snapshotJson}) <= 262144`),
     auditBoundCheck: check('chk_capture_revisions_audit_bound', sql`length(${table.auditJson}) <= 16384`),
     auditKeysCheck: check('chk_capture_revisions_audit_keys', sql`${table.auditJson} ${sql.raw(FORBIDDEN_KEY)}`),
+    connectorProvenanceCheck: check(
+      'chk_capture_revisions_connector_provenance',
+      sql`(${table.connectorInstanceId} is null and ${table.connectorRunId} is null and ${table.executionScopeId} is null and ${table.reportedOriginJson} is null) or (${table.connectorInstanceId} is not null and ${table.connectorRunId} is not null and ${table.executionScopeId} is not null)`,
+    ),
+    connectorRunIdx: index('idx_capture_revisions_connector_run').on(table.connectorRunId, table.captureId),
+    contentHashIdx: uniqueIndex('idx_capture_revisions_content_hash')
+      .on(table.captureId, table.contentHash)
+      .where(sql`${table.contentHash} is not null`),
+  }),
+)
+
+export const captureOccurrences = pgTable(
+  'capture_occurrences',
+  {
+    id: text('id').primaryKey(),
+    captureId: text('capture_id').notNull(),
+    captureRevision: integer('capture_revision').notNull(),
+    connectorInstanceId: text('connector_instance_id').notNull(),
+    connectorRunId: text('connector_run_id').notNull(),
+    executionScopeId: text('execution_scope_id').notNull(),
+    observedAt: text('observed_at').notNull(),
+    receivedAt: text('received_at').notNull(),
+  },
+  (table) => ({
+    revisionFk: foreignKey({
+      name: 'fk_capture_occurrences_revision',
+      columns: [table.captureId, table.captureRevision],
+      foreignColumns: [captureRevisions.captureId, captureRevisions.revision],
+    }),
+    connectorRunIdx: index('idx_capture_occurrences_connector_run').on(table.connectorRunId, table.captureId),
+    captureIdx: index('idx_capture_occurrences_capture').on(table.captureId, table.captureRevision),
+    revisionCheck: check('chk_capture_occurrences_revision', sql`${table.captureRevision} > 0`),
   }),
 )
 

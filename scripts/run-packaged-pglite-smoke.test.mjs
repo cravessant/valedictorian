@@ -51,8 +51,7 @@ it('launches separate packaged processes to write and then verify persisted data
         `${JSON.stringify(phase === 'write'
           ? { phase: 'write' }
           : {
-              companyName: 'Packaged PGlite Smoke',
-              persistedApplications: 1,
+              persistedCaptures: 1,
               phase: 'verify',
             })}\n`,
       )
@@ -65,8 +64,7 @@ it('launches separate packaged processes to write and then verify persisted data
       spawnPackagedApp,
       timeoutMs: 1_000,
     })).resolves.toEqual({
-      companyName: 'Packaged PGlite Smoke',
-      persistedApplications: 1,
+      persistedCaptures: 1,
       phase: 'verify',
     })
     expect(phases).toEqual(['write', 'verify'])

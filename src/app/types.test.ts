@@ -5,13 +5,14 @@ describe('app navigation type constants', () => {
     const { APP_VIEWS } = await import('./types')
 
     expect(APP_VIEWS).toEqual({
+      CAPTURES: 'captures',
+      JOBS: 'jobs',
+      OPPORTUNITIES: 'opportunities',
       APPLICATIONS: 'applications',
       PROFILE: 'profile',
       CONNECTORS: 'connectors',
       CONNECTOR_RUNS: 'connector-runs',
       SETTINGS: 'settings',
-      SOURCING: 'sourcing',
-      SOURCING_NORMALIZATION: 'sourcing-normalization',
     })
   })
 
