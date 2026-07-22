@@ -2,7 +2,7 @@
  * Capture read-model (issue #304, stage 3).
  *
  * The read half of the Capture HTTP surface: it loads canonical
- * `lifecycle_captures` / `capture_evidence_items` rows and hands them to the
+ * `captures` / `capture_evidence_items` rows and hands them to the
  * pure serializers in capture.dto.ts, producing the sparxie `Capture` resource
  * and `CaptureListResult` page the typed client re-parses. It performs reads
  * only — every mutation still flows through the Capture service, which owns all
@@ -18,7 +18,7 @@ import type {
   HistoryListInput,
 } from 'sparxie'
 import type { PgliteDatabase } from '../../db/pglite'
-import { captureEvidenceItems, captureOccurrences, captureRevisions, lifecycleCaptures } from './capture.schema'
+import { captureEvidenceItems, captureOccurrences, captureRevisions, captures } from './capture.schema'
 import {
   decodeCaptureCursor,
   reconstructCaptureHistory,
@@ -89,8 +89,8 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
   async function selectHead(workspaceId: string, captureId: string): Promise<CaptureHeadRow | null> {
     const [row] = await database
       .select()
-      .from(lifecycleCaptures)
-      .where(and(eq(lifecycleCaptures.workspaceId, workspaceId), eq(lifecycleCaptures.id, captureId)))
+      .from(captures)
+      .where(and(eq(captures.workspaceId, workspaceId), eq(captures.id, captureId)))
       .limit(1)
     return (row as CaptureHeadRow | undefined) ?? null
   }
@@ -107,12 +107,12 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
       const limit = clampLimit(input.limit)
       const cursor = input.cursor ? decodeCaptureCursor(input.cursor) : null
 
-      const filters = [eq(lifecycleCaptures.workspaceId, workspaceId)]
+      const filters = [eq(captures.workspaceId, workspaceId)]
       if (input.evidenceMode !== undefined) {
-        filters.push(eq(lifecycleCaptures.evidenceMode, input.evidenceMode))
+        filters.push(eq(captures.evidenceMode, input.evidenceMode))
       }
       if (input.adapterId !== undefined) {
-        filters.push(eq(lifecycleCaptures.adapterId, input.adapterId))
+        filters.push(eq(captures.adapterId, input.adapterId))
       }
       if (input.connectorRunId !== undefined) {
         filters.push(exists(
@@ -120,27 +120,27 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
             .select({ value: sql`1` })
             .from(captureOccurrences)
             .where(and(
-              eq(captureOccurrences.captureId, lifecycleCaptures.id),
+              eq(captureOccurrences.captureId, captures.id),
               eq(captureOccurrences.connectorRunId, input.connectorRunId),
             )),
         ))
       }
       if (input.includeRemoved !== true) {
-        filters.push(isNull(lifecycleCaptures.removedAt))
+        filters.push(isNull(captures.removedAt))
       }
       if (cursor) {
         const keyset = or(
-          gt(lifecycleCaptures.createdAt, cursor.createdAt),
-          and(eq(lifecycleCaptures.createdAt, cursor.createdAt), gt(lifecycleCaptures.id, cursor.id)),
+          gt(captures.createdAt, cursor.createdAt),
+          and(eq(captures.createdAt, cursor.createdAt), gt(captures.id, cursor.id)),
         )
         if (keyset) filters.push(keyset)
       }
 
       const rows = (await database
         .select()
-        .from(lifecycleCaptures)
+        .from(captures)
         .where(and(...filters))
-        .orderBy(asc(lifecycleCaptures.createdAt), asc(lifecycleCaptures.id))
+        .orderBy(asc(captures.createdAt), asc(captures.id))
         .limit(limit + 1)) as CaptureHeadRow[]
 
       const hasMore = rows.length > limit

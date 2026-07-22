@@ -38,6 +38,28 @@ export async function applyLifecycleMigration(client: PgliteClient) {
   await migratePgliteDatabase(client, { migrationsFolder: resolvePgliteMigrationsFolder() })
 }
 
+export async function applyMigrationsBeforeCleanCutover(client: PgliteClient) {
+  const fullFolder = resolvePgliteMigrationsFolder()
+  const tempFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'valedictorian-pre-cutover-'))
+  fs.mkdirSync(path.join(tempFolder, 'meta'), { recursive: true })
+  const journal = JSON.parse(fs.readFileSync(path.join(fullFolder, 'meta', '_journal.json'), 'utf8')) as {
+    entries: Array<{ idx: number; tag: string }>
+  }
+  journal.entries = journal.entries.filter((entry) => entry.idx <= 4)
+  for (const entry of journal.entries) {
+    fs.copyFileSync(path.join(fullFolder, `${entry.tag}.sql`), path.join(tempFolder, `${entry.tag}.sql`))
+    const snapshotName = `${entry.idx.toString().padStart(4, '0')}_snapshot.json`
+    const snapshotPath = path.join(fullFolder, 'meta', snapshotName)
+    if (fs.existsSync(snapshotPath)) fs.copyFileSync(snapshotPath, path.join(tempFolder, 'meta', snapshotName))
+  }
+  fs.writeFileSync(path.join(tempFolder, 'meta', '_journal.json'), JSON.stringify(journal))
+  try {
+    await migratePgliteDatabase(client, { migrationsFolder: tempFolder })
+  } finally {
+    fs.rmSync(tempFolder, { recursive: true, force: true })
+  }
+}
+
 const T = '2026-07-19T00:00:00.000Z'
 
 /**
@@ -125,7 +147,7 @@ export async function seedLegacyDataset(client: PgliteClient) {
   await q(`insert into application_events (id, application_id, type, message, payload_json, actor, created_at) values ('ae-1','app-linked','note','moved forward','{}','user','${T}')`)
 
   // retry_work: connector_capture, normalization, provider marker, cancelled+evidence (terminal), cancelled without (cancelled), tombstoned.
-  await q(retryInsert({ id: 'rw-cap', kind: 'connector_capture', state: 'scheduled' }))
+  await q(retryInsert({ id: 'rw-cap', kind: 'connector_capture', state: 'acquired' }))
   await q(retryInsert({ id: 'rw-norm', kind: 'normalization', cev: 'cev-A1', state: 'exhausted', reason: 'server_failure' }))
   await q(retryInsert({ id: 'rw-prov', kind: 'normalization', cev: 'cev-A2', state: 'scheduled', workKind: 'provider_url_resolution' }))
   await q(retryInsert({ id: 'rw-term', kind: 'normalization', cev: 'cev-B1', state: 'cancelled', workKind: 'provider_url_resolution', failureEvidence: true }))
@@ -138,6 +160,24 @@ export async function seedLegacyDataset(client: PgliteClient) {
   // evidence_json, which has no validating trigger) is exercised by lin-D above.
 }
 
+export async function seedLateAcquiredConnectorRetry(client: PgliteClient) {
+  await client.query(retryInsert({
+    id: 'rw-cap-late', kind: 'connector_capture', state: 'acquired', filterSignature: 'filters:late',
+  }))
+}
+
+export async function seedIndependentClaimedConnectorCaptureWork(client: PgliteClient) {
+  await client.query(`insert into connector_capture_work (
+    id, workspace_id, idempotency_key, attempt, max_attempts, status, next_eligible_at,
+    owner_version, acquisition_token, claimed_at, claim_expires_at, created_at, updated_at,
+    connector_instance_id, filter_signature, checkpoint_schema_version, checkpoint_generation
+  ) values (
+    'cw-independent', '00000000-0000-0000-0000-000000000000', 'cw-independent', 1, 3,
+    'claimed', '${T}', '1', 'independent-token', '${T}', '${T}', '${T}', '${T}',
+    'ci-1', 'filters:independent', 'v1', 'cw-independent'
+  )`)
+}
+
 function oppInsert(id: string, jobId: string, mergeStatus: string) {
   return `insert into opportunities (id, job_id, workflow_run_id, source_id, company_name, role_title, role_kind, timing_mode, terms_json, work_mode, merge_status, discovered_at, created_at, updated_at)
     values ('${id}','${jobId}','wr-1','src-1','Acme','Engineer','full_time','unknown','[]','remote','${mergeStatus}','${T}','${T}','${T}')`
@@ -148,7 +188,7 @@ function appInsert(id: string) {
     values ('${id}','co-1','src-1','Engineer','full_time','unknown','[]','US','remote','active',false,'${T}','${T}')`
 }
 
-function retryInsert(o: { id: string; kind: string; state: string; cev?: string; reason?: string; workKind?: string; failureEvidence?: boolean; deleted?: boolean }) {
+function retryInsert(o: { id: string; kind: string; state: string; cev?: string; reason?: string; workKind?: string; failureEvidence?: boolean; deleted?: boolean; filterSignature?: string }) {
   const lineage = JSON.stringify({
     ...(o.workKind ? { workKind: o.workKind, connectorInstanceId: 'ci-1', intermediaryUrl: 'https://jobright.ai/x', providerRecordId: 'pr-1' } : {}),
     ...(o.failureEvidence ? { failureEvidence: { type: 'invalid' } } : {}),
@@ -156,7 +196,7 @@ function retryInsert(o: { id: string; kind: string; state: string; cev?: string;
   const isCapture = o.kind === 'connector_capture'
   return `insert into retry_work (id, execution_scope_id, kind, connector_instance_id, filter_signature, checkpoint_schema_version, checkpoint_generation, capture_evidence_version_id, resolver_id, resolver_version, input_hash, reason, attempt, max_attempts, last_attempt_at, computed_delay_ms, next_attempt_at, horizon_at, state, owner_version, lineage_json, created_at, updated_at, deleted_at)
     values ('${o.id}','scope-xxxxxxxx','${o.kind}',
-      ${isCapture ? `'ci-1'` : 'null'}, ${isCapture ? `'filters:{}'` : 'null'}, ${isCapture ? `'v1'` : 'null'}, ${isCapture ? `'${o.id}'` : 'null'},
+      ${isCapture ? `'ci-1'` : 'null'}, ${isCapture ? `'${o.filterSignature ?? 'filters:{}'}'` : 'null'}, ${isCapture ? `'v1'` : 'null'}, ${isCapture ? `'${o.id}'` : 'null'},
       ${o.cev ? `'${o.cev}'` : 'null'}, ${isCapture ? 'null' : `'r'`}, ${isCapture ? 'null' : `'1'`}, ${isCapture ? 'null' : `'ih'`},
       '${o.reason ?? 'network_interruption'}', 1, 3, '${T}',
       ${o.state === 'scheduled' || o.state === 'acquired' ? 0 : 'null'},

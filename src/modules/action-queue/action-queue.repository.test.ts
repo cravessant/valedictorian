@@ -1,18 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import {
-  applicationLinks,
   applicationScores,
-  applications,
   applicationWorkflowStates,
-  companies,
-  sources,
+  pursuitLinks,
 } from '../../db/schema'
 import {
   type PgliteDatabase,
 } from '../../db/pglite'
 import { useResettablePgliteTestDatabase } from '../../test/pglite-test-owner'
 import { createPglitePolicyRepository } from '../policy/policy.repository'
+import { seedCanonicalApplication } from '../../test-fixtures/canonical-application.fixture'
 import { createPgliteActionQueueRepository } from './action-queue.repository'
 
 const createdAt = '2026-06-04T16:00:00.000Z'
@@ -27,149 +25,37 @@ async function closeClient(_client: null) {
 }
 
 async function seedSampleActionQueueApplications(database: PgliteDatabase) {
-  await database.insert(companies).values([
-    {
-      id: 'company-astranis',
-      name: 'Astranis Space Technologies',
-      normalizedName: 'astranis space technologies',
-      websiteUrl: 'https://jobs.example.test/remediated/3b584e866326a6d1',
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-    },
-    {
-      id: 'company-versant',
-      name: 'Versant Media',
-      normalizedName: 'versant media',
-      websiteUrl: 'https://jobs.example.test/remediated/3d3842a361412418',
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-    },
-    {
-      id: 'company-jobster',
-      name: 'Jobster',
-      normalizedName: 'jobster',
-      websiteUrl: null,
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-    },
-  ])
+  await seedCanonicalApplication(database, {
+    id: 'application-astranis-backend', companyName: 'Astranis Space Technologies',
+    roleTitle: 'Software Engineer- Backend Intern (Fall 2026)', sourceName: 'LinkedIn',
+    operationalStatus: 'needs_user_info', workMode: 'onsite',
+    location: { city: 'San Francisco', region: 'CA', country: 'US', display: 'San Francisco, CA / Onsite' },
+    createdAt,
+  })
+  await seedCanonicalApplication(database, {
+    id: 'application-versant-platform', companyName: 'Versant Media',
+    roleTitle: 'Academic Year Internships: Platform Engineering', sourceName: 'LinkedIn',
+    operationalStatus: 'queued', workMode: 'remote',
+    location: { city: 'Universal City', region: 'CA', country: 'US', display: 'Universal City, CA / Remote' },
+    createdAt,
+  })
+  await seedCanonicalApplication(database, {
+    id: 'application-jobster-analytics', companyName: 'Jobster',
+    roleTitle: 'Business Analytics Intern - Studentjob.ch', sourceName: 'Jobright',
+    operationalStatus: 'not_fit', workMode: 'onsite',
+    location: { city: 'Bellevue', region: 'WA', country: 'US', display: 'Bellevue, WA / Onsite' },
+    createdAt,
+  })
 
-  await database.insert(sources).values([
-    {
-      id: 'source-linkedin',
-      name: 'LinkedIn',
-      accountHint: 'Profile 2 / candidate+f47504101f5f@example.test',
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-    },
-    {
-      id: 'source-jobright',
-      name: 'Jobright',
-      accountHint: 'Profile 2 / candidate+f47504101f5f@example.test',
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-    },
-  ])
-
-  await database.insert(applications).values([
-    {
-      id: 'application-astranis-backend',
-      companyId: 'company-astranis',
-      sourceId: 'source-linkedin',
-      roleTitle: 'Software Engineer- Backend Intern (Fall 2026)',
-      roleKind: 'internship',
-      term: 'Fall 2026 internship',
-      timingMode: 'unknown',
-      termsJson: '[]',
-      startDate: null,
-      endDate: null,
-      city: 'San Francisco',
-      region: 'CA',
-      country: 'US',
-      workMode: 'onsite',
-      locationRaw: 'San Francisco, CA / Onsite',
-      status: 'needs_user_info',
-      hasApplied: false,
-      currentPriorityScore: 8,
-      currentPriorityBand: 'high',
-      currentResumeVariant: 'bachelor_dec_2027',
-      notes: 'Needs Fall 2026 availability answers before submission.',
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-    },
-    {
-      id: 'application-versant-platform',
-      companyId: 'company-versant',
-      sourceId: 'source-linkedin',
-      roleTitle: 'Academic Year Internships: Platform Engineering',
-      roleKind: 'internship',
-      term: 'Sep. 14 2026-Apr. 16 2027',
-      timingMode: 'unknown',
-      termsJson: '[]',
-      startDate: null,
-      endDate: null,
-      city: 'Universal City',
-      region: 'CA',
-      country: 'US',
-      workMode: 'remote',
-      locationRaw: 'Universal City, CA / Remote',
-      status: 'queued',
-      hasApplied: false,
-      currentPriorityScore: 6,
-      currentPriorityBand: 'medium',
-      currentResumeVariant: 'bachelor_dec_2027',
-      notes: 'Remote paid platform-engineering sample row.',
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-    },
-    {
-      id: 'application-jobster-analytics',
-      companyId: 'company-jobster',
-      sourceId: 'source-jobright',
-      roleTitle: 'Business Analytics Intern - Studentjob.ch',
-      roleKind: 'internship',
-      term: 'Internship',
-      timingMode: 'unknown',
-      termsJson: '[]',
-      startDate: null,
-      endDate: null,
-      city: 'Bellevue',
-      region: 'WA',
-      country: 'US',
-      workMode: 'onsite',
-      locationRaw: 'Bellevue, WA / Onsite',
-      status: 'not_fit',
-      hasApplied: false,
-      currentPriorityScore: 3,
-      currentPriorityBand: 'skip',
-      currentResumeVariant: null,
-      notes: 'Below cutoff because the role is analytics rather than target SWE.',
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-    },
-  ])
-
-  await database.insert(applicationLinks).values([
+  await database.insert(pursuitLinks).values([
     {
       id: 'link-astranis-official',
       applicationId: 'application-astranis-backend',
       kind: 'official',
       label: 'official',
       url: 'https://jobs.example.test/remediated/f60a3102c158cd7c',
-      externalId: '4681183006',
       isPrimary: true,
-      discoveredAt: createdAt,
       createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
     },
     {
       id: 'link-versant-official',
@@ -177,12 +63,8 @@ async function seedSampleActionQueueApplications(database: PgliteDatabase) {
       kind: 'official',
       label: 'official',
       url: 'https://jobs.example.test/remediated/41581ba03bdcb93e',
-      externalId: '744000126408107',
       isPrimary: true,
-      discoveredAt: createdAt,
       createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
     },
     {
       id: 'link-jobster-source',
@@ -190,12 +72,8 @@ async function seedSampleActionQueueApplications(database: PgliteDatabase) {
       kind: 'source',
       label: 'source',
       url: 'https://jobs.example.test/remediated/8f573a16eeabe767',
-      externalId: '6a2169a6338c01230511dfd7',
       isPrimary: true,
-      discoveredAt: createdAt,
       createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
     },
   ])
 
@@ -279,9 +157,9 @@ describe.sequential('PGlite action queue repository', () => {
     })
 
     await database
-      .update(applications)
-      .set({ status: 'queued' })
-      .where(eq(applications.id, 'application-jobster-analytics'))
+      .update(applicationWorkflowStates)
+      .set({ operationalStatus: 'queued' })
+      .where(eq(applicationWorkflowStates.applicationId, 'application-jobster-analytics'))
 
     const skipBelow = await repository.listActionQueue({ actionBucket: 'skip_below_cutoff' })
     expect(skipBelow).toMatchObject({
@@ -305,9 +183,8 @@ describe.sequential('PGlite action queue repository', () => {
     try {
       await seedSampleActionQueueApplications(database)
       await database
-        .update(applications)
-        .set({ currentPriorityScore: null, currentPriorityBand: null })
-        .where(eq(applications.id, 'application-versant-platform'))
+        .delete(applicationScores)
+        .where(eq(applicationScores.applicationId, 'application-versant-platform'))
 
       const result = await repository.listActionQueue({ actionBucket: 'user_review_required' })
 
@@ -361,12 +238,10 @@ describe.sequential('PGlite action queue repository', () => {
     const { client, database } = await openMigratedActionQueueDb()
     try {
       await seedSampleActionQueueApplications(database)
-      await database.insert(applicationWorkflowStates).values({
-        applicationId: 'application-versant-platform',
+      await database.update(applicationWorkflowStates).set({
         missingUserInfo: 'Fall 2026 start and end availability',
-        createdAt: '2026-06-04T16:00:00.000Z',
         updatedAt: '2026-06-04T16:00:00.000Z',
-      })
+      }).where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
 
       const repository = createPgliteActionQueueRepository(database, {
         now: () => new Date('2026-06-04T22:00:00.000Z'),
@@ -398,12 +273,10 @@ describe.sequential('PGlite action queue repository', () => {
     const { client, database, repository } = await openMigratedActionQueueDb()
     try {
       await seedSampleActionQueueApplications(database)
-      await database.insert(applicationWorkflowStates).values({
-        applicationId: 'application-versant-platform',
+      await database.update(applicationWorkflowStates).set({
         missingUserInfo: 'Explicit user confirmation is required before any real submission.',
-        createdAt: '2026-06-04T16:00:00.000Z',
         updatedAt: '2026-06-04T16:00:00.000Z',
-      })
+      }).where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
 
       const result = await repository.listActionQueue({ actionBucket: 'needs_user_info' })
 
@@ -426,16 +299,13 @@ describe.sequential('PGlite action queue repository', () => {
     try {
       await seedSampleActionQueueApplications(database)
       await database
-        .update(applications)
-        .set({ status: 'ready_for_review' })
-        .where(eq(applications.id, 'application-versant-platform'))
-      await database.insert(applicationWorkflowStates).values({
-        applicationId: 'application-versant-platform',
+        .update(applicationWorkflowStates)
+        .set({ operationalStatus: 'ready_for_review',
         holdStartedAt: '2000-01-01T00:00:00.000Z',
         manualReviewKind: 'overridable',
-        createdAt: '2026-06-04T16:00:00.000Z',
         updatedAt: '2026-06-04T16:00:00.000Z',
-      })
+        })
+        .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
 
       const repository = createPgliteActionQueueRepository(database, {
         now: () => new Date('2026-06-04T20:00:00.000Z'),
@@ -465,16 +335,13 @@ describe.sequential('PGlite action queue repository', () => {
     try {
       await seedSampleActionQueueApplications(database)
       await database
-        .update(applications)
-        .set({ status: 'ready_for_review' })
-        .where(eq(applications.id, 'application-versant-platform'))
-      await database.insert(applicationWorkflowStates).values({
-        applicationId: 'application-versant-platform',
+        .update(applicationWorkflowStates)
+        .set({ operationalStatus: 'ready_for_review',
         holdStartedAt: '2026-06-04T10:00:00.000Z',
         manualReviewKind: 'overridable',
-        createdAt: '2026-06-04T10:00:00.000Z',
         updatedAt: '2026-06-04T10:00:00.000Z',
-      })
+        })
+        .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
 
       const repository = createPgliteActionQueueRepository(database, {
         now: () => new Date('2026-06-04T15:00:00.000Z'),
@@ -498,16 +365,13 @@ describe.sequential('PGlite action queue repository', () => {
     try {
       await seedSampleActionQueueApplications(database)
       await database
-        .update(applications)
-        .set({ status: 'ready_for_review' })
-        .where(eq(applications.id, 'application-versant-platform'))
-      await database.insert(applicationWorkflowStates).values({
-        applicationId: 'application-versant-platform',
+        .update(applicationWorkflowStates)
+        .set({ operationalStatus: 'ready_for_review',
         holdStartedAt: '2000-01-01T00:00:00.000Z',
         manualReviewKind: 'non_overridable',
-        createdAt: '2026-06-04T16:00:00.000Z',
         updatedAt: '2026-06-04T16:00:00.000Z',
-      })
+        })
+        .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
 
       const result = await repository.listActionQueue({ actionBucket: 'user_review_required' })
 
@@ -534,15 +398,12 @@ describe.sequential('PGlite action queue repository', () => {
     try {
       await seedSampleActionQueueApplications(database)
       await database
-        .update(applications)
-        .set({ status: 'in_progress' })
-        .where(eq(applications.id, 'application-versant-platform'))
-      await database.insert(applicationWorkflowStates).values({
-        applicationId: 'application-versant-platform',
+        .update(applicationWorkflowStates)
+        .set({ operationalStatus: 'in_progress',
         lockStartedAt: '2000-01-01T00:00:00.000Z',
-        createdAt: '2026-06-04T16:00:00.000Z',
         updatedAt: '2026-06-04T16:00:00.000Z',
-      })
+        })
+        .where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
 
       const result = await repository.listActionQueue({ actionBucket: 'stale_lock_recovery' })
 
@@ -594,15 +455,13 @@ describe.sequential('PGlite action queue repository', () => {
     try {
       await seedSampleActionQueueApplications(database)
       await database
-        .update(applications)
-        .set({ status: 'submitted' })
-        .where(eq(applications.id, 'application-jobster-analytics'))
-      await database.insert(applicationWorkflowStates).values({
-        applicationId: 'application-versant-platform',
+        .update(applicationWorkflowStates)
+        .set({ operationalStatus: 'submitted' })
+        .where(eq(applicationWorkflowStates.applicationId, 'application-jobster-analytics'))
+      await database.update(applicationWorkflowStates).set({
         blockerReason: 'SmartRecruiters validation error',
-        createdAt: '2026-06-04T16:00:00.000Z',
         updatedAt: '2026-06-04T16:00:00.000Z',
-      })
+      }).where(eq(applicationWorkflowStates.applicationId, 'application-versant-platform'))
 
       const result = await repository.listActionQueue({ actionBucket: 'blocked' })
 

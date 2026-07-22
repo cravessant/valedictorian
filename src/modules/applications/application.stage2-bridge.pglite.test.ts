@@ -12,7 +12,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteJobService } from '../job/job.service'
 import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
-import { applicationHistory, lifecycleApplications } from '../application/application.schema'
+import { applicationHistory, applications as applicationRows } from '../application/application.schema'
 import { createPgliteApplicationAggregateService } from './application.aggregate.service'
 
 const resettableOwner = useResettablePgliteTestOwner()
@@ -63,9 +63,9 @@ describe.sequential('Application 0.27 create bridge (#304)', () => {
 
     const readSnapshot = async () => {
       const [row] = await database
-        .select({ snapshotJson: lifecycleApplications.snapshotJson })
-        .from(lifecycleApplications)
-        .where(eq(lifecycleApplications.id, created.application.id))
+        .select({ snapshotJson: applicationRows.snapshotJson })
+        .from(applicationRows)
+        .where(eq(applicationRows.id, created.application.id))
       return JSON.parse(row!.snapshotJson) as { capturedAt?: string }
     }
 

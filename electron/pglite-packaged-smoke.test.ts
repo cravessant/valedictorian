@@ -9,13 +9,13 @@ describe('packaged PGlite smoke', () => {
       close: async () => {
         events.push('close')
       },
-      write: async () => {
-        events.push('write')
+      write: async (cycle: 1 | 2) => {
+        events.push(`write:${cycle}`)
         persistedCaptures += 1
       },
-      read: async () => {
-        events.push('read')
-        return { found: persistedCaptures > 0, total: persistedCaptures }
+      read: async (cycles: 1 | 2) => {
+        events.push(`read:${cycles}`)
+        return { found: persistedCaptures >= cycles, total: persistedCaptures, completeLifecycle: persistedCaptures >= cycles }
       },
       dataDirectory,
     }))
@@ -32,13 +32,14 @@ describe('packaged PGlite smoke', () => {
       phase: 'verify',
       openOwner,
     })).resolves.toEqual({
-      persistedCaptures: 1,
+      persistedCaptures: 2,
       phase: 'verify',
     })
 
     expect(openOwner).toHaveBeenNthCalledWith(1, '/tmp/packaged-smoke/pglite')
     expect(openOwner).toHaveBeenNthCalledWith(2, '/tmp/packaged-smoke/pglite')
-    expect(events).toEqual(['write', 'close', 'read', 'close'])
+    expect(openOwner).toHaveBeenNthCalledWith(3, '/tmp/packaged-smoke/pglite')
+    expect(events).toEqual(['write:1', 'close', 'read:1', 'write:2', 'close', 'read:2', 'close'])
   })
 
   it('closes the owner when persistence verification fails', async () => {
@@ -46,8 +47,8 @@ describe('packaged PGlite smoke', () => {
     const openOwner = vi.fn()
       .mockResolvedValueOnce({
         close,
-        write: async () => undefined,
-        read: async () => ({ found: false, total: 0 }),
+        write: async (_cycle: 1 | 2) => undefined,
+        read: async (_cycles: 1 | 2) => ({ found: false, total: 0, completeLifecycle: false }),
       })
 
     await expect(runPackagedPgliteSmoke({

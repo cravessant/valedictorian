@@ -22,14 +22,14 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
 import { jobExternalIdentityKinds, jobIdentityStrengths } from '../../db/lifecycle-vocabulary'
-import { jobCaptureEvidenceReferences, jobExternalIdentities, jobHistory, lifecycleJobs } from './job.schema'
+import { jobCaptureEvidenceReferences, jobExternalIdentities, jobHistory, jobs } from './job.schema'
 import {
   deleteJobCaptureEvidenceReferences,
   insertJobCaptureEvidenceReferences,
   insertJobExternalIdentities,
   insertJobHistory,
   updateJobExternalIdentities,
-  updateLifecycleJobs,
+  updateJobs,
 } from './job.repository'
 import {
   type JobActor,
@@ -213,9 +213,9 @@ export async function resolveStrongIdentityOwner(
   const [row] = await exec
     .select({ jobId: jobExternalIdentities.jobId, identityId: jobExternalIdentities.id })
     .from(jobExternalIdentities)
-    .innerJoin(lifecycleJobs, eq(lifecycleJobs.id, jobExternalIdentities.jobId))
+    .innerJoin(jobs, eq(jobs.id, jobExternalIdentities.jobId))
     .where(and(
-      eq(lifecycleJobs.workspaceId, workspaceId),
+      eq(jobs.workspaceId, workspaceId),
       eq(jobExternalIdentities.kind, tuple.kind),
       eq(jobExternalIdentities.provider, tuple.provider),
       sql`coalesce(${jobExternalIdentities.account}, '') = ${tuple.account ?? ''}`,
@@ -237,9 +237,9 @@ export function createPgliteJobIdentityService(
 
   async function jobExistsOn(exec: Pick<PgliteDatabase, 'select'>, workspaceId: string, jobId: string): Promise<{ id: string; createdAt: string; removedAt: string | null } | null> {
     const [row] = await exec
-      .select({ id: lifecycleJobs.id, createdAt: lifecycleJobs.createdAt, removedAt: lifecycleJobs.removedAt })
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .select({ id: jobs.id, createdAt: jobs.createdAt, removedAt: jobs.removedAt })
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
       .limit(1)
     return row ?? null
   }
@@ -308,9 +308,9 @@ export function createPgliteJobIdentityService(
     const locked = []
     for (const jobId of orderedIds) {
       const [row] = await exec
-        .select({ id: lifecycleJobs.id, createdAt: lifecycleJobs.createdAt, removedAt: lifecycleJobs.removedAt })
-        .from(lifecycleJobs)
-        .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+        .select({ id: jobs.id, createdAt: jobs.createdAt, removedAt: jobs.removedAt })
+        .from(jobs)
+        .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
         .limit(1)
         .for('update')
       if (!row || row.removedAt !== null) return fail('not_found', 'both jobs must be active in this workspace')
@@ -356,7 +356,7 @@ export function createPgliteJobIdentityService(
       await deleteJobCaptureEvidenceReferences(exec).where(eq(jobCaptureEvidenceReferences.id, reference.id))
     }
 
-    await updateLifecycleJobs(exec).set({ removedAt: createdAt, updatedAt: createdAt }).where(eq(lifecycleJobs.id, loser.id))
+    await updateJobs(exec).set({ removedAt: createdAt, updatedAt: createdAt }).where(eq(jobs.id, loser.id))
     await appendHistory(exec, loser.id, 'removed', JSON.stringify({ kind: 'merged', into: winner.id }), actor, createdAt)
     return { ok: true, winnerJobId: winner.id, loserJobId: loser.id }
   }

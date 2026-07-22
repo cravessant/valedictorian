@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { and, eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
-import { jobCaptureEvidenceReferences, lifecycleJobs } from '../../db/schema'
+import { jobCaptureEvidenceReferences, jobs } from '../../db/schema'
 import { createPgliteCaptureService } from '../capture/capture.service'
 import { readCaptureEvidenceReference } from '../capture/capture.lineage'
 import { insertJobCaptureEvidenceReferences } from './job.repository'
@@ -37,7 +37,7 @@ async function setup(workspaceIds: readonly string[] = ['ws-a', 'ws-b']) {
 }
 
 async function seedJob(database: Awaited<ReturnType<typeof setup>>['database'], id: string, workspaceId: string) {
-  await database.insert(lifecycleJobs).values({
+  await database.insert(jobs).values({
     id,
     workspaceId,
     factsRevision: 1,

@@ -33,9 +33,9 @@
 import { and, desc, eq } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
-import { jobCaptureEvidenceReferences, jobHistory, lifecycleJobs } from '../../db/schema'
+import { jobCaptureEvidenceReferences, jobHistory, jobs } from '../../db/schema'
 import { lifecycleWarningCodes } from '../../db/lifecycle-vocabulary'
-import { captureEvidenceItems, captureRevisions, lifecycleCaptures } from '../capture/capture.schema'
+import { captureEvidenceItems, captureRevisions, captures } from '../capture/capture.schema'
 import type { CaptureEvidenceInput, CaptureFailure, CaptureService, JsonValue } from '../capture/capture.service'
 import type { JobActor, JobActorType, JobService } from '../job/job.service'
 import {
@@ -260,9 +260,9 @@ export function createPgliteJobPromotion(
   /** Load an existing target Job for duplicate resolution (workspace-scoped, non-removed). */
   async function loadTargetJob(exec: Tx, workspaceId: string, jobId: string): Promise<{ id: string; factsRevision: number } | null> {
     const [row] = await exec
-      .select({ id: lifecycleJobs.id, factsRevision: lifecycleJobs.factsRevision, removedAt: lifecycleJobs.removedAt })
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .select({ id: jobs.id, factsRevision: jobs.factsRevision, removedAt: jobs.removedAt })
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
       .limit(1)
     if (!row || row.removedAt !== null) return null
     return { id: row.id, factsRevision: row.factsRevision }
@@ -473,8 +473,8 @@ export function createPgliteJobPromotion(
         try {
           const outcome = await database.transaction(async (tx) => {
             // Serialize concurrent promotions of THIS capture on real Postgres.
-            await tx.select({ id: lifecycleCaptures.id }).from(lifecycleCaptures)
-              .where(and(eq(lifecycleCaptures.workspaceId, workspaceId), eq(lifecycleCaptures.id, captureId)))
+            await tx.select({ id: captures.id }).from(captures)
+              .where(and(eq(captures.workspaceId, workspaceId), eq(captures.id, captureId)))
               .for('update')
             // Idempotency BEFORE any boundary retrieval.
             const linked = await existingLineageJob(tx, captureId)

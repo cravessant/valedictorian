@@ -1,7 +1,7 @@
 /**
  * Opportunity domain -> sparxie DTO serialization (issue #304, stage 3).
  *
- * Pure functions that flatten the canonical `lifecycle_opportunities` head row
+ * Pure functions that flatten the canonical `opportunities` head row
  * into the sparxie `Opportunity` contract resource, assemble the
  * `OpportunityListResult` page, and reconstruct the `OpportunityHistoryResult`
  * snapshots. Read-side only: no policy, no transaction, no writes. The Opportunity
@@ -28,7 +28,7 @@ import type {
 } from 'sparxie'
 import { toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
-/** The subset of `lifecycle_opportunities` the read-model selects for a resource. */
+/** The subset of `opportunities` the read-model selects for a resource. */
 export interface OpportunityHeadRow {
   readonly id: string
   readonly workspaceId: string

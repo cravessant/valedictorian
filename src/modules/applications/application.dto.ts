@@ -1,7 +1,7 @@
 /**
  * Application domain -> sparxie DTO serialization (issue #304, stage 3).
  *
- * Pure functions that flatten the canonical `lifecycle_applications` head row plus
+ * Pure functions that flatten the canonical `applications` head row plus
  * its `pursuit_links` into the sparxie `Application` contract resource, assemble the
  * list page, serialize the attempt/event technical-list records, and reconstruct the
  * history snapshots. Read-side only: no policy, no transaction, no writes. The
@@ -44,7 +44,7 @@ import type {
 } from 'sparxie'
 import { toContractActor, toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
-/** The subset of `lifecycle_applications` the read-model selects for a resource. */
+/** The subset of `applications` the read-model selects for a resource. */
 export interface ApplicationHeadRow {
   readonly id: string
   readonly workspaceId: string

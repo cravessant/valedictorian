@@ -1,7 +1,7 @@
 /**
  * Capture domain -> sparxie DTO serialization (issue #304, stage 3).
  *
- * Pure functions that flatten the canonical `lifecycle_captures` head row plus
+ * Pure functions that flatten the canonical `captures` head row plus
  * its `capture_evidence_items` into the sparxie `Capture` contract resource and
  * assemble the `CaptureListResult` page envelope. These are read-side mappers:
  * they carry no policy, open no transaction, and never write. The Capture
@@ -27,7 +27,7 @@ import { toContractActor, toLifecycleAuditFromJson } from '../lifecycle/lifecycl
 
 export { toContractActor }
 
-/** The subset of `lifecycle_captures` the read-model selects for a resource. */
+/** The subset of `captures` the read-model selects for a resource. */
 export interface CaptureHeadRow {
   readonly id: string
   readonly workspaceId: string

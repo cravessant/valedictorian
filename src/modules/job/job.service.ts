@@ -2,7 +2,7 @@
  * Job aggregate — the user-controlled canonical module contract (issue #300, slice 1).
  *
  * Users create, read/list, correct, remove/restore, inspect history, and update
- * availability through this service, which writes the canonical `lifecycle_jobs`
+ * availability through this service, which writes the canonical `jobs`
  * and append-only `job_history` tables (Job-owned; see job.repository.ts). Jobs use
  * stable app-side UUIDv7 identities (src/db/uuidv7.ts) — the migration's
  * deterministic mint stays migration-only. Facts and availability are versioned;
@@ -17,8 +17,8 @@ import { and, asc, desc, eq, sql, type SQL } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
 import { jobAvailabilityStates } from '../../db/lifecycle-vocabulary'
-import { jobHistory, lifecycleJobs } from './job.schema'
-import { insertJobHistory, insertLifecycleJobs, updateLifecycleJobs } from './job.repository'
+import { jobHistory, jobs } from './job.schema'
+import { insertJobHistory, insertJobs, updateJobs } from './job.repository'
 import {
   type JobActor,
   type JobActorType,
@@ -61,7 +61,7 @@ export interface CreateJobInput {
    * #304: caller-supplied create-dedup key. Re-issuing the same create with the
    * same (workspace, key) converges to the already-created Job (created:false)
    * instead of minting a duplicate. Persisted on the aggregate row and enforced by
-   * the partial unique index idx_lifecycle_jobs_idempotency.
+   * the partial unique index idx_jobs_idempotency.
    */
   readonly idempotencyKey?: string
 }
@@ -205,8 +205,8 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
   async function selectByIdOn(exec: JobExec, workspaceId: string, jobId: string): Promise<JobRow | null> {
     const [row] = await exec
       .select()
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
       .limit(1)
     return (row as JobRow | undefined) ?? null
   }
@@ -245,7 +245,7 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       'facts_corrected',
       factsJson,
       { factsJson, factsRevision: row.factsRevision + 1 },
-      eq(lifecycleJobs.factsRevision, row.factsRevision),
+      eq(jobs.factsRevision, row.factsRevision),
     )
   }
 
@@ -277,7 +277,7 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       'availability_changed',
       JSON.stringify({ state, observedAt }),
       { availabilityState: state, availabilityObservedAt: observedAt, availabilityRevision: row.availabilityRevision + 1 },
-      eq(lifecycleJobs.availabilityRevision, row.availabilityRevision),
+      eq(jobs.availabilityRevision, row.availabilityRevision),
     )
   }
 
@@ -286,8 +286,8 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
   async function selectByIdempotencyKey(exec: JobExec, workspaceId: string, key: string): Promise<JobRow | null> {
     const [row] = await exec
       .select()
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.idempotencyKey, key)))
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.idempotencyKey, key)))
       .limit(1)
     return (row as JobRow | undefined) ?? null
   }
@@ -310,10 +310,10 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     // guard: if another mutation advanced it first, 0 rows update and this mutation
     // loses. (pglite serializes transactions, so a plain read-then-write would let
     // both succeed — the guard prevents that.)
-    const updated = await updateLifecycleJobs(exec)
+    const updated = await updateJobs(exec)
       .set({ ...headUpdate, updatedAt: createdAt })
-      .where(and(eq(lifecycleJobs.id, row.id), guard))
-      .returning({ id: lifecycleJobs.id })
+      .where(and(eq(jobs.id, row.id), guard))
+      .returning({ id: jobs.id })
     if (updated.length === 0) return fail('revision_conflict', 'job was modified concurrently')
     const [seqRow] = await exec
       .select({ maxSeq: sql<number>`coalesce(max(${jobHistory.sequence}), 0)` })
@@ -346,14 +346,14 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       if (error instanceof JobInputError) return fail(error.code, error.message)
       throw error
     }
-    const [row] = await exec.select().from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, ids.workspaceId), eq(lifecycleJobs.id, ids.jobId))).limit(1)
+    const [row] = await exec.select().from(jobs)
+      .where(and(eq(jobs.workspaceId, ids.workspaceId), eq(jobs.id, ids.jobId))).limit(1)
     const typed = (row as JobRow | undefined) ?? null
     if (!typed) return fail('not_found', 'job not found in this workspace')
     if (typed.removedAt !== null) return { ok: true, job: toRecord(typed) }
     return commitOn(exec, typed, ids.actor, 'removed',
       JSON.stringify({ kind: 'removed', priorFactsRevision: typed.factsRevision }),
-      { removedAt: nowIso() }, sql`${lifecycleJobs.removedAt} is null`)
+      { removedAt: nowIso() }, sql`${jobs.removedAt} is null`)
   }
 
   async function restoreOn(exec: JobExec, input: JobMutationInput): Promise<MutateJobResult> {
@@ -368,14 +368,14 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       if (error instanceof JobInputError) return fail(error.code, error.message)
       throw error
     }
-    const [row] = await exec.select().from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, ids.workspaceId), eq(lifecycleJobs.id, ids.jobId))).limit(1)
+    const [row] = await exec.select().from(jobs)
+      .where(and(eq(jobs.workspaceId, ids.workspaceId), eq(jobs.id, ids.jobId))).limit(1)
     const typed = (row as JobRow | undefined) ?? null
     if (!typed) return fail('not_found', 'job not found in this workspace')
     if (typed.removedAt === null) return { ok: true, job: toRecord(typed) }
     return commitOn(exec, typed, ids.actor, 'restored',
       JSON.stringify({ kind: 'restored', priorFactsRevision: typed.factsRevision }),
-      { removedAt: null }, sql`${lifecycleJobs.removedAt} is not null`)
+      { removedAt: null }, sql`${jobs.removedAt} is not null`)
   }
 
   // Composable core: mint a Job on the caller's executor (no internal transaction)
@@ -427,7 +427,7 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       idempotencyKey,
     }
     try {
-      await insertLifecycleJobs(exec).values(row)
+      await insertJobs(exec).values(row)
     } catch (error) {
       // Concurrent create with the same key lost the unique-index race: converge to
       // the winner rather than surface a conflict (idempotent create semantics).
@@ -464,13 +464,13 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     async list(workspaceId, query) {
       const rows = await database
         .select()
-        .from(lifecycleJobs)
+        .from(jobs)
         .where(
           query?.includeRemoved
-            ? eq(lifecycleJobs.workspaceId, workspaceId)
-            : and(eq(lifecycleJobs.workspaceId, workspaceId), sql`${lifecycleJobs.removedAt} is null`),
+            ? eq(jobs.workspaceId, workspaceId)
+            : and(eq(jobs.workspaceId, workspaceId), sql`${jobs.removedAt} is null`),
         )
-        .orderBy(desc(lifecycleJobs.createdAt), asc(lifecycleJobs.id))
+        .orderBy(desc(jobs.createdAt), asc(jobs.id))
         .limit(query?.limit ?? 200)
       return (rows as JobRow[]).map(toRecord)
     },

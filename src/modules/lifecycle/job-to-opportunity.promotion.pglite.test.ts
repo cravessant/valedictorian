@@ -13,7 +13,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteJobService, type JobService } from '../job/job.service'
 import { createPgliteOpportunityService } from '../opportunity/opportunity.service'
-import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
+import { opportunities } from '../opportunity/opportunity.schema'
 import {
   createPgliteJobToOpportunityPromotion,
   type OpportunityEvaluation,
@@ -53,7 +53,7 @@ async function makeJob(jobs: JobService, workspaceId = 'ws-a') {
 }
 
 async function countOpportunities(database: Awaited<ReturnType<typeof setup>>['database'], jobId: string) {
-  return (await database.select().from(lifecycleOpportunities).where(eq(lifecycleOpportunities.jobId, jobId))).length
+  return (await database.select().from(opportunities).where(eq(opportunities.jobId, jobId))).length
 }
 
 describe.sequential('Job→Opportunity promotion (#301)', () => {

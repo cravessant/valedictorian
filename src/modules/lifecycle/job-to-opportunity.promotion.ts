@@ -30,8 +30,8 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock } from '../../db/uuidv7'
-import { lifecycleJobs } from '../job/job.schema'
-import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
+import { jobs } from '../job/job.schema'
+import { opportunities } from '../opportunity/opportunity.schema'
 import type {
   DuplicateResolutionInput,
   OpportunityActor,
@@ -184,9 +184,9 @@ export function createPgliteJobToOpportunityPromotion(
 
   async function loadJob(workspaceId: string, jobId: string) {
     const [row] = await database
-      .select({ id: lifecycleJobs.id, facts: lifecycleJobs.factsJson, removedAt: lifecycleJobs.removedAt })
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .select({ id: jobs.id, facts: jobs.factsJson, removedAt: jobs.removedAt })
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
       .limit(1)
     return row ?? null
   }
@@ -194,16 +194,16 @@ export function createPgliteJobToOpportunityPromotion(
   async function existingOpportunity(exec: Tx, workspaceId: string, jobId: string) {
     const [row] = await exec
       .select({
-        id: lifecycleOpportunities.id,
-        fit: lifecycleOpportunities.fit,
-        rank: lifecycleOpportunities.rank,
-        cutoff: lifecycleOpportunities.cutoff,
+        id: opportunities.id,
+        fit: opportunities.fit,
+        rank: opportunities.rank,
+        cutoff: opportunities.cutoff,
       })
-      .from(lifecycleOpportunities)
+      .from(opportunities)
       .where(and(
-        eq(lifecycleOpportunities.workspaceId, workspaceId),
-        eq(lifecycleOpportunities.jobId, jobId),
-        isNull(lifecycleOpportunities.removedAt),
+        eq(opportunities.workspaceId, workspaceId),
+        eq(opportunities.jobId, jobId),
+        isNull(opportunities.removedAt),
       ))
       .limit(1)
     return row ?? null
@@ -230,8 +230,8 @@ export function createPgliteJobToOpportunityPromotion(
         try {
           return await database.transaction(async (tx) => {
             // Serialize concurrent promotions of THIS job on real Postgres.
-            await tx.select({ id: lifecycleJobs.id }).from(lifecycleJobs)
-              .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+            await tx.select({ id: jobs.id }).from(jobs)
+              .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
               .for('update')
             // Idempotency BEFORE any policy evaluation.
             const linked = await existingOpportunity(tx, workspaceId, jobId)

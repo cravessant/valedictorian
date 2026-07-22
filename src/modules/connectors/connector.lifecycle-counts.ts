@@ -1,11 +1,9 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import {
-  jobFactVersions,
-  normalizationFieldOutcomes,
-  normalizationGates,
-  normalizationRuns,
+  captureOccurrences,
+  jobCaptureEvidenceReferences,
   captures,
-  captureEvidenceVersions,
+  jobs,
   opportunities,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
@@ -28,44 +26,22 @@ export type ProviderStatsGap =
 export interface ConnectorRunLifecycleCounts {
   version: typeof CONNECTOR_RUN_LIFECYCLE_COUNTS_VERSION
   source: 'live_current' | 'derived_pre_feature' | 'frozen_terminal'
-  scope: {
-    kind: 'connector_run'
-    connectorRunId: string
-    executionScopeId: string
-  }
+  scope: { kind: 'connector_run'; connectorRunId: string; executionScopeId: string }
   provider: {
-    returnedRows: number
-    validRecords: number
-    invalidRecords: number
-    sourceDuplicates: number
-    capturedRecords: number
-    occurrenceCount: number
-    captureShortfall: number
-    unclassifiedRows: number
-    invariant:
-      | 'reconciled'
-      | 'reported_stats_missing'
-      | 'reported_stats_invalid'
-      | 'reported_totals_inconsistent'
+    returnedRows: number; validRecords: number; invalidRecords: number
+    sourceDuplicates: number; capturedRecords: number; occurrenceCount: number
+    captureShortfall: number; unclassifiedRows: number
+    invariant: 'reconciled' | 'reported_stats_missing' | 'reported_stats_invalid' | 'reported_totals_inconsistent'
     gaps: ProviderStatsGap[]
   }
   destination: {
-    normalized: number
-    resolvedEmployerOrAts: number
-    resolvedThirdParty: number
-    unresolved: number
-    pending: number
-    gateRejected: number
-    unclassified: number
+    normalized: number; resolvedEmployerOrAts: number; resolvedThirdParty: number
+    unresolved: number; pending: number; gateRejected: number; unclassified: number
     invariant: 'reconciled' | 'lineage_incomplete'
   }
   sourcing: {
-    added: number
-    queueDuplicate: number
-    notFit: number
-    rejected: number
-    actionableReview: number
-    unclassified: number
+    added: number; queueDuplicate: number; notFit: number; rejected: number
+    actionableReview: number; unclassified: number
     invariant: 'reconciled' | 'lineage_incomplete'
   }
 }
@@ -73,67 +49,46 @@ export interface ConnectorRunLifecycleCounts {
 export function reconcileProviderLifecycleCounts(
   input: unknown,
   capture: {
-    capturedRecords: number
-    capturedValidRecords: number
-    capturedInvalidRecords: number
-    occurrenceCount: number
+    capturedRecords: number; capturedValidRecords: number
+    capturedInvalidRecords: number; occurrenceCount: number
   },
 ): ConnectorRunLifecycleCounts['provider'] {
   const stats = recordFromUnknown(input)
-  const providerStats = [
+  const fields = [
     ['providerReturned', 'missing_provider_returned', 'invalid_provider_returned'],
     ['providerValid', 'missing_provider_valid', 'invalid_provider_valid'],
     ['providerInvalid', 'missing_provider_invalid', 'invalid_provider_invalid'],
     ['sourceDuplicates', 'missing_source_duplicates', 'invalid_source_duplicates'],
   ] as const
   const gaps: ProviderStatsGap[] = []
-  for (const [key, missingGap, invalidGap] of providerStats) {
-    if (!Object.prototype.hasOwnProperty.call(stats, key) || stats[key] === undefined) {
-      gaps.push(missingGap)
-    } else if (nonNegativeInteger(stats[key]) === null) {
-      gaps.push(invalidGap)
-    }
+  for (const [key, missing, invalid] of fields) {
+    if (!Object.prototype.hasOwnProperty.call(stats, key) || stats[key] === undefined) gaps.push(missing)
+    else if (nonNegativeInteger(stats[key]) === null) gaps.push(invalid)
   }
   const reportedReturnedRows = nonNegativeInteger(stats.providerReturned)
   const reportedValidRows = nonNegativeInteger(stats.providerValid)
   const reportedInvalidRows = nonNegativeInteger(stats.providerInvalid)
   const reportedSourceDuplicates = nonNegativeInteger(stats.sourceDuplicates)
   if (gaps.length === 0) {
-    if (reportedSourceDuplicates! > reportedValidRows!) {
-      gaps.push('source_duplicates_exceed_valid')
-    }
-    if (reportedReturnedRows! !== reportedValidRows! + reportedInvalidRows!) {
-      gaps.push('provider_equation_mismatch')
-    }
+    if (reportedSourceDuplicates! > reportedValidRows!) gaps.push('source_duplicates_exceed_valid')
+    if (reportedReturnedRows! !== reportedValidRows! + reportedInvalidRows!) gaps.push('provider_equation_mismatch')
   }
   const returnedRows = reportedReturnedRows ?? 0
   const invalidRecords = reportedInvalidRows ?? capture.capturedInvalidRecords
   const sourceDuplicates = reportedSourceDuplicates ?? 0
-  const validRecords = reportedValidRows !== null
-    && reportedSourceDuplicates !== null
+  const validRecords = reportedValidRows !== null && reportedSourceDuplicates !== null
     && reportedValidRows >= reportedSourceDuplicates
-    ? reportedValidRows - reportedSourceDuplicates
-    : capture.capturedValidRecords
+    ? reportedValidRows - reportedSourceDuplicates : capture.capturedValidRecords
   const classifiedRows = validRecords + invalidRecords + sourceDuplicates
-  const invariant = gaps.length === 0
-    ? 'reconciled' as const
-    : gaps.some((gap) => gap.startsWith('missing_'))
-      ? 'reported_stats_missing' as const
-      : gaps.some((gap) => gap.startsWith('invalid_'))
-        ? 'reported_stats_invalid' as const
+  const invariant = gaps.length === 0 ? 'reconciled' as const
+    : gaps.some((gap) => gap.startsWith('missing_')) ? 'reported_stats_missing' as const
+      : gaps.some((gap) => gap.startsWith('invalid_')) ? 'reported_stats_invalid' as const
         : 'reported_totals_inconsistent' as const
-
   return {
-    returnedRows,
-    validRecords,
-    invalidRecords,
-    sourceDuplicates,
-    capturedRecords: capture.capturedRecords,
-    occurrenceCount: capture.occurrenceCount,
+    returnedRows, validRecords, invalidRecords, sourceDuplicates,
+    capturedRecords: capture.capturedRecords, occurrenceCount: capture.occurrenceCount,
     captureShortfall: Math.max(0, returnedRows - capture.occurrenceCount),
-    unclassifiedRows: Math.max(0, returnedRows - classifiedRows),
-    invariant,
-    gaps,
+    unclassifiedRows: Math.max(0, returnedRows - classifiedRows), invariant, gaps,
   }
 }
 
@@ -141,228 +96,81 @@ export async function reconcileConnectorRunLifecycleCounts(
   database: Pick<PgliteDatabase, 'select'>,
   run: ConnectorRunRecord,
 ): Promise<ConnectorRunLifecycleCounts> {
-  const occurrences = await database
-    .select({
-      rawRecordId: captures.captureLineageId,
-      rawRevisionId: captures.captureEvidenceVersionId,
-      revision: captureEvidenceVersions.revision,
-      providerRecordId: captureEvidenceVersions.providerRecordId,
-    })
-    .from(captures)
-    .innerJoin(captureEvidenceVersions, eq(captureEvidenceVersions.id, captures.captureEvidenceVersionId))
-    .where(eq(captures.connectorRunId, run.id))
-  const capturedRecords = new Set(occurrences.map(({ rawRecordId }) => rawRecordId)).size
-  const capturedValidRecords = new Set(
-    occurrences
-      .filter(({ providerRecordId }) => Boolean(providerRecordId?.trim()))
-      .map(({ rawRecordId }) => rawRecordId),
-  ).size
-  const capturedInvalidRecords = Math.max(0, capturedRecords - capturedValidRecords)
+  const occurrences = await database.select({
+    captureId: captureOccurrences.captureId,
+    captureRevision: captureOccurrences.captureRevision,
+    providerRecordId: captures.providerRecordId,
+  }).from(captureOccurrences)
+    .innerJoin(captures, eq(captures.id, captureOccurrences.captureId))
+    .where(eq(captureOccurrences.connectorRunId, run.id))
+  const captureIds = new Set(occurrences.map((row) => row.captureId))
+  const validIds = new Set(occurrences.filter((row) => row.providerRecordId?.trim()).map((row) => row.captureId))
   const provider = reconcileProviderLifecycleCounts(run.stats, {
-    capturedRecords,
-    capturedValidRecords,
-    capturedInvalidRecords,
+    capturedRecords: captureIds.size,
+    capturedValidRecords: validIds.size,
+    capturedInvalidRecords: Math.max(0, captureIds.size - validIds.size),
     occurrenceCount: occurrences.length,
   })
-  const scopedRevisions = new Map<string, { id: string; revision: number }>()
+  const latest = new Map<string, number>()
   for (const occurrence of occurrences) {
-    const current = scopedRevisions.get(occurrence.rawRecordId)
-    if (!current || occurrence.revision > current.revision) {
-      scopedRevisions.set(occurrence.rawRecordId, {
-        id: occurrence.rawRevisionId,
-        revision: occurrence.revision,
-      })
-    }
+    latest.set(occurrence.captureId, Math.max(latest.get(occurrence.captureId) ?? 0, occurrence.captureRevision))
   }
   const destination = {
-    normalized: 0,
-    resolvedEmployerOrAts: 0,
-    resolvedThirdParty: 0,
-    unresolved: 0,
-    pending: 0,
-    gateRejected: 0,
-    unclassified: 0,
+    normalized: 0, resolvedEmployerOrAts: 0, resolvedThirdParty: 0,
+    unresolved: 0, pending: 0, gateRejected: 0, unclassified: 0,
   }
-  const normalizedJobs: Array<{
-    candidateId: string
-    ownerConnectorRunId: string | null
-    sourceEntityId: string
-  }> = []
-  for (const revision of scopedRevisions.values()) {
-    const [normalization] = await database
-      .select({
-        runId: normalizationRuns.id,
-        ownerConnectorRunId: normalizationRuns.triggerConnectorRunId,
-        gateStatus: normalizationGates.status,
-        candidateId: jobFactVersions.id,
-        sourceEntityId: jobFactVersions.jobId,
-        candidateJson: jobFactVersions.jobFactVersionJson,
-      })
-      .from(normalizationRuns)
-      .innerJoin(normalizationGates, eq(normalizationGates.runId, normalizationRuns.id))
-      .leftJoin(
-        jobFactVersions,
-        eq(jobFactVersions.runId, normalizationRuns.id),
-      )
-      .where(and(
-        eq(normalizationRuns.captureEvidenceVersionId, revision.id),
-        eq(normalizationRuns.triggerKind, 'intake'),
-      ))
-      .orderBy(
-        desc(normalizationRuns.createdAt),
-        desc(normalizationRuns.id),
-      )
-      .limit(1)
-    if (!normalization) {
-      destination.pending += 1
-      continue
-    }
-    if (normalization.gateStatus === 'passed' && normalization.candidateJson) {
-      const candidate = recordFromJson(normalization.candidateJson)
-      const persistedDestination = recordFromUnknown(candidate.destination)
-      if (persistedDestination.class === 'employer_or_ats') {
-        destination.resolvedEmployerOrAts += 1
-        destination.normalized += 1
-      } else if (persistedDestination.class === 'third_party_job_posting') {
-        destination.resolvedThirdParty += 1
-        destination.normalized += 1
-      } else {
-        destination.unclassified += 1
-      }
-      if (normalization.candidateId && normalization.sourceEntityId) {
-        normalizedJobs.push({
-          candidateId: normalization.candidateId,
-          ownerConnectorRunId: normalization.ownerConnectorRunId,
-          sourceEntityId: normalization.sourceEntityId,
-        })
-      }
-      continue
-    }
-    if (normalization.gateStatus === 'rejected') {
-      destination.gateRejected += 1
-      continue
-    }
-    const destinationOutcomes = await database
-      .select({
-        resolverId: normalizationFieldOutcomes.resolverId,
-        status: normalizationFieldOutcomes.status,
-      })
-      .from(normalizationFieldOutcomes)
-      .where(and(
-        eq(normalizationFieldOutcomes.runId, normalization.runId),
-        eq(normalizationFieldOutcomes.field, 'destinationUrl'),
-      ))
-      .orderBy(
-        desc(normalizationFieldOutcomes.sequence),
-        desc(normalizationFieldOutcomes.id),
-      )
-    const destinationStatuses = new Set(destinationOutcomes.map(({ status }) => status))
-    const connectorDestinationAttempted = destinationOutcomes.some(({ resolverId }) =>
-      resolverId === 'jobright.authenticated-destination')
-    if (
-      destinationStatuses.size === 0
-      || destinationStatuses.has('retry')
-      || destinationStatuses.has('blocked')
-      || !connectorDestinationAttempted
-      || [...destinationStatuses].every((status) =>
-        status === 'suppressed' || status === 'not_applicable')
-      || (
-        normalization.gateStatus === 'needs_enrichment'
-        && destinationStatuses.has('resolved')
-      )
-    ) {
-      destination.pending += 1
-    } else if (destinationStatuses.has('abstained') || destinationStatuses.has('failed')) {
-      destination.unresolved += 1
-    } else {
-      destination.unclassified += 1
-    }
-  }
-  const destinationClassified = destination.normalized
-    + destination.unresolved
-    + destination.pending
-    + destination.gateRejected
-    + destination.unclassified
   const sourcing = {
-    added: 0,
-    queueDuplicate: 0,
-    notFit: 0,
-    rejected: 0,
-    actionableReview: 0,
-    unclassified: 0,
+    added: 0, queueDuplicate: 0, notFit: 0,
+    rejected: 0, actionableReview: 0, unclassified: 0,
   }
-  const seenFindingIds = new Set<string>()
-  for (const job of normalizedJobs) {
-    const [finding] = await database
-      .select({
-        id: opportunities.id,
-        blocker: opportunities.blocker,
-        createdAt: opportunities.createdAt,
-        dispositionReason: opportunities.dispositionReason,
-        mergeStatus: opportunities.mergeStatus,
-      })
-      .from(opportunities)
-      .where(eq(opportunities.jobId, job.sourceEntityId))
-      .orderBy(desc(opportunities.createdAt), desc(opportunities.id))
-      .limit(1)
-    if (!finding) {
-      sourcing.unclassified += 1
+  const seenJobs = new Set<string>()
+  for (const [captureId, revision] of latest) {
+    const [lineage] = await database.select({
+      jobId: jobs.id,
+      factsJson: jobs.factsJson,
+    }).from(jobCaptureEvidenceReferences)
+      .innerJoin(jobs, eq(jobs.id, jobCaptureEvidenceReferences.jobId))
+      .where(and(
+        eq(jobCaptureEvidenceReferences.captureId, captureId),
+        eq(jobCaptureEvidenceReferences.captureRevision, revision),
+      )).limit(1)
+    if (!lineage) {
+      destination.pending += 1
       continue
     }
-    if (job.ownerConnectorRunId !== run.id || finding.createdAt < run.startedAt) {
+    destination.normalized += 1
+    const destinationClass = recordFromUnknown(recordFromJson(lineage.factsJson).destination).class
+    if (destinationClass === 'third_party_job_posting') destination.resolvedThirdParty += 1
+    else if (destinationClass === 'employer_or_ats') destination.resolvedEmployerOrAts += 1
+    else destination.unclassified += 1
+    if (seenJobs.has(lineage.jobId)) {
       sourcing.queueDuplicate += 1
       continue
     }
-    if (seenFindingIds.has(finding.id)) {
-      sourcing.queueDuplicate += 1
-      continue
-    }
-    seenFindingIds.add(finding.id)
-    if (finding.mergeStatus === 'new' || finding.mergeStatus === 'merged') {
-      sourcing.added += 1
-    } else if (finding.mergeStatus === 'duplicate') {
-      sourcing.queueDuplicate += 1
-    } else if (finding.mergeStatus === 'not_fit') {
-      sourcing.notFit += 1
-    } else if (
-      finding.mergeStatus === 'below_cutoff'
-      || finding.mergeStatus === 'not_pursued'
-      || finding.mergeStatus === 'archived'
-      || (finding.mergeStatus === 'blocked' && Boolean(finding.dispositionReason?.trim()))
-    ) {
-      sourcing.rejected += 1
-    } else if (finding.mergeStatus === 'blocked' && Boolean(finding.blocker?.trim())) {
-      sourcing.actionableReview += 1
-    } else {
-      sourcing.unclassified += 1
-    }
+    seenJobs.add(lineage.jobId)
+    const [opportunity] = await database.select({
+      fit: opportunities.fit,
+      cutoff: opportunities.cutoff,
+      disposition: opportunities.disposition,
+    }).from(opportunities)
+      .where(eq(opportunities.jobId, lineage.jobId)).limit(1)
+    if (!opportunity) sourcing.unclassified += 1
+    else if (opportunity.fit === 'not_fit') sourcing.notFit += 1
+    else if (opportunity.cutoff === 'below' || opportunity.disposition === 'declined' || opportunity.disposition === 'archived') sourcing.rejected += 1
+    else if (opportunity.disposition === 'pursue') sourcing.added += 1
+    else sourcing.actionableReview += 1
   }
-  const sourcingClassified = sourcing.added
-    + sourcing.queueDuplicate
-    + sourcing.notFit
-    + sourcing.rejected
-    + sourcing.actionableReview
-    + sourcing.unclassified
-
+  const destinationClassified = destination.normalized + destination.unresolved
+    + destination.pending + destination.gateRejected
+  const sourcingClassified = sourcing.added + sourcing.queueDuplicate + sourcing.notFit
+    + sourcing.rejected + sourcing.actionableReview + sourcing.unclassified
   return {
     version: CONNECTOR_RUN_LIFECYCLE_COUNTS_VERSION,
-    source: run.status === 'queued' || run.status === 'running'
-      ? 'live_current'
-      : 'derived_pre_feature',
+    source: run.status === 'queued' || run.status === 'running' ? 'live_current' : 'derived_pre_feature',
     scope: { kind: 'connector_run', connectorRunId: run.id, executionScopeId: run.executionScopeId },
     provider,
-    destination: {
-      ...destination,
-      invariant: destinationClassified === capturedRecords
-        ? 'reconciled'
-        : 'lineage_incomplete',
-    },
-    sourcing: {
-      ...sourcing,
-      invariant: sourcingClassified === destination.normalized
-        ? 'reconciled'
-        : 'lineage_incomplete',
-    },
+    destination: { ...destination, invariant: destinationClassified === captureIds.size ? 'reconciled' : 'lineage_incomplete' },
+    sourcing: { ...sourcing, invariant: sourcingClassified === destination.normalized ? 'reconciled' : 'lineage_incomplete' },
   }
 }
 
@@ -370,10 +178,7 @@ export async function freezeConnectorRunLifecycleCounts(
   database: Pick<PgliteDatabase, 'select'>,
   run: ConnectorRunRecord,
 ): Promise<ConnectorRunLifecycleCounts> {
-  return {
-    ...await reconcileConnectorRunLifecycleCounts(database, run),
-    source: 'frozen_terminal',
-  }
+  return { ...await reconcileConnectorRunLifecycleCounts(database, run), source: 'frozen_terminal' }
 }
 
 export function readConnectorRunLifecycleCounts(
@@ -382,33 +187,21 @@ export function readConnectorRunLifecycleCounts(
 ): ConnectorRunLifecycleCounts | null {
   const lifecycle = recordFromUnknown(recordFromUnknown(stats).lifecycleCounts)
   const scope = recordFromUnknown(lifecycle.scope)
-  if (
-    lifecycle.version !== CONNECTOR_RUN_LIFECYCLE_COUNTS_VERSION
+  if (lifecycle.version !== CONNECTOR_RUN_LIFECYCLE_COUNTS_VERSION
     || lifecycle.source !== 'frozen_terminal'
     || scope.kind !== 'connector_run'
-    || scope.connectorRunId !== connectorRunId
-  ) {
-    return null
-  }
+    || scope.connectorRunId !== connectorRunId) return null
   return lifecycle as unknown as ConnectorRunLifecycleCounts
 }
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
 function nonNegativeInteger(value: unknown): number | null {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : null
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
 }
 
 function recordFromJson(value: string): Record<string, unknown> {
-  try {
-    return recordFromUnknown(JSON.parse(value))
-  } catch {
-    return {}
-  }
+  try { return recordFromUnknown(JSON.parse(value)) } catch { return {} }
 }

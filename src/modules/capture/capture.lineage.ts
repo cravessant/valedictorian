@@ -20,7 +20,7 @@
  */
 import { and, asc, eq } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
-import { captureEvidenceItems, lifecycleCaptures } from './capture.schema'
+import { captureEvidenceItems, captures } from './capture.schema'
 import type { CaptureEvidenceMode } from './capture.service'
 
 export interface CaptureEvidenceReference {
@@ -51,12 +51,12 @@ export async function readCaptureEvidenceReference(
 ): Promise<CaptureEvidenceReference | null> {
   const [capture] = await database
     .select({
-      revision: lifecycleCaptures.revision,
-      evidenceMode: lifecycleCaptures.evidenceMode,
+      revision: captures.revision,
+      evidenceMode: captures.evidenceMode,
     })
-    .from(lifecycleCaptures)
+    .from(captures)
     .where(
-      and(eq(lifecycleCaptures.workspaceId, input.workspaceId), eq(lifecycleCaptures.id, input.captureId)),
+      and(eq(captures.workspaceId, input.workspaceId), eq(captures.id, input.captureId)),
     )
     .limit(1)
   if (!capture) return null

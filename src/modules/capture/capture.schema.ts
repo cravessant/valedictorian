@@ -1,13 +1,8 @@
 /**
  * Capture aggregate schema (issue #298). Owned by the capture module.
  *
- * Canonical root uses the interim physical name `lifecycle_captures` so it does
- * not collide with the still-live legacy `captures` table. #298 installs and
- * one-time-transforms these tables but does NOT rewire the runtime onto them; the
- * legacy tables stay the live source. The Capture leaf (#299) adopts these tables;
- * the clean-cutover leaf (#307) drops legacy and renames `lifecycle_captures` to
- * `captures` (see drizzle/lifecycle-migration.md). Relation tables already use
- * their canonical names. Vocabulary mirrors the sparxie contract
+ * The clean cutover owns the canonical `captures` root and its relation tables.
+ * Vocabulary mirrors the sparxie contract
  * (src/db/lifecycle-vocabulary.ts). Triggers are installed by the journaled
  * migration and are intentionally not modeled here (Drizzle does not model
  * triggers), matching the baseline pattern.
@@ -19,8 +14,8 @@ import { workspaces } from '../../db/workspaces.schema'
 
 const FORBIDDEN_KEY = FORBIDDEN_JSON_KEY_PREDICATE
 
-export const lifecycleCaptures = pgTable(
-  'lifecycle_captures',
+export const captures = pgTable(
+  'captures',
   {
     id: text('id').primaryKey(),
     workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
@@ -39,7 +34,7 @@ export const lifecycleCaptures = pgTable(
     removedAt: text('removed_at'),
     // #304: create-dedup key. Nullable + excluded from the partial index when null,
     // so migrated rows and keyless creates are inert; a keyed re-create converges to
-    // the winning row via idx_lifecycle_captures_idempotency.
+    // the winning row via idx_captures_idempotency.
     idempotencyKey: text('idempotency_key'),
   },
   (table) => ({
@@ -91,7 +86,7 @@ export const captureRevisions = pgTable(
   },
   (table) => ({
     pk: primaryKey({ name: 'capture_revisions_pk', columns: [table.captureId, table.revision] }),
-    captureFk: foreignKey({ name: 'fk_capture_revisions_capture', columns: [table.captureId], foreignColumns: [lifecycleCaptures.id] }),
+    captureFk: foreignKey({ name: 'fk_capture_revisions_capture', columns: [table.captureId], foreignColumns: [captures.id] }),
     revisionCheck: check('chk_capture_revisions_revision', sql`${table.revision} > 0`),
     kindCheck: check('chk_capture_revisions_kind', sql`${table.kind} in ('created','corrected','removed','restored')`),
     snapshotBoundCheck: check('chk_capture_revisions_snapshot_bound', sql`length(${table.snapshotJson}) <= 262144`),

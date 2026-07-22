@@ -4,7 +4,7 @@
  * One contract through which user, connector, CLI, and import creation differ
  * ONLY by typed provenance (`adapterKind`) and declared capability
  * (`evidenceMode`), never by downstream control. The service writes the canonical
- * `lifecycle_captures` / `capture_revisions` / `capture_evidence_items` tables
+ * `captures` / `capture_revisions` / `capture_evidence_items` tables
  * (Capture-owned; see capture.repository.ts) and exposes narrow read/write
  * conversations to lifecycle orchestration.
  *
@@ -48,14 +48,14 @@ import { SENSITIVE_KEY_SUBSTRINGS } from '../../db/sensitive-keys'
 import {
   captureEvidenceItems,
   captureRevisions,
-  lifecycleCaptures,
+  captures,
 } from './capture.schema'
 import {
   insertCaptureEvidenceItems,
   insertCaptureOccurrences,
   insertCaptureRevisions,
-  insertLifecycleCaptures,
-  updateLifecycleCaptures,
+  insertCaptures,
+  updateCaptures,
 } from './capture.repository'
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
@@ -418,8 +418,8 @@ export function createPgliteCaptureService(
   async function selectById(exec: CaptureExec, workspaceId: string, captureId: string): Promise<CaptureRow | null> {
     const [row] = await exec
       .select()
-      .from(lifecycleCaptures)
-      .where(and(eq(lifecycleCaptures.workspaceId, workspaceId), eq(lifecycleCaptures.id, captureId)))
+      .from(captures)
+      .where(and(eq(captures.workspaceId, workspaceId), eq(captures.id, captureId)))
       .limit(1)
     return (row as CaptureRow | undefined) ?? null
   }
@@ -433,17 +433,17 @@ export function createPgliteCaptureService(
   ): Promise<CaptureRow | null> {
     const [row] = await exec
       .select()
-      .from(lifecycleCaptures)
+      .from(captures)
       .where(
         and(
-          eq(lifecycleCaptures.workspaceId, workspaceId),
-          eq(lifecycleCaptures.adapterId, adapterId),
+          eq(captures.workspaceId, workspaceId),
+          eq(captures.adapterId, adapterId),
           // Provenance identity includes provider_schema (matching the legacy
           // connector lineage key + the 0002 partial unique index), so the same
           // adapter re-observing a provider record under a bumped schema stays a
           // distinct capture.
-          sql`coalesce(${lifecycleCaptures.providerSchema}, '') = ${providerSchema ?? ''}`,
-          eq(lifecycleCaptures.providerRecordId, providerRecordId),
+          sql`coalesce(${captures.providerSchema}, '') = ${providerSchema ?? ''}`,
+          eq(captures.providerRecordId, providerRecordId),
         ),
       )
       .limit(1)
@@ -554,9 +554,9 @@ export function createPgliteCaptureService(
       )
     }
     // Re-observation bumps the head + updatedAt but NEVER clears the tombstone.
-    await updateLifecycleCaptures(tx)
+    await updateCaptures(tx)
       .set({ revision, updatedAt: createdAt })
-      .where(eq(lifecycleCaptures.id, existing.id))
+      .where(eq(captures.id, existing.id))
     return toRecord({ ...existing, revision, updatedAt: createdAt })
   }
 
@@ -591,7 +591,7 @@ export function createPgliteCaptureService(
       updatedAt: createdAt,
       removedAt: null,
     }
-    await insertLifecycleCaptures(tx).values({ ...row, payloadJson })
+    await insertCaptures(tx).values({ ...row, payloadJson })
     await insertCaptureRevisions(tx).values({
       captureId: id,
       revision: 1,
@@ -673,7 +673,7 @@ export function createPgliteCaptureService(
       set.removedAt = null
       nextRemovedAt = null
     }
-    await updateLifecycleCaptures(exec).set(set).where(eq(lifecycleCaptures.id, loaded.captureId))
+    await updateCaptures(exec).set(set).where(eq(captures.id, loaded.captureId))
     return { ok: true as const, capture: toRecord({ ...loaded.row, revision, updatedAt: createdAt, removedAt: nextRemovedAt }) }
   }
 

@@ -14,7 +14,6 @@ import {
   connectorRetirementActiveWorkConflictSchema,
   connectorRetirementActiveWorkConflictStatus,
   createValedictorianInternalErrorBody,
-  invalidPersistedRawDetailErrorBody,
   parseValedictorianRequestId,
   profileDocumentErrorBodySchema,
   profileDocumentErrorStatusByCode,
@@ -193,11 +192,6 @@ function mapKnownHttpFailure(
     return { body: workspaceConflictBody, statusCode: 409 }
   }
 
-  if (isRawDetailRoute(context.method, pathname)
-    && code === invalidPersistedRawDetailErrorBody.code) {
-    return { body: invalidPersistedRawDetailErrorBody, statusCode: 500 }
-  }
-
   if (context.method === 'GET'
     && pathname === '/v1/connectors/overview'
     && code === invalidConnectorOverviewCursorBody.code) {
@@ -268,11 +262,6 @@ function mapKnownHttpFailure(
   }
 
   const statusCode = readNumberProperty(error, 'statusCode')
-  if (pathname.startsWith('/v1/sourcing/')) {
-    if (statusCode === 400) return { body: validationErrorBody, statusCode }
-    if (statusCode === 404) return { body: notFoundErrorBody, statusCode }
-  }
-
   if (pathname.startsWith('/v1/connectors/') && statusCode === 404) {
     return { body: notFoundErrorBody, statusCode }
   }
@@ -290,10 +279,6 @@ function isWorkspaceRegistrationRoute(method: string, pathname: string) {
 
 function isProfileDocumentRoute(pathname: string) {
   return /^\/v1\/profile\/document(?:\/|$)/.test(pathname)
-}
-
-function isRawDetailRoute(method: string, pathname: string) {
-  return method === 'GET' && /^\/v1\/sourcing\/raw-records\/[^/]+$/.test(pathname)
 }
 
 function isConnectorRetirementRoute(method: string, pathname: string) {

@@ -2,7 +2,7 @@
  * Application read-model (issue #304, stage 3).
  *
  * The read half of the Application HTTP surface: loads canonical
- * `lifecycle_applications`, `pursuit_links`, `application_attempt_records`,
+ * `applications`, `pursuit_links`, `application_attempt_records`,
  * `application_event_records`, and `application_history` rows and hands them to the
  * pure serializers in application.dto.ts, producing the sparxie `Application`
  * resource, the list page, the attempt/event technical-list pages, and the
@@ -23,7 +23,7 @@ import {
   applicationAttemptRecords,
   applicationEventRecords,
   applicationHistory,
-  lifecycleApplications,
+  applications,
   pursuitLinks,
 } from '../application/application.schema'
 import {
@@ -79,8 +79,8 @@ export function createPgliteApplicationReadModel(database: PgliteDatabase): Appl
   async function selectHead(workspaceId: string, applicationId: string): Promise<ApplicationHeadRow | null> {
     const [row] = await database
       .select()
-      .from(lifecycleApplications)
-      .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.id, applicationId)))
+      .from(applications)
+      .where(and(eq(applications.workspaceId, workspaceId), eq(applications.id, applicationId)))
       .limit(1)
     return (row as ApplicationHeadRow | undefined) ?? null
   }
@@ -116,24 +116,24 @@ export function createPgliteApplicationReadModel(database: PgliteDatabase): Appl
       const limit = clampLimit(input.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
       const cursor = input.cursor ? decodeApplicationCursor(input.cursor) : null
 
-      const filters = [eq(lifecycleApplications.workspaceId, workspaceId)]
-      if (input.opportunityId !== undefined) filters.push(eq(lifecycleApplications.opportunityId, input.opportunityId))
-      if (input.jobId !== undefined) filters.push(eq(lifecycleApplications.jobId, input.jobId))
-      if (input.status !== undefined) filters.push(eq(lifecycleApplications.status, input.status))
-      if (input.includeRemoved !== true) filters.push(isNull(lifecycleApplications.removedAt))
+      const filters = [eq(applications.workspaceId, workspaceId)]
+      if (input.opportunityId !== undefined) filters.push(eq(applications.opportunityId, input.opportunityId))
+      if (input.jobId !== undefined) filters.push(eq(applications.jobId, input.jobId))
+      if (input.status !== undefined) filters.push(eq(applications.status, input.status))
+      if (input.includeRemoved !== true) filters.push(isNull(applications.removedAt))
       if (cursor) {
         const keyset = or(
-          gt(lifecycleApplications.createdAt, cursor.primary),
-          and(eq(lifecycleApplications.createdAt, cursor.primary), gt(lifecycleApplications.id, cursor.id)),
+          gt(applications.createdAt, cursor.primary),
+          and(eq(applications.createdAt, cursor.primary), gt(applications.id, cursor.id)),
         )
         if (keyset) filters.push(keyset)
       }
 
       const rows = (await database
         .select()
-        .from(lifecycleApplications)
+        .from(applications)
         .where(and(...filters))
-        .orderBy(asc(lifecycleApplications.createdAt), asc(lifecycleApplications.id))
+        .orderBy(asc(applications.createdAt), asc(applications.id))
         .limit(limit + 1)) as ApplicationHeadRow[]
 
       const hasMore = rows.length > limit

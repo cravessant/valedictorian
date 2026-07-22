@@ -1,27 +1,14 @@
 /**
  * Job aggregate write ownership (issue #298 AC8, adopted by #300).
  *
- * Two write surfaces coexist during the umbrella cutover:
- *  - LEGACY conversations (`insertJobs` / `insertJobIdentities` /
- *    `insertJobIdentityConflicts` / `insertJobFactVersions`) back the still-live
- *    connector intake + normalization identity-reconcile path. #300 does NOT
- *    repoint these — the legacy inline mint, reconcile, and job→opportunity
- *    projection stay live until #304 (see drizzle/lifecycle-migration.md), because
- *    a dual-write is forbidden and the reads stay on legacy.
- *  - CANONICAL conversations (`insertLifecycleJobs` / `insertJobHistory` /
- *    `updateLifecycleJobs`, plus the #299 lineage seam) back the new
- *    user-controlled Job aggregate + Capture→Job promotion (#300), writing the
- *    canonical `lifecycle_*` tables through the Job service and orchestration.
+ * The Job module owns every write to canonical Job state through these thin
+ * repository conversations.
  */
 import {
   jobCaptureEvidenceReferences,
   jobExternalIdentities,
-  jobFactVersions,
   jobHistory,
-  jobIdentities,
-  jobIdentityConflicts,
   jobs,
-  lifecycleJobs,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 
@@ -32,16 +19,10 @@ export type JobMutateExecutor = Pick<PgliteDatabase, 'insert' | 'update'>
 /** Insert + update + delete surface, for the merge lineage re-point. */
 export type JobDeleteExecutor = Pick<PgliteDatabase, 'insert' | 'update' | 'delete'>
 
-// Legacy (connector intake + normalization reconcile; repointed at #304, not #300).
-export const insertJobs = (exec: JobWriteExecutor) => exec.insert(jobs)
-export const insertJobIdentities = (exec: JobWriteExecutor) => exec.insert(jobIdentities)
-export const insertJobIdentityConflicts = (exec: JobWriteExecutor) => exec.insert(jobIdentityConflicts)
-export const insertJobFactVersions = (exec: JobWriteExecutor) => exec.insert(jobFactVersions)
-
 // Canonical (the #300 user-controlled Job aggregate).
-export const insertLifecycleJobs = (exec: JobWriteExecutor) => exec.insert(lifecycleJobs)
+export const insertJobs = (exec: JobWriteExecutor) => exec.insert(jobs)
 export const insertJobHistory = (exec: JobWriteExecutor) => exec.insert(jobHistory)
-export const updateLifecycleJobs = (exec: JobMutateExecutor) => exec.update(lifecycleJobs)
+export const updateJobs = (exec: JobMutateExecutor) => exec.update(jobs)
 export const insertJobExternalIdentities = (exec: JobWriteExecutor) => exec.insert(jobExternalIdentities)
 // Job external identities are append-only except the one-way removal transition
 // (set removed_at); the enforce trigger rejects any other update. Strengthen and
@@ -56,7 +37,7 @@ export const deleteJobCaptureEvidenceReferences = (exec: JobDeleteExecutor) => e
  * Canonical Capture→Job lineage minting conversation (#299 slice 2 seam).
  *
  * `job_capture_evidence_references` is the SOLE owner of the Capture→Job answer:
- * `lifecycle_captures` carries no `job_id`, so there is no competing owner to
+ * `captures` carries no `job_id`, so there is no competing owner to
  * diverge from (the legacy captures.job_id vs fact-version.job_id divergence the
  * 0001 transform resolved cannot recur). The unique index
  * `(job_id, capture_id, capture_revision)` makes each produced Job's lineage to a

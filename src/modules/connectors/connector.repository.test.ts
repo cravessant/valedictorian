@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
-import { connectorRuns, sourceExecutionScopes, opportunities } from '../../db/schema'
+import { connectorRuns, opportunities, sourceExecutionScopes } from '../../db/schema'
 import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './connector.repository.pglite-test-helpers'

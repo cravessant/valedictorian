@@ -37,14 +37,6 @@ import {
   type PolicyRunWindowDecision,
   type ConnectorOptionQueryResult,
 } from 'sparxie'
-type SourcingFinding = Record<string, unknown>
-interface SourcingFindingsListResult {
-  items: SourcingFinding[]
-  total: number
-  limit: number
-  offset: number
-  hasMore: boolean
-}
 import { canonicalAlreadyConfiguredBody } from './app/error-presentation'
 import {
   defaultAppSettings,
@@ -542,70 +534,6 @@ export function lastCreatedConnectorInstanceId(connectorsApi: ConnectorsPreloadA
     throw new Error('Expected connectorsApi.create to have been called with an instance id')
   }
   return input.id
-}
-
-type LegacySourcingFinding = SourcingFinding & {
-  rawRevisionId?: never
-  canonicalCandidateId?: never
-  destination?: never
-  employmentType?: never
-  seniority?: never
-  location?: never
-  compensation?: never
-  postedAt?: never
-}
-
-export function createSourcingFinding(
-  overrides: Partial<LegacySourcingFinding> = {},
-): LegacySourcingFinding {
-  return {
-    id: 'finding-1',
-    workflowRunId: 'run-1',
-    sourceId: 'source-linkedin',
-    sourceName: 'LinkedIn',
-    companyName: 'Delta Labs',
-    roleTitle: 'Software Engineering Intern',
-    roleKind: 'internship',
-    term: 'Fall 2026',
-    terms: [{ season: 'fall', year: 2026 }],
-    timingMode: 'terms',
-    startDate: null,
-    endDate: null,
-    city: null,
-    region: null,
-    country: 'US',
-    workMode: 'remote',
-    locationRaw: 'Remote',
-    officialUrl: 'https://jobs.example.com/delta',
-    sourceUrl: 'https://linkedin.com/jobs/delta',
-    postedAge: '2d',
-    priorityScore: 7,
-    priorityBand: 'high',
-    fitNotes: 'Good backend internship fit.',
-    duplicateNotes: null,
-    blocker: null,
-    policyBlocker: null,
-    dispositionReason: null,
-    mergeStatus: 'new',
-    mergedApplicationId: null,
-    mergedApplicationCompanyName: null,
-    mergedApplicationRoleTitle: null,
-    mergeNotes: null,
-    discoveredAt: '2026-06-04T16:00:00.000Z',
-    createdAt: '2026-06-04T16:00:00.000Z',
-    updatedAt: '2026-06-04T16:00:00.000Z',
-    ...overrides,
-  }
-}
-
-export function createSourcingResult(items: SourcingFinding[]): SourcingFindingsListResult {
-  return {
-    items,
-    total: items.length,
-    limit: 50,
-    offset: 0,
-    hasMore: false,
-  }
 }
 
 export async function openSettingsPage() {

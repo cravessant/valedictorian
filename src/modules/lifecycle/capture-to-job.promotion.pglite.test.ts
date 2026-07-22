@@ -11,8 +11,8 @@ import { and, eq } from 'drizzle-orm'
 import { jobFactsSchema } from 'sparxie'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
-import { captureEvidenceItems, lifecycleCaptures } from '../capture/capture.schema'
-import { jobCaptureEvidenceReferences, jobExternalIdentities, lifecycleJobs } from '../job/job.schema'
+import { captureEvidenceItems, captures as captureRows } from '../capture/capture.schema'
+import { jobCaptureEvidenceReferences, jobExternalIdentities, jobs as jobRows } from '../job/job.schema'
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
 import { createPgliteJobService } from '../job/job.service'
 import { createPgliteJobIdentityService } from '../job/job.identity'
@@ -59,7 +59,7 @@ async function acceptCapture(captures: CaptureService, overrides: { workspaceId?
 }
 
 async function countJobs(database: Awaited<ReturnType<typeof setup>>['database'], workspaceId: string) {
-  return (await database.select().from(lifecycleJobs).where(eq(lifecycleJobs.workspaceId, workspaceId))).length
+  return (await database.select().from(jobRows).where(eq(jobRows.workspaceId, workspaceId))).length
 }
 
 describe.sequential('Capture→Job promotion (#300)', () => {
@@ -131,9 +131,9 @@ describe.sequential('Capture→Job promotion (#300)', () => {
     expect(result).toMatchObject({ ok: true, created: true })
     if (!result.ok) return
     expect((await jobs.get('ws-a', result.jobId))?.facts).toMatchObject({ title: 'Manual role' })
-    const captureRows = await database.select().from(lifecycleCaptures).where(eq(lifecycleCaptures.id, result.captureId))
-    expect(captureRows).toHaveLength(1)
-    expect(captureRows[0]?.adapterKind).toBe('manual')
+    const storedCaptures = await database.select().from(captureRows).where(eq(captureRows.id, result.captureId))
+    expect(storedCaptures).toHaveLength(1)
+    expect(storedCaptures[0]?.adapterKind).toBe('manual')
   })
 
   it('rolls back atomically when a write fails between the Capture and Job writes', async () => {
@@ -143,7 +143,7 @@ describe.sequential('Capture→Job promotion (#300)', () => {
     await expect(promotion.createManualJob({ workspaceId: 'ws-a', facts: {}, evidence: [{ kind: 'note', label: 'N', value: 'x' }], actor: ACTOR }))
       .rejects.toThrow('job write boom')
     // The manual Capture accepted earlier in the same transaction must have rolled back.
-    expect(await database.select().from(lifecycleCaptures)).toHaveLength(0)
+    expect(await database.select().from(captureRows)).toHaveLength(0)
     expect(await countJobs(database, 'ws-a')).toBe(0)
   })
 
@@ -198,7 +198,7 @@ describe.sequential('Capture→Job promotion (#300)', () => {
     expect(a.ok && b.ok).toBe(true)
     if (!a.ok || !b.ok) return
     expect(b.captureId).toBe(a.captureId) // same import-provenance Capture reused
-    expect((await database.select().from(lifecycleCaptures).where(eq(lifecycleCaptures.providerRecordId, 'import-1')))).toHaveLength(1)
+    expect((await database.select().from(captureRows).where(eq(captureRows.providerRecordId, 'import-1')))).toHaveLength(1)
   })
 
   it('links the second import Job to the evidence-bearing HEAD revision, not a stale revision (delta-1)', async () => {
@@ -237,7 +237,7 @@ describe.sequential('Capture→Job promotion (#300)', () => {
     // facts (second write) — the whole transaction must roll back, leaving no Capture.
     const result = await promotion.createManualJob({ workspaceId: 'ws-a', facts: { blob: 'x'.repeat(300_000) }, evidence: [{ kind: 'note', label: 'N', value: 'x' }], actor: ACTOR })
     expect(result).toMatchObject({ ok: false, code: 'bounded_data_violation' })
-    expect(await database.select().from(lifecycleCaptures)).toHaveLength(0)
+    expect(await database.select().from(captureRows)).toHaveLength(0)
     expect(await countJobs(database, 'ws-a')).toBe(0)
   })
 })

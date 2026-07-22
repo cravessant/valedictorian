@@ -1,6 +1,6 @@
 /**
  * Opportunity module contract — red-first proofs through the PUBLIC commands/queries
- * (issue #301). Exercises canonical `lifecycle_opportunities` + append-only
+ * (issue #301). Exercises canonical `opportunities` + append-only
  * `opportunity_history` on a migrated PGlite owner: UUIDv7 identities, normalized
  * relational identity (workspace + Job), user create/correct/re-evaluate/disposition,
  * remove/restore tombstones, history, deterministic-duplicate on the (workspace, job)
@@ -14,7 +14,7 @@ import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { UUID_V7_PATTERN } from '../../db/lifecycle-vocabulary'
 import { createPgliteJobService, type JobService } from '../job/job.service'
-import { lifecycleOpportunities } from './opportunity.schema'
+import { opportunities as opportunityRows } from './opportunity.schema'
 import { createPgliteOpportunityService, type OpportunityService } from './opportunity.service'
 
 const resettableOwner = useResettablePgliteTestOwner()
@@ -231,8 +231,8 @@ describe.sequential('Opportunity module contract (#301)', () => {
     const opportunity = await makeOpportunity(opportunities, jobId)
     const [row] = await database
       .select()
-      .from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.workspaceId, 'ws-a'), eq(lifecycleOpportunities.jobId, jobId)))
+      .from(opportunityRows)
+      .where(and(eq(opportunityRows.workspaceId, 'ws-a'), eq(opportunityRows.jobId, jobId)))
     expect(row?.id).toBe(opportunity.id)
   })
 })

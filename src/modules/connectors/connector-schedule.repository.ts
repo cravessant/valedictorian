@@ -18,7 +18,7 @@ import {
   connectorScheduleRevisions,
   connectorSchedules,
 } from '../../db/schema.connectors'
-import { retryWork, sourceExecutionScopes } from '../../db/schema'
+import { connectorCaptureWork, sourceExecutionScopes } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import { computeNextEligibleAt } from './connector-schedule.eligibility'
 import { createConnectorScheduleError } from './connector-schedule.errors'
@@ -46,35 +46,33 @@ export function createConnectorScheduleRepository(
     }>> {
       const rows = await database
         .select({
-          connectorInstanceId: retryWork.connectorInstanceId,
-          nextAttemptAt: retryWork.nextAttemptAt,
+          connectorInstanceId: connectorCaptureWork.connectorInstanceId,
+          nextAttemptAt: connectorCaptureWork.nextEligibleAt,
           scopeBlockedUntil: sourceExecutionScopes.blockedUntil,
         })
-        .from(retryWork)
+        .from(connectorCaptureWork)
         .innerJoin(
           connectorSchedules,
-          eq(connectorSchedules.connectorInstanceId, retryWork.connectorInstanceId),
+          eq(connectorSchedules.connectorInstanceId, connectorCaptureWork.connectorInstanceId),
         )
         .innerJoin(
           connectorInstances,
-          eq(connectorInstances.id, retryWork.connectorInstanceId),
+          eq(connectorInstances.id, connectorCaptureWork.connectorInstanceId),
         )
         .innerJoin(
           sourceExecutionScopes,
           eq(sourceExecutionScopes.id, connectorInstances.executionScopeId),
         )
         .where(and(
-          eq(retryWork.kind, 'connector_capture'),
-          eq(retryWork.state, 'scheduled'),
-          isNotNull(retryWork.nextAttemptAt),
-          isNull(retryWork.deletedAt),
+          eq(connectorCaptureWork.status, 'scheduled'),
+          isNotNull(connectorCaptureWork.nextEligibleAt),
           eq(connectorSchedules.state, 'enabled'),
           isNull(connectorSchedules.deletedAt),
           eq(connectorInstances.enabled, true),
           isNull(connectorInstances.deletedAt),
           inArray(sourceExecutionScopes.status, ['available', 'cooldown']),
         ))
-        .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.connectorInstanceId))
+        .orderBy(asc(connectorCaptureWork.nextEligibleAt), asc(connectorCaptureWork.connectorInstanceId))
       return rows.flatMap((row) => row.connectorInstanceId && row.nextAttemptAt ? [{
           connectorInstanceId: row.connectorInstanceId,
           nextAttemptAt: row.scopeBlockedUntil && row.scopeBlockedUntil > row.nextAttemptAt

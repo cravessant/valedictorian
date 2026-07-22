@@ -7,10 +7,8 @@ import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from './
  * in-memory database and raw SQL so it asserts the physical constraints the
  * journaled migration must install, independent of any Drizzle query layer.
  *
- * Canonical roots use interim physical names (lifecycle_*) so they do not collide
- * with the still-live legacy roots; #298 ships no runtime rewiring and the
- * clean-cutover leaf (#307) drops legacy and renames these four (see
- * drizzle/lifecycle-migration.md).
+ * The clean-cutover migration renames the canonical roots to their final
+ * physical names, so these assertions exercise the installed production shape.
  */
 const T = '2026-07-19T00:00:00.000Z'
 
@@ -25,7 +23,7 @@ async function insertCapture(
   const evidenceMode = overrides.evidenceMode ?? 'reported'
   const adapterKind = overrides.adapterKind ?? 'connector'
   await client.query(
-    `insert into lifecycle_captures (
+    `insert into captures (
        id, workspace_id, evidence_mode, adapter_id, adapter_kind, adapter_version,
        observed_at, received_at, provider_record_id, provider_schema, payload_json,
        revision, created_at, updated_at
@@ -42,7 +40,7 @@ async function insertCapture(
 
 async function insertJob(client: PgliteClient, id: string, workspaceId = 'ws-1') {
   await client.query(
-    `insert into lifecycle_jobs (
+    `insert into jobs (
        id, workspace_id, facts_revision, facts_json, availability_state, availability_observed_at,
        availability_revision, created_at, updated_at
      ) values (
@@ -72,7 +70,7 @@ async function insertOpportunity(
   o: { id: string; jobId: string; workspaceId?: string; fit?: string; cutoff?: string; disposition?: string },
 ) {
   await client.query(
-    `insert into lifecycle_opportunities (
+    `insert into opportunities (
        id, workspace_id, job_id, revision, fit, rank, cutoff, disposition, created_at, updated_at
      ) values (
        '${o.id}', '${o.workspaceId ?? 'ws-1'}', '${o.jobId}', 1, '${o.fit ?? 'fit'}', null,
@@ -86,7 +84,7 @@ async function insertApplication(
   o: { id: string; opportunityId: string; jobId: string; workspaceId?: string; status?: string },
 ) {
   await client.query(
-    `insert into lifecycle_applications (
+    `insert into applications (
        id, workspace_id, opportunity_id, job_id, revision, status, job_facts_revision,
        snapshot_json, company_name, source_name, created_at, updated_at
      ) values (
@@ -117,10 +115,10 @@ describe.sequential('PGlite lifecycle schema', () => {
     )
     const names = result.rows.map((row) => row.tablename)
     for (const table of [
-      'lifecycle_captures', 'capture_evidence_items', 'capture_revisions',
-      'lifecycle_jobs', 'job_external_identities', 'job_capture_evidence_references', 'job_history',
-      'lifecycle_opportunities', 'opportunity_history',
-      'lifecycle_applications', 'pursuit_links', 'application_attempt_records',
+      'captures', 'capture_evidence_items', 'capture_revisions',
+      'jobs', 'job_external_identities', 'job_capture_evidence_references', 'job_history',
+      'opportunities', 'opportunity_history',
+      'applications', 'pursuit_links', 'application_attempt_records',
       'application_event_records', 'application_history',
     ]) {
       expect(names).toContain(table)
@@ -273,13 +271,13 @@ describe.sequential('PGlite lifecycle schema', () => {
     await expect(insertCapture(client, { id: 'c-adapter', adapterKind: 'bad' })).rejects.toThrow(/chk_lifecycle_captures_adapter_kind|check/i)
     await expect(
       client.query(
-        `insert into lifecycle_jobs (id, workspace_id, facts_revision, facts_json, availability_state, availability_observed_at, availability_revision, created_at, updated_at)
+        `insert into jobs (id, workspace_id, facts_revision, facts_json, availability_state, availability_observed_at, availability_revision, created_at, updated_at)
          values ('${jobId(50)}', 'ws-1', 1, '{}', 'bad', '${T}', 1, '${T}', '${T}')`,
       ),
     ).rejects.toThrow(/chk_lifecycle_jobs_availability_state|check/i)
     await expect(
       client.query(
-        `insert into lifecycle_captures (id, workspace_id, evidence_mode, adapter_id, adapter_kind, adapter_version, observed_at, received_at, provider_record_id, provider_schema, payload_json, revision, created_at, updated_at)
+        `insert into captures (id, workspace_id, evidence_mode, adapter_id, adapter_kind, adapter_version, observed_at, received_at, provider_record_id, provider_schema, payload_json, revision, created_at, updated_at)
          values ('c-nows', null, 'reported', 'a', 'connector', '1', '${T}', '${T}', null, null, null, 1, '${T}', '${T}')`,
       ),
     ).rejects.toThrow(/not-null|null value/i)
@@ -323,7 +321,7 @@ describe.sequential('PGlite lifecycle schema', () => {
     // Invalid status is rejected.
     await expect(
       client.query(
-        `insert into lifecycle_applications (id, workspace_id, opportunity_id, job_id, revision, status, job_facts_revision, snapshot_json, company_name, source_name, created_at, updated_at)
+        `insert into applications (id, workspace_id, opportunity_id, job_id, revision, status, job_facts_revision, snapshot_json, company_name, source_name, created_at, updated_at)
          values ('app-badstatus', 'ws-app', 'opp-app2', '${jobId(71)}', 1, 'bad', 1, '{}', 'Acme', 'Jobright', '${T}', '${T}')`,
       ),
     ).rejects.toThrow(/chk_lifecycle_applications_status|check/i)

@@ -128,10 +128,10 @@ import {
   toPromotedResult,
 } from '../modules/lifecycle/promotion.dto'
 import type { MutationBlocked } from '../modules/lifecycle/mutation.dto'
-import { lifecycleJobs, jobCaptureEvidenceReferences } from '../modules/job/job.schema'
-import { lifecycleOpportunities } from '../modules/opportunity/opportunity.schema'
+import { jobs as jobRows, jobCaptureEvidenceReferences } from '../modules/job/job.schema'
+import { opportunities as opportunityRows } from '../modules/opportunity/opportunity.schema'
 import {
-  lifecycleApplications,
+  applications as applicationRows,
   pursuitLinks,
   applicationEventRecords,
   applicationAttemptRecords,
@@ -241,8 +241,8 @@ export function createLocalLifecycleMethods(
     const rows = await database
       .select({ jobId: jobCaptureEvidenceReferences.jobId })
       .from(jobCaptureEvidenceReferences)
-      .innerJoin(lifecycleJobs, eq(lifecycleJobs.id, jobCaptureEvidenceReferences.jobId))
-      .where(and(eq(jobCaptureEvidenceReferences.captureId, captureId), isNull(lifecycleJobs.removedAt)))
+      .innerJoin(jobRows, eq(jobRows.id, jobCaptureEvidenceReferences.jobId))
+      .where(and(eq(jobCaptureEvidenceReferences.captureId, captureId), isNull(jobRows.removedAt)))
     return [...new Set(rows.map((row) => row.jobId))]
   }
 
@@ -291,9 +291,9 @@ export function createLocalLifecycleMethods(
   /** Active immediate dependents of a job (opportunities projecting it). Read-only. */
   async function activeDependentOpportunityIds(jobId: string): Promise<string[]> {
     const rows = await database
-      .select({ id: lifecycleOpportunities.id })
-      .from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.jobId, jobId), isNull(lifecycleOpportunities.removedAt)))
+      .select({ id: opportunityRows.id })
+      .from(opportunityRows)
+      .where(and(eq(opportunityRows.jobId, jobId), isNull(opportunityRows.removedAt)))
     return [...new Set(rows.map((row) => row.id))]
   }
 
@@ -365,18 +365,18 @@ export function createLocalLifecycleMethods(
   /** Active immediate dependents of an opportunity (applications pursuing it). Read-only. */
   async function activeDependentApplicationIds(opportunityId: string): Promise<string[]> {
     const rows = await database
-      .select({ id: lifecycleApplications.id })
-      .from(lifecycleApplications)
-      .where(and(eq(lifecycleApplications.opportunityId, opportunityId), isNull(lifecycleApplications.removedAt)))
+      .select({ id: applicationRows.id })
+      .from(applicationRows)
+      .where(and(eq(applicationRows.opportunityId, opportunityId), isNull(applicationRows.removedAt)))
     return [...new Set(rows.map((row) => row.id))]
   }
 
   /** The active opportunity for a job (the deterministic-duplicate conflict target on create). */
   async function activeOpportunityForJob(jobId: string): Promise<string | null> {
     const [row] = await database
-      .select({ id: lifecycleOpportunities.id })
-      .from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.jobId, jobId), isNull(lifecycleOpportunities.removedAt)))
+      .select({ id: opportunityRows.id })
+      .from(opportunityRows)
+      .where(and(eq(opportunityRows.jobId, jobId), isNull(opportunityRows.removedAt)))
       .limit(1)
     return row?.id ?? null
   }
@@ -859,9 +859,9 @@ export function createLocalLifecycleMethods(
   /** The active application for an opportunity (the deterministic-duplicate conflict target on create). */
   async function activeApplicationForOpportunity(opportunityId: string): Promise<string | null> {
     const [row] = await database
-      .select({ id: lifecycleApplications.id })
-      .from(lifecycleApplications)
-      .where(and(eq(lifecycleApplications.opportunityId, opportunityId), isNull(lifecycleApplications.removedAt)))
+      .select({ id: applicationRows.id })
+      .from(applicationRows)
+      .where(and(eq(applicationRows.opportunityId, opportunityId), isNull(applicationRows.removedAt)))
       .limit(1)
     return row?.id ?? null
   }

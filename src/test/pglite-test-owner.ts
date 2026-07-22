@@ -88,10 +88,21 @@ export function useResettablePgliteTestOwner() {
 
 async function resetPgliteTestDatabase(database: PgliteDatabase) {
   await database.execute(sql.raw('reset all'))
-  const tableNames = Object.values(schema).map((table) => quoteIdentifier(getTableName(table)))
+  const registeredNames: Set<string> = new Set(Object.values(schema).map((table) => getTableName(table)))
+  const existing = await database.execute<{ table_name: string }>(sql`
+    select table_name from information_schema.tables where table_schema = 'public'
+  `)
+  const tableNames = [...new Set(existing.rows
+    .map((row) => row.table_name)
+    .filter((name) => registeredNames.has(name)))]
+    .map(quoteIdentifier)
   await database.execute(sql.raw(
     `truncate table ${tableNames.join(', ')} restart identity cascade`,
   ))
+  await database.execute(sql`
+    insert into workspaces (id, name, created_at, updated_at)
+    values ('00000000-0000-0000-0000-000000000000', 'default', '2026-07-20T00:00:00.000Z', '2026-07-20T00:00:00.000Z')
+  `)
 }
 
 function quoteIdentifier(identifier: string) {

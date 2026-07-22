@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createPgliteClient, type PgliteClient } from './pglite'
-import { applyBaselineOnly, applyLifecycleMigration, seedLegacyDataset } from '../test/lifecycle-migration-harness'
+import {
+  applyBaselineOnly,
+  applyLifecycleMigration,
+  applyMigrationsBeforeCleanCutover,
+  seedIndependentClaimedConnectorCaptureWork,
+  seedLateAcquiredConnectorRetry,
+  seedLegacyDataset,
+} from '../test/lifecycle-migration-harness'
 
 /**
  * #298 Round E representative-data integrity proof: seed a realistic legacy
@@ -19,6 +26,9 @@ describe.sequential('lifecycle migration representative data', () => {
     client = await createPgliteClient()
     await applyBaselineOnly(client)
     await seedLegacyDataset(client)
+    await applyMigrationsBeforeCleanCutover(client)
+    await seedLateAcquiredConnectorRetry(client)
+    await seedIndependentClaimedConnectorCaptureWork(client)
     await applyLifecycleMigration(client)
     return client
   }
@@ -32,12 +42,12 @@ describe.sequential('lifecycle migration representative data', () => {
     const c = await migrate()
     const ws = await c.query<{ id: string }>(`select id from workspaces`)
     expect(ws.rows).toEqual([{ id: '00000000-0000-0000-0000-000000000000' }])
-    expect(await count(c, 'lifecycle_captures', `where workspace_id = '00000000-0000-0000-0000-000000000000'`)).toBe(4)
+    expect(await count(c, 'captures', `where workspace_id = '00000000-0000-0000-0000-000000000000'`)).toBe(4)
   })
 
   it('preserves captures, revisions, and faithfully extracts evidence with degradation reports', async () => {
     const c = await migrate()
-    expect(await count(c, 'lifecycle_captures')).toBe(4)
+    expect(await count(c, 'captures')).toBe(4)
     // lin-A has 2 revisions, lin-B/lin-C/lin-D one each.
     expect(await count(c, 'capture_revisions')).toBe(5)
     // lin-C respects the <=50 cap, and reports the >50, malformed, and forbidden (OAuth key) drops.
@@ -75,8 +85,8 @@ describe.sequential('lifecycle migration representative data', () => {
   it('mints UUIDv7 jobs and maps identities to posting/canonical_destination as provisional', async () => {
     const c = await migrate()
     // job-A, job-B, plus one synthesized job for the orphan application = 3.
-    expect(await count(c, 'lifecycle_jobs')).toBe(3)
-    const ids = await c.query<{ id: string }>(`select id from lifecycle_jobs`)
+    expect(await count(c, 'jobs')).toBe(3)
+    const ids = await c.query<{ id: string }>(`select id from jobs`)
     // Every seeded row was created at the same instant, so the leading 48 timestamp
     // bits (real v7 semantics from created_at, not md5 noise) must all decode to it.
     const expectedTsHex = Date.parse('2026-07-19T00:00:00.000Z').toString(16).padStart(12, '0')
@@ -104,22 +114,22 @@ describe.sequential('lifecycle migration representative data', () => {
 
   it('maps policy states to reviewing, user states to their disposition, and quarantines dedup opportunities', async () => {
     const c = await migrate()
-    const policy = await c.query<{ fit: string; cutoff: string; disposition: string }>(`select fit, cutoff, disposition from lifecycle_opportunities where id = 'opp-policy'`)
+    const policy = await c.query<{ fit: string; cutoff: string; disposition: string }>(`select fit, cutoff, disposition from opportunities where id = 'opp-policy'`)
     expect(policy.rows[0]).toEqual({ fit: 'unknown', cutoff: 'below', disposition: 'reviewing' })
-    const user = await c.query<{ disposition: string }>(`select disposition from lifecycle_opportunities where id = 'opp-user'`)
+    const user = await c.query<{ disposition: string }>(`select disposition from opportunities where id = 'opp-user'`)
     expect(user.rows[0]!.disposition).toBe('declined')
     // opp-dupe (duplicate) quarantined, not migrated.
-    expect(await count(c, 'lifecycle_opportunities', `where id = 'opp-dupe'`)).toBe(0)
+    expect(await count(c, 'opportunities', `where id = 'opp-dupe'`)).toBe(0)
     expect(await count(c, 'lifecycle_migration_report', `where category = 'quarantine' and source_id = 'opp-dupe'`)).toBe(1)
   })
 
   it('preserves the linked application and synthesizes lineage for the orphan', async () => {
     const c = await migrate()
-    expect(await count(c, 'lifecycle_applications')).toBe(2)
+    expect(await count(c, 'applications')).toBe(2)
     // Linked app points at opp-user; orphan app points at a synthesized opportunity.
-    const linked = await c.query<{ opportunity_id: string }>(`select opportunity_id from lifecycle_applications where id = 'app-linked'`)
+    const linked = await c.query<{ opportunity_id: string }>(`select opportunity_id from applications where id = 'app-linked'`)
     expect(linked.rows[0]!.opportunity_id).toBe('opp-user')
-    const orphan = await c.query<{ opportunity_id: string }>(`select opportunity_id from lifecycle_applications where id = 'app-orphan'`)
+    const orphan = await c.query<{ opportunity_id: string }>(`select opportunity_id from applications where id = 'app-orphan'`)
     expect(orphan.rows[0]!.opportunity_id).toBe('synth-opp:app-orphan')
     expect(await count(c, 'lifecycle_migration_report', `where category = 'synthesized' and source_id = 'app-orphan'`)).toBe(1)
     // Links, attempts/events, history preserved.
@@ -129,8 +139,9 @@ describe.sequential('lifecycle migration representative data', () => {
 
   it('splits retry_work into distinct identities with the cancelled/terminal disambiguation', async () => {
     const c = await migrate()
-    // rw-cap (connector), rw-cancel (connector cancelled) -> connector_capture_work.
-    expect(await count(c, 'connector_capture_work')).toBe(2)
+    // rw-cap (existing acquired copy), rw-cap-late (late acquired row), and
+    // rw-cancel (connector cancelled) -> connector_capture_work.
+    expect(await count(c, 'connector_capture_work')).toBe(4)
     // rw-prov + rw-term -> provider table; rw-norm -> normalization table.
     expect(await count(c, 'provider_url_resolution_work')).toBe(2)
     expect(await count(c, 'normalization_work')).toBe(1)
@@ -139,16 +150,36 @@ describe.sequential('lifecycle migration representative data', () => {
     expect(term.rows[0]).toEqual({ status: 'terminal', failure_reason: 'unresolvable' })
     const cancel = await c.query<{ status: string }>(`select status from connector_capture_work where id = 'rw-cancel'`)
     expect(cancel.rows[0]!.status).toBe('cancelled')
+    const resetReports = await c.query<{ source_id: string; detail_json: string }>(
+      `select source_id, detail_json from lifecycle_migration_report
+       where id like 'cutover_retry_acquired_reset:%' order by source_id`,
+    )
+    expect(resetReports.rows.map((row) => ({ source_id: row.source_id, detail: JSON.parse(row.detail_json) }))).toEqual([
+      { source_id: 'rw-cap', detail: { previousState: 'acquired', copyDisposition: 'updated_existing_copy' } },
+      { source_id: 'rw-cap-late', detail: { previousState: 'acquired', copyDisposition: 'inserted_late_copy' } },
+    ])
+    expect(await count(c, 'connector_capture_work', `where id in ('rw-cap','rw-cap-late') and status = 'scheduled'`)).toBe(2)
+    const independent = await c.query<{ status: string }>(
+      `select status from connector_capture_work where id = 'cw-independent'`,
+    )
+    expect(independent.rows).toEqual([{ status: 'scheduled' }])
+    expect(await count(c, 'lifecycle_migration_report',
+      `where id = 'cutover_connector_claim_reset:cw-independent'`)).toBe(1)
+    expect(await count(c, 'lifecycle_migration_report',
+      `where id in ('cutover_connector_claim_reset:rw-cap','cutover_connector_claim_reset:rw-cap-late')`)).toBe(0)
     // Tombstoned rw-dead skipped + reported; not migrated.
     expect(await count(c, 'connector_capture_work', `where id = 'rw-dead'`)).toBe(0)
     expect(await count(c, 'lifecycle_migration_report', `where source_table = 'retry_work' and source_id = 'rw-dead'`)).toBe(1)
   })
 
-  it('leaves the legacy tables physically intact', async () => {
+  it('leaves exactly one set of lifecycle roots and removes the collapsed retry table', async () => {
     const c = await migrate()
-    expect(await count(c, 'jobs')).toBe(2)
+    expect(await count(c, 'jobs')).toBe(3)
     expect(await count(c, 'applications')).toBe(2)
-    expect(await count(c, 'retry_work')).toBe(6)
+    const retired = await c.query<{ retry: string | null; legacyJobs: string | null }>(
+      `select to_regclass('public.retry_work') as retry, to_regclass('public.lifecycle_jobs') as "legacyJobs"`,
+    )
+    expect(retired.rows[0]).toEqual({ retry: null, legacyJobs: null })
   })
 
   // #299 slice-4 correction: the 0002 provenance index is keyed on provider_schema
@@ -177,12 +208,12 @@ describe.sequential('lifecycle migration representative data', () => {
     await applyLifecycleMigration(c)
 
     const divergent = await c.query<{ provider_schema: string }>(
-      `select provider_schema from lifecycle_captures where provider_record_id = 'pr-shared' order by provider_schema`,
+      `select provider_schema from captures where provider_record_id = 'pr-shared' order by provider_schema`,
     )
     expect(divergent.rows.map((row) => row.provider_schema)).toEqual(['jobright.v1', 'jobright.v2'])
 
-    expect(await count(c, 'lifecycle_captures', `where provider_record_id = 'pr-dup'`)).toBe(1)
-    const survivor = await c.query<{ id: string }>(`select id from lifecycle_captures where provider_record_id = 'pr-dup'`)
+    expect(await count(c, 'captures', `where provider_record_id = 'pr-dup'`)).toBe(1)
+    const survivor = await c.query<{ id: string }>(`select id from captures where provider_record_id = 'pr-dup'`)
     expect(survivor.rows[0]?.id).toBe('lin-dup1')
     expect(await count(c, 'lifecycle_migration_report', `where category = 'quarantine' and source_id = 'lin-dup2'`)).toBe(1)
   })

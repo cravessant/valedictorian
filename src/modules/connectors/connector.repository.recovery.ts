@@ -3,7 +3,7 @@ import {
   connectorRuns,
   connectorRunSynchronizations,
   connectorScheduleOccurrences,
-  retryWork,
+  connectorCaptureWork,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
@@ -76,13 +76,12 @@ export async function recoverInterruptedConnectorRuns(
         }).where(eq(connectorRunSynchronizations.connectorRunId, run.id))
       }
       await persistFrozenConnectorRunLifecycleCounts(transaction, run.id, input.completedAt)
-      await transaction.update(retryWork).set({
-        state: 'scheduled', acquiredAt: null,
+      await transaction.update(connectorCaptureWork).set({
+        status: 'scheduled', claimedAt: null,
         acquisitionToken: null, acquisitionRunId: null, updatedAt: input.completedAt,
       }).where(and(
-        eq(retryWork.state, 'acquired'),
-        eq(retryWork.acquisitionRunId, run.id),
-        isNull(retryWork.deletedAt),
+        eq(connectorCaptureWork.status, 'claimed'),
+        eq(connectorCaptureWork.acquisitionRunId, run.id),
       ))
       recovered += 1
     }

@@ -1,45 +1,34 @@
-import { randomUUID } from 'node:crypto'
-import { and, asc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
+import { createHash, randomUUID } from 'node:crypto'
+import { and, asc, eq, sql } from 'drizzle-orm'
 import { retryAdviceSchema, type RetryAdvice } from 'sparxie'
-import {
-  connectorCheckpoints,
-  retryWork,
-} from '../../db/schema'
+import { connectorCaptureWork } from '../scheduling/scheduling.schema'
+import { DEFAULT_WORKSPACE_ID } from '../../db/workspaces.schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import type { AcquiredRetryWork } from './connector-retry-work.identity-types'
 import type { ConnectorCheckpointPayload } from './connector-checkpoint.persistence-types'
-import {
-  JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID,
-  JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION,
-  JOBRIGHT_CAPTURE_CHECKPOINT_SCHEMA_V1,
-  JOBRIGHT_CHECKPOINT_SCHEMA_V5,
-  JOBRIGHT_CONNECTOR_ID,
-} from './jobright.constants'
 
-type RetryWorkRow = typeof retryWork.$inferSelect
+export type ConnectorCaptureWorkRow = typeof connectorCaptureWork.$inferSelect
 type RetryWorkDatabase = Pick<PgliteDatabase, 'insert' | 'select' | 'update'>
-
-const JOBRIGHT_PUBLIC_SOURCE_PREFIX = 'jobright.public:'
 
 export function parseRetryAdviceJson(value: string): RetryAdvice | null {
   const parsed = JSON.parse(value) as unknown
-  if (parsed === null) return null
-  return retryAdviceSchema.parse(parsed)
+  return parsed === null ? null : retryAdviceSchema.parse(parsed)
 }
 
 export function retryAdviceFromWork(
-  work: RetryWorkRow,
+  work: ConnectorCaptureWorkRow,
   state: 'not_due' | 'exhausted' | 'cancelled',
 ): RetryAdvice {
+  if (!work.failureReason) throw new Error(`Connector capture work ${work.id} has no retry reason`)
   return retryAdviceSchema.parse({
     state,
-    reason: work.reason,
+    reason: work.failureReason,
     attempt: work.attempt,
     maxAttempts: work.maxAttempts,
     lastAttemptAt: work.lastAttemptAt,
     computedDelayMs: work.computedDelayMs,
     serverMinimumDelayMs: work.serverMinimumDelayMs,
-    nextAttemptAt: state === 'not_due' ? work.nextAttemptAt : null,
+    nextAttemptAt: state === 'not_due' ? work.nextEligibleAt : null,
     horizonAt: work.horizonAt,
   })
 }
@@ -55,181 +44,100 @@ export async function synchronizeConnectorRetryWork(
     executionScopeId: string
     filterSignature: string
     now: string
-    preserveAcquiredNormalizationWork?: boolean
     runId: string
   },
 ) {
-  const acquiredNormalization = await database.select().from(retryWork).where(and(
-    eq(retryWork.kind, 'normalization'),
-    eq(retryWork.state, 'acquired'),
-    eq(retryWork.acquisitionRunId, input.runId),
-    notProviderUrlWork(),
-  ))
-  // Validate Jobright v5 pending-retry ledger when present, but never infer
-  // normalization completion from provider-id disappearance. Exact acquired
-  // rows complete only through normalization persistence.
-  currentJobrightRetryProviderRecordIds(input.checkpoint)
-  if (!input.preserveAcquiredNormalizationWork) {
-    for (const work of acquiredNormalization) {
-      await database.update(retryWork).set({
-        state: 'scheduled',
-        nextAttemptAt: work.nextAttemptAt,
-        acquiredAt: null,
-        acquisitionToken: null,
-        acquisitionRunId: null,
-        updatedAt: input.now,
-      }).where(eq(retryWork.id, work.id))
-    }
-  }
-  const [normalizationOwnedAdvice] = input.advice
-    ? await database.select({ id: retryWork.id })
-    .from(retryWork)
-    .where(and(
-      eq(retryWork.kind, 'normalization'),
-      eq(retryWork.state, 'scheduled'),
-      sql`(${retryWork.lineageJson}::jsonb ->> 'connectorRunId') = ${input.runId}`,
-      notProviderUrlWork(),
-      isNull(retryWork.deletedAt),
-    )).limit(1)
-    : []
-  if (normalizationOwnedAdvice) return
-  const generation = input.connectorVersion
-  const [existing] = await database.select().from(retryWork).where(and(
-    eq(retryWork.kind, 'connector_capture'),
-    eq(retryWork.connectorInstanceId, input.connectorInstanceId),
-    eq(retryWork.filterSignature, input.filterSignature),
-    eq(retryWork.checkpointSchemaVersion, input.checkpointSchemaVersion),
-    eq(retryWork.checkpointGeneration, generation),
-    isNull(retryWork.deletedAt),
+  assertValidJobrightV5CheckpointRetryState(input.checkpoint)
+  const [existing] = await database.select().from(connectorCaptureWork).where(and(
+    eq(connectorCaptureWork.connectorInstanceId, input.connectorInstanceId),
+    eq(connectorCaptureWork.filterSignature, input.filterSignature),
+    sql`${connectorCaptureWork.status} in ('scheduled','claimed')`,
   )).limit(1)
 
   if (!input.advice) {
-    if (existing?.state === 'acquired' && existing.acquisitionRunId === input.runId) {
-      await database.update(retryWork).set({
-        state: 'completed',
-        nextAttemptAt: null,
-        updatedAt: input.now,
-      }).where(eq(retryWork.id, existing.id))
+    if (existing?.status === 'claimed' && existing.acquisitionRunId === input.runId) {
+      await database.update(connectorCaptureWork).set({
+        status: 'completed', nextEligibleAt: null, acquisitionToken: null,
+        claimedAt: null, claimExpiresAt: null, updatedAt: input.now,
+      }).where(eq(connectorCaptureWork.id, existing.id))
     }
     return
   }
 
   const advice = retryAdviceSchema.parse(input.advice)
-  if (existing?.state === 'exhausted' || existing?.state === 'cancelled') return
-  const state = advice.state === 'not_due' ? 'scheduled' : advice.state
-  const unchangedRetryWindow = existing?.attempt === advice.attempt
-    && existing.nextAttemptAt === advice.nextAttemptAt
+  const status = advice.state === 'not_due' ? 'scheduled' : advice.state
+  const unchangedWindow = existing?.attempt === advice.attempt
+    && existing.nextEligibleAt === advice.nextAttemptAt
   const values = {
-    executionScopeId: input.executionScopeId,
-    reason: advice.reason,
+    checkpointSchemaVersion: input.checkpointSchemaVersion,
+    checkpointGeneration: input.connectorVersion,
     attempt: advice.attempt,
     maxAttempts: advice.maxAttempts,
+    status,
+    nextEligibleAt: advice.nextAttemptAt,
+    failureReason: advice.reason,
     lastAttemptAt: advice.lastAttemptAt,
     computedDelayMs: advice.computedDelayMs,
     serverMinimumDelayMs: advice.serverMinimumDelayMs ?? null,
-    nextAttemptAt: advice.nextAttemptAt,
     horizonAt: advice.horizonAt,
-    state,
     ownerVersion: input.connectorVersion,
-    lineageJson: JSON.stringify({ connectorRunId: input.runId }),
-    acquiredAt: null,
     acquisitionToken: null,
+    claimedAt: null,
+    claimExpiresAt: null,
     acquisitionRunId: null,
-    skippedRunId: unchangedRetryWindow ? existing.skippedRunId : null,
+    skippedRunId: unchangedWindow ? existing?.skippedRunId ?? null : null,
     updatedAt: input.now,
   } as const
 
   if (existing) {
-    await database.update(retryWork).set(values).where(eq(retryWork.id, existing.id))
+    await database.update(connectorCaptureWork).set(values).where(eq(connectorCaptureWork.id, existing.id))
     return
   }
-
-  await database.insert(retryWork).values({
+  await database.insert(connectorCaptureWork).values({
     id: randomUUID(),
-    kind: 'connector_capture',
+    workspaceId: DEFAULT_WORKSPACE_ID,
+    idempotencyKey: workIdempotencyKey(input.connectorInstanceId, input.filterSignature),
     connectorInstanceId: input.connectorInstanceId,
     filterSignature: input.filterSignature,
-    checkpointSchemaVersion: input.checkpointSchemaVersion,
-    checkpointGeneration: generation,
-    captureEvidenceVersionId: null,
-    resolverId: null,
-    resolverVersion: null,
-    inputHash: null,
     ...values,
     createdAt: input.now,
-    deletedAt: null,
-  })
+  }).onConflictDoNothing()
 }
 
 export function assertValidJobrightV5CheckpointRetryState(checkpoint: ConnectorCheckpointPayload) {
-  currentJobrightRetryProviderRecordIds(checkpoint)
-}
-
-function currentJobrightRetryProviderRecordIds(checkpoint: ConnectorCheckpointPayload): Set<string> | null {
-  if (checkpoint.schemaVersion !== 'jobright-resolution-checkpoint@5') return null
+  if (checkpoint.schemaVersion !== 'jobright-resolution-checkpoint@5') return
   const value = checkpoint.checkpoint
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Jobright v5 checkpoint is malformed')
   }
-  const pendingDetailRetries = (value as Record<string, unknown>).pendingDetailRetries
-  if (!Array.isArray(pendingDetailRetries)) {
-    throw new Error('Jobright v5 checkpoint pending retry ledger is malformed')
-  }
-  const providerRecordIds = pendingDetailRetries.map((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)
-      || typeof (entry as Record<string, unknown>).sourceId !== 'string'
-      || !Object.prototype.hasOwnProperty.call(entry, 'advice')
-      || !Object.prototype.hasOwnProperty.call(entry, 'ownership')) {
+  const pending = (value as Record<string, unknown>).pendingDetailRetries
+  if (!Array.isArray(pending)) throw new Error('Jobright v5 checkpoint pending retry ledger is malformed')
+  const ids = pending.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
     }
-    const retryEntry = entry as Record<string, unknown>
-    const sourceId = retryEntry.sourceId as string
-    const prefix = 'jobright.public:'
-    const providerRecordId = sourceId.startsWith(prefix) ? sourceId.slice(prefix.length) : ''
-    if (!providerRecordId || providerRecordId.trim() !== providerRecordId) {
+    const record = entry as Record<string, unknown>
+    if (typeof record.sourceId !== 'string' || !record.sourceId.startsWith('jobright.public:')) {
       throw new Error('Jobright v5 checkpoint pending retry source identity is malformed')
     }
-    const advice = retryAdviceSchema.parse(retryEntry.advice)
+    const id = record.sourceId.slice('jobright.public:'.length)
+    if (!id || id.trim() !== id) throw new Error('Jobright v5 checkpoint pending retry source identity is malformed')
+    const advice = retryAdviceSchema.parse(record.advice)
     if (advice.state !== 'scheduled' && advice.state !== 'not_due') {
       throw new Error('Jobright v5 checkpoint pending retry advice is malformed')
     }
-    if (retryEntry.ownership !== 'active' && retryEntry.ownership !== 'suspended') {
+    if (record.ownership !== 'active' && record.ownership !== 'suspended') {
       throw new Error('Jobright v5 checkpoint pending retry ownership is malformed')
     }
-    return providerRecordId
+    return id
   })
-  const uniqueProviderRecordIds = new Set(providerRecordIds)
-  if (uniqueProviderRecordIds.size !== providerRecordIds.length) {
+  if (new Set(ids).size !== ids.length) {
     throw new Error('Jobright v5 checkpoint pending retry source identities are duplicated')
   }
-  return uniqueProviderRecordIds
 }
 
-export function mapAcquiredRetryWork(work: RetryWorkRow): AcquiredRetryWork {
-  if (work.kind === 'connector_capture') {
-    return {
-      kind: 'connector_capture',
-      retryWorkId: work.id,
-    }
-  }
-  if (
-    work.captureEvidenceVersionId === null
-    || work.resolverId === null
-    || work.resolverVersion === null
-    || work.inputHash === null
-  ) {
-    throw new Error(`Normalization retry work ${work.id} is missing identity fields`)
-  }
-  return {
-    kind: 'normalization',
-    executionScopeId: work.executionScopeId,
-    retryWorkId: work.id,
-    rawRevisionId: work.captureEvidenceVersionId,
-    resolverId: work.resolverId,
-    resolverVersion: work.resolverVersion,
-    inputHash: work.inputHash,
-    lastAttemptAt: work.lastAttemptAt,
-  }
+export function mapAcquiredRetryWork(work: ConnectorCaptureWorkRow): AcquiredRetryWork {
+  return { kind: 'connector_capture', retryWorkId: work.id }
 }
 
 export async function selectPendingRetryWork(
@@ -241,184 +149,30 @@ export async function selectPendingRetryWork(
     coverageStartedAt: string
     filterSignature: string
     now: string
-    retryKind?: 'connector_capture'
   },
 ) {
-  const activeJobrightProviderIds = input.connectorId === JOBRIGHT_CONNECTOR_ID
-    ? await selectActiveJobrightProviderIds(database, input)
-    : null
-  const capturePredicate = (state: 'scheduled' | 'acquired') => and(
-    eq(retryWork.kind, 'connector_capture'),
-    eq(retryWork.connectorInstanceId, input.connectorInstanceId),
-    eq(retryWork.filterSignature, input.filterSignature),
-    eq(retryWork.state, state),
-    scopeAvailableAt(input.now),
-    isNull(retryWork.deletedAt),
-  )
-  const captureAcquired = await database.select().from(retryWork)
-    .where(capturePredicate('acquired')).orderBy(asc(retryWork.id)).limit(1)
-  const captureScheduled = await database
-    .select()
-    .from(retryWork)
-    .where(capturePredicate('scheduled'))
-    .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt), asc(retryWork.id))
-    .limit(1)
-  const normalizationPredicate = (state: 'scheduled' | 'acquired') => and(
-    eq(retryWork.kind, 'normalization'),
-    eq(retryWork.executionScopeId, input.executionScopeId),
-    eq(retryWork.state, state),
-    notProviderUrlWork(),
-    activeJobrightProviderIds === null ? sql`1 = 1` : or(
-      ne(retryWork.resolverId, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID),
-      ne(retryWork.resolverVersion, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION),
-      activeJobrightProviderIds.length === 0
-        ? sql`0 = 1`
-        : currentJobrightRevision(activeJobrightProviderIds),
-    ),
-    scopeAvailableAt(input.now),
-    isNull(retryWork.deletedAt),
-  )
-  const normalizationAcquired = input.retryKind === 'connector_capture'
-    ? []
-    : await database.select().from(retryWork)
-      .where(normalizationPredicate('acquired')).orderBy(asc(retryWork.id)).limit(1)
-  const normalizationScheduled = input.retryKind === 'connector_capture'
-    ? []
-    : await database
-      .select()
-      .from(retryWork)
-      .where(normalizationPredicate('scheduled'))
-      .orderBy(asc(retryWork.nextAttemptAt), asc(retryWork.createdAt), asc(retryWork.id))
-      .limit(1)
-  const retryCandidates = [
-    ...captureAcquired, ...normalizationAcquired,
-    ...captureScheduled, ...normalizationScheduled,
-  ]
-  return retryCandidates.find((work) => work.state === 'acquired')
-    ?? retryCandidates
-      .filter((work) => work.state === 'scheduled' && work.nextAttemptAt !== null && Date.parse(input.now) >= Date.parse(work.nextAttemptAt))
-      .sort((left, right) => Date.parse(left.nextAttemptAt!) - Date.parse(right.nextAttemptAt!))[0]
-    ?? retryCandidates
-      .filter((work) => work.state === 'scheduled')
-      .sort((left, right) => Date.parse(left.nextAttemptAt!) - Date.parse(right.nextAttemptAt!))[0]
-}
-
-function notProviderUrlWork() {
-  return sql`coalesce(${retryWork.lineageJson}::jsonb ->> 'workKind', '') <> 'provider_url_resolution'`
-}
-
-function scopeAvailableAt(now: string) {
-  return sql`exists (
+  const availableScope = sql`exists (
     select 1 from source_execution_scopes scope
-    where scope.id = ${retryWork.executionScopeId}
+    where scope.id = ${input.executionScopeId}
       and scope.status in ('available', 'cooldown')
-      and (scope.blocked_until is null or scope.blocked_until <= ${now})
+      and (scope.blocked_until is null or scope.blocked_until <= ${input.now})
   )`
+  const claimed = await database.select().from(connectorCaptureWork).where(and(
+    eq(connectorCaptureWork.connectorInstanceId, input.connectorInstanceId),
+    eq(connectorCaptureWork.filterSignature, input.filterSignature),
+    eq(connectorCaptureWork.status, 'claimed'),
+    availableScope,
+  )).orderBy(asc(connectorCaptureWork.id)).limit(1)
+  if (claimed[0]) return claimed[0]
+  const scheduled = await database.select().from(connectorCaptureWork).where(and(
+    eq(connectorCaptureWork.connectorInstanceId, input.connectorInstanceId),
+    eq(connectorCaptureWork.filterSignature, input.filterSignature),
+    eq(connectorCaptureWork.status, 'scheduled'),
+    availableScope,
+  )).orderBy(asc(connectorCaptureWork.nextEligibleAt), asc(connectorCaptureWork.createdAt), asc(connectorCaptureWork.id)).limit(1)
+  return scheduled[0]
 }
 
-async function selectActiveJobrightProviderIds(
-  database: RetryWorkDatabase,
-  input: {
-    connectorInstanceId: string
-    connectorId: string
-    coverageStartedAt: string
-    executionScopeId: string
-    filterSignature: string
-  },
-) {
-  const [authenticatedRetry] = await database.select({ id: retryWork.id }).from(retryWork).where(and(
-    eq(retryWork.kind, 'normalization'),
-    eq(retryWork.executionScopeId, input.executionScopeId),
-    eq(retryWork.resolverId, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_ID),
-    eq(retryWork.resolverVersion, JOBRIGHT_AUTHENTICATED_DESTINATION_RESOLVER_VERSION),
-    inArray(retryWork.state, ['scheduled', 'acquired']),
-    notProviderUrlWork(),
-    isNull(retryWork.deletedAt),
-  )).limit(1)
-  if (!authenticatedRetry) return null
-  const [checkpointRow] = await database
-    .select()
-    .from(connectorCheckpoints)
-    .where(and(
-      eq(connectorCheckpoints.connectorInstanceId, input.connectorInstanceId),
-      eq(connectorCheckpoints.filterSignature, input.filterSignature),
-      isNull(connectorCheckpoints.deletedAt),
-    ))
-    .limit(1)
-
-  if (!checkpointRow) {
-    return []
-  }
-  if (checkpointRow.schemaVersion === JOBRIGHT_CAPTURE_CHECKPOINT_SCHEMA_V1) {
-    return []
-  }
-  if (checkpointRow.schemaVersion !== JOBRIGHT_CHECKPOINT_SCHEMA_V5) {
-    throw new Error('Jobright connector checkpoint must use checkpoint-v5 for exact retry acquisition')
-  }
-
-  let checkpoint: Record<string, unknown>
-  try {
-    const parsed = JSON.parse(checkpointRow.checkpointJson) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('malformed')
-    }
-    checkpoint = parsed as Record<string, unknown>
-  } catch {
-    throw new Error('Jobright v5 checkpoint payload is malformed')
-  }
-
-  const generationId = checkpoint.generationId
-  if (typeof generationId !== 'string' || generationId.trim().length === 0) {
-    throw new Error('Jobright v5 checkpoint generation identity is malformed')
-  }
-
-  const effectiveCoverageStart = checkpoint.effectiveCoverageStart
-  if (typeof effectiveCoverageStart !== 'string' || effectiveCoverageStart.trim().length === 0) {
-    throw new Error('Jobright v5 checkpoint effective coverage start is malformed')
-  }
-  if (effectiveCoverageStart !== input.coverageStartedAt) {
-    // Boundary changed; force a full connector cycle to reconcile ownership first.
-    return []
-  }
-
-  if (!Array.isArray(checkpoint.pendingDetailRetries)) {
-    throw new Error('Jobright v5 checkpoint pending retry ledger is malformed')
-  }
-
-  const activeProviderRecordIds = checkpoint.pendingDetailRetries.flatMap((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
-    }
-    const pending = entry as Record<string, unknown>
-    if (typeof pending.sourceId !== 'string') {
-      throw new Error('Jobright v5 checkpoint pending retry entry is malformed')
-    }
-    if (pending.ownership !== 'active' && pending.ownership !== 'suspended') {
-      throw new Error('Jobright v5 checkpoint pending retry ownership is malformed')
-    }
-    if (!pending.sourceId.startsWith(JOBRIGHT_PUBLIC_SOURCE_PREFIX)) {
-      throw new Error('Jobright v5 checkpoint pending retry source identity is malformed')
-    }
-    return pending.ownership === 'active' && pending.generationId === generationId
-      ? [pending.sourceId.slice(JOBRIGHT_PUBLIC_SOURCE_PREFIX.length)]
-      : []
-  })
-  if (new Set(activeProviderRecordIds).size !== activeProviderRecordIds.length) {
-    throw new Error('Jobright v5 checkpoint pending retry source identities are duplicated')
-  }
-  return activeProviderRecordIds
-}
-
-function currentJobrightRevision(providerRecordIds: string[]) {
-  const values = sql.join(providerRecordIds.map((id) => sql`${id}`), sql`, `)
-  return sql`exists (
-    select 1 from capture_evidence_versions current
-    where current.id = ${retryWork.captureEvidenceVersionId}
-      and current.provider_record_id in (${values})
-      and current.id = (
-        select latest.id from capture_evidence_versions latest
-        where latest.capture_lineage_id = current.capture_lineage_id
-        order by latest.revision desc, latest.created_at desc, latest.id desc limit 1
-      )
-  )`
+function workIdempotencyKey(connectorInstanceId: string, filterSignature: string) {
+  return `connector-capture:${createHash('sha256').update(`${connectorInstanceId}\0${filterSignature}`).digest('hex')}`
 }

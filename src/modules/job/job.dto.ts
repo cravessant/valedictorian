@@ -1,7 +1,7 @@
 /**
  * Job domain -> sparxie DTO serialization (issue #304, stage 3).
  *
- * Pure functions that flatten the canonical `lifecycle_jobs` head row plus its
+ * Pure functions that flatten the canonical `jobs` head row plus its
  * active `job_external_identities` and `job_capture_evidence_references` into the
  * sparxie `Job` contract resource, assemble the `JobListResult` page, and
  * reconstruct the `JobHistoryResult` snapshots. Read-side only: no policy, no
@@ -29,7 +29,7 @@ import type {
 } from 'sparxie'
 import { toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
-/** The subset of `lifecycle_jobs` the read-model selects for a resource. */
+/** The subset of `jobs` the read-model selects for a resource. */
 export interface JobHeadRow {
   readonly id: string
   readonly workspaceId: string

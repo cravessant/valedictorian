@@ -689,11 +689,7 @@ describe('local server safe HTTP error boundary', () => {
   })
 
   it('returns fixed parser responses without reflecting request values', async () => {
-    const client = createBoundaryWorkspaceClient(() => {}, {
-      sourcing: {
-        rawRecords: { replay: vi.fn() },
-      } as never,
-    })
+    const client = createBoundaryWorkspaceClient(() => {})
     const events: unknown[] = []
     const server = await fixture.start({
       client,

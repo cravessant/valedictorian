@@ -1,9 +1,9 @@
-import { and, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import {
   connectorInstances,
   connectorRuns,
   connectorSchedules,
-  retryWork,
+  connectorCaptureWork,
   sourceExecutionScopes,
   sourceExecutionSessions,
 } from '../../db/schema'
@@ -78,15 +78,16 @@ export async function retireConnectorInstance(
       eq(connectorSchedules.connectorInstanceId, connectorInstanceId),
       isNull(connectorSchedules.deletedAt),
     ))
-    await transaction.update(retryWork).set({
+    await transaction.update(connectorCaptureWork).set({
+      status: 'cancelled',
+      nextEligibleAt: null,
+      acquisitionToken: null,
+      claimedAt: null,
+      claimExpiresAt: null,
       updatedAt: retiredAt,
-      deletedAt: retiredAt,
     }).where(and(
-      or(
-        eq(retryWork.connectorInstanceId, connectorInstanceId),
-        eq(retryWork.executionScopeId, instance.executionScopeId),
-      ),
-      isNull(retryWork.deletedAt),
+      eq(connectorCaptureWork.connectorInstanceId, connectorInstanceId),
+      inArray(connectorCaptureWork.status, ['scheduled', 'claimed']),
     ))
     await transaction.update(sourceExecutionScopes).set({
       status: 'action_required',

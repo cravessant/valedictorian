@@ -3,7 +3,7 @@
  *
  * Users create, read/list, correct rank/fit facts, re-evaluate (policy rerun),
  * set an explicit disposition, remove/restore, and inspect history through this
- * service, which writes the canonical `lifecycle_opportunities` and append-only
+ * service, which writes the canonical `opportunities` and append-only
  * `opportunity_history` tables (Opportunity-owned; see opportunity.repository.ts).
  *
  * Identity is a NORMALIZED relational key — the workspace-scoped Job reference plus
@@ -29,12 +29,12 @@
 import { and, asc, desc, eq, sql, type SQL } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
-import { lifecycleJobs } from '../job/job.schema'
-import { lifecycleOpportunities, opportunityHistory } from './opportunity.schema'
+import { jobs } from '../job/job.schema'
+import { opportunities, opportunityHistory } from './opportunity.schema'
 import {
-  insertLifecycleOpportunities,
+  insertOpportunities,
   insertOpportunityHistory,
-  updateLifecycleOpportunities,
+  updateOpportunities,
 } from './opportunity.repository'
 import {
   type JsonValue,
@@ -322,8 +322,8 @@ export function createPgliteOpportunityService(
   async function selectById(workspaceId: string, opportunityId: string): Promise<OpportunityRow | null> {
     const [row] = await database
       .select()
-      .from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.id, opportunityId)))
+      .from(opportunities)
+      .where(and(eq(opportunities.workspaceId, workspaceId), eq(opportunities.id, opportunityId)))
       .limit(1)
     return (row as OpportunityRow | undefined) ?? null
   }
@@ -331,9 +331,9 @@ export function createPgliteOpportunityService(
   /** Returns the Job's current facts revision, or null when it is absent/foreign. */
   async function jobFactsRevision(exec: Pick<PgliteDatabase, 'select'>, workspaceId: string, jobId: string): Promise<number | null> {
     const [row] = await exec
-      .select({ factsRevision: lifecycleJobs.factsRevision })
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .select({ factsRevision: jobs.factsRevision })
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
       .limit(1)
     return row ? row.factsRevision : null
   }
@@ -341,8 +341,8 @@ export function createPgliteOpportunityService(
   async function selectByIdempotencyKey(exec: OpportunityExec, workspaceId: string, key: string): Promise<OpportunityRow | null> {
     const [row] = await exec
       .select()
-      .from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.idempotencyKey, key)))
+      .from(opportunities)
+      .where(and(eq(opportunities.workspaceId, workspaceId), eq(opportunities.idempotencyKey, key)))
       .limit(1)
     return (row as OpportunityRow | undefined) ?? null
   }
@@ -351,11 +351,11 @@ export function createPgliteOpportunityService(
   async function selectActiveByJob(exec: OpportunityExec, workspaceId: string, jobId: string): Promise<OpportunityRow | null> {
     const [row] = await exec
       .select()
-      .from(lifecycleOpportunities)
+      .from(opportunities)
       .where(and(
-        eq(lifecycleOpportunities.workspaceId, workspaceId),
-        eq(lifecycleOpportunities.jobId, jobId),
-        sql`${lifecycleOpportunities.removedAt} is null`,
+        eq(opportunities.workspaceId, workspaceId),
+        eq(opportunities.jobId, jobId),
+        sql`${opportunities.removedAt} is null`,
       ))
       .limit(1)
     return (row as OpportunityRow | undefined) ?? null
@@ -395,10 +395,10 @@ export function createPgliteOpportunityService(
   ): Promise<MutateOpportunityResult> {
     const createdAt = nowIso()
     const nextRevision = row.revision + 1
-    const updated = await updateLifecycleOpportunities(exec)
+    const updated = await updateOpportunities(exec)
       .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
-      .where(and(eq(lifecycleOpportunities.id, row.id), guard))
-      .returning({ id: lifecycleOpportunities.id })
+      .where(and(eq(opportunities.id, row.id), guard))
+      .returning({ id: opportunities.id })
     if (updated.length === 0) return fail('revision_conflict', 'opportunity was modified concurrently')
     await appendHistory(exec, row.id, nextRevision, kind, snapshot, actor, createdAt)
     return { ok: true as const, opportunity: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
@@ -438,13 +438,13 @@ export function createPgliteOpportunityService(
       if (error instanceof OpportunityInputError) return fail(error.code, error.message)
       throw error
     }
-    const [row] = await exec.select().from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.workspaceId, ids.workspaceId), eq(lifecycleOpportunities.id, ids.opportunityId))).limit(1)
+    const [row] = await exec.select().from(opportunities)
+      .where(and(eq(opportunities.workspaceId, ids.workspaceId), eq(opportunities.id, ids.opportunityId))).limit(1)
     const typed = (row as OpportunityRow | undefined) ?? null
     if (!typed) return fail('not_found', 'opportunity not found in this workspace')
     if (typed.removedAt !== null) return { ok: true, opportunity: toRecord(typed) }
     return commitOn(exec, typed, ids.actor, 'removed', { kind: 'removed', priorRevision: typed.revision },
-      { removedAt: nowIso() }, sql`${lifecycleOpportunities.removedAt} is null`)
+      { removedAt: nowIso() }, sql`${opportunities.removedAt} is null`)
   }
 
   async function restoreOn(exec: OpportunityExec, input: OpportunityMutationInput): Promise<MutateOpportunityResult> {
@@ -459,14 +459,14 @@ export function createPgliteOpportunityService(
       if (error instanceof OpportunityInputError) return fail(error.code, error.message)
       throw error
     }
-    const [row] = await exec.select().from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.workspaceId, ids.workspaceId), eq(lifecycleOpportunities.id, ids.opportunityId))).limit(1)
+    const [row] = await exec.select().from(opportunities)
+      .where(and(eq(opportunities.workspaceId, ids.workspaceId), eq(opportunities.id, ids.opportunityId))).limit(1)
     const typed = (row as OpportunityRow | undefined) ?? null
     if (!typed) return fail('not_found', 'opportunity not found in this workspace')
     if (typed.removedAt === null) return { ok: true, opportunity: toRecord(typed) }
     // The (workspace, job) partial unique index is the deterministic-duplicate guard on restore.
     return commitOn(exec, typed, ids.actor, 'restored', { kind: 'restored', priorRevision: typed.revision },
-      { removedAt: null }, sql`${lifecycleOpportunities.removedAt} is not null`)
+      { removedAt: null }, sql`${opportunities.removedAt} is not null`)
   }
 
   async function changeEvaluation(input: ChangeEvaluationInput): Promise<MutateOpportunityResult> {
@@ -496,7 +496,7 @@ export function createPgliteOpportunityService(
       'evaluation_changed',
       resolved.snapshot,
       resolved.update,
-      eq(lifecycleOpportunities.revision, row.revision),
+      eq(opportunities.revision, row.revision),
       'revision_conflict',
     )
   }
@@ -569,7 +569,7 @@ export function createPgliteOpportunityService(
       }
       // A (workspace, job) unique violation still PROPAGATES (the promotion retries and
       // attaches the winner); the pre-check only handles the non-racing common path.
-      await insertLifecycleOpportunities(exec).values(row)
+      await insertOpportunities(exec).values(row)
       await appendHistory(exec, row.id, 1, 'created', { fit, rank, cutoff, disposition }, actor, createdAt)
       return { ok: true, opportunity: toRecord(row), created: true }
     },
@@ -591,13 +591,13 @@ export function createPgliteOpportunityService(
     async list(workspaceId, query) {
       const rows = await database
         .select()
-        .from(lifecycleOpportunities)
+        .from(opportunities)
         .where(
           query?.includeRemoved
-            ? eq(lifecycleOpportunities.workspaceId, workspaceId)
-            : and(eq(lifecycleOpportunities.workspaceId, workspaceId), sql`${lifecycleOpportunities.removedAt} is null`),
+            ? eq(opportunities.workspaceId, workspaceId)
+            : and(eq(opportunities.workspaceId, workspaceId), sql`${opportunities.removedAt} is null`),
         )
-        .orderBy(desc(lifecycleOpportunities.createdAt), asc(lifecycleOpportunities.id))
+        .orderBy(desc(opportunities.createdAt), asc(opportunities.id))
         .limit(query?.limit ?? 200)
       return (rows as OpportunityRow[]).map(toRecord)
     },
@@ -652,7 +652,7 @@ export function createPgliteOpportunityService(
         'disposition_changed',
         { disposition, priorDisposition: row.disposition, rationale },
         { disposition, ...overrideUpdate },
-        eq(lifecycleOpportunities.revision, row.revision),
+        eq(opportunities.revision, row.revision),
         'revision_conflict',
       )
     },
