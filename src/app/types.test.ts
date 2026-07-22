@@ -7,7 +7,6 @@ describe('app navigation type constants', () => {
     expect(APP_VIEWS).toEqual({
       APPLICATIONS: 'applications',
       PROFILE: 'profile',
-      ACTION_QUEUE: 'action-queue',
       CONNECTORS: 'connectors',
       CONNECTOR_RUNS: 'connector-runs',
       SETTINGS: 'settings',
