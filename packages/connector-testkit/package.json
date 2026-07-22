@@ -7,13 +7,13 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/KennyKeni/valedictorian-connectors.git",
+    "url": "git+https://github.com/cravessant/valedictorian-connectors.git",
     "directory": "packages/test-harness"
   },
   "bugs": {
-    "url": "https://github.com/KennyKeni/valedictorian-connectors/issues"
+    "url": "https://github.com/cravessant/valedictorian-connectors/issues"
   },
-  "homepage": "https://github.com/KennyKeni/valedictorian-connectors#readme",
+  "homepage": "https://github.com/cravessant/valedictorian-connectors#readme",
   "keywords": [
     "connector",
     "sparxie",

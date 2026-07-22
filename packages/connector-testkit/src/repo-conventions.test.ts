@@ -194,7 +194,7 @@ describe("connector repository conventions", () => {
       license: "MIT",
       repository: {
         type: "git",
-        url: "git+https://github.com/KennyKeni/valedictorian-connectors.git",
+        url: "git+https://github.com/cravessant/valedictorian-connectors.git",
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
@@ -210,7 +210,7 @@ describe("connector repository conventions", () => {
       license: "MIT",
       repository: {
         type: "git",
-        url: "git+https://github.com/KennyKeni/valedictorian-connectors.git",
+        url: "git+https://github.com/cravessant/valedictorian-connectors.git",
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
@@ -226,7 +226,7 @@ describe("connector repository conventions", () => {
       license: "MIT",
       repository: {
         type: "git",
-        url: "git+https://github.com/KennyKeni/valedictorian-connectors.git",
+        url: "git+https://github.com/cravessant/valedictorian-connectors.git",
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
