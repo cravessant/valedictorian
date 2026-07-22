@@ -3,7 +3,6 @@ export const PAGE_LIMIT = 50
 export const APP_VIEWS = {
   APPLICATIONS: 'applications',
   PROFILE: 'profile',
-  ACTION_QUEUE: 'action-queue',
   CONNECTORS: 'connectors',
   CONNECTOR_RUNS: 'connector-runs',
   SETTINGS: 'settings',

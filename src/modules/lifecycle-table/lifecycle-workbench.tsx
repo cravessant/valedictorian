@@ -10,6 +10,7 @@ import type {
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   getRendererHttpWorkspaceClient,
   onRendererBackendStateChanged,
@@ -28,8 +29,11 @@ import {
   type LifecycleTableConfig,
 } from './lifecycle-table'
 import { useLifecycleInvalidation } from './use-lifecycle-invalidation'
+import { useActionQueue } from './use-action-queue'
+import { ActionQueueMode } from './action-queue-mode'
 
 type Phase = 'captures' | 'jobs' | 'opportunities' | 'applications'
+type ApplicationMode = 'all' | 'action-queue'
 
 interface PhaseState<Row> {
   readonly data: ReadonlyArray<Row> | null
@@ -58,6 +62,7 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
   const [client, setClient] = useState<ValedictorianWorkspaceClient | null>(() =>
     suppliedClient === undefined ? getRendererHttpWorkspaceClient() : suppliedClient)
   const [selected, setSelected] = useState<Phase>('captures')
+  const [applicationMode, setApplicationMode] = useState<ApplicationMode>('all')
   const [showRemoved, setShowRemoved] = useState(false)
   const [captures, setCaptures] = useState<PhaseState<Capture>>(initial.captures)
   const [jobs, setJobs] = useState<PhaseState<Job>>(initial.jobs)
@@ -79,6 +84,11 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
     resolveClient()
     return onRendererBackendStateChanged(resolveClient)
   }, [suppliedClient])
+
+  const actionQueue = useActionQueue({
+    client,
+    active: selected === 'applications' && applicationMode === 'action-queue',
+  })
 
   const load = useCallback(async function loadAllPhases() {
     const generations: Record<Phase, number> = {
@@ -217,21 +227,30 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
   }, [client, showRemoved])
 
   const refreshSelected = useCallback(
-    () => refreshPhase(selected),
-    [refreshPhase, selected],
+    () => {
+      if (selected === 'applications' && applicationMode === 'action-queue') {
+        return actionQueue.refresh()
+      }
+      return refreshPhase(selected)
+    },
+    [actionQueue, applicationMode, refreshPhase, selected],
   )
   const refreshCaptures = useCallback(() => refreshPhase('captures'), [refreshPhase])
   const refreshJobs = useCallback(() => refreshPhase('jobs'), [refreshPhase])
   const refreshOpportunities = useCallback(() => refreshPhase('opportunities'), [refreshPhase])
   const refreshApplications = useCallback(() => refreshPhase('applications'), [refreshPhase])
+  const refreshApplicationPresentations = useCallback(async () => {
+    await Promise.all([refreshApplications(), actionQueue.refresh()])
+  }, [actionQueue, refreshApplications])
   const refreshAll = useCallback(async () => {
     await Promise.all([
       refreshCaptures(),
       refreshJobs(),
       refreshOpportunities(),
       refreshApplications(),
+      actionQueue.refresh(),
     ])
-  }, [refreshApplications, refreshCaptures, refreshJobs, refreshOpportunities])
+  }, [actionQueue, refreshApplications, refreshCaptures, refreshJobs, refreshOpportunities])
 
   const refreshSelectedFromUi = useCallback(() => {
     void refreshSelected().catch(() => {})
@@ -242,7 +261,7 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
   const captureController = useCaptureController({ client, refresh: refreshCaptures, refreshDestination: refreshJobs, refreshAll })
   const jobController = useJobController({ client, refresh: refreshJobs, refreshDestination: refreshOpportunities, refreshAll })
   const opportunityController = useOpportunityController({ client, refresh: refreshOpportunities, refreshDestination: refreshApplications, refreshAll })
-  const applicationController = useApplicationController({ client, refresh: refreshApplications, refreshAll })
+  const applicationController = useApplicationController({ client, refresh: refreshApplicationPresentations, refreshAll })
 
   const captureTable = useMemo<LifecycleTableConfig<Capture>>(
     () => ({ ...captureConfig.table, extensions: captureController.extensions }),
@@ -299,13 +318,43 @@ export function LifecycleWorkbench({ client: suppliedClient }: WorkbenchProps): 
         />
       ) : null}
       {selected === 'applications' ? (
-        <LifecycleTable
-          config={applicationTable}
-          data={applications.data}
-          state={applications.load}
-          onRefresh={refreshSelected}
-          toolbar={<RefreshToolbar caption="Applications" total={counts.applications} loading={applications.load.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={showRemoved} onShowRemovedChange={setShowRemoved} onAdd={applicationController.openCreate} addLabel="Add application" />}
-        />
+        <div className="flex min-w-0 flex-col gap-4">
+          <ToggleGroup
+            type="single"
+            aria-label="Applications view mode"
+            variant="outline"
+            size="sm"
+            className="w-fit flex-wrap"
+            value={applicationMode}
+            onValueChange={(value) => {
+              if (value) setApplicationMode(value as ApplicationMode)
+            }}
+          >
+            <ToggleGroupItem value="all">All</ToggleGroupItem>
+            <ToggleGroupItem value="action-queue">Action Queue</ToggleGroupItem>
+          </ToggleGroup>
+          {applicationMode === 'all' ? (
+            <LifecycleTable
+              config={applicationTable}
+              data={applications.data}
+              state={applications.load}
+              onRefresh={refreshSelected}
+              toolbar={<RefreshToolbar caption="Applications" total={counts.applications} loading={applications.load.status === 'loading'} onRefresh={refreshSelectedFromUi} showRemoved={showRemoved} onShowRemovedChange={setShowRemoved} onAdd={applicationController.openCreate} addLabel="Add application" />}
+            />
+          ) : (
+            <ActionQueueMode
+              state={actionQueue.state}
+              bucket={actionQueue.bucket}
+              onBucketChange={actionQueue.setBucket}
+              onNextPage={actionQueue.nextPage}
+              onPreviousPage={actionQueue.previousPage}
+              onRefresh={refreshSelectedFromUi}
+              applications={applications.data}
+              client={client}
+              extensions={applicationController.extensions}
+            />
+          )}
+        </div>
       ) : null}
       {captureController.modalLayer}
       {jobController.modalLayer}

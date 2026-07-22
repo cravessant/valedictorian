@@ -28,7 +28,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/use-toast'
-import { AlertCircle, CircleUserRound, Database, Download, Globe2, ListChecks, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
+import { AlertCircle, CircleUserRound, Database, Download, Globe2, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import { actionFailureToastInput } from './error-presentation'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -266,17 +266,6 @@ function AppSidebar({
                 >
                   <Database className="h-4 w-4" aria-hidden="true" />
                   Applications
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  type="button"
-                  isActive={currentView === APP_VIEWS.ACTION_QUEUE}
-                  aria-current={currentView === APP_VIEWS.ACTION_QUEUE ? 'page' : undefined}
-                  onClick={() => onViewChange(APP_VIEWS.ACTION_QUEUE)}
-                >
-                  <ListChecks className="h-4 w-4" aria-hidden="true" />
-                  Action Queue
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <Collapsible
