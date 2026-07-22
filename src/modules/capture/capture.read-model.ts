@@ -9,7 +9,7 @@
  * validation and policy. Kept separate from the service so the HTTP boundary
  * composes read + write without either reaching into the other's SQL.
  */
-import { and, asc, eq, gt, isNull, or } from 'drizzle-orm'
+import { and, asc, eq, exists, gt, isNull, or, sql } from 'drizzle-orm'
 import type {
   Capture,
   CaptureHistoryResult,
@@ -18,7 +18,7 @@ import type {
   HistoryListInput,
 } from 'sparxie'
 import type { PgliteDatabase } from '../../db/pglite'
-import { captureEvidenceItems, captureRevisions, lifecycleCaptures } from './capture.schema'
+import { captureEvidenceItems, captureOccurrences, captureRevisions, lifecycleCaptures } from './capture.schema'
 import {
   decodeCaptureCursor,
   reconstructCaptureHistory,
@@ -114,6 +114,17 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
       if (input.adapterId !== undefined) {
         filters.push(eq(lifecycleCaptures.adapterId, input.adapterId))
       }
+      if (input.connectorRunId !== undefined) {
+        filters.push(exists(
+          database
+            .select({ value: sql`1` })
+            .from(captureOccurrences)
+            .where(and(
+              eq(captureOccurrences.captureId, lifecycleCaptures.id),
+              eq(captureOccurrences.connectorRunId, input.connectorRunId),
+            )),
+        ))
+      }
       if (input.includeRemoved !== true) {
         filters.push(isNull(lifecycleCaptures.removedAt))
       }
@@ -149,6 +160,10 @@ export function createPgliteCaptureReadModel(database: PgliteDatabase): CaptureR
           revision: captureRevisions.revision,
           kind: captureRevisions.kind,
           auditJson: captureRevisions.auditJson,
+          connectorInstanceId: captureRevisions.connectorInstanceId,
+          connectorRunId: captureRevisions.connectorRunId,
+          executionScopeId: captureRevisions.executionScopeId,
+          reportedOriginJson: captureRevisions.reportedOriginJson,
           createdAt: captureRevisions.createdAt,
         })
         .from(captureRevisions)

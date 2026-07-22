@@ -39,6 +39,7 @@ export {
 // interim `lifecycle_*` physical names during coexistence with the legacy tables.
 import {
   captureEvidenceItems,
+  captureOccurrences,
   captureRevisions,
   lifecycleCaptures,
 } from '../modules/capture/capture.schema'
@@ -59,6 +60,7 @@ import {
 
 export {
   captureEvidenceItems,
+  captureOccurrences,
   captureRevisions,
   lifecycleCaptures,
 } from '../modules/capture/capture.schema'
@@ -994,6 +996,7 @@ export const schema = {
   // #298 lifecycle aggregates.
   lifecycleCaptures,
   captureRevisions,
+  captureOccurrences,
   captureEvidenceItems,
   lifecycleJobs,
   jobExternalIdentities,

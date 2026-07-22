@@ -181,12 +181,12 @@ describe('ConnectorRunsPanel LoadFailureView surfaces', () => {
       <ConnectorRunsPanel
         connectorsApi={connectorsApi}
         focusedRunId="focused-run-a"
-        onInspectNormalization={() => undefined}
+        onViewCaptures={() => undefined}
       />,
     )
 
     expect(await screen.findByRole('button', {
-      name: 'Inspect normalization rows from focused-run-a',
+      name: 'View Captures from focused-run-a',
     })).toBeInTheDocument()
     expect(document.querySelector('[data-connector-run-id="focused-run-a"]')).not.toBeNull()
     expect(document.querySelector('[aria-current="true"]')).not.toBeNull()
@@ -208,13 +208,13 @@ describe('ConnectorRunsPanel LoadFailureView surfaces', () => {
       <ConnectorRunsPanel
         connectorsApi={failingApi}
         focusedRunId="focused-run-b"
-        onInspectNormalization={() => undefined}
+        onViewCaptures={() => undefined}
       />,
     )
 
     expect(document.querySelector('[data-connector-run-id="focused-run-a"]')).toBeNull()
     expect(screen.queryByRole('button', {
-      name: 'Inspect normalization rows from focused-run-a',
+      name: 'View Captures from focused-run-a',
     })).not.toBeInTheDocument()
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveAttribute('data-slot', 'scoped-load-failure')

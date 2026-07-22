@@ -122,7 +122,7 @@ export function ConnectorSettingsInstanceCard({
   onRunNow,
   onRemove,
   isDraftDirty,
-  onOpenSourcingRuns,
+  onOpenConnectorRuns,
   onScheduleDraftChange,
   onSaveSchedule,
   onDiscardSchedule,
@@ -168,7 +168,7 @@ export function ConnectorSettingsInstanceCard({
   onRunNow: (instance: ConnectorSettingsInstance) => void
   onRemove: (instance: ConnectorSettingsInstance) => void
   isDraftDirty: (instance: ConnectorSettingsInstance) => boolean
-  onOpenSourcingRuns?: (runId?: string) => void
+  onOpenConnectorRuns?: (runId?: string) => void
   onScheduleDraftChange: (instanceId: string, patch: Partial<ConnectorScheduleDraft>) => void
   onSaveSchedule: (instance: ConnectorSettingsInstance) => void
   onDiscardSchedule: (instance: ConnectorSettingsInstance) => void
@@ -746,7 +746,7 @@ export function ConnectorSettingsInstanceCard({
                   size="sm"
                   type="button"
                   variant="outline"
-                  onClick={() => onOpenSourcingRuns?.(latestRun.id)}
+                  onClick={() => onOpenConnectorRuns?.(latestRun.id)}
                 >
                   View in Connector Runs
                 </Button>

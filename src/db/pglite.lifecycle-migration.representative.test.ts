@@ -56,6 +56,20 @@ describe.sequential('lifecycle migration representative data', () => {
     expect(await count(c, 'lifecycle_migration_report', `where category = 'reset' and reason like '%payload%'`)).toBe(1)
     // Malformed (non-JSON) evidence_json (cev-D1) is reported, not aborted.
     expect(await count(c, 'lifecycle_migration_report', `where source_id = 'cev-D1' and reason like '%not valid JSON%'`)).toBe(1)
+    const migratedRevision = await c.query<{
+      connector_instance_id: string | null
+      connector_run_id: string | null
+      content_hash: string | null
+      reported_origin_json: string | null
+    }>(`select connector_instance_id, connector_run_id, content_hash, reported_origin_json
+        from capture_revisions where capture_id = 'lin-A' and revision = 1`)
+    expect(migratedRevision.rows[0]).toEqual({
+      connector_instance_id: 'ci-1',
+      connector_run_id: 'run-legacy',
+      content_hash: 'sha256:3c9439421e82995a55064b78eeb7fee2e189d8482d3185b2edd1ff0e8b0ea894',
+      reported_origin_json: '{"kind":"job_board","name":"Jobright"}',
+    })
+    expect(await count(c, 'capture_occurrences', `where id = 'capture-legacy' and connector_run_id = 'run-legacy'`)).toBe(1)
   })
 
   it('mints UUIDv7 jobs and maps identities to posting/canonical_destination as provisional', async () => {

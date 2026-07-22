@@ -70,7 +70,7 @@ export function ConnectorSettingsPanel({
   connectorScheduleApi,
   displayMode = 'settings',
   onConnectorChanged = () => undefined,
-  onOpenSourcingRuns,
+  onOpenConnectorRuns,
   onRunSettled,
   profileApi,
   workspaceId,
@@ -79,7 +79,7 @@ export function ConnectorSettingsPanel({
   connectorScheduleApi: ConnectorScheduleUiApi
   displayMode?: 'main' | 'settings'
   onConnectorChanged?: () => void
-  onOpenSourcingRuns?: (runId?: string) => void
+  onOpenConnectorRuns?: (runId?: string) => void
   onRunSettled: () => void
   profileApi: ProfilePreloadApi
   workspaceId: string | null
@@ -765,8 +765,8 @@ export function ConnectorSettingsPanel({
               : 'Add sources and manage connector auth for this workspace.'}
           </p>
         </div>
-        {onOpenSourcingRuns ? (
-          <Button type="button" variant="outline" onClick={() => onOpenSourcingRuns()}>
+        {onOpenConnectorRuns ? (
+          <Button type="button" variant="outline" onClick={() => onOpenConnectorRuns()}>
             View connector runs
           </Button>
         ) : null}
@@ -891,7 +891,7 @@ export function ConnectorSettingsPanel({
                 onRunNow={runConnectorNow}
                 onRemove={removeConnector}
                 isDraftDirty={isConnectorSettingsDraftDirty}
-                onOpenSourcingRuns={onOpenSourcingRuns}
+                onOpenConnectorRuns={onOpenConnectorRuns}
                 onScheduleDraftChange={updateScheduleDraft}
                 onSaveSchedule={saveConnectorSchedule}
                 onDiscardSchedule={discardConnectorSchedule}

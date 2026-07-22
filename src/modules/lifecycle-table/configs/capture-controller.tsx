@@ -19,8 +19,8 @@ import { HistoryModal, OutcomeToast } from '../history-modal'
 import { outcomeForBlocker } from '../lifecycle-result'
 import { loadHistory } from '../load-history'
 import type { LifecycleAggregateExtensions } from '../lifecycle-table'
+import type { ConnectorProvenanceTarget } from '@/app/capture-navigation'
 import {
-  ADAPTER_KIND_CHOICES,
   EVIDENCE_MODE_CHOICES,
   REMOVAL_CHOICE_CHOICES,
   ROLE_KIND_CHOICES,
@@ -33,7 +33,6 @@ import {
 interface CaptureDraft {
   evidenceMode: string
   adapterId: string
-  adapterKind: string
   adapterVersion: string
   observedAt: string
   providerRecordId: string
@@ -79,8 +78,9 @@ export function useCaptureController(params: {
   refresh: () => Promise<void> | void
   refreshDestination: () => Promise<void> | void
   refreshAll: () => Promise<void> | void
+  onOpenConnectorProvenance?: (target: ConnectorProvenanceTarget) => void
 }): CaptureController {
-  const { client, refresh, refreshDestination, refreshAll } = params
+  const { client, refresh, refreshDestination, refreshAll, onOpenConnectorProvenance } = params
 
   const [createOpen, setCreateOpen] = useState(false)
   const [correctTarget, setCorrectTarget] = useState<Capture | null>(null)
@@ -157,7 +157,7 @@ export function useCaptureController(params: {
           kind: entry.kind,
           actor: entry.audit.actor,
           timestamp: entry.audit.timestamp,
-          summary: `${entry.kind} at revision ${entry.revision}`,
+          summary: captureRevisionSummary(entry, onOpenConnectorProvenance),
         })),
       })
     } catch (err) {
@@ -177,7 +177,6 @@ export function useCaptureController(params: {
     const fieldErrors: Record<string, string> = {}
     if (!d.evidenceMode) fieldErrors.evidenceMode = 'Evidence mode is required.'
     if (!d.adapterId.trim()) fieldErrors.adapterId = 'Adapter id is required.'
-    if (!d.adapterKind) fieldErrors.adapterKind = 'Adapter kind is required.'
     if (!d.adapterVersion.trim()) fieldErrors.adapterVersion = 'Adapter version is required.'
     if (!d.observedAt.trim()) fieldErrors.observedAt = 'Observed at is required.'
     return Object.keys(fieldErrors).length > 0 ? { fieldErrors } : null
@@ -203,7 +202,7 @@ export function useCaptureController(params: {
         evidenceMode: d.evidenceMode as CreateCaptureInput['evidenceMode'],
         adapter: {
           id: d.adapterId.trim(),
-          kind: d.adapterKind as CreateCaptureInput['adapter']['kind'],
+          kind: 'manual',
           version: d.adapterVersion.trim(),
         },
         observedAt: d.observedAt.trim(),
@@ -411,7 +410,6 @@ export function useCaptureController(params: {
   const createFields: ReadonlyArray<FieldSpec<CaptureDraft>> = [
     { key: 'evidenceMode', label: 'Evidence mode', inputType: 'select', choices: EVIDENCE_MODE_CHOICES, required: true },
     { key: 'adapterId', label: 'Adapter id', inputType: 'text', placeholder: 'jobright', required: true },
-    { key: 'adapterKind', label: 'Adapter kind', inputType: 'select', choices: ADAPTER_KIND_CHOICES, required: true },
     { key: 'adapterVersion', label: 'Adapter version', inputType: 'text', placeholder: '0.1.0', required: true },
     { key: 'observedAt', label: 'Observed at', inputType: 'text', placeholder: '2025-01-01T00:00:00Z', required: true },
     { key: 'providerRecordId', label: 'Provider record id', inputType: 'text' },
@@ -521,8 +519,43 @@ export function useCaptureController(params: {
   return { extensions, modalLayer, openCreate }
 }
 
+function captureRevisionSummary(
+  entry: CaptureHistoryResult['items'][number],
+  onOpenConnectorProvenance?: (target: ConnectorProvenanceTarget) => void,
+): ReactElement | string {
+  const provenance = entry.connectorProvenance
+  if (provenance) {
+    const origin = provenance.reportedOrigin
+      ? `; reported by ${provenance.reportedOrigin.name}`
+      : ''
+    const provenanceLink = (label: string, kind: ConnectorProvenanceTarget['kind']) => onOpenConnectorProvenance ? (
+      <button
+        type="button"
+        aria-label={`Open connector ${kind} ${label}`}
+        className="font-mono underline underline-offset-2"
+        onClick={() => onOpenConnectorProvenance({
+          connectorRunId: provenance.connectorRunId,
+          id: label,
+          kind,
+        })}
+      >
+        {label}
+      </button>
+    ) : label
+    return (
+      <span>
+        {entry.kind} at revision {entry.revision}; connector run{' '}
+        {provenanceLink(provenance.connectorRunId, 'run')}; instance{' '}
+        {provenanceLink(provenance.connectorInstanceId, 'instance')}; scope{' '}
+        {provenanceLink(provenance.executionScopeId, 'scope')}{origin}
+      </span>
+    )
+  }
+  return `${entry.kind} at revision ${entry.revision}; ${entry.snapshot.adapter.kind} origin via ${entry.snapshot.adapter.id}`
+}
+
 function emptyCreateDraft(): CaptureDraft {
-  return { evidenceMode: 'reported', adapterId: '', adapterKind: 'connector', adapterVersion: '', observedAt: '', providerRecordId: '', providerSchema: '' }
+  return { evidenceMode: 'reported', adapterId: '', adapterVersion: '', observedAt: '', providerRecordId: '', providerSchema: '' }
 }
 function emptyCorrectDraft(): CaptureCorrectDraft {
   return { providerRecordId: '', providerSchema: '', rationale: '' }

@@ -21,7 +21,7 @@
  */
 import { captureEvidenceVersions, captureLineages, captures } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
-import { captureEvidenceItems, captureRevisions, lifecycleCaptures } from './capture.schema'
+import { captureEvidenceItems, captureOccurrences, captureRevisions, lifecycleCaptures } from './capture.schema'
 
 /** The workspace database or an open transaction, insert surface only. */
 export type CaptureWriteExecutor = Pick<PgliteDatabase, 'insert'>
@@ -37,5 +37,6 @@ export const insertCaptures = (exec: CaptureWriteExecutor) => exec.insert(captur
 // Canonical (the #299 user-controlled Capture aggregate).
 export const insertLifecycleCaptures = (exec: CaptureWriteExecutor) => exec.insert(lifecycleCaptures)
 export const insertCaptureRevisions = (exec: CaptureWriteExecutor) => exec.insert(captureRevisions)
+export const insertCaptureOccurrences = (exec: CaptureWriteExecutor) => exec.insert(captureOccurrences)
 export const insertCaptureEvidenceItems = (exec: CaptureWriteExecutor) => exec.insert(captureEvidenceItems)
 export const updateLifecycleCaptures = (exec: CaptureMutateExecutor) => exec.update(lifecycleCaptures)

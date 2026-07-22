@@ -29,6 +29,13 @@
       "when": 1784703600000,
       "tag": "0003_lifecycle_idempotency_key",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784714283706,
+      "tag": "0004_capture-revision-provenance",
+      "breakpoints": true
     }
   ]
 }

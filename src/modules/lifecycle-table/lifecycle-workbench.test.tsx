@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ValedictorianWorkspaceClient } from 'sparxie'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
+import { openCapturesForRun } from '@/app/capture-navigation'
 
 afterEach(() => {
   cleanup()
@@ -53,6 +54,44 @@ describe('LifecycleWorkbench', () => {
     await user.click(screen.getByRole('button', { name: /Jobs/ }))
     expect(await screen.findByRole('table', { name: 'Jobs' })).toBeInTheDocument()
     expect(screen.getByText('No jobs')).toBeInTheDocument()
+  })
+
+  it('keeps All and Processing as accessible modes on the same Capture surface', async () => {
+    const user = userEvent.setup()
+    const { client } = makeClient()
+    render(<LifecycleWorkbench client={client} />)
+
+    const modes = await screen.findByRole('radiogroup', { name: 'Captures view mode' })
+    await user.click(screen.getByRole('radio', { name: 'Processing' }))
+    expect(screen.getByRole('heading', { name: 'Capture processing' })).toBeInTheDocument()
+    const table = screen.getByRole('table', { name: 'Capture processing' })
+    expect(table).toHaveTextContent('Capture → Job')
+    expect(table).toHaveTextContent('Job fact normalization')
+    expect(table).toHaveTextContent('Opportunity admission')
+    expect(table).toHaveTextContent('Opportunity projection')
+    expect(screen.getByRole('radio', { name: 'Processing' })).toHaveAttribute('aria-checked', 'true')
+    expect(modes).toBeInTheDocument()
+  })
+
+  it('opens Captures from a connector run and applies the run filter before listing', async () => {
+    const user = userEvent.setup()
+    const { client, lists } = makeClient()
+    render(<LifecycleWorkbench client={client} />)
+    await waitFor(() => expect(lists.captures).toHaveBeenCalledTimes(1))
+
+    await act(async () => openCapturesForRun({
+      connectorInstanceId: 'connector-one',
+      connectorRunId: 'run/one',
+    }))
+    expect(await screen.findByText('Filtered to connector run run/one')).toBeInTheDocument()
+    await waitFor(() => expect(lists.captures).toHaveBeenLastCalledWith(
+      expect.objectContaining({ connectorRunId: 'run/one' }),
+    ))
+
+    await user.click(screen.getByRole('button', { name: 'Clear run filter' }))
+    await waitFor(() => expect(lists.captures).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ connectorRunId: expect.anything() }),
+    ))
   })
 
   it('shows a terminal client-unavailable failure instead of loading forever', async () => {

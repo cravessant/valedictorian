@@ -1,5 +1,5 @@
 import type {
-  ConnectorRawSourceCaptureInput,
+  ConnectorCaptureInput,
   ConnectorRuntime,
 } from '@sparxie/valedictorian-connectors-core'
 import type {
@@ -19,7 +19,7 @@ export function createBoundConnectorDataRuntime({
   connectorInstanceId: string
   connectorRunId: string
   executionScopeId: string
-}): Pick<ConnectorRuntime, 'rawSourceIntake'> {
+}): Pick<ConnectorRuntime, 'captureIntake'> {
   const adapter = {
     id: connector.definition.id,
     kind: 'connector' as const,
@@ -27,8 +27,8 @@ export function createBoundConnectorDataRuntime({
   }
   return captureHost
     ? {
-        rawSourceIntake: {
-          async capture(input: ConnectorRawSourceCaptureInput) {
+        captureIntake: {
+          async capture(input: ConnectorCaptureInput) {
             return captureHost.capture({
               input,
               adapter,

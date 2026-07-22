@@ -57,12 +57,12 @@ describe('connector status and run responsive inspectability', () => {
       offset: 0,
       hasMore: false,
     })
-    const inspectNormalization = vi.fn()
+    const viewCaptures = vi.fn()
 
     render(
       <ConnectorRunsPanel
         connectorsApi={connectorsApi}
-        onInspectNormalization={inspectNormalization}
+        onViewCaptures={viewCaptures}
       />,
     )
 
@@ -109,13 +109,13 @@ describe('connector status and run responsive inspectability', () => {
     )).toBeInTheDocument()
 
     const inspect = within(article).getByRole('button', {
-      name: `Inspect normalization rows from ${run.id}`,
+      name: `View Captures from ${run.id}`,
     })
     expect(inspect).toHaveClass('max-w-full', 'min-w-0', 'whitespace-normal')
     inspect.focus()
     expect(inspect).toHaveFocus()
     await userEvent.keyboard('{Enter}')
-    expect(inspectNormalization).toHaveBeenCalledWith({
+    expect(viewCaptures).toHaveBeenCalledWith({
       connectorInstanceId: run.connectorInstanceId,
       connectorRunId: run.id,
     })

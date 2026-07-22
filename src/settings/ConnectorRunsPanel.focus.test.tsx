@@ -77,6 +77,42 @@ function apiFor(runs: ConnectorSettingsRun | ConnectorSettingsRun[]) {
 }
 
 describe('ConnectorRunsPanel focus ownership', () => {
+  it('focuses the exact connector provenance target within a run', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    const connectorsApi = apiFor(completedRun(1))
+    const { rerender } = render(
+      <ConnectorRunsPanel
+        connectorsApi={connectorsApi}
+        focusedRunId="focused-run"
+        focusedProvenanceTarget={{
+          connectorRunId: 'focused-run', id: 'fixture-instance', kind: 'instance',
+        }}
+      />,
+    )
+
+    const instance = await waitFor(() => {
+      const node = document.querySelector<HTMLElement>(
+        '[data-connector-provenance-kind="instance"][data-connector-provenance-id="fixture-instance"]',
+      )
+      expect(node).toHaveFocus()
+      return node!
+    })
+    expect(instance).toHaveTextContent('fixture-instance')
+
+    rerender(
+      <ConnectorRunsPanel
+        connectorsApi={connectorsApi}
+        focusedRunId="focused-run"
+        focusedProvenanceTarget={{
+          connectorRunId: 'focused-run', id: 'fixture-scope', kind: 'scope',
+        }}
+      />,
+    )
+    await waitFor(() => expect(document.querySelector<HTMLElement>(
+      '[data-connector-provenance-kind="scope"][data-connector-provenance-id="fixture-scope"]',
+    )).toHaveFocus())
+  })
+
   it('does not steal focus again when the focused run refreshes', async () => {
     const scrollIntoView = vi.fn()
     HTMLElement.prototype.scrollIntoView = scrollIntoView

@@ -60,7 +60,7 @@ interface SettingsPageProps {
   workspaceLoadFailure: ErrorPresentation | null
   onRetryWorkspaceLoad: () => void
   onConnectorRunSettled: () => void
-  onOpenSourcingRuns: (runId?: string) => void
+  onOpenConnectorRuns: (runId?: string) => void
   onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
 }
 
@@ -261,7 +261,7 @@ export function SettingsPage({
   workspaceLoadFailure,
   onRetryWorkspaceLoad,
   onConnectorRunSettled,
-  onOpenSourcingRuns,
+  onOpenConnectorRuns,
   onSettingsPatch,
 }: SettingsPageProps) {
   const { toast } = useToast()
@@ -311,7 +311,7 @@ export function SettingsPage({
             <ConnectorSettingsPanel
               connectorsApi={connectorsApi}
               connectorScheduleApi={connectorScheduleApi}
-              onOpenSourcingRuns={onOpenSourcingRuns}
+              onOpenConnectorRuns={onOpenConnectorRuns}
               onRunSettled={onConnectorRunSettled}
               profileApi={profileApi}
               workspaceId={workspace?.id ?? null}
