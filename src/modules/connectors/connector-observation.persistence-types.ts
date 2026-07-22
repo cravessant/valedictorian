@@ -42,7 +42,6 @@ export interface ConnectorObservationRecord extends ConnectorObservationInput {
   connectorInstanceId: string
   connectorRunId: string
   sourceMetadata: JsonRecord
-  sourcingFindingId: null
   createdAt: string
   updatedAt: string
 }

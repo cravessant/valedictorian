@@ -144,13 +144,13 @@ describe('local connector capture retry guards', () => {
     clock = new Date(schedule.nextEligibleAt)
     await sources.get('connector-schedules')!.runDue()
     const database = getTestLocalValedictorianDatabase(client)
-    await database.execute(sql`update retry_work set state='completed', next_attempt_at=null`)
+    await database.execute(sql`update connector_capture_work set status='completed', next_eligible_at=null`)
 
     const manualRun = client.connectors.runs.trigger({
       connectorInstanceId: 'retry-collision-connector',
     })
     await manualStarted
-    await database.execute(sql`update retry_work set state='scheduled', next_attempt_at='2026-07-15T12:16:00.000Z'`)
+    await database.execute(sql`update connector_capture_work set status='scheduled', next_eligible_at='2026-07-15T12:16:00.000Z'`)
     clock = new Date('2026-07-15T12:16:00.000Z')
     const signalsBeforeRetry = signalCalls
 

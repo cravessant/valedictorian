@@ -12,9 +12,8 @@ export function mapConnectorCheckpoint(record: ConnectorCheckpointRecord) {
 }
 
 export function mapConnectorObservation(record: ConnectorObservationRecord): ConnectorObservation {
-  const { sourcingFindingId: _retiredSourcingFindingId, ...observation } = record
   return {
-    ...observation,
+    ...record,
     opportunityId: null,
     locationRaw: record.locationRaw ?? null,
     descriptionText: record.descriptionText ?? null,

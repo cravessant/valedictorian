@@ -1,11 +1,7 @@
 /**
  * Job aggregate schema (issue #298). Owned by the job module.
  *
- * Canonical root uses the interim physical name `lifecycle_jobs` (avoids colliding
- * with the still-live legacy `jobs`). #298 installs and one-time-transforms these
- * tables but does not rewire the runtime; the Job leaf (#300) adopts them and the
- * clean-cutover leaf (#307) drops legacy and renames it to `jobs` (see
- * drizzle/lifecycle-migration.md). Vocabulary mirrors the sparxie contract
+ * The clean cutover owns the canonical `jobs` root. Vocabulary mirrors the sparxie contract
  * (src/db/lifecycle-vocabulary.ts). Append-only,
  * one-way-removal, and Capture-to-Job workspace-lineage triggers are installed
  * by the journaled migration and not modeled here.
@@ -22,8 +18,8 @@ const FORBIDDEN_KEY = FORBIDDEN_JSON_KEY_PREDICATE
 // using ~ would reject ids the contract accepts.
 const UUID_V7 = `~* '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`
 
-export const lifecycleJobs = pgTable(
-  'lifecycle_jobs',
+export const jobs = pgTable(
+  'jobs',
   {
     id: text('id').primaryKey(),
     workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
@@ -70,7 +66,7 @@ export const jobExternalIdentities = pgTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
-    jobFk: foreignKey({ name: 'fk_job_external_identities_job', columns: [table.jobId], foreignColumns: [lifecycleJobs.id] }),
+    jobFk: foreignKey({ name: 'fk_job_external_identities_job', columns: [table.jobId], foreignColumns: [jobs.id] }),
     strongIdx: uniqueIndex('idx_job_external_identities_strong')
       .on(table.kind, table.provider, sql`(coalesce(${table.account}, ''))`, table.value)
       .where(sql`${table.strength} = 'strong' and ${table.removedAt} is null`),
@@ -103,7 +99,7 @@ export const jobCaptureEvidenceReferences = pgTable(
   (table) => ({
     lineageIdx: uniqueIndex('idx_job_capture_evidence_references_lineage').on(table.jobId, table.captureId, table.captureRevision),
     captureIdx: index('idx_job_capture_evidence_references_capture').on(table.captureId, table.captureRevision),
-    jobFk: foreignKey({ name: 'fk_job_capture_evidence_references_job', columns: [table.jobId], foreignColumns: [lifecycleJobs.id] }),
+    jobFk: foreignKey({ name: 'fk_job_capture_evidence_references_job', columns: [table.jobId], foreignColumns: [jobs.id] }),
     revisionFk: foreignKey({
       name: 'fk_job_capture_evidence_references_revision',
       columns: [table.captureId, table.captureRevision],
@@ -127,7 +123,7 @@ export const jobHistory = pgTable(
   },
   (table) => ({
     sequenceIdx: uniqueIndex('idx_job_history_sequence').on(table.jobId, table.sequence),
-    jobFk: foreignKey({ name: 'fk_job_history_job', columns: [table.jobId], foreignColumns: [lifecycleJobs.id] }),
+    jobFk: foreignKey({ name: 'fk_job_history_job', columns: [table.jobId], foreignColumns: [jobs.id] }),
     sequenceCheck: check('chk_job_history_sequence', sql`${table.sequence} > 0`),
     kindCheck: check('chk_job_history_kind', sql`${table.kind} in ('created','facts_corrected','availability_changed','identity_added','identity_removed','removed','restored')`),
     snapshotBoundCheck: check('chk_job_history_snapshot_bound', sql`length(${table.snapshotJson}) <= 262144`),

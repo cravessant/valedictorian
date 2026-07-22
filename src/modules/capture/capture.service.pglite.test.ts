@@ -1,6 +1,6 @@
 /**
  * Capture module contract — red-first proofs through the PUBLIC commands/queries
- * (issue #299, slice 1). Exercises the canonical `lifecycle_captures` /
+ * (issue #299, slice 1). Exercises the canonical `captures` /
  * `capture_revisions` / `capture_evidence_items` tables on a migrated PGlite
  * owner. Covers cross-workspace isolation, concurrency, idempotent repeated
  * intake, correction history, removal/restore, tombstone-surviving re-intake,
@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
-import { lifecycleCaptures } from './capture.schema'
+import { captures } from './capture.schema'
 import {
   createPgliteCaptureService,
   type AcceptCaptureInput,
@@ -67,7 +67,7 @@ async function accept(service: CaptureService, overrides: Partial<AcceptCaptureI
 }
 
 async function countCaptures(database: Awaited<ReturnType<typeof setup>>['database'], workspaceId: string) {
-  const rows = await database.select().from(lifecycleCaptures).where(eq(lifecycleCaptures.workspaceId, workspaceId))
+  const rows = await database.select().from(captures).where(eq(captures.workspaceId, workspaceId))
   return rows.length
 }
 

@@ -1,11 +1,7 @@
 /**
  * Opportunity aggregate schema (issue #298). Owned by the opportunity module.
  *
- * Canonical root uses the interim physical name `lifecycle_opportunities` (avoids
- * colliding with the still-live legacy `opportunities`). #298 installs and
- * one-time-transforms these tables but does not rewire the runtime; the Opportunity
- * leaf (#301) adopts them and the clean-cutover leaf (#307) drops legacy and renames
- * it to `opportunities` (see drizzle/lifecycle-migration.md).
+ * The clean cutover owns the canonical `opportunities` root.
  * "Normalized Opportunity identity" is the direct workspace-scoped Job reference
  * plus a partial unique on (workspace_id, job_id) — replacing the legacy
  * JSON-scanned projection aliases. Vocabulary mirrors the sparxie contract
@@ -15,13 +11,13 @@
 import { sql } from 'drizzle-orm'
 import { check, foreignKey, index, integer, pgTable, primaryKey, text, uniqueIndex } from 'drizzle-orm/pg-core'
 import { FORBIDDEN_JSON_KEY_PREDICATE } from '../../db/sensitive-keys'
-import { lifecycleJobs } from '../job/job.schema'
+import { jobs } from '../job/job.schema'
 import { workspaces } from '../../db/workspaces.schema'
 
 const FORBIDDEN_KEY = FORBIDDEN_JSON_KEY_PREDICATE
 
-export const lifecycleOpportunities = pgTable(
-  'lifecycle_opportunities',
+export const opportunities = pgTable(
+  'opportunities',
   {
     id: text('id').primaryKey(),
     workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
@@ -45,7 +41,7 @@ export const lifecycleOpportunities = pgTable(
       .where(sql`${table.idempotencyKey} is not null`),
     idempotencyKeyCheck: check('chk_lifecycle_opportunities_idempotency_key', sql`${table.idempotencyKey} is null or length(${table.idempotencyKey}) between 1 and 200`),
     jobRefIdx: index('idx_lifecycle_opportunities_job_ref').on(table.jobId),
-    jobFk: foreignKey({ name: 'fk_lifecycle_opportunities_job', columns: [table.jobId], foreignColumns: [lifecycleJobs.id] }),
+    jobFk: foreignKey({ name: 'fk_lifecycle_opportunities_job', columns: [table.jobId], foreignColumns: [jobs.id] }),
     workspaceCheck: check('chk_lifecycle_opportunities_workspace', sql`length(${table.workspaceId}) between 1 and 200`),
     revisionCheck: check('chk_lifecycle_opportunities_revision', sql`${table.revision} > 0`),
     fitCheck: check('chk_lifecycle_opportunities_fit', sql`${table.fit} in ('fit','possible','not_fit','unknown')`),
@@ -68,7 +64,7 @@ export const opportunityHistory = pgTable(
   },
   (table) => ({
     pk: primaryKey({ name: 'opportunity_history_pk', columns: [table.opportunityId, table.revision] }),
-    opportunityFk: foreignKey({ name: 'fk_opportunity_history_opportunity', columns: [table.opportunityId], foreignColumns: [lifecycleOpportunities.id] }),
+    opportunityFk: foreignKey({ name: 'fk_opportunity_history_opportunity', columns: [table.opportunityId], foreignColumns: [opportunities.id] }),
     revisionCheck: check('chk_opportunity_history_revision', sql`${table.revision} > 0`),
     kindCheck: check('chk_opportunity_history_kind', sql`${table.kind} in ('created','evaluation_changed','disposition_changed','removed','restored')`),
     snapshotBoundCheck: check('chk_opportunity_history_snapshot_bound', sql`length(${table.snapshotJson}) <= 262144`),

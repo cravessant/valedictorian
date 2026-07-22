@@ -1,10 +1,8 @@
 /**
  * Durable scheduled-work identities (issue #298). Owned by the scheduling module.
  *
- * Replaces the legacy `retry_work` collapse (one table with kind-conditional
- * columns and kind-partial unique indexes) with one durable identity per
- * umbrella-named operation, each with a typed subject foreign key and bounded
- * columns rather than unbounded payload ownership:
+ * One durable identity per umbrella-named operation, each with a typed subject
+ * foreign key and bounded columns rather than unbounded payload ownership:
  *
  *   - connector_capture_work        : connector capture intake resumption
  *   - normalization_work            : Capture -> Job normalization
@@ -14,27 +12,19 @@
  *
  * Separate rows in separate tables give each operation its own attempt budget,
  * status, and concurrency claim, so one operation can never exhaust or complete
- * another. This file is schema-only: the generic scheduler, claiming, and
- * backoff behavior are #303, which also moves the retry_work writers onto these
- * five tables (blocked by #298 + #233; not done here — see
- * drizzle/lifecycle-migration.md). Legacy `retry_work` stays the live source until
- * the clean-cutover leaf (#307) drops it. Statuses/reasons are app-internal
- * coordination values
- * (not part of the sparxie lifecycle contract) carried forward from retry_work.
+ * another. Statuses and reasons are app-internal coordination values.
  */
 import { sql } from 'drizzle-orm'
 import { check, foreignKey, index, integer, pgTable, type PgColumn, text, uniqueIndex } from 'drizzle-orm/pg-core'
 import { FORBIDDEN_JSON_KEY_PREDICATE } from '../../db/sensitive-keys'
-import { captureRevisions, lifecycleCaptures } from '../capture/capture.schema'
+import { captureRevisions, captures } from '../capture/capture.schema'
 import { connectorInstances } from '../../db/schema.connectors'
 import { workspaces } from '../../db/workspaces.schema'
 
 // 'terminal' is a typed deterministic failure, distinct from 'exhausted' (retryable
-// budget ran out) and 'cancelled' (deliberate user/system cancellation). The legacy
-// retry_work model conflated deterministic provider-resolution failure into
-// 'cancelled'; this status separates it so the Round E transform maps without shoehorning.
+// budget ran out) and 'cancelled' (deliberate user/system cancellation).
 export const scheduledWorkStatuses = ['scheduled', 'claimed', 'completed', 'exhausted', 'cancelled', 'terminal'] as const
-// Retryable transient reasons (carried forward from legacy retry_work.reason).
+// Retryable transient reasons shared by scheduled operations.
 export const scheduledWorkRetryableReasons = ['rate_limit', 'server_failure', 'network_interruption', 'operation_timeout'] as const
 // Deterministic terminal reasons (app-internal; not the sparxie contract). A row is
 // 'terminal' iff its reason is one of these, and only 'terminal' rows carry them.
@@ -99,6 +89,12 @@ export const connectorCaptureWork = pgTable(
     filterSignature: text('filter_signature').notNull(),
     checkpointSchemaVersion: text('checkpoint_schema_version').notNull(),
     checkpointGeneration: text('checkpoint_generation').notNull(),
+    lastAttemptAt: text('last_attempt_at').notNull(),
+    computedDelayMs: integer('computed_delay_ms'),
+    serverMinimumDelayMs: integer('server_minimum_delay_ms'),
+    horizonAt: text('horizon_at').notNull(),
+    acquisitionRunId: text('acquisition_run_id'),
+    skippedRunId: text('skipped_run_id'),
   },
   (table) => ({
     idempotencyIdx: uniqueIndex('idx_connector_capture_work_idempotency').on(table.idempotencyKey),
@@ -110,6 +106,7 @@ export const connectorCaptureWork = pgTable(
       .where(sql`${table.status} in ('scheduled','claimed')`),
     connectorFk: foreignKey({ name: 'fk_connector_capture_work_instance', columns: [table.connectorInstanceId], foreignColumns: [connectorInstances.id] }),
     filterCheck: check('chk_connector_capture_work_filter', sql`length(${table.filterSignature}) between 1 and 512`),
+    serverMinimumCheck: check('chk_connector_capture_work_server_minimum', sql`${table.serverMinimumDelayMs} is null or ${table.serverMinimumDelayMs} >= 0`),
     ...scheduledWorkChecks('connector_capture_work', table),
   }),
 )
@@ -158,7 +155,7 @@ export const providerUrlResolutionWork = pgTable(
     activeSubjectIdx: uniqueIndex('idx_provider_url_resolution_work_active_subject')
       .on(table.captureId)
       .where(sql`${table.status} in ('scheduled','claimed')`),
-    captureFk: foreignKey({ name: 'fk_provider_url_resolution_work_capture', columns: [table.captureId], foreignColumns: [lifecycleCaptures.id] }),
+    captureFk: foreignKey({ name: 'fk_provider_url_resolution_work_capture', columns: [table.captureId], foreignColumns: [captures.id] }),
     resolverCheck: check('chk_provider_url_resolution_work_resolver', sql`length(${table.resolverId}) between 1 and 256 and length(${table.resolverVersion}) between 1 and 128 and length(${table.intermediaryUrlHash}) between 1 and 256`),
     ...scheduledWorkChecks('provider_url_resolution_work', table),
   }),
@@ -178,7 +175,7 @@ export const hostedSubmissionWork = pgTable(
     activeSubjectIdx: uniqueIndex('idx_hosted_submission_work_active_subject')
       .on(table.captureId)
       .where(sql`${table.status} in ('scheduled','claimed')`),
-    captureFk: foreignKey({ name: 'fk_hosted_submission_work_capture', columns: [table.captureId], foreignColumns: [lifecycleCaptures.id] }),
+    captureFk: foreignKey({ name: 'fk_hosted_submission_work_capture', columns: [table.captureId], foreignColumns: [captures.id] }),
     urlCheck: check('chk_hosted_submission_work_url', sql`length(${table.canonicalUrlHash}) between 1 and 256`),
     ...scheduledWorkChecks('hosted_submission_work', table),
   }),
@@ -198,7 +195,7 @@ export const hostedResultPollingWork = pgTable(
     activeSubjectIdx: uniqueIndex('idx_hosted_result_polling_work_active_subject')
       .on(table.captureId)
       .where(sql`${table.status} in ('scheduled','claimed')`),
-    captureFk: foreignKey({ name: 'fk_hosted_result_polling_work_capture', columns: [table.captureId], foreignColumns: [lifecycleCaptures.id] }),
+    captureFk: foreignKey({ name: 'fk_hosted_result_polling_work_capture', columns: [table.captureId], foreignColumns: [captures.id] }),
     requestCheck: check('chk_hosted_result_polling_work_request', sql`length(${table.resolutionRequestId}) between 1 and 256`),
     ...scheduledWorkChecks('hosted_result_polling_work', table),
   }),

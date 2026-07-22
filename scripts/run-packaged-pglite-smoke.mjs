@@ -106,7 +106,7 @@ export async function runPackagedPgliteRestartSmoke({
   const verifyResult = readPhaseResult(resultDirectory, 'verify')
   if (
     verifyResult.phase !== 'verify'
-    || verifyResult.persistedCaptures < 1
+    || verifyResult.persistedCaptures < 2
   ) {
     throw new Error('Packaged app returned an invalid PGlite verification result')
   }

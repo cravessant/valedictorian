@@ -15,7 +15,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { captureOccurrences, captureRevisions, lifecycleCaptures } from '../db/schema'
+import { captureOccurrences, captureRevisions, captures } from '../db/schema'
 import type { AppConnectorRuntime, AppJobConnector } from '../modules/connectors/connector.runner'
 import {
   getTestLocalValedictorianDatabase,
@@ -124,7 +124,7 @@ describe.sequential('connector frontier/backfill ↔ canonical lifecycle decoupl
 
     const database = getTestLocalValedictorianDatabase(client)
     // Durable capture committed.
-    expect(await database.select().from(lifecycleCaptures)).toHaveLength(1)
+    expect(await database.select().from(captures)).toHaveLength(1)
     expect(await database.select().from(captureRevisions)).toHaveLength(1)
   })
 
@@ -154,7 +154,7 @@ describe.sequential('connector frontier/backfill ↔ canonical lifecycle decoupl
 
     // Provenance identity keeps one aggregate and one content revision while
     // preserving each run observation independently.
-    expect(await database.select().from(lifecycleCaptures)).toHaveLength(1)
+    expect(await database.select().from(captures)).toHaveLength(1)
     expect(await database.select().from(captureRevisions)).toHaveLength(1)
     expect(await database.select().from(captureOccurrences)).toHaveLength(2)
     expect(resolve).not.toHaveBeenCalled()

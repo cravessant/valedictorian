@@ -3,10 +3,8 @@ import { defaultPolicyConfig } from 'sparxie'
 import { eq } from 'drizzle-orm'
 import {
   applications,
-  companies,
   policyConfig,
   policyEvidence,
-  sources,
   workflowRuns,
   workflowRunSteps,
 } from '../../db/schema'
@@ -14,6 +12,7 @@ import {
   type PgliteDatabase,
 } from '../../db/pglite'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
+import { seedCanonicalApplication } from '../../test-fixtures/canonical-application.fixture'
 import { createPglitePolicyRepository } from './policy.repository'
 
 const passedVerificationReceiptPayload = {
@@ -38,48 +37,9 @@ async function openMigratedPolicyDb() {
 
 async function seedTikTokApplication(database: PgliteDatabase) {
   const now = '2026-06-08T12:00:00.000Z'
-  await database.insert(companies).values({
-    id: 'company-tiktok',
-    name: 'TikTok',
-    normalizedName: 'tiktok',
-    websiteUrl: null,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-  })
-  await database.insert(sources).values({
-    id: 'source-linkedin',
-    name: 'LinkedIn',
-    accountHint: null,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-  })
-  await database.insert(applications).values({
-    id: 'application-tiktok',
-    companyId: 'company-tiktok',
-    sourceId: 'source-linkedin',
-    roleTitle: 'Software Engineer Intern',
-    roleKind: 'internship',
-    term: null,
-    timingMode: 'unknown',
-    termsJson: '[]',
-    startDate: null,
-    endDate: null,
-    city: null,
-    region: null,
-    country: 'US',
-    workMode: 'remote',
-    locationRaw: null,
-    status: 'queued',
-    hasApplied: false,
-    currentPriorityScore: null,
-    currentPriorityBand: null,
-    currentResumeVariant: null,
-    notes: null,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
+  await seedCanonicalApplication(database, {
+    id: 'application-tiktok', companyName: 'TikTok',
+    roleTitle: 'Software Engineer Intern', workMode: 'remote', createdAt: now,
   })
   await database.insert(workflowRuns).values({
     id: 'attempt-tiktok',
@@ -162,48 +122,9 @@ describe.sequential('PGlite policy repository', () => {
     const { close, database, repository } = await openMigratedPolicyDb()
     try {
       const now = '2026-06-08T12:00:00.000Z'
-      await database.insert(companies).values({
-        id: 'company-versant',
-        name: 'Versant Media',
-        normalizedName: 'versant media',
-        websiteUrl: null,
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-      })
-      await database.insert(sources).values({
-        id: 'source-linkedin',
-        name: 'LinkedIn',
-        accountHint: null,
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-      })
-      await database.insert(applications).values({
-        id: 'application-versant-platform',
-        companyId: 'company-versant',
-        sourceId: 'source-linkedin',
-        roleTitle: 'Platform Engineering',
-        roleKind: 'internship',
-        term: null,
-        timingMode: 'unknown',
-        termsJson: '[]',
-        startDate: null,
-        endDate: null,
-        city: null,
-        region: null,
-        country: 'US',
-        workMode: 'remote',
-        locationRaw: null,
-        status: 'queued',
-        hasApplied: false,
-        currentPriorityScore: null,
-        currentPriorityBand: null,
-        currentResumeVariant: null,
-        notes: 'unchanged',
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
+      await seedCanonicalApplication(database, {
+        id: 'application-versant-platform', companyName: 'Versant Media',
+        roleTitle: 'Platform Engineering', workMode: 'remote', createdAt: now,
       })
 
       const before = await database

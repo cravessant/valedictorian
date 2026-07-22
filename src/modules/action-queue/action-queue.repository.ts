@@ -1,12 +1,12 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 import {
-  applicationLinks,
-  applications,
+  applicationScores,
   applicationWorkflowStates,
-  companies,
-  sources,
+  applications,
+  pursuitLinks,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
+import { deriveApplicationSnapshot } from '../applications/application.dto'
 import { readPolicyConfig } from '../policy/policy.repository'
 import type { JobWorkMode, PolicyConfig, PolicyReason, PursuitApplicationStatus } from 'sparxie'
 
@@ -120,51 +120,72 @@ export function createPgliteActionQueueRepository(
       const now = options.now?.() ?? new Date()
       // Explicit NULLS LAST: PG DESC defaults to NULLS FIRST; final public order is
       // compareActionQueueItems (bucket → score with null as -1 → updatedAt).
-      const rows = await database
+      const joinedRows = await database
         .select({
-          id: applications.id,
-          companyName: companies.name,
-          roleTitle: applications.roleTitle,
-          sourceName: sources.name,
-          status: applications.status,
-          locationRaw: applications.locationRaw,
-          city: applications.city,
-          region: applications.region,
-          country: applications.country,
-          workMode: applications.workMode,
-          hasApplied: applications.hasApplied,
-          currentPriorityScore: applications.currentPriorityScore,
-          currentPriorityBand: applications.currentPriorityBand,
-          primaryLinkLabel: applicationLinks.label,
-          primaryLinkUrl: applicationLinks.url,
+          application: applications,
+          currentPriorityScore: applicationScores.score,
+          currentPriorityBand: applicationScores.band,
+          primaryLinkLabel: pursuitLinks.label,
+          primaryLinkUrl: pursuitLinks.url,
+          operationalStatus: applicationWorkflowStates.operationalStatus,
+          hasApplied: applicationWorkflowStates.hasApplied,
           lockStartedAt: applicationWorkflowStates.lockStartedAt,
           holdStartedAt: applicationWorkflowStates.holdStartedAt,
           manualReviewKind: applicationWorkflowStates.manualReviewKind,
           missingUserInfo: applicationWorkflowStates.missingUserInfo,
           blockerReason: applicationWorkflowStates.blockerReason,
-          createdAt: applications.createdAt,
-          updatedAt: applications.updatedAt,
         })
         .from(applications)
-        .innerJoin(companies, eq(applications.companyId, companies.id))
-        .innerJoin(sources, eq(applications.sourceId, sources.id))
         .leftJoin(
-          applicationLinks,
+          pursuitLinks,
           and(
-            eq(applicationLinks.applicationId, applications.id),
-            eq(applicationLinks.isPrimary, true),
-            isNull(applicationLinks.deletedAt),
+            eq(pursuitLinks.applicationId, applications.id),
+            eq(pursuitLinks.isPrimary, true),
           ),
         )
         .leftJoin(
           applicationWorkflowStates,
           eq(applicationWorkflowStates.applicationId, applications.id),
         )
-        .where(isNull(applications.deletedAt))
+        .leftJoin(applicationScores, eq(applicationScores.applicationId, applications.id))
+        .where(isNull(applications.removedAt))
         .orderBy(
-          sql`${applications.currentPriorityScore} desc nulls last`,
           desc(applications.updatedAt),
+          desc(applicationScores.createdAt),
+          desc(applicationScores.id),
         )
+
+      const rowsByApplication = new Map<string, ActionQueueRow>()
+      for (const joined of joinedRows) {
+        if (rowsByApplication.has(joined.application.id)) continue
+        const snapshot = deriveApplicationSnapshot(joined.application)
+        const location = snapshot.location
+        rowsByApplication.set(joined.application.id, {
+          id: joined.application.id,
+          companyName: joined.application.companyName,
+          roleTitle: snapshot.roleTitle,
+          sourceName: joined.application.sourceName,
+          status: joined.operationalStatus ?? defaultOperationalStatus(joined.application.status),
+          locationRaw: location?.display ?? null,
+          city: location?.city ?? null,
+          region: location?.region ?? null,
+          country: location?.country ?? 'Unknown',
+          workMode: snapshot.workMode,
+          hasApplied: joined.hasApplied ?? joined.application.status !== 'active',
+          currentPriorityScore: joined.currentPriorityScore,
+          currentPriorityBand: joined.currentPriorityBand,
+          primaryLinkLabel: joined.primaryLinkLabel,
+          primaryLinkUrl: joined.primaryLinkUrl,
+          lockStartedAt: joined.lockStartedAt,
+          holdStartedAt: joined.holdStartedAt,
+          manualReviewKind: joined.manualReviewKind,
+          missingUserInfo: joined.missingUserInfo,
+          blockerReason: joined.blockerReason,
+          createdAt: joined.application.createdAt,
+          updatedAt: joined.application.updatedAt,
+        })
+      }
+      const rows = [...rowsByApplication.values()]
 
       const actionQueueItems = rows
         .flatMap((row) => mapActionQueueRow(row, policyConfig, now))
@@ -191,6 +212,10 @@ export function createPgliteActionQueueRepository(
       }
     },
   }
+}
+
+function defaultOperationalStatus(status: string) {
+  return status === 'active' ? 'queued' : status
 }
 
 function mapActionQueueRow(row: ActionQueueRow, policyConfig: PolicyConfig, now: Date): ActionQueueListItem[] {

@@ -36,6 +36,13 @@
       "when": 1784714283706,
       "tag": "0004_capture-revision-provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784743200000,
+      "tag": "0005_clean_lifecycle_cutover",
+      "breakpoints": true
     }
   ]
 }

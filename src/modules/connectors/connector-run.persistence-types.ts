@@ -43,7 +43,6 @@ export interface RecordConnectorRefreshResultInput {
   filters: JsonRecord
   filterSignature: string
   checkpointPersistence?: 'deferred' | 'immediate'
-  preserveAcquiredNormalizationWork?: boolean
   result: ConnectorRefreshResultInput
 }
 
@@ -57,7 +56,6 @@ export interface RecordConnectorRunRequestInput {
   filterSignature?: string | null
   reason?: string | null
   dryRun?: boolean
-  retryKind?: 'connector_capture'
 }
 
 export interface RecordConnectorRunRequestResult {

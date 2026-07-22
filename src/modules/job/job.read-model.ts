@@ -1,7 +1,7 @@
 /**
  * Job read-model (issue #304, stage 3).
  *
- * The read half of the Job HTTP surface: loads canonical `lifecycle_jobs`,
+ * The read half of the Job HTTP surface: loads canonical `jobs`,
  * `job_external_identities`, `job_capture_evidence_references`, and `job_history`
  * rows and hands them to the pure serializers in job.dto.ts, producing the sparxie
  * `Job` resource, the `JobListResult` page, and the reconstructed
@@ -15,7 +15,7 @@ import {
   jobCaptureEvidenceReferences,
   jobExternalIdentities,
   jobHistory,
-  lifecycleJobs,
+  jobs,
 } from './job.schema'
 import {
   decodeJobCursor,
@@ -97,8 +97,8 @@ export function createPgliteJobReadModel(database: PgliteDatabase): JobReadModel
   async function selectHead(workspaceId: string, jobId: string): Promise<JobHeadRow | null> {
     const [row] = await database
       .select()
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
       .limit(1)
     return (row as JobHeadRow | undefined) ?? null
   }
@@ -118,26 +118,26 @@ export function createPgliteJobReadModel(database: PgliteDatabase): JobReadModel
       const limit = clampLimit(input.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
       const cursor = input.cursor ? decodeJobCursor(input.cursor) : null
 
-      const filters = [eq(lifecycleJobs.workspaceId, workspaceId)]
+      const filters = [eq(jobs.workspaceId, workspaceId)]
       if (input.availability !== undefined) {
-        filters.push(eq(lifecycleJobs.availabilityState, input.availability))
+        filters.push(eq(jobs.availabilityState, input.availability))
       }
       if (input.includeRemoved !== true) {
-        filters.push(isNull(lifecycleJobs.removedAt))
+        filters.push(isNull(jobs.removedAt))
       }
       if (cursor) {
         const keyset = or(
-          gt(lifecycleJobs.createdAt, cursor.createdAt),
-          and(eq(lifecycleJobs.createdAt, cursor.createdAt), gt(lifecycleJobs.id, cursor.id)),
+          gt(jobs.createdAt, cursor.createdAt),
+          and(eq(jobs.createdAt, cursor.createdAt), gt(jobs.id, cursor.id)),
         )
         if (keyset) filters.push(keyset)
       }
 
       const rows = (await database
         .select()
-        .from(lifecycleJobs)
+        .from(jobs)
         .where(and(...filters))
-        .orderBy(asc(lifecycleJobs.createdAt), asc(lifecycleJobs.id))
+        .orderBy(asc(jobs.createdAt), asc(jobs.id))
         .limit(limit + 1)) as JobHeadRow[]
 
       const hasMore = rows.length > limit

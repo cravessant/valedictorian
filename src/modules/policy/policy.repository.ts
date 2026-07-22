@@ -20,7 +20,6 @@ import {
 } from 'sparxie'
 import {
   applications,
-  companies,
   policyConfig,
   policyEvidence,
   workflowRunSteps,
@@ -453,11 +452,10 @@ async function selectApplicationPolicyContext(
   const [row] = await database
     .select({
       id: applications.id,
-      companyName: companies.name,
+      companyName: applications.companyName,
       status: applications.status,
     })
     .from(applications)
-    .innerJoin(companies, eq(applications.companyId, companies.id))
     .where(eq(applications.id, applicationId))
     .limit(1)
 

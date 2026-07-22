@@ -40,9 +40,9 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
-import { captureRevisions, lifecycleCaptures } from '../capture/capture.schema'
+import { captureRevisions, captures } from '../capture/capture.schema'
 import type { CreateJobInput, JobAvailabilityState, JobService, JsonValue } from '../job/job.service'
-import { jobExternalIdentities, jobHistory, lifecycleJobs } from '../job/job.schema'
+import { jobExternalIdentities, jobHistory, jobs } from '../job/job.schema'
 import {
   insertJobCaptureEvidenceReferences,
   insertJobExternalIdentities,
@@ -177,9 +177,9 @@ export function createLifecycleJobOrchestration(
   ): Promise<JobWriteFailure | null> {
     for (const ref of refs) {
       const [capture] = await database
-        .select({ workspaceId: lifecycleCaptures.workspaceId })
-        .from(lifecycleCaptures)
-        .where(eq(lifecycleCaptures.id, ref.captureId))
+        .select({ workspaceId: captures.workspaceId })
+        .from(captures)
+        .where(eq(captures.id, ref.captureId))
         .limit(1)
       if (!capture) {
         return { code: 'missing_lineage', message: 'an evidence reference names an unknown capture', field: 'evidenceReferences' }
@@ -289,9 +289,9 @@ export function createLifecycleJobOrchestration(
 
   async function loadActiveJob(tx: Tx, workspaceId: string, jobId: string): Promise<{ id: string } | null> {
     const [row] = await tx
-      .select({ id: lifecycleJobs.id, removedAt: lifecycleJobs.removedAt })
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, jobId)))
+      .select({ id: jobs.id, removedAt: jobs.removedAt })
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, jobId)))
       .limit(1)
     if (!row || row.removedAt !== null) return null
     return { id: row.id }

@@ -30,10 +30,10 @@
  */
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
-import { lifecycleCaptures } from '../capture/capture.schema'
-import { jobCaptureEvidenceReferences, lifecycleJobs } from '../job/job.schema'
-import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
-import { applicationAttemptRecords, applicationEventRecords, lifecycleApplications, pursuitLinks } from '../application/application.schema'
+import { captures } from '../capture/capture.schema'
+import { jobCaptureEvidenceReferences, jobs } from '../job/job.schema'
+import { opportunities } from '../opportunity/opportunity.schema'
+import { applicationAttemptRecords, applicationEventRecords, applications, pursuitLinks } from '../application/application.schema'
 import { deleteJobCaptureEvidenceReferences } from '../job/job.repository'
 import type { CaptureService } from '../capture/capture.service'
 import type { JobService } from '../job/job.service'
@@ -175,24 +175,24 @@ export function createLifecycleRemovalOrchestration(
     const rows = await tx
       .select({ jobId: jobCaptureEvidenceReferences.jobId })
       .from(jobCaptureEvidenceReferences)
-      .innerJoin(lifecycleJobs, eq(lifecycleJobs.id, jobCaptureEvidenceReferences.jobId))
-      .where(and(eq(jobCaptureEvidenceReferences.captureId, captureId), isNull(lifecycleJobs.removedAt)))
+      .innerJoin(jobs, eq(jobs.id, jobCaptureEvidenceReferences.jobId))
+      .where(and(eq(jobCaptureEvidenceReferences.captureId, captureId), isNull(jobs.removedAt)))
     return [...new Set(rows.map((r) => r.jobId))]
   }
 
   async function activeOpportunitiesForJob(tx: Tx, workspaceId: string, jobId: string): Promise<string[]> {
     const rows = await tx
-      .select({ id: lifecycleOpportunities.id })
-      .from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.jobId, jobId), isNull(lifecycleOpportunities.removedAt)))
+      .select({ id: opportunities.id })
+      .from(opportunities)
+      .where(and(eq(opportunities.workspaceId, workspaceId), eq(opportunities.jobId, jobId), isNull(opportunities.removedAt)))
     return rows.map((r) => r.id)
   }
 
   async function activeApplicationsForOpportunity(tx: Tx, workspaceId: string, opportunityId: string): Promise<string[]> {
     const rows = await tx
-      .select({ id: lifecycleApplications.id })
-      .from(lifecycleApplications)
-      .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.opportunityId, opportunityId), isNull(lifecycleApplications.removedAt)))
+      .select({ id: applications.id })
+      .from(applications)
+      .where(and(eq(applications.workspaceId, workspaceId), eq(applications.opportunityId, opportunityId), isNull(applications.removedAt)))
     return rows.map((r) => r.id)
   }
 
@@ -202,8 +202,8 @@ export function createLifecycleRemovalOrchestration(
         (select count(*) from ${pursuitLinks} where ${pursuitLinks.applicationId} = ${applicationId})
         + (select count(*) from ${applicationEventRecords} where ${applicationEventRecords.applicationId} = ${applicationId})
         + (select count(*) from ${applicationAttemptRecords} where ${applicationAttemptRecords.applicationId} = ${applicationId})` })
-      .from(lifecycleApplications)
-      .where(eq(lifecycleApplications.id, applicationId))
+      .from(applications)
+      .where(eq(applications.id, applicationId))
     return Number(n)
   }
 
@@ -265,7 +265,7 @@ export function createLifecycleRemovalOrchestration(
 
   /** Confirm the target aggregate exists in the workspace; returns its removed state. */
   async function targetRemovedAt(tx: Tx, workspaceId: string, aggregate: LifecycleAggregate, id: string): Promise<string | null | undefined> {
-    const table = aggregate === 'capture' ? lifecycleCaptures : aggregate === 'job' ? lifecycleJobs : aggregate === 'opportunity' ? lifecycleOpportunities : lifecycleApplications
+    const table = aggregate === 'capture' ? captures : aggregate === 'job' ? jobs : aggregate === 'opportunity' ? opportunities : applications
     const [row] = await tx.select({ removedAt: table.removedAt }).from(table).where(and(eq(table.workspaceId, workspaceId), eq(table.id, id))).limit(1)
     return row ? row.removedAt : undefined
   }
@@ -273,19 +273,19 @@ export function createLifecycleRemovalOrchestration(
   /** Immediate dependents of a target that are STILL tombstoned (for the restore gap report). */
   async function tombstonedImmediateDependents(tx: Tx, workspaceId: string, aggregate: LifecycleAggregate, id: string): Promise<AggregateRef[]> {
     if (aggregate === 'job') {
-      const rows = await tx.select({ id: lifecycleOpportunities.id }).from(lifecycleOpportunities)
-        .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.jobId, id), sql`${lifecycleOpportunities.removedAt} is not null`))
+      const rows = await tx.select({ id: opportunities.id }).from(opportunities)
+        .where(and(eq(opportunities.workspaceId, workspaceId), eq(opportunities.jobId, id), sql`${opportunities.removedAt} is not null`))
       return rows.map((r) => ({ aggregate: 'opportunity' as const, id: r.id }))
     }
     if (aggregate === 'opportunity') {
-      const rows = await tx.select({ id: lifecycleApplications.id }).from(lifecycleApplications)
-        .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.opportunityId, id), sql`${lifecycleApplications.removedAt} is not null`))
+      const rows = await tx.select({ id: applications.id }).from(applications)
+        .where(and(eq(applications.workspaceId, workspaceId), eq(applications.opportunityId, id), sql`${applications.removedAt} is not null`))
       return rows.map((r) => ({ aggregate: 'application' as const, id: r.id }))
     }
     if (aggregate === 'capture') {
       const rows = await tx.select({ jobId: jobCaptureEvidenceReferences.jobId }).from(jobCaptureEvidenceReferences)
-        .innerJoin(lifecycleJobs, eq(lifecycleJobs.id, jobCaptureEvidenceReferences.jobId))
-        .where(and(eq(jobCaptureEvidenceReferences.captureId, id), sql`${lifecycleJobs.removedAt} is not null`))
+        .innerJoin(jobs, eq(jobs.id, jobCaptureEvidenceReferences.jobId))
+        .where(and(eq(jobCaptureEvidenceReferences.captureId, id), sql`${jobs.removedAt} is not null`))
       return [...new Set(rows.map((r) => r.jobId))].map((jid) => ({ aggregate: 'job' as const, id: jid }))
     }
     return []

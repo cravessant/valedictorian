@@ -5,12 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import {
   connectorCheckpoints,
+  connectorCaptureWork,
   connectorInstances,
   connectorRuns,
   connectorSchedules,
-  captureEvidenceVersions,
-  captureLineages,
-  retryWork,
   sourceExecutionScopes,
   sourceExecutionSessions,
 } from '../../db/schema'
@@ -20,6 +18,7 @@ import {
   type PgliteClient,
   type PgliteDatabase,
 } from '../../db/pglite'
+import { DEFAULT_WORKSPACE_ID } from '../../db/workspaces.schema'
 import { prepareConfiguredPgliteDataPath } from '../../test/pglite-template'
 import { createPgliteTestOwner } from '../../test/pglite-test-owner'
 import { retireConnectorInstance } from './connector-retirement.persistence'
@@ -81,10 +80,13 @@ describe('connector retirement persistence on PGlite', () => {
       .where(eq(connectorSchedules.id, fixture.scheduleId)).limit(1)
     expect(schedule).toMatchObject({ updatedAt: RETIRED_AT, deletedAt: RETIRED_AT })
 
-    for (const retryWorkId of fixture.retryWorkIds) {
-      const [work] = await database.select().from(retryWork)
-        .where(eq(retryWork.id, retryWorkId)).limit(1)
-      expect(work).toMatchObject({ updatedAt: RETIRED_AT, deletedAt: RETIRED_AT })
+    for (const workId of fixture.workIds) {
+      const [work] = await database.select().from(connectorCaptureWork)
+        .where(eq(connectorCaptureWork.id, workId)).limit(1)
+      expect(work).toMatchObject({
+        status: 'cancelled', nextEligibleAt: null, acquisitionToken: null,
+        claimedAt: null, updatedAt: RETIRED_AT,
+      })
     }
 
     const [scope] = await database.select().from(sourceExecutionScopes)
@@ -168,15 +170,15 @@ describe('connector retirement persistence on PGlite', () => {
       .where(eq(connectorInstances.id, fixture.connectorInstanceId)).limit(1)
     const [schedule] = await database.select().from(connectorSchedules)
       .where(eq(connectorSchedules.id, fixture.scheduleId)).limit(1)
-    const [work] = await database.select().from(retryWork)
-      .where(eq(retryWork.id, fixture.retryWorkIds[0])).limit(1)
+    const [work] = await database.select().from(connectorCaptureWork)
+      .where(eq(connectorCaptureWork.id, fixture.workIds[0])).limit(1)
     const [scope] = await database.select().from(sourceExecutionScopes)
       .where(eq(sourceExecutionScopes.id, fixture.executionScopeId)).limit(1)
     const [session] = await database.select().from(sourceExecutionSessions)
       .where(eq(sourceExecutionSessions.executionScopeId, fixture.executionScopeId)).limit(1)
     expect(instance).toMatchObject({ enabled: true, deletedAt: null })
     expect(schedule?.deletedAt).toBeNull()
-    expect(work?.deletedAt).toBeNull()
+    expect(work).toMatchObject({ status: 'scheduled', nextEligibleAt: '2026-07-13T12:01:00.000Z' })
     expect(scope).toMatchObject({ status: 'refreshing', actionReason: 'refreshing_credentials' })
     expect(session?.encryptedSession).toBe('encrypted-session')
   })
@@ -232,9 +234,7 @@ async function seedRetirementFixture(
   const executionScopeId = `scope_retirement_${suffix}`
   const runId = `run-${suffix}`
   const scheduleId = `schedule-${suffix}`
-  const retryWorkIds = [`capture-retry-${suffix}`, `normalization-retry-${suffix}`]
-  const lineageId = `lineage-${suffix}`
-  const evidenceVersionId = `evidence-${suffix}`
+  const workIds = [`capture-work-${suffix}`]
   const runStatus = options.runStatus ?? 'completed'
 
   await database.insert(sourceExecutionScopes).values({
@@ -317,67 +317,28 @@ async function seedRetirementFixture(
     updatedAt: CREATED_AT,
     deletedAt: null,
   })
-  await database.insert(captureLineages).values({ id: lineageId, jobId: null, createdAt: CREATED_AT })
-  await database.insert(captureEvidenceVersions).values({
-    id: evidenceVersionId,
-    captureLineageId: lineageId,
-    revision: 1,
-    contentHash: `hash-${suffix}`,
-    adapterId: 'fixture.jobs',
-    adapterKind: 'connector',
-    adapterVersion: '1.0.0',
-    observedAt: CREATED_AT,
-    providerRecordId: `provider-${suffix}`,
-    evidenceJson: '{}',
-    createdAt: CREATED_AT,
-  })
-  await database.insert(retryWork).values([
+  await database.insert(connectorCaptureWork).values([
     {
-      id: retryWorkIds[0],
-      executionScopeId,
-      kind: 'connector_capture',
+      id: workIds[0],
+      workspaceId: DEFAULT_WORKSPACE_ID,
+      idempotencyKey: `capture-work:${suffix}`,
       connectorInstanceId,
       filterSignature: 'filters:{}',
       checkpointSchemaVersion: 'fixture@1',
       checkpointGeneration: '1',
-      reason: 'network_interruption',
+      failureReason: 'network_interruption',
       attempt: 1,
       maxAttempts: 3,
       lastAttemptAt: CREATED_AT,
       computedDelayMs: 1_000,
-      nextAttemptAt: '2026-07-13T12:01:00.000Z',
+      nextEligibleAt: '2026-07-13T12:01:00.000Z',
       horizonAt: '2026-07-14T12:00:00.000Z',
-      state: 'scheduled',
+      status: 'scheduled',
       ownerVersion: '1.0.0',
-      lineageJson: '{}',
       createdAt: CREATED_AT,
       updatedAt: CREATED_AT,
-      deletedAt: null,
-    },
-    {
-      id: retryWorkIds[1],
-      executionScopeId,
-      kind: 'normalization',
-      connectorInstanceId: null,
-      captureEvidenceVersionId: evidenceVersionId,
-      resolverId: 'fixture.resolver',
-      resolverVersion: '1.0.0',
-      inputHash: `input-${suffix}`,
-      reason: 'server_failure',
-      attempt: 1,
-      maxAttempts: 3,
-      lastAttemptAt: CREATED_AT,
-      computedDelayMs: 1_000,
-      nextAttemptAt: '2026-07-13T12:01:00.000Z',
-      horizonAt: '2026-07-14T12:00:00.000Z',
-      state: 'scheduled',
-      ownerVersion: '1.0.0',
-      lineageJson: '{}',
-      createdAt: CREATED_AT,
-      updatedAt: CREATED_AT,
-      deletedAt: null,
     },
   ])
 
-  return { connectorInstanceId, executionScopeId, retryWorkIds, runId, scheduleId }
+  return { connectorInstanceId, executionScopeId, workIds, runId, scheduleId }
 }

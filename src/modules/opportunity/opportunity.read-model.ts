@@ -2,7 +2,7 @@
  * Opportunity read-model (issue #304, stage 3).
  *
  * The read half of the Opportunity HTTP surface: loads canonical
- * `lifecycle_opportunities` and `opportunity_history` rows and hands them to the
+ * `opportunities` and `opportunity_history` rows and hands them to the
  * pure serializers in opportunity.dto.ts, producing the sparxie `Opportunity`
  * resource, the `OpportunityListResult` page, and the reconstructed
  * `OpportunityHistoryResult`. Reads only — every mutation still flows through the
@@ -16,7 +16,7 @@ import type {
   OpportunityListResult,
 } from 'sparxie'
 import type { PgliteDatabase } from '../../db/pglite'
-import { lifecycleOpportunities, opportunityHistory } from './opportunity.schema'
+import { opportunities, opportunityHistory } from './opportunity.schema'
 import {
   decodeOpportunityCursor,
   reconstructOpportunityHistory,
@@ -55,8 +55,8 @@ export function createPgliteOpportunityReadModel(database: PgliteDatabase): Oppo
   async function selectHead(workspaceId: string, opportunityId: string): Promise<OpportunityHeadRow | null> {
     const [row] = await database
       .select()
-      .from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.id, opportunityId)))
+      .from(opportunities)
+      .where(and(eq(opportunities.workspaceId, workspaceId), eq(opportunities.id, opportunityId)))
       .limit(1)
     return (row as OpportunityHeadRow | undefined) ?? null
   }
@@ -71,24 +71,24 @@ export function createPgliteOpportunityReadModel(database: PgliteDatabase): Oppo
       const limit = clampLimit(input.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)
       const cursor = input.cursor ? decodeOpportunityCursor(input.cursor) : null
 
-      const filters = [eq(lifecycleOpportunities.workspaceId, workspaceId)]
-      if (input.jobId !== undefined) filters.push(eq(lifecycleOpportunities.jobId, input.jobId))
-      if (input.fit !== undefined) filters.push(eq(lifecycleOpportunities.fit, input.fit))
-      if (input.disposition !== undefined) filters.push(eq(lifecycleOpportunities.disposition, input.disposition))
-      if (input.includeRemoved !== true) filters.push(isNull(lifecycleOpportunities.removedAt))
+      const filters = [eq(opportunities.workspaceId, workspaceId)]
+      if (input.jobId !== undefined) filters.push(eq(opportunities.jobId, input.jobId))
+      if (input.fit !== undefined) filters.push(eq(opportunities.fit, input.fit))
+      if (input.disposition !== undefined) filters.push(eq(opportunities.disposition, input.disposition))
+      if (input.includeRemoved !== true) filters.push(isNull(opportunities.removedAt))
       if (cursor) {
         const keyset = or(
-          gt(lifecycleOpportunities.createdAt, cursor.createdAt),
-          and(eq(lifecycleOpportunities.createdAt, cursor.createdAt), gt(lifecycleOpportunities.id, cursor.id)),
+          gt(opportunities.createdAt, cursor.createdAt),
+          and(eq(opportunities.createdAt, cursor.createdAt), gt(opportunities.id, cursor.id)),
         )
         if (keyset) filters.push(keyset)
       }
 
       const rows = (await database
         .select()
-        .from(lifecycleOpportunities)
+        .from(opportunities)
         .where(and(...filters))
-        .orderBy(asc(lifecycleOpportunities.createdAt), asc(lifecycleOpportunities.id))
+        .orderBy(asc(opportunities.createdAt), asc(opportunities.id))
         .limit(limit + 1)) as OpportunityHeadRow[]
 
       const hasMore = rows.length > limit

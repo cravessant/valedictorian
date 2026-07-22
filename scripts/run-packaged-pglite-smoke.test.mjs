@@ -51,7 +51,7 @@ it('launches separate packaged processes to write and then verify persisted data
         `${JSON.stringify(phase === 'write'
           ? { phase: 'write' }
           : {
-              persistedCaptures: 1,
+              persistedCaptures: 2,
               phase: 'verify',
             })}\n`,
       )
@@ -64,7 +64,7 @@ it('launches separate packaged processes to write and then verify persisted data
       spawnPackagedApp,
       timeoutMs: 1_000,
     })).resolves.toEqual({
-      persistedCaptures: 1,
+      persistedCaptures: 2,
       phase: 'verify',
     })
     expect(phases).toEqual(['write', 'verify'])

@@ -1,7 +1,7 @@
 /**
  * Job read-model proofs (issue #304, stage 3) on a migrated PGlite owner.
  *
- * Drives the REAL Job service to write canonical `lifecycle_jobs` / `job_history`
+ * Drives the REAL Job service to write canonical `jobs` / `job_history`
  * rows (create, correctFacts, updateAvailability, remove, restore), and seeds the
  * founding capture lineage the strict `jobSchema` requires (a real capture +
  * one `job_capture_evidence_references` row) plus one strong external identity as

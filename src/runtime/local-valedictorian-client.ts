@@ -657,7 +657,6 @@ async function executeConnectorRunTrigger({
     return runRequestResult.run
   }
   const runRequest = runRequestResult.run
-  const acquiredWork = runRequestResult.acquiredWork
   const claim = await connectorRepository.claimQueuedRunToRunning({
     connectorRunId: runRequest.id,
     startedAt,
@@ -682,9 +681,6 @@ async function executeConnectorRunTrigger({
       },
     })
     throw error
-  }
-  if (acquiredWork?.kind === 'normalization') {
-    throw new Error('Legacy normalization retry work is no longer executable')
   }
   return executeClaimedConnectorRun({
     connectorRegistry,

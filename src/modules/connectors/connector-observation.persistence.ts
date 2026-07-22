@@ -24,7 +24,6 @@ export function mapConnectorObservation(
     resolution: JSON.parse(row.resolutionJson) as ConnectorObservationResolution,
     dedupeKeys: JSON.parse(row.dedupeKeysJson) as string[],
     sourceMetadata: JSON.parse(row.sourceMetadataJson) as JsonRecord,
-    sourcingFindingId: null,
     evidence: JSON.parse(row.evidenceJson) as ConnectorObservationEvidence[],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

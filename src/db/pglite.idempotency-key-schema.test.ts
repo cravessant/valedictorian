@@ -14,7 +14,7 @@ const jobId = (index: number) => `017f22e2-79b0-7cc3-98c4-dc0c0c07${index.toStri
 async function insertCapture(client: PgliteClient, id: string, workspaceId: string, key: string | null) {
   const keyLit = key === null ? 'null' : `'${key}'`
   await client.query(
-    `insert into lifecycle_captures (
+    `insert into captures (
        id, workspace_id, evidence_mode, adapter_id, adapter_kind, adapter_version,
        observed_at, received_at, provider_record_id, provider_schema, payload_json,
        revision, created_at, updated_at, idempotency_key
@@ -25,7 +25,7 @@ async function insertCapture(client: PgliteClient, id: string, workspaceId: stri
 async function insertJob(client: PgliteClient, id: string, workspaceId: string, key: string | null) {
   const keyLit = key === null ? 'null' : `'${key}'`
   await client.query(
-    `insert into lifecycle_jobs (
+    `insert into jobs (
        id, workspace_id, facts_revision, facts_json, availability_state, availability_observed_at,
        availability_revision, created_at, updated_at, idempotency_key
      ) values ('${id}', '${workspaceId}', 1, '{}', 'open', '${T}', 1, '${T}', '${T}', ${keyLit})`,
@@ -34,7 +34,7 @@ async function insertJob(client: PgliteClient, id: string, workspaceId: string, 
 async function insertOpportunity(client: PgliteClient, id: string, workspaceId: string, jId: string, key: string | null) {
   const keyLit = key === null ? 'null' : `'${key}'`
   await client.query(
-    `insert into lifecycle_opportunities (
+    `insert into opportunities (
        id, workspace_id, job_id, revision, fit, rank, cutoff, disposition, override_json,
        created_at, updated_at, idempotency_key
      ) values ('${id}', '${workspaceId}', '${jId}', 1, 'fit', null, 'above', 'reviewing', null,
@@ -44,7 +44,7 @@ async function insertOpportunity(client: PgliteClient, id: string, workspaceId: 
 async function insertApplication(client: PgliteClient, id: string, workspaceId: string, oppId: string, jId: string, key: string | null) {
   const keyLit = key === null ? 'null' : `'${key}'`
   await client.query(
-    `insert into lifecycle_applications (
+    `insert into applications (
        id, workspace_id, opportunity_id, job_id, revision, status, job_facts_revision,
        snapshot_json, company_name, source_name, created_at, updated_at, idempotency_key
      ) values ('${id}', '${workspaceId}', '${oppId}', '${jId}', 1, 'active', 1,
@@ -67,10 +67,10 @@ describe('lifecycle idempotency_key schema (0003)', () => {
     const { rows } = await client.query<{ table_name: string }>(
       `select table_name from information_schema.columns
        where column_name = 'idempotency_key'
-         and table_name in ('lifecycle_captures','lifecycle_jobs','lifecycle_opportunities','lifecycle_applications')`,
+         and table_name in ('captures','jobs','opportunities','applications')`,
     )
     expect(new Set(rows.map((r) => r.table_name))).toEqual(
-      new Set(['lifecycle_captures', 'lifecycle_jobs', 'lifecycle_opportunities', 'lifecycle_applications']),
+      new Set(['captures', 'jobs', 'opportunities', 'applications']),
     )
   })
 

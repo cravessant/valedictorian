@@ -19,12 +19,8 @@
  * Each concrete table's Drizzle ops are bound inside `defineOperation` (where the table
  * type is concrete), so the state-machine engine stays table-agnostic and fully typed.
  *
- * Runtime adoption note: the LIVE provider-URL / normalization / connector-capture
- * writers still run on the legacy `retry_work` table because the legacy intake pipeline
- * does not create `lifecycle_captures` (moving them now would FK-fail or force the
- * umbrella-forbidden dual-write of captures). Repointing those live writers onto this
- * engine belongs to #304's read-path surface; #303 delivers the engine + proves it at
- * the canonical seam (including provider_url_resolution_work) and keeps #233 green.
+ * Connector capture resumption is integrated with the connector repository; the
+ * remaining operation descriptors share this generic claim/backoff engine.
  */
 import { scheduleRetry } from '@sparxie/valedictorian-connectors-core'
 import type { TransientRetryReason } from 'sparxie'
@@ -130,7 +126,7 @@ function defineOperation<TTable extends PgTable, Subject, Claim>(
   operation: ScheduledOperation,
   table: TTable,
   columns: { id: PgColumn; status: PgColumn; nextEligibleAt: PgColumn; createdAt: PgColumn; acquisitionToken: PgColumn },
-  subjectValues: (subject: Subject) => Partial<InferInsertModel<TTable>>,
+  subjectValues: (subject: Subject, common: CommonInsert) => Partial<InferInsertModel<TTable>>,
   readSubject: (row: InferSelectModel<TTable>) => Claim,
   defaults: OperationDefaults = DEFAULTS,
 ): ScheduledOperationDescriptor<Subject, Claim> {
@@ -148,7 +144,7 @@ function defineOperation<TTable extends PgTable, Subject, Claim>(
     operation,
     defaults,
     async insertIfAbsent(exec, common, subject) {
-      const values = { ...common, ...subjectValues(subject) } as InferInsertModel<TTable>
+      const values = { ...common, ...subjectValues(subject, common) } as InferInsertModel<TTable>
       const inserted = await exec.insert(table).values(values).onConflictDoNothing().returning({ id: columns.id })
       return inserted.length > 0
     },
@@ -239,7 +235,14 @@ export const connectorCaptureOperation = defineOperation<typeof connectorCapture
   'connector_capture',
   connectorCaptureWork,
   { id: connectorCaptureWork.id, status: connectorCaptureWork.status, nextEligibleAt: connectorCaptureWork.nextEligibleAt, createdAt: connectorCaptureWork.createdAt, acquisitionToken: connectorCaptureWork.acquisitionToken },
-  (s) => ({ connectorInstanceId: s.connectorInstanceId, filterSignature: s.filterSignature, checkpointSchemaVersion: s.checkpointSchemaVersion, checkpointGeneration: s.checkpointGeneration }),
+  (s, common) => ({
+    connectorInstanceId: s.connectorInstanceId,
+    filterSignature: s.filterSignature,
+    checkpointSchemaVersion: s.checkpointSchemaVersion,
+    checkpointGeneration: s.checkpointGeneration,
+    lastAttemptAt: common.createdAt,
+    horizonAt: new Date(Date.parse(common.createdAt) + DEFAULTS.horizonMs).toISOString(),
+  }),
   (row) => ({ connectorInstanceId: row.connectorInstanceId, filterSignature: row.filterSignature, checkpointSchemaVersion: row.checkpointSchemaVersion, checkpointGeneration: row.checkpointGeneration }),
 )
 

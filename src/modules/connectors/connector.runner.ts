@@ -252,7 +252,6 @@ export function createConnectorRunner({
       filters: runFilters,
       filterSignature,
       checkpointPersistence: options.checkpointPersistence,
-      preserveAcquiredNormalizationWork: false,
       result: {
         ...safeResult,
         status: terminalConnectorRunStatus(safeResult.status),

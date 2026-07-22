@@ -4,11 +4,11 @@ import path from 'node:path'
 import { drizzle } from 'drizzle-orm/pglite'
 import { describe, expect, it } from 'vitest'
 import {
-  captureEvidenceVersions,
-  captureLineages,
-  captures,
+  captureOccurrences,
+  captureRevisions,
   connectorRuns,
   connectorRunSynchronizations,
+  captures,
   schema,
 } from '../../db/schema'
 import {
@@ -118,20 +118,29 @@ describe.sequential('PGlite connector repository bounded history', () => {
         status: 'queued',
       })
       await insertSynchronization(writerDatabase, 'snapshot-running', 'in_progress')
-      await writerDatabase.insert(captureLineages).values({
-        id: 'snapshot-lineage', createdAt: '2026-07-13T11:00:00.000Z',
-      })
-      await writerDatabase.insert(captureEvidenceVersions).values({
-        id: 'snapshot-revision',
-        captureLineageId: 'snapshot-lineage',
-        revision: 1,
-        contentHash: 'sha256:snapshot-revision',
+      await writerDatabase.insert(captures).values({
+        id: 'snapshot-capture',
+        workspaceId: '00000000-0000-0000-0000-000000000000',
+        evidenceMode: 'reported',
         adapterId: 'fixture.jobs',
         adapterKind: 'connector',
         adapterVersion: '1.0.0',
         observedAt: '2026-07-13T11:00:00.000Z',
+        receivedAt: '2026-07-13T11:00:01.000Z',
         providerRecordId: 'snapshot-provider-record',
-        evidenceJson: '[]',
+        revision: 1,
+        createdAt: '2026-07-13T11:00:00.000Z',
+        updatedAt: '2026-07-13T11:00:00.000Z',
+      })
+      await writerDatabase.insert(captureRevisions).values({
+        captureId: 'snapshot-capture',
+        revision: 1,
+        kind: 'created',
+        snapshotJson: '{}',
+        auditJson: '{}',
+        connectorInstanceId: instance.id,
+        connectorRunId: 'snapshot-running',
+        executionScopeId: instance.executionScopeId,
         createdAt: '2026-07-13T11:00:00.000Z',
       })
 
@@ -161,10 +170,10 @@ describe.sequential('PGlite connector repository bounded history', () => {
       await pageRead
 
       const concurrentWrite = (async () => {
-        await writerDatabase.insert(captures).values({
+        await writerDatabase.insert(captureOccurrences).values({
           id: 'snapshot-occurrence',
-          captureLineageId: 'snapshot-lineage',
-          captureEvidenceVersionId: 'snapshot-revision',
+          captureId: 'snapshot-capture',
+          captureRevision: 1,
           connectorInstanceId: instance.id,
           connectorRunId: 'snapshot-running',
           executionScopeId: instance.executionScopeId,

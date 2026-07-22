@@ -6,8 +6,8 @@ import { createPgliteClient, migratePgliteDatabase, type PgliteClient } from './
  * PGlite public seam. Replaces the legacy retry_work collapse with one identity
  * per operation kind. Uses one migrated in-memory database and raw SQL.
  *
- * Schema-only: no scheduler/claiming behavior (that is #303). Legacy retry_work
- * is untouched. Because at most one ACTIVE row per subject is allowed, coexisting
+ * Schema-only: no scheduler/claiming behavior (that is covered at the repository
+ * seam). Because at most one ACTIVE row per subject is allowed, coexisting
  * active rows in these tests use distinct capture subjects.
  */
 const T = '2026-07-19T00:00:00.000Z'
@@ -17,7 +17,7 @@ async function setupSubjects(client: PgliteClient) {
   await client.query(`insert into workspaces (id, name, created_at, updated_at) values ('ws-1', 'ws-1', '${T}', '${T}')`)
   for (const captureId of CAPTURE_IDS) {
     await client.query(
-      `insert into lifecycle_captures (id, workspace_id, evidence_mode, adapter_id, adapter_kind, adapter_version, observed_at, received_at, provider_record_id, provider_schema, payload_json, revision, created_at, updated_at)
+      `insert into captures (id, workspace_id, evidence_mode, adapter_id, adapter_kind, adapter_version, observed_at, received_at, provider_record_id, provider_schema, payload_json, revision, created_at, updated_at)
        values ('${captureId}', 'ws-1', 'reported', 'a', 'connector', '1', '${T}', '${T}', null, null, null, 1, '${T}', '${T}')`,
     )
     await client.query(
@@ -78,7 +78,7 @@ describe.sequential('PGlite scheduled-work identities', () => {
     ]) {
       expect(names).toContain(table)
     }
-    expect(names).toContain('retry_work') // legacy retry_work untouched
+    expect(names).not.toContain('retry_work')
   })
 
   it('keeps distinct operation kinds for one subject as independent rows with independent budgets', async () => {
@@ -165,8 +165,8 @@ describe.sequential('PGlite scheduled-work identities', () => {
     ).rejects.toThrow(/foreign key/i)
     await expect(
       client.query(
-        `insert into connector_capture_work (id, workspace_id, idempotency_key, attempt, max_attempts, status, next_eligible_at, owner_version, created_at, updated_at, connector_instance_id, filter_signature, checkpoint_schema_version, checkpoint_generation)
-         values ('ccw-badinst', 'ws-1', 'ccw-badinst', 1, 5, 'scheduled', '${T}', 'v1', '${T}', '${T}', 'missing-instance', 'filters:{}', 'v1', 'g1')`,
+        `insert into connector_capture_work (id, workspace_id, idempotency_key, attempt, max_attempts, status, next_eligible_at, owner_version, created_at, updated_at, connector_instance_id, filter_signature, checkpoint_schema_version, checkpoint_generation, last_attempt_at, horizon_at)
+         values ('ccw-badinst', 'ws-1', 'ccw-badinst', 1, 5, 'scheduled', '${T}', 'v1', '${T}', '${T}', 'missing-instance', 'filters:{}', 'v1', 'g1', '${T}', '${T}')`,
       ),
     ).rejects.toThrow(/foreign key/i)
     await client.query(
@@ -174,8 +174,8 @@ describe.sequential('PGlite scheduled-work identities', () => {
        values ('nw-ok', 'ws-1', 'nw-ok', 1, 5, 'scheduled', '${T}', 'v1', '${T}', '${T}', 'cap-1', 1, 'r', '1', 'h')`,
     )
     await client.query(
-      `insert into connector_capture_work (id, workspace_id, idempotency_key, attempt, max_attempts, status, next_eligible_at, owner_version, created_at, updated_at, connector_instance_id, filter_signature, checkpoint_schema_version, checkpoint_generation)
-       values ('ccw-ok', 'ws-1', 'ccw-ok', 1, 5, 'scheduled', '${T}', 'v1', '${T}', '${T}', 'instance-1', 'filters:{}', 'v1', 'g1')`,
+      `insert into connector_capture_work (id, workspace_id, idempotency_key, attempt, max_attempts, status, next_eligible_at, owner_version, created_at, updated_at, connector_instance_id, filter_signature, checkpoint_schema_version, checkpoint_generation, last_attempt_at, horizon_at)
+       values ('ccw-ok', 'ws-1', 'ccw-ok', 1, 5, 'scheduled', '${T}', 'v1', '${T}', '${T}', 'instance-1', 'filters:{}', 'v1', 'g1', '${T}', '${T}')`,
     )
   })
 })

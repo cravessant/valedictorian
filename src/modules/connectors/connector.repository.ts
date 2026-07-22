@@ -6,7 +6,7 @@ import {
   connectorObservations,
   connectorRuns,
   connectorRunSynchronizations,
-  retryWork,
+  connectorCaptureWork,
   sourceExecutionScopes,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
@@ -240,7 +240,6 @@ export function createPgliteConnectorRepository(
           executionScopeId: instance.executionScopeId ?? (() => { throw new Error('Connector instance is missing execution scope identity') })(),
           filterSignature: input.filterSignature,
           now,
-          preserveAcquiredNormalizationWork: input.preserveAcquiredNormalizationWork === true,
           runId,
         })
         for (const observation of input.result.observations) {
@@ -390,7 +389,7 @@ export function createPgliteConnectorRepository(
           executionScopeId: instance.executionScopeId,
           coverageStartedAt,
           filterSignature,
-          now, ...(input.retryKind === undefined ? {} : { retryKind: input.retryKind }),
+          now,
         }
         const pendingRetry = await selectPendingRetryWork(transaction, retrySelection)
         if (pendingRetry?.acquisitionRunId) {
@@ -404,10 +403,10 @@ export function createPgliteConnectorRepository(
             }
           }
         }
-        const beforeDue = pendingRetry?.state === 'scheduled'
-          && pendingRetry.nextAttemptAt !== null
-          && Date.parse(now) < Date.parse(pendingRetry.nextAttemptAt)
-        const terminal = pendingRetry?.state === 'exhausted' || pendingRetry?.state === 'cancelled'
+        const beforeDue = pendingRetry?.status === 'scheduled'
+          && pendingRetry.nextEligibleAt !== null
+          && Date.parse(now) < Date.parse(pendingRetry.nextEligibleAt)
+        const terminal = pendingRetry?.status === 'exhausted' || pendingRetry?.status === 'cancelled'
         if (pendingRetry && (beforeDue || terminal)) {
           if (pendingRetry.skippedRunId) {
             const [existingSkipped] = await transaction.select().from(connectorRuns)
@@ -423,7 +422,7 @@ export function createPgliteConnectorRepository(
           const skippedRunId = randomUUID()
           const adviceState = beforeDue
             ? 'not_due'
-            : pendingRetry.state === 'cancelled' ? 'cancelled' : 'exhausted'
+            : pendingRetry.status === 'cancelled' ? 'cancelled' : 'exhausted'
           const advice = retryAdviceFromWork(pendingRetry, adviceState)
           await transaction.insert(connectorRuns).values({
             id: skippedRunId,
@@ -460,8 +459,8 @@ export function createPgliteConnectorRepository(
             : { kind: 'yielded' as const, reason: 'operation_timeout' as const }
           await writeConnectorRunSynchronization(transaction, skippedRunId,
             connectorSynchronizationSnapshot(coverageStartedAt.slice(0, 10), retryOutcome), now)
-          await transaction.update(retryWork).set({ skippedRunId, updatedAt: now })
-            .where(eq(retryWork.id, pendingRetry.id))
+          await transaction.update(connectorCaptureWork).set({ skippedRunId, updatedAt: now })
+            .where(eq(connectorCaptureWork.id, pendingRetry.id))
           return {
             acquired: false,
             acquiredWork: null,
@@ -500,29 +499,29 @@ export function createPgliteConnectorRepository(
           coverageStartedAt.slice(0, 10), { kind: 'in_progress' },
         ), now)
         let acquiredWork: AcquiredRetryWork | null = null
-        if (pendingRetry?.state === 'scheduled') {
-          const [acquisition] = await transaction.update(retryWork).set({
-            state: 'acquired',
-            acquiredAt: now,
+        if (pendingRetry?.status === 'scheduled') {
+          const [acquisition] = await transaction.update(connectorCaptureWork).set({
+            status: 'claimed',
+            claimedAt: now,
             acquisitionToken: randomUUID(),
             acquisitionRunId: runId,
             skippedRunId: null,
             updatedAt: now,
           }).where(and(
-            eq(retryWork.id, pendingRetry.id),
-            eq(retryWork.state, 'scheduled'),
+            eq(connectorCaptureWork.id, pendingRetry.id),
+            eq(connectorCaptureWork.status, 'scheduled'),
             sql`exists (
               select 1 from source_execution_scopes scope
-              where scope.id = ${retryWork.executionScopeId}
+              where scope.id = ${instance.executionScopeId}
                 and scope.status in ('available', 'cooldown')
                 and (scope.blocked_until is null or scope.blocked_until <= ${now})
             )`,
-          )).returning({ id: retryWork.id })
+          )).returning({ id: connectorCaptureWork.id })
           if (acquisition) {
             await transaction.update(sourceExecutionScopes).set({
               status: 'available', blockedUntil: null, backoffAttempt: 0, updatedAt: now,
             }).where(and(
-              eq(sourceExecutionScopes.id, pendingRetry.executionScopeId),
+              eq(sourceExecutionScopes.id, instance.executionScopeId),
               eq(sourceExecutionScopes.status, 'cooldown'),
               lte(sourceExecutionScopes.blockedUntil, now),
             ))
@@ -798,13 +797,12 @@ export function createPgliteConnectorRepository(
         await updateConnectorSynchronizationOutcome(transaction, row.id, {
           kind: 'failed', reason: input.warning.code,
         }, input.completedAt)
-        await transaction.update(retryWork).set({
-          state: 'scheduled', acquiredAt: null, acquisitionToken: null,
+        await transaction.update(connectorCaptureWork).set({
+          status: 'scheduled', claimedAt: null, acquisitionToken: null,
           acquisitionRunId: null, updatedAt: input.completedAt,
         }).where(and(
-          eq(retryWork.state, 'acquired'),
-          eq(retryWork.acquisitionRunId, input.connectorRunId),
-          isNull(retryWork.deletedAt),
+          eq(connectorCaptureWork.status, 'claimed'),
+          eq(connectorCaptureWork.acquisitionRunId, input.connectorRunId),
         ))
         return persistFrozenConnectorRunLifecycleCounts(
           transaction, input.connectorRunId, input.completedAt,

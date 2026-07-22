@@ -3,11 +3,10 @@ import { eq } from 'drizzle-orm'
 import {
   applicationScores,
   applications,
-  companies,
-  sources,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import { createPgliteTestOwner } from '../../test/pglite-test-owner'
+import { seedCanonicalApplication } from '../../test-fixtures/canonical-application.fixture'
 import { createPgliteScoringRepository } from './scoring.repository'
 
 const scoreInput = {
@@ -34,53 +33,14 @@ async function openMigratedScoringDb() {
 
 async function seedScorableApplication(database: PgliteDatabase) {
   const now = '2026-06-08T12:00:00.000Z'
-  await database.insert(companies).values({
-    id: 'company-score',
-    name: 'Score Co',
-    normalizedName: 'score co',
-    websiteUrl: null,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-  })
-  await database.insert(sources).values({
-    id: 'source-score',
-    name: 'LinkedIn',
-    accountHint: null,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-  })
-  await database.insert(applications).values({
-    id: 'application-score-target',
-    companyId: 'company-score',
-    sourceId: 'source-score',
-    roleTitle: 'Software Engineer',
-    roleKind: 'full_time',
-    term: null,
-    timingMode: 'unknown',
-    termsJson: '[]',
-    startDate: null,
-    endDate: null,
-    city: null,
-    region: null,
-    country: 'US',
-    workMode: 'remote',
-    locationRaw: null,
-    status: 'queued',
-    hasApplied: false,
-    currentPriorityScore: null,
-    currentPriorityBand: null,
-    currentResumeVariant: null,
-    notes: null,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
+  await seedCanonicalApplication(database, {
+    id: scoreInput.applicationId, companyName: 'Score Co', roleTitle: 'Software Engineer',
+    workMode: 'remote', createdAt: now,
   })
 }
 
 describe('PGlite scoring repository', () => {
-  it('records a score and updates the application priority atomically', async () => {
+  it('records an immutable Application-owned score without mutating the aggregate head', async () => {
     const { cleanup, database, repository } = await openMigratedScoringDb()
     try {
       await seedScorableApplication(database)
@@ -116,30 +76,27 @@ describe('PGlite scoring repository', () => {
         .select()
         .from(applications)
         .where(eq(applications.id, scoreInput.applicationId))
-      expect(application).toMatchObject({
-        currentPriorityScore: 8,
-        currentPriorityBand: 'strong',
-        updatedAt: record.createdAt,
-      })
+      expect(application).toMatchObject({ status: 'active', revision: 1 })
+      expect(application?.updatedAt).not.toBe(record.createdAt)
     } finally {
       await cleanup()
     }
   })
 
-  it('rolls back the score insert when the application update fails', async () => {
+  it('rolls back cleanly when Application-owned score persistence fails', async () => {
     const { cleanup, client, database, repository } = await openMigratedScoringDb()
     try {
       await seedScorableApplication(database)
       await client.exec(`
-        create or replace function fail_application_update() returns trigger as $$
+        create or replace function fail_application_score_insert() returns trigger as $$
         begin
-          raise exception 'application update failed';
+          raise exception 'application score insert failed';
         end;
         $$ language plpgsql;
 
-        create trigger fail_applications_update
-        before update on applications
-        for each row execute function fail_application_update();
+        create trigger fail_application_scores_insert
+        before insert on application_scores
+        for each row execute function fail_application_score_insert();
       `)
 
       let thrown: unknown
@@ -150,20 +107,15 @@ describe('PGlite scoring repository', () => {
       }
 
       expect(thrown).toBeInstanceOf(Error)
-      expect(String(thrown)).toMatch(/Failed query: update "applications"/)
+      expect(String(thrown)).toMatch(/Failed query: insert into "application_scores"/)
       expect(
         thrown instanceof Error && 'cause' in thrown ? String((thrown as Error & { cause?: unknown }).cause) : '',
-      ).toMatch(/application update failed/)
+      ).toMatch(/application score insert failed/)
 
       expect(await database.select().from(applicationScores)).toHaveLength(0)
-      const [application] = await database
-        .select()
-        .from(applications)
+      const [application] = await database.select().from(applications)
         .where(eq(applications.id, scoreInput.applicationId))
-      expect(application).toMatchObject({
-        currentPriorityScore: null,
-        currentPriorityBand: null,
-      })
+      expect(application).toMatchObject({ status: 'active', revision: 1 })
     } finally {
       await cleanup()
     }

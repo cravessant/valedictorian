@@ -33,12 +33,19 @@ function collectProductionSourceFiles(): OwnershipSourceFile[] {
 
 describe('lifecycle state-ownership policy', () => {
   it('assigns exactly one owning module to every lifecycle aggregate', () => {
-    const owners = new Set(['capture', 'job', 'opportunity', 'applications', 'scheduling'])
+    const owners = new Set(['capture', 'job', 'opportunity', 'applications', 'connectors', 'scheduling'])
     expect(new Set(Object.values(lifecycleTableOwnership))).toEqual(owners)
     // Per-table correspondence: each identifier maps to its snake_case physical name
     // with the same owner, and the physical map has no extra entries. A same-owner,
     // same-count swap between the two maps cannot slip through.
-    const camelToSnake = (identifier: string) => identifier.replace(/([A-Z])/g, '_$1').toLowerCase()
+    const rootPhysicalNames: Record<string, string> = {
+      applications: 'applications',
+      captures: 'captures',
+      jobs: 'jobs',
+      opportunities: 'opportunities',
+    }
+    const camelToSnake = (identifier: string) => rootPhysicalNames[identifier]
+      ?? identifier.replace(/([A-Z])/g, '_$1').toLowerCase()
     const expectedPhysical: Record<string, string> = {}
     for (const [identifier, owner] of Object.entries(lifecycleTableOwnership)) {
       expectedPhysical[camelToSnake(identifier)] = owner

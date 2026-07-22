@@ -16,10 +16,10 @@ import { createPgliteCaptureService } from '../capture/capture.service'
 import { createPgliteJobService, type JobService } from '../job/job.service'
 import { createPgliteOpportunityService, type OpportunityService } from '../opportunity/opportunity.service'
 import { createPgliteApplicationAggregateService } from '../applications/application.aggregate.service'
-import { lifecycleApplications, pursuitLinks, applicationEventRecords, applicationHistory } from '../application/application.schema'
-import { lifecycleCaptures } from '../capture/capture.schema'
-import { lifecycleJobs } from '../job/job.schema'
-import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
+import { applications as applicationRows, pursuitLinks, applicationEventRecords, applicationHistory } from '../application/application.schema'
+import { captures as captureRows } from '../capture/capture.schema'
+import { jobs as jobRows } from '../job/job.schema'
+import { opportunities as opportunityRows } from '../opportunity/opportunity.schema'
 import { createPgliteOpportunityToApplicationPromotion } from './opportunity-to-application.promotion'
 
 const resettableOwner = useResettablePgliteTestOwner()
@@ -57,7 +57,7 @@ async function makeOpportunity(jobs: JobService, opportunities: OpportunityServi
 }
 
 async function countApplications(database: Awaited<ReturnType<typeof setup>>['database'], opportunityId: string) {
-  return (await database.select().from(lifecycleApplications).where(eq(lifecycleApplications.opportunityId, opportunityId))).length
+  return (await database.select().from(applicationRows).where(eq(applicationRows.opportunityId, opportunityId))).length
 }
 
 describe.sequential('Opportunity→Application promotion (#302)', () => {
@@ -149,9 +149,9 @@ describe.sequential('Opportunity→Application promotion (#302)', () => {
     expect(result).toMatchObject({ ok: true })
     if (!result.ok) return
     // every upstream aggregate exists and is linked.
-    expect((await database.select().from(lifecycleCaptures).where(eq(lifecycleCaptures.id, result.captureId))).length).toBe(1)
-    expect((await database.select().from(lifecycleJobs).where(eq(lifecycleJobs.id, result.jobId))).length).toBe(1)
-    expect((await database.select().from(lifecycleOpportunities).where(eq(lifecycleOpportunities.id, result.opportunityId))).length).toBe(1)
+    expect((await database.select().from(captureRows).where(eq(captureRows.id, result.captureId))).length).toBe(1)
+    expect((await database.select().from(jobRows).where(eq(jobRows.id, result.jobId))).length).toBe(1)
+    expect((await database.select().from(opportunityRows).where(eq(opportunityRows.id, result.opportunityId))).length).toBe(1)
     const application = await applications.get('ws-a', result.applicationId)
     expect(application).toMatchObject({ opportunityId: result.opportunityId, jobId: result.jobId, companyName: 'Globex', sourceName: 'Manual entry' })
   })
@@ -168,10 +168,10 @@ describe.sequential('Opportunity→Application promotion (#302)', () => {
     })).rejects.toThrow()
     spy.mockRestore()
     // the whole chain rolled back: no capture, job, opportunity, or application survives.
-    expect((await database.select().from(lifecycleCaptures)).length).toBe(0)
-    expect((await database.select().from(lifecycleJobs)).length).toBe(0)
-    expect((await database.select().from(lifecycleOpportunities)).length).toBe(0)
-    expect((await database.select().from(lifecycleApplications)).length).toBe(0)
+    expect((await database.select().from(captureRows)).length).toBe(0)
+    expect((await database.select().from(jobRows)).length).toBe(0)
+    expect((await database.select().from(opportunityRows)).length).toBe(0)
+    expect((await database.select().from(applicationRows)).length).toBe(0)
     // a clean retry then mints the full chain exactly once.
     const ok = await promotion.createManualApplication({
       workspaceId: 'ws-a', actor: ACTOR,
@@ -180,7 +180,7 @@ describe.sequential('Opportunity→Application promotion (#302)', () => {
       sourceName: 'Manual',
     })
     expect(ok).toMatchObject({ ok: true })
-    expect((await database.select().from(lifecycleApplications)).length).toBe(1)
+    expect((await database.select().from(applicationRows)).length).toBe(1)
   })
 })
 

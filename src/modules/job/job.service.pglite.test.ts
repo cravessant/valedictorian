@@ -1,6 +1,6 @@
 /**
  * Job module contract — red-first proofs through the PUBLIC commands/queries
- * (issue #300, slice 1). Exercises canonical `lifecycle_jobs` + append-only
+ * (issue #300, slice 1). Exercises canonical `jobs` + append-only
  * `job_history` on a migrated PGlite owner: UUIDv7 identities, versioned facts and
  * availability, remove/restore tombstones, history, cross-workspace isolation,
  * concurrency, and input validation.

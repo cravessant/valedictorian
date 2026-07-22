@@ -1,6 +1,6 @@
 /**
  * Application module contract — red-first proofs through the PUBLIC commands/queries
- * (issue #302). Exercises the canonical `lifecycle_applications` + `pursuit_links` +
+ * (issue #302). Exercises the canonical `applications` + `pursuit_links` +
  * `application_attempt_records` + `application_event_records` + append-only
  * `application_history` on a migrated PGlite owner: UUIDv7 identities, direct
  * Opportunity + Job lineage with DB-enforced workspace ownership, company/source
@@ -17,7 +17,7 @@ import { workspaces } from '../../db/workspaces.schema'
 import { UUID_V7_PATTERN } from '../../db/lifecycle-vocabulary'
 import { createPgliteJobService, type JobService } from '../job/job.service'
 import { createPgliteOpportunityService, type OpportunityService } from '../opportunity/opportunity.service'
-import { lifecycleApplications } from '../application/application.schema'
+import { applications as applicationRows } from '../application/application.schema'
 import {
   createPgliteApplicationAggregateService,
   type ApplicationAggregateService,
@@ -218,7 +218,7 @@ describe.sequential('Application module contract (#302)', () => {
     expect((await applications.list('ws-b')).length).toBe(0)
     expect(await applications.transitionStatus({ workspaceId: 'ws-b', applicationId: application.id, status: 'submitted', actor: ACTOR }))
       .toMatchObject({ ok: false, code: 'not_found' })
-    const [row] = await database.select().from(lifecycleApplications).where(and(eq(lifecycleApplications.workspaceId, 'ws-a'), eq(lifecycleApplications.id, application.id)))
+    const [row] = await database.select().from(applicationRows).where(and(eq(applicationRows.workspaceId, 'ws-a'), eq(applicationRows.id, application.id)))
     expect(row?.jobId).toBeTruthy()
   })
 })

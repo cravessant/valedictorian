@@ -32,8 +32,8 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
-import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
-import { lifecycleApplications } from '../application/application.schema'
+import { opportunities } from '../opportunity/opportunity.schema'
+import { applications } from '../application/application.schema'
 import { insertJobCaptureEvidenceReferences } from '../job/job.repository'
 import type { CaptureEvidenceInput, CaptureService } from '../capture/capture.service'
 import type { JobService } from '../job/job.service'
@@ -210,12 +210,12 @@ export function createPgliteOpportunityToApplicationPromotion(
 
   async function existingApplication(exec: Tx, workspaceId: string, opportunityId: string): Promise<string | null> {
     const [row] = await exec
-      .select({ id: lifecycleApplications.id })
-      .from(lifecycleApplications)
+      .select({ id: applications.id })
+      .from(applications)
       .where(and(
-        eq(lifecycleApplications.workspaceId, workspaceId),
-        eq(lifecycleApplications.opportunityId, opportunityId),
-        isNull(lifecycleApplications.removedAt),
+        eq(applications.workspaceId, workspaceId),
+        eq(applications.opportunityId, opportunityId),
+        isNull(applications.removedAt),
       ))
       .limit(1)
     return row?.id ?? null
@@ -264,8 +264,8 @@ export function createPgliteOpportunityToApplicationPromotion(
         try {
           return await database.transaction(async (tx) => {
             // Serialize concurrent promotions of THIS opportunity on real Postgres.
-            await tx.select({ id: lifecycleOpportunities.id }).from(lifecycleOpportunities)
-              .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.id, opportunityId)))
+            await tx.select({ id: opportunities.id }).from(opportunities)
+              .where(and(eq(opportunities.workspaceId, workspaceId), eq(opportunities.id, opportunityId)))
               .for('update')
             const linked = await existingApplication(tx, workspaceId, opportunityId)
             if (linked) {

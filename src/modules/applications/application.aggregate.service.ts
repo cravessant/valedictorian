@@ -5,7 +5,7 @@
  * a single-primary rule), transition status, refresh the Job/Opportunity snapshot,
  * generate attempt/event records, remove/restore with an explicit dependent choice,
  * and inspect history through this service. It writes the canonical
- * `lifecycle_applications`, `pursuit_links`, `application_attempt_records`,
+ * `applications`, `pursuit_links`, `application_attempt_records`,
  * `application_event_records`, and append-only `application_history` tables
  * (Application-owned; see application.aggregate.repository.ts).
  *
@@ -31,13 +31,13 @@ import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
 import { lifecycleWarningCodes, pursuitApplicationStatuses } from '../../db/lifecycle-vocabulary'
-import { lifecycleJobs } from '../job/job.schema'
-import { lifecycleOpportunities } from '../opportunity/opportunity.schema'
+import { jobs } from '../job/job.schema'
+import { opportunities } from '../opportunity/opportunity.schema'
 import {
   applicationAttemptRecords,
   applicationEventRecords,
   applicationHistory,
-  lifecycleApplications,
+  applications,
   pursuitLinks,
 } from '../application/application.schema'
 import {
@@ -47,9 +47,9 @@ import {
   insertApplicationAttemptRecords,
   insertApplicationEventRecords,
   insertApplicationHistoryRecords,
-  insertLifecycleApplications,
+  insertApplications,
   insertPursuitLinks,
-  updateLifecycleApplications,
+  updateApplications,
   updatePursuitLinks,
 } from './application.aggregate.repository'
 import {
@@ -454,8 +454,8 @@ export function createPgliteApplicationAggregateService(
   async function selectById(workspaceId: string, applicationId: string): Promise<ApplicationRow | null> {
     const [row] = await database
       .select()
-      .from(lifecycleApplications)
-      .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.id, applicationId)))
+      .from(applications)
+      .where(and(eq(applications.workspaceId, workspaceId), eq(applications.id, applicationId)))
       .limit(1)
     return (row as ApplicationRow | undefined) ?? null
   }
@@ -463,8 +463,8 @@ export function createPgliteApplicationAggregateService(
   async function selectByIdempotencyKey(exec: ApplicationExec, workspaceId: string, key: string): Promise<ApplicationRow | null> {
     const [row] = await exec
       .select()
-      .from(lifecycleApplications)
-      .where(and(eq(lifecycleApplications.workspaceId, workspaceId), eq(lifecycleApplications.idempotencyKey, key)))
+      .from(applications)
+      .where(and(eq(applications.workspaceId, workspaceId), eq(applications.idempotencyKey, key)))
       .limit(1)
     return (row as ApplicationRow | undefined) ?? null
   }
@@ -473,11 +473,11 @@ export function createPgliteApplicationAggregateService(
   async function selectActiveByOpportunity(exec: ApplicationExec, workspaceId: string, opportunityId: string): Promise<ApplicationRow | null> {
     const [row] = await exec
       .select()
-      .from(lifecycleApplications)
+      .from(applications)
       .where(and(
-        eq(lifecycleApplications.workspaceId, workspaceId),
-        eq(lifecycleApplications.opportunityId, opportunityId),
-        isNull(lifecycleApplications.removedAt),
+        eq(applications.workspaceId, workspaceId),
+        eq(applications.opportunityId, opportunityId),
+        isNull(applications.removedAt),
       ))
       .limit(1)
     return (row as ApplicationRow | undefined) ?? null
@@ -485,15 +485,15 @@ export function createPgliteApplicationAggregateService(
 
   async function resolveLineage(exec: Pick<PgliteDatabase, 'select'>, workspaceId: string, opportunityId: string) {
     const [opportunity] = await exec
-      .select({ id: lifecycleOpportunities.id, jobId: lifecycleOpportunities.jobId, removedAt: lifecycleOpportunities.removedAt })
-      .from(lifecycleOpportunities)
-      .where(and(eq(lifecycleOpportunities.workspaceId, workspaceId), eq(lifecycleOpportunities.id, opportunityId)))
+      .select({ id: opportunities.id, jobId: opportunities.jobId, removedAt: opportunities.removedAt })
+      .from(opportunities)
+      .where(and(eq(opportunities.workspaceId, workspaceId), eq(opportunities.id, opportunityId)))
       .limit(1)
     if (!opportunity) return null
     const [job] = await exec
-      .select({ factsRevision: lifecycleJobs.factsRevision, factsJson: lifecycleJobs.factsJson })
-      .from(lifecycleJobs)
-      .where(and(eq(lifecycleJobs.workspaceId, workspaceId), eq(lifecycleJobs.id, opportunity.jobId)))
+      .select({ factsRevision: jobs.factsRevision, factsJson: jobs.factsJson })
+      .from(jobs)
+      .where(and(eq(jobs.workspaceId, workspaceId), eq(jobs.id, opportunity.jobId)))
       .limit(1)
     if (!job) return null
     return {
@@ -588,10 +588,10 @@ export function createPgliteApplicationAggregateService(
   ): Promise<MutateApplicationResult> {
     const createdAt = nowIso()
     const nextRevision = row.revision + 1
-    const updated = await updateLifecycleApplications(exec)
+    const updated = await updateApplications(exec)
       .set({ ...headUpdate, revision: nextRevision, updatedAt: createdAt })
-      .where(and(eq(lifecycleApplications.id, row.id), guard))
-      .returning({ id: lifecycleApplications.id })
+      .where(and(eq(applications.id, row.id), guard))
+      .returning({ id: applications.id })
     if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
     await appendHistory(exec, row.id, nextRevision, kind, snapshot, actor, createdAt)
     return { ok: true as const, application: toRecord({ ...row, ...headUpdate, revision: nextRevision, updatedAt: createdAt }) }
@@ -625,8 +625,8 @@ export function createPgliteApplicationAggregateService(
         (select count(*) from ${pursuitLinks} where ${pursuitLinks.applicationId} = ${applicationId})
         + (select count(*) from ${applicationEventRecords} where ${applicationEventRecords.applicationId} = ${applicationId})
         + (select count(*) from ${applicationAttemptRecords} where ${applicationAttemptRecords.applicationId} = ${applicationId})` })
-      .from(lifecycleApplications)
-      .where(eq(lifecycleApplications.id, applicationId))
+      .from(applications)
+      .where(eq(applications.id, applicationId))
     return Number(dependents)
   }
 
@@ -640,8 +640,8 @@ export function createPgliteApplicationAggregateService(
       if (error instanceof ApplicationInputError) return fail(error.code, error.message)
       throw error
     }
-    const [row] = await exec.select().from(lifecycleApplications)
-      .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId))).limit(1)
+    const [row] = await exec.select().from(applications)
+      .where(and(eq(applications.workspaceId, resolved.workspaceId), eq(applications.id, resolved.applicationId))).limit(1)
     const typed = (row as ApplicationRow | undefined) ?? null
     if (!typed) return fail('not_found', 'application not found in this workspace')
     if (typed.removedAt !== null) return { ok: true, application: toRecord(typed) }
@@ -655,7 +655,7 @@ export function createPgliteApplicationAggregateService(
       await deleteApplicationAttemptRecords(exec).where(eq(applicationAttemptRecords.applicationId, typed.id))
     }
     return commitOn(exec, typed, resolved.actor, 'removed', { dependents: input.dependents ?? 'none' },
-      { removedAt: nowIso() }, isNull(lifecycleApplications.removedAt))
+      { removedAt: nowIso() }, isNull(applications.removedAt))
   }
 
   async function restoreOn(exec: ApplicationExec, input: ApplicationMutationInput): Promise<MutateApplicationResult> {
@@ -666,13 +666,13 @@ export function createPgliteApplicationAggregateService(
       if (error instanceof ApplicationInputError) return fail(error.code, error.message)
       throw error
     }
-    const [row] = await exec.select().from(lifecycleApplications)
-      .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId))).limit(1)
+    const [row] = await exec.select().from(applications)
+      .where(and(eq(applications.workspaceId, resolved.workspaceId), eq(applications.id, resolved.applicationId))).limit(1)
     const typed = (row as ApplicationRow | undefined) ?? null
     if (!typed) return fail('not_found', 'application not found in this workspace')
     if (typed.removedAt === null) return { ok: true, application: toRecord(typed) }
     return commitOn(exec, typed, resolved.actor, 'restored', { kind: 'restored', priorRevision: typed.revision },
-      { removedAt: null }, sql`${lifecycleApplications.removedAt} is not null`)
+      { removedAt: null }, sql`${applications.removedAt} is not null`)
   }
 
   async function ids(input: { workspaceId: unknown; applicationId: unknown; actor: unknown }) {
@@ -770,7 +770,7 @@ export function createPgliteApplicationAggregateService(
         removedAt: null,
         idempotencyKey,
       }
-      await insertLifecycleApplications(exec).values(row)
+      await insertApplications(exec).values(row)
       await appendHistory(exec, row.id, 1, 'created', { status, opportunityId, jobId: lineage.jobId }, actor, createdAt, override)
       return { ok: true, application: toRecord(row), created: true }
     },
@@ -792,13 +792,13 @@ export function createPgliteApplicationAggregateService(
     async list(workspaceId, query) {
       const rows = await database
         .select()
-        .from(lifecycleApplications)
+        .from(applications)
         .where(
           query?.includeRemoved
-            ? eq(lifecycleApplications.workspaceId, workspaceId)
-            : and(eq(lifecycleApplications.workspaceId, workspaceId), isNull(lifecycleApplications.removedAt)),
+            ? eq(applications.workspaceId, workspaceId)
+            : and(eq(applications.workspaceId, workspaceId), isNull(applications.removedAt)),
         )
-        .orderBy(desc(lifecycleApplications.createdAt), asc(lifecycleApplications.id))
+        .orderBy(desc(applications.createdAt), asc(applications.id))
         .limit(query?.limit ?? 200)
       return (rows as ApplicationRow[]).map(toRecord)
     },
@@ -816,7 +816,7 @@ export function createPgliteApplicationAggregateService(
       const row = await selectById(resolved.workspaceId, resolved.applicationId)
       if (!row) return fail('not_found', 'application not found in this workspace')
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
-      return commit(row, resolved.actor, 'company_edited', { companyName }, { companyName }, eq(lifecycleApplications.revision, row.revision), 'revision_conflict')
+      return commit(row, resolved.actor, 'company_edited', { companyName }, { companyName }, eq(applications.revision, row.revision), 'revision_conflict')
     },
 
     async editSource(input) {
@@ -832,7 +832,7 @@ export function createPgliteApplicationAggregateService(
       const row = await selectById(resolved.workspaceId, resolved.applicationId)
       if (!row) return fail('not_found', 'application not found in this workspace')
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
-      return commit(row, resolved.actor, 'source_edited', { sourceName }, { sourceName }, eq(lifecycleApplications.revision, row.revision), 'revision_conflict')
+      return commit(row, resolved.actor, 'source_edited', { sourceName }, { sourceName }, eq(applications.revision, row.revision), 'revision_conflict')
     },
 
     async transitionStatus(input) {
@@ -848,7 +848,7 @@ export function createPgliteApplicationAggregateService(
       const row = await selectById(resolved.workspaceId, resolved.applicationId)
       if (!row) return fail('not_found', 'application not found in this workspace')
       if (input.expectedRevision !== undefined && input.expectedRevision !== row.revision) return fail('revision_conflict', 'application was modified concurrently')
-      return commit(row, resolved.actor, 'status_changed', { status, priorStatus: row.status }, { status }, eq(lifecycleApplications.revision, row.revision), 'revision_conflict')
+      return commit(row, resolved.actor, 'status_changed', { status, priorStatus: row.status }, { status }, eq(applications.revision, row.revision), 'revision_conflict')
     },
 
     async refreshSnapshot(input) {
@@ -902,7 +902,7 @@ export function createPgliteApplicationAggregateService(
           preserveLinkEdits: input.preserveLinkEdits ?? true,
         },
         headUpdate,
-        eq(lifecycleApplications.revision, row.revision),
+        eq(applications.revision, row.revision),
         'revision_conflict',
       )
     },
@@ -924,8 +924,8 @@ export function createPgliteApplicationAggregateService(
       }
       const [row] = await exec
         .select()
-        .from(lifecycleApplications)
-        .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId)))
+        .from(applications)
+        .where(and(eq(applications.workspaceId, resolved.workspaceId), eq(applications.id, resolved.applicationId)))
         .limit(1)
       if (!row) return fail('not_found', 'application not found in this workspace')
       const [{ existing }] = await exec
@@ -940,10 +940,10 @@ export function createPgliteApplicationAggregateService(
       }
       const linkId = newId()
       await insertPursuitLinks(exec).values({ id: linkId, applicationId: resolved.applicationId, kind: link.kind, label: link.label, url: link.url, isPrimary: link.isPrimary, createdAt })
-      const updated = await updateLifecycleApplications(exec)
+      const updated = await updateApplications(exec)
         .set({ revision: nextRevision, updatedAt: createdAt })
-        .where(and(eq(lifecycleApplications.id, resolved.applicationId), eq(lifecycleApplications.revision, (row as ApplicationRow).revision)))
-        .returning({ id: lifecycleApplications.id })
+        .where(and(eq(applications.id, resolved.applicationId), eq(applications.revision, (row as ApplicationRow).revision)))
+        .returning({ id: applications.id })
       if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
       await appendHistory(exec, resolved.applicationId, nextRevision, 'link_created', { linkId, kind: link.kind, isPrimary: link.isPrimary }, resolved.actor, createdAt)
       const record: ApplicationLinkRecord = { id: linkId, applicationId: resolved.applicationId, kind: link.kind, label: link.label, url: link.url, isPrimary: link.isPrimary, createdAt }
@@ -993,7 +993,7 @@ export function createPgliteApplicationAggregateService(
             await updatePursuitLinks(tx).set({ isPrimary: false }).where(and(eq(pursuitLinks.applicationId, resolved.applicationId), eq(pursuitLinks.isPrimary, true)))
           }
           await updatePursuitLinks(tx).set(patch).where(eq(pursuitLinks.id, linkId))
-          const updated = await updateLifecycleApplications(tx).set({ revision: nextRevision, updatedAt: createdAt }).where(and(eq(lifecycleApplications.id, row.id), eq(lifecycleApplications.revision, row.revision))).returning({ id: lifecycleApplications.id })
+          const updated = await updateApplications(tx).set({ revision: nextRevision, updatedAt: createdAt }).where(and(eq(applications.id, row.id), eq(applications.revision, row.revision))).returning({ id: applications.id })
           if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
           await appendHistory(tx, row.id, nextRevision, 'link_updated', { linkId }, resolved.actor, createdAt)
           return { ok: true as const, application: toRecord({ ...row, revision: nextRevision, updatedAt: createdAt }) }
@@ -1022,7 +1022,7 @@ export function createPgliteApplicationAggregateService(
       const nextRevision = row.revision + 1
       return database.transaction(async (tx) => {
         await deletePursuitLinks(tx).where(eq(pursuitLinks.id, linkId))
-        const updated = await updateLifecycleApplications(tx).set({ revision: nextRevision, updatedAt: createdAt }).where(and(eq(lifecycleApplications.id, row.id), eq(lifecycleApplications.revision, row.revision))).returning({ id: lifecycleApplications.id })
+        const updated = await updateApplications(tx).set({ revision: nextRevision, updatedAt: createdAt }).where(and(eq(applications.id, row.id), eq(applications.revision, row.revision))).returning({ id: applications.id })
         if (updated.length === 0) return fail('revision_conflict', 'application was modified concurrently')
         await appendHistory(tx, row.id, nextRevision, 'link_removed', { linkId }, resolved.actor, createdAt)
         return { ok: true as const, application: toRecord({ ...row, revision: nextRevision, updatedAt: createdAt }) }
@@ -1051,9 +1051,9 @@ export function createPgliteApplicationAggregateService(
         throw error
       }
       const [row] = await exec
-        .select({ id: lifecycleApplications.id })
-        .from(lifecycleApplications)
-        .where(and(eq(lifecycleApplications.workspaceId, resolved.workspaceId), eq(lifecycleApplications.id, resolved.applicationId)))
+        .select({ id: applications.id })
+        .from(applications)
+        .where(and(eq(applications.workspaceId, resolved.workspaceId), eq(applications.id, resolved.applicationId)))
         .limit(1)
       if (!row) return fail('not_found', 'application not found in this workspace')
       const createdAt = nowIso()
