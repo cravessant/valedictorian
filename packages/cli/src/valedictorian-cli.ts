@@ -9,30 +9,21 @@ import {
   type ValedictorianClient,
 } from 'sparxie'
 
+import { buildActionQueueRoute } from './valedictorian-cli.action-queue-commands.js'
 import { buildApplicationsRoute } from './valedictorian-cli.application-commands.js'
 import { buildCapturesRoute } from './valedictorian-cli.capture-commands.js'
-import { parseConnectorScheduleUpsert } from './valedictorian-cli.connector-schedule-parsers.js'
-import { formatDoctorText, runContext, runDoctor } from './valedictorian-cli.doctor.js'
+import { buildConnectorsRoute } from './valedictorian-cli.connector-commands.js'
 import {
-  booleanFlags,
-  createWorkspace,
   definedEnv,
-  listWorkspaces,
-  makeCommand,
   normalizeArgv,
-  openWorkspace,
-  optionFlags,
-  optionValue,
-  parseTimeoutMs,
   readArgvEscapeSuffix,
   readPackageVersion,
-  requiredOption,
-  toArgvWithoutWorkspace,
-  workspaceClient,
-  workspaceConnectorClient,
-  writeJson,
   type ValedictorianCliContext,
 } from './valedictorian-cli.command-runtime.js'
+import {
+  buildContextCommand,
+  buildDoctorCommand,
+} from './valedictorian-cli.diagnostics-commands.js'
 import {
   argvRequestsJson,
   CliUsageError,
@@ -40,22 +31,13 @@ import {
   mapStricliExitCode,
   presentCliFailure,
 } from './valedictorian-cli.failures.js'
-import { parseStrictNumberOption } from './valedictorian-cli.parser-options.js'
 import { buildJobsRoute } from './valedictorian-cli.job-commands.js'
 import { buildOpportunitiesRoute } from './valedictorian-cli.opportunity-commands.js'
 import { buildProfileRoute } from './valedictorian-cli.profile-commands.js'
+import { buildRunsRoute } from './valedictorian-cli.run-commands.js'
+import { buildScoresRoute } from './valedictorian-cli.score-commands.js'
 import { buildSecretsRoute } from './valedictorian-cli.secrets-commands.js'
-import {
-  parseConnectorConfiguration,
-  parseConnectorObservationsList,
-  parseConnectorRunsList,
-  parseConnectorRunTrigger,
-  parseActionQueueListQuery,
-  parseRunComplete,
-  parseRunStart,
-  parseRunStep,
-  parseWorkflowRunsListQuery,
-} from './valedictorian-cli.parsers.js'
+import { buildWorkspacesRoute } from './valedictorian-cli.workspace-commands.js'
 
 export interface RunValedictorianCliOptions {
   argv: string[]
@@ -128,152 +110,16 @@ const application = buildApplication(
       applications: buildApplicationsRoute(),
       captures: buildCapturesRoute(),
       connectors: buildConnectorsRoute(),
-      context: makeCommand({
-        docs: { brief: 'Print current CLI target context' },
-        flags: {
-          ...optionFlags(['timeout-ms', 'workspace']),
-          ...booleanFlags(['skip-network']),
-        },
-        run: async (context, flags) => {
-          writeJson(
-            context,
-            await runContext({
-              cwd: context.cwd,
-              env: context.env,
-              skipNetwork: flags['skip-network'] === true,
-              timeoutMs: parseTimeoutMs(optionValue(flags, 'timeout-ms')),
-              workspaceSelector: optionValue(flags, 'workspace'),
-            }),
-          )
-        },
-      }),
-      doctor: makeCommand({
-        docs: { brief: 'Run read-only CLI diagnostics' },
-        flags: {
-          ...optionFlags(['timeout-ms', 'workspace']),
-          ...booleanFlags(['skip-network']),
-        },
-        run: async (context, flags) => {
-          const report = await runDoctor({
-            cliVersion: await readPackageVersion(),
-            cwd: context.cwd,
-            env: context.env,
-            skipNetwork: flags['skip-network'] === true,
-            timeoutMs: parseTimeoutMs(optionValue(flags, 'timeout-ms')),
-            workspaceSelector: optionValue(flags, 'workspace'),
-          })
-
-          if (flags.json === true) {
-            writeJson(context, report)
-          } else {
-            context.process.stdout.write(formatDoctorText(report))
-          }
-
-          if (!report.ok) {
-            context.process.exitCode = 1
-          }
-        },
-      }),
+      context: buildContextCommand(),
+      doctor: buildDoctorCommand(),
       jobs: buildJobsRoute(),
       opportunities: buildOpportunitiesRoute(),
       profile: buildProfileRoute(),
       secrets: buildSecretsRoute(),
-      workspaces: buildRouteMap({
-        docs: { brief: 'Manage local workspaces' },
-        routes: {
-          create: makeCommand({
-            docs: { brief: 'Create a workspace at a path' },
-            positionalCount: 1,
-            run: async (context, _flags, workspacePath) => {
-              writeJson(context, await createWorkspace(context, workspacePath))
-            },
-          }),
-          list: makeCommand({
-            docs: { brief: 'List registered workspaces' },
-            run: async (context) => {
-              writeJson(context, await listWorkspaces(context))
-            },
-          }),
-          open: makeCommand({
-            docs: { brief: 'Open a folder as a workspace' },
-            flags: booleanFlags(['rekey']),
-            positionalCount: 1,
-            run: async (context, flags, workspacePath) => {
-              writeJson(context, await openWorkspace(context, workspacePath, flags.rekey === true))
-            },
-          }),
-        },
-      }),
-      'action-queue': buildRouteMap({
-        docs: { brief: 'Inspect action queue items' },
-        routes: {
-          list: makeCommand({
-            docs: { brief: 'List action queue items' },
-            flags: optionFlags(['action-bucket', 'limit', 'offset', 'workspace']),
-            run: async (context, flags) => {
-              const client = await workspaceClient(context, flags)
-
-              writeJson(
-                context,
-                await client.actionQueue.list(parseActionQueueListQuery(toArgvWithoutWorkspace(flags))),
-              )
-            },
-          }),
-        },
-      }),
+      workspaces: buildWorkspacesRoute(),
+      'action-queue': buildActionQueueRoute(),
       runs: buildRunsRoute(),
-      scores: buildRouteMap({
-        docs: { brief: 'Record application scores' },
-        routes: {
-          record: makeCommand({
-            docs: { brief: 'Record an application score' },
-            flags: {
-              ...optionFlags([], [
-                'score',
-                'band',
-                'role-relevance',
-                'career-signal',
-                'city-work-mode',
-                'compensation-logistics',
-                'rationale',
-              ]),
-              ...optionFlags(['rubric-version']),
-              ...optionFlags(['workspace']),
-            },
-            positionalCount: 1,
-            run: async (context, flags, applicationId) => {
-              const client = await workspaceClient(context, flags)
-
-              const score = await client.scores.record({
-                applicationId,
-                score: parseStrictNumberOption(requiredOption(flags, 'score', '--score value'), '--score'),
-                band: requiredOption(flags, 'band', '--band value'),
-                roleRelevance: parseStrictNumberOption(
-                  requiredOption(flags, 'role-relevance', '--role-relevance value'),
-                  '--role-relevance',
-                ),
-                careerSignal: parseStrictNumberOption(
-                  requiredOption(flags, 'career-signal', '--career-signal value'),
-                  '--career-signal',
-                ),
-                cityWorkMode: parseStrictNumberOption(
-                  requiredOption(flags, 'city-work-mode', '--city-work-mode value'),
-                  '--city-work-mode',
-                ),
-                compensationLogistics: parseStrictNumberOption(
-                  requiredOption(flags, 'compensation-logistics', '--compensation-logistics value'),
-                  '--compensation-logistics',
-                ),
-                penalties: [],
-                rationale: requiredOption(flags, 'rationale', '--rationale value'),
-                rubricVersion: optionValue(flags, 'rubric-version') ?? 'valedictorian-cli',
-              })
-
-              writeJson(context, score, false)
-            },
-          }),
-        },
-      }),
+      scores: buildScoresRoute(),
     },
   }),
   {
@@ -287,237 +133,4 @@ const application = buildApplication(
 async function runValedictorianApp(argv: string[], context: ValedictorianCliContext) {
   const { run } = await import('@stricli/core')
   await run(application, argv, context)
-}
-
-function buildRunsRoute() {
-  return buildRouteMap({
-    docs: { brief: 'Track workflow runs' },
-    routes: {
-      complete: makeCommand({
-        docs: { brief: 'Complete a workflow run' },
-        flags: optionFlags(['blocker', 'metadata-json', 'outcome', 'status', 'summary', 'workspace']),
-        positionalCount: 1,
-        run: async (context, flags, workflowRunId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.runs.complete(
-              parseRunComplete(workflowRunId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
-        },
-      }),
-      list: makeCommand({
-        docs: { brief: 'List workflow runs' },
-        flags: optionFlags([
-          'limit',
-          'offset',
-          'run-type',
-          'source',
-          'source-id',
-          'status',
-          'subject-application-id',
-          'workspace',
-        ]),
-        run: async (context, flags) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.runs.list(parseWorkflowRunsListQuery(toArgvWithoutWorkspace(flags))),
-          )
-        },
-      }),
-      start: makeCommand({
-        docs: { brief: 'Start a workflow run' },
-        flags: optionFlags(
-          [
-            'actor-name',
-            'coverage-ended-at',
-            'coverage-started-at',
-            'input-json',
-            'metadata-json',
-            'source-id',
-            'source-name',
-            'subject-application-id',
-            'summary',
-            'timezone',
-            'workspace',
-          ],
-          ['actor-type', 'run-type'],
-        ),
-        run: async (context, flags) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(context, await client.runs.start(parseRunStart(toArgvWithoutWorkspace(flags))))
-        },
-      }),
-      step: makeCommand({
-        docs: { brief: 'Record a workflow run step' },
-        flags: optionFlags(['actor', 'payload-json', 'workspace'], ['message', 'type']),
-        positionalCount: 1,
-        run: async (context, flags, workflowRunId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.runs.step(parseRunStep(workflowRunId, toArgvWithoutWorkspace(flags))),
-          )
-        },
-      }),
-    },
-  })
-}
-
-function buildConnectorsRoute() {
-  return buildRouteMap({
-    docs: { brief: 'Configure and advance continuous connector synchronization' },
-    routes: {
-      configure: makeCommand({
-        docs: { brief: 'Configure continuous connector synchronization' },
-        flags: optionFlags([
-          'connector-version',
-          'display-name',
-          'earliest-backfill-date',
-          'enabled',
-          'filters-json',
-          'workspace',
-        ]),
-        positionalCount: 1,
-        run: async (context, flags, connectorInstanceId) => {
-          const connectorClient = await workspaceConnectorClient(context, flags)
-
-          writeJson(
-            context,
-            await connectorClient.update(
-              parseConnectorConfiguration(connectorInstanceId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
-        },
-      }),
-      status: makeCommand({
-        docs: { brief: 'Show connector synchronization status' },
-        flags: optionFlags(['workspace']),
-        positionalCount: 1,
-        run: async (context, flags, connectorInstanceId) => {
-          const connectorClient = await workspaceConnectorClient(context, flags)
-
-          writeJson(context, await connectorClient.inspect(connectorInstanceId))
-        },
-      }),
-      list: makeCommand({
-        docs: { brief: 'List connector instances' },
-        flags: optionFlags(['workspace']),
-        run: async (context, flags) => {
-          const connectorClient = await workspaceConnectorClient(context, flags)
-
-          writeJson(context, await connectorClient.list())
-        },
-      }),
-      observations: buildRouteMap({
-        docs: { brief: 'Inspect connector observations' },
-        routes: {
-          list: makeCommand({
-            docs: { brief: 'List connector observations' },
-            flags: optionFlags(['connector-run-id', 'limit', 'offset', 'workspace']),
-            positionalCount: 1,
-            run: async (context, flags, connectorInstanceId) => {
-              const connectorClient = await workspaceConnectorClient(context, flags)
-
-              writeJson(
-                context,
-                await connectorClient.observations.list(
-                  parseConnectorObservationsList(
-                    connectorInstanceId,
-                    toArgvWithoutWorkspace(flags),
-                  ),
-                ),
-              )
-            },
-          }),
-        },
-      }),
-      runs: buildRouteMap({
-        docs: { brief: 'Inspect connector runs' },
-        routes: {
-          list: makeCommand({
-            docs: { brief: 'List connector runs' },
-            flags: optionFlags(['limit', 'mode', 'offset', 'status', 'workspace']),
-            positionalCount: 1,
-            run: async (context, flags, connectorInstanceId) => {
-              const connectorClient = await workspaceConnectorClient(context, flags)
-
-              writeJson(
-                context,
-                await connectorClient.runs.list(
-                  parseConnectorRunsList(connectorInstanceId, toArgvWithoutWorkspace(flags)),
-                ),
-              )
-            },
-          }),
-        },
-      }),
-      schedules: buildRouteMap({
-        docs: { brief: 'Manage connector schedule policy' },
-        routes: {
-          get: makeCommand({
-            docs: { brief: 'Get connector schedule policy' },
-            flags: optionFlags(['workspace']),
-            positionalCount: 1,
-            run: async (context, flags, connectorInstanceId) => {
-              const connectorClient = await workspaceConnectorClient(context, flags)
-
-              writeJson(context, await connectorClient.schedules.get(connectorInstanceId))
-            },
-          }),
-          upsert: makeCommand({
-            docs: { brief: 'Create or update connector schedule policy' },
-            flags: optionFlags(
-              ['workspace'],
-              ['cadence-json', 'expected-revision', 'state', 'timezone'],
-            ),
-            positionalCount: 1,
-            run: async (context, flags, connectorInstanceId) => {
-              const connectorClient = await workspaceConnectorClient(context, flags)
-
-              writeJson(
-                context,
-                await connectorClient.schedules.upsert(
-                  parseConnectorScheduleUpsert(
-                    connectorInstanceId,
-                    toArgvWithoutWorkspace(flags),
-                  ),
-                ),
-              )
-            },
-          }),
-        },
-      }),
-      trigger: makeCommand({
-        docs: { brief: 'Advance continuous connector synchronization' },
-        flags: {
-          ...optionFlags([
-            'filter-signature',
-            'filters-json',
-            'mode',
-            'reason',
-            'workspace',
-          ]),
-          ...booleanFlags(['dry-run']),
-        },
-        positionalCount: 1,
-        run: async (context, flags, connectorInstanceId) => {
-          const connectorClient = await workspaceConnectorClient(context, flags)
-
-          writeJson(
-            context,
-            await connectorClient.runs.trigger(
-              parseConnectorRunTrigger(connectorInstanceId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
-        },
-      }),
-    },
-  })
 }
