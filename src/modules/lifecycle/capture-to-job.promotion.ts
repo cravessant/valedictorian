@@ -243,6 +243,20 @@ export function createPgliteJobPromotion(
     }
   }
 
+  function validateOverrideWarnings(
+    override: JobWarningOverrideInput | null | undefined,
+    warnings: readonly PromotionWarning[],
+  ): JobFailure | null {
+    if (!override) return null
+    const actualCodes = new Set<string>(warnings.map((warning) => (
+      warning.code === 'retrieval_unavailable' ? 'weak_possible_match' : warning.code
+    )))
+    const absent = override.warningCodes.find((code) => !actualCodes.has(code))
+    return absent === undefined
+      ? null
+      : fail('invalid_input', `override warning code ${absent} is not present in the promotion warnings`)
+  }
+
   /** Load an existing target Job for duplicate resolution (workspace-scoped, non-removed). */
   async function loadTargetJob(exec: Tx, workspaceId: string, jobId: string): Promise<{ id: string; factsRevision: number } | null> {
     const [row] = await exec
@@ -345,6 +359,9 @@ export function createPgliteJobPromotion(
       warnings.push({ code: 'missing_optional_facts', message: 'manual/provider-less capture yields a provisional identity only' })
       return { kind: 'posting', provider: adapterId, account: null, value: `manual:${newId()}`, strength: 'provisional' }
     }
+    if (!resolutionPort) {
+      warnings.push({ code: 'retrieval_unavailable', message: 'no boundary destination resolver is configured' })
+    }
     return { kind: 'posting', provider: adapterId, account: null, value: providerRecordId, strength: 'provisional' }
   }
 
@@ -444,6 +461,13 @@ export function createPgliteJobPromotion(
       const factsWarning: PromotionWarning | null = input.selectedFacts === undefined
         ? { code: 'missing_optional_facts', message: 'promoted with derived default facts; no selected facts were provided' }
         : null
+      const replayWarnings: PromotionWarning[] = []
+      if (!capture.provenance.providerRecordId) {
+        replayWarnings.push({ code: 'missing_optional_facts', message: 'manual/provider-less capture yields a provisional identity only' })
+      } else if (!resolutionPort && capture.evidenceMode !== 'ats_details_provided') {
+        replayWarnings.push({ code: 'retrieval_unavailable', message: 'no boundary destination resolver is configured' })
+      }
+      if (factsWarning) replayWarnings.push(factsWarning)
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
@@ -454,7 +478,14 @@ export function createPgliteJobPromotion(
               .for('update')
             // Idempotency BEFORE any boundary retrieval.
             const linked = await existingLineageJob(tx, captureId)
-            if (linked) return { ok: true as const, jobId: linked, captureId, attached: true, created: false, warnings: [] as PromotionWarning[] }
+            if (linked) {
+              if (dedup && dedup.targetResourceId !== linked) {
+                throw new PromotionAbort(fail('invalid_input', 'duplicateResolution.targetResourceId does not match the Job already linked to this Capture'))
+              }
+              const invalidOverride = validateOverrideWarnings(input.override, replayWarnings)
+              if (invalidOverride) throw new PromotionAbort(invalidOverride)
+              return { ok: true as const, jobId: linked, captureId, attached: true, created: false, warnings: replayWarnings }
+            }
 
             // Explicit ATTACH: link the Capture directly to the caller-identified Job,
             // skipping identity resolution/creation entirely (composes the Job-owned
@@ -467,7 +498,9 @@ export function createPgliteJobPromotion(
                 throw new PromotionAbort(fail('revision_conflict', 'target job facts advanced since evaluation'))
               }
               await linkCapture(tx, target.id, captureId, link.revision, link.indexes, nowIso())
-              return { ok: true as const, jobId: target.id, captureId, attached: true, created: false, warnings: [] as PromotionWarning[] }
+              const invalidOverride = validateOverrideWarnings(input.override, replayWarnings)
+              if (invalidOverride) throw new PromotionAbort(invalidOverride)
+              return { ok: true as const, jobId: target.id, captureId, attached: true, created: false, warnings: replayWarnings }
             }
 
             const warnings: PromotionWarning[] = []
@@ -487,26 +520,30 @@ export function createPgliteJobPromotion(
                   throw new PromotionAbort(fail('revision_conflict', 'resolved owner job facts advanced since evaluation'))
                 }
               }
+              const invalidOverride = validateOverrideWarnings(input.override, warnings)
+              if (invalidOverride) throw new PromotionAbort(invalidOverride)
               await linkCapture(tx, owner.jobId, captureId, link.revision, link.indexes, createdAt)
               return { ok: true as const, jobId: owner.jobId, captureId, attached: true, created: false, warnings }
             }
             if (factsWarning) warnings.push(factsWarning)
+            const invalidOverride = validateOverrideWarnings(input.override, warnings)
+            if (invalidOverride) throw new PromotionAbort(invalidOverride)
             const created = await jobService.createOn(tx, { workspaceId, facts: promotionFacts, actor, idempotencyKey })
             if (!created.ok) throw new PromotionAbort(created)
             await establishPromotionIdentity(tx, created.job.id, captureId, link.revision, validated, actor, createdAt)
             await linkCapture(tx, created.job.id, captureId, link.revision, link.indexes, createdAt)
+            if (dedup?.action === 'merge') {
+              const merged = await jobIdentityService!.mergeOn(tx, {
+                workspaceId,
+                jobIdA: created.job.id,
+                jobIdB: dedup.targetResourceId,
+                actor,
+              })
+              if (!merged.ok) throw new PromotionAbort(merged)
+              return { ok: true as const, jobId: merged.winnerJobId, captureId, attached: true, created: false, warnings }
+            }
             return { ok: true as const, jobId: created.job.id, captureId, attached: false, created: created.created, warnings }
           })
-
-          // MERGE reconciliation: the promotion produced a Job for this Capture; merge it
-          // with the caller-identified duplicate. merge() owns its own transaction, so this
-          // is a post-commit reconciliation (deterministic + idempotent), not composed into
-          // the promotion tx.
-          if (dedup?.action === 'merge' && outcome.ok) {
-            const merged = await jobIdentityService!.merge({ workspaceId, jobIdA: outcome.jobId, jobIdB: dedup.targetResourceId, actor })
-            if (!merged.ok) return merged
-            return { ok: true as const, jobId: merged.winnerJobId, captureId, attached: true, created: false, warnings: outcome.warnings }
-          }
           return outcome
         } catch (error) {
           if (error instanceof PromotionAbort) return error.failure

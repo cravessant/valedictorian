@@ -4,7 +4,7 @@ import path from 'node:path'
 import { connectorRetirementResultSchema } from 'sparxie'
 import { describe, expect, it, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
-import { retryWork, sourceExecutionScopes, sourceExecutionSessions } from '../db/schema'
+import { sourceExecutionScopes, sourceExecutionSessions } from '../db/schema'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import {
@@ -223,7 +223,7 @@ describe.sequential('local connector instance retirement', () => {
     expect(await database.select().from(sourceExecutionSessions)).toEqual([])
   })
 
-  it('retires mutable execution state while preserving checkpoints and historical sourcing lineage', async () => {
+  it('retires mutable execution state while preserving checkpoints and canonical Capture lineage', async () => {
     const retiredAt = '2026-07-13T16:00:00.000Z'
     const client = await createLocalValedictorianClient({
       connectorRegistry: { get: () => null },
@@ -248,28 +248,16 @@ describe.sequential('local connector instance retirement', () => {
       mode: 'manual',
       startedAt: '2026-07-13T13:00:00.000Z',
     })).run
-    const intake = await client.sourcing.rawRecords.ingestBatch({
-      records: [{
-        intakeItemId: 'historical-record',
-        adapter: { id: instance.connectorId, kind: 'connector', version: instance.connectorVersion },
-        capture: {
-          connectorInstanceId: instance.id,
-          connectorRunId: run.id,
-          executionScopeId: instance.executionScopeId,
-        },
-        observedAt: '2026-07-13T13:00:00.000Z',
-        providerRecordId: 'historical-job',
-        payload: {
-          companyName: 'Historical Co',
-          roleTitle: 'Software Intern',
-          applicationUrl: 'https://jobs.lever.co/historical/job',
-        },
-      }],
+    const capture = await client.captures.create({
+      evidenceMode: 'reported',
+      adapter: { id: instance.connectorId, kind: 'connector', version: instance.connectorVersion },
+      observedAt: '2026-07-13T13:00:00.000Z',
+      providerRecordId: 'historical-job',
+      providerSchema: 'removed-connector@1',
+      payload: { companyName: 'Historical Co', roleTitle: 'Software Intern' },
+      evidence: [],
     })
-    const rawRecordId = intake.receipts[0].rawRecordId
-    const rawRevisionId = intake.receipts[0].revision.id
-    const normalizationBefore = await client.sourcing.rawRecords.normalization.get(rawRecordId)
-    const projectionBefore = await client.sourcing.rawRevisions.projection.get(rawRevisionId)
+    if (capture.status !== 'succeeded') throw new Error('Expected canonical Capture creation')
     await repository.recordCheckpoint({
       connectorInstanceId: instance.id,
       filterSignature: 'filters:{"role":"intern"}',
@@ -287,29 +275,6 @@ describe.sequential('local connector instance retirement', () => {
       state: 'active',
       cadence: { kind: 'interval', everyMinutes: 60 },
       timezone: 'UTC',
-    })
-    await database.insert(retryWork).values({
-      id: 'normalization-retry-after-retirement',
-      executionScopeId: instance.executionScopeId,
-      kind: 'normalization',
-      connectorInstanceId: null,
-      captureEvidenceVersionId: rawRevisionId,
-      resolverId: 'removed.authenticated-resolver',
-      resolverVersion: '1.0.0',
-      inputHash: 'sha256:historical',
-      reason: 'network_interruption',
-      attempt: 1,
-      maxAttempts: 3,
-      lastAttemptAt: '2026-07-13T14:00:00.000Z',
-      computedDelayMs: 60_000,
-      nextAttemptAt: '2026-07-13T14:01:00.000Z',
-      horizonAt: '2026-07-14T14:00:00.000Z',
-      state: 'scheduled',
-      ownerVersion: 'removed.connector@0.1.0',
-      lineageJson: JSON.stringify({ connectorInstanceId: instance.id }),
-      createdAt: '2026-07-13T14:00:00.000Z',
-      updatedAt: '2026-07-13T14:00:00.000Z',
-      deletedAt: null,
     })
     await repository.markRunRunning({
       connectorRunId: run.id,
@@ -329,12 +294,8 @@ describe.sequential('local connector instance retirement', () => {
       .resolves.toMatchObject({ items: [expect.objectContaining({
         checkpoint: { cursor: 'historical' },
       })] })
-    await expect(client.sourcing.rawRecords.list({ connectorRunId: run.id }))
-      .resolves.toMatchObject({ items: [expect.objectContaining({ id: rawRecordId })] })
-    await expect(client.sourcing.rawRecords.normalization.get(rawRecordId))
-      .resolves.toEqual(normalizationBefore)
-    await expect(client.sourcing.rawRevisions.projection.get(rawRevisionId))
-      .resolves.toEqual(projectionBefore)
+    await expect(client.captures.get(capture.resource.id))
+      .resolves.toMatchObject({ id: capture.resource.id, revision: 1 })
     expect((await database.execute(sql`
       select enabled, config_json as "configJson", auth_json as "authJson",
         filters_json as "filtersJson", earliest_backfill_date as "earliestBackfillDate",
@@ -349,10 +310,6 @@ describe.sequential('local connector instance retirement', () => {
     })
     expect((await database.execute(sql`
       select deleted_at as "deletedAt" from connector_schedules where id = ${schedule.id}
-    `)).rows[0]).toEqual({ deletedAt: retiredAt })
-    expect((await database.execute(sql`
-      select deleted_at as "deletedAt" from retry_work
-      where id = 'normalization-retry-after-retirement'
     `)).rows[0]).toEqual({ deletedAt: retiredAt })
     expect(await database.select().from(sourceExecutionScopes)).toEqual([
       expect.objectContaining({ id: instance.executionScopeId, deletedAt: null }),

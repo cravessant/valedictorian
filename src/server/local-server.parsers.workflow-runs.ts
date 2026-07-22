@@ -1,4 +1,4 @@
-import { isApplicationAttemptActorType, isRunStatus, isRunType, type ValedictorianWorkspaceClient, type WorkflowRunsListInput } from 'sparxie'
+import { isRunStatus, isRunType, pursuitApplicationStatuses, type ValedictorianWorkspaceClient, type WorkflowRunsListInput } from 'sparxie'
 import { localHttpValidationError, readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 import { setNumberQuery, setStringQuery } from './local-server.parsers.query-primitives'
 
@@ -54,7 +54,7 @@ export function parseRunStartInput(
     throw localHttpValidationError(`Invalid runType: ${runType}`)
   }
 
-  if (!isApplicationAttemptActorType(actorType)) {
+  if (!isWorkflowActorType(actorType)) {
     throw localHttpValidationError(`Invalid actorType: ${actorType}`)
   }
 
@@ -95,6 +95,7 @@ export function parseRunCompleteInput(
 ): Parameters<ValedictorianWorkspaceClient['runs']['complete']>[0] {
   const record = readRecord(body)
   const statusValue = readOptionalStringField(record, 'status')
+  const outcomeValue = readOptionalNullableStringField(record, 'outcome')
   let status: Parameters<ValedictorianWorkspaceClient['runs']['complete']>[0]['status']
 
   if (statusValue !== undefined) {
@@ -108,9 +109,23 @@ export function parseRunCompleteInput(
   return {
     workflowRunId,
     status,
-    outcome: readOptionalNullableStringField(record, 'outcome'),
+    outcome: outcomeValue === undefined || outcomeValue === null
+      ? outcomeValue
+      : isPursuitApplicationStatus(outcomeValue)
+        ? outcomeValue
+        : (() => { throw localHttpValidationError(`Invalid application outcome: ${outcomeValue}`) })(),
     summary: readOptionalNullableStringField(record, 'summary'),
     blocker: readOptionalNullableStringField(record, 'blocker'),
     metadata: 'metadata' in record ? record.metadata : undefined,
   }
+}
+
+function isWorkflowActorType(value: string): value is 'agent' | 'automation' | 'system' | 'user' {
+  return value === 'agent' || value === 'automation' || value === 'system' || value === 'user'
+}
+
+function isPursuitApplicationStatus(
+  value: string,
+): value is (typeof pursuitApplicationStatuses)[number] {
+  return (pursuitApplicationStatuses as readonly string[]).includes(value)
 }

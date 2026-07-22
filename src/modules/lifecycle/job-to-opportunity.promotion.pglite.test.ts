@@ -93,7 +93,7 @@ describe.sequential('Job→Opportunity promotion (#301)', () => {
     expect(result).toMatchObject({ ok: true, created: true })
     if (!result.ok) return
     expect(result.warnings.map((w) => w.code).sort()).toEqual(
-      ['cutoff', 'fit', 'missing_optional_facts', 'third_party_destination', 'weak_possible_match'],
+      ['cutoff', 'fit', 'missing_optional_facts', 'rank', 'third_party_destination', 'weak_possible_match'],
     )
   })
 

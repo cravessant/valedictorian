@@ -1,10 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import { removeRuntimeIpcHandlers } from '../../electron/runtime-ipc'
+import { removeRuntimeIpcHandlers, runtimeIpcChannels } from '../../electron/runtime-ipc'
 import { registerConnectorsIpc } from '../ipc/connectors.ipc'
 import { registerValedictorianHttpIpc } from '../ipc/valedictorian-http.ipc'
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 
 describe('Electron runtime IPC lifecycle', () => {
+  it('contains no retired application, action-queue, or sourcing aliases', () => {
+    expect(runtimeIpcChannels).not.toEqual(expect.arrayContaining([
+      'action-queue:list',
+      'applications:list',
+      'sourcing:findings:list',
+    ]))
+    expect(runtimeIpcChannels).toContain('policy:evaluate:opportunity')
+  })
+
   it('replaces remaining connector handlers with the newly activated workspace runtime', async () => {
     const { handlers, ipcMain } = createIpcMain()
     const firstList = vi.fn(async () => ({ items: [{ id: 'workspace-a' }] }))

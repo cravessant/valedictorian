@@ -28,13 +28,17 @@ import {
 } from './ConnectorRunDetails'
 import { connectorRunSynchronizationCopy } from '../modules/connectors/connector.run-presentation'
 import type { ConnectorSettingsRun } from './connector-settings.types'
-import type { RawNormalizationRunFilter } from '../modules/sourcing/raw-normalization.types'
 import { ownedLoadFailure, presentLoadFailure, type ErrorPresentation } from '../app/error-presentation'
 
 export interface ConnectorRunHistoryItem {
   connectorId: string
   connectorName: string
   run: ConnectorSettingsRun
+}
+
+export interface RawNormalizationRunFilter {
+  connectorInstanceId: string
+  connectorRunId: string
 }
 
 export const CONNECTOR_RUNS_PAGE_SIZE = 20

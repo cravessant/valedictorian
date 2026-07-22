@@ -20,6 +20,7 @@ import {
   profileDocumentErrorStatusByCode,
 } from 'sparxie'
 import { ConnectorExecutionError } from '../modules/connectors/connector-execution.errors'
+import { LifecycleHttpError } from '../runtime/local-lifecycle-methods'
 import { toLocalSecretResolutionHttpFailure } from '../modules/secrets/local-secret-resolution'
 import {
   LocalHttpBodyTooLargeError,
@@ -164,6 +165,12 @@ function mapKnownHttpFailure(
 } | undefined {
   const pathname = normalizeWorkspaceScopedPath(context.pathname)
   const code = readStringProperty(error, 'code')
+
+  // The lifecycle facade renders its own fixed, non-leaking `{status, body}` at the composition
+  // boundary (404/409/400/500); surface it verbatim.
+  if (error instanceof LifecycleHttpError) {
+    return { body: error.body, statusCode: error.status }
+  }
 
   if (error instanceof LocalHttpValidationError) {
     return { body: validationErrorBody, statusCode: 400 }

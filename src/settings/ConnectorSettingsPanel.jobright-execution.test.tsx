@@ -158,9 +158,9 @@ describe('ConnectorSettingsPanel Jobright execution progress', () => {
         unclassified: 0,
         invariant: 'reconciled' as const,
       },
-      sourcing: {
-        findingsAdded: 0,
-        canonicalDuplicates: 0,
+      opportunity: {
+        opportunitiesCreated: 0,
+        existingJobMatches: 0,
         notFit: 0,
         rejected: 0,
         actionableReview: 0,
@@ -309,10 +309,10 @@ describe('ConnectorSettingsPanel Jobright execution progress', () => {
             pending: 0,
             unresolved: 0,
           },
-          sourcing: {
-            ...lifecycleCounts('frozen_terminal').sourcing,
-            findingsAdded: 2,
-            canonicalDuplicates: 1,
+          opportunity: {
+            ...lifecycleCounts('frozen_terminal').opportunity,
+            opportunitiesCreated: 2,
+            existingJobMatches: 1,
           },
         },
         warnings: [],
@@ -325,7 +325,7 @@ describe('ConnectorSettingsPanel Jobright execution progress', () => {
     expect(screen.queryByText('Frozen at terminal completion.')).not.toBeInTheDocument()
     expect(screen.getByText('Capture lineages: 8')).toBeInTheDocument()
     expect(screen.getByText('Opportunities added: 2')).toBeInTheDocument()
-    expect(screen.getByText('Canonical duplicates: 1')).toBeInTheDocument()
+    expect(screen.getByText('Existing Job matches: 1')).toBeInTheDocument()
     expect(screen.queryByText('Detail attempts: 3')).not.toBeInTheDocument()
     expect(screen.queryByText('Auth-required requests: 1')).not.toBeInTheDocument()
     expect(screen.queryByText('Eligible: 8')).not.toBeInTheDocument()

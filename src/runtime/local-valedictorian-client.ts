@@ -7,10 +7,12 @@ import {
   connectorOverviewListResultSchema,
   DEFAULT_CONNECTOR_OVERVIEW_LIST_LIMIT,
 } from 'sparxie'
-import { createApplicationServiceFromPglite } from '../modules/applications/application.runtime'
+import { createLocalLifecycleMethods } from './local-lifecycle-methods'
 import { createPgliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
+import { createPgliteCaptureService } from '../modules/capture/capture.service'
+import { workspaces } from '../db/workspaces.schema'
 import { createSourceExecutionGovernor } from '../modules/source-execution/source-execution-governor'
-import { createConnectorNormalizationHost } from '../modules/connectors/connector.normalization'
+import { createConnectorCaptureHost } from '../modules/connectors/connector.capture-host'
 import {
   createDefaultLocalConnectorRegistry,
   type LocalConnectorRegistry
@@ -68,27 +70,12 @@ import {
 } from './local-profile-secret-client'
 import { isReservedIdentitySecretKey } from '../modules/secrets/secret.identity'
 import { createPgliteScoringRepository } from '../modules/scoring/scoring.repository'
-import { createPgliteSourcingProcessor } from '../modules/sourcing/sourcing.processor'
-import { createPgliteSourcingRepository } from '../modules/sourcing/sourcing.repository'
-import { createCanonicalCandidateProjectionService } from '../modules/sourcing/canonical-candidate.projection'
-import { createPgliteRawSourceRepository } from '../modules/sourcing/raw-source.repository'
-import { createProviderUrlResolutionService } from '../modules/sourcing/provider-url-resolution.service'
-import { createNormalizationOrchestrator } from '../modules/sourcing/normalization.orchestrator'
-import {
-  dispatchAcquiredNormalizationWork,
-} from './local-connector-retry-dispatch'
 import { executeClaimedConnectorRun } from './local-connector-claimed-execution'
 import { mapConnectorRunSummary } from './local-connector-public-run'
 import {
   mapConnectorAuthSummary,
   mapLocalConnectorStatusSummary,
 } from './local-connector-status-mapping'
-import { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
-import { createPgliteNormalizationRepository } from '../modules/sourcing/normalization.repository'
-import { createPgliteProjectionOutcomeRepository } from '../modules/sourcing/projection-outcome.repository'
-import {
-  createDefaultNormalizationResolverRegistry,
-} from '../modules/sourcing/normalization.registry'
 import { mapConnectorCheckpoint, mapConnectorObservation } from './local-connector-run-summary'
 import { mapLocalConnectorOverviewRecord } from './local-connector-overview'
 import {
@@ -142,9 +129,7 @@ export async function createLocalValedictorianClient({
   connectorRuntime,
   connectorScheduling: connectorSchedulingOption,
   now = () => new Date(),
-  normalizationRegistry = createDefaultNormalizationResolverRegistry(),
   onScheduledWorkChanged,
-  projectCanonicalCandidate,
   registerScheduledWorkSource,
   referenceTrackerPath,
   seedDataMode = 'none',
@@ -158,7 +143,13 @@ export async function createLocalValedictorianClient({
 }: LocalValedictorianClientOptions): Promise<LocalValedictorianClient> {
   assertSeedOptions({ referenceTrackerPath, seedDataMode })
   const connectorScheduling = resolveConnectorSchedulingCapability(connectorSchedulingOption)
-  const applicationService = createApplicationServiceFromPglite(database)
+  const openedAt = now().toISOString()
+  await database.insert(workspaces).values({
+    id: workspaceId,
+    name: workspaceId,
+    createdAt: openedAt,
+    updatedAt: openedAt,
+  }).onConflictDoNothing()
   await seedLocalData(database, {
     referenceTrackerPath,
     seedDataMode,
@@ -184,43 +175,8 @@ export async function createLocalValedictorianClient({
   const connectorRepository = createPgliteConnectorRepository(database)
   const policyRepository = createPglitePolicyRepository(database)
   const workflowRunRepository = createPgliteWorkflowRunRepository(database)
-  const sourcingProcessor = createPgliteSourcingProcessor(database)
-  const sourcingRepository = createPgliteSourcingRepository(database)
-  const rawSourceRepository = createPgliteRawSourceRepository(database, now)
-  const canonicalCandidateProjection = createCanonicalCandidateProjectionService(now)
-  const projectionOutcomes = createPgliteProjectionOutcomeRepository(database)
-  const normalizationRepository = createPgliteNormalizationRepository(database, {
-    stagePassedCandidate: (transaction, input) => projectionOutcomes.stagePending(transaction, input),
-    projectPassedCandidate: async (candidateId, rawRevisionId) => {
-      try {
-        await database.transaction(async (transaction) => {
-          const findingId = await (projectCanonicalCandidate ?? canonicalCandidateProjection.projectPersisted)(
-            transaction, candidateId, rawRevisionId,
-          )
-          if (!findingId) throw new Error('Passed canonical candidate could not be projected')
-          await projectionOutcomes.markProjected(transaction, candidateId, findingId, now().toISOString())
-        })
-      } catch {
-        await projectionOutcomes.markFailed(candidateId, now().toISOString())
-      }
-    },
-  })
-  const normalizationOrchestrator = createNormalizationOrchestrator({
-    repository: normalizationRepository,
-    registry: normalizationRegistry,
-    now,
-  })
-  const connectorNormalization = createConnectorNormalizationHost({
-    repository: normalizationRepository,
-    registry: normalizationRegistry,
-    now,
-  })
-  const normalizationReplayService = createNormalizationReplayService({
-    database,
-    orchestrator: normalizationOrchestrator,
-    registry: normalizationRegistry,
-    now,
-  })
+  const captureService = createPgliteCaptureService(database, { now })
+  const captureHost = createConnectorCaptureHost({ captureService, now, workspaceId })
   const trustedConnectorAuth = composeTrustedConnectorAuth(secretService)
   const connectorOptionQueries = createConnectorOptionQueryService({
     authHost: trustedConnectorAuth,
@@ -229,17 +185,9 @@ export async function createLocalValedictorianClient({
     workspaceId,
   })
   const sourceExecutionGovernor = createSourceExecutionGovernor(database, secretCodec)
-  const providerUrlResolution = await createProviderUrlResolutionService({
-    authHost: trustedConnectorAuth, connectorRegistry, connectorRepository, connectorRuntime,
-    database, governor: sourceExecutionGovernor, normalizationOrchestrator, normalizationRegistry, normalizationRepository, now,
-    onScheduledWorkChanged, rawSourceRepository, workspaceId,
-  }); registerScheduledWorkSource?.(providerUrlResolution.source)
   const connectorRunner = createConnectorRunner({
     auth: trustedConnectorAuth,
-    normalization: connectorNormalization,
-    rawSource: {
-      async ingest(record) { return (await providerUrlResolution.ingestBatch({ records: [record] })).receipts[0] },
-    },
+    captureHost,
     repository: connectorRepository,
     sourceExecutionGovernor,
     runtime: connectorRuntime,
@@ -259,7 +207,6 @@ export async function createLocalValedictorianClient({
       coverageEndedAt: input.coverageEndedAt,
       mode: input.mode,
       now,
-      replayConnectorUpgrade: (input) => normalizationReplayService.replayConnectorUpgrade(input),
       ...(input.signal ? { signal: input.signal } : {}),
       startedAt: input.startedAt,
     }),
@@ -292,36 +239,10 @@ export async function createLocalValedictorianClient({
       idempotencyKey: occurrence.idempotencyKey,
     })
   }
+  const lifecycle = createLocalLifecycleMethods(database, { workspaceId, now })
   const client: LocalValedictorianClient = {
     connectorScheduling,
-    applications: {
-      list: (query) => applicationService.listApplications(query),
-      get: (id) => applicationService.getApplication(id),
-      create: (input) => applicationService.createApplication(input),
-      update: (input) => applicationService.updateApplication(input),
-      updateStatus: (input) => applicationService.updateApplicationStatus(input),
-      archive: (input) => applicationService.archiveApplication(input),
-      workflow: {
-        update: (input) => applicationService.updateApplicationWorkflow(input),
-      },
-      notes: {
-        append: (input) => applicationService.appendApplicationNote(input),
-      },
-      links: {
-        list: (input) => applicationService.listApplicationLinks(input),
-        create: (input) => applicationService.createApplicationLink(input),
-        update: (input) => applicationService.updateApplicationLink(input),
-      },
-      events: {
-        list: (input) => applicationService.listApplicationEvents(input),
-      },
-      attempts: {
-        list: (input) => applicationService.listApplicationAttempts(input),
-        start: (input) => applicationService.startApplicationAttempt(input),
-        step: (input) => applicationService.createApplicationAttemptStep(input),
-        complete: (input) => applicationService.completeApplicationAttempt(input),
-      },
-    },
+    ...lifecycle,
     scores: {
       record: (input) => scoringRepository.recordScore(input),
     },
@@ -444,8 +365,6 @@ export async function createLocalValedictorianClient({
             connector,
             connectorRepository,
             instance: { ...existing, ...proposedInstance },
-            replayConnectorUpgrade: (replayInput) =>
-              normalizationReplayService.replayConnectorUpgrade(replayInput),
           }))
           onScheduledWorkChanged?.()
           return reconciled
@@ -516,10 +435,6 @@ export async function createLocalValedictorianClient({
               connectorRepository,
               connectorRunner,
               input,
-              normalizationOrchestrator,
-              normalizationReplayService,
-              normalizationRegistry,
-              normalizationRepository,
               now,
             })
             return await mapRun(run)
@@ -591,7 +506,7 @@ export async function createLocalValedictorianClient({
       },
       evaluate: {
         application: (input) => policyRepository.evaluateApplication(input),
-        sourcingCandidate: (input) => policyRepository.evaluateSourcingCandidate(input),
+        opportunity: (input) => policyRepository.evaluateOpportunity(input),
         runWindow: (input) => policyRepository.evaluateRunWindow(input),
       },
     },
@@ -603,71 +518,13 @@ export async function createLocalValedictorianClient({
       step: (input) => workflowRunRepository.createRunStep(input),
       complete: (input) => workflowRunRepository.completeRun(input),
     },
-    sourcing: {
-      rawRevisions: {
-        projection: {
-          get: async (rawRevisionId) => {
-            const result = await projectionOutcomes.get(rawRevisionId)
-            if (!result) throw Object.assign(new Error('Raw source revision not found'), { statusCode: 404 })
-            return result
-          },
-        },
-      },
-      rawRecords: { list: (query) => rawSourceRepository.list(query),
-        ingestBatch: async (input) => {
-          const result = await providerUrlResolution.ingestBatch(input)
-          for (const receipt of result.receipts) {
-            try {
-              await normalizationOrchestrator.normalize(
-                receipt.rawRecordId,
-                receipt.revision.id,
-              )
-            } catch {
-              // Intake is already durable. Normalization failures must never erase its receipt
-              // or prevent later records in the same batch from being admitted independently.
-            }
-          }
-          return result
-        },
-        get: async (rawRecordId) => {
-          const record = await rawSourceRepository.get(rawRecordId)
-          if (!record) {
-            throw Object.assign(new Error('Raw source record not found'), { statusCode: 404 })
-          }
-          return record
-        },
-        replay: (input) => normalizationReplayService.replay(input),
-        normalization: {
-          get: async (rawRecordId) => {
-            const result = await normalizationRepository.getLatest(rawRecordId)
-            if (!result) {
-              throw Object.assign(new Error('Raw source normalization not found'), {
-                statusCode: 404,
-              })
-            }
-            return result
-          },
-        },
-      },
-      candidates: {
-        process: (input) => sourcingProcessor.processCandidate(input),
-      },
-      findings: {
-        list: (query) => sourcingRepository.listFindings(query),
-        create: (input) => sourcingRepository.createFinding(input),
-        update: (input) => sourcingRepository.updateFinding(input),
-        decide: (input) => sourcingRepository.decideFinding(input),
-        promote: (input) => sourcingRepository.promoteFinding(input),
-      },
-    },
   }
   registerScheduledWorkSource?.(createConnectorCaptureRetryWorkSource({
     listRetries: () => scheduleRepository.listScheduledCaptureRetries(), now,
     runRetry: async (connectorInstanceId, signal) => await mapRun(await executeConnectorRunTrigger({
       connectorRegistry, connectorRepository, connectorRunner,
       input: { connectorInstanceId, reason: 'scheduled_capture_retry' }, mode: 'scheduled',
-      normalizationOrchestrator, normalizationReplayService, normalizationRegistry,
-      normalizationRepository, now,
+      now,
       retryKind: 'connector_capture', ...(signal ? { signal } : {}),
     })),
   }))
@@ -747,10 +604,6 @@ async function executeConnectorRunTrigger({
   connectorRunner,
   input,
   mode = 'manual',
-  normalizationOrchestrator,
-  normalizationReplayService,
-  normalizationRegistry,
-  normalizationRepository,
   now,
   retryKind,
   signal,
@@ -760,10 +613,6 @@ async function executeConnectorRunTrigger({
   connectorRunner: ReturnType<typeof createConnectorRunner>
   input: LocalConnectorInternalRunTriggerInput
   mode?: 'manual' | 'scheduled'
-  normalizationOrchestrator: ReturnType<typeof createNormalizationOrchestrator>
-  normalizationReplayService: ReturnType<typeof createNormalizationReplayService>
-  normalizationRegistry: ReturnType<typeof createDefaultNormalizationResolverRegistry>
-  normalizationRepository: ReturnType<typeof createPgliteNormalizationRepository>
   now: () => Date
   retryKind?: 'connector_capture'
   signal?: AbortSignal
@@ -821,7 +670,6 @@ async function executeConnectorRunTrigger({
       connector,
       connectorRepository,
       instance,
-      replayConnectorUpgrade: (replayInput) => normalizationReplayService.replayConnectorUpgrade(replayInput),
     })
   } catch (error) {
     await connectorRepository.markRunFailed({
@@ -836,20 +684,7 @@ async function executeConnectorRunTrigger({
     throw error
   }
   if (acquiredWork?.kind === 'normalization') {
-    return dispatchAcquiredNormalizationWork({
-      acquiredWork,
-      connector,
-      connectorRepository,
-      connectorRunner,
-      instanceId: input.connectorInstanceId,
-      normalizationOrchestrator,
-      normalizationRegistry,
-      normalizationRepository,
-      now,
-      runRequest: claim.run,
-      startedAt,
-      coverageEndedAt,
-    })
+    throw new Error('Legacy normalization retry work is no longer executable')
   }
   return executeClaimedConnectorRun({
     connectorRegistry,
@@ -860,7 +695,6 @@ async function executeConnectorRunTrigger({
     executionIntent,
     mode,
     now,
-    replayConnectorUpgrade: (replayInput) => normalizationReplayService.replayConnectorUpgrade(replayInput),
     ...(signal ? { signal } : {}),
     startedAt,
   })

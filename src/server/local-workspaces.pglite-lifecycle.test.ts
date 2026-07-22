@@ -36,29 +36,25 @@ describe('local workspace PGlite owner lifecycle', () => {
       manager.resolveClient(first.id),
     ])
     expect(concurrentFirstClient).toBe(firstClient)
-    await firstClient.applications.create({
-      companyName: 'Persistent Company',
-      roleTitle: 'Software Intern',
-      sourceName: 'Manual',
-      roleKind: 'internship',
-      country: 'US',
-      workMode: 'remote',
-      status: 'queued',
-      primaryLink: {
-        kind: 'official',
-        label: 'Official posting',
-        url: 'https://example.test/jobs/persistent',
-      },
+    await firstClient.captures.create({
+      evidenceMode: 'reported',
+      adapter: { id: 'manual', kind: 'manual', version: '1.0.0' },
+      observedAt: '2026-07-21T00:00:00.000Z',
+      providerRecordId: 'persistent-capture',
+      providerSchema: 'manual@1',
+      payload: { companyName: 'Persistent Company', roleTitle: 'Software Intern' },
+      evidence: [],
     })
 
     const secondClient = await manager.resolveClient(second.id)
-    await expect(secondClient.applications.list()).resolves.toMatchObject({ total: 0 })
+    await expect(secondClient.captures.list()).resolves.toMatchObject({ items: [] })
     await manager.close()
 
     const reopenedFirstClient = await manager.resolveClient(first.id)
-    await expect(reopenedFirstClient.applications.list()).resolves.toMatchObject({
-      items: [expect.objectContaining({ companyName: 'Persistent Company' })],
-      total: 1,
+    await expect(reopenedFirstClient.captures.list()).resolves.toMatchObject({
+      items: [expect.objectContaining({
+        providerRecordId: 'persistent-capture',
+      })],
     })
     await manager.close()
   })

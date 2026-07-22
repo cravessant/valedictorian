@@ -837,7 +837,7 @@ export function createLocalLifecycleMethods(
         created: result.created,
         actor: parsed.actor,
         timestamp: nowIso(),
-        warnings: [],
+        warnings: result.warnings,
         override: parsed.override,
         duplicateResolution: parsed.duplicateResolution ?? null,
       })

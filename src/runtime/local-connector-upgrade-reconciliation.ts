@@ -3,18 +3,15 @@ import type { createPgliteConnectorRepository } from '../modules/connectors/conn
 import { connectorCheckpointSignature } from '../modules/connectors/connector.checkpoint-signature'
 import { assertSupportedConnectorSettings } from '../modules/connectors/connector.settings-validation'
 import type { ConnectorInstanceRecord } from '../modules/connectors/connector-instance.persistence-types'
-import type { createNormalizationReplayService } from '../modules/sourcing/normalization-replay'
 
 export async function reconcileConnectorPackageUpgrade({
   connector,
   connectorRepository,
   instance,
-  replayConnectorUpgrade,
 }: {
   connector: AppJobConnector
   connectorRepository: ReturnType<typeof createPgliteConnectorRepository>
   instance: ConnectorInstanceRecord
-  replayConnectorUpgrade: ReturnType<typeof createNormalizationReplayService>['replayConnectorUpgrade']
 }): Promise<ConnectorInstanceRecord> {
   if (instance.connectorVersion === connector.definition.version) {
     return instance
@@ -22,13 +19,6 @@ export async function reconcileConnectorPackageUpgrade({
 
   assertSupportedConnectorSettings(connector, instance.config, instance.filters)
   await preserveCompatibleProviderCheckpoint({ connector, connectorRepository, instance })
-  await replayConnectorUpgrade({
-    connectorInstanceId: instance.id,
-    fromConnectorVersion: instance.connectorVersion,
-    instanceUpdatedAt: instance.updatedAt,
-    toConnectorVersion: connector.definition.version,
-  })
-
   return connectorRepository.upsertInstance({
     id: instance.id,
     connectorId: instance.connectorId,

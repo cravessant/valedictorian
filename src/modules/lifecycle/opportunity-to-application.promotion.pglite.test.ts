@@ -207,7 +207,7 @@ describe.sequential('Opportunity→Application promotion #304 threading', () => 
     const { opportunityId } = await makeOpportunity(jobs, opportunities)
     const result = await promotion.promoteOpportunity({
       workspaceId: 'ws-a', opportunityId, actor: ACTOR,
-      override: { actor: { id: 'u', type: 'user' }, rationale: 'accept weak match', warningCodes: ['weak_possible_match'] },
+      override: { actor: { id: 'u', type: 'user' }, rationale: 'accept unknown fit', warningCodes: ['fit'] },
     })
     expect(result).toMatchObject({ ok: true, created: true })
     if (!result.ok) return
@@ -216,6 +216,6 @@ describe.sequential('Opportunity→Application promotion #304 threading', () => 
       .from(applicationHistory)
       .where(and(eq(applicationHistory.applicationId, result.applicationId), eq(applicationHistory.revision, 1)))
     const audit = JSON.parse(row!.auditJson) as { override?: { rationale: string; warningCodes: string[] } }
-    expect(audit.override).toMatchObject({ rationale: 'accept weak match', warningCodes: ['weak_possible_match'] })
+    expect(audit.override).toMatchObject({ rationale: 'accept unknown fit', warningCodes: ['fit'] })
   })
 })

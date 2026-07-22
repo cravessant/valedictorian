@@ -144,9 +144,9 @@ describe('public terminal connector lifecycle projection', () => {
         pending: 0,
         unresolved: 0,
       },
-      sourcing: {
-        findingsAdded: 0,
-        canonicalDuplicates: 0,
+      opportunity: {
+        opportunitiesCreated: 0,
+        existingJobMatches: 0,
         notFit: 0,
         rejected: 0,
       },

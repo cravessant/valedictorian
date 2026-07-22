@@ -37,7 +37,7 @@ import { lifecycleApplications } from '../application/application.schema'
 import { insertJobCaptureEvidenceReferences } from '../job/job.repository'
 import type { CaptureEvidenceInput, CaptureService } from '../capture/capture.service'
 import type { JobService } from '../job/job.service'
-import type { OpportunityService } from '../opportunity/opportunity.service'
+import type { OpportunityRecord, OpportunityService, OpportunityWarningCode } from '../opportunity/opportunity.service'
 import type {
   AddLinkInput,
   ApplicationAggregateService,
@@ -115,6 +115,7 @@ export type PromotionResult =
       readonly jobId: string
       readonly attached: boolean
       readonly created: boolean
+      readonly warnings: readonly PromotionWarning[]
     }
   | ApplicationFailure
 
@@ -146,6 +147,39 @@ class PromotionAbort extends Error {
     super(failure.message)
     this.name = 'PromotionAbort'
   }
+}
+
+interface PromotionWarning {
+  readonly code: OpportunityWarningCode
+  readonly message: string
+}
+
+const WARNING_MESSAGES: Record<'fit' | 'rank' | 'cutoff' | 'weak_possible_match', string> = {
+  fit: 'the opportunity is not a confirmed fit',
+  rank: 'the opportunity has no assigned rank',
+  cutoff: 'the opportunity is not above the ranking cutoff',
+  weak_possible_match: 'the opportunity is only a possible match',
+}
+
+function opportunityWarnings(opportunity: OpportunityRecord): PromotionWarning[] {
+  const warnings: PromotionWarning[] = []
+  if (opportunity.fit !== 'fit') warnings.push({ code: 'fit', message: WARNING_MESSAGES.fit })
+  if (opportunity.fit === 'possible') warnings.push({ code: 'weak_possible_match', message: WARNING_MESSAGES.weak_possible_match })
+  if (opportunity.rank === null) warnings.push({ code: 'rank', message: WARNING_MESSAGES.rank })
+  if (opportunity.cutoff !== 'above') warnings.push({ code: 'cutoff', message: WARNING_MESSAGES.cutoff })
+  return warnings
+}
+
+function validateOverrideWarnings(
+  override: ApplicationWarningOverrideInput | null | undefined,
+  warnings: readonly PromotionWarning[],
+): ApplicationFailure | null {
+  if (!override) return null
+  const warningCodes = new Set(warnings.map((warning) => warning.code))
+  const absent = override.warningCodes.find((code) => !warningCodes.has(code))
+  return absent === undefined
+    ? null
+    : fail('invalid_input', `override warning code ${absent} is not present in the promotion warnings`)
 }
 
 const FAILURE_PASSTHROUGH: readonly string[] = [
@@ -222,6 +256,9 @@ export function createPgliteOpportunityToApplicationPromotion(
       const opportunity = await opportunityService.get(workspaceId, opportunityId)
       if (!opportunity) return fail('not_found', 'opportunity not found in this workspace')
       if (opportunity.removedAt !== null) return fail('invalid_input', 'opportunity is removed; restore it before promotion')
+      const warnings = opportunityWarnings(opportunity)
+      const invalidOverride = validateOverrideWarnings(input.override, warnings)
+      if (invalidOverride) return invalidOverride
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
@@ -232,7 +269,10 @@ export function createPgliteOpportunityToApplicationPromotion(
               .for('update')
             const linked = await existingApplication(tx, workspaceId, opportunityId)
             if (linked) {
-              return { ok: true as const, applicationId: linked, opportunityId, jobId: opportunity.jobId, attached: true, created: false }
+              if (input.duplicateResolution && input.duplicateResolution.targetResourceId !== linked) {
+                throw new PromotionAbort(fail('invalid_input', 'duplicateResolution.targetResourceId does not match the existing application for this opportunity'))
+              }
+              return { ok: true as const, applicationId: linked, opportunityId, jobId: opportunity.jobId, attached: true, created: false, warnings }
             }
             const created = await applicationService.createOn(tx, {
               workspaceId,
@@ -249,7 +289,7 @@ export function createPgliteOpportunityToApplicationPromotion(
             })
             if (!created.ok) throw new PromotionAbort(created)
             await addInitialDependents(tx, workspaceId, created.application.id, actor, input.links, input.event)
-            return { ok: true as const, applicationId: created.application.id, opportunityId, jobId: created.application.jobId, attached: false, created: true }
+            return { ok: true as const, applicationId: created.application.id, opportunityId, jobId: created.application.jobId, attached: false, created: true, warnings }
           })
         } catch (error) {
           if (error instanceof PromotionAbort) return error.failure

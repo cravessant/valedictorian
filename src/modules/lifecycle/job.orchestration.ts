@@ -362,16 +362,20 @@ export function createLifecycleJobOrchestration(
           for (const identity of input.externalIdentities) {
             await establishExternalIdentity(tx, workspaceId, result.job.id, identity, actor, timestamp)
           }
+          if (dedup?.action === 'merge') {
+            const merged = await jobIdentityService.mergeOn(tx, {
+              workspaceId,
+              jobIdA: result.job.id,
+              jobIdB: dedup.targetResourceId,
+              actor,
+            })
+            if (!merged.ok) throw new JobWriteAbort(toWriteFailure(merged))
+            return { jobId: merged.winnerJobId, created: false }
+          }
           return { jobId: result.job.id, created: result.created }
         })
       } catch (error) {
         return abortToOutcome(error)
-      }
-
-      if (dedup?.action === 'merge') {
-        const merged = await jobIdentityService.merge({ workspaceId, jobIdA: created.jobId, jobIdB: dedup.targetResourceId, actor })
-        if (!merged.ok) return { ok: false, failure: toWriteFailure(merged) }
-        return { ok: true, jobId: merged.winnerJobId, created: false, timestamp }
       }
       return { ok: true, jobId: created.jobId, created: created.created, timestamp }
     },

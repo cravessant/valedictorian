@@ -19,7 +19,7 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
     globalSetup: './src/test/global-setup.ts',
     maxWorkers: 2,
-    minWorkers: process.env.CI ? 2 : undefined,
+    minWorkers: process.env.CI ? 2 : 1,
     pool: 'threads',
     sequence: {
       sequencer: DurationBalancedSequencer,

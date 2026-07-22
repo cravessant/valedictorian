@@ -54,6 +54,7 @@ import {
 /** Warning taxonomy — the lifecycle warning codes surfaced by a Job→Opportunity promotion. */
 export type PromotionWarningCode =
   | 'fit'
+  | 'rank'
   | 'cutoff'
   | 'missing_optional_facts'
   | 'third_party_destination'
@@ -135,10 +136,32 @@ class PromotionAbort extends Error {
 
 const WARNING_MESSAGES: Record<PromotionWarningCode, string> = {
   fit: 'policy judged the role fit below a preferred threshold',
+  rank: 'policy did not assign the opportunity a rank',
   cutoff: 'policy placed the opportunity below the ranking cutoff',
   missing_optional_facts: 'the job is missing optional facts; defaults were applied',
   third_party_destination: 'the resolved destination is a third-party posting',
   weak_possible_match: 'policy found only a weak possible match',
+}
+
+function evaluationSignals(evaluation: Pick<OpportunityEvaluation, 'fit' | 'rank' | 'cutoff'>): PromotionWarningCode[] {
+  const signals: PromotionWarningCode[] = []
+  if (evaluation.fit !== 'fit') signals.push('fit')
+  if (evaluation.fit === 'possible') signals.push('weak_possible_match')
+  if (evaluation.rank === null || evaluation.rank === undefined) signals.push('rank')
+  if (evaluation.cutoff !== 'above') signals.push('cutoff')
+  return signals
+}
+
+function validateOverrideWarnings(
+  override: WarningOverrideInput | null | undefined,
+  warnings: readonly PromotionWarning[],
+): OpportunityFailure | null {
+  if (!override) return null
+  const warningCodes = new Set(warnings.map((warning) => warning.code))
+  const absent = override.warningCodes.find((code) => !warningCodes.has(code))
+  return absent === undefined
+    ? null
+    : fail('invalid_input', `override warning code ${absent} is not present in the promotion warnings`)
 }
 
 function toWarnings(codes: readonly PromotionWarningCode[]): PromotionWarning[] {
@@ -168,9 +191,14 @@ export function createPgliteJobToOpportunityPromotion(
     return row ?? null
   }
 
-  async function existingOpportunity(exec: Tx, workspaceId: string, jobId: string): Promise<string | null> {
+  async function existingOpportunity(exec: Tx, workspaceId: string, jobId: string) {
     const [row] = await exec
-      .select({ id: lifecycleOpportunities.id })
+      .select({
+        id: lifecycleOpportunities.id,
+        fit: lifecycleOpportunities.fit,
+        rank: lifecycleOpportunities.rank,
+        cutoff: lifecycleOpportunities.cutoff,
+      })
       .from(lifecycleOpportunities)
       .where(and(
         eq(lifecycleOpportunities.workspaceId, workspaceId),
@@ -178,7 +206,7 @@ export function createPgliteJobToOpportunityPromotion(
         isNull(lifecycleOpportunities.removedAt),
       ))
       .limit(1)
-    return row?.id ?? null
+    return row ?? null
   }
 
   return {
@@ -208,7 +236,17 @@ export function createPgliteJobToOpportunityPromotion(
             // Idempotency BEFORE any policy evaluation.
             const linked = await existingOpportunity(tx, workspaceId, jobId)
             if (linked) {
-              return { ok: true as const, opportunityId: linked, jobId, attached: true, created: false, warnings: [] }
+              if (input.duplicateResolution && input.duplicateResolution.targetResourceId !== linked.id) {
+                throw new PromotionAbort(fail('invalid_input', 'duplicateResolution.targetResourceId does not match the existing opportunity for this job'))
+              }
+              const warnings = toWarnings(evaluationSignals({
+                fit: linked.fit as OpportunityFit,
+                rank: linked.rank,
+                cutoff: linked.cutoff as OpportunityCutoff,
+              }))
+              const invalidOverride = validateOverrideWarnings(input.override, warnings)
+              if (invalidOverride) throw new PromotionAbort(invalidOverride)
+              return { ok: true as const, opportunityId: linked.id, jobId, attached: true, created: false, warnings }
             }
 
             // A caller-supplied evaluation is authoritative (caller-driven HTTP contract);
@@ -216,14 +254,21 @@ export function createPgliteJobToOpportunityPromotion(
             let evaluation: OpportunityEvaluation
             let disposition: OpportunityDisposition | undefined
             if (input.evaluation) {
-              evaluation = { fit: input.evaluation.fit, rank: input.evaluation.rank, cutoff: input.evaluation.cutoff, signals: [] }
+              evaluation = {
+                fit: input.evaluation.fit,
+                rank: input.evaluation.rank,
+                cutoff: input.evaluation.cutoff,
+                signals: evaluationSignals(input.evaluation),
+              }
               disposition = input.evaluation.disposition
             } else if (evaluationPort) {
               evaluation = await evaluationPort.evaluate({ workspaceId, jobId, facts: safeFacts(job.facts) })
             } else {
               evaluation = { fit: 'unknown', rank: null, cutoff: 'not_evaluated', signals: ['missing_optional_facts'] }
             }
-            const warnings = toWarnings(evaluation.signals)
+            const warnings = toWarnings([...evaluation.signals, ...evaluationSignals(evaluation)])
+            const invalidOverride = validateOverrideWarnings(input.override, warnings)
+            if (invalidOverride) throw new PromotionAbort(invalidOverride)
 
             const created = await opportunityService.createOn(tx, {
               workspaceId,

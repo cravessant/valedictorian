@@ -12,13 +12,14 @@ import {
   type ValedictorianHttpRequestErrorLogger,
 } from './local-server.error-boundary'
 import type { LocalWorkspaceManager } from './local-workspaces'
+import type { LocalValedictorianClient } from '../runtime/local-connector-client.contract'
 
 export type WorkspaceClientResolver = (
   workspaceId: string,
-) => Promise<ValedictorianWorkspaceClient> | ValedictorianWorkspaceClient
+) => Promise<LocalValedictorianClient> | LocalValedictorianClient
 
 export interface CreateValedictorianHttpServerOptions {
-  client: ValedictorianWorkspaceClient
+  client: LocalValedictorianClient
   host?: string
   localSecretResolutionEnabled?: boolean
   onRequestError?: ValedictorianHttpRequestErrorLogger

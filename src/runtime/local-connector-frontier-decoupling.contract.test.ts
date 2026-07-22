@@ -1,33 +1,22 @@
 /**
- * Frontier/backfill ↔ normalization DECOUPLING contract (issue #299, slice 3-prime).
+ * Frontier/backfill ↔ downstream processing DECOUPLING contract.
  *
  * These proofs PIN behavior the #233 / #234 merges already delivered — a connector
- * refresh acknowledges its frontier/backfill on durable capture intake alone and
- * NEVER executes normalization/resolution inline; that work is scheduled as durable
- * `retry_work` enqueued atomically inside the intake transaction and drained later
- * by the scheduler. They are the DURABLE REGRESSION CONTRACT for that decoupling,
- * not new behavior: #303 re-homes the scheduling substrate onto the canonical
- * operation-identity tables and must preserve exactly these invariants.
+ * refresh acknowledges its frontier/backfill on durable canonical Capture intake
+ * alone and NEVER executes provider resolution inline. Downstream orchestration is
+ * owned by the canonical lifecycle rather than the connector refresh transaction.
  *
  * (The umbrella's "current implementation evidence" predates #233/#234; this file
  * makes the decoupling an explicit, named contract so the property cannot silently
  * regress.)
  *
- * AC5/AC6 reasoning recorded here: durable Capture + intake commit atomically, the
- * connector frontier advances without waiting for normalization, and re-derivation
- * after a crash is safe because intake is idempotent (capture content-hash dedup +
- * `onConflictDoNothing` enqueue) — which is why the checkpoint may commit AFTER
- * durable intake rather than in the same transaction. A run-level "normalization
- * pending" indicator is deliberately NOT added here (input to #310, which owns
- * lifecycle-processing navigation); the existing `destination.pending` counts
- * already surface deferral truthfully.
+ * Re-derivation after a crash is safe because Capture provenance identity is
+ * idempotent: re-observation appends a revision to the same aggregate.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
-import { captureEvidenceVersions, captureLineages, normalizationRuns, retryWork } from '../db/schema'
+import { captureRevisions, lifecycleCaptures } from '../db/schema'
 import type { AppConnectorRuntime, AppJobConnector } from '../modules/connectors/connector.runner'
-import type { ProviderUrlResolverResult } from '../modules/sourcing/provider-url-resolution.outcome'
 import {
   getTestLocalValedictorianDatabase,
   useResettablePgliteTestLocalValedictorianClient,
@@ -42,12 +31,12 @@ interface ProviderUrlResolverConnector extends AppJobConnector {
     resolve(
       input: { connectorInstanceId: string; executionScopeId: string; providerRecordId: string; workspaceId: string },
       runtime: Pick<AppConnectorRuntime, 'auth' | 'cancellation'>,
-    ): Promise<ProviderUrlResolverResult>
+    ): Promise<{ status: 'resolved'; url: string; method: string }>
   }
 }
 
 function createCapturingConnector(clockRef: { value: Date }) {
-  const resolve = vi.fn(async (): Promise<ProviderUrlResolverResult> => {
+  const resolve = vi.fn(async () => {
     clockRef.value = new Date(clockRef.value.getTime() + 1)
     return { status: 'resolved', url: 'https://jobs.lever.co/example/opening-1', method: 'fixture_provider_detail' }
   })
@@ -116,8 +105,8 @@ async function startClient(connector: ProviderUrlResolverConnector, clock: () =>
   return client
 }
 
-describe.sequential('connector frontier/backfill ↔ normalization decoupling contract (#233/#234, pinned by #299)', () => {
-  it('commits durable capture and advances the frontier with zero normalization execution', async () => {
+describe.sequential('connector frontier/backfill ↔ canonical lifecycle decoupling contract', () => {
+  it('commits a durable canonical Capture and advances the frontier without inline resolution', async () => {
     const clockRef = { value: new Date('2026-07-16T12:00:00.000Z') }
     const { connector, resolve } = createCapturingConnector(clockRef)
     const client = await startClient(connector, () => clockRef.value)
@@ -130,19 +119,16 @@ describe.sequential('connector frontier/backfill ↔ normalization decoupling co
 
     // Frontier/backfill acknowledged on durable intake alone: the run completed.
     expect(run.status).toBe('completed')
-    // Zero normalization/resolution executed inline during the refresh.
+    // Zero provider resolution executes inline during the refresh.
     expect(resolve).not.toHaveBeenCalled()
 
     const database = getTestLocalValedictorianDatabase(client)
     // Durable capture committed.
-    expect(await database.select().from(captureLineages)).toHaveLength(1)
-    // Normalization is SCHEDULED (enqueued atomically in the intake transaction),
-    // not executed: a normalization retry_work exists, but no normalization ran.
-    expect(await database.select().from(retryWork).where(eq(retryWork.kind, 'normalization'))).toHaveLength(1)
-    expect(await database.select().from(normalizationRuns)).toHaveLength(0)
+    expect(await database.select().from(lifecycleCaptures)).toHaveLength(1)
+    expect(await database.select().from(captureRevisions)).toHaveLength(1)
   })
 
-  it('re-derives the frontier idempotently — re-observation dedups capture and enqueue', async () => {
+  it('re-derives the frontier idempotently by appending to the same Capture', async () => {
     const clockRef = { value: new Date('2026-07-16T12:00:00.000Z') }
     const { connector, resolve } = createCapturingConnector(clockRef)
     const client = await startClient(connector, () => clockRef.value)
@@ -166,10 +152,9 @@ describe.sequential('connector frontier/backfill ↔ normalization decoupling co
     })
     expect(rerun.status).toBe('completed')
 
-    // Content-hash dedup keeps one capture; onConflictDoNothing keeps one enqueue.
-    expect(await database.select().from(captureLineages)).toHaveLength(1)
-    expect(await database.select().from(captureEvidenceVersions)).toHaveLength(1)
-    expect(await database.select().from(retryWork).where(eq(retryWork.kind, 'normalization'))).toHaveLength(1)
+    // Provenance identity keeps one aggregate and records the re-observation.
+    expect(await database.select().from(lifecycleCaptures)).toHaveLength(1)
+    expect(await database.select().from(captureRevisions)).toHaveLength(2)
     expect(resolve).not.toHaveBeenCalled()
   })
 })

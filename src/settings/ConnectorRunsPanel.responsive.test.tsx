@@ -213,9 +213,9 @@ describe('connector status and run responsive inspectability', () => {
               unclassified: 0,
               invariant: 'reconciled',
             },
-            sourcing: {
-              findingsAdded: 1,
-              canonicalDuplicates: 0,
+            opportunity: {
+              opportunitiesCreated: 1,
+              existingJobMatches: 0,
               notFit: 0,
               rejected: 0,
               actionableReview: 1,

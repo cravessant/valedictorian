@@ -12,7 +12,7 @@ import { jobFactsSchema } from 'sparxie'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { captureEvidenceItems, lifecycleCaptures } from '../capture/capture.schema'
-import { jobCaptureEvidenceReferences, lifecycleJobs } from '../job/job.schema'
+import { jobCaptureEvidenceReferences, jobExternalIdentities, lifecycleJobs } from '../job/job.schema'
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
 import { createPgliteJobService } from '../job/job.service'
 import { createPgliteJobIdentityService } from '../job/job.identity'
@@ -307,6 +307,36 @@ describe.sequential('Capture→Job promotion #304 threading', () => {
     // The capture's evidence lineage moved onto the winner.
     const links = await database.select().from(jobCaptureEvidenceReferences).where(eq(jobCaptureEvidenceReferences.jobId, target.job.id))
     expect(links.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('rolls back the created Job, identity, and lineage when an in-transaction merge fails', async () => {
+    const { database, captures, jobs } = await setup()
+    const identities = createPgliteJobIdentityService(database, { now: monotonicClock() })
+    const mergeOn = vi.fn(async () => ({
+      ok: false as const,
+      code: 'revision_conflict' as const,
+      message: 'injected concurrent target change',
+    }))
+    const promotion = createPgliteJobPromotion(database, captures, jobs, {
+      now: monotonicClock(),
+      jobIdentityService: { ...identities, mergeOn },
+    })
+    const target = await jobs.create({ workspaceId: 'ws-a', facts: { title: 'Winner' }, actor: ACTOR })
+    if (!target.ok) throw new Error('target create failed')
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided', providerRecordId: 'rec-merge-rollback' })
+
+    const result = await promotion.promoteCapture({
+      workspaceId: 'ws-a',
+      captureId: capture.id,
+      actor: ACTOR,
+      duplicateResolution: { action: 'merge', targetResourceId: target.job.id },
+    })
+
+    expect(result).toMatchObject({ ok: false, code: 'revision_conflict' })
+    expect(mergeOn).toHaveBeenCalledOnce()
+    expect(await countJobs(database, 'ws-a')).toBe(1)
+    expect(await database.select().from(jobExternalIdentities)).toHaveLength(0)
+    expect(await database.select().from(jobCaptureEvidenceReferences).where(eq(jobCaptureEvidenceReferences.captureId, capture.id))).toHaveLength(0)
   })
 
   it('duplicateResolution merge without a wired identity service is a typed invalid_input', async () => {
