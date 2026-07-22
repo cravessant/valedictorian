@@ -17,13 +17,28 @@ export interface AppConnectorCaptureHost {
   capture(input: ConnectorCaptureHostInput): Promise<ConnectorCaptureReceipt>
 }
 
+/**
+ * #325: independent post-acknowledgement provider-field work enqueue port. Called only after a
+ * durable Capture accept succeeds; a failure here must never undo the acknowledgement or make the
+ * connector wait for resolver execution (startup reconciliation closes any post-ack gap).
+ */
+export interface ProviderFieldWorkEnqueueInput {
+  readonly captureId: string
+  readonly captureRevision: number
+  readonly contentHash: string
+  readonly adapterId: string
+  readonly providerSchema: string | null
+}
+
 export function createConnectorCaptureHost({
   captureService,
   workspaceId,
+  enqueueProviderFieldWork,
 }: {
   captureService: CaptureService
   now?: () => Date
   workspaceId: string
+  enqueueProviderFieldWork?: (input: ProviderFieldWorkEnqueueInput) => Promise<void>
 }): AppConnectorCaptureHost {
   return {
     async capture({ adapter, connectorInstanceId, connectorRunId, executionScopeId, input }) {
@@ -73,6 +88,19 @@ export function createConnectorCaptureHost({
       const acceptedRevision = accepted.connectorRevision
       const revisionId = `${captureId}:${acceptedRevision.revision}`
       const occurrenceId = acceptedRevision.occurrenceId
+      if (enqueueProviderFieldWork && acceptedRevision.contentHash) {
+        try {
+          await enqueueProviderFieldWork({
+            captureId,
+            captureRevision: acceptedRevision.revision,
+            contentHash: acceptedRevision.contentHash,
+            adapterId: adapter.id,
+            providerSchema: captureInput.providerSchema,
+          })
+        } catch {
+          // Enqueue failure must not undo acknowledgement or block the connector frontier.
+        }
+      }
       return {
         captureItemId: occurrenceId,
         captureId,

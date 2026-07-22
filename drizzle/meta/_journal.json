@@ -43,6 +43,13 @@
       "when": 1784743200000,
       "tag": "0005_clean_lifecycle_cutover",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784752509993,
+      "tag": "0006_capture_field_outcomes",
+      "breakpoints": true
     }
   ]
 }

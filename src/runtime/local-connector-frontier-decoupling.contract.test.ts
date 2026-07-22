@@ -16,6 +16,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { captureOccurrences, captureRevisions, captures } from '../db/schema'
+import { normalizationWork } from '../modules/scheduling/scheduling.schema'
 import type { AppConnectorRuntime, AppJobConnector } from '../modules/connectors/connector.runner'
 import {
   getTestLocalValedictorianDatabase,
@@ -126,6 +127,7 @@ describe.sequential('connector frontier/backfill ↔ canonical lifecycle decoupl
     // Durable capture committed.
     expect(await database.select().from(captures)).toHaveLength(1)
     expect(await database.select().from(captureRevisions)).toHaveLength(1)
+    expect(await database.select().from(normalizationWork)).toHaveLength(1)
   })
 
   it('re-derives the frontier idempotently by reusing the same Capture revision', async () => {
@@ -157,6 +159,7 @@ describe.sequential('connector frontier/backfill ↔ canonical lifecycle decoupl
     expect(await database.select().from(captures)).toHaveLength(1)
     expect(await database.select().from(captureRevisions)).toHaveLength(1)
     expect(await database.select().from(captureOccurrences)).toHaveLength(2)
+    expect(await database.select().from(normalizationWork)).toHaveLength(1)
     expect(resolve).not.toHaveBeenCalled()
   })
 })

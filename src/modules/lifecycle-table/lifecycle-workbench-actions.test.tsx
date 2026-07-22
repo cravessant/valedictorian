@@ -324,6 +324,11 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     await user.click(screen.getByRole('button', { name: 'Promote' }))
 
     await waitFor(() => expect(captures.promoteToJob).toHaveBeenCalledTimes(1))
+    expect(captures.promoteToJob).toHaveBeenCalledWith(expect.objectContaining({
+      captureId: 'cap-1',
+      captureRevision: 1,
+      selectedFacts: expect.objectContaining({ location: null }),
+    }))
     await waitFor(() => {
       expect(captures.list).toHaveBeenCalledTimes(2)
       expect(jobs.list).toHaveBeenCalledTimes(2)

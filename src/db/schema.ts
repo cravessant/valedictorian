@@ -7,7 +7,7 @@ import {
   connectorSchedules,
 } from './schema.connectors'
 import {
-  captureEvidenceItems, captureOccurrences, captureRevisions, captures,
+  captureEvidenceItems, captureFieldOutcomes, captureOccurrences, captureRevisions, captures,
 } from '../modules/capture/capture.schema'
 import {
   jobCaptureEvidenceReferences, jobExternalIdentities, jobHistory, jobs,
@@ -29,7 +29,7 @@ export {
   connectorSchedules,
 } from './schema.connectors'
 export {
-  captureEvidenceItems, captureOccurrences, captureRevisions, captures,
+  captureEvidenceItems, captureFieldOutcomes, captureOccurrences, captureRevisions, captures,
 } from '../modules/capture/capture.schema'
 export {
   jobCaptureEvidenceReferences, jobExternalIdentities, jobHistory, jobs,
@@ -157,7 +157,7 @@ export const schema = {
   connectorScheduleEvents, connectorScheduleOccurrences, connectorScheduleRevisions, connectorSchedules,
   sources, workflowRuns, workflowRunSteps, workspaceSecrets, policyConfig, policyEvidence,
   sourceExecutionScopes, connectorRunSynchronizations, sourceExecutionSessions,
-  captures, captureRevisions, captureOccurrences, captureEvidenceItems,
+  captures, captureRevisions, captureOccurrences, captureEvidenceItems, captureFieldOutcomes,
   jobs, jobExternalIdentities, jobCaptureEvidenceReferences, jobHistory,
   opportunities, opportunityHistory,
   applications, pursuitLinks, applicationAttemptRecords, applicationEventRecords,

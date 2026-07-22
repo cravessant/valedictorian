@@ -10,6 +10,18 @@ import {
 import { createLocalLifecycleMethods } from './local-lifecycle-methods'
 import { createPgliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createPgliteCaptureService } from '../modules/capture/capture.service'
+import { createCaptureFieldOutcomeStore } from '../modules/capture/capture.field-outcomes'
+import { createScheduledWorkSource } from '../modules/scheduling/scheduled-work.source'
+import {
+  createNormalizationExecutor,
+  createNormalizationWorkRepository,
+  enqueueNormalizationWork,
+  reconcileNormalizationWork,
+} from '../modules/scheduling/normalization-work'
+import {
+  JOBRIGHT_CONNECTOR_ID,
+} from '../modules/connectors/jobright.constants'
+import { createJobrightProviderFieldResolver, jobrightProviderFieldResolverDeclaration } from '@sparxie/valedictorian-connectors-jobright'
 import { workspaces } from '../db/workspaces.schema'
 import { createSourceExecutionGovernor } from '../modules/source-execution/source-execution-governor'
 import { createConnectorCaptureHost } from '../modules/connectors/connector.capture-host'
@@ -176,7 +188,32 @@ export async function createLocalValedictorianClient({
   const policyRepository = createPglitePolicyRepository(database)
   const workflowRunRepository = createPgliteWorkflowRunRepository(database)
   const captureService = createPgliteCaptureService(database, { now })
-  const captureHost = createConnectorCaptureHost({ captureService, now, workspaceId })
+  const captureFieldOutcomes = createCaptureFieldOutcomeStore(database)
+  // Static resolver metadata (no connector loading); the resolver function resolves lazily so
+  // client construction never loads connector implementations (retirement invariant).
+  const providerFieldDeclaration = jobrightProviderFieldResolverDeclaration
+  const getProviderFieldResolver = () =>
+    connectorRegistry.get(JOBRIGHT_CONNECTOR_ID)?.providerFieldResolver ?? createJobrightProviderFieldResolver()
+  const normalizationRepository = createNormalizationWorkRepository(database, { now })
+  const captureHost = createConnectorCaptureHost({
+    captureService,
+    now,
+    workspaceId,
+    enqueueProviderFieldWork: async (input) => {
+      if (input.adapterId !== JOBRIGHT_CONNECTOR_ID) return
+      const supportedSchemas = providerFieldDeclaration.supportedProviderSchemas
+      if (supportedSchemas && (input.providerSchema === null || !supportedSchemas.includes(input.providerSchema))) return
+      const created = await enqueueNormalizationWork(normalizationRepository, {
+        workspaceId,
+        captureId: input.captureId,
+        captureRevision: input.captureRevision,
+        resolverId: providerFieldDeclaration.id,
+        resolverVersion: providerFieldDeclaration.version,
+        inputHash: input.contentHash,
+      })
+      if (created) onScheduledWorkChanged?.()
+    },
+  })
   const trustedConnectorAuth = composeTrustedConnectorAuth(secretService)
   const connectorOptionQueries = createConnectorOptionQueryService({
     authHost: trustedConnectorAuth,
@@ -528,6 +565,38 @@ export async function createLocalValedictorianClient({
       retryKind: 'connector_capture', ...(signal ? { signal } : {}),
     })),
   }))
+  const normalizationExecutor = createNormalizationExecutor({
+    database,
+    fieldOutcomes: captureFieldOutcomes,
+    getResolver: getProviderFieldResolver,
+    repository: normalizationRepository,
+    workspaceId,
+    now,
+  })
+  registerScheduledWorkSource?.(createScheduledWorkSource({
+    id: 'normalization',
+    repository: normalizationRepository,
+    execute: (work) => normalizationExecutor(work),
+    now,
+  }))
+  // #325 startup reconciliation: recover orphaned normalization claims, cancel obsolete active
+  // resolver-version work, and idempotently enqueue every eligible Jobright revision with an
+  // available immutable payload for the current resolver version (closes the post-ack gap).
+  await normalizationRepository.recoverClaimed(now().toISOString())
+  const normalizationReconciliation = await reconcileNormalizationWork({
+    database,
+    fieldOutcomes: captureFieldOutcomes,
+    repository: normalizationRepository,
+    workspaceId,
+    adapterId: JOBRIGHT_CONNECTOR_ID,
+    resolverId: providerFieldDeclaration.id,
+    resolverVersion: providerFieldDeclaration.version,
+    supportedProviderSchemas: providerFieldDeclaration.supportedProviderSchemas,
+    now,
+  })
+  if (normalizationReconciliation.enqueued > 0 || normalizationReconciliation.cancelled > 0) {
+    onScheduledWorkChanged?.()
+  }
   const recoverInterruptedRuns = async () => {
     await connectorRepository.recoverInterruptedRuns({ completedAt: now().toISOString() })
   }

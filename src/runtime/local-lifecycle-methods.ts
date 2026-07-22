@@ -91,6 +91,11 @@ import {
   type JsonValue,
 } from '../modules/capture/capture.service'
 import { createPgliteCaptureReadModel } from '../modules/capture/capture.read-model'
+import { createCaptureFieldOutcomeStore } from '../modules/capture/capture.field-outcomes'
+import {
+  JOBRIGHT_PROVIDER_FIELD_RESOLVER_ID,
+  JOBRIGHT_PROVIDER_FIELD_RESOLVER_VERSION,
+} from '../modules/connectors/jobright.constants'
 import { createPgliteJobService } from '../modules/job/job.service'
 import { createPgliteJobReadModel } from '../modules/job/job.read-model'
 import { createPgliteJobIdentityService } from '../modules/job/job.identity'
@@ -197,12 +202,22 @@ export function createLocalLifecycleMethods(
   const opportunityService = createPgliteOpportunityService(database, { now })
   const applicationService = createPgliteApplicationAggregateService(database, { now })
   const captureReadModel = createPgliteCaptureReadModel(database)
+  const captureFieldOutcomes = createCaptureFieldOutcomeStore(database)
   const jobReadModel = createPgliteJobReadModel(database)
   const opportunityReadModel = createPgliteOpportunityReadModel(database)
   const applicationReadModel = createPgliteApplicationReadModel(database)
   const jobOrchestration = createLifecycleJobOrchestration(database, { jobService, jobIdentityService, now })
   const applicationOrchestration = createLifecycleApplicationOrchestration(database, { applicationService }, { now })
-  const capturePromotion = createPgliteJobPromotion(database, captureService, jobService, { now, jobIdentityService })
+  const capturePromotion = createPgliteJobPromotion(database, captureService, jobService, {
+    now,
+    jobIdentityService,
+    locationEvidence: {
+      resolverId: JOBRIGHT_PROVIDER_FIELD_RESOLVER_ID,
+      resolverVersion: JOBRIGHT_PROVIDER_FIELD_RESOLVER_VERSION,
+      readResolvedLocation: (ws, captureId, captureRevision, resolverId, resolverVersion) =>
+        captureFieldOutcomes.readResolvedLocation(ws, captureId, captureRevision, resolverId, resolverVersion),
+    },
+  })
   const jobPromotion = createPgliteJobToOpportunityPromotion(database, opportunityService, { now })
   const opportunityPromotion = createPgliteOpportunityToApplicationPromotion(database, {
     captureService,

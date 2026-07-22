@@ -82,6 +82,10 @@ export const captureRevisions = pgTable(
     executionScopeId: text('execution_scope_id'),
     reportedOriginJson: text('reported_origin_json'),
     contentHash: text('content_hash'),
+    // #325: the immutable observed connector input for this exact revision. Nullable so
+    // historical revisions without a truthfully preserved raw input stay inert (replay
+    // skips them rather than inventing input). Bounded + sanitized like captures.payload_json.
+    payloadJson: text('payload_json'),
     createdAt: text('created_at').notNull(),
   },
   (table) => ({
@@ -92,6 +96,8 @@ export const captureRevisions = pgTable(
     snapshotBoundCheck: check('chk_capture_revisions_snapshot_bound', sql`length(${table.snapshotJson}) <= 262144`),
     auditBoundCheck: check('chk_capture_revisions_audit_bound', sql`length(${table.auditJson}) <= 16384`),
     auditKeysCheck: check('chk_capture_revisions_audit_keys', sql`${table.auditJson} ${sql.raw(FORBIDDEN_KEY)}`),
+    payloadBoundCheck: check('chk_capture_revisions_payload_bound', sql`${table.payloadJson} is null or length(${table.payloadJson}) <= 262144`),
+    payloadKeysCheck: check('chk_capture_revisions_payload_keys', sql`${table.payloadJson} is null or ${table.payloadJson} ${sql.raw(FORBIDDEN_KEY)}`),
     connectorProvenanceCheck: check(
       'chk_capture_revisions_connector_provenance',
       sql`(${table.connectorInstanceId} is null and ${table.connectorRunId} is null and ${table.executionScopeId} is null and ${table.reportedOriginJson} is null) or (${table.connectorInstanceId} is not null and ${table.connectorRunId} is not null and ${table.executionScopeId} is not null)`,
@@ -152,5 +158,51 @@ export const captureEvidenceItems = pgTable(
     labelCheck: check('chk_capture_evidence_items_label', sql`length(${table.label}) between 1 and 200`),
     valueBoundCheck: check('chk_capture_evidence_items_value_bound', sql`length(${table.valueJson}) <= 16384`),
     valueKeysCheck: check('chk_capture_evidence_items_value_keys', sql`${table.valueJson} ${sql.raw(FORBIDDEN_KEY)}`),
+  }),
+)
+
+/**
+ * Capture-owned provider-field resolution outcomes (issue #325).
+ *
+ * Bounded supporting evidence keyed to the immutable Capture revision plus the exact
+ * resolver id/version, input hash, and field. Scheduling tables stay coordination-only;
+ * the durable domain result lives here, owned by the Capture module. The composite
+ * identity makes persistence idempotent: a crash after persisting outcomes but before
+ * completing the scheduled work re-runs and converges via ON CONFLICT DO NOTHING rather
+ * than duplicating rows. `outcomeJson` preserves the connector's status and every safe detail
+ * that fits for one field, progressively degrading optional evidence within a strict bound.
+ */
+export const captureFieldOutcomes = pgTable(
+  'capture_field_outcomes',
+  {
+    captureId: text('capture_id').notNull(),
+    captureRevision: integer('capture_revision').notNull(),
+    resolverId: text('resolver_id').notNull(),
+    resolverVersion: text('resolver_version').notNull(),
+    inputHash: text('input_hash').notNull(),
+    field: text('field').notNull(),
+    status: text('status').notNull(),
+    outcomeJson: text('outcome_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({
+      name: 'capture_field_outcomes_pk',
+      columns: [table.captureId, table.captureRevision, table.resolverId, table.resolverVersion, table.inputHash, table.field],
+    }),
+    revisionFk: foreignKey({
+      name: 'fk_capture_field_outcomes_revision',
+      columns: [table.captureId, table.captureRevision],
+      foreignColumns: [captureRevisions.captureId, captureRevisions.revision],
+    }),
+    revisionCheck: check('chk_capture_field_outcomes_revision', sql`${table.captureRevision} > 0`),
+    resolverCheck: check(
+      'chk_capture_field_outcomes_resolver',
+      sql`length(${table.resolverId}) between 1 and 256 and length(${table.resolverVersion}) between 1 and 128 and length(${table.inputHash}) between 1 and 256`,
+    ),
+    fieldCheck: check('chk_capture_field_outcomes_field', sql`length(${table.field}) between 1 and 64`),
+    statusCheck: check('chk_capture_field_outcomes_status', sql`length(${table.status}) between 1 and 32`),
+    outcomeBoundCheck: check('chk_capture_field_outcomes_outcome_bound', sql`length(${table.outcomeJson}) <= 16384`),
+    outcomeKeysCheck: check('chk_capture_field_outcomes_outcome_keys', sql`${table.outcomeJson} ${sql.raw(FORBIDDEN_KEY)}`),
   }),
 )

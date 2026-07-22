@@ -521,6 +521,7 @@ export function createPgliteCaptureService(
     actor: CaptureActor,
     connectorProvenance: CaptureConnectorProvenance | null,
     contentHash: string | null,
+    payloadJson: string | null,
     createdAt: string,
   ): Promise<CaptureRecord> {
     const revision = existing.revision + 1
@@ -537,6 +538,7 @@ export function createPgliteCaptureService(
         ? null
         : JSON.stringify(connectorProvenance.reportedOrigin),
       contentHash,
+      payloadJson,
       createdAt,
     })
     if (evidence.length > 0) {
@@ -605,6 +607,7 @@ export function createPgliteCaptureService(
         ? null
         : JSON.stringify(connectorProvenance.reportedOrigin),
       contentHash,
+      payloadJson,
       createdAt,
     })
     if (evidence.length > 0) {
@@ -687,6 +690,7 @@ export function createPgliteCaptureService(
     let connectorProvenance: CaptureConnectorProvenance | null
     let workspaceId: string
     let evidenceMode: CaptureEvidenceMode
+    let payloadJson: string | null
     try {
       workspaceId = requireText(input.workspaceId, 'workspaceId', 1, WORKSPACE_MAX)
       if (!(captureEvidenceModes as readonly string[]).includes(input.evidenceMode)) {
@@ -700,9 +704,9 @@ export function createPgliteCaptureService(
       if (connectorProvenance && provenance.adapterKind !== 'connector') {
         throw new CaptureInputError('invalid_input', 'connectorProvenance requires a connector adapter')
       }
-      if (input.payload !== undefined && input.payload !== null) {
-        boundedJson(input.payload, 'payload', PAYLOAD_MAX)
-      }
+      payloadJson = input.payload === undefined || input.payload === null
+        ? null
+        : boundedJson(input.payload, 'payload', PAYLOAD_MAX)
     } catch (error) {
       if (error instanceof CaptureInputError) return fail(error.code, error.message)
       throw error
@@ -755,6 +759,7 @@ export function createPgliteCaptureService(
         actor,
         connectorProvenance,
         contentHash,
+        payloadJson,
         createdAt,
       )
       if (!connectorProvenance || !contentHash) return { ok: true, capture, created: false }

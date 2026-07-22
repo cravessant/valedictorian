@@ -31,6 +31,7 @@
  * inner failure rolls the whole transaction back (no partial state).
  */
 import { and, desc, eq } from 'drizzle-orm'
+import { jobLocationSchema } from 'sparxie'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
 import { jobCaptureEvidenceReferences, jobHistory, jobs } from '../../db/schema'
@@ -150,6 +151,26 @@ export interface JobPromotionOptions {
   readonly resolutionPort?: JobResolutionPort
   /** #304: wired only to service `duplicateResolution: { action: 'merge' }`; attach needs no identity service. */
   readonly jobIdentityService?: JobIdentityService
+  /**
+   * #325: Capture-owned read port for the completed current-version provider-field location
+   * outcome. When wired, a promotion fills a null caller-selected location only from a resolved
+   * outcome whose country is exactly US or CA; every other outcome stays unknown. Never edits an
+   * existing Job and never overrides a non-null caller location.
+   */
+  readonly locationEvidence?: PromotionLocationEvidencePort
+}
+
+/** #325: narrow Capture-owned read port for evidence-backed country prefill. */
+export interface PromotionLocationEvidencePort {
+  readonly resolverId: string
+  readonly resolverVersion: string
+  readResolvedLocation(
+    workspaceId: string,
+    captureId: string,
+    captureRevision: number,
+    resolverId: string,
+    resolverVersion: string,
+  ): Promise<{ readonly country: 'US' | 'CA'; readonly display: string; readonly city: string | null; readonly region: string | null } | null>
 }
 
 type Tx = Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0]
@@ -196,6 +217,11 @@ function deriveDefaultJobFacts(sourceName: string): JsonValue {
     postedAt: null,
     destination: null,
   }
+}
+
+/** #325: whether the promotion facts blob is a record (so a null `location` can be prefilled). */
+function isFactsRecord(value: JsonValue): value is { [key: string]: JsonValue } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export function createPgliteJobPromotion(
@@ -457,7 +483,29 @@ export function createPgliteJobPromotion(
       }
       // #304: promote with the caller's contract-valid facts, or strict-schema-valid
       // defaults plus a missing_optional_facts warning (fixes the #300 placeholder defect).
-      const promotionFacts = input.selectedFacts ?? deriveDefaultJobFacts(capture.provenance.adapterId)
+      let promotionFacts = input.selectedFacts ?? deriveDefaultJobFacts(capture.provenance.adapterId)
+      // #325: prefill a null caller-selected location from the completed current-version
+      // provider-field outcome (resolved US/CA only). A non-null caller location is preserved;
+      // ambiguous/conflicting/country-free/remote-only/abstained evidence stays unknown.
+      const locationEvidence = options.locationEvidence
+      if (locationEvidence && isFactsRecord(promotionFacts) && promotionFacts.location === null) {
+        const evidence = await locationEvidence.readResolvedLocation(
+          workspaceId,
+          captureId,
+          link.revision,
+          locationEvidence.resolverId,
+          locationEvidence.resolverVersion,
+        )
+        if (evidence) {
+          const location = jobLocationSchema.safeParse({
+            display: evidence.display,
+            city: evidence.city,
+            region: evidence.region,
+            country: evidence.country,
+          })
+          if (location.success) promotionFacts = { ...promotionFacts, location: location.data }
+        }
+      }
       const factsWarning: PromotionWarning | null = input.selectedFacts === undefined
         ? { code: 'missing_optional_facts', message: 'promoted with derived default facts; no selected facts were provided' }
         : null

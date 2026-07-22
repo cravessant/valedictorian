@@ -9,7 +9,7 @@
  * `.returning(...)` exactly as with the raw query builder.
  */
 import type { PgliteDatabase } from '../../db/pglite'
-import { captureEvidenceItems, captureOccurrences, captureRevisions, captures } from './capture.schema'
+import { captureEvidenceItems, captureFieldOutcomes, captureOccurrences, captureRevisions, captures } from './capture.schema'
 
 /** The workspace database or an open transaction, insert surface only. */
 export type CaptureWriteExecutor = Pick<PgliteDatabase, 'insert'>
@@ -22,4 +22,5 @@ export const insertCaptures = (exec: CaptureWriteExecutor) => exec.insert(captur
 export const insertCaptureRevisions = (exec: CaptureWriteExecutor) => exec.insert(captureRevisions)
 export const insertCaptureOccurrences = (exec: CaptureWriteExecutor) => exec.insert(captureOccurrences)
 export const insertCaptureEvidenceItems = (exec: CaptureWriteExecutor) => exec.insert(captureEvidenceItems)
+export const insertCaptureFieldOutcomes = (exec: CaptureWriteExecutor) => exec.insert(captureFieldOutcomes)
 export const updateCaptures = (exec: CaptureMutateExecutor) => exec.update(captures)
