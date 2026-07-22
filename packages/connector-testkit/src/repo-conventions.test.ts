@@ -6,6 +6,16 @@ function readText(relativePath: string) {
   return fs.readFileSync(path.resolve(relativePath), "utf8")
 }
 
+function readPublishedDeclarations(packageDirectory: string) {
+  const distDirectory = path.resolve(packageDirectory, "dist")
+  return fs
+    .readdirSync(distDirectory)
+    .filter((entry) => entry.endsWith(".d.ts"))
+    .sort()
+    .map((entry) => readText(path.join(distDirectory, entry)))
+    .join("\n")
+}
+
 function readPackageJson(relativePath: string) {
   return JSON.parse(readText(relativePath)) as {
     dependencies?: Record<string, string>
@@ -286,9 +296,9 @@ describe("connector repository conventions", () => {
   })
 
   it("publishes typed retry policy and host declarations", () => {
-    const coreDeclarations = readText("packages/core/dist/index.d.ts")
-    const harnessDeclarations = readText("packages/test-harness/dist/index.d.ts")
-    const jobrightDeclarations = readText("packages/jobright/dist/index.d.ts")
+    const coreDeclarations = readPublishedDeclarations("packages/core")
+    const harnessDeclarations = readPublishedDeclarations("packages/test-harness")
+    const jobrightDeclarations = readPublishedDeclarations("packages/jobright")
 
     expect(coreDeclarations).toContain("scheduleRetry")
     expect(coreDeclarations).toContain("RetryPolicyDependencies")
@@ -307,8 +317,8 @@ describe("connector repository conventions", () => {
   })
 
   it("publishes the forward-only connector ABI without retired host contracts", () => {
-    const coreDeclarations = readText("packages/core/dist/index.d.ts")
-    const harnessDeclarations = readText("packages/test-harness/dist/index.d.ts")
+    const coreDeclarations = readPublishedDeclarations("packages/core")
+    const harnessDeclarations = readPublishedDeclarations("packages/test-harness")
     const declarations = `${coreDeclarations}\n${harnessDeclarations}`
 
     expect(declarations).not.toMatch(

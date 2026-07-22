@@ -1,35 +1,3 @@
-import {
-  retryAdviceSchema,
-  type CreateCaptureInput,
-  type FieldResolutionOutcome,
-  type ConnectorHistoricalBackfillState,
-  type ConnectorNewestFrontierState,
-  type ConnectorVersionedRendererSchema,
-  type RetryAdvice,
-  type SourceExecutionScopeId,
-  type SourceOperationOutcome,
-  type TransientRetryReason,
-} from "sparxie"
-import type { JsonValue } from "./json.js"
-import type { ResolverDeclaration } from "./normalization-types.js"
-import type {
-  ConnectorCaptureIntakeRuntime,
-  ConnectorCaptureRevision,
-} from "./capture.js"
-import type {
-  ConnectorDynamicOptionsDeclaration,
-  ConnectorOptionValue,
-} from "./dynamic-options.js"
-import {
-  sanitizeConnectorRefreshStopReason,
-  type ConnectorAuthOutcomeReason,
-  type ConnectorAuthValidationStatus,
-  type ConnectorProviderUrlResolverReason,
-  type ConnectorRefreshStopReason,
-  type ConnectorRefreshWarning,
-  type ConnectorSynchronizationOutcome,
-} from "./connector-outcomes.js"
-
 export {
   connectorRefreshWarning,
   connectorRefreshWarningMessages,
@@ -43,6 +11,7 @@ export {
   sanitizeConnectorSynchronization,
   sanitizeConnectorSynchronizationOutcome,
   type ConnectorAuthOutcomeReason,
+  type ConnectorAuthValidationStatus,
   type SanitizedConnectorAuthValidationResult,
   type ConnectorProviderUrlResolverReason,
   type ConnectorRefreshStopReason,
@@ -122,665 +91,74 @@ export {
   type ConnectorReportedOriginKind,
 } from "./capture.js"
 
-export type RetryPolicyInput = {
-  attempt: number
-  baseDelayMs: number
-  horizonAt: string
-  maxAttempts: number
-  maxDelayMs: number
-  reason: TransientRetryReason
-  serverMinimumDelayMs?: number | null
-}
+export {
+  scheduleRetry,
+  type RetryPolicyDependencies,
+  type RetryPolicyInput,
+} from "./retry-policy.js"
 
-export type RetryPolicyDependencies = {
-  nowEpochMs(): number
-  random(): number
-}
+export {
+  jobObservationSchemaVersion,
+  type JobObservation,
+  type JobObservationEvidence,
+  type JobObservationLinks,
+  type JobObservationResolution,
+  type JobObservationResolutionStatus,
+} from "./observation.js"
 
-const maxEcmascriptDateEpochMs = 8_640_000_000_000_000
+export type {
+  ConnectorAuthDeclaration,
+  ConnectorAuthEstablish,
+  ConnectorAuthEstablishmentResult,
+  ConnectorAuthGrant,
+  ConnectorAuthGrantStatus,
+  ConnectorAuthMode,
+  ConnectorAuthReference,
+  ConnectorAuthRequirement,
+  ConnectorAuthResolveInput,
+  ConnectorAuthRuntime,
+  ConnectorCancellationRuntime,
+  ConnectorDelayInput,
+  ConnectorDelayRuntime,
+  ConnectorNormalizationInput,
+  ConnectorNormalizationRuntime,
+  ConnectorOptionRuntime,
+  ConnectorProgressCounts,
+  ConnectorProgressRuntime,
+  ConnectorProgressSnapshot,
+  ConnectorProgressStage,
+  ConnectorProgressWait,
+  ConnectorProviderUrlResolverRuntime,
+  ConnectorRuntime,
+} from "./runtime-ports.js"
 
-function isPositiveSafeMillisecond(value: number): boolean {
-  return (
-    Number.isSafeInteger(value) &&
-    value > 0 &&
-    value <= maxEcmascriptDateEpochMs
-  )
-}
+export {
+  sanitizeConnectorRefreshStats,
+  type ConnectorCheckpointPayload,
+  type ConnectorCoverageWindow,
+  type ConnectorRefreshResult,
+  type ConnectorRefreshStats,
+  type ConnectorRefreshStatus,
+} from "./refresh-result.js"
 
-export function scheduleRetry(
-  input: RetryPolicyInput,
-  dependencies: RetryPolicyDependencies,
-): RetryAdvice {
-  const nowEpochMs = dependencies.nowEpochMs()
-  if (!isPositiveSafeMillisecond(nowEpochMs)) {
-    throw new RangeError("nowEpochMs must be a positive safe millisecond value")
-  }
-  if (!Number.isSafeInteger(input.attempt) || input.attempt < 1) {
-    throw new RangeError("attempt must be a positive safe integer")
-  }
-  if (!Number.isSafeInteger(input.maxAttempts) || input.maxAttempts < 1) {
-    throw new RangeError("maxAttempts must be a positive safe integer")
-  }
-  if (!isPositiveSafeMillisecond(input.baseDelayMs)) {
-    throw new RangeError("baseDelayMs must be a positive safe millisecond value")
-  }
-  if (!isPositiveSafeMillisecond(input.maxDelayMs)) {
-    throw new RangeError("maxDelayMs must be a positive safe millisecond value")
-  }
-  if (
-    input.serverMinimumDelayMs !== undefined &&
-    input.serverMinimumDelayMs !== null &&
-    (!Number.isSafeInteger(input.serverMinimumDelayMs) ||
-      input.serverMinimumDelayMs < 1)
-  ) {
-    throw new RangeError(
-      "serverMinimumDelayMs must be a positive safe integer",
-    )
-  }
-  const horizonEpochMs = Date.parse(input.horizonAt)
-  if (!Number.isFinite(horizonEpochMs)) {
-    throw new RangeError("horizonAt must be a finite timestamp")
-  }
-  const timing = {
-    reason: input.reason,
-    attempt: input.attempt,
-    maxAttempts: input.maxAttempts,
-    lastAttemptAt: new Date(Math.min(nowEpochMs, horizonEpochMs)).toISOString(),
-    horizonAt: new Date(horizonEpochMs).toISOString(),
-  }
-  const sanitizedServerMinimum =
-    input.serverMinimumDelayMs !== undefined &&
-    input.serverMinimumDelayMs !== null
-      ? { serverMinimumDelayMs: input.serverMinimumDelayMs }
-      : {}
-  if (input.attempt >= input.maxAttempts || nowEpochMs >= horizonEpochMs) {
-    return retryAdviceSchema.parse({
-      ...timing,
-      state: "exhausted",
-      computedDelayMs: input.serverMinimumDelayMs ?? null,
-      nextAttemptAt: null,
-      ...sanitizedServerMinimum,
-    })
-  }
-  const remainingHorizonMs = horizonEpochMs - nowEpochMs
-  if (
-    input.serverMinimumDelayMs !== undefined &&
-    input.serverMinimumDelayMs !== null &&
-    input.serverMinimumDelayMs > remainingHorizonMs
-  ) {
-    return retryAdviceSchema.parse({
-      ...timing,
-      state: "exhausted",
-      computedDelayMs: input.serverMinimumDelayMs,
-      nextAttemptAt: null,
-      ...sanitizedServerMinimum,
-    })
-  }
-  const cap = Math.min(
-    input.maxDelayMs,
-    input.baseDelayMs * 2 ** (input.attempt - 1),
-  )
-  const random = dependencies.random()
-  if (!Number.isFinite(random) || random < 0 || random >= 1) {
-    throw new RangeError("random must be in [0, 1)")
-  }
-  const serverMinimumDelayMs = input.serverMinimumDelayMs
-  const computedDelayMs =
-    serverMinimumDelayMs !== undefined &&
-    serverMinimumDelayMs !== null &&
-    serverMinimumDelayMs > 0
-      ? serverMinimumDelayMs +
-        Math.floor(
-          random *
-            Math.max(1, Math.min(1_000, Math.floor(serverMinimumDelayMs * 0.05))),
-        ) +
-        1
-      : Math.max(1, Math.floor(random * cap))
-
-  if (computedDelayMs > remainingHorizonMs) {
-    return retryAdviceSchema.parse({
-      ...timing,
-      state: "exhausted",
-      computedDelayMs,
-      nextAttemptAt: null,
-      ...sanitizedServerMinimum,
-    })
-  }
-
-  return retryAdviceSchema.parse({
-    ...timing,
-    state: "scheduled",
-    computedDelayMs,
-    ...sanitizedServerMinimum,
-    nextAttemptAt: new Date(nowEpochMs + computedDelayMs).toISOString(),
-  })
-}
-
-export type ConnectorDefinition = {
-  id: string
-  version: string
-  displayName?: string
-  configSchema?: ConnectorSchemaDeclaration
-  filterSchema?: ConnectorSchemaDeclaration
-  observation?: ConnectorObservationDeclaration
-  auth?: ConnectorAuthDeclaration
-  capabilities?: ConnectorCapabilityDeclaration
-  checkpoint?: ConnectorCheckpointDeclaration
-  dynamicOptions?: ConnectorDynamicOptionsDeclaration
-}
-
-export const jobObservationSchemaVersion = "job-observation@1"
-
-export type ConnectorSchemaDeclaration = ConnectorVersionedRendererSchema
-
-export type ConnectorObservationDeclaration = {
-  schemaVersion: string
-}
-
-export type ConnectorAuthMode =
-  | "none"
-  | "api_key"
-  | "bearer_token"
-  | "oauth"
-  | "cookie_jar"
-  | "username_password"
-
-export type ConnectorAuthDeclaration = {
-  modes: ConnectorAuthMode[]
-  requirements?: ConnectorAuthRequirement[]
-}
-
-export type ConnectorAuthRequirement = {
-  id: string
-  mode: ConnectorAuthMode
-  label?: string
-  required?: boolean
-}
-
-export type ConnectorAuthReference = {
-  id: string
-  mode: ConnectorAuthMode
-  label?: string
-  secretKey?: string
-}
-
-export type ConnectorAuthGrantStatus =
-  | "ready"
-  | "missing"
-  | "expired"
-  | "action_required"
-
-export type ConnectorAuthGrant = {
-  id: string
-  mode: ConnectorAuthMode
-  status: ConnectorAuthGrantStatus
-  secretKey?: string
-  value?: string
-  sessionId?: string
-  expiresAt?: string
-  reason?: string
-}
-
-export type ConnectorAuthResolveInput = {
-  id: string
-  mode?: ConnectorAuthMode
-}
-
-export type ConnectorAuthEstablishmentResult =
-  | {
-      status: "ready"
-      sessionId: string
-      expiresAt?: string
-    }
-  | {
-      status: "action_required"
-      reason: string
-    }
-  | {
-      status: "rate_limited"
-      reason: string
-      serverMinimumDelayMs?: number
-    }
-  | {
-      status: "retryable"
-      reason: string
-      retryReason: Exclude<TransientRetryReason, "rate_limit">
-      serverMinimumDelayMs?: number
-    }
-  | {
-      status: "failed"
-      reason: string
-      parserChanged?: boolean
-    }
-  | {
-      status: "cancelled"
-      reason: "cancelled"
-    }
-  | {
-      status: "invocation_timeout"
-      reason: "runtime_limit"
-    }
-
-export type ConnectorAuthEstablish =
-  () => Promise<ConnectorAuthEstablishmentResult>
-
-export type ConnectorAuthRuntime = {
-  resolve(input: ConnectorAuthResolveInput): Promise<ConnectorAuthGrant>
-  refresh(
-    input: ConnectorAuthResolveInput & {
-      executionScopeId: SourceExecutionScopeId
-    },
-    establish: ConnectorAuthEstablish,
-  ): Promise<ConnectorAuthEstablishmentResult>
-}
-
-export type ConnectorDelayInput = {
-  minDelayMs: number
-  maxDelayMs: number
-  reason?: string
-}
-
-export type ConnectorDelayRuntime = {
-  wait(input: ConnectorDelayInput): Promise<number>
-}
-
-export type ConnectorCancellationRuntime = {
-  /**
-   * Aborts when the host requests that the current connector operation stop.
-   * Connectors should preserve completed work in their returned checkpoint.
-   */
-  readonly signal: AbortSignal
-}
-
-export type ConnectorOption = {
-  key: string
-  label: string
-  value: ConnectorOptionValue
-}
-
-export type ConnectorOptionQueryInput = {
-  connectorInstanceId: string
-  workspaceId: string
-  executionScopeId: SourceExecutionScopeId
-  connectorVersion: string
-  filterSchemaVersion: string
-  catalogVersion: string
-  sourceVersion: string
-  sourceId: string
-  dependencies: Readonly<
-    Record<string, ConnectorOptionValue | readonly ConnectorOptionValue[]>
-  >
-  operation:
-    | { kind: "search"; search: string; limit?: number }
-    | { kind: "resolve"; values: readonly ConnectorOptionValue[] }
-}
-
-export type ConnectorOptionQueryResult =
-  | {
-      status: "search_ready"
-      options: readonly ConnectorOption[]
-      truncated: boolean
-    }
-  | { status: "search_empty" }
-  | {
-      status: "resolve_ready"
-      options: readonly ConnectorOption[]
-      unknownValues: readonly ConnectorOptionValue[]
-    }
-  | { status: "auth_required"; requirementIds: readonly string[] }
-  | {
-      status: "error"
-      code: string
-      retryable: boolean
-      retryAfterMs?: number
-    }
-  | { status: "cancelled" }
-
-export type ConnectorOptionRuntime = {
-  auth: ConnectorAuthRuntime
-  cancellation?: ConnectorCancellationRuntime
-}
-
-export type ConnectorProgressStage =
-  | "authenticating"
-  | "discovering"
-  | "normalizing"
-  | "waiting"
-  | "finalizing"
-
-export type ConnectorProgressCounts = {
-  attempted: number
-  discovered: number
-  providerReturned?: number
-  providerValid?: number
-  providerInvalid?: number
-  sourceDuplicates?: number
-  pendingResolution?: number
-  /** @deprecated Connector-owned fit filtering is not a sourcing decision. */
-  eligible?: number
-  /** @deprecated Connector-owned fit filtering is not a sourcing decision. */
-  filtered?: number
-  resolvedEmployerOrAts: number
-  resolvedThirdParty: number
-  skipped: number
-  unresolved: number
-}
-
-export type ConnectorProgressWait = {
-  maxDelayMs: number
-  minDelayMs: number
-  reason: string
-}
-
-export type ConnectorProgressSnapshot = {
-  counts: ConnectorProgressCounts
-  stage: ConnectorProgressStage
-  wait?: ConnectorProgressWait
-}
-
-export type ConnectorProgressRuntime = {
-  /**
-   * Receives ordered, best-effort observability snapshots. Connectors must await
-   * async reporters only to a documented finite settlement deadline, isolate
-   * reporter failures, consume late rejections, and still return their refresh
-   * result and checkpoint instead of treating this port as a commit handshake.
-   */
-  report(snapshot: ConnectorProgressSnapshot): void | Promise<void>
-}
-
-export type ConnectorNormalizationInput = {
-  captureRevision: ConnectorCaptureRevision
-  resolver: ResolverDeclaration
-  resolve(): Promise<FieldResolutionOutcome[]>
-}
-
-export type ConnectorNormalizationRuntime = {
-  /** Executes a connector resolver under the host's trusted normalization seam. */
-  run(input: ConnectorNormalizationInput): Promise<FieldResolutionOutcome[]>
-}
-
-/**
- * Captured provider identity supplied to a provider URL resolver.
- *
- * The identity is deliberately narrower than a raw provider record.  A
- * resolver may retrieve provider evidence for this identity, but it cannot
- * receive or persist connector-owned retry/scheduling state.
- */
-export type ConnectorProviderUrlResolverInput = {
-  providerRecordId: string
-  connectorInstanceId: string
-  workspaceId: string
-  executionScopeId: SourceExecutionScopeId
-}
-
-export type ConnectorProviderUrlResolverEvidence = {
-  kind: string
-  value?: JsonValue
-}
-
-export type ConnectorProviderUrlResolverResult =
-  | {
-      status: "resolved"
-      url: string
-      method: string
-      evidence?: readonly ConnectorProviderUrlResolverEvidence[]
-    }
-  | {
-      status: "interrupted"
-      reason: "cancelled" | "runtime_limit"
-    }
-  | {
-      status: "retryable"
-      reason: ConnectorProviderUrlResolverReason
-      retryReason: TransientRetryReason
-      serverMinimumDelayMs?: number
-    }
-  | {
-      status: "terminal"
-      reason: ConnectorProviderUrlResolverReason
-      action?: "authenticate"
-      parserChanged?: boolean
-      evidence?: readonly ConnectorProviderUrlResolverEvidence[]
-    }
-
-export type ConnectorProviderUrlResolverRuntime = {
-  auth: ConnectorAuthRuntime
-  cancellation?: ConnectorCancellationRuntime
-}
-
-export type ConnectorProviderUrlResolver = {
-  id: string
-  version: string
-  resolve(
-    input: ConnectorProviderUrlResolverInput,
-    runtime: ConnectorProviderUrlResolverRuntime,
-  ): Promise<ConnectorProviderUrlResolverResult>
-}
-
-export type ConnectorCapabilityDeclaration = {
-  fetchesPublicPages?: boolean
-  resolvesIntermediaryLinks?: boolean
-  supportsIncrementalRefresh?: boolean
-  supportsFiltering?: boolean
-}
-
-export type ConnectorCheckpointDeclaration = {
-  schemaVersion: string
-}
-
-export type ConnectorCoverageWindow = {
-  start: string
-  end: string
-}
-
-export type ConnectorRefreshMode = "manual" | "scheduled" | "catch_up"
-
-export type ConnectorRefreshInput = {
-  connectorInstanceId: string
-  workspaceId: string
-  mode: ConnectorRefreshMode
-  coverage: ConnectorCoverageWindow
-  checkpoint?: unknown
-  config?: unknown
-  filters?: unknown
-  observations?: JobObservation[]
-  executionScopeId: SourceExecutionScopeId
-}
-
-export type ConnectorRuntime = {
-  auth: ConnectorAuthRuntime
-  cancellation?: ConnectorCancellationRuntime
-  delay?: ConnectorDelayRuntime
-  progress?: ConnectorProgressRuntime
-  captureIntake?: ConnectorCaptureIntakeRuntime
-  normalization?: ConnectorNormalizationRuntime
-}
-
-export type JobObservationLinks = {
-  source: string | null
-  intermediary: string | null
-  official: string | null
-}
-
-export type JobObservationResolutionStatus =
-  | "resolved"
-  | "auth_required"
-  | "closed"
-  | "hidden"
-  | "direct_apply"
-  | "rate_limited"
-  | "captcha"
-  | "unresolved"
-  | "not_supported"
-
-export type JobObservationResolution = {
-  status: JobObservationResolutionStatus
-  method: string | null
-  reason: string | null
-}
-
-export type JobObservationEvidence = {
-  type: string
-  capturedAt: string
-  sourceUrl: string | null
-}
-
-export type JobObservation = {
-  connectorId: string
-  connectorVersion: string
-  parserVersion: string
-  observationSchemaVersion: string
-  sourceRecordKey: string
-  observedAt: string
-  companyName: string
-  roleTitle: string
-  locationRaw?: string | null
-  descriptionText?: string | null
-  pay?: unknown
-  links: JobObservationLinks
-  resolution: JobObservationResolution
-  dedupeKeys: string[]
-  sourceMetadata?: Record<string, unknown>
-  evidence: JobObservationEvidence[]
-}
-
-export type ConnectorCheckpointPayload = {
-  checkpoint: unknown
-  schemaVersion: string
-}
-
-export type ConnectorRefreshStats = {
-  observations: number
-  attempted?: number
-  authRequired?: number
-  discovered?: number
-  discoveryPages?: number
-  eligible?: number
-  filtered?: number
-  providerReturned?: number
-  providerValid?: number
-  providerInvalid?: number
-  sourceDuplicates?: number
-  pendingResolution?: number
-  resolved?: number
-  resolvedEmployerOrAts?: number
-  resolvedThirdParty?: number
-  skipped?: number
-  stopReason?: ConnectorRefreshStopReason
-  totalAvailable?: number
-  unresolved?: number
-}
-
-const connectorRefreshNumericStats = [
-  "attempted",
-  "authRequired",
-  "discovered",
-  "discoveryPages",
-  "eligible",
-  "filtered",
-  "providerReturned",
-  "providerValid",
-  "providerInvalid",
-  "sourceDuplicates",
-  "pendingResolution",
-  "resolved",
-  "resolvedEmployerOrAts",
-  "resolvedThirdParty",
-  "skipped",
-  "totalAvailable",
-  "unresolved",
-] as const satisfies readonly (keyof ConnectorRefreshStats)[]
-
-export function sanitizeConnectorRefreshStats(
-  value: unknown,
-): ConnectorRefreshStats {
-  const record = value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
-  const stats: ConnectorRefreshStats = {
-    observations: sanitizedCount(record.observations),
-  }
-  // These are independently reported connector aggregates. The shared ABI
-  // declares no cross-provider sum relationship between its named counters.
-  for (const key of connectorRefreshNumericStats) {
-    if (Object.hasOwn(record, key)) stats[key] = sanitizedCount(record[key])
-  }
-  if (Object.hasOwn(record, "stopReason")) {
-    stats.stopReason = sanitizeConnectorRefreshStopReason(record.stopReason)
-  }
-  return stats
-}
-
-function sanitizedCount(value: unknown): number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : 0
-}
-
-export type ConnectorRefreshStatus =
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "skipped"
-
-export type ConnectorRefreshResult = {
-  observations: JobObservation[]
-  nextCheckpoint: ConnectorCheckpointPayload
-  coverage: ConnectorCoverageWindow
-  stats: ConnectorRefreshStats
-  warnings: ConnectorRefreshWarning[]
-  status: ConnectorRefreshStatus
-  retryHints?: RetryAdvice | null
-  operationOutcome: SourceOperationOutcome | null
-  synchronization: {
-    newestFrontier: ConnectorNewestFrontierState
-    historicalBackfill: ConnectorHistoricalBackfillState
-    pendingResolutionCount: number
-    outcome: ConnectorSynchronizationOutcome
-  }
-}
-
-export type ConnectorAuthValidationInput = {
-  connectorInstanceId: string
-  executionScopeId: SourceExecutionScopeId
-  workspaceId: string
-}
-
-export type { ConnectorAuthValidationStatus } from "./connector-outcomes.js"
-
-export type ConnectorAuthValidationResult = {
-  status: ConnectorAuthValidationStatus
-  reason: ConnectorAuthOutcomeReason
-}
-
-export type ConnectorProviderFieldResolverInput = {
-  captureRevision: ConnectorCaptureRevision
-  adapter: CreateCaptureInput["adapter"]
-  providerSchema: CreateCaptureInput["providerSchema"]
-  payload: CreateCaptureInput["payload"]
-}
-
-export type ConnectorProviderFieldResolver = {
-  declaration: ResolverDeclaration
-  resolve(
-    input: ConnectorProviderFieldResolverInput,
-  ): FieldResolutionOutcome[]
-}
-
-export type JobConnector = {
-  definition: ConnectorDefinition
-  providerUrlResolver?: ConnectorProviderUrlResolver
-  providerFieldResolver?: ConnectorProviderFieldResolver
-  refresh(
-    input: ConnectorRefreshInput,
-    runtime: ConnectorRuntime,
-  ): Promise<ConnectorRefreshResult>
-  validateAuth?(
-    input: ConnectorAuthValidationInput,
-    runtime: ConnectorRuntime,
-  ): Promise<ConnectorAuthValidationResult>
-  queryOptions?(
-    input: ConnectorOptionQueryInput,
-    runtime: ConnectorOptionRuntime,
-  ): Promise<ConnectorOptionQueryResult>
-}
+export type {
+  ConnectorAuthValidationInput,
+  ConnectorAuthValidationResult,
+  ConnectorCapabilityDeclaration,
+  ConnectorCheckpointDeclaration,
+  ConnectorDefinition,
+  ConnectorObservationDeclaration,
+  ConnectorOption,
+  ConnectorOptionQueryInput,
+  ConnectorOptionQueryResult,
+  ConnectorProviderFieldResolver,
+  ConnectorProviderFieldResolverInput,
+  ConnectorProviderUrlResolver,
+  ConnectorProviderUrlResolverEvidence,
+  ConnectorProviderUrlResolverInput,
+  ConnectorProviderUrlResolverResult,
+  ConnectorRefreshInput,
+  ConnectorRefreshMode,
+  ConnectorSchemaDeclaration,
+  JobConnector,
+} from "./connector-definition.js"
