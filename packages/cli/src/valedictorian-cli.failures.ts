@@ -2,7 +2,6 @@ import {
   ConnectorOptionQueryHttpError,
   ConnectorRetirementConflictError,
   ConnectorScheduleHttpError,
-  InvalidPersistedRawDetailHttpError,
   LocalSecretResolutionHttpError,
   ProfileDocumentHttpError,
   ValedictorianHttpError,
@@ -141,10 +140,6 @@ export function classifyCliFailure(error: unknown): ClassifiedCliFailure {
   }
 
   if (error instanceof ConnectorOptionQueryHttpError) {
-    return fromTypedHttp(error, error.body.code, error.kind, error.body.message)
-  }
-
-  if (error instanceof InvalidPersistedRawDetailHttpError) {
     return fromTypedHttp(error, error.body.code, error.kind, error.body.message)
   }
 

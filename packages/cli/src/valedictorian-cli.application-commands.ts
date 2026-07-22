@@ -1,379 +1,224 @@
 import { buildRouteMap } from '@stricli/core'
-import { isApplicationStatus } from 'sparxie'
+import {
+  applicationTechnicalListInputSchema,
+  createApplicationInputSchema,
+  createPursuitLinkInputSchema,
+  lifecycleApplicationHistoryInputSchema,
+  lifecycleApplicationListInputSchema,
+  refreshApplicationSnapshotInputSchema,
+  removalInputSchema,
+  removePursuitLinkInputSchema,
+  restoreInputSchema,
+  updateApplicationCompanyInputSchema,
+  updateApplicationSourceInputSchema,
+  updatePursuitApplicationStatusInputSchema,
+  updatePursuitLinkInputSchema,
+} from 'sparxie'
 
 import {
-  booleanFlags,
   makeCommand,
   optionFlags,
-  optionValue,
-  toArgvWithoutWorkspace,
   workspaceClient,
   writeJson,
 } from './valedictorian-cli.command-runtime.js'
-import { CliOwnedFailure, CliUsageError } from './valedictorian-cli.failures.js'
+import { CliOwnedFailure } from './valedictorian-cli.failures.js'
 import {
-  parseApplicationAttemptsQuery,
-  parseApplicationEventsQuery,
-  parseApplicationListQuery,
-  parseAttemptComplete,
-  parseAttemptStart,
-  parseAttemptStep,
-  parseCreateApplication,
-  parseCreateApplicationLink,
-  parseUpdateApplication,
-  parseUpdateApplicationLink,
-  parseWorkflowUpdate,
-  readOptionalText,
-  readRequiredText,
-} from './valedictorian-cli.parsers.js'
+  actorOptionalFlags,
+  historyInputFlags,
+  inputJsonFlags,
+  listInputFlags,
+  parseContractInput,
+  parseRemovalInput,
+  parseRestoreInput,
+  removalRequiredFlags,
+  restoreRequiredFlags,
+} from './valedictorian-cli.lifecycle-input.js'
 
 export function buildApplicationsRoute() {
   return buildRouteMap({
-    docs: { brief: 'Manage applications' },
+    docs: { brief: 'Manage pursuit applications' },
     routes: {
-      archive: makeCommand({
-        docs: { brief: 'Archive an application' },
-        flags: optionFlags(['note', 'workspace']),
-        positionalCount: 1,
-        run: async (context, flags, applicationId) => {
-          const client = await workspaceClient(context, flags)
-
-          await client.applications.archive({
-            applicationId,
-            note: readOptionalText(optionValue(flags, 'note'), 'archive note'),
-          })
-
-          writeJson(context, { ok: true })
-        },
-      }),
-      attempts: buildApplicationAttemptsRoute(),
-      create: makeCommand({
-        docs: { brief: 'Create an application' },
-        flags: {
-          ...optionFlags([
-            'city',
-            'current-resume-variant',
-            'has-applied',
-            'initial-note',
-            'location-raw',
-            'primary-external-id',
-            'primary-kind',
-            'primary-label',
-            'primary-url',
-            'region',
-            'source-external-id',
-            'source-kind',
-            'source-label',
-            'source-link-url',
-            'start-date',
-            'term',
-            'terms-json',
-            'workspace',
-            'end-date',
-          ]),
-          ...optionFlags([], [
-            'company-name',
-            'country',
-            'role-kind',
-            'role-title',
-            'source-name',
-            'status',
-            'work-mode',
-          ]),
-        },
+      list: makeCommand({
+        docs: { brief: 'List applications' },
+        flags: optionFlags(listInputFlags),
         run: async (context, flags) => {
           const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.create(parseCreateApplication(toArgvWithoutWorkspace(flags))),
-          )
-        },
-      }),
-      events: makeCommand({
-        docs: { brief: 'List application events' },
-        flags: optionFlags(['limit', 'offset', 'workspace']),
-        positionalCount: 1,
-        run: async (context, flags, applicationId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.events.list(
-              parseApplicationEventsQuery(applicationId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
+          const input = parseContractInput(flags, lifecycleApplicationListInputSchema, {
+            optional: true,
+          })
+          writeJson(context, await client.applications.list(input))
         },
       }),
       get: makeCommand({
-        docs: { brief: 'Get application details' },
+        docs: { brief: 'Get an application' },
         flags: optionFlags(['workspace']),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
-          const client = await workspaceClient(context, flags)
-          const applicationDetail = await client.applications.get(applicationId)
-
-          if (!applicationDetail) {
-            throw new CliOwnedFailure({
-              code: 'application_not_found',
-              kind: 'not_found',
-              status: 404,
-              message: `Application not found: ${applicationId}`,
-            })
-          }
-
-          writeJson(context, applicationDetail)
+          const resource = await (await workspaceClient(context, flags)).applications.get(applicationId)
+          if (!resource) throw applicationNotFound(applicationId)
+          writeJson(context, resource)
         },
       }),
-      link: buildApplicationLinksRoute(),
-      list: makeCommand({
-        docs: { brief: 'List applications' },
-        flags: optionFlags([
-          'company',
-          'created-from',
-          'created-to',
-          'has-applied',
-          'limit',
-          'max-score',
-          'min-score',
-          'name',
-          'offset',
-          'priority-band',
-          'role',
-          'search',
-          'sort',
-          'source',
-          'status',
-          'updated-from',
-          'updated-to',
-          'work-mode',
-          'workspace',
-        ]),
-        run: async (context, flags) => {
-          const query = parseApplicationListQuery(toArgvWithoutWorkspace(flags))
-          const client = await workspaceClient(context, flags)
-
-          writeJson(context, await client.applications.list(query))
-        },
-      }),
-      note: makeCommand({
-        docs: { brief: 'Append an application note' },
-        flags: optionFlags(['workspace'], ['message']),
+      create: inputMutation('Create an application', createApplicationInputSchema, (client, input) =>
+        client.applications.create(input)),
+      'update-status': identifiedMutation(
+        'Update application status',
+        updatePursuitApplicationStatusInputSchema,
+        (client, input) => client.applications.updateStatus(input),
+      ),
+      'update-company': identifiedMutation(
+        'Update application company',
+        updateApplicationCompanyInputSchema,
+        (client, input) => client.applications.updateCompany(input),
+      ),
+      'update-source': identifiedMutation(
+        'Update application source',
+        updateApplicationSourceInputSchema,
+        (client, input) => client.applications.updateSource(input),
+      ),
+      links: buildLinksRoute(),
+      'refresh-snapshot': identifiedMutation(
+        'Refresh an application job snapshot',
+        refreshApplicationSnapshotInputSchema,
+        (client, input) => client.applications.refreshSnapshot(input),
+      ),
+      remove: makeCommand({
+        docs: { brief: 'Remove an application using an explicit dependent-resource choice' },
+        flags: optionFlags(actorOptionalFlags, removalRequiredFlags),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
           const client = await workspaceClient(context, flags)
-
           writeJson(
             context,
-            await client.applications.notes.append({
-              applicationId,
-              message: readRequiredText(optionValue(flags, 'message'), 'note message'),
-            }),
-          )
-        },
-      }),
-      status: makeCommand({
-        docs: { brief: 'Update application status' },
-        flags: optionFlags(['notes', 'workspace']),
-        positionalCount: 2,
-        run: async (context, flags, applicationId, status) => {
-          if (!isApplicationStatus(status)) {
-            throw new CliUsageError(`Invalid application status: ${status}`)
-          }
-
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.updateStatus({
-              applicationId,
-              status,
-              notes: optionValue(flags, 'notes'),
-            }),
-          )
-        },
-      }),
-      update: makeCommand({
-        docs: { brief: 'Update application metadata' },
-        flags: optionFlags([
-          'city',
-          'country',
-          'current-resume-variant',
-          'has-applied',
-          'location-raw',
-          'region',
-          'role-kind',
-          'role-title',
-          'start-date',
-          'term',
-          'terms-json',
-          'work-mode',
-          'workspace',
-          'end-date',
-        ]),
-        positionalCount: 1,
-        run: async (context, flags, applicationId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.update(
-              parseUpdateApplication(applicationId, toArgvWithoutWorkspace(flags)),
+            await client.applications.remove(
+              parseRemovalInput(flags, removalInputSchema, applicationId),
             ),
           )
         },
       }),
-      workflow: makeCommand({
-        docs: { brief: 'Update application workflow state' },
-        flags: optionFlags([
-          'blocker-reason',
-          'hold-started-at',
-          'lock-started-at',
-          'manual-review-kind',
-          'missing-user-info',
-          'workspace',
-        ]),
+      restore: makeCommand({
+        docs: { brief: 'Restore an application' },
+        flags: optionFlags(actorOptionalFlags, restoreRequiredFlags),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
           const client = await workspaceClient(context, flags)
-
           writeJson(
             context,
-            await client.applications.workflow.update(
-              parseWorkflowUpdate(applicationId, toArgvWithoutWorkspace(flags)),
+            await client.applications.restore(
+              parseRestoreInput(flags, restoreInputSchema, applicationId),
             ),
           )
         },
       }),
+      history: makeCommand({
+        docs: { brief: 'List application history' },
+        flags: optionFlags(historyInputFlags),
+        positionalCount: 1,
+        run: async (context, flags, applicationId) => {
+          const client = await workspaceClient(context, flags)
+          const input = parseContractInput(flags, lifecycleApplicationHistoryInputSchema, {
+            id: ['id', applicationId],
+            optional: true,
+          })
+          writeJson(context, await client.applications.history(input))
+        },
+      }),
+      attempts: technicalListGroup('application attempts', (client, input) =>
+        client.applications.attempts.list(input)),
+      events: technicalListGroup('application events', (client, input) =>
+        client.applications.events.list(input)),
     },
   })
 }
 
-function buildApplicationLinksRoute() {
+function buildLinksRoute() {
   return buildRouteMap({
     docs: { brief: 'Manage application links' },
     routes: {
-      add: makeCommand({
-        docs: { brief: 'Add an application link' },
-        flags: {
-          ...optionFlags(['external-id', 'workspace']),
-          ...optionFlags([], ['kind', 'label', 'url']),
-          ...booleanFlags(['primary']),
-        },
+      create: identifiedMutation(
+        'Create an application link',
+        createPursuitLinkInputSchema,
+        (client, input) => client.applications.links.create(input),
+      ),
+      update: identifiedMutation(
+        'Update an application link',
+        updatePursuitLinkInputSchema,
+        (client, input) => client.applications.links.update(input),
+      ),
+      remove: identifiedMutation(
+        'Remove an application link',
+        removePursuitLinkInputSchema,
+        (client, input) => client.applications.links.remove(input),
+      ),
+    },
+  })
+}
+
+type WorkspaceClient = Awaited<ReturnType<typeof workspaceClient>>
+type TechnicalListInput = Parameters<WorkspaceClient['applications']['attempts']['list']>[0]
+type ContractSchema<T> = { safeParse(value: unknown): { success: true; data: T } | { success: false } }
+
+function inputMutation<T>(
+  brief: string,
+  schema: ContractSchema<T>,
+  operation: (client: WorkspaceClient, input: T) => Promise<unknown>,
+) {
+  return makeCommand({
+    docs: { brief },
+    flags: optionFlags([], inputJsonFlags),
+    run: async (context, flags) => {
+      const client = await workspaceClient(context, flags)
+      writeJson(context, await operation(client, parseContractInput(flags, schema)))
+    },
+  })
+}
+
+function identifiedMutation<T>(
+  brief: string,
+  schema: ContractSchema<T>,
+  operation: (client: WorkspaceClient, input: T) => Promise<unknown>,
+) {
+  return makeCommand({
+    docs: { brief },
+    flags: optionFlags([], inputJsonFlags),
+    positionalCount: 1,
+    run: async (context, flags, applicationId) => {
+      const client = await workspaceClient(context, flags)
+      const input = parseContractInput(flags, schema, { id: ['applicationId', applicationId] })
+      writeJson(context, await operation(client, input))
+    },
+  })
+}
+
+function technicalListGroup(
+  resource: string,
+  operation: (client: WorkspaceClient, input: TechnicalListInput) => Promise<unknown>,
+) {
+  return buildRouteMap({
+    docs: { brief: `Inspect ${resource}` },
+    routes: {
+      list: makeCommand({
+        docs: { brief: `List ${resource}` },
+        flags: optionFlags(listInputFlags),
         positionalCount: 1,
         run: async (context, flags, applicationId) => {
           const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.links.create(
-              parseCreateApplicationLink(applicationId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
-        },
-      }),
-      update: makeCommand({
-        docs: { brief: 'Update an application link' },
-        flags: {
-          ...optionFlags(['archived', 'external-id', 'kind', 'label', 'url', 'workspace']),
-          ...booleanFlags(['archive', 'primary']),
-        },
-        positionalCount: 2,
-        run: async (context, flags, applicationId, linkId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.links.update(
-              parseUpdateApplicationLink(applicationId, linkId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
+          const input = parseContractInput(flags, applicationTechnicalListInputSchema, {
+            id: ['applicationId', applicationId],
+            optional: true,
+          })
+          writeJson(context, await operation(client, input))
         },
       }),
     },
   })
 }
 
-function buildApplicationAttemptsRoute() {
-  return buildRouteMap({
-    docs: { brief: 'Track application attempts' },
-    routes: {
-      complete: makeCommand({
-        docs: { brief: 'Complete an application attempt' },
-        flags: optionFlags(
-          [
-            'blocker-reason',
-            'confirmation-text',
-            'confirmation-url',
-            'hold-started-at',
-            'manual-review-kind',
-            'missing-user-info',
-            'stop-reason',
-            'summary',
-            'workspace',
-          ],
-          ['outcome'],
-        ),
-        positionalCount: 2,
-        run: async (context, flags, applicationId, attemptId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.attempts.complete(
-              parseAttemptComplete(applicationId, attemptId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
-        },
-      }),
-      list: makeCommand({
-        docs: { brief: 'List application attempts' },
-        flags: optionFlags(['limit', 'offset', 'workspace']),
-        positionalCount: 1,
-        run: async (context, flags, applicationId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.attempts.list(
-              parseApplicationAttemptsQuery(applicationId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
-        },
-      }),
-      start: makeCommand({
-        docs: { brief: 'Start an application attempt' },
-        flags: optionFlags(
-          ['actor-name', 'entry-url', 'resume-artifact-path', 'resume-variant', 'summary', 'workspace'],
-          ['actor-type'],
-        ),
-        positionalCount: 1,
-        run: async (context, flags, applicationId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.attempts.start(
-              parseAttemptStart(applicationId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
-        },
-      }),
-      step: makeCommand({
-        docs: { brief: 'Record an application attempt step' },
-        flags: optionFlags(['actor', 'payload-json', 'workspace'], ['message', 'type']),
-        positionalCount: 2,
-        run: async (context, flags, applicationId, attemptId) => {
-          const client = await workspaceClient(context, flags)
-
-          writeJson(
-            context,
-            await client.applications.attempts.step(
-              parseAttemptStep(applicationId, attemptId, toArgvWithoutWorkspace(flags)),
-            ),
-          )
-        },
-      }),
-    },
+function applicationNotFound(id: string) {
+  return new CliOwnedFailure({
+    code: 'application_not_found',
+    kind: 'not_found',
+    status: 404,
+    message: `Application not found: ${id}`,
   })
 }

@@ -11,11 +11,6 @@ valedictorian-cli context
 valedictorian-cli --help
 ```
 
-The package is currently published under the npm `alpha` dist-tag. The explicit
-registry avoids stale private registry caches; the release-age override is for
-fresh alpha installs. Untagged global installs can resolve to an older
-prerelease.
-
 From the `valedictorian-cli` repository:
 
 ```sh
@@ -33,46 +28,101 @@ export VALEDICTORIAN_API_TOKEN=...
 export VALEDICTORIAN_WORKSPACE=workspace-id-or-name
 ```
 
-The token line is a placeholder. Do not paste token literals into shared chat, shell history, logs, committed files, or persisted temp files.
-
-Prefer inline env assignment for one-off commands when the token is already available in the shell:
-
-```sh
-VALEDICTORIAN_API_URL=http://127.0.0.1:4317 valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" --limit 25
-```
-
-Use JSON diagnostics for scripts or agent preflight checks:
-
-```sh
-valedictorian-cli --json doctor
-valedictorian-cli --json doctor --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --workspace "$VALEDICTORIAN_WORKSPACE" --json doctor
-valedictorian-cli --json doctor --skip-network
-valedictorian-cli --json context
-```
+Do not paste token literals into shared chat, shell history, logs, committed files, or persisted temp files. Workspace-scoped commands require `--workspace <id-or-name>`.
 
 ## Discovery Commands
 
 ```sh
 valedictorian-cli --json workspaces list
 valedictorian-cli --json context
-valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" --status needs_user_info --limit 25
-valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE" --search "backend intern" --sort company_asc --limit 25
-valedictorian-cli --json applications get <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json captures list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json jobs list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json opportunities list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json applications list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json applications attempts list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json applications events list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now --limit 25
 valedictorian-cli --json connectors list --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json connectors status <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json connectors runs list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --limit 25
-valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --status in_progress --limit 25
-valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE" --workflow-run-id <run-id> --merge-status new --limit 25
-valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json profile validate --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt
 ```
 
-## Profile And Secrets
+List and history filters use a strict JSON object:
 
-Versioned profile document:
+```sh
+valedictorian-cli --json jobs list --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"availability":"open","limit":25}'
+valedictorian-cli --json applications history <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '{"limit":25}'
+```
+
+## Lifecycle Commands
+
+The four command groups mirror the `sparxie@0.27.0` workspace client:
+
+- `captures list|get|create|correct|remove|restore|history|promote-to-job`
+- `jobs list|get|create|correct-facts|update-availability|external-identities add|remove|remove|restore|history|promote-to-opportunity`
+- `opportunities list|get|create|update-evaluation|update-disposition|remove|restore|history|promote-to-application`
+- `applications list|get|create|update-status|update-company|update-source|links create|update|remove|refresh-snapshot|remove|restore|history|attempts list|events list`
+
+Create a capture with explicit provenance and Evidence mode:
+
+```sh
+valedictorian-cli --json captures create \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --evidence-mode reported \
+  --adapter-id valedictorian-cli \
+  --adapter-kind cli \
+  --adapter-version 0.1.0 \
+  --observed-at 2026-07-21T18:00:00.000Z \
+  --payload-json '{"url":"https://jobs.example.com/role"}' \
+  --evidence-json '[{"kind":"url","label":"posting","value":"https://jobs.example.com/role"}]'
+```
+
+`--adapter-kind` accepts the contract kinds `manual`, `import`, `connector`, and `cli`. `--evidence-mode` accepts `reported` and `ats_details_provided`. Optional `--provider-record-id`, `--provider-schema`, `--payload-json`, and `--evidence-json` preserve the corresponding capture fields.
+
+Complex mutations accept the complete contract-owned payload through `--input-json`; omit the positional resource id from that object:
+
+```sh
+valedictorian-cli --json captures correct <capture-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<CorrectCaptureInput>'
+valedictorian-cli --json jobs create --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<CreateJobInput>'
+valedictorian-cli --json jobs correct-facts <job-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<CorrectJobFactsInput without jobId>'
+valedictorian-cli --json jobs update-availability <job-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<UpdateJobAvailabilityInput without jobId>'
+valedictorian-cli --json jobs external-identities add <job-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<AddJobExternalIdentityInput without jobId>'
+valedictorian-cli --json jobs external-identities remove <job-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<RemoveJobExternalIdentityInput without jobId>'
+valedictorian-cli --json opportunities create --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<CreateOpportunityInput>'
+valedictorian-cli --json applications create --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<CreateApplicationInput>'
+valedictorian-cli --json applications update-status <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<UpdatePursuitApplicationStatusInput without applicationId>'
+valedictorian-cli --json applications links create <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<CreatePursuitLinkInput without applicationId>'
+```
+
+Promotion JSON supplies the complete input except the positional source id. These flags can explicitly override common promotion fields:
+
+```sh
+valedictorian-cli --json captures promote-to-job <capture-id> \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --input-json '<PromoteCaptureToJobInput without captureId>' \
+  --idempotency-key <key> \
+  --override-actor-id <id> \
+  --override-actor-type user \
+  --override-rationale "Reviewed the warnings." \
+  --override-warning-codes-json '["fit","rank"]' \
+  --duplicate-action attach \
+  --duplicate-target-id <job-id>
+
+valedictorian-cli --json jobs promote-to-opportunity <job-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<PromoteJobToOpportunityInput without jobId>'
+valedictorian-cli --json opportunities promote-to-application <opportunity-id> --workspace "$VALEDICTORIAN_WORKSPACE" --input-json '<PromoteOpportunityToApplicationInput without opportunityId>'
+```
+
+`--duplicate-action` accepts `attach` or `merge` and requires `--duplicate-target-id`. Override flags must supply actor id/type, rationale, and a JSON array of warning codes together. JSON output retains the complete discriminated result, including warnings, blockers, override evidence, and duplicate resolution.
+
+Remove and restore commands make the actor and rationale explicit. Remove also requires one deterministic dependent-resource choice:
+
+```sh
+valedictorian-cli --json jobs remove <job-id> --workspace "$VALEDICTORIAN_WORKSPACE" --choice reject_if_dependents --actor-id <id> --actor-type user --rationale "No longer active."
+valedictorian-cli --json jobs restore <job-id> --workspace "$VALEDICTORIAN_WORKSPACE" --actor-id <id> --actor-type user --rationale "Restoring after review."
+```
+
+Removal choices are `reject_if_dependents`, `preserve_historical_lineage`, `unlink_dependents`, and `cascade_tombstone`. Inspect the returned blocker, supported choices, and dependent ids before retrying a blocked removal.
+
+## Profile And Secrets
 
 ```sh
 valedictorian-cli --json profile get --workspace "$VALEDICTORIAN_WORKSPACE"
@@ -83,83 +133,22 @@ valedictorian-cli --json profile format --workspace "$VALEDICTORIAN_WORKSPACE" -
 valedictorian-cli --json profile restore --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision <revision|null> --confirm
 ```
 
-`profile get`/`update`/`format` return the full versioned `ProfileDocument`. `profile update` requires a nonempty `--expected-revision` and accepts the unified public profile patch, including populated `dateOfBirth`, `gender`, `hispanicLatino`, `raceEthnicity`, `disabilityStatus`, and `veteranStatus`. SSN and credential values stay on the secret path, not the ordinary document. `profile validate` returns `{ schemaVersion, revision }`. `profile restore` requires `--confirm`, accepts the exact `null` revision sentinel, and on success returns only `{ restored, schemaVersion, revision }` with no profile values. Typed document errors keep their exact codes in human and `--json` modes; mutations never retry conflicts.
-
-Credential secrets:
+SSN and credential values stay on the secret path, not the ordinary document. Typed document errors keep their exact codes in human and JSON modes; mutations never retry conflicts.
 
 ```sh
 valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json secrets upsert greenhouse_password --workspace "$VALEDICTORIAN_WORKSPACE" --kind password --label "Greenhouse password" --value-file "$SECRET_VALUE_FILE"
-valedictorian-cli --json secrets delete greenhouse_password --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json secrets upsert provider_password --workspace "$VALEDICTORIAN_WORKSPACE" --kind password --label "Provider password" --value-file "$SECRET_VALUE_FILE"
+valedictorian-cli --json secrets delete provider_password --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli secrets run --workspace "$VALEDICTORIAN_WORKSPACE" \
-  --env TOKEN=secret://greenhouse_password \
+  --env TOKEN=secret://provider_password \
   --stdin-secret secret://other_key \
   --fd 3=secret://fd_key \
   -- some-tool --flag value
 ```
 
-Supported secret kinds are `password`, `token`, `identity`, and `other`. `secrets upsert` reads the exact contents of `--value-file` and returns only the non-secret summary. Prefer a `mktemp` file outside the repo for one-off migration values, remove it immediately after the command, and avoid shell history, logs, chat, and committed files for plaintext secrets.
-
-`secrets run` requires at least one explicit injection destination (`--env`, `--fd`, or `--stdin-secret`), validates `secret://` references locally, confirms the server advertises local secret resolution, resolves each unique reference once immediately before spawn, and requires the exact child executable/argv after an explicit `--` escape marker for a direct spawn with `shell: false`. Environment destination names must be portable (`[A-Za-z_][A-Za-z0-9_]*`) and are compared case-insensitively for duplicates while preserving the original spelling in the child environment. Dedicated `--fd` numbers must be integers in `3..255`. Do not substitute secrets into argv or rely on temp secret files for routine child use. Wrapper-owned diagnostics exact-match redact resolved values; child stdout/stderr stay inherited. This reduces accidental disclosure rather than providing a same-user sandbox boundary—an unrestricted same-user process can still inspect or alter child process state.
-
-## Applications
-
-Create an application with the required fields:
-
-```sh
-valedictorian-cli --json applications create \
-  --workspace "$VALEDICTORIAN_WORKSPACE" \
-  --company-name "Delta Labs" \
-  --role-title "Software Engineering Intern" \
-  --role-kind internship \
-  --country US \
-  --work-mode remote \
-  --source-name "LinkedIn" \
-  --status queued \
-  --primary-url "https://jobs.example.com/delta"
-```
-
-Useful optional create fields include `--city`, `--region`, `--term`, `--terms-json`, `--start-date`, `--end-date`, `--location-raw`, `--has-applied`, `--current-resume-variant`, `--initial-note`, `--primary-url`, `--primary-label`, `--primary-kind`, `--primary-external-id`, `--source-link-url`, `--source-kind`, `--source-label`, and `--source-external-id`.
-
-Supported update fields are `--city`, `--country`, `--current-resume-variant`, `--has-applied`, `--location-raw`, `--region`, `--role-kind`, `--role-title`, `--term`, `--terms-json`, `--start-date`, `--end-date`, and `--work-mode`.
-
-Update common metadata:
-
-```sh
-valedictorian-cli --json applications update <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --work-mode hybrid --city Denver --region CO
-valedictorian-cli --json applications status <application-id> needs_user_info --workspace "$VALEDICTORIAN_WORKSPACE" --notes "Waiting on transcript answer"
-valedictorian-cli --json applications note <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --message "User confirmed sponsorship answer."
-valedictorian-cli --json applications archive <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --note "Closed by company"
-```
-
-Links:
-
-```sh
-valedictorian-cli --json applications link add <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --kind job_posting --label "Posting" --url "https://example.com/job" --primary
-valedictorian-cli --json applications link update <application-id> <link-id> --workspace "$VALEDICTORIAN_WORKSPACE" --label "Updated label" --primary
-```
-
-Attempts:
-
-Use `applications attempts` for the actual apply attempt lifecycle on an application. Use `runs --run-type application_attempt` when you need a broader workflow-run audit trail for agent work around that application.
-
-```sh
-valedictorian-cli --json applications attempts list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --limit 25
-valedictorian-cli --json applications attempts start <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --actor-type agent --actor-name automation-agent --entry-url "https://example.com/apply"
-valedictorian-cli --json applications attempts step <application-id> <attempt-id> --workspace "$VALEDICTORIAN_WORKSPACE" --type note --message "Opened application form"
-valedictorian-cli --json applications attempts step <application-id> <attempt-id> --workspace "$VALEDICTORIAN_WORKSPACE" --type verification_receipt --message "Final review verification passed." --payload-json '{"version":1,"scope":"final_review","status":"passed","verified":["identity","contact_info","resume_attachment","work_authorization"],"unresolved":[],"evidence":"Final review screen matched the intended application payload before submit."}'
-valedictorian-cli --json applications attempts complete <application-id> <attempt-id> --workspace "$VALEDICTORIAN_WORKSPACE" --outcome submitted --summary "Application submitted"
-```
-
-For the full submitted-attempt safety sequence, run:
-
-```sh
-valedictorian-cli examples attempts complete --outcome submitted
-```
+`secrets run` validates structured references and injects values only into explicit destinations for a direct child spawn. This reduces accidental disclosure rather than providing a same-user sandbox boundary. Do not substitute secrets into argv or persist them in routine temp files.
 
 ## Connectors
-
-Connector commands are workspace-scoped and source-agnostic. Pass connector instance ids from `connectors list`; the CLI does not contain InternList, Jobright, or adapter-specific logic.
 
 ```sh
 valedictorian-cli --json connectors list --workspace "$VALEDICTORIAN_WORKSPACE"
@@ -168,68 +157,19 @@ valedictorian-cli --json connectors configure <connector-instance-id> --workspac
 valedictorian-cli --json connectors schedules upsert <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --expected-revision null --state enabled --cadence-json '{"kind":"daily","localTime":"09:00"}' --timezone America/New_York
 valedictorian-cli --json connectors runs list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --status queued --limit 25
 valedictorian-cli --json connectors observations list <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --connector-run-id <connector-run-id> --limit 25
-valedictorian-cli --json connectors trigger <connector-instance-id> \
-  --workspace "$VALEDICTORIAN_WORKSPACE" \
-  --mode manual \
-  --filter-signature "filters:{}" \
-  --filters-json '{}'
+valedictorian-cli --json connectors trigger <connector-instance-id> --workspace "$VALEDICTORIAN_WORKSPACE" --mode manual --filter-signature "filters:{}" --filters-json '{}'
 ```
 
-`connectors trigger` advances continuous synchronization through the app/backend contract. It does not request a result count or fixed batch. Adapter-specific auth, link resolution, refresh execution, and upsert logic remain outside the CLI.
+Connector commands remain source-agnostic. Provider-specific authentication, browsing, link resolution, refresh execution, and upsert logic stay outside the CLI.
 
 ## Workflow Runs
 
 ```sh
-valedictorian-cli --json runs start --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --actor-type agent --actor-name automation-agent --subject-application-id <application-id> --summary "Started applying to queued application."
-valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --status in_progress --subject-application-id <application-id> --limit 25
-valedictorian-cli --json runs start --workspace "$VALEDICTORIAN_WORKSPACE" --run-type sourcing --actor-type agent --actor-name automation-agent --source-name "LinkedIn"
-valedictorian-cli --json runs step <run-id> --workspace "$VALEDICTORIAN_WORKSPACE" --type note --message "Collected 12 candidates"
-valedictorian-cli --json runs complete <run-id> --workspace "$VALEDICTORIAN_WORKSPACE" --status completed --outcome success --summary "Sourcing run complete"
-valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type sourcing --source-id <source-id> --limit 25
+valedictorian-cli --json runs start --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --actor-type agent --actor-name automation-agent --subject-application-id <application-id> --summary "Started application workflow."
+valedictorian-cli --json runs step <run-id> --workspace "$VALEDICTORIAN_WORKSPACE" --type note --message "Collected application evidence"
+valedictorian-cli --json runs complete <run-id> --workspace "$VALEDICTORIAN_WORKSPACE" --status completed --outcome success --summary "Workflow complete"
+valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --status in_progress --limit 25
 ```
-
-Use `--input-json`, `--metadata-json`, or `--payload-json` for structured data. Keep JSON compact and quote it for the shell:
-
-```sh
-valedictorian-cli --json runs step <run-id> --workspace "$VALEDICTORIAN_WORKSPACE" --type data --message "Parsed candidate" --payload-json '{"company":"Delta Labs"}'
-```
-
-## Sourcing
-
-Capture one sparse URL observation. Company, title, and canonical enums are not required:
-
-```sh
-valedictorian-cli --json sourcing ingest \
-  --workspace "$VALEDICTORIAN_WORKSPACE" \
-  --url "https://jobs.example.com/delta" \
-  --observed-at "2026-07-12T12:00:00.000Z" \
-  --provider-record-id "job-123" \
-  --origin-kind job_board \
-  --origin-name "Example Board"
-```
-
-Capture an atomic batch. Entries are raw inputs and must not contain `adapter` or `capture`; the CLI injects its package-versioned adapter provenance:
-
-```sh
-valedictorian-cli --json sourcing ingest \
-  --workspace "$VALEDICTORIAN_WORKSPACE" \
-  --batch-json '[{"observedAt":"2026-07-12T12:00:00.000Z","payload":{"url":"https://jobs.example.com/one"}},{"observedAt":"2026-07-12T12:01:00.000Z","reportedOrigin":{"kind":"ats","name":"Example ATS"},"payload":{"url":"https://ats.example.com/two"}}]'
-```
-
-The response keeps four distinct sections per receipt: `submitted` echoes the CLI-injected adapter and caller-reported origin (it is not an independent persisted readback), `intake` contains the immutable revision/occurrence receipt, `normalization` contains current gate/candidate data and an explicit revision-match indicator, and `projection` contains the exact revision-addressed result. Inspection envelopes contain `result` on success or `result: null` plus a bounded `error` on lookup failure. A successful capture is still printed if inspection fails; `inspectionFailureCount` is nonzero and the command exits nonzero after output. Natural URLs and intermediary links are normalized only by the server. A Jobright intermediary can remain `pending` or `blocked`; the CLI does not authenticate providers, browse pages, resolve URLs, normalize enums, or apply fit policy.
-
-Manage existing sourcing findings separately:
-
-```sh
-valedictorian-cli --json sourcing findings list --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json sourcing findings decide <finding-id> --workspace "$VALEDICTORIAN_WORKSPACE" --merge-status not_fit --merge-notes "Not enough fit"
-valedictorian-cli --json sourcing findings decide <finding-id> --workspace "$VALEDICTORIAN_WORKSPACE" --merge-status blocked --disposition-reason "Needs user decision" --policy-blocker needs_user_decision
-valedictorian-cli --json sourcing findings update <finding-id> --workspace "$VALEDICTORIAN_WORKSPACE" --merge-notes "Refined merge note"
-valedictorian-cli --json sourcing findings promote <finding-id> --workspace "$VALEDICTORIAN_WORKSPACE"
-```
-
-Supported finding-update fields include `--term`, `--terms-json`, `--start-date`, `--end-date`, `--blocker`, `--disposition-reason`, `--duplicate-notes`, `--merge-notes`, `--merge-status`, and `--policy-blocker`.
-Use `sourcing findings decide` for manual dispositions. `duplicateNotes` is generated by duplicate detection; manual hard-rule or user-decision semantics belong in `--disposition-reason` and, for blocked findings, `--policy-blocker`. Direct `applications create` remains available for already-canonical applications; sourcing ingestion owns raw observations and the server-projected findings queue.
 
 ## Scores
 
@@ -242,5 +182,5 @@ valedictorian-cli --json scores record <application-id> \
   --career-signal 7 \
   --city-work-mode 9 \
   --compensation-logistics 7 \
-  --rationale "Strong internship fit with remote option."
+  --rationale "Strong fit with remote option."
 ```

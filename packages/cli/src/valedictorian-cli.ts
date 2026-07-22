@@ -4,14 +4,13 @@ import {
   type StricliProcess,
 } from '@stricli/core'
 import {
-  applicationStatuses,
   createHttpValedictorianClient,
   defaultValedictorianApiBaseUrl,
-  isApplicationStatus,
   type ValedictorianClient,
 } from 'sparxie'
 
 import { buildApplicationsRoute } from './valedictorian-cli.application-commands.js'
+import { buildCapturesRoute } from './valedictorian-cli.capture-commands.js'
 import { parseConnectorScheduleUpsert } from './valedictorian-cli.connector-schedule-parsers.js'
 import { formatDoctorText, runContext, runDoctor } from './valedictorian-cli.doctor.js'
 import {
@@ -42,6 +41,8 @@ import {
   presentCliFailure,
 } from './valedictorian-cli.failures.js'
 import { parseStrictNumberOption } from './valedictorian-cli.parser-options.js'
+import { buildJobsRoute } from './valedictorian-cli.job-commands.js'
+import { buildOpportunitiesRoute } from './valedictorian-cli.opportunity-commands.js'
 import { buildProfileRoute } from './valedictorian-cli.profile-commands.js'
 import { buildSecretsRoute } from './valedictorian-cli.secrets-commands.js'
 import {
@@ -53,12 +54,8 @@ import {
   parseRunComplete,
   parseRunStart,
   parseRunStep,
-  parseSourcingFindingDecision,
-  parseSourcingFindingsListQuery,
-  parseSourcingFindingUpdate,
   parseWorkflowRunsListQuery,
 } from './valedictorian-cli.parsers.js'
-import { ingestRawSourcing, parseRawSourcingIntake } from './valedictorian-cli.raw-sourcing.js'
 
 export interface RunValedictorianCliOptions {
   argv: string[]
@@ -129,6 +126,7 @@ const application = buildApplication(
     docs: { brief: 'Valedictorian resources' },
     routes: {
       applications: buildApplicationsRoute(),
+      captures: buildCapturesRoute(),
       connectors: buildConnectorsRoute(),
       context: makeCommand({
         docs: { brief: 'Print current CLI target context' },
@@ -176,7 +174,8 @@ const application = buildApplication(
           }
         },
       }),
-      examples: buildExamplesRoute(),
+      jobs: buildJobsRoute(),
+      opportunities: buildOpportunitiesRoute(),
       profile: buildProfileRoute(),
       secrets: buildSecretsRoute(),
       workspaces: buildRouteMap({
@@ -275,7 +274,6 @@ const application = buildApplication(
           }),
         },
       }),
-      sourcing: buildSourcingRoute(),
     },
   }),
   {
@@ -523,211 +521,3 @@ function buildConnectorsRoute() {
     },
   })
 }
-
-function buildSourcingRoute() {
-  return buildRouteMap({
-    docs: { brief: 'Capture sourcing observations and manage findings' },
-    routes: {
-      findings: buildRouteMap({
-        docs: { brief: 'Manage sourcing findings' },
-        routes: {
-          decide: makeCommand({
-            docs: { brief: 'Set a manual sourcing finding disposition' },
-            flags: optionFlags(
-              ['disposition-reason', 'merge-notes', 'policy-blocker', 'workspace'],
-              ['merge-status'],
-            ),
-            positionalCount: 1,
-            run: async (context, flags, findingId) => {
-              const client = await workspaceClient(context, flags)
-
-              writeJson(
-                context,
-                await client.sourcing.findings.decide(
-                  parseSourcingFindingDecision(findingId, toArgvWithoutWorkspace(flags)),
-                ),
-              )
-            },
-          }),
-          list: makeCommand({
-            docs: { brief: 'List sourcing findings' },
-            flags: optionFlags([
-              'limit',
-              'merge-status',
-              'offset',
-              'source',
-              'source-id',
-              'workflow-run-id',
-              'workspace',
-            ]),
-            run: async (context, flags) => {
-              const client = await workspaceClient(context, flags)
-
-              writeJson(
-                context,
-                await client.sourcing.findings.list(
-                  parseSourcingFindingsListQuery(toArgvWithoutWorkspace(flags)),
-                ),
-              )
-            },
-          }),
-          promote: makeCommand({
-            docs: { brief: 'Promote a sourcing finding into an application' },
-            flags: optionFlags(['workspace']),
-            positionalCount: 1,
-            run: async (context, flags, findingId) => {
-              const client = await workspaceClient(context, flags)
-
-              writeJson(context, await client.sourcing.findings.promote({ findingId }))
-            },
-          }),
-          update: makeCommand({
-            docs: { brief: 'Update a sourcing finding' },
-            flags: optionFlags([
-              'blocker',
-              'disposition-reason',
-              'duplicate-notes',
-              'merge-notes',
-              'merge-status',
-              'policy-blocker',
-              'start-date',
-              'term',
-              'terms-json',
-              'workspace',
-              'end-date',
-            ]),
-            positionalCount: 1,
-            run: async (context, flags, findingId) => {
-              const client = await workspaceClient(context, flags)
-
-              writeJson(
-                context,
-                await client.sourcing.findings.update(
-                  parseSourcingFindingUpdate(findingId, toArgvWithoutWorkspace(flags)),
-                ),
-              )
-            },
-          }),
-        },
-      }),
-      ingest: makeCommand({
-        docs: { brief: 'Capture raw sourcing observations and inspect their outcomes' },
-        flags: optionFlags([
-          'batch-json', 'observed-at', 'origin-kind', 'origin-name', 'origin-provider-id',
-          'origin-url', 'payload-json', 'provider-record-id', 'provider-schema', 'url', 'workspace',
-        ]),
-        run: async (context, flags) => {
-          const records = parseRawSourcingIntake(
-            toArgvWithoutWorkspace(flags),
-            await readPackageVersion(),
-          )
-          const client = await workspaceClient(context, flags)
-          const result = await ingestRawSourcing(client, records)
-          writeJson(context, result)
-          if (result.inspectionFailureCount > 0) context.process.exitCode = 1
-        },
-      }),
-    },
-  })
-}
-
-function buildExamplesRoute() {
-  return buildRouteMap({
-    docs: { brief: 'Show command examples' },
-    routes: {
-      attempts: buildRouteMap({
-        docs: { brief: 'Show application attempt examples' },
-        routes: {
-          complete: makeCommand({
-            docs: { brief: 'Show attempt completion examples' },
-            flags: optionFlags(['outcome']),
-            run: (context, flags) => {
-              writeJson(context, buildAttemptCompleteExample(optionValue(flags, 'outcome')))
-            },
-          }),
-        },
-      }),
-    },
-  })
-}
-
-function buildAttemptCompleteExample(outcome: string | undefined) {
-  const normalizedOutcome = outcome ?? 'submitted'
-
-  if (!isApplicationStatus(normalizedOutcome)) {
-    throw new CliUsageError(
-      `Invalid attempt outcome: ${normalizedOutcome}. Valid outcomes: ${applicationStatuses.join(', ')}`,
-    )
-  }
-
-  if (normalizedOutcome !== 'submitted') {
-    const requiredFlags = attemptCompletionRequiredFlags(normalizedOutcome)
-
-    return {
-      complete: [
-        'valedictorian-cli --json applications attempts complete <application-id> <attempt-id>',
-        '--workspace "$VALEDICTORIAN_WORKSPACE"',
-        `--outcome ${normalizedOutcome}`,
-        ...requiredFlags,
-        '--summary "Attempt completed."',
-      ].join(' '),
-    }
-  }
-
-  const verificationPayload = {
-    version: 1,
-    scope: 'final_review',
-    status: 'passed',
-    verified: ['identity', 'contact_info', 'resume_attachment', 'work_authorization'],
-    unresolved: [],
-    evidence: 'Final review screen matched the intended application payload before submit.',
-  }
-
-  return {
-    note: 'Submitted attempts require a passed verification_receipt step before completion.',
-    verificationReceiptStep: [
-      'valedictorian-cli --json applications attempts step <application-id> <attempt-id>',
-      '--workspace "$VALEDICTORIAN_WORKSPACE"',
-      '--type verification_receipt',
-      '--message "Final review verification passed."',
-      `--payload-json '${JSON.stringify(verificationPayload)}'`,
-    ].join(' '),
-    complete: [
-      'valedictorian-cli --json applications attempts complete <application-id> <attempt-id>',
-      '--workspace "$VALEDICTORIAN_WORKSPACE"',
-      '--outcome submitted',
-      '--summary "Application submitted."',
-      '--confirmation-url "https://example.com/confirmation"',
-      '--confirmation-text "Thanks, your application was received."',
-    ].join(' '),
-  }
-}
-
-function attemptCompletionRequiredFlags(outcome: string) {
-  if (outcome === 'needs_user_info') {
-    return ['--missing-user-info "Synthetic missing answer to collect from the user."']
-  }
-
-  if (outcome === 'ready_for_review') {
-    return [
-      '--hold-started-at "2026-06-30T00:00:00.000Z"',
-      '--manual-review-kind overridable',
-    ]
-  }
-
-  if (attemptBlockerOutcomes.has(outcome)) {
-    return ['--blocker-reason "Synthetic blocker reason."']
-  }
-
-  return []
-}
-
-const attemptBlockerOutcomes = new Set([
-  'manual_captcha',
-  'security_gate',
-  'login_needed',
-  'platform_error',
-  'closed',
-  'not_fit',
-  'not_pursued',
-])

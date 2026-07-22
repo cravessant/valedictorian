@@ -365,12 +365,23 @@ export function readJsonObjectFile<T extends object>(path: string, label: string
 }
 
 export function writeJson(context: ValedictorianCliContext, value: unknown, pretty = true) {
+  if (isBlockedLifecycleResult(value)) {
+    context.process.exitCode = 4
+  }
   if (context.outputJson) {
     context.process.stdout.write(`${JSON.stringify(value, null, pretty ? 2 : 0)}\n`)
     return
   }
 
   context.process.stdout.write(formatHumanOutput(value))
+}
+
+function isBlockedLifecycleResult(value: unknown): boolean {
+  return typeof value === 'object'
+    && value !== null
+    && 'status' in value
+    && value.status === 'blocked'
+    && 'blocker' in value
 }
 
 export function normalizeArgv(argv: string[]) {

@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  InvalidPersistedRawDetailHttpError,
   ProfileDocumentHttpError,
   ValedictorianHttpError,
   ValedictorianProtocolError,
   createValedictorianInternalErrorBody,
-  invalidPersistedRawDetailErrorBody,
   profileDocumentErrorBodies,
   profileDocumentErrorStatusByCode,
   sourceAccessErrorBodies,
@@ -82,26 +80,6 @@ describe('requestValedictorianJson surface-scoped public errors', () => {
 
     expect(error).toBeInstanceOf(ValedictorianProtocolError)
     expect(error).not.toBeInstanceOf(ProfileDocumentHttpError)
-  })
-
-  it('maps unrelated raw-detail integrity bodies on workspace to protocol even at 5xx', async () => {
-    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(invalidPersistedRawDetailErrorBody, { status: 503 }),
-    )
-    vi.stubGlobal('fetch', fetchMock)
-
-    const error = await requestValedictorianJson({
-      apiBaseUrl: 'https://valedictorian.test',
-      path: '/v1/workspaces',
-      errorSurface: 'workspace',
-    }).then(
-      () => null,
-      (caught: unknown) => caught,
-    )
-
-    expect(error).toBeInstanceOf(ValedictorianProtocolError)
-    expect(error).not.toBeInstanceOf(InvalidPersistedRawDetailHttpError)
   })
 
   it('maps known profile code with wrong status on workspace to protocol', async () => {

@@ -2,7 +2,6 @@ import {
   ConnectorOptionQueryHttpError,
   ConnectorRetirementConflictError,
   ConnectorScheduleHttpError,
-  InvalidPersistedRawDetailHttpError,
   LocalSecretResolutionHttpError,
   ProfileDocumentHttpError,
   ValedictorianHttpError,
@@ -21,9 +20,6 @@ import {
   connectorScheduleErrorCodes,
   connectorScheduleErrorKindByCode,
   connectorScheduleErrorStatusByCode,
-  invalidPersistedRawDetailErrorBodySchema,
-  invalidPersistedRawDetailErrorCode,
-  invalidPersistedRawDetailErrorKindByCode,
   localSecretResolutionErrorBodySchema,
   localSecretResolutionErrorCodes,
   localSecretResolutionErrorKindByCode,
@@ -330,34 +326,6 @@ const capabilityCatalog: readonly EndpointTry[] = [
     ),
 ]
 
-function tryRawDetail(body: unknown, status: number): MatchResult {
-  const integrity = invalidPersistedRawDetailErrorBodySchema.safeParse(body)
-  if (integrity.success) {
-    if (status < 500 || status > 599) {
-      return { ok: false, reason: 'protocol' }
-    }
-    const error = new InvalidPersistedRawDetailHttpError(integrity.data, status)
-    return {
-      ok: true,
-      matched: matchedResult(
-        integrity.data,
-        status,
-        invalidPersistedRawDetailErrorKindByCode.invalid_persisted_raw_detail,
-        error,
-      ),
-    }
-  }
-  if (
-    typeof body === 'object'
-    && body !== null
-    && 'code' in body
-    && body.code === invalidPersistedRawDetailErrorCode
-  ) {
-    return { ok: false, reason: 'protocol' }
-  }
-  return { ok: false, reason: 'none' }
-}
-
 function tryRetirement(body: unknown, status: number): MatchResult {
   const retirement = connectorRetirementActiveWorkConflictSchema.safeParse(body)
   if (retirement.success) {
@@ -384,7 +352,6 @@ function tryRetirement(body: unknown, status: number): MatchResult {
 /** Capability-owned catalogs that must never be treated as authoritative off-surface. */
 const foreignCapabilityTries: readonly EndpointTry[] = [
   ...capabilityCatalog,
-  tryRawDetail,
   tryRetirement,
 ]
 
@@ -408,7 +375,6 @@ function firstMatch(tries: readonly EndpointTry[], body: unknown, status: number
 /** Closed set of every public error code the CLI knows how to validate authoritatively. */
 const knownPublicErrorCodes = new Set<string>([
   valedictorianInternalErrorCode,
-  invalidPersistedRawDetailErrorCode,
   'connector_retirement_active_work_conflict',
   ...profileDocumentErrorCodes,
   ...localSecretResolutionErrorCodes,

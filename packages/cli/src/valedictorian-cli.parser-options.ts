@@ -1,10 +1,6 @@
-import {
-  canonicalizeApplicationUrl,
-  MAX_APPLICATION_LIST_LIMIT,
-  normalizeApplicationUrlPreservingQuery,
-} from 'sparxie'
-
 import { CliUsageError } from './valedictorian-cli.failures.js'
+
+const MAX_LIST_LIMIT = 200
 
 export function readOption(argv: string[], name: string) {
   const index = argv.indexOf(name)
@@ -170,18 +166,6 @@ export function parseStrictJsonArray(value: string, optionName: string): unknown
   return parsed
 }
 
-export function parseNullableApplicationUrlOption(value: string, fieldName: string) {
-  const parsed = parseNullableStringOption(value, fieldName)
-
-  return parsed === null ? null : asCliUsage(() => canonicalizeApplicationUrl(parsed))
-}
-
-export function parseNullableSourceUrlOption(value: string, fieldName: string) {
-  const parsed = parseNullableStringOption(value, fieldName)
-
-  return parsed === null ? null : asCliUsage(() => normalizeApplicationUrlPreservingQuery(parsed))
-}
-
 export function hasFlag(argv: string[], name: string) {
   return argv.includes(name)
 }
@@ -235,8 +219,8 @@ export function readRequiredArgument(value: string | undefined, label: string) {
 }
 
 export function validateLimit(limit: number) {
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_APPLICATION_LIST_LIMIT) {
-    throw new CliUsageError(`Invalid --limit: must be between 1 and ${MAX_APPLICATION_LIST_LIMIT}`)
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIST_LIMIT) {
+    throw new CliUsageError(`Invalid --limit: must be between 1 and ${MAX_LIST_LIMIT}`)
   }
 }
 

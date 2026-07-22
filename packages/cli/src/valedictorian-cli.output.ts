@@ -25,16 +25,8 @@ function formatValue(value: unknown): string {
     return formatList(record)
   }
 
-  if (record.finding && record.application) {
-    return formatPromotion(record)
-  }
-
-  if (record.run && Array.isArray(record.findings)) {
-    return formatSourcingBatch(record)
-  }
-
-  if (Array.isArray(record.receipts) && record.receipts.every(isRawSourcingReceipt)) {
-    return formatRawSourcingReceipts(record.receipts)
+  if (isLifecycleResult(record)) {
+    return formatLifecycleResult(record)
   }
 
   if (isConnectorRun(record)) {
@@ -100,60 +92,25 @@ function connectorSynchronizationLabel(
   return String(outcome.kind).replace(/_/g, ' ')
 }
 
-function formatRawSourcingReceipts(receipts: unknown[]) {
-  const lines = [`${receipts.length} raw sourcing receipt${receipts.length === 1 ? '' : 's'}`]
-  for (const [index, value] of receipts.entries()) {
-    const receipt = value as Record<string, unknown>
-    const intake = receipt.intake as Record<string, unknown>
-    const submitted = receipt.submitted as Record<string, unknown>
-    const adapter = submitted.adapter as Record<string, unknown>
-    const origin = isPlainRecord(submitted.reportedOrigin) ? submitted.reportedOrigin : undefined
-    const revision = intake.revision as Record<string, unknown>
-    const occurrence = intake.occurrence as Record<string, unknown>
-    const normalization = receipt.normalization as Record<string, unknown>
-    const normalizationResult = isPlainRecord(normalization.result) ? normalization.result : undefined
-    const normalizationError = isPlainRecord(normalization.error) ? normalization.error : undefined
-    const gate = isPlainRecord(normalizationResult?.gate) ? normalizationResult.gate : undefined
-    const candidate = isPlainRecord(normalizationResult?.canonicalCandidate)
-      ? normalizationResult.canonicalCandidate
-      : undefined
-    const projection = receipt.projection as Record<string, unknown>
-    const projectionResult = isPlainRecord(projection.result) ? projection.result : undefined
-    const projectionError = isPlainRecord(projection.error) ? projection.error : undefined
-    const finding = isPlainRecord(projectionResult?.finding) ? projectionResult.finding : undefined
-    const failure = isPlainRecord(projectionResult?.failure) ? projectionResult.failure : undefined
-    lines.push(`Receipt ${index + 1}`)
-    lines.push(`  Provenance (submitted): adapter=${String(adapter.id)} kind=${String(adapter.kind)} version=${String(adapter.version)} reportedOrigin=${origin ? `${String(origin.kind)}:${String(origin.name)}` : 'none'}`)
-    lines.push(`  Intake: record=${String(intake.rawRecordId)} revision=${String(revision.id)} number=${String(revision.revision)} reused=${String(revision.reused)} occurrence=${String(occurrence.id)}`)
-    lines.push(normalizationResult
-      ? `  Normalization: status=${String(normalizationResult.status)} revision=${String(normalizationResult.rawRevisionId)} matchesReceipt=${String(normalization.matchesRevision)} gate=${String(gate?.status ?? 'none')} candidate=${String(candidate?.id ?? 'none')}`
-      : `  Normalization inspection: failed code=${String(normalizationError?.code)}${normalizationError?.httpStatus ? ` httpStatus=${String(normalizationError.httpStatus)}` : ''}`)
-    lines.push(projectionResult
-      ? `  Projection: status=${String(projectionResult.status)} revision=${String(projectionResult.rawRevisionId)}${finding ? ` finding=${String(finding.id)} merge=${String(finding.mergeStatus)}` : ''}${failure ? ` failure=${String(failure.code)} retryable=${String(failure.retryable)}` : ''}`
-      : `  Projection inspection: failed code=${String(projectionError?.code)}${projectionError?.httpStatus ? ` httpStatus=${String(projectionError.httpStatus)}` : ''}`)
-  }
-  return lines.join('\n')
-}
-
-function isRawSourcingReceipt(value: unknown) {
-  return isPlainRecord(value) && isPlainRecord(value.intake) && isPlainRecord(value.normalization) && isPlainRecord(value.projection)
-}
-
 function formatList(record: Record<string, unknown>) {
   const items = record.items as unknown[]
   const total = typeof record.total === 'number' ? record.total : items.length
   const limit = typeof record.limit === 'number' ? record.limit : undefined
   const offset = typeof record.offset === 'number' ? record.offset : undefined
   const hasMore = typeof record.hasMore === 'boolean' ? record.hasMore : undefined
+  const hasCursor = Object.prototype.hasOwnProperty.call(record, 'nextCursor')
+  const nextCursor = typeof record.nextCursor === 'string' ? record.nextCursor : null
   const headerParts = [`${total} item${total === 1 ? '' : 's'}`]
 
-  if (limit !== undefined || offset !== undefined) {
-    headerParts.push(`limit ${limit ?? '?'}`)
-    headerParts.push(`offset ${offset ?? 0}`)
-  }
+  if (limit !== undefined) headerParts.push(`limit ${limit}`)
+  if (offset !== undefined) headerParts.push(`offset ${offset}`)
 
   if (hasMore !== undefined) {
     headerParts.push(hasMore ? 'more available' : 'end reached')
+  }
+
+  if (hasCursor) {
+    headerParts.push(nextCursor === null ? 'end reached' : `next cursor ${nextCursor}`)
   }
 
   const lines = [headerParts.join(' - ')]
@@ -175,47 +132,62 @@ function formatList(record: Record<string, unknown>) {
   return lines.join('\n')
 }
 
+function isLifecycleResult(record: Record<string, unknown>) {
+  const status = String(record.status)
+  if (status === 'blocked') return isPlainRecord(record.blocker)
+  if (status === 'promoted' || status === 'succeeded') {
+    return isPlainRecord(record.resource) && isPlainRecord(record.audit)
+  }
+  if (status === 'removed' || status === 'restored') {
+    return typeof record.id === 'string' && isPlainRecord(record.audit)
+  }
+  return false
+}
+
+function formatLifecycleResult(record: Record<string, unknown>) {
+  const status = String(record.status)
+  const blocker = isPlainRecord(record.blocker) ? record.blocker : undefined
+  if (status === 'blocked') {
+    const lines = [`Blocked: ${String(blocker?.code ?? 'unknown')} - ${String(blocker?.message ?? 'No reason provided')}`]
+    if (typeof blocker?.field === 'string') lines.push(`Field: ${blocker.field}`)
+    if (typeof blocker?.conflictingResourceId === 'string') {
+      lines.push(`Conflicting resource: ${blocker.conflictingResourceId}`)
+    }
+    if (Array.isArray(blocker?.allowedDuplicateResolutions)) {
+      lines.push(`Allowed duplicate resolutions: ${blocker.allowedDuplicateResolutions.join(', ')}`)
+    }
+    if (Array.isArray(record.supportedChoices)) {
+      lines.push(`Supported removal choices: ${record.supportedChoices.join(', ')}`)
+    }
+    if (Array.isArray(record.dependentIds)) {
+      lines.push(`Dependent resources: ${record.dependentIds.join(', ')}`)
+    }
+    return lines.join('\n')
+  }
+
+  const resource = isPlainRecord(record.resource) ? record.resource : undefined
+  const id = primitiveString(resource?.id) ?? primitiveString(record.id) ?? 'resource'
+  const lines = [`${labelize(status)}: ${id}`]
+  if (Array.isArray(record.warnings) && record.warnings.length > 0) {
+    lines.push(`Warnings: ${record.warnings.map((warning) => {
+      const value = isPlainRecord(warning) ? warning : {}
+      const field = typeof value.field === 'string' ? ` [${value.field}]` : ''
+      return `${String(value.code)}${field} - ${String(value.message)}`
+    }).join('; ')}`)
+  }
+  if (isPlainRecord(record.duplicateResolution)) {
+    lines.push(
+      `Duplicate resolution: ${String(record.duplicateResolution.action)} ${String(record.duplicateResolution.targetResourceId)}`,
+    )
+  }
+  return lines.join('\n')
+}
+
 function formatItems(items: unknown[]) {
   const lines = [`${items.length} item${items.length === 1 ? '' : 's'}`]
 
   if (items.length > 0) {
     lines.push(...items.map((item) => `- ${summarizeItem(item)}`))
-  }
-
-  return lines.join('\n')
-}
-
-function formatPromotion(record: Record<string, unknown>) {
-  const finding = isPlainRecord(record.finding) ? record.finding : undefined
-  const application = isPlainRecord(record.application) ? record.application : undefined
-  const findingId = primitiveString(finding?.id) ?? 'finding'
-  const applicationId = primitiveString(application?.id) ?? 'application'
-
-  return [
-    `Promoted ${findingId} to ${applicationId}`,
-    finding ? `Finding: ${summarizeItem(finding)}` : undefined,
-    application ? `Application: ${summarizeItem(application)}` : undefined,
-  ]
-    .filter((line): line is string => line !== undefined)
-    .join('\n')
-}
-
-function formatSourcingBatch(record: Record<string, unknown>) {
-  const processedCount = primitiveString(record.processedCount) ?? '0'
-  const failureCount = primitiveString(record.failureCount) ?? '0'
-  const run = isPlainRecord(record.run) ? record.run : undefined
-  const findings = Array.isArray(record.findings) ? record.findings : []
-  const lines = [
-    `Processed ${processedCount} sourcing candidate${processedCount === '1' ? '' : 's'} with ${failureCount} failure${failureCount === '1' ? '' : 's'}.`,
-  ]
-
-  if (run) {
-    lines.push(`Run: ${summarizeItem(run)}`)
-  }
-
-  if (findings.length > 0) {
-    lines.push('Findings:')
-    lines.push(...findings.map((finding) => `- ${summarizeItem(finding)}`))
   }
 
   return lines.join('\n')
