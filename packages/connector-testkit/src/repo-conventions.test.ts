@@ -60,7 +60,7 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("connectors own upstream authentication semantics")
     expect(readme).toContain("`@sparxie/valedictorian-connectors-core` is the app-to-adapter ABI")
     expect(readme).toContain("`sparxie` remains the owner and public HTTP/client contract")
-    expect(readme).toContain("core reuses and re-exports Sparxie-owned raw-sourcing, resolver, retry, and source-execution identities")
+    expect(readme).toContain("core re-exports Sparxie-owned retry, source-execution, connector-lifecycle, and first-class Capture identities")
     expect(readme).toContain("InternList/Internslist was reconnaissance only")
     expect(readme).not.toContain("@sparxie/valedictorian-connectors-internlist")
     expect(readme).not.toContain("the first real public discovery source package")
@@ -70,7 +70,7 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("authentication, discovery, and raw capture are API-only")
     expect(readme).toContain("registered `connector.providerUrlResolver`")
     expect(readme).toContain("Discover authenticated search results through `POST /swan/recommend/search")
-    expect(readme).toContain("`runtime.rawSourceIntake.capture(...)`")
+    expect(readme).toContain("`runtime.captureIntake.capture(...)`")
     expect(readme).toContain("complete bounded provider batch")
     expect(readme).toContain("collect only acknowledged revision/occurrence receipts")
     expect(readme).toContain("Sparse, malformed, irrelevant, and source-duplicate rows remain raw facts")
@@ -251,11 +251,11 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(corePackage.dependencies).toEqual({
-      sparxie: "^0.26.0",
+      sparxie: "0.27.0",
     })
     expect(harnessPackage.dependencies).toEqual({
       "@sparxie/valedictorian-connectors-core": "workspace:^0.16.0",
-      sparxie: "^0.26.0",
+      sparxie: "0.27.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
       "@sparxie/valedictorian-connectors-core": "workspace:^0.16.0",

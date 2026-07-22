@@ -7,22 +7,23 @@ import type {
   ConnectorAuthRequirement,
   ConnectorAuthResolveInput,
   ConnectorAuthValidationResult,
+  ConnectorCaptureEnvelope,
+  ConnectorCaptureInput,
+  ConnectorCaptureReceipt,
+  ConnectorCaptureRevision,
   ConnectorCoverageWindow,
   ConnectorDelayInput,
   ConnectorDefinition,
   ConnectorProgressSnapshot,
-  ConnectorRawSourceCaptureInput,
   ConnectorRefreshStatus,
   ConnectorRefreshInput,
   ConnectorRefreshMode,
   ConnectorRefreshResult,
   ConnectorRuntime,
+  CreateCaptureInput,
   JobConnector,
   JobObservation,
   FieldResolutionOutcome,
-  RawSourceIntakeReceipt,
-  RawSourceRecordInput,
-  RawSourceRevisionReceipt,
   ResolverDeclaration,
   RetryAdvice,
 } from "@sparxie/valedictorian-connectors-core"
@@ -34,7 +35,11 @@ import {
   sanitizeConnectorRefreshStats,
   sanitizeConnectorAuthValidationResult,
 } from "@sparxie/valedictorian-connectors-core"
-import { canonicalDateOnlySchema, connectorRunSummarySchema } from "sparxie"
+import {
+  canonicalDateOnlySchema,
+  connectorRunSummarySchema,
+  createCaptureInputSchema,
+} from "sparxie"
 import {
   sanitizeConnectorRunCoverage,
   sanitizeConnectorRunLifecycle,
@@ -247,17 +252,16 @@ export type InMemoryConnectorHostSnapshot = {
   runs: ConnectorRunRecord[]
   checkpoints: ConnectorCheckpointRecord[]
   observations: HostObservationRecord[]
-  rawCaptures: InMemoryRawCaptureRecord[]
+  captures: InMemoryCaptureRecord[]
   normalizations: InMemoryNormalizationRecord[]
 }
 
-export type InMemoryRawCaptureRecord = {
-  input: RawSourceRecordInput
-  receipt: RawSourceIntakeReceipt
+export type InMemoryCaptureRecord = ConnectorCaptureEnvelope & {
+  receipt: ConnectorCaptureReceipt
 }
 
 export type InMemoryNormalizationRecord = {
-  rawRevisionId: string
+  captureRevisionId: string
   resolver: ResolverDeclaration
   outcomes: FieldResolutionOutcome[]
 }
@@ -300,8 +304,8 @@ export type InMemoryConnectorHostOptions = {
   ) => void | Promise<void>
   secrets?: Record<string, string>
   now?: () => string
-  onRawCapture?: (
-    input: RawSourceRecordInput,
+  onCapture?: (
+    envelope: ConnectorCaptureEnvelope,
   ) => void | Promise<void>
 }
 
@@ -312,15 +316,15 @@ export function createInMemoryConnectorHost(
   const runs: ConnectorRunRecord[] = []
   const checkpoints = new Map<string, ConnectorCheckpointRecord>()
   let observations: HostObservationRecord[] = []
-  const rawCaptures: InMemoryRawCaptureRecord[] = []
+  const captures: InMemoryCaptureRecord[] = []
   const normalizations: InMemoryNormalizationRecord[] = []
-  const rawRecordIdsByIdentity = new Map<string, string>()
-  const rawRevisionsByContent = new Map<string, RawSourceRevisionReceipt>()
-  const revisionCountsByRawRecord = new Map<string, number>()
+  const captureIdsByIdentity = new Map<string, string>()
+  const captureRevisionsByContent = new Map<string, ConnectorCaptureRevision>()
+  const revisionCountsByCapture = new Map<string, number>()
   let runCounter = 0
-  let rawRecordCounter = 0
-  let rawRevisionCounter = 0
-  let rawOccurrenceCounter = 0
+  let captureRecordCounter = 0
+  let captureRevisionCounter = 0
+  let captureOccurrenceCounter = 0
   const authRefreshFlights = new Map<
     string,
     Promise<ConnectorAuthEstablishmentResult>
@@ -390,13 +394,13 @@ export function createInMemoryConnectorHost(
               connectorRunId,
               workspaceId: request.workspaceId,
               normalizations,
-              rawCaptures,
-              rawRecordIdsByIdentity,
-              rawRevisionsByContent,
-              revisionCountsByRawRecord,
-              nextRawRecordSequence: () => ++rawRecordCounter,
-              nextRawRevisionSequence: () => ++rawRevisionCounter,
-              nextRawOccurrenceSequence: () => ++rawOccurrenceCounter,
+              captures,
+              captureIdsByIdentity,
+              captureRevisionsByContent,
+              revisionCountsByCapture,
+              nextCaptureRecordSequence: () => ++captureRecordCounter,
+              nextCaptureRevisionSequence: () => ++captureRevisionCounter,
+              nextCaptureOccurrenceSequence: () => ++captureOccurrenceCounter,
             },
           ),
         )
@@ -559,7 +563,7 @@ export function createInMemoryConnectorHost(
         runs: [...runs],
         checkpoints: [...checkpoints.values()],
         observations: [...observations],
-        rawCaptures: cloneJsonLike(rawCaptures),
+        captures: cloneJsonLike(captures),
         normalizations: cloneJsonLike(normalizations),
       }
     },
@@ -599,19 +603,19 @@ function createConnectorRuntime(
     Promise<ConnectorAuthEstablishmentResult>
   >,
   signal?: AbortSignal,
-  rawContext?: {
+  captureContext?: {
     connector: JobConnector
     connectorInstanceId: string
     connectorRunId: string
     workspaceId: string
     normalizations: InMemoryNormalizationRecord[]
-    rawCaptures: InMemoryRawCaptureRecord[]
-    rawRecordIdsByIdentity: Map<string, string>
-    rawRevisionsByContent: Map<string, RawSourceRevisionReceipt>
-    revisionCountsByRawRecord: Map<string, number>
-    nextRawRecordSequence: () => number
-    nextRawRevisionSequence: () => number
-    nextRawOccurrenceSequence: () => number
+    captures: InMemoryCaptureRecord[]
+    captureIdsByIdentity: Map<string, string>
+    captureRevisionsByContent: Map<string, ConnectorCaptureRevision>
+    revisionCountsByCapture: Map<string, number>
+    nextCaptureRecordSequence: () => number
+    nextCaptureRevisionSequence: () => number
+    nextCaptureOccurrenceSequence: () => number
   },
 ): ConnectorRuntime {
   let resolvedSessionGeneration: number | undefined
@@ -624,20 +628,20 @@ function createConnectorRuntime(
           authRequirements,
           options,
         )
-        const persistedSession = rawContext
-          ? options.authSessions?.[`connector.${rawContext.connectorInstanceId}`]
+        const persistedSession = captureContext
+          ? options.authSessions?.[`connector.${captureContext.connectorInstanceId}`]
           : undefined
         if (persistedSession) {
           resolvedSessionGeneration = persistedSession.generation
         }
         return grant.status === "ready" &&
           grant.mode === "username_password" &&
-          rawContext
+          captureContext
           ? {
               ...grant,
               sessionId:
                 persistedSession?.sessionId ??
-                `connector.${rawContext.connectorInstanceId}`,
+                `connector.${captureContext.connectorInstanceId}`,
             }
           : grant
       },
@@ -697,78 +701,96 @@ function createConnectorRuntime(
     },
   }
 
-  if (rawContext) {
-    runtime.rawSourceIntake = {
-      async capture(input: ConnectorRawSourceCaptureInput) {
+  if (captureContext) {
+    runtime.captureIntake = {
+      async capture(input: ConnectorCaptureInput) {
         const receivedAt = new Date().toISOString()
-        const intakeItemId = `${rawContext.connectorRunId}:item:${rawContext.rawCaptures.length + 1}`
-        const boundInput: RawSourceRecordInput = {
-          ...cloneJsonLike(input),
-          intakeItemId,
+        const captureItemId = `${captureContext.connectorRunId}:item:${captureContext.captures.length + 1}`
+        const captureInput: CreateCaptureInput = {
+          evidenceMode: input.evidenceMode ?? "reported",
           adapter: {
-            id: rawContext.connector.definition.id,
+            id: captureContext.connector.definition.id,
             kind: "connector",
-            version: rawContext.connector.definition.version,
+            version: captureContext.connector.definition.version,
           },
-          capture: {
-            connectorInstanceId: rawContext.connectorInstanceId,
-            connectorRunId: rawContext.connectorRunId,
-            executionScopeId: `connector.${rawContext.connectorInstanceId}`,
-          },
+          observedAt: input.observedAt,
+          providerRecordId: input.providerRecordId ?? null,
+          providerSchema: input.providerSchema ?? null,
+          payload: cloneJsonLike(input.payload ?? null),
+          evidence: cloneJsonLike(input.evidence ?? []),
         }
-        await options.onRawCapture?.(cloneJsonLike(boundInput))
-        const identity = rawStrongIdentity(
-          rawContext.workspaceId,
-          boundInput,
+        // Validate the exact accepted Capture input before any persistence hook
+        // or host-state append so an invalid payload fails closed and leaves no
+        // persisted capture.
+        const acceptedInput = createCaptureInputSchema.parse(captureInput)
+        const envelope: ConnectorCaptureEnvelope = {
+          input: acceptedInput,
+          provenance: {
+            connectorInstanceId: captureContext.connectorInstanceId,
+            connectorRunId: captureContext.connectorRunId,
+            executionScopeId: `connector.${captureContext.connectorInstanceId}`,
+            reportedOrigin: cloneJsonLike(input.reportedOrigin ?? null),
+          },
+          captureItemId,
+        }
+        await options.onCapture?.(cloneJsonLike(envelope))
+        const identity = captureStrongIdentity(
+          captureContext.workspaceId,
+          envelope,
         )
-        let rawRecordId = identity
-          ? rawContext.rawRecordIdsByIdentity.get(identity)
+        let captureId = identity
+          ? captureContext.captureIdsByIdentity.get(identity)
           : undefined
-        if (!rawRecordId) {
-          rawRecordId = `raw_${rawContext.nextRawRecordSequence()}`
+        if (!captureId) {
+          captureId = `capture_${captureContext.nextCaptureRecordSequence()}`
           if (identity) {
-            rawContext.rawRecordIdsByIdentity.set(identity, rawRecordId)
+            captureContext.captureIdsByIdentity.set(identity, captureId)
           }
         }
-        const contentHash = rawSourceContentHash(boundInput)
-        const revisionKey = `${rawRecordId}:${contentHash}`
-        const existingRevision = rawContext.rawRevisionsByContent.get(revisionKey)
+        const contentHash = captureContentHash(envelope)
+        const revisionKey = `${captureId}:${contentHash}`
+        const existingRevision =
+          captureContext.captureRevisionsByContent.get(revisionKey)
         const revisionNumber =
-          rawContext.revisionCountsByRawRecord.get(rawRecordId) ?? 0
-        const revision: RawSourceRevisionReceipt = existingRevision
+          captureContext.revisionCountsByCapture.get(captureId) ?? 0
+        const revision: ConnectorCaptureRevision = existingRevision
           ? { ...existingRevision, reused: true }
           : {
-              id: `raw_revision_${rawContext.nextRawRevisionSequence()}`,
-              rawRecordId,
+              id: `capture_revision_${captureContext.nextCaptureRevisionSequence()}`,
+              captureId,
               revision: revisionNumber + 1,
               contentHash,
               reused: false,
               createdAt: receivedAt,
             }
         if (!existingRevision) {
-          rawContext.rawRevisionsByContent.set(revisionKey, revision)
-          rawContext.revisionCountsByRawRecord.set(
-            rawRecordId,
+          captureContext.captureRevisionsByContent.set(revisionKey, revision)
+          captureContext.revisionCountsByCapture.set(
+            captureId,
             revision.revision,
           )
         }
-        const occurrenceSequence = rawContext.nextRawOccurrenceSequence()
-        const receipt: RawSourceIntakeReceipt = {
-          intakeItemId,
-          rawRecordId,
+        const occurrenceSequence = captureContext.nextCaptureOccurrenceSequence()
+        const receipt: ConnectorCaptureReceipt = {
+          captureItemId,
+          captureId,
           sourceEntityId: null,
           revision,
           occurrence: {
-            id: `raw_occurrence_${occurrenceSequence}`,
-            rawRecordId,
-            rawRevisionId: revision.id,
-            capture: boundInput.capture ?? null,
+            id: `capture_occurrence_${occurrenceSequence}`,
+            captureId,
+            captureRevisionId: revision.id,
+            capture: {
+              connectorInstanceId: envelope.provenance.connectorInstanceId,
+              connectorRunId: envelope.provenance.connectorRunId,
+              executionScopeId: envelope.provenance.executionScopeId,
+            },
             observedAt: input.observedAt,
             receivedAt,
           },
         }
-        rawContext.rawCaptures.push({
-          input: cloneJsonLike(boundInput),
+        captureContext.captures.push({
+          ...cloneJsonLike(envelope),
           receipt: cloneJsonLike(receipt),
         })
         return cloneJsonLike(receipt)
@@ -777,8 +799,8 @@ function createConnectorRuntime(
     runtime.normalization = {
       async run(input) {
         const outcomes = await input.resolve()
-        rawContext.normalizations.push({
-          rawRevisionId: input.rawRevision.id,
+        captureContext.normalizations.push({
+          captureRevisionId: input.captureRevision.id,
           resolver: cloneJsonLike(input.resolver),
           outcomes: cloneJsonLike(outcomes),
         })
@@ -927,28 +949,30 @@ function resolveSecretGrant(
   }
 }
 
-function rawStrongIdentity(
+function captureStrongIdentity(
   workspaceId: string,
-  input: RawSourceRecordInput,
+  envelope: ConnectorCaptureEnvelope,
 ): string | null {
-  const providerRecordId = input.providerRecordId?.trim()
-  if (input.adapter.kind !== "connector" || !providerRecordId) return null
+  const providerRecordId = envelope.input.providerRecordId?.trim()
+  if (envelope.input.adapter.kind !== "connector" || !providerRecordId) {
+    return null
+  }
   return stableJsonStringify([
     workspaceId,
-    input.adapter.id,
-    input.providerSchema ?? null,
+    envelope.input.adapter.id,
+    envelope.input.providerSchema ?? null,
     providerRecordId,
   ])
 }
 
-function rawSourceContentHash(input: RawSourceRecordInput): string {
+function captureContentHash(envelope: ConnectorCaptureEnvelope): string {
   const canonicalContent = stableJsonStringify({
-    adapter: input.adapter,
-    evidence: input.evidence ?? [],
-    payload: input.payload ?? null,
-    providerRecordId: input.providerRecordId ?? null,
-    providerSchema: input.providerSchema ?? null,
-    reportedOrigin: input.reportedOrigin ?? null,
+    adapter: envelope.input.adapter,
+    evidence: envelope.input.evidence ?? [],
+    payload: envelope.input.payload ?? null,
+    providerRecordId: envelope.input.providerRecordId ?? null,
+    providerSchema: envelope.input.providerSchema ?? null,
+    reportedOrigin: envelope.provenance.reportedOrigin ?? null,
   })
   return `sha256:${createHash("sha256").update(canonicalContent).digest("hex")}`
 }

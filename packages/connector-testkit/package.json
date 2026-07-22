@@ -41,6 +41,6 @@
   },
   "dependencies": {
     "@sparxie/valedictorian-connectors-core": "workspace:^0.16.0",
-    "sparxie": "^0.26.0"
+    "sparxie": "0.27.0"
   }
 }

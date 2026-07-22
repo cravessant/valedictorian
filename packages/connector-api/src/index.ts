@@ -4,16 +4,17 @@ import {
   type ConnectorHistoricalBackfillState,
   type ConnectorNewestFrontierState,
   type ConnectorVersionedRendererSchema,
-  type JsonValue,
-  type RawSourceIntakeReceipt,
-  type RawSourceRecordInput,
-  type RawSourceRevisionReceipt,
-  type ResolverDeclaration,
   type RetryAdvice,
   type SourceExecutionScopeId,
   type SourceOperationOutcome,
   type TransientRetryReason,
 } from "sparxie"
+import type { JsonValue } from "./json.js"
+import type { ResolverDeclaration } from "./normalization-types.js"
+import type {
+  ConnectorCaptureIntakeRuntime,
+  ConnectorCaptureRevision,
+} from "./capture.js"
 import type {
   ConnectorDynamicOptionsDeclaration,
   ConnectorOptionValue,
@@ -65,33 +66,60 @@ export {
 } from "./dynamic-options.js"
 
 export type {
-  CanonicalCompensation,
-  CanonicalEmploymentType,
-  CanonicalLocation,
-  CanonicalPostedAt,
+  CreateCaptureInput,
+  EvidenceMode,
   FieldResolutionOutcome,
-  JsonObject,
-  JsonValue,
-  RawSourceEvidenceInput,
-  RawSourceIntakeReceipt,
-  RawSourceRecordInput,
-  RawSourceRevisionReceipt,
-  ResolutionEvidence,
-  ResolverDeclaration,
   RetryAdvice,
   SourceExecutionScopeId,
   SourceOperationOutcome,
-  SourcingDestinationClass,
   TransientRetryReason,
   ConnectorHistoricalBackfillState,
   ConnectorNewestFrontierState,
   ConnectorVersionedRendererSchema,
 } from "sparxie"
 export {
+  createCaptureInputSchema,
   installedConnectorDescriptorSchema,
   retryAdviceSchema,
   sourceExecutionScopeIdSchema,
 } from "sparxie"
+
+export type { JsonPrimitive, JsonValue, JsonObject } from "./json.js"
+export {
+  canonicalCandidateFields,
+  canonicalCompensationIntervals,
+  canonicalEmploymentTypes,
+  canonicalPostedAtPrecisions,
+  resolverCapabilities,
+  resolverCostClasses,
+  type CanonicalCandidateField,
+  type CanonicalCompensation,
+  type CanonicalCompensationInterval,
+  type CanonicalEmploymentType,
+  type CanonicalLocation,
+  type CanonicalPostedAt,
+  type CanonicalPostedAtPrecision,
+  type ResolutionEvidence,
+  type ResolverCapability,
+  type ResolverCostClass,
+  type ResolverDeclaration,
+  type SourceAdapterKind,
+} from "./normalization-types.js"
+export {
+  connectorReportedOriginKinds,
+  type ConnectorCaptureAdapter,
+  type ConnectorCaptureEnvelope,
+  type ConnectorCaptureEvidence,
+  type ConnectorCaptureInput,
+  type ConnectorCaptureIntakeRuntime,
+  type ConnectorCaptureOccurrence,
+  type ConnectorCaptureProvenance,
+  type ConnectorCaptureReceipt,
+  type ConnectorCaptureReference,
+  type ConnectorCaptureRevision,
+  type ConnectorReportedOrigin,
+  type ConnectorReportedOriginKind,
+} from "./capture.js"
 
 export type RetryPolicyInput = {
   attempt: number
@@ -459,28 +487,8 @@ export type ConnectorProgressRuntime = {
   report(snapshot: ConnectorProgressSnapshot): void | Promise<void>
 }
 
-export type ConnectorRawSourceCaptureInput = Pick<
-  RawSourceRecordInput,
-  | "evidence"
-  | "observedAt"
-  | "payload"
-  | "providerRecordId"
-  | "providerSchema"
-  | "reportedOrigin"
->
-
-export type ConnectorRawSourceIntakeRuntime = {
-  /**
-   * Persists a provider record with host-bound connector instance/run lineage.
-   * Connectors must acknowledge every safely representable row in a bounded
-   * provider batch before invoking normalization or detail resolution for any
-   * row in that batch.
-   */
-  capture(input: ConnectorRawSourceCaptureInput): Promise<RawSourceIntakeReceipt>
-}
-
 export type ConnectorNormalizationInput = {
-  rawRevision: RawSourceRevisionReceipt
+  captureRevision: ConnectorCaptureRevision
   resolver: ResolverDeclaration
   resolve(): Promise<FieldResolutionOutcome[]>
 }
@@ -583,7 +591,7 @@ export type ConnectorRuntime = {
   cancellation?: ConnectorCancellationRuntime
   delay?: ConnectorDelayRuntime
   progress?: ConnectorProgressRuntime
-  rawSourceIntake?: ConnectorRawSourceIntakeRuntime
+  captureIntake?: ConnectorCaptureIntakeRuntime
   normalization?: ConnectorNormalizationRuntime
 }
 
