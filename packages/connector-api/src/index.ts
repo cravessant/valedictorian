@@ -1,5 +1,6 @@
 import {
   retryAdviceSchema,
+  type CreateCaptureInput,
   type FieldResolutionOutcome,
   type ConnectorHistoricalBackfillState,
   type ConnectorNewestFrontierState,
@@ -752,9 +753,24 @@ export type ConnectorAuthValidationResult = {
   reason: ConnectorAuthOutcomeReason
 }
 
+export type ConnectorProviderFieldResolverInput = {
+  captureRevision: ConnectorCaptureRevision
+  adapter: CreateCaptureInput["adapter"]
+  providerSchema: CreateCaptureInput["providerSchema"]
+  payload: CreateCaptureInput["payload"]
+}
+
+export type ConnectorProviderFieldResolver = {
+  declaration: ResolverDeclaration
+  resolve(
+    input: ConnectorProviderFieldResolverInput,
+  ): FieldResolutionOutcome[]
+}
+
 export type JobConnector = {
   definition: ConnectorDefinition
   providerUrlResolver?: ConnectorProviderUrlResolver
+  providerFieldResolver?: ConnectorProviderFieldResolver
   refresh(
     input: ConnectorRefreshInput,
     runtime: ConnectorRuntime,
