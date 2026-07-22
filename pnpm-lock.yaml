@@ -1831,6 +1831,15 @@ packages:
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
 
+  '@sparxie/valedictorian-connectors-core@0.17.1':
+    resolution: {integrity: sha512-KUU90JW6yefr++ZO6cfIXq5dk6BrK7cIWVs7oTPxomRwXJeALNodeOP9KcBWlFQhifusSVRPVihqRqcx95XlYQ==}
+
+  '@sparxie/valedictorian-connectors-jobright@0.17.1':
+    resolution: {integrity: sha512-sqrb/Ylu4/dYO2/MG92Zz9xFO+nvWoWRWoeTN4bb8xApDqQC6gdFcL4lSzPr9kl9KQ0h2kGTprwd4YsC/ft0jg==}
+
+  '@sparxie/valedictorian-connectors-test-harness@0.17.1':
+    resolution: {integrity: sha512-UL6pX1ZPR9kJQ+ISm+FeWMRRd1jrLXJWZlFUZxBfHWkU360NZ5Jj2c/bQKncZ6qoeDe/H+jzg7EqD8CbiJyjWw==}
+
   '@szmarczak/http-timer@4.0.6':
     resolution: {integrity: sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w==}
     engines: {node: '>=10'}
@@ -3741,6 +3750,10 @@ packages:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
 
+  sparxie@0.27.0:
+    resolution: {integrity: sha512-SMUr2wZ4RwEvhjaJ8pQjXmHTpifw92mUmpHj19H0yQyMg5gRrL5rPhkSfA6HYQG6pt+h2sChOy83l7TJ2b9bmg==}
+    engines: {node: '>=22.12.0'}
+
   sparxie@0.27.1:
     resolution: {integrity: sha512-UmE3/k3ya4zOh20ww2exPj9bwcfYXO78SZ7VfHgrEG8zMVSM7RulSOGDJ1jpJ+3syX1C8+/gVOCVjVBAR2h9wA==}
     engines: {node: '>=22.12.0'}
@@ -5379,6 +5392,19 @@ snapshots:
       - '@types/node'
 
   '@sindresorhus/is@4.6.0': {}
+
+  '@sparxie/valedictorian-connectors-core@0.17.1':
+    dependencies:
+      sparxie: 0.27.0
+
+  '@sparxie/valedictorian-connectors-jobright@0.17.1':
+    dependencies:
+      '@sparxie/valedictorian-connectors-core': 0.17.1
+
+  '@sparxie/valedictorian-connectors-test-harness@0.17.1':
+    dependencies:
+      '@sparxie/valedictorian-connectors-core': 0.17.1
+      sparxie: 0.27.0
 
   '@szmarczak/http-timer@4.0.6':
     dependencies:
@@ -7321,6 +7347,10 @@ snapshots:
       source-map: 0.6.1
 
   source-map@0.6.1: {}
+
+  sparxie@0.27.0:
+    dependencies:
+      zod: 4.4.3
 
   sparxie@0.27.1:
     dependencies:
