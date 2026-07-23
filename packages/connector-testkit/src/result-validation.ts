@@ -4,6 +4,11 @@ import {
   type JobObservationEvidence,
   type JobObservationResolutionStatus,
 } from "@sparxie/valedictorian-connectors-core"
+import { connectorRunSummarySchema } from "sparxie"
+
+export function assertValidConnectorRunSummary(input: unknown): void {
+  connectorRunSummarySchema.parse(input)
+}
 
 const resolutionStatuses = new Set<JobObservationResolutionStatus>([
   "resolved",
