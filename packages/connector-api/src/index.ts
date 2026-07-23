@@ -46,13 +46,13 @@ export type {
   ConnectorHistoricalBackfillState,
   ConnectorNewestFrontierState,
   ConnectorVersionedRendererSchema,
-} from "sparxie"
+} from "@sparxie/sdk"
 export {
   createCaptureInputSchema,
   installedConnectorDescriptorSchema,
   retryAdviceSchema,
   sourceExecutionScopeIdSchema,
-} from "sparxie"
+} from "@sparxie/sdk"
 
 export type { JsonPrimitive, JsonValue, JsonObject } from "./json.js"
 export {

@@ -14,7 +14,7 @@ import type {
   CreateCaptureInput,
   JobConnector,
 } from "@sparxie/valedictorian-connectors-core"
-import { createCaptureInputSchema } from "sparxie"
+import { createCaptureInputSchema } from "@sparxie/sdk"
 import { cloneJsonLike, stableJsonStringify } from "./stable-json.js"
 import type {
   InMemoryCaptureRecord,

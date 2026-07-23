@@ -1,16 +1,16 @@
-import { sourceAdapterKinds } from "sparxie"
+import { sourceAdapterKinds } from "@sparxie/sdk"
 import type { JsonValue } from "./json.js"
 
 /**
  * Connector-owned technical normalization vocabulary.
  *
- * `sparxie` 0.27.0 keeps these resolver/canonical shapes internal to its
+ * `@sparxie/sdk` 0.29.0 keeps these resolver/canonical shapes internal to its
  * raw-sourcing module and only publishes `FieldResolutionOutcome` and
  * `NormalizationAttempt` from the package root. The connector ABI still needs
  * the exact resolver declaration and canonical field vocabulary, so core owns
  * lifecycle-exact copies instead of importing an unexported subpath. They are
  * structurally identical to Sparxie's internal shapes; `FieldResolutionOutcome`
- * remains re-exported from `sparxie` itself.
+ * remains re-exported from `@sparxie/sdk` itself.
  */
 export type SourceAdapterKind = (typeof sourceAdapterKinds)[number]
 

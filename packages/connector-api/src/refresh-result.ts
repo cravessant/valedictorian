@@ -3,7 +3,7 @@ import type {
   ConnectorNewestFrontierState,
   RetryAdvice,
   SourceOperationOutcome,
-} from "sparxie"
+} from "@sparxie/sdk"
 import {
   sanitizeConnectorRefreshStopReason,
   type ConnectorRefreshStopReason,

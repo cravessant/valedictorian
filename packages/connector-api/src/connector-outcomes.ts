@@ -4,7 +4,7 @@ import {
   type ConnectorHistoricalBackfillState,
   type ConnectorNewestFrontierState,
   type SourceOperationOutcome,
-} from "sparxie"
+} from "@sparxie/sdk"
 
 /**
  * Closed warning codes and copy that are safe to persist or expose to an app.

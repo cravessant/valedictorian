@@ -2,7 +2,7 @@ import type {
   FieldResolutionOutcome,
   SourceExecutionScopeId,
   TransientRetryReason,
-} from "sparxie"
+} from "@sparxie/sdk"
 import type { ResolverDeclaration } from "./normalization-types.js"
 import type {
   ConnectorCaptureIntakeRuntime,

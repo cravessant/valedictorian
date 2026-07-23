@@ -4,7 +4,7 @@ import type {
   ConnectorVersionedRendererSchema,
   SourceExecutionScopeId,
   TransientRetryReason,
-} from "sparxie"
+} from "@sparxie/sdk"
 import type { JsonValue } from "./json.js"
 import type { ResolverDeclaration } from "./normalization-types.js"
 import type { ConnectorCaptureRevision } from "./capture.js"

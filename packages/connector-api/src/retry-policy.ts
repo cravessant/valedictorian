@@ -2,7 +2,7 @@ import {
   retryAdviceSchema,
   type RetryAdvice,
   type TransientRetryReason,
-} from "sparxie"
+} from "@sparxie/sdk"
 
 export type RetryPolicyInput = {
   attempt: number

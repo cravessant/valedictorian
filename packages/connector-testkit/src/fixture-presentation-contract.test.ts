@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { installedConnectorDescriptorSchema } from "sparxie"
+import { installedConnectorDescriptorSchema } from "@sparxie/sdk"
 
 import { createFixtureConnector } from "./index.js"
 

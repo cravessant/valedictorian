@@ -10,7 +10,7 @@ import {
   sanitizeConnectorRefreshStats,
   sanitizeConnectorAuthValidationResult,
 } from "@sparxie/valedictorian-connectors-core"
-import { canonicalDateOnlySchema } from "sparxie"
+import { canonicalDateOnlySchema } from "@sparxie/sdk"
 import { cloneJsonLike, stableJsonStringify } from "./stable-json.js"
 import {
   sanitizeConnectorRunCoverage,

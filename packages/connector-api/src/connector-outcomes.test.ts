@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { connectorRunSummarySchema } from "sparxie"
+import { connectorRunSummarySchema } from "@sparxie/sdk"
 
 import {
   sanitizeConnectorRefreshStats,

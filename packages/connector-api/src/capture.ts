@@ -1,9 +1,9 @@
-import type { CreateCaptureInput, SourceExecutionScopeId } from "sparxie"
+import type { CreateCaptureInput, SourceExecutionScopeId } from "@sparxie/sdk"
 
 /**
  * Connector-owned Capture intake ABI.
  *
- * `sparxie` 0.27.0 publishes the first-class `createCaptureInputSchema` /
+ * `@sparxie/sdk` 0.29.0 publishes the first-class `createCaptureInputSchema` /
  * `CreateCaptureInput` contract but intentionally exposes no raw transport
  * receipt type from its package root. Core therefore owns the connector-facing
  * Capture input/runtime/receipt/revision shapes. A connector supplies provider

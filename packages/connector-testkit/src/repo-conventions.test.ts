@@ -69,8 +69,8 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("Hosts own encrypted credential persistence and grant resolution")
     expect(readme).toContain("connectors own upstream authentication semantics")
     expect(readme).toContain("`@sparxie/valedictorian-connectors-core` is the app-to-adapter ABI")
-    expect(readme).toContain("`sparxie` remains the owner and public HTTP/client contract")
-    expect(readme).toContain("core re-exports Sparxie-owned retry, source-execution, connector-lifecycle, and first-class Capture identities")
+    expect(readme).toContain("`@sparxie/sdk` remains the owner and public HTTP/client contract")
+    expect(readme).toContain("core re-exports SDK-owned retry, source-execution, connector-lifecycle, and first-class Capture identities")
     expect(readme).toContain("InternList/Internslist was reconnaissance only")
     expect(readme).not.toContain("@sparxie/valedictorian-connectors-internlist")
     expect(readme).not.toContain("the first real public discovery source package")
@@ -157,14 +157,13 @@ describe("connector repository conventions", () => {
     expect(gitignore).not.toContain("!.local")
   })
 
-  it("limits release-age exceptions to internal sparxie packages", () => {
+  it("limits release-age exceptions to internal scoped packages", () => {
     const workspace = readText("pnpm-workspace.yaml")
 
     expect(workspace).toContain("minimumReleaseAgeExclude:")
-    expect(workspace).toContain("  - sparxie")
     expect(workspace).toContain("  - '@sparxie/*'")
     expect(workspace).not.toMatch(/minimumReleaseAge:\s*0/)
-    expect(workspace).not.toContain("sparxie@0.9.0")
+    expect(workspace).not.toContain("@sparxie/sdk@0.9.0")
   })
 
   it("documents connector package publishing and versioning expectations", () => {
@@ -175,10 +174,10 @@ describe("connector repository conventions", () => {
     expect(readme).toContain("Adapter ABI changes require a new core version")
     expect(readme).toContain("Concrete connector packages declare a compatible core range")
     expect(readme).toContain("The app bumps concrete connector packages directly")
-    expect(readme).toContain("Do not release or bump `sparxie` for adapter ABI changes")
-    expect(readme).toContain("HTTP/client exposure is a separate `sparxie` change")
-    expect(readme).toContain("The current breaking release tree is `0.18.0`")
-    expect(readme).toContain("exact `workspace:^0.18.0` internal compatibility ranges")
+    expect(readme).toContain("Do not release or bump `@sparxie/sdk` for adapter ABI changes")
+    expect(readme).toContain("HTTP/client exposure is a separate SDK change")
+    expect(readme).toContain("The current breaking release tree is `0.18.1`")
+    expect(readme).toContain("exact `workspace:^0.18.1` internal compatibility ranges")
     expect(readme).toContain("Packages publish publicly to npm under the `@sparxie` scope")
     expect(readme).toContain("CI publishes packages from `.github/workflows/publish.yml`")
     expect(readme).toContain("Workflow filename: `publish.yml`")
@@ -208,7 +207,7 @@ describe("connector repository conventions", () => {
         directory: "packages/core",
       },
       types: "./dist/index.d.ts",
-      version: "0.18.0",
+      version: "0.18.1",
     })
     expect(harnessPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-test-harness",
@@ -224,7 +223,7 @@ describe("connector repository conventions", () => {
         directory: "packages/test-harness",
       },
       types: "./dist/index.d.ts",
-      version: "0.18.0",
+      version: "0.18.1",
     })
     expect(jobrightPackage).toMatchObject({
       name: "@sparxie/valedictorian-connectors-jobright",
@@ -240,7 +239,7 @@ describe("connector repository conventions", () => {
         directory: "packages/jobright",
       },
       types: "./dist/index.d.ts",
-      version: "0.18.0",
+      version: "0.18.1",
     })
     for (const packageJson of [corePackage, harnessPackage, jobrightPackage]) {
       expect(packageJson.exports?.["."]).toEqual({
@@ -261,14 +260,14 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(corePackage.dependencies).toEqual({
-      sparxie: "0.27.0",
+      "@sparxie/sdk": "0.29.0",
     })
     expect(harnessPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.18.0",
-      sparxie: "0.27.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.18.1",
+      "@sparxie/sdk": "0.29.0",
     })
     expect(jobrightPackage.dependencies).toEqual({
-      "@sparxie/valedictorian-connectors-core": "workspace:^0.18.0",
+      "@sparxie/valedictorian-connectors-core": "workspace:^0.18.1",
     })
     expect(Object.keys(jobrightPackage.dependencies ?? {})).not.toEqual(
       expect.arrayContaining([
@@ -282,7 +281,7 @@ describe("connector repository conventions", () => {
       ]),
     )
     expect(jobrightPackage.devDependencies).toMatchObject({
-      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.18.0",
+      "@sparxie/valedictorian-connectors-test-harness": "workspace:^0.18.1",
     })
   })
 
@@ -311,9 +310,9 @@ describe("connector repository conventions", () => {
     expect(coreDeclarations).toContain("ConnectorSynchronizationOutcome")
     expect(coreDeclarations).toContain('status: "interrupted"')
     expect(coreDeclarations).toContain('reason: "cancelled" | "runtime_limit"')
-    expect(coreDeclarations).toContain('from "sparxie"')
+    expect(coreDeclarations).toContain('from "@sparxie/sdk"')
     expect(harnessDeclarations).toContain("retryHints: RetryAdvice | null")
-    expect(jobrightDeclarations).not.toContain('from "sparxie"')
+    expect(jobrightDeclarations).not.toContain('from "@sparxie/sdk"')
   })
 
   it("publishes the forward-only connector ABI without retired host contracts", () => {
