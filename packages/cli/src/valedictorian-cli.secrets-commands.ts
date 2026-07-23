@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import { buildRouteMap } from '@stricli/core'
-import { type UpsertProfileSecretInput } from 'sparxie'
+import { type UpsertProfileSecretInput } from '@sparxie/sdk'
 
 import {
   makeCommand,

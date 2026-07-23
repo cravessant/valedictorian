@@ -14,7 +14,7 @@
 Installed package:
 
 ```sh
-pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha
+pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g @sparxie/valedictorian-cli@alpha
 valedictorian-cli doctor
 valedictorian-cli context
 valedictorian-cli --help
@@ -64,7 +64,7 @@ valedictorian-cli --json applications history <application-id> --workspace "$VAL
 
 ## Lifecycle Commands
 
-The four command groups mirror the `sparxie@0.27.1` workspace client:
+The four command groups mirror the `@sparxie/sdk@0.29.0` workspace client:
 
 Read `lifecycle.md` for the meaning of each aggregate, the one-boundary-at-a-time promotion protocol, warning/blocker decisions, and lineage verification. Read `promotion-payloads.md` for complete alpha.18 JSON examples.
 

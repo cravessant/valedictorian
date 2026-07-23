@@ -10,7 +10,7 @@ import {
   sourceAccessErrorStatusByCode,
   valedictorianInternalErrorStatus,
   valedictorianSafeRequestFailedMessage,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { jsonResponse, parseCliError, runCli } from './valedictorian-cli.test-helpers.js'
 import { requestValedictorianJson } from './valedictorian-cli.request.js'

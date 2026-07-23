@@ -1,7 +1,7 @@
 import {
   ValedictorianProtocolError,
   ValedictorianTransportError,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   createFailClosedRequestError,

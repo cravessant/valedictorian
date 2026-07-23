@@ -9,7 +9,7 @@ import {
   ValedictorianProtocolError,
   ValedictorianTransportError,
   type SecretReference,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   optionValue,

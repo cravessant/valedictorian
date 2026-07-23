@@ -11,9 +11,6 @@
 - Preserve complete structured lifecycle results while keeping secret values
   out of ordinary CLI output.
 - Upgrade the frozen dependency to the newest installable compatible release,
-  `sparxie@0.27.1`.
-
-Release dependency order: publish and tag `sparxie@0.28.0` at the human gate,
-then bump and verify the CLI against that published artifact, and only then tag
-and publish the verified CLI release. Until that gate opens, alpha.18 must not
-declare the unavailable `sparxie@0.28.0` registry dependency.
+  `@sparxie/sdk@0.29.0`.
+- Publish the package as `@sparxie/valedictorian-cli` while preserving the
+  `valedictorian-cli` executable name.

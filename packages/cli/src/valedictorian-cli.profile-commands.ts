@@ -7,7 +7,7 @@ import {
   type ProfileDocument,
   type ProfileDocumentValidateResult,
   type ProfileUpdateInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { CliUsageError } from './valedictorian-cli.failures.js'
 

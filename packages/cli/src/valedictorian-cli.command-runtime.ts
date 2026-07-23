@@ -14,7 +14,7 @@ import {
   type ProfileSecretKind,
   type ValedictorianClient,
   type ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   CliOwnedFailure,

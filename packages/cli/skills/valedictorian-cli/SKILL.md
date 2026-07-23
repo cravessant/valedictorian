@@ -21,7 +21,7 @@ valedictorian-cli captures --help
 If installing the npm package while Valedictorian is still in alpha, install the alpha dist-tag:
 
 ```sh
-pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha
+pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g @sparxie/valedictorian-cli@alpha
 ```
 
 When working from the `valedictorian-cli` repository, use the local build instead:

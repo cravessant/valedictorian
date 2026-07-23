@@ -3,7 +3,7 @@ import {
   valedictorianApiPaths,
   type ValedictorianCapabilities,
   type WorkspaceListItem,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   inferLastOpenWorkspace,
   isLocalApiUrl,

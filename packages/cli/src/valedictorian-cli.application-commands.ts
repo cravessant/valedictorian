@@ -13,7 +13,7 @@ import {
   updateApplicationSourceInputSchema,
   updatePursuitApplicationStatusInputSchema,
   updatePursuitLinkInputSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   makeCommand,

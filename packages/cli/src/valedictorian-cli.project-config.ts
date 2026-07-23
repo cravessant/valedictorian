@@ -1,5 +1,5 @@
 import { cosmiconfigSync } from 'cosmiconfig'
-import * as sparxie from 'sparxie'
+import * as sparxie from '@sparxie/sdk'
 
 export interface ValedictorianProjectConfig {
   version: 1

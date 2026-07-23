@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { defaultLocalCapabilities } from 'sparxie'
+import { defaultLocalCapabilities } from '@sparxie/sdk'
 
 import { normalizeArgv } from './valedictorian-cli.command-runtime.js'
 import { runCli } from './valedictorian-cli.test-helpers.js'
@@ -576,7 +576,7 @@ describe('secrets run spawn plan', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { LocalSecretResolutionHttpError, localSecretResolutionErrorBodies } = await import(
-      'sparxie'
+      '@sparxie/sdk'
     )
 
     for (const asJson of [false, true]) {

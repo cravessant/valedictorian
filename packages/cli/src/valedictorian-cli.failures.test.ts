@@ -8,7 +8,7 @@ import {
   localSecretResolutionErrorBodies,
   profileDocumentErrorBodies,
   valedictorianSafeRequestFailedMessage,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   CliOwnedFailure,

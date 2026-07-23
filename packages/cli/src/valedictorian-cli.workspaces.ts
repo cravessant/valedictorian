@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { WorkspaceListItem, WorkspaceListResult } from 'sparxie'
+import type { WorkspaceListItem, WorkspaceListResult } from '@sparxie/sdk'
 
 interface WorkspaceRegistry {
   lastOpenedWorkspaceId: string | null

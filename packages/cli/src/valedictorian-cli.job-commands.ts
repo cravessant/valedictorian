@@ -11,7 +11,7 @@ import {
   removeJobInputSchema,
   restoreJobInputSchema,
   updateJobAvailabilityInputSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   makeCommand,

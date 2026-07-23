@@ -2,7 +2,8 @@
 
 ## First Publish
 
-The `valedictorian-cli` package name was reported by npm as unpublished on June 10, 2026.
+The scoped `@sparxie/valedictorian-cli` package supersedes the unscoped
+`valedictorian-cli` package while preserving the executable name.
 
 For the first publish:
 
@@ -24,7 +25,7 @@ Trusted Publishing OIDC.
 After the package exists on npm, configure npm Trusted Publishing for:
 
 ```sh
-pnpm dlx npm@11.16.0 trust github valedictorian-cli \
+pnpm dlx npm@11.16.0 trust github @sparxie/valedictorian-cli \
   --repo cravessant/valedictorian \
   --file publish.yml \
   --allow-publish \
@@ -45,19 +46,11 @@ git push --tags
 
 The tag must be `vX.Y.Z-alpha.N` and match `package.json`.
 
-## Lifecycle Cutover Release Order
+## Scoped Package Cutover
 
-The `0.1.0-alpha.18` preparation stays on the newest installable compatible
-contract package, `sparxie@0.27.1`, so frozen installs and hosted CI resolve
-only published registry artifacts. Do not add the prepared but unpublished
-`sparxie@0.28.0` dependency to the CLI.
-
-After the human publication gate opens, release in this order:
-
-1. Publish and tag `sparxie@0.28.0`.
-2. Bump the CLI dependency and lockfile to the published `sparxie@0.28.0`.
-3. Rerun the CLI lifecycle selectors and full release verification.
-4. Tag the verified CLI version; the tag-triggered workflow publishes it.
+The CLI consumes the published `@sparxie/sdk@0.29.0` contract. Publish
+`@sparxie/valedictorian-cli` and verify its `alpha` tag before deprecating the
+unscoped package.
 
 Tagged GitHub Actions releases publish through npm Trusted Publishing. Because the
 GitHub repository is private, the workflow omits npm provenance; npm provenance

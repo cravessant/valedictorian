@@ -5,7 +5,7 @@ import {
   promoteCaptureToJobInputSchema,
   promoteJobToOpportunityInputSchema,
   promoteOpportunityToApplicationInputSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 const ciWorkflowPath = path.resolve('.github/workflows/ci.yml')
 const releaseWorkflowPath = path.resolve('.github/workflows/release-cli.yml')
@@ -82,7 +82,7 @@ describe('CLI release workflow', () => {
     const receiptsReference = fs.readFileSync(receiptsReferencePath, 'utf8')
 
     expect(readme).toContain(
-      'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha',
+      'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g @sparxie/valedictorian-cli@alpha',
     )
     expect(readme).toContain('valedictorian-cli --json workspaces list')
     expect(readme).toContain('applications list --workspace "$VALEDICTORIAN_WORKSPACE"')
@@ -95,7 +95,7 @@ describe('CLI release workflow', () => {
     expect(readme).toContain('valedictorian.config.json')
     expect(readme).toContain('Do not store API tokens, OAuth tokens, passwords, or client secrets in project config.')
     expect(skill).toContain(
-      'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha',
+      'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g @sparxie/valedictorian-cli@alpha',
     )
     expect(skill).toContain('Workspace-scoped commands require `--workspace <id-or-name>`')
     expect(skill).toMatch(/(?:^|[^/])secrets upsert <key>/m)
@@ -106,7 +106,7 @@ describe('CLI release workflow', () => {
     expect(skill).not.toContain('profile sensitive')
     expect(skill).not.toContain('profile secrets')
     expect(commandReference).toContain(
-      'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha',
+      'pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g @sparxie/valedictorian-cli@alpha',
     )
     expect(commandReference).toContain('export VALEDICTORIAN_WORKSPACE=workspace-id-or-name')
     expect(commandReference).toContain('## Profile And Secrets')

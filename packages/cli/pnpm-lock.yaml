@@ -8,15 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@sparxie/sdk':
+        specifier: 0.29.0
+        version: 0.29.0
       '@stricli/core':
         specifier: 1.2.7
         version: 1.2.7
       cosmiconfig:
         specifier: 9.0.2
         version: 9.0.2(typescript@7.0.2)
-      sparxie:
-        specifier: 0.27.1
-        version: 0.27.1
     devDependencies:
       '@types/node':
         specifier: ^26.1.1
@@ -445,6 +445,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@sparxie/sdk@0.29.0':
+    resolution: {integrity: sha512-ghTgwAVhBr/cVgE5z0m6chHt0C04784Wil+IRq6UmqY0nOMAg1afnDdQOXx367e8oYKBUfEDkVkvNoGIgar+MA==}
+    engines: {node: '>=22.12.0'}
+
   '@stricli/core@1.2.7':
     resolution: {integrity: sha512-a0HxA/cSWjqHj/9GM+cfc/zGNmBdxVTQQpHIEvY1AbDEgo4ZU84cTCbtywYEQOHw2wIc6Vu+PKv+ZQoqZwkHnQ==}
 
@@ -814,10 +818,6 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
-  sparxie@0.27.1:
-    resolution: {integrity: sha512-UmE3/k3ya4zOh20ww2exPj9bwcfYXO78SZ7VfHgrEG8zMVSM7RulSOGDJ1jpJ+3syX1C8+/gVOCVjVBAR2h9wA==}
-    engines: {node: '>=22.12.0'}
-
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
 
@@ -1131,6 +1131,10 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.61.1':
     optional: true
+
+  '@sparxie/sdk@0.29.0':
+    dependencies:
+      zod: 4.4.3
 
   '@stricli/core@1.2.7': {}
 
@@ -1467,10 +1471,6 @@ snapshots:
   siginfo@2.0.0: {}
 
   source-map-js@1.2.1: {}
-
-  sparxie@0.27.1:
-    dependencies:
-      zod: 4.4.3
 
   stackback@0.0.2: {}
 

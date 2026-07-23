@@ -13,7 +13,7 @@ import {
   type ConnectorRunsListInput as ReleasedConnectorRunsListInput,
   type TriggerConnectorRunInput,
   type UpdateConnectorInstanceInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { CliUsageError } from './valedictorian-cli.failures.js'
 

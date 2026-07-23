@@ -16,7 +16,7 @@ import {
   valedictorianFailureKindMessages,
   type ValedictorianFailureKind,
   type ValedictorianRetryAfter,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 export type CliFailureExitCode = 1 | 2 | 3 | 4 | 5 | 6
 

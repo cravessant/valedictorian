@@ -1,7 +1,7 @@
 import {
   upsertConnectorScheduleInputSchema,
   type UpsertConnectorScheduleInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   assertKnownOptions,

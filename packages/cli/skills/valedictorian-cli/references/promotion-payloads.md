@@ -1,6 +1,6 @@
 # Promotion Payloads
 
-Read this when constructing strict `--input-json` for a lifecycle promotion. These examples match the alpha.18 / `sparxie@0.27.1` surface. Replace values from inspected records; never invent facts, revisions, identities, or evaluation.
+Read this when constructing strict `--input-json` for a lifecycle promotion. These examples match the alpha.18 / `@sparxie/sdk@0.29.0` surface. Replace values from inspected records; never invent facts, revisions, identities, or evaluation.
 
 The source id is positional and must not appear in the JSON.
 

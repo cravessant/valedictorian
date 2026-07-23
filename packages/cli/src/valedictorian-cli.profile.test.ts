@@ -7,7 +7,7 @@ import {
   profileDocumentErrorBodies,
   profileDocumentErrorStatusByCode,
   profileDocumentSchemaVersion,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { jsonResponse, parseCliError, runCli } from './valedictorian-cli.test-helpers'
 

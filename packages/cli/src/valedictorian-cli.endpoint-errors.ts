@@ -56,7 +56,7 @@ import {
   valedictorianInternalErrorStatus,
   valedictorianSafeRequestFailedMessage,
   type ValedictorianFailureKind,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 /** Closed identity for generic request fallbacks; only declared specs are authoritative. */
 export type CliErrorSurfaceId = 'workspace'

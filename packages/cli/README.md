@@ -5,7 +5,7 @@ Command-line client for Valedictorian.
 ## Install
 
 ```sh
-pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g valedictorian-cli@alpha
+pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g @sparxie/valedictorian-cli@alpha
 ```
 
 The CLI is currently published under the npm `alpha` dist-tag.
@@ -56,7 +56,7 @@ valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli secrets run --workspace "$VALEDICTORIAN_WORKSPACE" --env TOKEN=secret://greenhouse_password -- some-tool --flag
 ```
 
-The lifecycle command tree mirrors `sparxie@0.27.1`:
+The lifecycle command tree mirrors `@sparxie/sdk@0.29.0`:
 
 - `captures`: `list`, `get`, `create`, `correct`, `remove`, `restore`, `history`, `promote-to-job`
 - `jobs`: `list`, `get`, `create`, `correct-facts`, `update-availability`, `external-identities add|remove`, `remove`, `restore`, `history`, `promote-to-opportunity`

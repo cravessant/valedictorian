@@ -16,15 +16,15 @@ describe('valedictorian-cli npm package', () => {
       ...packageJson.devDependencies,
     })
 
-    expect(packageJson.name).toBe('valedictorian-cli')
+    expect(packageJson.name).toBe('@sparxie/valedictorian-cli')
     expect(packageJson.version).toMatch(/^0\.\d+\.\d+-alpha\.\d+$/)
     expect(packageJson.bin?.['valedictorian-cli']).toBe('dist/valedictorian.js')
     expect(packageJson.files).toEqual(['dist'])
     expect(packageJson.scripts?.prepare).toBe('pnpm build')
     expect(packageJson.scripts?.prepublishOnly).toBe('pnpm lint && pnpm test && pnpm build')
     expect(packageJson.dependencies?.cosmiconfig).toBe('9.0.2')
-    expect(packageJson.dependencies?.sparxie).toBe('0.27.1')
-    expect(packageJson.dependencies?.sparxie).not.toContain('github:')
+    expect(packageJson.dependencies?.['@sparxie/sdk']).toBe('0.29.0')
+    expect(packageJson.dependencies?.['@sparxie/sdk']).not.toContain('github:')
     expect(packageJson.dependencies).not.toHaveProperty('conf')
     expect(packageJson.dependencies).not.toHaveProperty('configstore')
     expect(Object.values(packageJson.scripts ?? {})).not.toEqual(

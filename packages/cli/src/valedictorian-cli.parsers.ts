@@ -4,7 +4,7 @@ import {
   isRunType,
   type ActionQueueListQuery,
   type ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { CliUsageError } from './valedictorian-cli.failures.js'
 import {

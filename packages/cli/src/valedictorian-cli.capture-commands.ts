@@ -7,7 +7,7 @@ import {
   promoteCaptureToJobInputSchema,
   removalInputSchema,
   restoreInputSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   makeCommand,

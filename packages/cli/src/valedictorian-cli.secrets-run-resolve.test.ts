@@ -4,7 +4,7 @@ import {
   defaultLocalCapabilities,
   localSecretResolutionErrorBodies,
   localSecretResolutionErrorStatusByCode,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { jsonResponse, runCli } from './valedictorian-cli.test-helpers.js'
 import type { SecretsRunSpawnAdapter } from './valedictorian-cli.secrets-run-spawn.js'
@@ -471,7 +471,7 @@ describe('secrets run capability and resolution', () => {
   })
 
   it('preserves remote authentication failures as authentication exit 3', async () => {
-    const { sourceAccessErrorBodies, sourceAccessErrorStatusByCode } = await import('sparxie')
+    const { sourceAccessErrorBodies, sourceAccessErrorStatusByCode } = await import('@sparxie/sdk')
     const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
     fetchMock.mockResolvedValueOnce(capabilitiesResponse(true))
     fetchMock.mockResolvedValueOnce(
@@ -511,9 +511,9 @@ describe('secrets run capability and resolution', () => {
   it('fails closed when a direct LocalSecretResolutionHttpError body or status is non-canonical', async () => {
     const canary = 'forged-remote-resolution-canary'
     const { LocalSecretResolutionHttpError, localSecretResolutionErrorBodies } = await import(
-      'sparxie'
+      '@sparxie/sdk'
     )
-    const { ValedictorianHttpError } = await import('sparxie')
+    const { ValedictorianHttpError } = await import('@sparxie/sdk')
 
     const cases = [
       {

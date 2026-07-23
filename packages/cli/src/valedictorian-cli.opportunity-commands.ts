@@ -8,7 +8,7 @@ import {
   restoreInputSchema,
   updateOpportunityDispositionInputSchema,
   updateOpportunityEvaluationInputSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import {
   makeCommand,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   profileDocumentErrorBodies,
   profileDocumentErrorStatusByCode,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { jsonResponse, runCli } from './valedictorian-cli.test-helpers.js'
 

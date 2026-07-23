@@ -7,7 +7,7 @@ import {
   createHttpValedictorianClient,
   defaultValedictorianApiBaseUrl,
   type ValedictorianClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { buildActionQueueRoute } from './valedictorian-cli.action-queue-commands.js'
 import { buildApplicationsRoute } from './valedictorian-cli.application-commands.js'
