@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { useAppBootstrapLoads } from './app/use-app-bootstrap-loads'
-import { LifecycleWorkbench } from './modules/lifecycle-table/lifecycle-workbench'
+import { AppNavigationShell } from './app/AppNavigationShell'
+import { APP_VIEWS, type MainAppView } from './app/types'
+import {
+  LifecycleWorkbench,
+  type LifecyclePhase,
+} from './modules/lifecycle-table/lifecycle-workbench'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
-import { defaultAppSettings } from './settings/app-settings'
+import {
+  defaultAppSettings,
+  normalizeAppSettings,
+  type AppSettingsPatch,
+} from './settings/app-settings'
 import { applyResolvedTheme } from './theme/theme-applier'
 import { resolveTheme } from './theme/theme-registry'
 import { ConnectorRunsPanel } from './settings/ConnectorRunsPanel'
@@ -84,16 +92,38 @@ export function rendererConnectorsApi(): ConnectorsPreloadApi {
     ?? unavailableConnectorsApi()
 }
 
+const lifecycleViews: readonly LifecyclePhase[] = [
+  APP_VIEWS.CAPTURES,
+  APP_VIEWS.JOBS,
+  APP_VIEWS.OPPORTUNITIES,
+  APP_VIEWS.APPLICATIONS,
+]
+
+function isLifecycleView(view: MainAppView): view is LifecyclePhase {
+  return lifecycleViews.includes(view as LifecyclePhase)
+}
+
+function viewTitle(view: MainAppView): string {
+  if (view === APP_VIEWS.CAPTURES) return 'Captures'
+  if (view === APP_VIEWS.JOBS) return 'Jobs'
+  if (view === APP_VIEWS.OPPORTUNITIES) return 'Opportunities'
+  if (view === APP_VIEWS.APPLICATIONS) return 'Applications'
+  return 'Connector Runs'
+}
+
 export default function App({
   settingsApi = rendererSettingsApi(),
   workspaceApi = rendererWorkspaceApi(),
   connectorsApi = rendererConnectorsApi(),
 }: AppProps) {
-  const { settings, settingsLoadFailure, workspace, workspaceLoadFailure } = useAppBootstrapLoads({
-    settingsApi,
-    workspaceApi,
-  })
-  const [surface, setSurface] = useState<'lifecycle' | 'connector-runs'>('lifecycle')
+  const {
+    setSettings,
+    settings,
+    settingsLoadFailure,
+    workspace,
+    workspaceLoadFailure,
+  } = useAppBootstrapLoads({ settingsApi, workspaceApi })
+  const [currentView, setCurrentView] = useState<MainAppView>(APP_VIEWS.CAPTURES)
   const [captureRunFilter, setCaptureRunFilter] = useState<CaptureRunFilter | null>(null)
   const [focusedConnectorProvenance, setFocusedConnectorProvenance] = useState<ConnectorProvenanceTarget | null>(null)
 
@@ -101,69 +131,62 @@ export default function App({
     applyResolvedTheme(resolveTheme(settings.theme))
   }, [settings.theme])
 
+  async function updateSettings(patch: AppSettingsPatch) {
+    const previousSettings = settings
+    setSettings(normalizeAppSettings({ ...settings, ...patch }))
+    try {
+      setSettings(await settingsApi.update(patch))
+    } catch (error: unknown) {
+      setSettings(previousSettings)
+      throw error
+    }
+  }
+
+  function changeView(view: MainAppView) {
+    setFocusedConnectorProvenance(null)
+    setCurrentView(view)
+  }
+
   return (
     <TooltipProvider>
-      <main className="min-h-screen bg-background px-6 py-10 text-foreground" data-testid="app-shell">
-        <section className="mx-auto max-w-6xl rounded-lg border border-border bg-card p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Valedictorian
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold">
-            {workspace?.name ?? 'Workspace'}
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-            Canonical Captures, Jobs, Opportunities, and Applications are available through the
-            local HTTP API and typed workspace client. Desktop lifecycle views use this same
-            contract.
-          </p>
-          {settingsLoadFailure || workspaceLoadFailure ? (
-            <p className="mt-4 text-sm text-destructive" role="alert">
+      <AppNavigationShell
+        currentView={currentView}
+        settings={settings}
+        title={`${workspace?.name ?? 'Workspace'} · ${viewTitle(currentView)}`}
+        onSettingsPatch={updateSettings}
+        onViewChange={changeView}
+      >
+        {settingsLoadFailure || workspaceLoadFailure ? (
+          <div className="mb-5 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3">
+            <p className="text-sm text-destructive" role="alert">
               Some workspace settings could not be loaded.
             </p>
-          ) : null}
-        </section>
-        <nav aria-label="Workspace surfaces" className="mx-auto mt-6 flex max-w-6xl gap-2">
-          <Button
-            type="button"
-            variant={surface === 'lifecycle' ? 'default' : 'outline'}
-            aria-current={surface === 'lifecycle' ? 'page' : undefined}
-            onClick={() => setSurface('lifecycle')}
-          >
-            Job lifecycle
-          </Button>
-          <Button
-            type="button"
-            variant={surface === 'connector-runs' ? 'default' : 'outline'}
-            aria-current={surface === 'connector-runs' ? 'page' : undefined}
-            onClick={() => setSurface('connector-runs')}
-          >
-            Connector runs
-          </Button>
-        </nav>
-        <section className="mx-auto mt-6 max-w-6xl">
-          {surface === 'lifecycle' ? (
-            <LifecycleWorkbench
-              key={captureRunFilter?.connectorRunId ?? 'all-captures'}
-              initialConnectorRunId={captureRunFilter?.connectorRunId ?? null}
-              onConnectorRunFilterChange={setCaptureRunFilter}
-              onOpenConnectorProvenance={(target) => {
-                setFocusedConnectorProvenance(target)
-                setSurface('connector-runs')
-              }}
-            />
-          ) : (
-            <ConnectorRunsPanel
-              connectorsApi={connectorsApi}
-              focusedRunId={focusedConnectorProvenance?.connectorRunId ?? null}
-              focusedProvenanceTarget={focusedConnectorProvenance}
-              onViewCaptures={(filter) => {
-                setCaptureRunFilter(filter)
-                setSurface('lifecycle')
-              }}
-            />
-          )}
-        </section>
-      </main>
+          </div>
+        ) : null}
+        {isLifecycleView(currentView) ? (
+          <LifecycleWorkbench
+            key={captureRunFilter?.connectorRunId ?? 'all-captures'}
+            initialConnectorRunId={captureRunFilter?.connectorRunId ?? null}
+            selectedPhase={currentView}
+            onSelectedPhaseChange={setCurrentView}
+            onConnectorRunFilterChange={setCaptureRunFilter}
+            onOpenConnectorProvenance={(target) => {
+              setFocusedConnectorProvenance(target)
+              setCurrentView(APP_VIEWS.CONNECTOR_RUNS)
+            }}
+          />
+        ) : (
+          <ConnectorRunsPanel
+            connectorsApi={connectorsApi}
+            focusedRunId={focusedConnectorProvenance?.connectorRunId ?? null}
+            focusedProvenanceTarget={focusedConnectorProvenance}
+            onViewCaptures={(filter) => {
+              setCaptureRunFilter(filter)
+              setCurrentView(APP_VIEWS.CAPTURES)
+            }}
+          />
+        )}
+      </AppNavigationShell>
       <Toaster />
     </TooltipProvider>
   )

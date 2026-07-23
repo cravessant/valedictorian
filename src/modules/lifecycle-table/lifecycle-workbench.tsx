@@ -38,7 +38,7 @@ import {
   type ConnectorProvenanceTarget,
 } from '@/app/capture-navigation'
 
-type Phase = 'captures' | 'jobs' | 'opportunities' | 'applications'
+export type LifecyclePhase = 'captures' | 'jobs' | 'opportunities' | 'applications'
 type ApplicationMode = 'all' | 'action-queue'
 type CaptureMode = 'all' | 'processing'
 
@@ -59,6 +59,8 @@ interface WorkbenchProps {
   readonly initialConnectorRunId?: string | null
   readonly onConnectorRunFilterChange?: (filter: CaptureRunFilter | null) => void
   readonly onOpenConnectorProvenance?: (target: ConnectorProvenanceTarget) => void
+  readonly onSelectedPhaseChange?: (phase: LifecyclePhase) => void
+  readonly selectedPhase?: LifecyclePhase
 }
 
 const initial: WorkbenchState = {
@@ -73,10 +75,13 @@ export function LifecycleWorkbench({
   initialConnectorRunId = null,
   onConnectorRunFilterChange,
   onOpenConnectorProvenance,
+  onSelectedPhaseChange,
+  selectedPhase,
 }: WorkbenchProps): ReactElement {
   const [client, setClient] = useState<ValedictorianWorkspaceClient | null>(() =>
     suppliedClient === undefined ? getRendererHttpWorkspaceClient() : suppliedClient)
-  const [selected, setSelected] = useState<Phase>('captures')
+  const [uncontrolledSelected, setUncontrolledSelected] = useState<LifecyclePhase>('captures')
+  const selected = selectedPhase ?? uncontrolledSelected
   const [applicationMode, setApplicationMode] = useState<ApplicationMode>('all')
   const [captureMode, setCaptureMode] = useState<CaptureMode>('all')
   const [connectorRunId, setConnectorRunId] = useState<string | null>(initialConnectorRunId)
@@ -85,12 +90,19 @@ export function LifecycleWorkbench({
   const [jobs, setJobs] = useState<PhaseState<Job>>(initial.jobs)
   const [opportunities, setOpportunities] = useState<PhaseState<Opportunity>>(initial.opportunities)
   const [applications, setApplications] = useState<PhaseState<Application>>(initial.applications)
-  const phaseGenerations = useRef<Record<Phase, number>>({
+  const phaseGenerations = useRef<Record<LifecyclePhase, number>>({
     captures: 0,
     jobs: 0,
     opportunities: 0,
     applications: 0,
   })
+
+  const selectPhase = useCallback((phase: LifecyclePhase) => {
+    if (selectedPhase === undefined) {
+      setUncontrolledSelected(phase)
+    }
+    onSelectedPhaseChange?.(phase)
+  }, [onSelectedPhaseChange, selectedPhase])
 
   useEffect(() => {
     if (suppliedClient !== undefined) {
@@ -106,8 +118,8 @@ export function LifecycleWorkbench({
     setConnectorRunId(filter.connectorRunId)
     onConnectorRunFilterChange?.(filter)
     setCaptureMode('all')
-    setSelected('captures')
-  }), [onConnectorRunFilterChange])
+    selectPhase('captures')
+  }), [onConnectorRunFilterChange, selectPhase])
 
   const actionQueue = useActionQueue({
     client,
@@ -115,13 +127,13 @@ export function LifecycleWorkbench({
   })
 
   const load = useCallback(async function loadAllPhases() {
-    const generations: Record<Phase, number> = {
+    const generations: Record<LifecyclePhase, number> = {
       captures: ++phaseGenerations.current.captures,
       jobs: ++phaseGenerations.current.jobs,
       opportunities: ++phaseGenerations.current.opportunities,
       applications: ++phaseGenerations.current.applications,
     }
-    const isCurrent = (phase: Phase) => generations[phase] === phaseGenerations.current[phase]
+    const isCurrent = (phase: LifecyclePhase) => generations[phase] === phaseGenerations.current[phase]
     if (!client) {
       const unavailable: LifecycleLoadState = {
         status: 'failure',
@@ -188,7 +200,7 @@ export function LifecycleWorkbench({
 
   useEffect(() => { void load() }, [load])
 
-  const refreshPhase = useCallback(async function refreshLifecyclePhase(phase: Phase) {
+  const refreshPhase = useCallback(async function refreshLifecyclePhase(phase: LifecyclePhase) {
     if (!client) return
     const generation = ++phaseGenerations.current[phase]
     const isCurrent = () => generation === phaseGenerations.current[phase]
@@ -348,7 +360,7 @@ export function LifecycleWorkbench({
             : `${phaseLabel(selected)} are a first-class stage of the Job lifecycle.`}
         </p>
       </header>
-      <LifecycleRail selected={selected} onSelect={setSelected} counts={counts} />
+      <LifecycleRail selected={selected} onSelect={selectPhase} counts={counts} />
       {selected === 'captures' ? (
         <div className="flex min-w-0 flex-col gap-4">
           <ToggleGroup
@@ -462,13 +474,13 @@ export function LifecycleWorkbench({
 }
 
 interface LifecycleRailProps {
-  readonly selected: Phase
-  readonly onSelect: (phase: Phase) => void
-  readonly counts: Readonly<Record<Phase, number>>
+  readonly selected: LifecyclePhase
+  readonly onSelect: (phase: LifecyclePhase) => void
+  readonly counts: Readonly<Record<LifecyclePhase, number>>
 }
 
 function LifecycleRail({ selected, onSelect, counts }: LifecycleRailProps): ReactElement {
-  const steps: ReadonlyArray<{ phase: Phase; label: string }> = [
+  const steps: ReadonlyArray<{ phase: LifecyclePhase; label: string }> = [
     { phase: 'captures', label: 'Captures' },
     { phase: 'jobs', label: 'Jobs' },
     { phase: 'opportunities', label: 'Opportunities' },
@@ -504,7 +516,7 @@ function LifecycleRail({ selected, onSelect, counts }: LifecycleRailProps): Reac
   )
 }
 
-function phaseLabel(phase: Phase): string {
+function phaseLabel(phase: LifecyclePhase): string {
   if (phase === 'captures') return 'Captures'
   if (phase === 'jobs') return 'Jobs'
   if (phase === 'opportunities') return 'Opportunities'

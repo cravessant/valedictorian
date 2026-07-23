@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-alpha.50
+
+- Restore the desktop application chrome and persistent navigation sidebar around the canonical
+  Capture → Job → Opportunity → Application lifecycle workbench.
+- Keep sidebar and lifecycle-rail selection synchronized, retain Connector Run → filtered Capture
+  provenance navigation, and persist desktop collapse state through workspace settings.
+- Restore the responsive narrow-window drawer and remove the temporary centered placeholder shell.
+
 ## 0.1.0-alpha.49
 
 - Adopt the Jobright `0.18.0` connector (core + test-harness `0.18.0`) and expose its pure
@@ -20,4 +28,3 @@
 - Preserve Action Queue as an Applications-owned, policy- and time-derived projection.
 - Move connector retry ownership to `connector_capture_work` and recover restart-stale claims.
 - Expand lifecycle migration, restart, ownership, and packaged PGlite proof.
-

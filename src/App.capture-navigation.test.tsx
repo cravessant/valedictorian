@@ -101,7 +101,7 @@ describe('App Capture navigation', () => {
     await user.click(screen.getByRole('button', { name: 'Clear run filter' }))
     expect(screen.queryByText('Filtered to connector run run/one')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Connector runs' }))
-    await user.click(screen.getByRole('button', { name: 'Job lifecycle' }))
+    await user.click(screen.getByRole('button', { name: 'Captures' }))
     await screen.findByRole('table', { name: 'Captures' })
     expect(screen.queryByText('Filtered to connector run run/one')).not.toBeInTheDocument()
     const finalUrl = request.mock.calls.at(-4)?.[0]

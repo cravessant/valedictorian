@@ -186,9 +186,10 @@ interface AppSidebarProps {
   settings: AppSettings
   settingsOpen: boolean
   temporary: boolean
+  visibleViews?: readonly MainAppView[]
   onMouseLeave: () => void
-  onOpenProfilePage: () => void
-  onOpenSettingsPage: () => void
+  onOpenProfilePage?: () => void
+  onOpenSettingsPage?: () => void
   onViewChange: (
     view: Exclude<MainAppView, typeof APP_VIEWS.PROFILE>,
   ) => void
@@ -201,6 +202,7 @@ function AppSidebar({
   settings,
   settingsOpen,
   temporary,
+  visibleViews,
   onMouseLeave,
   onOpenProfilePage,
   onOpenSettingsPage,
@@ -208,10 +210,15 @@ function AppSidebar({
   onSettingsOpenChange,
   onSettingsPatch,
 }: AppSidebarProps) {
+  const isVisible = (view: MainAppView) => visibleViews?.includes(view) ?? true
   const connectorsChildrenId = useId()
   const connectorsChildActive =
     currentView === APP_VIEWS.CONNECTORS || currentView === APP_VIEWS.CONNECTOR_RUNS
-  const [connectorsExpanded, setConnectorsExpanded] = useState(connectorsChildActive)
+  const connectorsOnlyShowsRuns = !isVisible(APP_VIEWS.CONNECTORS)
+    && isVisible(APP_VIEWS.CONNECTOR_RUNS)
+  const [connectorsExpanded, setConnectorsExpanded] = useState(
+    connectorsChildActive || connectorsOnlyShowsRuns,
+  )
 
   useEffect(() => {
     if (connectorsChildActive) {
@@ -241,7 +248,7 @@ function AppSidebar({
 
           <nav aria-label="Application views">
             <SidebarMenu>
-              <SidebarMenuItem>
+              {isVisible(APP_VIEWS.PROFILE) && onOpenProfilePage ? <SidebarMenuItem>
                 <SidebarMenuButton
                   type="button"
                   isActive={currentView === APP_VIEWS.PROFILE}
@@ -251,13 +258,13 @@ function AppSidebar({
                   <CircleUserRound className="h-4 w-4" aria-hidden="true" />
                   Profile
                 </SidebarMenuButton>
-              </SidebarMenuItem>
+              </SidebarMenuItem> : null}
             </SidebarMenu>
               <SidebarGroup className="px-0 py-2">
                 <SidebarGroupLabel className="h-auto px-2 py-1">Job lifecycle</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    <SidebarMenuItem>
+                    {isVisible(APP_VIEWS.CAPTURES) ? <SidebarMenuItem>
                       <SidebarMenuButton
                         type="button"
                         isActive={currentView === APP_VIEWS.CAPTURES}
@@ -267,8 +274,8 @@ function AppSidebar({
                         <Database className="h-4 w-4" aria-hidden="true" />
                         Captures
                       </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
+                    </SidebarMenuItem> : null}
+                    {isVisible(APP_VIEWS.JOBS) ? <SidebarMenuItem>
                       <SidebarMenuButton
                         type="button"
                         isActive={currentView === APP_VIEWS.JOBS}
@@ -278,8 +285,8 @@ function AppSidebar({
                         <Server className="h-4 w-4" aria-hidden="true" />
                         Jobs
                       </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
+                    </SidebarMenuItem> : null}
+                    {isVisible(APP_VIEWS.OPPORTUNITIES) ? <SidebarMenuItem>
                       <SidebarMenuButton
                         type="button"
                         isActive={currentView === APP_VIEWS.OPPORTUNITIES}
@@ -289,8 +296,8 @@ function AppSidebar({
                         <Search className="h-4 w-4" aria-hidden="true" />
                         Opportunities
                       </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
+                    </SidebarMenuItem> : null}
+                    {isVisible(APP_VIEWS.APPLICATIONS) ? <SidebarMenuItem>
                       <SidebarMenuButton
                         type="button"
                         isActive={currentView === APP_VIEWS.APPLICATIONS}
@@ -300,12 +307,12 @@ function AppSidebar({
                         <Globe2 className="h-4 w-4" aria-hidden="true" />
                         Applications
                       </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    </SidebarMenuItem> : null}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
             <SidebarMenu>
-              <Collapsible
+              {isVisible(APP_VIEWS.CONNECTORS) || isVisible(APP_VIEWS.CONNECTOR_RUNS) ? <Collapsible
                 asChild
                 open={connectorsExpanded}
                 onOpenChange={setConnectorsExpanded}
@@ -323,7 +330,7 @@ function AppSidebar({
                   </CollapsibleTrigger>
                   <CollapsibleContent id={connectorsChildrenId}>
                     <SidebarMenuSub className="mx-0 ml-4 translate-x-0 px-0 py-0 pl-2">
-                      <SidebarMenuSubItem>
+                      {isVisible(APP_VIEWS.CONNECTORS) ? <SidebarMenuSubItem>
                         <SidebarMenuSubButton
                           asChild
                           isActive={currentView === APP_VIEWS.CONNECTORS}
@@ -338,14 +345,15 @@ function AppSidebar({
                             Overview
                           </button>
                         </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                      <SidebarMenuSubItem>
+                      </SidebarMenuSubItem> : null}
+                      {isVisible(APP_VIEWS.CONNECTOR_RUNS) ? <SidebarMenuSubItem>
                         <SidebarMenuSubButton
                           asChild
                           isActive={currentView === APP_VIEWS.CONNECTOR_RUNS}
                         >
                           <button
                             type="button"
+                            aria-label="Connector runs"
                             aria-current={
                               currentView === APP_VIEWS.CONNECTOR_RUNS ? 'page' : undefined
                             }
@@ -354,11 +362,11 @@ function AppSidebar({
                             Runs
                           </button>
                         </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
+                      </SidebarMenuSubItem> : null}
                     </SidebarMenuSub>
                   </CollapsibleContent>
                 </SidebarMenuItem>
-              </Collapsible>
+              </Collapsible> : null}
             </SidebarMenu>
           </nav>
         </div>
@@ -383,7 +391,7 @@ interface SettingsPopoverProps {
   settings: AppSettings
   onClose: () => void
   onOpenChange: (open: boolean) => void
-  onOpenSettingsPage: () => void
+  onOpenSettingsPage?: () => void
   onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
 }
 
@@ -476,7 +484,7 @@ function SettingsPopover({
               }
             />
           </Label>
-          <div className="mt-3 border-t border-border pt-3">
+          {onOpenSettingsPage ? <div className="mt-3 border-t border-border pt-3">
             <Button
               type="button"
               variant="ghost"
@@ -489,7 +497,7 @@ function SettingsPopover({
             <p className="mt-2 text-xs text-muted-foreground">
               Backend changes apply after restart.
             </p>
-          </div>
+          </div> : null}
         </div>
       ) : null}
       <Button
