@@ -7,20 +7,24 @@ The `valedictorian-cli` package name was reported by npm as unpublished on June 
 For the first publish:
 
 ```sh
-corepack enable
+mise install
 pnpm install
 pnpm lint
 pnpm test
 pnpm build
-npm pack --dry-run
+pnpm pack --dry-run
 npm login
 npm publish --access public --tag alpha --provenance=false
 ```
 
+Installation, checks, and packing use pnpm. Registry authentication and
+publication stay on the npm CLI; automated releases use that boundary for
+Trusted Publishing OIDC.
+
 After the package exists on npm, configure npm Trusted Publishing for:
 
 ```sh
-npx npm@11.16.0 trust github valedictorian-cli \
+pnpm dlx npm@11.16.0 trust github valedictorian-cli \
   --repo KennySparxie/valedictorian-cli \
   --file publish.yml \
   --allow-publish \
