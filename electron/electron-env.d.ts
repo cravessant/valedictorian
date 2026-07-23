@@ -27,6 +27,7 @@ interface Window {
   applications: import('../src/ipc/applications.preload').ApplicationsPreloadApi
   profile: import('../src/ipc/profile.preload').ProfilePreloadApi
   actionQueue: import('../src/ipc/action-queue.preload').ActionQueuePreloadApi
+  valedictorianNavigation: import('../src/ipc/app-navigation.preload').AppNavigationPreloadApi
   connectors: import('../src/ipc/connectors.preload').ConnectorsPreloadApi
   scores: import('../src/ipc/scores.preload').ScoresPreloadApi
   settings: import('../src/ipc/settings.preload').SettingsPreloadApi

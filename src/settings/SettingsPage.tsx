@@ -66,9 +66,7 @@ interface SettingsPageProps {
 
 interface SettingsSidebarProps {
   selectedPanel: SettingsPanelId
-  temporary: boolean
   onBack: () => void
-  onMouseLeave: () => void
   onPanelChange: (panel: SettingsPanelId) => void
 }
 
@@ -158,9 +156,7 @@ const settingsNavGroups: SettingsNavGroup[] = [
 
 export function SettingsSidebar({
   selectedPanel,
-  temporary,
   onBack,
-  onMouseLeave,
   onPanelChange,
 }: SettingsSidebarProps) {
   const [settingsSearch, setSettingsSearch] = useState('')
@@ -178,11 +174,8 @@ export function SettingsSidebar({
   return (
     <Sidebar
       aria-label="Settings navigation"
-      className={`absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none ${
-        temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
-      }`}
+      className="absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:static md:z-auto md:h-[calc(100vh-3rem)] md:max-w-none md:shadow-none"
       role="complementary"
-      onMouseLeave={onMouseLeave}
     >
       <ScrollArea className="min-h-0 flex-1">
         <div>

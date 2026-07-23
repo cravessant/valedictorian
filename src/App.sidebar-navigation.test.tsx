@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
-import { createConnectorsApi } from './App.test-helpers'
+import { createConnectorsApi, createUpdatesApi } from './App.test-helpers'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import { defaultAppSettings, type AppSettings } from './settings/app-settings'
@@ -15,6 +15,7 @@ afterEach(() => {
   cleanup()
   window.matchMedia = originalMatchMedia
   delete (window as Window & { valedictorianHttp?: unknown }).valedictorianHttp
+  delete (window as Window & { valedictorianNavigation?: unknown }).valedictorianNavigation
 })
 
 describe('App sidebar navigation', () => {
@@ -71,6 +72,9 @@ describe('App sidebar navigation', () => {
     })
     expect(screen.queryByRole('complementary', { name: 'Application navigation' }))
       .not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show sidebar temporarily' }))
+      .not.toBeInTheDocument()
+    expect(screen.getByTestId('app-layout')).toHaveClass('md:grid-cols-1')
     expect(settingsApi.update).toHaveBeenLastCalledWith({ sidebarCollapsed: true })
 
     await user.click(screen.getByRole('button', { name: 'Expand sidebar' }))
@@ -110,6 +114,75 @@ describe('App sidebar navigation', () => {
     await user.click(screen.getByRole('button', { name: 'Close sidebar drawer' }))
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-sidebar-state', 'drawer-closed')
     expect(settingsApi.update).not.toHaveBeenCalled()
+  })
+
+  it('opens quick settings and routes its footer action to the full settings page', async () => {
+    const user = userEvent.setup()
+    const { settingsApi, workspaceApi } = installAppApis()
+
+    render(
+      <App
+        settingsApi={settingsApi}
+        workspaceApi={workspaceApi}
+        connectorsApi={createConnectorsApi()}
+      />,
+    )
+    await screen.findByRole('table', { name: 'Captures' })
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    const quickSettings = screen.getByRole('dialog', { name: 'Quick settings' })
+    expect(within(quickSettings).getByRole('button', { name: 'Open all settings' }))
+      .toBeInTheDocument()
+
+    await user.click(within(quickSettings).getByRole('button', { name: 'Open all settings' }))
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'settings')
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByRole('complementary', { name: 'Settings navigation' })).toBeInTheDocument()
+  })
+
+  it('opens full settings from the buffered native navigation subscription', async () => {
+    let openSettings: (() => void) | undefined
+    Object.defineProperty(window, 'valedictorianNavigation', {
+      configurable: true,
+      value: {
+        onOpenSettings(listener: () => void) {
+          openSettings = listener
+          return () => undefined
+        },
+      },
+    })
+    const { settingsApi, workspaceApi } = installAppApis()
+
+    render(
+      <App
+        settingsApi={settingsApi}
+        workspaceApi={workspaceApi}
+        connectorsApi={createConnectorsApi()}
+      />,
+    )
+    await screen.findByRole('table', { name: 'Captures' })
+
+    act(() => openSettings?.())
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-view', 'settings')
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+  })
+
+  it('keeps the updater action in the main app topbar when updates are enabled', async () => {
+    const user = userEvent.setup()
+    const updatesApi = createUpdatesApi({ currentVersion: '0.1.0', status: 'idle' })
+    const { settingsApi, workspaceApi } = installAppApis()
+
+    render(
+      <App
+        settingsApi={settingsApi}
+        workspaceApi={workspaceApi}
+        connectorsApi={createConnectorsApi()}
+        updatesApi={updatesApi}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Check for updates' }))
+    expect(updatesApi.check).toHaveBeenCalledOnce()
   })
 })
 

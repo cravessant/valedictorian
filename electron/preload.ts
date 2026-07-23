@@ -1,4 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron'
+import { createAppNavigationPreloadApi } from '../src/ipc/app-navigation.preload'
 import { createPolicyPreloadApi } from '../src/ipc/policy.preload'
 import { createProfilePreloadApi } from '../src/ipc/profile.preload'
 import { createConnectorsPreloadApi } from '../src/ipc/connectors.preload'
@@ -29,6 +30,10 @@ if (rendererHttpConfig) {
 
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('policy', createPolicyPreloadApi(ipcRenderer))
+contextBridge.exposeInMainWorld(
+  'valedictorianNavigation',
+  createAppNavigationPreloadApi(ipcRenderer),
+)
 contextBridge.exposeInMainWorld('profile', createProfilePreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('connectors', createConnectorsPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('scores', createScoresPreloadApi(ipcRenderer))
@@ -36,7 +41,3 @@ contextBridge.exposeInMainWorld('settings', createSettingsPreloadApi(ipcRenderer
 contextBridge.exposeInMainWorld('valedictorianUpdates', createUpdatesPreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('valedictorianWindowChrome', createWindowChromePreloadApi(ipcRenderer))
 contextBridge.exposeInMainWorld('workspace', createWorkspacePreloadApi(ipcRenderer))
-
-ipcRenderer.on('valedictorian:open-settings', () => {
-  window.dispatchEvent(new Event('valedictorian:open-settings'))
-})

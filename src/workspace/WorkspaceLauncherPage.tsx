@@ -67,7 +67,7 @@ function WorkspaceLauncherPage({
       >
         <aside
           aria-label="Recent workspaces"
-          className="border-r border-border bg-card px-6 pb-6 pt-32"
+          className="border-r border-border bg-card px-6 pb-6 pt-14"
         >
           <h2 className="sr-only">Recent workspaces</h2>
           <div className="space-y-2">

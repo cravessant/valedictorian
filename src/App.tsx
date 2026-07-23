@@ -5,10 +5,17 @@ import { useAppBootstrapLoads } from './app/use-app-bootstrap-loads'
 import { AppNavigationShell } from './app/AppNavigationShell'
 import { APP_VIEWS, type MainAppView } from './app/types'
 import {
+  SETTINGS_PANELS,
+  type SettingsPanelId,
+} from './app/types'
+import {
   LifecycleWorkbench,
   type LifecyclePhase,
 } from './modules/lifecycle-table/lifecycle-workbench'
 import type { SettingsPreloadApi } from './ipc/settings.preload'
+import type { PolicyPreloadApi } from './ipc/policy.preload'
+import type { ProfilePreloadApi } from './ipc/profile.preload'
+import type { UpdatesPreloadApi } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
 import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
 import {
@@ -19,12 +26,26 @@ import {
 import { applyResolvedTheme } from './theme/theme-applier'
 import { resolveTheme } from './theme/theme-registry'
 import { ConnectorRunsPanel } from './settings/ConnectorRunsPanel'
+import { SettingsPage } from './settings/SettingsPage'
+import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
+import { requiresRestart } from './settings/requiresRestart'
+import { useAppUpdates } from './updates/use-app-updates'
+import {
+  rendererPolicyApi,
+  rendererProfileApi,
+  rendererScheduleApi,
+  rendererUpdatesApi,
+} from './app/renderer-settings-apis'
 import type { CaptureRunFilter, ConnectorProvenanceTarget } from './app/capture-navigation'
 
 interface AppProps {
   settingsApi?: SettingsPreloadApi
   workspaceApi?: WorkspacePreloadApi
   connectorsApi?: ConnectorsPreloadApi
+  connectorScheduleApi?: ConnectorScheduleUiApi
+  policyApi?: PolicyPreloadApi
+  profileApi?: ProfilePreloadApi
+  updatesApi?: UpdatesPreloadApi
   [key: string]: unknown
 }
 
@@ -115,8 +136,14 @@ export default function App({
   settingsApi = rendererSettingsApi(),
   workspaceApi = rendererWorkspaceApi(),
   connectorsApi = rendererConnectorsApi(),
+  connectorScheduleApi = rendererScheduleApi,
+  policyApi = rendererPolicyApi(),
+  profileApi = rendererProfileApi(),
+  updatesApi = rendererUpdatesApi(),
 }: AppProps) {
   const {
+    reloadSettings,
+    reloadWorkspace,
     setSettings,
     settings,
     settingsLoadFailure,
@@ -124,18 +151,35 @@ export default function App({
     workspaceLoadFailure,
   } = useAppBootstrapLoads({ settingsApi, workspaceApi })
   const [currentView, setCurrentView] = useState<MainAppView>(APP_VIEWS.CAPTURES)
+  const [settingsPageOpen, setSettingsPageOpen] = useState(false)
+  const [selectedSettingsPanel, setSelectedSettingsPanel] = useState<SettingsPanelId>(
+    SETTINGS_PANELS.GENERAL,
+  )
+  const [settingsRestartRequired, setSettingsRestartRequired] = useState(false)
   const [captureRunFilter, setCaptureRunFilter] = useState<CaptureRunFilter | null>(null)
   const [focusedConnectorProvenance, setFocusedConnectorProvenance] = useState<ConnectorProvenanceTarget | null>(null)
+  const { checkForUpdates, installUpdate, updateState } = useAppUpdates(updatesApi)
 
   useEffect(() => {
     applyResolvedTheme(resolveTheme(settings.theme))
   }, [settings.theme])
+
+  useEffect(() => {
+    const openSettings = () => setSettingsPageOpen(true)
+    const unsubscribe = window.valedictorianNavigation?.onOpenSettings(openSettings)
+    window.addEventListener('valedictorian:open-settings', openSettings)
+    return () => {
+      unsubscribe?.()
+      window.removeEventListener('valedictorian:open-settings', openSettings)
+    }
+  }, [])
 
   async function updateSettings(patch: AppSettingsPatch) {
     const previousSettings = settings
     setSettings(normalizeAppSettings({ ...settings, ...patch }))
     try {
       setSettings(await settingsApi.update(patch))
+      if (requiresRestart(patch)) setSettingsRestartRequired(true)
     } catch (error: unknown) {
       setSettings(previousSettings)
       throw error
@@ -143,6 +187,7 @@ export default function App({
   }
 
   function changeView(view: MainAppView) {
+    setSettingsPageOpen(false)
     setFocusedConnectorProvenance(null)
     setCurrentView(view)
   }
@@ -152,7 +197,51 @@ export default function App({
       <AppNavigationShell
         currentView={currentView}
         settings={settings}
+        settingsView={settingsPageOpen ? {
+          content: (
+            <SettingsPage
+              connectorsApi={connectorsApi}
+              connectorScheduleApi={connectorScheduleApi}
+              contentColumnClass=""
+              policyApi={policyApi}
+              profileApi={profileApi}
+              restartRequired={settingsRestartRequired}
+              selectedPanel={selectedSettingsPanel}
+              settings={settings}
+              settingsLoadFailure={settingsLoadFailure}
+              onRetrySettingsLoad={reloadSettings}
+              workspace={workspace}
+              workspaceApi={workspaceApi}
+              workspaceLoadFailure={workspaceLoadFailure}
+              onRetryWorkspaceLoad={reloadWorkspace}
+              onConnectorRunSettled={() => undefined}
+              onOpenConnectorRuns={(runId) => {
+                setSettingsPageOpen(false)
+                if (runId) {
+                  setFocusedConnectorProvenance({
+                    connectorRunId: runId,
+                    id: runId,
+                    kind: 'run',
+                  })
+                }
+                setCurrentView(APP_VIEWS.CONNECTOR_RUNS)
+              }}
+              onSettingsPatch={updateSettings}
+            />
+          ),
+          onBack: () => setSettingsPageOpen(false),
+          onPanelChange: setSelectedSettingsPanel,
+          selectedPanel: selectedSettingsPanel,
+        } : undefined}
         title={`${workspace?.name ?? 'Workspace'} · ${viewTitle(currentView)}`}
+        updateState={updateState}
+        onCheckForUpdates={() => {
+          void checkForUpdates()
+        }}
+        onInstallUpdate={() => {
+          void installUpdate()
+        }}
+        onOpenSettingsPage={() => setSettingsPageOpen(true)}
         onSettingsPatch={updateSettings}
         onViewChange={changeView}
       >

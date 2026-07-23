@@ -135,9 +135,7 @@ describe('SettingsPage developer and panel navigation', () => {
         <>
           <SettingsSidebar
             selectedPanel={selectedPanel}
-            temporary={false}
             onBack={vi.fn()}
-            onMouseLeave={vi.fn()}
             onPanelChange={setSelectedPanel}
           />
           <SettingsPage {...baseProps} selectedPanel={selectedPanel} />

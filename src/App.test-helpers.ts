@@ -539,7 +539,7 @@ export function lastCreatedConnectorInstanceId(connectorsApi: ConnectorsPreloadA
 export async function openSettingsPage() {
   await screen.findByRole('table', { name: 'Applications' })
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Open all settings' }))
 }
 
 export async function openConnectorDetails(displayName = 'Jobright internslist') {

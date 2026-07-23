@@ -185,9 +185,7 @@ interface AppSidebarProps {
   currentView: MainAppView
   settings: AppSettings
   settingsOpen: boolean
-  temporary: boolean
   visibleViews?: readonly MainAppView[]
-  onMouseLeave: () => void
   onOpenProfilePage?: () => void
   onOpenSettingsPage?: () => void
   onViewChange: (
@@ -201,9 +199,7 @@ function AppSidebar({
   currentView,
   settings,
   settingsOpen,
-  temporary,
   visibleViews,
-  onMouseLeave,
   onOpenProfilePage,
   onOpenSettingsPage,
   onViewChange,
@@ -229,11 +225,8 @@ function AppSidebar({
   return (
     <Sidebar
       aria-label="Application navigation"
-      className={`absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible ${
-        temporary ? 'md:absolute md:left-0 md:top-0 md:z-40 md:shadow-2xl' : 'md:static md:z-auto md:shadow-none'
-      }`}
+      className="absolute left-0 top-0 z-40 h-full w-[280px] max-w-[85vw] overflow-hidden border-r border-border bg-card/80 p-4 shadow-2xl md:static md:z-auto md:h-[calc(100vh-3rem)] md:max-w-none md:overflow-visible md:shadow-none"
       role="complementary"
-      onMouseLeave={onMouseLeave}
     >
       <ScrollArea className="min-h-0 flex-1">
         <div>
@@ -425,8 +418,8 @@ function SettingsPopover({
       {open ? (
         <div
           role="dialog"
-          aria-label="Settings"
-          className="absolute bottom-12 left-0 w-[calc(100vw-2rem)] max-w-sm rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
+          aria-label="Quick settings"
+          className="absolute bottom-12 left-0 flex max-h-[calc(100vh-5rem)] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-2xl"
         >
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
@@ -453,38 +446,40 @@ function SettingsPopover({
             </Tooltip>
           </div>
 
-          <div className="divide-y divide-border rounded-md border border-border bg-card/80">
-            <SettingsToggleRow
-              checked={remoteEnabled}
-              description="Point the app and tools at a remote HTTP API."
-              icon={<Globe2 className="h-4 w-4" aria-hidden="true" />}
-              label="Use remote backend"
-              onChange={(checked) => updateRuntimeMode(checked ? 'remote' : 'local-desktop')}
-            />
-            <SettingsToggleRow
-              checked={sharingEnabled}
-              description="Prepare this machine for local API/Tailscale access."
-              disabled={remoteEnabled}
-              icon={<Server className="h-4 w-4" aria-hidden="true" />}
-              label="Local API sharing"
-              onChange={(checked) => updateRuntimeMode(checked ? 'local-shared' : 'local-desktop')}
-            />
-          </div>
+          <div className="min-h-0 overflow-y-auto">
+            <div className="divide-y divide-border rounded-md border border-border bg-card/80">
+              <SettingsToggleRow
+                checked={remoteEnabled}
+                description="Point the app and tools at a remote HTTP API."
+                icon={<Globe2 className="h-4 w-4" aria-hidden="true" />}
+                label="Use remote backend"
+                onChange={(checked) => updateRuntimeMode(checked ? 'remote' : 'local-desktop')}
+              />
+              <SettingsToggleRow
+                checked={sharingEnabled}
+                description="Prepare this machine for local API/Tailscale access."
+                disabled={remoteEnabled}
+                icon={<Server className="h-4 w-4" aria-hidden="true" />}
+                label="Local API sharing"
+                onChange={(checked) => updateRuntimeMode(checked ? 'local-shared' : 'local-desktop')}
+              />
+            </div>
 
-          <Label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
-            Remote API URL
-            <Input
-              aria-label="Remote API URL"
-              disabled={!remoteEnabled}
-              value={settings.remoteApiUrl}
-              onChange={(event) =>
-                patchSettings({
-                  remoteApiUrl: event.target.value,
-                })
-              }
-            />
-          </Label>
-          {onOpenSettingsPage ? <div className="mt-3 border-t border-border pt-3">
+            <Label className="mt-3 grid gap-1 text-xs font-medium text-muted-foreground">
+              Remote API URL
+              <Input
+                aria-label="Remote API URL"
+                disabled={!remoteEnabled}
+                value={settings.remoteApiUrl}
+                onChange={(event) =>
+                  patchSettings({
+                    remoteApiUrl: event.target.value,
+                  })
+                }
+              />
+            </Label>
+          </div>
+          {onOpenSettingsPage ? <div className="mt-3 shrink-0 border-t border-border pt-3">
             <Button
               type="button"
               variant="ghost"
@@ -492,7 +487,7 @@ function SettingsPopover({
               onClick={onOpenSettingsPage}
             >
               <SettingsIcon className="h-4 w-4" aria-hidden="true" />
-              Open settings
+              Open all settings
             </Button>
             <p className="mt-2 text-xs text-muted-foreground">
               Backend changes apply after restart.

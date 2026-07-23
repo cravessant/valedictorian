@@ -5,7 +5,6 @@ import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { runPackagedPgliteSmoke } from './pglite-packaged-smoke'
-import { runLegacyJobrightBrowserPartitionCleanup } from './legacy-jobright-partition-cleanup'
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
 import { createRuntimeQuitBarrier, stopRuntimeLifecycle } from './runtime-lifecycle'
@@ -630,8 +629,6 @@ app.whenReady().then(async () => {
     }
     return
   }
-
-  await runLegacyJobrightBrowserPartitionCleanup({ userDataPath: app.getPath('userData') })
 
   ipcMain.handle('window-chrome:get-state', (event) =>
     getWindowChromeState(BrowserWindow.fromWebContents(event.sender)),

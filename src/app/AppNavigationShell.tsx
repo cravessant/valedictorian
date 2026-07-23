@@ -7,7 +7,10 @@ import { APP_VIEWS, type MainAppView } from './types'
 import { AppSidebar, AppTopbar } from './AppChrome'
 import { useMediaQuery } from './useMediaQuery'
 import { useWindowChromeState } from './use-window-chrome-state'
+import type { UpdateState } from '@/ipc/updates.preload'
+import { SettingsSidebar } from '@/settings/SettingsPage'
 import type { AppSettings, AppSettingsPatch } from '@/settings/app-settings'
+import type { SettingsPanelId } from './types'
 
 const narrowSidebarMediaQuery = '(max-width: 767px)'
 const visibleAppViews: readonly MainAppView[] = [
@@ -22,7 +25,17 @@ interface AppNavigationShellProps {
   readonly children: ReactNode
   readonly currentView: MainAppView
   readonly settings: AppSettings
+  readonly settingsView?: {
+    content: ReactNode
+    onBack: () => void
+    onPanelChange: (panel: SettingsPanelId) => void
+    selectedPanel: SettingsPanelId
+  }
   readonly title: string
+  readonly updateState?: UpdateState | null
+  readonly onCheckForUpdates?: () => void
+  readonly onInstallUpdate?: () => void
+  readonly onOpenSettingsPage?: () => void
   readonly onSettingsPatch: (patch: AppSettingsPatch) => void | Promise<void>
   readonly onViewChange: (view: MainAppView) => void
 }
@@ -31,30 +44,28 @@ export function AppNavigationShell({
   children,
   currentView,
   settings,
+  settingsView,
   title,
+  updateState,
+  onCheckForUpdates,
+  onInstallUpdate,
+  onOpenSettingsPage,
   onSettingsPatch,
   onViewChange,
 }: AppNavigationShellProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [narrowSidebarOpen, setNarrowSidebarOpen] = useState(false)
   const { toast } = useToast()
   const isNarrowViewport = useMediaQuery(narrowSidebarMediaQuery)
   const windowChromeState = useWindowChromeState()
   const sidebarVisible = isNarrowViewport
     ? narrowSidebarOpen
-    : !settings.sidebarCollapsed || sidebarHoverExpanded
+    : !settings.sidebarCollapsed
   const sidebarState = isNarrowViewport
     ? narrowSidebarOpen ? 'drawer-open' : 'drawer-closed'
-    : settings.sidebarCollapsed
-      ? sidebarHoverExpanded ? 'hover' : 'collapsed'
-      : 'expanded'
-  const temporaryDesktopSidebar = !isNarrowViewport
-    && settings.sidebarCollapsed
-    && sidebarHoverExpanded
+    : settings.sidebarCollapsed ? 'collapsed' : 'expanded'
 
   function closeTransientSidebar() {
-    setSidebarHoverExpanded(false)
     setNarrowSidebarOpen(false)
   }
 
@@ -62,9 +73,6 @@ export function AppNavigationShell({
     if (isNarrowViewport) {
       setNarrowSidebarOpen((open) => !open)
       return
-    }
-    if (settings.sidebarCollapsed) {
-      setSidebarHoverExpanded(false)
     }
     void Promise.resolve(onSettingsPatch({
       sidebarCollapsed: !settings.sidebarCollapsed,
@@ -81,25 +89,20 @@ export function AppNavigationShell({
       className="relative min-h-screen text-foreground"
       data-sidebar-state={sidebarState}
       data-testid="app-shell"
-      data-view={currentView}
+      data-view={settingsView ? APP_VIEWS.SETTINGS : currentView}
     >
       <AppTopbar
         isFullScreen={windowChromeState.isFullScreen}
         sidebarCollapsed={isNarrowViewport ? !narrowSidebarOpen : settings.sidebarCollapsed}
-        title={title}
+        title={settingsView ? 'Settings' : title}
+        updateState={updateState}
+        onCheckForUpdates={onCheckForUpdates}
+        onInstallUpdate={onInstallUpdate}
         onToggleSidebar={toggleSidebar}
       />
-      {!isNarrowViewport && settings.sidebarCollapsed && !sidebarHoverExpanded ? (
-        <button
-          type="button"
-          aria-label="Show sidebar temporarily"
-          className="app-no-drag absolute left-0 top-12 z-30 h-[calc(100vh-3rem)] w-2 cursor-default bg-transparent"
-          onMouseEnter={() => setSidebarHoverExpanded(true)}
-        />
-      ) : null}
       <div
         className={`relative grid h-[calc(100vh-3rem)] grid-cols-1 grid-rows-1 overflow-hidden ${
-          settings.sidebarCollapsed ? 'md:grid-cols-[0px_1fr]' : 'md:grid-cols-[280px_1fr]'
+          settings.sidebarCollapsed ? 'md:grid-cols-1' : 'md:grid-cols-[280px_1fr]'
         }`}
         data-testid="app-layout"
       >
@@ -113,29 +116,44 @@ export function AppNavigationShell({
           />
         ) : null}
         {sidebarVisible ? (
-          <AppSidebar
-            currentView={currentView}
-            settings={settings}
-            settingsOpen={settingsOpen}
-            temporary={temporaryDesktopSidebar}
-            visibleViews={visibleAppViews}
-            onMouseLeave={() => {
-              if (!isNarrowViewport && settings.sidebarCollapsed) {
-                setSidebarHoverExpanded(false)
-              }
-            }}
-            onViewChange={(view) => {
-              setSettingsOpen(false)
-              closeTransientSidebar()
-              onViewChange(view)
-            }}
-            onSettingsOpenChange={setSettingsOpen}
-            onSettingsPatch={onSettingsPatch}
-          />
+          settingsView ? (
+            <SettingsSidebar
+              selectedPanel={settingsView.selectedPanel}
+              onBack={() => {
+                settingsView.onBack()
+                closeTransientSidebar()
+              }}
+              onPanelChange={(panel) => {
+                settingsView.onPanelChange(panel)
+                closeTransientSidebar()
+              }}
+            />
+          ) : (
+            <AppSidebar
+              currentView={currentView}
+              settings={settings}
+              settingsOpen={settingsOpen}
+              visibleViews={visibleAppViews}
+              onOpenSettingsPage={onOpenSettingsPage ? () => {
+                setSettingsOpen(false)
+                closeTransientSidebar()
+                onOpenSettingsPage()
+              } : undefined}
+              onViewChange={(view) => {
+                setSettingsOpen(false)
+                closeTransientSidebar()
+                onViewChange(view)
+              }}
+              onSettingsOpenChange={setSettingsOpen}
+              onSettingsPatch={onSettingsPatch}
+            />
+          )
         ) : null}
-        <main className="h-full min-w-0 overflow-auto px-5 py-6 text-foreground sm:px-8 lg:px-10">
-          <div className="mx-auto max-w-7xl">{children}</div>
-        </main>
+        {settingsView ? settingsView.content : (
+          <main className="h-full min-w-0 overflow-auto px-5 py-6 text-foreground sm:px-8 lg:px-10">
+            <div className="mx-auto max-w-7xl">{children}</div>
+          </main>
+        )}
       </div>
     </div>
   )
