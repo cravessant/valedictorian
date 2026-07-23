@@ -10,7 +10,7 @@ import type {
   DuplicateChoice,
   LifecycleOutcome,
 } from './lifecycle-outcome-types'
-import type { LifecycleWarning, RemovalChoice } from 'sparxie'
+import type { LifecycleWarning, RemovalChoice } from '@sparxie/sdk'
 
 /**
  * Phase-neutral presentation for lifecycle mutation outcomes. Errors

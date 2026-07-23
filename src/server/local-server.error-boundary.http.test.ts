@@ -11,7 +11,7 @@ import {
   ValedictorianHttpError,
   type ConnectorScheduleErrorCode,
   type ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createBoundaryWorkspaceClient,

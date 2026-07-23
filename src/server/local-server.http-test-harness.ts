@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { createLocalValedictorianClient as createRuntimeLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import {

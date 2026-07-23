@@ -4,7 +4,7 @@ import {
   ValedictorianHttpError,
   ValedictorianTransportError,
   valedictorianFailureKindMessages,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { PolicySettingsPanel } from './PolicySettingsPanel'
 import { createPolicyApi } from '../App.test-helpers'
 

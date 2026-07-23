@@ -3,7 +3,7 @@ import {
   connectorOverviewListResultSchema,
   connectorRetirementResultSchema,
   type ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { publicConnectorStatusSummary } from '../runtime/local-connector-public-status'
 import {
   publicConnectorRunsListResult,

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultPolicyConfig, type PolicyConfig } from 'sparxie'
+import { defaultPolicyConfig, type PolicyConfig } from '@sparxie/sdk'
 import { clearDestructiveToastDedupe } from '@/components/ui/use-toast'
 import { PolicySettingsPanel } from './PolicySettingsPanel'
 import { createPolicyApi } from '../App.test-helpers'

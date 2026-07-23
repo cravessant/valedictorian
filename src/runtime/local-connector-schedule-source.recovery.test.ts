@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ConnectorScheduleSummary } from 'sparxie'
+import type { ConnectorScheduleSummary } from '@sparxie/sdk'
 import { createConnectorScheduleWorkSource } from '../modules/connectors/connector-schedule.source'
 
 describe('local connector schedule source recovery', () => {

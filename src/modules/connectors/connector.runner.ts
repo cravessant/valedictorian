@@ -598,7 +598,7 @@ export function createRunRuntime(
   authRequirements: ConnectorAuthRequirement[],
   authHost: AppConnectorAuthHost | undefined,
   sensitiveValues: Set<string>,
-  executionScopeId: import('sparxie').SourceExecutionScopeId,
+  executionScopeId: import('@sparxie/sdk').SourceExecutionScopeId,
   sessionExecutor: ReturnType<typeof createSourceSessionExecutor> | null,
   allowActionRequiredRefresh: boolean,
   progress: ConnectorProgressRuntime | undefined,

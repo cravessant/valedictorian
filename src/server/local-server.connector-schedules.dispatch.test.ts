@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createHttpValedictorianClient } from 'sparxie'
+import { createHttpValedictorianClient } from '@sparxie/sdk'
 import { completedConnectorRefreshContract } from '../modules/connectors/connector-refresh-result.test-helpers'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,

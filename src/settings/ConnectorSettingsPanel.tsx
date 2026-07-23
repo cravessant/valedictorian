@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/empty'
 import { AlertCircle, Cable } from 'lucide-react'
 import { typography, typographyClass } from '@/components/ui/typography'
-import type { InstalledConnectorDescriptor } from 'sparxie'
+import type { InstalledConnectorDescriptor } from '@sparxie/sdk'
 import { LoadFailureView } from '@/components/ui/load-failure-view'
 import { useToast } from '@/components/ui/use-toast'
 import {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ValedictorianHttpError, ValedictorianTransportError } from 'sparxie'
+import { ValedictorianHttpError, ValedictorianTransportError } from '@sparxie/sdk'
 import { Button } from '@/components/ui/button'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { FormFailureAlert } from '@/components/ui/error-primitives'

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   type ConnectorSchedulingCapability,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'

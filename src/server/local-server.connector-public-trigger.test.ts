@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createHttpValedictorianClient,
   triggerConnectorRunInputSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { registerConnectorsIpc } from '../ipc/connectors.ipc'
 import { createConnectorsPreloadApi } from '../ipc/connectors.preload'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'

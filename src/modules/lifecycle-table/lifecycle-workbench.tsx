@@ -6,7 +6,7 @@ import type {
   Job,
   Opportunity,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'

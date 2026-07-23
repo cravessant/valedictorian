@@ -4,7 +4,7 @@ import type {
   ProfileUpdateInput,
   UpsertProfileSecretInput,
   UserProfile,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 interface IpcRendererLike {
   invoke: (channel: string, payload?: unknown) => Promise<unknown>

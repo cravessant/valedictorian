@@ -6,7 +6,7 @@ import type {
   PolicyConfigPatch,
   PolicyEvidenceInput,
   PolicyEvidenceListInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 interface IpcMainLike {
   handle(

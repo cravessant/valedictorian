@@ -4,7 +4,7 @@ import {
   localSecretResolutionErrorBodies,
   type ConnectorSchedulingCapability,
   type ProfileUpdateInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
 import {
   readJsonBody,

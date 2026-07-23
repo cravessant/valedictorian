@@ -12,7 +12,7 @@ import {
   promoteCaptureToJobResultSchema,
   promoteJobToOpportunityResultSchema,
   promoteOpportunityToApplicationResultSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { toJobResource, type JobHeadRow, type JobEvidenceRefRow } from '../job/job.dto'
 import { toOpportunityResource, type OpportunityHeadRow } from '../opportunity/opportunity.dto'
 import { toApplicationResource, type ApplicationHeadRow } from '../applications/application.dto'

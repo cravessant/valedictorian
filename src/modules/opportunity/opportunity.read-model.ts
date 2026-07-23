@@ -14,7 +14,7 @@ import type {
   OpportunityHistoryResult,
   OpportunityListInput,
   OpportunityListResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { opportunities, opportunityHistory } from './opportunity.schema'
 import {

@@ -3,7 +3,7 @@ import {
   classifyErrorPresentation,
   isCanonicalAlreadyConfigured,
 } from '../app/error-presentation'
-import { ValedictorianHttpError, ValedictorianTransportError } from 'sparxie'
+import { ValedictorianHttpError, ValedictorianTransportError } from '@sparxie/sdk'
 import { JOBRIGHT_CONNECTOR_ID } from '../modules/connectors/jobright.constants'
 import type {
   ConnectorAuthUiState,

@@ -6,7 +6,7 @@ import {
   type CompanyDirectoryFilter,
   type CompanyDirectoryPage,
   type WorkspaceCompaniesClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'

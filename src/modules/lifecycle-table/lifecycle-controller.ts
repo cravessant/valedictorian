@@ -4,7 +4,7 @@ import type {
   RemovalChoice,
   RemovalResult,
   RestoreResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import type {
   LifecycleAggregateExtensions,

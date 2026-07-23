@@ -1,7 +1,7 @@
 import {
   ConnectorRetirementConflictError,
   connectorRetirementActiveWorkConflictMessage,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import type { LocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { registerConnectorsIpc } from './connectors.ipc'

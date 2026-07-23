@@ -16,7 +16,7 @@ import {
   applicationSchema,
   lifecycleApplicationHistoryResultSchema,
   lifecycleApplicationListResultSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   decodeApplicationCursor,
   deriveApplicationSnapshot,

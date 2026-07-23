@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createScoresPreloadApi } from './scores.preload'
-import type { ScoreInput, ScoreRecord } from 'sparxie'
+import type { ScoreInput, ScoreRecord } from '@sparxie/sdk'
 
 describe('scores preload API', () => {
   it('invokes the score record IPC channel with exact payload', async () => {

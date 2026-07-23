@@ -4,7 +4,7 @@ import type {
   ConnectorScheduleOccurrenceOutcome,
   ConnectorScheduleOccurrenceSummary,
   DispatchConnectorScheduleDueResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { ConnectorRunRecord } from './connector.repository'
 import type { createConnectorScheduleRepository } from './connector-schedule.repository'
 import {

@@ -5,7 +5,7 @@ import {
   connectorRunSynchronizations,
 } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
-import type { ConnectorStatusSeverity, ConnectorStatusState } from 'sparxie'
+import type { ConnectorStatusSeverity, ConnectorStatusState } from '@sparxie/sdk'
 import { mapConnectorInstance } from './connector-instance.persistence'
 import { synchronizedConnectorRun } from './connector-synchronization.persistence'
 import type { ConnectorStatusSummaryRecord } from './connector-status.persistence-types'

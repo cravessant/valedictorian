@@ -1,4 +1,4 @@
-import type { LifecycleBlocker } from 'sparxie'
+import type { LifecycleBlocker } from '@sparxie/sdk'
 
 import type { LifecycleOutcome } from './lifecycle-outcome-types'
 

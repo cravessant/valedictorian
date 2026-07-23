@@ -3,7 +3,7 @@ import {
   defaultUserProfile,
   profileDocumentSchemaVersion,
   type UserProfile,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 export function computeProfileRevision(profile: UserProfile): string {
   const payload = JSON.stringify({

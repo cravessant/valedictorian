@@ -1,4 +1,4 @@
-import type { ConnectorSchedulingCapability } from 'sparxie'
+import type { ConnectorSchedulingCapability } from '@sparxie/sdk'
 import type { ConnectorRunRecoveryLifecycle } from '../modules/connectors/connector.recovery'
 import type { LocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppConnectorRuntimePorts } from '../modules/connectors/connector.runner'

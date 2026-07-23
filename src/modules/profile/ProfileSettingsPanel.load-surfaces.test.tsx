@@ -5,7 +5,7 @@ import {
   ValedictorianTransportError,
   defaultUserProfile,
   valedictorianFailureKindMessages,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 import { createProfileApi } from '../../App.test-helpers'
 

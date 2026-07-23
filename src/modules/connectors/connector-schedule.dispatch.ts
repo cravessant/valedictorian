@@ -6,7 +6,7 @@ import {
   type ConnectorScheduleLastRunSummary,
   type ConnectorScheduleOccurrenceSummary,
   type DispatchConnectorScheduleDueResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   connectorInstances,
   connectorRuns,

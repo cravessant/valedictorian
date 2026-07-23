@@ -1,4 +1,4 @@
-import type { ProfileDocument, ProfileDocumentFormatInput, ProfileDocumentRestoreInput } from 'sparxie'
+import type { ProfileDocument, ProfileDocumentFormatInput, ProfileDocumentRestoreInput } from '@sparxie/sdk'
 import type { ProfileCapabilityError } from './profile.errors'
 import type { ProfileStore } from './profile.store'
 

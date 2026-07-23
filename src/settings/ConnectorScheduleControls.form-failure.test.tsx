@@ -4,7 +4,7 @@ import {
   ConnectorScheduleHttpError,
   connectorScheduleErrorBodies,
   type ConnectorScheduleSummary,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { ConnectorScheduleControls } from './ConnectorScheduleControls'
 import {
   CONNECTOR_SCHEDULE_LOAD_FAILURE_EXPLANATION,

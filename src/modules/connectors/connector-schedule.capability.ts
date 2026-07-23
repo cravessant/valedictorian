@@ -1,7 +1,7 @@
 import {
   unavailableConnectorSchedulingCapability,
   type ConnectorSchedulingCapability,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { connectorSchedulingUnavailableError } from './connector-schedule.errors'
 
 export type AvailableConnectorSchedulingCapability = Extract<

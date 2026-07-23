@@ -6,7 +6,7 @@
  * blockers assemble against `lifecycleBlockerSchema` omitting absent optionals.
  */
 import { describe, expect, it } from 'vitest'
-import { lifecycleActorSchema, lifecycleAuditEvidenceSchema, lifecycleBlockerSchema } from 'sparxie'
+import { lifecycleActorSchema, lifecycleAuditEvidenceSchema, lifecycleBlockerSchema } from '@sparxie/sdk'
 import {
   toContractActor,
   toLifecycleAudit,

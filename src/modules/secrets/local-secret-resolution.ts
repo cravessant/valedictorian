@@ -8,7 +8,7 @@ import {
   type LocalSecretResolutionErrorCode,
   type LocalSecretResolutionInput,
   type LocalSecretResolutionResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { SecretValue } from './secret.store'
 
 export class LocalSecretResolutionCapabilityError extends Error {

@@ -28,8 +28,8 @@ import type {
   LifecycleAuditEvidence,
   LifecycleBlocker,
   LifecycleBlockerCode,
-} from 'sparxie'
-import { lifecycleBlockerCodes } from 'sparxie'
+} from '@sparxie/sdk'
+import { lifecycleBlockerCodes } from '@sparxie/sdk'
 import { toContractActor, toLifecycleBlocker, type LifecycleBlockerInput } from './lifecycle-audit.dto'
 
 /** The branded aggregate id carried by a lifecycle resource `T`. */

@@ -9,7 +9,7 @@ import type {
   ConnectorScheduleOccurrenceSummary,
   ConnectorScheduleSummary,
   ConnectorScheduleState,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   connectorInstances,
   connectorRuns,

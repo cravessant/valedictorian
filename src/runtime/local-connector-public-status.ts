@@ -1,4 +1,4 @@
-import { connectorStatusSummarySchema, type ConnectorStatusSummary } from 'sparxie'
+import { connectorStatusSummarySchema, type ConnectorStatusSummary } from '@sparxie/sdk'
 
 export function publicConnectorStatusSummary(value: unknown): ConnectorStatusSummary {
   const status = value && typeof value === 'object'

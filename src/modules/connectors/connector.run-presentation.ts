@@ -1,7 +1,7 @@
 import type {
   ConnectorRunSummary,
   ConnectorStatusState,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 type ConnectorSynchronizationInput = Pick<
   ConnectorRunSummary,

@@ -1,5 +1,5 @@
 import type { ConnectorsPreloadApi } from '../ipc/connectors.preload'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 
 export type ConnectorSettingsUiApi = ConnectorsPreloadApi & Partial<Pick<
   ValedictorianWorkspaceClient['connectors'],

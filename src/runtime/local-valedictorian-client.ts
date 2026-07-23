@@ -2,12 +2,12 @@ import path from 'node:path'
 import type {
   ConnectorAuthReferenceInput,
   WorkspaceCompaniesClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   connectorOverviewListQuerySchema,
   connectorOverviewListResultSchema,
   DEFAULT_CONNECTOR_OVERVIEW_LIST_LIMIT,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { createLocalLifecycleMethods } from './local-lifecycle-methods'
 import { createPgliteActionQueueRepository } from '../modules/action-queue/action-queue.repository'
 import { createPgliteCaptureService } from '../modules/capture/capture.service'

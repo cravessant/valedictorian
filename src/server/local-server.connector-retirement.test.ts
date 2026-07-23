@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { ConnectorRetirementConflictError, createHttpValedictorianClient } from 'sparxie'
+import { ConnectorRetirementConflictError, createHttpValedictorianClient } from '@sparxie/sdk'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'
 import {

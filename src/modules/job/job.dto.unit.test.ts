@@ -9,7 +9,7 @@
  * `JobListResult.nextCursor` only when a further page exists.
  */
 import { describe, expect, it } from 'vitest'
-import { jobHistoryResultSchema, jobListResultSchema, jobSchema } from 'sparxie'
+import { jobHistoryResultSchema, jobListResultSchema, jobSchema } from '@sparxie/sdk'
 import {
   decodeJobCursor,
   encodeJobCursor,

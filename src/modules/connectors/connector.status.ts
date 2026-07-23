@@ -5,7 +5,7 @@ import type {
 import type {
   ConnectorOverviewRecord,
   ConnectorStatusAction as PublicConnectorStatusAction,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   pendingResolutionCount,
   runFrontiers,

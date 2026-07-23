@@ -9,7 +9,7 @@
  * reconstructed create/evaluation/disposition/remove/restore history.
  */
 import { describe, expect, it } from 'vitest'
-import { opportunityHistoryResultSchema, opportunityListResultSchema, opportunitySchema } from 'sparxie'
+import { opportunityHistoryResultSchema, opportunityListResultSchema, opportunitySchema } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import type { JobService } from '../job/job.service'

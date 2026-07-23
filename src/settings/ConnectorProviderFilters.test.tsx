@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   ConnectorOptionQueryResult,
   InstalledConnectorDescriptor,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { ConnectorProviderFilters } from './connector-filters/ConnectorProviderFilters'
 import {
   boundOptionResult,

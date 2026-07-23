@@ -5,7 +5,7 @@ import {
   retryAdviceSchema,
   sourceOperationOutcomeSchema,
   type SourceExecutionScopeId,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 type ConnectorRunTerminalStatus = 'cancelled' | 'completed' | 'failed' | 'skipped'
 

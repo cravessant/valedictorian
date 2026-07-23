@@ -27,7 +27,7 @@ import type {
   LifecycleWarning,
   LifecycleWarningCode,
   WarningOverride,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { toContractActor, toLifecycleBlocker, type LifecycleBlockerInput } from './lifecycle-audit.dto'
 import {
   classifyMutationFailure,
@@ -36,7 +36,7 @@ import {
   type MutationBlocked,
   type MutationHttpFailure,
 } from './mutation.dto'
-import type { LifecycleAuditEvidence } from 'sparxie'
+import type { LifecycleAuditEvidence } from '@sparxie/sdk'
 
 /** The `promoted` branch of a promotion result, generic over the promoted resource. */
 export interface PromotionPromoted<T> {

@@ -17,7 +17,7 @@
  * cannot safely fit so a well-formed outcome still records its terminal field/status.
  */
 import { and, eq, isNotNull } from 'drizzle-orm'
-import type { FieldResolutionOutcome } from 'sparxie'
+import type { FieldResolutionOutcome } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { SENSITIVE_KEY_SUBSTRINGS } from '../../db/sensitive-keys'
 import { captureFieldOutcomes, captureRevisions, captures } from './capture.schema'

@@ -9,7 +9,7 @@
  * service, which owns validation and policy.
  */
 import { and, asc, eq, gt, isNull, or } from 'drizzle-orm'
-import type { Job, JobHistoryResult, JobListInput, JobListResult } from 'sparxie'
+import type { Job, JobHistoryResult, JobListInput, JobListResult } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
   jobCaptureEvidenceReferences,

@@ -1,7 +1,7 @@
 import type {
   ConnectorRendererPresentationField,
   ConnectorRendererSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   InputGroup,
   InputGroupAddon,

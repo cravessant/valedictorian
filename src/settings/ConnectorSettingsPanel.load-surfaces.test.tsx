@@ -5,7 +5,7 @@ import {
   ValedictorianProtocolError,
   ValedictorianTransportError,
   valedictorianFailureKindMessages,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   createConnectorsApi,
   createConnectorsApiWithJobrightDescriptor,

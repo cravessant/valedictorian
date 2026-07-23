@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ValedictorianWorkspaceClient, ScoreInput, ScoreRecord } from 'sparxie'
+import type { ValedictorianWorkspaceClient, ScoreInput, ScoreRecord } from '@sparxie/sdk'
 import { registerScoresIpc } from './scores.ipc'
 
 describe('scores IPC registration', () => {

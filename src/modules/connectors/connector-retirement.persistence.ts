@@ -12,7 +12,7 @@ import {
   connectorRetirementActiveWorkConflictMessage,
   type ConnectorRetirementActiveWorkConflict,
   type ConnectorRetirementResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 export async function retireConnectorInstance(
   database: PgliteDatabase,

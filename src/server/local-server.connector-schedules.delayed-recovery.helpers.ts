@@ -1,4 +1,4 @@
-import type { DispatchConnectorScheduleDueResult } from 'sparxie'
+import type { DispatchConnectorScheduleDueResult } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../db/pglite'
 import { createLocalValedictorianClient } from '../runtime/local-valedictorian-client'
 import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'

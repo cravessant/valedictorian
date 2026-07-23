@@ -17,7 +17,7 @@ import type {
   LifecycleApplicationHistoryResult,
   LifecycleApplicationListInput,
   LifecycleApplicationListResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
   applicationAttemptRecords,

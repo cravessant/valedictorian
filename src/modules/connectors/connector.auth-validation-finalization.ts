@@ -1,4 +1,4 @@
-import type { SourceExecutionScopeId } from 'sparxie'
+import type { SourceExecutionScopeId } from '@sparxie/sdk'
 import type { createSourceExecutionGovernor } from '../source-execution/source-execution-governor'
 import type { AppConnectorAuthValidationResult } from './connector.runner'
 

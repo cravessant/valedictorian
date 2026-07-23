@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createHttpValedictorianClient } from 'sparxie'
+import { createHttpValedictorianClient } from '@sparxie/sdk'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'
 import { createLocalValedictorianClient } from './local-valedictorian-client.test-harness'

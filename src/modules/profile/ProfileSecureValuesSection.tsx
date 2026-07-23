@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
-import type { ProfileSecretKind } from 'sparxie'
+import type { ProfileSecretKind } from '@sparxie/sdk'
 import { Button } from '@/components/ui/button'
 import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { Field, FieldLabel } from '@/components/ui/field'
@@ -13,7 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { fieldControlId } from '@/lib/field-control-id'
-import type { ProfileSecretSummary } from 'sparxie'
+import type { ProfileSecretSummary } from '@sparxie/sdk'
 import {
   CompactInput,
   InlineEditorActions,

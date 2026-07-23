@@ -19,13 +19,13 @@ describe('connector registry', () => {
 
     expect(connector?.definition).toMatchObject({
       id: 'jobright.resolver',
-      version: '0.18.0',
+      version: '0.18.1',
       capabilities: { fetchesPublicPages: false },
     })
     expect(registry.get('jobright.public')).toBeNull()
   })
 
-  it('matches published sparxie and connector package versions for Jobright API auth', () => {
+  it('matches published SDK and connector package versions for Jobright API auth', () => {
     const appPackage = JSON.parse(
       fs.readFileSync(path.resolve('package.json'), 'utf8'),
     ) as {
@@ -34,8 +34,8 @@ describe('connector registry', () => {
       pnpm?: { overrides?: unknown }
       resolutions?: Record<string, unknown>
     }
-    const sparxiePackage = JSON.parse(
-      fs.readFileSync(path.resolve('node_modules/sparxie/package.json'), 'utf8'),
+    const sdkPackage = JSON.parse(
+      fs.readFileSync(path.resolve('node_modules/@sparxie/sdk/package.json'), 'utf8'),
     ) as { version: string }
     const jobrightPackage = JSON.parse(
       fs.readFileSync(
@@ -59,18 +59,18 @@ describe('connector registry', () => {
       ),
     ) as { version: string }
 
-    expect(appPackage.dependencies.sparxie).toBe('0.28.0')
-    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.0')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.18.0')
-    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.18.0')
+    expect(appPackage.dependencies['@sparxie/sdk']).toBe('0.29.0')
+    expect(appPackage.dependencies['@sparxie/valedictorian-connectors-jobright']).toBe('0.18.1')
+    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-core']).toBe('0.18.1')
+    expect(appPackage.devDependencies['@sparxie/valedictorian-connectors-test-harness']).toBe('0.18.1')
     expect(appPackage.pnpm?.overrides).toBeUndefined()
     expect(appPackage.resolutions).toBeUndefined()
     expect(appPackage).not.toHaveProperty('overrides')
-    expect(sparxiePackage.version).toBe('0.28.0')
-    expect(jobrightPackage.version).toBe('0.18.0')
-    expect(jobrightPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe('^0.18.0')
-    expect(corePackage.version).toBe('0.18.0')
-    expect(harnessPackage.version).toBe('0.18.0')
+    expect(sdkPackage.version).toBe('0.29.0')
+    expect(jobrightPackage.version).toBe('0.18.1')
+    expect(jobrightPackage.dependencies?.['@sparxie/valedictorian-connectors-core']).toBe('^0.18.1')
+    expect(corePackage.version).toBe('0.18.1')
+    expect(harnessPackage.version).toBe('0.18.1')
   })
 
   it('reaches the API-only connector and reports missing auth without provider or browser work', async () => {
@@ -110,7 +110,7 @@ describe('connector registry', () => {
     vi.stubGlobal('fetch', providerFetch)
     const client = await createLocalValedictorianClient({ pgliteDataPath: createTempDatabasePath() })
     await client.connectors.create({
-      id: 'jobright-default', connectorId: 'jobright.resolver', connectorVersion: '0.18.0',
+      id: 'jobright-default', connectorId: 'jobright.resolver', connectorVersion: '0.18.1',
       displayName: 'Jobright internslist', enabled: true,
       auth: [{ id: 'jobright', label: 'Jobright credentials', mode: 'username_password' }],
       config: {}, filters: JOBRIGHT_TEST_FILTERS, earliestBackfillDate: '2026-07-01',

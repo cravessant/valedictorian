@@ -19,7 +19,7 @@ import type { ErrorPresentation } from '../app/error-presentation'
 import type {
   ConnectorScheduleSummary,
   ConnectorSchedulingCapability,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   CONNECTOR_SCHEDULE_UNAVAILABLE_EXPLANATION,
   formatConnectorScheduleCadence,
@@ -28,7 +28,7 @@ import {
   type ConnectorScheduleValidationField,
 } from './connector-schedule.helpers'
 import type { ConnectorScheduleDraft } from './connector-schedule.types'
-import { MAX_CONNECTOR_SCHEDULE_INTERVAL_MINUTES } from 'sparxie'
+import { MAX_CONNECTOR_SCHEDULE_INTERVAL_MINUTES } from '@sparxie/sdk'
 
 const WEEKDAY_OPTIONS = [
   { value: '1', label: 'Monday' },

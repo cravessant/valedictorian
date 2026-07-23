@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ConnectorRendererSchema } from 'sparxie'
+import type { ConnectorRendererSchema } from '@sparxie/sdk'
 import { validateConnectorSchemaValue } from './connector.renderer-schema-validation'
 
 describe('connector renderer schema validation', () => {

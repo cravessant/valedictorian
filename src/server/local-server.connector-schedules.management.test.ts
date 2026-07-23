@@ -3,7 +3,7 @@ import {
   createHttpValedictorianClient,
   ValedictorianHttpError,
   type ConnectorSchedulingCapability,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,

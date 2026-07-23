@@ -1,4 +1,4 @@
-import type { ConnectorRendererSchema } from 'sparxie'
+import type { ConnectorRendererSchema } from '@sparxie/sdk'
 
 export type ConnectorSchemaValidationIssue = {
   path: string

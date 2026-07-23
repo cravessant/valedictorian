@@ -2,7 +2,7 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 
 import App from './App'
 import { createConnectorsApi, createUpdatesApi } from './App.test-helpers'

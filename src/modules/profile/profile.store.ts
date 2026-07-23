@@ -1,4 +1,4 @@
-import type { ProfileDocument, ProfileDocumentUpdateInput, UserProfile } from 'sparxie'
+import type { ProfileDocument, ProfileDocumentUpdateInput, UserProfile } from '@sparxie/sdk'
 
 export type ProfileStoreUpdateResult =
   | { ok: true; document: ProfileDocument }

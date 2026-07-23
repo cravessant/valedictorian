@@ -7,7 +7,7 @@ import {
   useResettablePgliteTestConnectorRepositoryContext,
 } from './connector.repository.pglite-test-helpers'
 import { mapLocalConnectorOverviewRecord } from '../../runtime/local-connector-overview'
-import type { ConnectorStatusState } from 'sparxie'
+import type { ConnectorStatusState } from '@sparxie/sdk'
 
 describe.sequential('PGlite connector overview repository', () => {
   const createConnectorRepositoryTestContext

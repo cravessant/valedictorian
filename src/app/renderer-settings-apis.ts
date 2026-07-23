@@ -4,7 +4,7 @@ import type { UpdatesPreloadApi } from '@/ipc/updates.preload'
 import type { ConnectorsPreloadApi } from '@/ipc/connectors.preload'
 import type { ConnectorScheduleUiApi } from '@/settings/connector-schedule.types'
 import type { ConnectorSettingsUiApi } from '@/settings/connector-settings.types'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import {
   getRendererHttpRootClient,
   requireRendererHttpWorkspaceClient,

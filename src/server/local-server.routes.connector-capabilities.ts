@@ -1,10 +1,10 @@
 import type http from 'node:http'
-import type { ConnectorOptionQueryErrorCode, ValedictorianWorkspaceClient } from 'sparxie'
+import type { ConnectorOptionQueryErrorCode, ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import {
   connectorOptionQueryBodySchema,
   connectorOptionQueryErrorBodies,
   connectorOptionQueryErrorStatusByCode,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { parseLocalHttpInput, readJsonBody, writeJson } from './local-server.http'
 
 export async function handleConnectorCapabilityRoutes({

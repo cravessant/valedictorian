@@ -1,4 +1,4 @@
-import type { ConnectorOverviewListQuery } from 'sparxie'
+import type { ConnectorOverviewListQuery } from '@sparxie/sdk'
 
 interface ConnectorOverviewCursorPayload {
   v: 1

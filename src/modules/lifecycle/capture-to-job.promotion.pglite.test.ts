@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { and, eq } from 'drizzle-orm'
-import { jobFactsSchema } from 'sparxie'
+import { jobFactsSchema } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { captureEvidenceItems, captures as captureRows } from '../capture/capture.schema'

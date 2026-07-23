@@ -1,4 +1,4 @@
-import { createSecretReference, formatSecretReferenceUri } from 'sparxie'
+import { createSecretReference, formatSecretReferenceUri } from '@sparxie/sdk'
 import { normalizeSecretKey } from './secret.key'
 
 /** Stable workspace identity-secret key for SSN last-four material (#249 migrates storage). */

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   Application,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
 import {

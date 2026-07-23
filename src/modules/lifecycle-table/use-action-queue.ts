@@ -3,7 +3,7 @@ import type {
   ActionQueueBucket,
   ActionQueueListResult,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { actionQueueLoadFailure } from '../../app/app-load-failure'
 import type { ErrorPresentation } from '../../app/error-presentation'

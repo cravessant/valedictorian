@@ -2,7 +2,7 @@ import type {
   ConnectorCaptureInput,
   ConnectorCaptureReceipt,
 } from '@sparxie/valedictorian-connectors-core'
-import { createCaptureInputSchema } from 'sparxie'
+import { createCaptureInputSchema } from '@sparxie/sdk'
 import type { CaptureService, JsonValue } from '../capture/capture.service'
 
 export interface ConnectorCaptureHostInput {

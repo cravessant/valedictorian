@@ -5,7 +5,7 @@ import type {
   ConnectorVersionedRendererSchema,
   InstalledConnectorDescriptor,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'

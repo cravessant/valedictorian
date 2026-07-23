@@ -3,7 +3,7 @@ import type {
   ProfileSensitiveDetailsInput,
   UserProfile,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { ProfileService } from '../modules/profile/profile.service'
 import { createConnectorSecretResolver } from '../modules/secrets/connector-secret-resolver'
 import { rejectUnsupportedLocalSecretResolution } from '../modules/secrets/local-secret-resolution'

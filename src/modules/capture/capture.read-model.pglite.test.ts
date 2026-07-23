@@ -8,7 +8,7 @@
  * includeRemoved gating, and keyset pagination that walks every row exactly once.
  */
 import { describe, expect, it } from 'vitest'
-import { captureHistoryResultSchema, captureListResultSchema, captureSchema } from 'sparxie'
+import { captureHistoryResultSchema, captureListResultSchema, captureSchema } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import {

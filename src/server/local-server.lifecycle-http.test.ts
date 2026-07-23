@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createHttpValedictorianClient, ValedictorianHttpError } from 'sparxie'
+import { createHttpValedictorianClient, ValedictorianHttpError } from '@sparxie/sdk'
 import { createTestLocalValedictorianClient } from '../runtime/local-valedictorian-client.test-harness'
 import { createLocalServerHttpTestFixture } from './local-server.http-test-harness'
 

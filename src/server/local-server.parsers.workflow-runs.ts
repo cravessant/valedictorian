@@ -1,4 +1,4 @@
-import { isRunStatus, isRunType, pursuitApplicationStatuses, type ValedictorianWorkspaceClient, type WorkflowRunsListInput } from 'sparxie'
+import { isRunStatus, isRunType, pursuitApplicationStatuses, type ValedictorianWorkspaceClient, type WorkflowRunsListInput } from '@sparxie/sdk'
 import { localHttpValidationError, readOptionalNullableStringField, readOptionalStringField, readRecord, readStringField } from './local-server.http'
 import { setNumberQuery, setStringQuery } from './local-server.parsers.query-primitives'
 

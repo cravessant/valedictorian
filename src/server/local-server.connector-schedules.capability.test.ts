@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   createHttpValedictorianClient,
   ValedictorianHttpError,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,

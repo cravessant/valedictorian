@@ -4,7 +4,7 @@ import type {
   ConnectorOptionQueryResult,
   InstalledConnectorDescriptor,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { createConnectorsApi, createProfileApi } from '../App.test-helpers'
 import type { ConnectorScheduleUiApi } from './connector-schedule.types'
 import { ConnectorSettingsPanel } from './ConnectorSettingsPanel'

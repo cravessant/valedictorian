@@ -1,7 +1,7 @@
 import type {
   ProfileSecretKind,
   ProfileSecretSummary,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { WorkspaceSecretScope } from './secret.scope'
 
 declare const normalizedSecretKeyBrand: unique symbol

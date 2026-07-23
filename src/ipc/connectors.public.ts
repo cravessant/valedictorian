@@ -5,7 +5,7 @@ import {
   type ConnectorRetirementActiveWorkConflict,
   type ConnectorRetirementResult,
   type ConnectorRunSummary,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { z } from 'zod'
 import { publicConnectorRunSummary } from '../runtime/local-connector-public-run'
 

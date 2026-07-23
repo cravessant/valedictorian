@@ -23,7 +23,7 @@
  * remaining operation descriptors share this generic claim/backoff engine.
  */
 import { scheduleRetry } from '@sparxie/valedictorian-connectors-core'
-import type { TransientRetryReason } from 'sparxie'
+import type { TransientRetryReason } from '@sparxie/sdk'
 import { and, asc, eq, isNotNull, lte } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core'

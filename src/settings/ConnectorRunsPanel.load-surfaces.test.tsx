@@ -4,7 +4,7 @@ import {
   ValedictorianHttpError,
   ValedictorianTransportError,
   valedictorianFailureKindMessages,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { createConnectorsApi } from '../App.test-helpers'
 import { ConnectorRunsPanel } from './ConnectorRunsPanel'
 

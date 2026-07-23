@@ -23,7 +23,7 @@ import type {
   ConnectorSettingsRun,
   ConnectorSettingsUiApi,
 } from './connector-settings.types'
-import type { InstalledConnectorDescriptor } from 'sparxie'
+import type { InstalledConnectorDescriptor } from '@sparxie/sdk'
 
 export function isCurrentConnectorMutationTarget(
   isMountedRef: MutableRefObject<boolean>,

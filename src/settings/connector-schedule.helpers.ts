@@ -4,7 +4,7 @@ import {
   type ConnectorScheduleCadence,
   type ConnectorScheduleSummary,
   type ConnectorSchedulingCapability,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { classifyErrorPresentation } from '../app/error-presentation'
 import type { ConnectorScheduleDraft } from './connector-schedule.types'
 

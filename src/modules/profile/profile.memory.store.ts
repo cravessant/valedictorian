@@ -3,7 +3,7 @@ import {
   profileDocumentSchemaVersion,
   type ProfileDocument,
   type UserProfile,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { computeProfileRevision } from './profile.revision'
 import type { ProfileStore, ProfileStoreUpdateResult } from './profile.store'
 

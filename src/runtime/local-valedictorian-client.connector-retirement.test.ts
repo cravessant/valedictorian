@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { connectorRetirementResultSchema } from 'sparxie'
+import { connectorRetirementResultSchema } from '@sparxie/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { sourceExecutionScopes, sourceExecutionSessions } from '../db/schema'

@@ -26,7 +26,7 @@ import type {
   JobHistoryEntry,
   JobHistoryResult,
   JobListResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
 /** The subset of `jobs` the read-model selects for a resource. */

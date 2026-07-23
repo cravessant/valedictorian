@@ -22,7 +22,7 @@ import {
   type ProfileAnswer,
   type ProfileEducation,
   type ProfileSecretKind,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 export const birthMonthOptions = [
   { label: 'January', value: '01' },

@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { profileEducationTypeOptions, type ProfileEducation } from 'sparxie'
+import { profileEducationTypeOptions, type ProfileEducation } from '@sparxie/sdk'
 import { Button } from '@/components/ui/button'
 import { FormFailureAlert } from '@/components/ui/error-primitives'
 import { Field, FieldLabel } from '@/components/ui/field'

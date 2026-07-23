@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ConnectorSchedulingCapability } from 'sparxie'
+import type { ConnectorSchedulingCapability } from '@sparxie/sdk'
 import {
   cadenceFromDraft,
   createEmptyConnectorScheduleDraft,

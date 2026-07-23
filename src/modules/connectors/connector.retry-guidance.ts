@@ -1,4 +1,4 @@
-import type { RetryAdvice } from 'sparxie'
+import type { RetryAdvice } from '@sparxie/sdk'
 
 export function formatRetryAdviceGuidance(advice: RetryAdvice): string {
   const state = {

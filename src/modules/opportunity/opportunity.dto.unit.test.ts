@@ -9,7 +9,7 @@
  * the keyset cursor encode/decode is total.
  */
 import { describe, expect, it } from 'vitest'
-import { opportunityHistoryResultSchema, opportunityListResultSchema, opportunitySchema } from 'sparxie'
+import { opportunityHistoryResultSchema, opportunityListResultSchema, opportunitySchema } from '@sparxie/sdk'
 import {
   decodeOpportunityCursor,
   encodeOpportunityCursor,

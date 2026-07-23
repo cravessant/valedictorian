@@ -8,7 +8,7 @@ import type {
   WorkflowRunsListInput,
   WorkflowRunsListResult,
   WorkflowRunStep,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { sources, workflowRuns, workflowRunSteps } from '../../db/schema'
 import type { PgliteDatabase, PgliteRepositoryDatabase } from '../../db/pglite'
 

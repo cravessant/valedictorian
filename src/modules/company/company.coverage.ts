@@ -4,7 +4,7 @@ import {
   companyCapabilitySchema,
   jobFactsSchema,
   type CompanyCapability,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { createUuidV7Generator, type Clock, type UuidV7Generator } from '../../db/uuidv7'
 import { jobs } from '../job/job.schema'

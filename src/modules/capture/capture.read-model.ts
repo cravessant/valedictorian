@@ -16,7 +16,7 @@ import type {
   CaptureListInput,
   CaptureListResult,
   HistoryListInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { captureEvidenceItems, captureOccurrences, captureRevisions, captures } from './capture.schema'
 import {

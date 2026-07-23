@@ -1,5 +1,5 @@
 import { useMemo, type ReactElement } from 'react'
-import type { Capture, Job, Opportunity } from 'sparxie'
+import type { Capture, Job, Opportunity } from '@sparxie/sdk'
 
 import {
   LifecycleTable,

@@ -12,7 +12,7 @@
  * keyset pagination walking every row once), and the reconstructed history.
  */
 import { describe, expect, it } from 'vitest'
-import { jobHistoryResultSchema, jobListResultSchema, jobSchema } from 'sparxie'
+import { jobHistoryResultSchema, jobListResultSchema, jobSchema } from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'

@@ -1,4 +1,4 @@
-import { connectorOverviewListResultSchema } from 'sparxie'
+import { connectorOverviewListResultSchema } from '@sparxie/sdk'
 import { describe, expect, it } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import type { AppJobConnector } from '../modules/connectors/connector.runner'

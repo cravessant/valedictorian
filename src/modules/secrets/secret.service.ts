@@ -4,7 +4,7 @@ import {
   type ProfileSecretSummary,
   type ProfileSecretsListResult,
   type UpsertProfileSecretInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { WorkspaceSecretScope } from './secret.scope'
 import {
   identitySecretKind,

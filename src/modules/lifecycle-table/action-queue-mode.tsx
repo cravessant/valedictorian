@@ -6,7 +6,7 @@ import {
   type ActionQueueListItem,
   type Application,
   type ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

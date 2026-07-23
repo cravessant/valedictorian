@@ -3,7 +3,7 @@ import { completedConnectorRefreshContract } from '../modules/connectors/connect
 import {
   createHttpValedictorianClient,
   MAX_CONNECTOR_SCHEDULE_HISTORY_LIMIT,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   availableConnectorSchedulingCapability as availableSchedulingCapability,
   createLocalValedictorianClient,

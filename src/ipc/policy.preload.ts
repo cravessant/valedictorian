@@ -9,7 +9,7 @@ import type {
   PolicyEvidenceListInput,
   PolicyEvidenceRecord,
   PolicyRunWindowDecision,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 interface IpcRendererLike {
   invoke: (channel: string, payload?: unknown) => Promise<unknown>

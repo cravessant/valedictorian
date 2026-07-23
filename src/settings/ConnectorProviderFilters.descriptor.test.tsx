@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { InstalledConnectorDescriptor } from 'sparxie'
+import type { InstalledConnectorDescriptor } from '@sparxie/sdk'
 import { projectInstalledConnectorDescriptor } from '../modules/connectors/connector.capabilities'
 import { createDefaultLocalConnectorRegistry } from '../modules/connectors/connector.registry'
 import {

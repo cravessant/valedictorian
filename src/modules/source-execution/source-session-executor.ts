@@ -2,7 +2,7 @@ import type {
   ConnectorAuthEstablish,
   ConnectorAuthEstablishmentResult,
 } from '@sparxie/valedictorian-connectors-core'
-import type { SourceExecutionScopeId } from 'sparxie'
+import type { SourceExecutionScopeId } from '@sparxie/sdk'
 import type { createSourceExecutionGovernor } from './source-execution-governor'
 
 export function createSourceSessionExecutor(options: {

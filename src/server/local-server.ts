@@ -3,7 +3,7 @@ import {
   unavailableConnectorSchedulingCapability,
   type ConnectorSchedulingCapability,
   type ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { resolveConnectorSchedulingCapability } from '../modules/connectors/connector-schedule.capability'
 import { writeEmpty, writeNoStoreEmpty } from './local-server.http'
 import { handleRequest, isLocalSecretResolvePath } from './local-server.routes'

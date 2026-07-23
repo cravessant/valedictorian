@@ -4,7 +4,7 @@ import type {
   LifecycleWarning,
   RemovalChoice,
   WarningOverride,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { ReactNode } from 'react'
 
 export interface DuplicateChoice {

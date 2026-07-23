@@ -9,7 +9,7 @@
  * failure -> HTTP-surface classification (blocked 200 vs 404 vs 4xx error).
  */
 import { describe, expect, it } from 'vitest'
-import { removalResultSchema, restoreResultSchema } from 'sparxie'
+import { removalResultSchema, restoreResultSchema } from '@sparxie/sdk'
 import type { RemoveLifecycleResult, RestoreLifecycleResult } from './removal.orchestration'
 import {
   DEPENDENT_RESOLUTION_CHOICES,

@@ -66,8 +66,8 @@ import type {
   ConnectorSettingsInstance,
   ConnectorSettingsRun,
 } from './connector-settings.types'
-import type { ConnectorSchedulingCapability, ConnectorScheduleSummary } from 'sparxie'
-import type { InstalledConnectorDescriptor } from 'sparxie'
+import type { ConnectorSchedulingCapability, ConnectorScheduleSummary } from '@sparxie/sdk'
+import type { InstalledConnectorDescriptor } from '@sparxie/sdk'
 import { ConnectorScheduleControls } from './ConnectorScheduleControls'
 import type { ConnectorScheduleDraft } from './connector-schedule.types'
 import type { ConnectorSettingsUiApi } from './connector-settings.types'

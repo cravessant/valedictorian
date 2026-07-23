@@ -11,7 +11,7 @@
  * identity, so `toContractActor` surfaces the type as the id rather than
  * fabricating an identifier.
  */
-import type { LifecycleActor, LifecycleAuditEvidence, LifecycleBlocker, LifecycleBlockerCode } from 'sparxie'
+import type { LifecycleActor, LifecycleAuditEvidence, LifecycleBlocker, LifecycleBlockerCode } from '@sparxie/sdk'
 
 const ACTOR_TYPES = new Set(['user', 'agent', 'system'])
 

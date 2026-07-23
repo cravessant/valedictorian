@@ -6,7 +6,7 @@ import type {
   ResumeConnectorScheduleInput,
   UpsertConnectorScheduleInput,
   ValedictorianCapabilities,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 export type ConnectorScheduleUiApi = {
   getCapabilities(): Promise<Pick<ValedictorianCapabilities, 'connectorScheduling'>>

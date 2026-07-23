@@ -36,7 +36,7 @@ import {
   type PolicyEvidenceRecord,
   type PolicyRunWindowDecision,
   type ConnectorOptionQueryResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { canonicalAlreadyConfiguredBody } from './app/error-presentation'
 import {
   defaultAppSettings,

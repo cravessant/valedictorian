@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ConnectorSchedulingCapability } from 'sparxie'
+import type { ConnectorSchedulingCapability } from '@sparxie/sdk'
 import { ConnectorScheduleControls } from './ConnectorScheduleControls'
 import { createEmptyConnectorScheduleDraft } from './connector-schedule.helpers'
 import type { ConnectorScheduleDraft } from './connector-schedule.types'

@@ -3,11 +3,11 @@ import type {
   ConnectorOptionQueryErrorCode,
   InstalledConnectorDescriptor,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   connectorOptionQueryErrorBodies,
   connectorOptionQueryErrorStatusByCode,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { parseConnectorOptionValue } from '@sparxie/valedictorian-connectors-core'
 import type { AppJobConnector } from './connector.runner'
 import {

@@ -10,7 +10,7 @@ import {
   userProfileSchema,
   type ProfileDocument,
   type UserProfile,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { z } from 'zod'
 import {
   invalidProfileDocumentError,

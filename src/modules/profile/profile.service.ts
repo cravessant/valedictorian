@@ -13,7 +13,7 @@ import {
   type ProfileDocumentValidateResult,
   type ProfileUpdateInput,
   type UserProfile,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type {
   ProfileDocumentCapability,
   ProfileDocumentChangeEvent,

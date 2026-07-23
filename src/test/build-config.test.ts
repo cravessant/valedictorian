@@ -80,7 +80,7 @@ describe('build configuration', () => {
     expect(fs.existsSync(path.resolve('build/entitlements.mac.plist'))).toBe(true)
     expect(fs.existsSync(path.resolve('build/entitlements.mac.inherit.plist'))).toBe(true)
 
-    expect(packageJson.dependencies?.sparxie).toBeDefined()
+    expect(packageJson.dependencies?.['@sparxie/sdk']).toBeDefined()
     expect(packageJson.dependencies?.cosmiconfig).toBe('9.0.2')
     expect(packageJson.dependencies).not.toHaveProperty('conf')
     expect(packageJson.dependencies).not.toHaveProperty('configstore')
@@ -106,16 +106,16 @@ describe('build configuration', () => {
         url: 'https://updates.valedictorian.app/mac/alpha',
       },
     ])
-    expect(packageJson.dependencies?.sparxie).toMatch(/^\d+\.\d+\.\d+$/)
-    expect(packageJson.dependencies?.sparxie).not.toContain('github:')
-    expect(packageJson.dependencies?.sparxie).not.toContain('../sparxie')
+    expect(packageJson.dependencies?.['@sparxie/sdk']).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(packageJson.dependencies?.['@sparxie/sdk']).not.toContain('github:')
+    expect(packageJson.dependencies?.['@sparxie/sdk']).not.toContain('../sparxie')
     expect(scripts).not.toEqual(expect.arrayContaining([expect.stringContaining('../sparxie')]))
     expect(fs.existsSync(path.resolve('pnpm-lock.yaml'))).toBe(true)
 
     const pnpmWorkspaceConfig = fs.readFileSync(path.resolve('pnpm-workspace.yaml'), 'utf8')
     expect(pnpmWorkspaceConfig).toContain('minimumReleaseAgeExclude:')
-    expect(pnpmWorkspaceConfig).toContain('- sparxie')
-    expect(pnpmWorkspaceConfig).toContain('sparxie: true')
+    expect(pnpmWorkspaceConfig).toContain("- '@sparxie/*'")
+    expect(pnpmWorkspaceConfig).not.toContain('- sparxie')
   })
 
   it('packages PGlite runtime assets without native SQLite rebuild contracts', () => {

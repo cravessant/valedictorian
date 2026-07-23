@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ValedictorianHttpError, valedictorianFailureKindMessages } from 'sparxie'
+import { ValedictorianHttpError, valedictorianFailureKindMessages } from '@sparxie/sdk'
 import {
   sanitizedConnectorAuthErrorMessage,
   sanitizedConnectorCreateErrorMessage,

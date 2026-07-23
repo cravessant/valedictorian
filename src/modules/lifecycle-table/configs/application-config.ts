@@ -3,7 +3,7 @@ import type {
   LifecycleApplicationListInput,
   LifecycleApplicationListResult,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type {
   LifecycleAggregateExtensions,
   LifecycleTableConfig,

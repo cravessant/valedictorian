@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq, lte, or, sql } from 'drizzle-orm'
-import type { SourceExecutionScopeId } from 'sparxie'
+import type { SourceExecutionScopeId } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { sourceExecutionScopes, sourceExecutionSessions } from '../../db/schema'
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createHttpValedictorianClient } from 'sparxie'
+import { createHttpValedictorianClient } from '@sparxie/sdk'
 import {
   createDefaultLocalConnectorRegistry,
   createStaticConnectorRegistry,
@@ -183,7 +183,7 @@ describe('released connector capability boundary', () => {
     await http.connectors.create({
       id: 'jobright-filter-roundtrip',
       connectorId: 'jobright.resolver',
-      connectorVersion: '0.18.0',
+      connectorVersion: '0.18.1',
       displayName: 'Jobright filter round-trip',
       enabled: true,
       auth: [],

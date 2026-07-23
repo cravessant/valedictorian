@@ -1,4 +1,4 @@
-import type { LifecycleActor } from 'sparxie'
+import type { LifecycleActor } from '@sparxie/sdk'
 
 /**
  * Stable attributable desktop user actor used by lifecycle-table mutation

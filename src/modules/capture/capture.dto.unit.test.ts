@@ -8,7 +8,7 @@
  * `CaptureListResult.nextCursor` only when a further page exists.
  */
 import { describe, expect, it } from 'vitest'
-import { captureHistoryResultSchema, captureSchema } from 'sparxie'
+import { captureHistoryResultSchema, captureSchema } from '@sparxie/sdk'
 import {
   decodeCaptureCursor,
   encodeCaptureCursor,

@@ -2,7 +2,7 @@ import type {
   ConnectorScheduleSummary,
   DispatchConnectorScheduleDueInput,
   DispatchConnectorScheduleDueResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { LocalScheduledWorkSource } from '../../runtime/local-scheduler'
 
 export interface ConnectorScheduleWorkSourceOptions {

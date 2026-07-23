@@ -1,6 +1,6 @@
 import type { AppJobConnector } from './connector.runner'
-import type { ConnectorRendererSchema } from 'sparxie'
-import { installedConnectorDescriptorSchema } from 'sparxie'
+import type { ConnectorRendererSchema } from '@sparxie/sdk'
+import { installedConnectorDescriptorSchema } from '@sparxie/sdk'
 import { projectInstalledConnectorDescriptor } from './connector.capabilities'
 import {
   validateConnectorConfigPersistenceValue,

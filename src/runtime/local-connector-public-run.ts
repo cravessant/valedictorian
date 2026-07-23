@@ -6,7 +6,7 @@ import {
   type ConnectorRunSummary,
   type ConnectorRunsListResult,
   type SourceExecutionScopeId,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { mapConnectorWarnings } from '../modules/connectors/connector.status'
 import type { ConnectorRunRecord } from '../modules/connectors/connector.repository'
 import type { LocalConnectorRunSummary } from './local-connector-client.contract'

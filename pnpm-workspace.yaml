@@ -1,5 +1,4 @@
 minimumReleaseAgeExclude:
-  - sparxie
   - '@sparxie/*'
 
 allowBuilds:
@@ -7,4 +6,3 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: false
-  sparxie: true

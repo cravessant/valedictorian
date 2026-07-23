@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { useAppBootstrapLoads } from './app/use-app-bootstrap-loads'

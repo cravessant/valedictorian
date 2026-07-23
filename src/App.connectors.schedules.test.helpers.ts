@@ -3,7 +3,7 @@ import { expect, vi, type Mock } from 'vitest'
 import type {
   ConnectorScheduleSummary,
   ConnectorSchedulingCapability,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   createConnectorsApiWithJobrightDescriptor as createConnectorsApi,
   createProfileApi,

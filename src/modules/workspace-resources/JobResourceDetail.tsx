@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { jobIdSchema, type Job, type ValedictorianWorkspaceClient } from 'sparxie'
+import { jobIdSchema, type Job, type ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import { Spinner } from '@/components/ui/spinner'
 import { useMediaQuery } from '@/app/useMediaQuery'
 import { ResourceDetailFrame } from './ResourceDetailFrame'

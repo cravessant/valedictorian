@@ -1,4 +1,4 @@
-import type { ConnectorScheduleErrorCode } from 'sparxie'
+import type { ConnectorScheduleErrorCode } from '@sparxie/sdk'
 
 export class ConnectorScheduleError extends Error {
   readonly code: ConnectorScheduleErrorCode

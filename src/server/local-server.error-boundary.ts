@@ -17,7 +17,7 @@ import {
   parseValedictorianRequestId,
   profileDocumentErrorBodySchema,
   profileDocumentErrorStatusByCode,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { ConnectorExecutionError } from '../modules/connectors/connector-execution.errors'
 import { LifecycleHttpError } from '../runtime/local-lifecycle-methods'
 import { toLocalSecretResolutionHttpFailure } from '../modules/secrets/local-secret-resolution'

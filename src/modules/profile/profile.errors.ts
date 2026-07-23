@@ -3,7 +3,7 @@ import {
   profileDocumentErrorStatusByCode,
   type ProfileDocumentErrorBody,
   type ProfileDocumentErrorCode,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 export type ProfileCapabilityErrorDetails = {
   filePath?: string

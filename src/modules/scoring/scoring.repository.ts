@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import type { ScoreInput, ScoreRecord } from 'sparxie'
+import type { ScoreInput, ScoreRecord } from '@sparxie/sdk'
 import type { PgliteRepositoryDatabase } from '../../db/pglite'
 import { persistApplicationScore } from '../applications/application-score.persistence'
 
-export type { ScoreInput } from 'sparxie'
+export type { ScoreInput } from '@sparxie/sdk'
 
 export interface ScoringRepository {
   recordScore: (input: ScoreInput) => Promise<ScoreRecord>

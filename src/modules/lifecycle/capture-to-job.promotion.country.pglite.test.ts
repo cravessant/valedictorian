@@ -56,7 +56,7 @@ async function seedJobrightCapture(database: Database, jobResult: Record<string,
   const captures = createPgliteCaptureService(database, { now: clock })
   const accepted = await captures.accept({
     workspaceId: WS,
-    provenance: { adapterId: ADAPTER_ID, adapterKind: 'connector', adapterVersion: '0.18.0', providerRecordId: recordId, providerSchema: PROVIDER_SCHEMA, observedAt: '2026-07-22T10:00:00.000Z' },
+    provenance: { adapterId: ADAPTER_ID, adapterKind: 'connector', adapterVersion: '0.18.1', providerRecordId: recordId, providerSchema: PROVIDER_SCHEMA, observedAt: '2026-07-22T10:00:00.000Z' },
     evidenceMode: 'reported',
     evidence: [{ kind: 'provider_api_record', label: 'Jobright row', value: { providerRecordId: recordId } }],
     payload: { providerRow: { jobResult: { jobId: recordId, ...jobResult } } },

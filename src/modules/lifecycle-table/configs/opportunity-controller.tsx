@@ -11,7 +11,7 @@ import type {
   UpdateOpportunityDispositionInput,
   UpdateOpportunityEvaluationInput,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 import { DESKTOP_USER_ACTOR, newIdempotencyKey } from '../lifecycle-actor'
 import { FormModal, type FieldSpec, type FieldErrors } from '../form-modal'

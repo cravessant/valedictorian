@@ -9,7 +9,7 @@
  * code (including deterministic_duplicate) becomes a 200 `blocked` body.
  */
 import { describe, expect, it } from 'vitest'
-import { captureMutationResultSchema, lifecycleBlockerCodes } from 'sparxie'
+import { captureMutationResultSchema, lifecycleBlockerCodes } from '@sparxie/sdk'
 import { toCaptureResource, type CaptureHeadRow } from '../capture/capture.dto'
 import {
   classifyMutationFailure,

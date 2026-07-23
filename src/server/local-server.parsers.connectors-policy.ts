@@ -16,7 +16,7 @@ import {
   type ActionQueueListQuery,
   type TriggerConnectorRunInput,
   type UpdateConnectorInstanceInput
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   readOptionalBooleanField,
   readOptionalNullableStringField,

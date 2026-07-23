@@ -11,7 +11,7 @@ import type {
   ResumeConnectorScheduleInput,
   UpsertConnectorScheduleInput,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { requireAvailableConnectorScheduling } from './connector-schedule.capability'
 import { admitConnectorScheduleDue } from './connector-schedule.dispatch'

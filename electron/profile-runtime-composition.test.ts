@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { defaultUserProfile, profileDocumentSchemaVersion } from 'sparxie'
+import { defaultUserProfile, profileDocumentSchemaVersion } from '@sparxie/sdk'
 import {
   prepareWorkspaceProfileCapabilities,
 } from '../src/modules/profile/profile.composition'

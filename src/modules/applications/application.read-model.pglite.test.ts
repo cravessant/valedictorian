@@ -16,7 +16,7 @@ import {
   applicationSchema,
   lifecycleApplicationHistoryResultSchema,
   lifecycleApplicationListResultSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import type { JobService } from '../job/job.service'

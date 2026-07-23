@@ -1,4 +1,4 @@
-import { canonicalDateOnlySchema, type CanonicalDateOnly } from 'sparxie'
+import { canonicalDateOnlySchema, type CanonicalDateOnly } from '@sparxie/sdk'
 
 const DEFAULT_EARLIEST_BACKFILL_OFFSET_DAYS = 7
 const MAXIMUM_EARLIEST_BACKFILL_HORIZON_DAYS = 90

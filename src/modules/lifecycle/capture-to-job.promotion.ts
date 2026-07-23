@@ -31,7 +31,7 @@
  * inner failure rolls the whole transaction back (no partial state).
  */
 import { and, desc, eq } from 'drizzle-orm'
-import { jobLocationSchema } from 'sparxie'
+import { jobLocationSchema } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
 import { jobCaptureEvidenceReferences, jobHistory, jobs } from '../../db/schema'

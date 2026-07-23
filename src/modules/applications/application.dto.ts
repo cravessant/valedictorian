@@ -41,7 +41,7 @@ import type {
   ApplicationHistoryEntry,
   LifecycleApplicationHistoryResult,
   LifecycleApplicationListResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { toContractActor, toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
 /** The subset of `applications` the read-model selects for a resource. */

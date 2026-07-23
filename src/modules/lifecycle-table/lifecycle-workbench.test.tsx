@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { Capture, Job, ValedictorianWorkspaceClient } from 'sparxie'
+import type { Capture, Job, ValedictorianWorkspaceClient } from '@sparxie/sdk'
 
 import { LifecycleWorkbench } from './lifecycle-workbench'
 import { openCapturesForRun } from '@/app/capture-navigation'

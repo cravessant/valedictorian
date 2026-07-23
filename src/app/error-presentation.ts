@@ -5,7 +5,7 @@ import {
   ValedictorianTransportError,
   valedictorianFailureKindMessages,
   type ValedictorianFailureKind,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 export type ErrorPresentationSurface =
   | 'field'

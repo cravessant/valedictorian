@@ -1,4 +1,4 @@
-import { connectorRunSummarySchema, retryAdviceSchema, type ConnectorObservation, type ConnectorRunSummary, type RetryAdvice } from 'sparxie'
+import { connectorRunSummarySchema, retryAdviceSchema, type ConnectorObservation, type ConnectorRunSummary, type RetryAdvice } from '@sparxie/sdk'
 import type { ConnectorCheckpointRecord, ConnectorObservationRecord, ConnectorRunRecord } from '../modules/connectors/connector.repository'
 
 export function mapConnectorCheckpoint(record: ConnectorCheckpointRecord) {

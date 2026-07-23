@@ -1,7 +1,7 @@
 import type {
   ProfileUpdateInput,
   UpsertProfileSecretInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { ProfileService } from '../modules/profile/profile.service'
 import type { SecretService } from '../modules/secrets/secret.service'
 

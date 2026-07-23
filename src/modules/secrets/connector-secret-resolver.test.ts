@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { normalizeProfileAnswerKey } from 'sparxie'
+import { normalizeProfileAnswerKey } from '@sparxie/sdk'
 import { createConnectorSecretResolver } from './connector-secret-resolver'
 import { identitySsnLast4SecretKey } from './secret.identity'
 

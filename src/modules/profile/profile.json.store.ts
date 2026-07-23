@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { ProfileDocument, ProfileDocumentFormatInput, ProfileDocumentRestoreInput } from 'sparxie'
+import type { ProfileDocument, ProfileDocumentFormatInput, ProfileDocumentRestoreInput } from '@sparxie/sdk'
 import type {
   JsonProfileAdapter,
   ProfileDocumentChangeEvent,

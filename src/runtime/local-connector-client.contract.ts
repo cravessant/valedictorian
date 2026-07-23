@@ -8,7 +8,7 @@ import type {
   TriggerConnectorRunInput,
   UpdateConnectorInstanceInput,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { AppConnectorAuthGrant, AppConnectorAuthValidationResult } from '../modules/connectors/connector.runner'
 import type { ConnectorAuthMode } from '../modules/connectors/connector.repository'
 import type { ConnectorStatusListResult, ConnectorStatusView } from '../modules/connectors/connector.status'

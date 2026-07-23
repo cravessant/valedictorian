@@ -5,7 +5,7 @@ import type {
   CompanyDetail,
   CompanyDirectoryPage,
   WorkspaceCompaniesClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { CompaniesWorkspace } from './CompaniesWorkspace'
 
 afterEach(cleanup)

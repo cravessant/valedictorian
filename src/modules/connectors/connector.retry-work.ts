@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { and, asc, eq, sql } from 'drizzle-orm'
-import { retryAdviceSchema, type RetryAdvice } from 'sparxie'
+import { retryAdviceSchema, type RetryAdvice } from '@sparxie/sdk'
 import { connectorCaptureWork } from '../scheduling/scheduling.schema'
 import { DEFAULT_WORKSPACE_ID } from '../../db/workspaces.schema'
 import type { PgliteDatabase } from '../../db/pglite'

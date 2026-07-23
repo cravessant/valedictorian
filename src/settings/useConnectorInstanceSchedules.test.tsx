@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { ConnectorScheduleSummary } from 'sparxie'
+import type { ConnectorScheduleSummary } from '@sparxie/sdk'
 import type { ConnectorScheduleUiApi } from './connector-schedule.types'
 import type { ConnectorSettingsInstance } from './connector-settings.types'
 import { useConnectorInstanceSchedules } from './useConnectorInstanceSchedules'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultPolicyConfig } from 'sparxie'
+import { defaultPolicyConfig } from '@sparxie/sdk'
 import { eq } from 'drizzle-orm'
 import {
   applications,

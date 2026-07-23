@@ -18,7 +18,7 @@
  *    dependent maps to `remained_tombstoned`; `remained_unlinked` / `restored`
  *    legitimately never occur in #304.
  */
-import type { LifecycleActor, RemovalChoice, RemovalResult, RestoreResult } from 'sparxie'
+import type { LifecycleActor, RemovalChoice, RemovalResult, RestoreResult } from '@sparxie/sdk'
 import { toLifecycleAudit, toLifecycleBlocker } from './lifecycle-audit.dto'
 import type {
   RemovalFailure,

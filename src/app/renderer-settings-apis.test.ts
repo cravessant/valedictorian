@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import { createConnectorsApi } from '../App.test-helpers'
 import { createRendererConnectorsApi } from './renderer-settings-apis'
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { createHttpValedictorianClient } from 'sparxie'
+import { createHttpValedictorianClient } from '@sparxie/sdk'
 import { admitConnectorScheduleDue } from '../modules/connectors/connector-schedule.dispatch'
 import { createConnectorScheduleRepository } from '../modules/connectors/connector-schedule.repository'
 import { createPgliteConnectorRepository } from '../modules/connectors/connector.repository'

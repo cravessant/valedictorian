@@ -2,7 +2,7 @@ import type {
   ConnectorRendererPresentationField,
   ConnectorRendererSchema,
   ConnectorVersionedRendererSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 const MS_PER_MINUTE = 60_000
 

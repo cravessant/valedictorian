@@ -5,7 +5,7 @@ import {
   type HttpValedictorianClientOptions,
   type ValedictorianClient,
   type ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   createValedictorianHttpServer,
   type CreateValedictorianHttpServerOptions,

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { DispatchConnectorScheduleDueResult } from 'sparxie'
+import type { DispatchConnectorScheduleDueResult } from '@sparxie/sdk'
 import type { ConnectorRunRecord } from './connector.repository'
 import { resolveAdmittedScheduleDispatch } from './connector-schedule.execution'
 

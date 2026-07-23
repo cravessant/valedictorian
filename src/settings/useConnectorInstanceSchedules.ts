@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ConnectorScheduleSummary, ConnectorSchedulingCapability } from 'sparxie'
+import type { ConnectorScheduleSummary, ConnectorSchedulingCapability } from '@sparxie/sdk'
 import {
   cadenceFromDraft,
   CONNECTOR_SCHEDULE_LOAD_FAILURE_EXPLANATION,

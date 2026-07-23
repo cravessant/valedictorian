@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultUserProfile } from 'sparxie'
+import { defaultUserProfile } from '@sparxie/sdk'
 import type { ProfileService } from '../modules/profile/profile.service'
 import type { SecretService } from '../modules/secrets/secret.service'
 import { registerProfileIpc } from './profile.ipc'

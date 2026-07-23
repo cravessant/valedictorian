@@ -1,4 +1,4 @@
-import { isJobTimingMode, type JobTerm, type JobTimingMode } from 'sparxie'
+import { isJobTimingMode, type JobTerm, type JobTimingMode } from '@sparxie/sdk'
 import { localHttpValidationError, readOptionalStringField } from './local-server.http'
 
 export function readOptionalJobTermsField(

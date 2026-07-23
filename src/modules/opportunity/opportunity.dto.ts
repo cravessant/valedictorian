@@ -25,7 +25,7 @@ import type {
   OpportunityHistoryResult,
   OpportunityListInput,
   OpportunityListResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
 /** The subset of `opportunities` the read-model selects for a resource. */

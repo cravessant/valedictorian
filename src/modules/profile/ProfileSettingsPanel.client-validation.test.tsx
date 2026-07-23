@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultUserProfile } from 'sparxie'
+import { defaultUserProfile } from '@sparxie/sdk'
 import { ProfileSettingsPanel } from './ProfileSettingsPanel'
 import { createProfileApi } from '../../App.test-helpers'
 

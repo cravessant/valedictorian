@@ -10,7 +10,7 @@ import {
   profileVeteranStatusOptions,
   userProfileSchema,
   type UserProfile,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { invalidProfileDocumentError, issuePath } from './profile.errors'
 
 export function normalizeProfilePatch(

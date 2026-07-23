@@ -3,7 +3,7 @@ import type {
   ConnectorAuthRequirement,
   ConnectorOptionRuntime,
 } from '@sparxie/valedictorian-connectors-core'
-import type { SourceExecutionScopeId } from 'sparxie'
+import type { SourceExecutionScopeId } from '@sparxie/sdk'
 import { createRunRuntime, type AppConnectorAuthHost } from './connector.runner'
 
 export function createConnectorOptionRuntime({

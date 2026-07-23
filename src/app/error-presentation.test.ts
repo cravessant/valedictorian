@@ -6,7 +6,7 @@ import {
   ValedictorianTransportError,
   connectorScheduleErrorBodies,
   valedictorianFailureKindMessages,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   canonicalAlreadyConfiguredBody,
   classifyErrorPresentation,

@@ -1,4 +1,4 @@
-import type { ScoreInput, ScoreRecord } from 'sparxie'
+import type { ScoreInput, ScoreRecord } from '@sparxie/sdk'
 
 interface IpcRendererLike {
   invoke: (channel: string, input?: unknown) => Promise<unknown>

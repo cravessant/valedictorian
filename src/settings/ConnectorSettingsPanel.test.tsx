@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ConnectorRetirementConflictError } from 'sparxie'
+import { ConnectorRetirementConflictError } from '@sparxie/sdk'
 
 import {
   createConnectorsApi,

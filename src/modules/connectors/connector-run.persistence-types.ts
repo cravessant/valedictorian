@@ -1,4 +1,4 @@
-import type { RetryAdvice } from 'sparxie'
+import type { RetryAdvice } from '@sparxie/sdk'
 import type {
   ConnectorRefreshResult,
   ConnectorRefreshStats,

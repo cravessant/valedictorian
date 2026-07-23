@@ -1,4 +1,4 @@
-import type { ConnectorScheduleOccurrenceOutcome } from 'sparxie'
+import type { ConnectorScheduleOccurrenceOutcome } from '@sparxie/sdk'
 
 export const TERMINAL_CONNECTOR_RUN_STATUSES = [
   'completed',

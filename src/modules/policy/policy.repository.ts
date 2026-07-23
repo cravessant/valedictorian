@@ -17,7 +17,7 @@ import {
   type PolicyEvidenceTag,
   type PolicyReason,
   type PolicyRunWindowDecision,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   applications,
   policyConfig,

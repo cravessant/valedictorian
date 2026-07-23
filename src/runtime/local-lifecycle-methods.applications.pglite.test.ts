@@ -21,7 +21,7 @@ import {
   lifecycleApplicationListResultSchema,
   removalResultSchema,
   restoreResultSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import { workspaces } from '../db/workspaces.schema'
 import { createCoveredLocalLifecycleMethods } from '../test/covered-lifecycle-methods'

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type {
   ConnectorOptionQueryBody,
   ConnectorOptionQueryErrorCode,
-} from 'sparxie'
-import { connectorOptionQueryResultSchema } from 'sparxie'
+} from '@sparxie/sdk'
+import { connectorOptionQueryResultSchema } from '@sparxie/sdk'
 import {
   sanitizeConnectorOptionCoreResult,
   validateConnectorOptionQueryContract,

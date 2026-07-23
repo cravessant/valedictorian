@@ -37,7 +37,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   captureConnectorProvenanceSchema,
   type CaptureConnectorProvenance,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import {
   captureEvidenceModes,

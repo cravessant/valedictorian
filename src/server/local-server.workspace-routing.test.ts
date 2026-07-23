@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHttpValedictorianClient, type ValedictorianWorkspaceClient } from 'sparxie'
+import { createHttpValedictorianClient, type ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStaticConnectorRegistry } from '../modules/connectors/connector.registry'
 import { prepareWorkspaceProfileCapabilities } from '../modules/profile/profile.composition'

@@ -8,7 +8,7 @@ import {
 import type { PgliteDatabase } from '../../db/pglite'
 import { deriveApplicationSnapshot } from '../applications/application.dto'
 import { readPolicyConfig } from '../policy/policy.repository'
-import type { JobWorkMode, PolicyConfig, PolicyReason, PursuitApplicationStatus } from 'sparxie'
+import type { JobWorkMode, PolicyConfig, PolicyReason, PursuitApplicationStatus } from '@sparxie/sdk'
 
 export const actionQueueBuckets = [
   'apply_now',

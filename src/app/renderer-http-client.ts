@@ -2,7 +2,7 @@ import {
   createHttpValedictorianClient,
   type ValedictorianClient,
   type ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 
 interface RendererHttpConfig {
   apiBaseUrl: string

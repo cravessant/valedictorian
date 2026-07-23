@@ -17,7 +17,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { createHash } from 'node:crypto'
 import type { ConnectorProviderFieldResolver } from '@sparxie/valedictorian-connectors-core'
-import type { CreateCaptureInput } from 'sparxie'
+import type { CreateCaptureInput } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import type { CaptureFieldOutcomeStore } from '../capture/capture.field-outcomes'
 import { normalizationWork } from './scheduling.schema'

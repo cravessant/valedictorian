@@ -32,7 +32,7 @@ import {
   type ProfileSecretSummary,
   type ProfileUpdateInput,
   type UserProfile,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { ProfilePreloadApi } from '../../ipc/profile.preload'
 import { ownedLoadFailure, presentLoadFailure, type ErrorPresentation } from '../../app/error-presentation'
 import { FormFailureAlert } from '@/components/ui/error-primitives'

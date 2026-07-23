@@ -15,7 +15,7 @@ import {
   type PolicyConfig,
   type PolicyConfigPatch,
   type PolicyEvidenceTag,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   classifyErrorPresentation,
   ownedLoadFailure,

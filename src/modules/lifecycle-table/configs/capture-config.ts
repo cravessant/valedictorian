@@ -3,7 +3,7 @@ import type {
   CaptureListInput,
   CaptureListResult,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type {
   LifecycleAggregateExtensions,
   LifecycleTableConfig,

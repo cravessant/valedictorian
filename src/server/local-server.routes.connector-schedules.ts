@@ -1,5 +1,5 @@
 import type http from 'node:http'
-import type { ValedictorianWorkspaceClient } from 'sparxie'
+import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 import { readJsonBody, writeEmpty, writeJson } from './local-server.http'
 import {
   parseDeleteConnectorScheduleInput,

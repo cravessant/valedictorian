@@ -2,7 +2,7 @@ import type { LocalValedictorianClient } from '../runtime/local-valedictorian-cl
 import {
   removeConnectorInstanceInputSchema,
   triggerConnectorRunInputSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   publicConnectorRunsListResult,
   publicConnectorRunSummary,

@@ -10,12 +10,12 @@ import type {
   RemoveConnectorInstanceInput,
   TriggerConnectorRunInput,
   UpdateConnectorInstanceInput,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   ConnectorRetirementConflictError,
   connectorRunSummarySchema,
   connectorRunsListResultSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type {
   LocalConnectorReconnectActionResult,
   LocalConnectorSkipActionInput,

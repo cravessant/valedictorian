@@ -1,11 +1,11 @@
 import type {
   InstalledConnectorDescriptor,
   InstalledConnectorDescriptorsListResult,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   installedConnectorDescriptorSchema,
   installedConnectorDescriptorsListResultSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { AppJobConnector } from './connector.runner'
 import type { LocalConnectorRegistry } from './connector.registry'
 

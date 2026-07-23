@@ -19,7 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { typography, typographyClass } from '@/components/ui/typography'
 import { ExternalLink, Inbox, Pencil } from 'lucide-react'
-import { actionQueueBuckets, type ActionQueueBucket, type ActionQueueListItem, type ActionQueueListResult } from 'sparxie'
+import { actionQueueBuckets, type ActionQueueBucket, type ActionQueueListItem, type ActionQueueListResult } from '@sparxie/sdk'
 import type { ApplicationDetailSeed } from '../../app/types'
 import type { ErrorPresentation } from '../../app/error-presentation'
 import { formatEnumLabel } from '../../app/labels'

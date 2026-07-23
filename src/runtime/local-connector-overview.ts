@@ -1,7 +1,7 @@
 import {
   connectorOverviewRecordSchema,
   type ConnectorOverviewRecord,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { ConnectorStatusSummaryRecord } from '../modules/connectors/connector.repository'
 import {
   pendingResolutionCount,

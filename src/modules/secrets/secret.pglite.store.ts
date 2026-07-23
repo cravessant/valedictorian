@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import type {
   ProfileSecretKind,
   ProfileSecretSummary,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { workspaceSecrets } from '../../db/schema'
 import type { PgliteDatabase } from '../../db/pglite'
 import type { SecretCodec } from './secret.codec'

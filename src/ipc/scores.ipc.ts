@@ -1,4 +1,4 @@
-import type { ValedictorianWorkspaceClient, ScoreInput } from 'sparxie'
+import type { ValedictorianWorkspaceClient, ScoreInput } from '@sparxie/sdk'
 
 interface IpcMainLike {
   handle: (channel: string, handler: (_event: unknown, input?: unknown) => Promise<unknown>) => void

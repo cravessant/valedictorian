@@ -1,4 +1,4 @@
-import type { ConnectorOption } from 'sparxie'
+import type { ConnectorOption } from '@sparxie/sdk'
 
 export function valueKey(value: unknown) {
   return typeof value === 'string' ? `s:${value}` : JSON.stringify(value)

@@ -22,7 +22,7 @@ import type {
   CaptureHistoryResult,
   CaptureListResult,
   CaptureRevision,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import { toContractActor, toLifecycleAuditFromJson } from '../lifecycle/lifecycle-audit.dto'
 
 export { toContractActor }

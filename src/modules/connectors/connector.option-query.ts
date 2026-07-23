@@ -1,11 +1,11 @@
 import type {
   ConnectorOptionQueryResult,
   ValedictorianWorkspaceClient,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import {
   connectorOptionQueryBodySchema,
   connectorOptionQueryResultSchema,
-} from 'sparxie'
+} from '@sparxie/sdk'
 import type { createPgliteConnectorRepository } from './connector.repository'
 import type { AppConnectorAuthHost } from './connector.runner'
 import { createConnectorOptionRuntime } from './connector.option-runtime'
