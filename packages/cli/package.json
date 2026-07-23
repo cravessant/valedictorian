@@ -25,12 +25,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/KennySparxie/valedictorian-cli.git"
+    "url": "git+https://github.com/cravessant/valedictorian.git"
   },
   "bugs": {
-    "url": "https://github.com/KennySparxie/valedictorian-cli/issues"
+    "url": "https://github.com/cravessant/valedictorian/issues"
   },
-  "homepage": "https://github.com/KennySparxie/valedictorian-cli#readme",
+  "homepage": "https://github.com/cravessant/valedictorian#readme",
   "publishConfig": {
     "access": "public"
   },

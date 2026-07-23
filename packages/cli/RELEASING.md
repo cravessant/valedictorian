@@ -25,7 +25,7 @@ After the package exists on npm, configure npm Trusted Publishing for:
 
 ```sh
 pnpm dlx npm@11.16.0 trust github valedictorian-cli \
-  --repo KennySparxie/valedictorian-cli \
+  --repo cravessant/valedictorian \
   --file publish.yml \
   --allow-publish \
   -y
