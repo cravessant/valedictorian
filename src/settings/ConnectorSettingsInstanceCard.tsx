@@ -392,22 +392,27 @@ export function ConnectorSettingsInstanceCard({
         }}
         showCloseButton={!editing}
       >
-        <DialogHeader className="border-b border-border px-6 py-5 pr-16">
+        <DialogHeader
+          className={editing
+            ? 'border-b border-border px-6 py-5'
+            : 'border-b border-border px-6 py-5 pr-16'}
+        >
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <DialogTitle>{instance.displayName} details</DialogTitle>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <DialogTitle>{instance.displayName} details</DialogTitle>
+                {editing ? <Badge variant="warning">Editing</Badge> : null}
+              </div>
               <DialogDescription className="mt-1">
                 {instance.connectorId}. Review connector status and configuration.
               </DialogDescription>
             </div>
-            {editing ? (
-              <Badge variant="warning">Editing</Badge>
-            ) : (
+            {!editing ? (
               <Button onClick={() => setEditing(true)} type="button">
                 <Pencil aria-hidden="true" className="size-4" />
                 Edit connector
               </Button>
-            )}
+            ) : null}
           </div>
         </DialogHeader>
 

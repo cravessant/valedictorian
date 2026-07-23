@@ -1,7 +1,10 @@
 import type { PolicyPreloadApi } from '@/ipc/policy.preload'
 import type { ProfilePreloadApi } from '@/ipc/profile.preload'
 import type { UpdatesPreloadApi } from '@/ipc/updates.preload'
+import type { ConnectorsPreloadApi } from '@/ipc/connectors.preload'
 import type { ConnectorScheduleUiApi } from '@/settings/connector-schedule.types'
+import type { ConnectorSettingsUiApi } from '@/settings/connector-settings.types'
+import type { ValedictorianWorkspaceClient } from 'sparxie'
 import {
   getRendererHttpRootClient,
   requireRendererHttpWorkspaceClient,
@@ -23,6 +26,43 @@ const unavailableProfileApi: ProfilePreloadApi = {
   identity: { set: unavailable, status: unavailable },
   secrets: { delete: unavailable, list: unavailable, upsert: unavailable },
   update: unavailable,
+}
+
+const unavailableConnectorsApi: ConnectorsPreloadApi = {
+  list: async () => ({ items: [] }),
+  create: unavailable,
+  update: unavailable,
+  remove: unavailable,
+  inspect: unavailable,
+  runs: {
+    list: async (input) => ({
+      items: [],
+      total: 0,
+      limit: input.limit ?? 50,
+      offset: input.offset ?? 0,
+      hasMore: false,
+    }),
+    trigger: unavailable,
+  },
+  status: { reconnect: unavailable, skip: unavailable },
+}
+
+export function createRendererConnectorsApi(
+  preloadApi: ConnectorsPreloadApi,
+  requireWorkspaceClient: () => ValedictorianWorkspaceClient = requireRendererHttpWorkspaceClient,
+): ConnectorSettingsUiApi {
+  return {
+    ...preloadApi,
+    descriptors: {
+      list: () => requireWorkspaceClient().connectors.descriptors.list(),
+      get: (connectorId, connectorVersion) =>
+        requireWorkspaceClient().connectors.descriptors.get(connectorId, connectorVersion),
+    },
+    options: {
+      query: (input, options) =>
+        requireWorkspaceClient().connectors.options.query(input, options),
+    },
+  }
 }
 
 const rendererScheduleApi: ConnectorScheduleUiApi = {
@@ -59,12 +99,19 @@ function rendererProfileApi(): ProfilePreloadApi {
   return (window as Window & { profile?: ProfilePreloadApi }).profile ?? unavailableProfileApi
 }
 
+function rendererConnectorsApi(): ConnectorSettingsUiApi {
+  const preloadApi = (window as Window & { connectors?: ConnectorsPreloadApi }).connectors
+    ?? unavailableConnectorsApi
+  return createRendererConnectorsApi(preloadApi)
+}
+
 function rendererUpdatesApi(): UpdatesPreloadApi {
   return (window as Window & { valedictorianUpdates?: UpdatesPreloadApi })
     .valedictorianUpdates ?? unavailableUpdatesApi
 }
 
 export {
+  rendererConnectorsApi,
   rendererPolicyApi,
   rendererProfileApi,
   rendererUpdatesApi,

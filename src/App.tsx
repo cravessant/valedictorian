@@ -17,7 +17,6 @@ import type { PolicyPreloadApi } from './ipc/policy.preload'
 import type { ProfilePreloadApi } from './ipc/profile.preload'
 import type { UpdatesPreloadApi } from './ipc/updates.preload'
 import type { WorkspacePreloadApi } from './ipc/workspace.preload'
-import type { ConnectorsPreloadApi } from './ipc/connectors.preload'
 import {
   defaultAppSettings,
   normalizeAppSettings,
@@ -28,9 +27,11 @@ import { resolveTheme } from './theme/theme-registry'
 import { ConnectorRunsPanel } from './settings/ConnectorRunsPanel'
 import { SettingsPage } from './settings/SettingsPage'
 import type { ConnectorScheduleUiApi } from './settings/connector-schedule.types'
+import type { ConnectorSettingsUiApi } from './settings/connector-settings.types'
 import { requiresRestart } from './settings/requiresRestart'
 import { useAppUpdates } from './updates/use-app-updates'
 import {
+  rendererConnectorsApi,
   rendererPolicyApi,
   rendererProfileApi,
   rendererScheduleApi,
@@ -41,7 +42,7 @@ import type { CaptureRunFilter, ConnectorProvenanceTarget } from './app/capture-
 interface AppProps {
   settingsApi?: SettingsPreloadApi
   workspaceApi?: WorkspacePreloadApi
-  connectorsApi?: ConnectorsPreloadApi
+  connectorsApi?: ConnectorSettingsUiApi
   connectorScheduleApi?: ConnectorScheduleUiApi
   policyApi?: PolicyPreloadApi
   profileApi?: ProfilePreloadApi
@@ -82,35 +83,6 @@ export function rendererSettingsApi(): SettingsPreloadApi {
 
 export function rendererWorkspaceApi(): WorkspacePreloadApi {
   return (window as Window & { workspace?: WorkspacePreloadApi }).workspace ?? unavailableWorkspaceApi()
-}
-
-function unavailableConnectorsApi(): ConnectorsPreloadApi {
-  const unavailable = async (): Promise<never> => {
-    throw new Error('Connector controls are unavailable in this renderer')
-  }
-  return {
-    list: async () => ({ items: [] }),
-    create: unavailable,
-    update: unavailable,
-    remove: unavailable,
-    inspect: unavailable,
-    runs: {
-      list: async (input) => ({
-        items: [],
-        total: 0,
-        limit: input.limit ?? 50,
-        offset: input.offset ?? 0,
-        hasMore: false,
-      }),
-      trigger: unavailable,
-    },
-    status: { reconnect: unavailable, skip: unavailable },
-  }
-}
-
-export function rendererConnectorsApi(): ConnectorsPreloadApi {
-  return (window as Window & { connectors?: ConnectorsPreloadApi }).connectors
-    ?? unavailableConnectorsApi()
 }
 
 const lifecycleViews: readonly LifecyclePhase[] = [

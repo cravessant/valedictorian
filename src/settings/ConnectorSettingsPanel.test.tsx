@@ -94,6 +94,11 @@ describe('ConnectorSettingsPanel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
     expect(within(dialog).getByRole('switch', { name: 'Jobright connector enabled' }))
       .toBeEnabled()
+    const editingBadge = within(dialog).getByText('Editing')
+    const dialogTitle = within(dialog).getByRole('heading', {
+      name: 'Jobright internslist details',
+    })
+    expect(editingBadge.parentElement).toBe(dialogTitle.parentElement)
     expect(within(dialog).getByRole('button', {
       name: 'Save changes',
     })).toBeInTheDocument()
