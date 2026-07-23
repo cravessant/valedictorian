@@ -1,5 +1,14 @@
 # Valedictorian CLI Commands
 
+## Contents
+
+- Invocation and discovery
+- Lifecycle commands
+- Profile and secrets
+- Connectors
+- Workflow runs
+- Scores
+
 ## Invocation
 
 Installed package:
@@ -56,6 +65,8 @@ valedictorian-cli --json applications history <application-id> --workspace "$VAL
 ## Lifecycle Commands
 
 The four command groups mirror the `sparxie@0.27.1` workspace client:
+
+Read `lifecycle.md` for the meaning of each aggregate, the one-boundary-at-a-time promotion protocol, warning/blocker decisions, and lineage verification. Read `promotion-payloads.md` for complete alpha.18 JSON examples.
 
 - `captures list|get|create|correct|remove|restore|history|promote-to-job`
 - `jobs list|get|create|correct-facts|update-availability|external-identities add|remove|remove|restore|history|promote-to-opportunity`

@@ -1,83 +1,78 @@
 ---
 name: valedictorian-application-agent
-description: Operate end-to-end Valedictorian job application attempts. Use when Codex needs to work an Action Queue item, start or resume an application attempt, fill external ATS/job-site forms, upload prepared materials, answer screening questions, handle blockers, capture submission receipts, or update attempt/run/application outcomes using explicit Valedictorian workspace state plus browser automation. Depends on valedictorian-cli for state access; forbids direct database writes.
+description: Operate browser-based job application work from a canonical Valedictorian Application using the CLI for reads, run-based audit, and pursuit-status updates. Use when Codex must work an Action Queue item, inspect application lineage, fill an external ATS form, upload explicitly approved materials, answer screening questions, pause on blockers, capture a pre-submit verification receipt, or record a confirmed submission. Depends on valedictorian-cli and browser automation; treats technical attempts/events as read-only.
 ---
 
 # Valedictorian Application Agent
 
-Use this skill as the application operator protocol: it tells the agent how to behave while applying to a job. It does not replace `valedictorian-cli`. Before any Valedictorian read or mutation, load and follow the `valedictorian-cli` skill.
+Use this skill as the browser-operator protocol for an existing canonical Application. Before any Valedictorian read or mutation, load and follow the `valedictorian-cli` skill.
+
+## Current Capability Boundary
+
+- Use `applications attempts list` and `applications events list` only as diagnostics. The alpha.18 CLI cannot start, step, or complete those records.
+- Use `runs start|step|complete --run-type application_attempt` for agent-owned audit.
+- Use `applications update-status` only for canonical pursuit states: `active`, `submitted`, `interviewing`, `offered`, `withdrawn`, `rejected`, or `accepted`.
+- The CLI cannot persist Action Queue operational holds such as `ready_for_review` or `needs_user_info`, inspect auto-submit policy, or select a resume. Record blockers in the run and report this limitation.
+- Require an explicitly approved resume/material path and explicit user approval before final submission. Do not infer either from absent CLI state.
+
+If the requested outcome cannot be represented through this surface, stop and report the missing capability instead of bypassing the CLI.
 
 ## Operating Contract
 
-- Require an explicit workspace. If the workspace is unknown, resolve it through `valedictorian-cli` before selecting work.
-- Use Valedictorian CLI/API state for applications, attempts, runs, profiles, answer context, materials, and outcomes.
-- Do not write directly to SQLite/Postgres, call ad hoc HTTP endpoints, or reimplement client logic.
-- Use browser automation for external employer/job-board/ATS sites. Do not use the Valedictorian app UI as the primary agent state interface; the app is the human cockpit.
-- Work one application attempt at a time unless the user explicitly asks for parallel application work.
-- Check for existing in-progress attempts or runs before opening a browser or starting a new attempt.
-- Keep credential values and SSN out of chat, logs, shell history, run notes, screenshots, and temp files. Use populated DOB/self-identification facts from agent context when present; never invent missing facts.
-- If the CLI cannot express a needed operation, stop and report the missing CLI/API capability instead of bypassing the contract.
+- Require an explicit workspace and inspect the sanitized API target before mutation.
+- Start from an Application, not directly from a Capture, Job, or Opportunity. Verify its Job and Opportunity lineage when identity is unclear.
+- Use browser automation for the external employer/job-board/ATS site. The Valedictorian app is the human cockpit, not the agent state interface.
+- Work one Application and one workflow run at a time unless the user explicitly asks for parallel work.
+- Resume an existing in-progress run when it matches the Application; do not create duplicate audit runs for convenience.
+- Keep credentials, SSN, and sensitive values out of chat, logs, run notes, screenshots, argv, and temp files.
 
 ## Reference Map
 
-- Read `references/receipts-and-audit.md` before starting, resuming, stepping, or completing attempts/runs.
+- Read `references/receipts-and-audit.md` before starting, resuming, stepping, or completing application work.
 - Read `references/browser-application-playbooks.md` before opening the external application site.
-- Read `references/materials-and-profile.md` before choosing resumes, cover letters, transcripts, profile facts, or credential summaries.
+- Read `references/materials-and-profile.md` before selecting resumes, cover letters, transcripts, profile facts, or credentials.
 - Read `references/screening-answers.md` before answering eligibility, work authorization, salary, EEO, consent, or free-response questions.
-- Read `references/escalation-policy.md` whenever a question, site behavior, or final-submit decision could require user approval.
+- Read `references/escalation-policy.md` whenever a question, site behavior, material choice, or final-submit decision could require user approval.
 
 ## Core Loop
 
-1. Confirm workspace and API target through `valedictorian-cli`; require clear user intent before mutating non-local data.
-2. Select one unit of work from the Action Queue or a specific application id.
-3. Read the application, attempts, in-progress runs, profile agent context, and secret summaries.
-4. Decide whether to proceed, skip, mark not fit/not pursued, or pause for missing user input.
-5. Start or resume an auditable `application_attempt` run and application attempt before browser work.
-6. Recover the official application URL when starting from an aggregator or job board.
-7. Open the external site with the appropriate browser automation skill/tool for the session.
-8. Fill the application from approved Valedictorian state and selected materials. Do not invent facts.
-9. Verify persisted values page by page, especially after resume parsing, uploads, redirects, reloads, or saved profile data.
-10. Record durable milestones as attempt steps and broader diagnostics as run steps.
-11. Pause or complete with the most precise outcome when a blocker appears.
-12. Submit only after final verification and when explicit user instruction or recorded workspace/application policy authorizes submission.
-13. Capture confirmation evidence, add the required `verification_receipt`, complete the attempt/run, then re-read the affected records.
-14. Summarize the outcome with application id, attempt id, final status, confirmation evidence, and unresolved follow-ups.
+1. Confirm workspace/API target and inspect the Action Queue or requested Application.
+2. Read Application, Application history, technical attempts/events, matching runs, profile agent context, and secret summaries.
+3. Confirm the official posting/application URL, approved materials, and explicit submit authority.
+4. Resume a matching run or start `application_attempt`; technical attempt/event records remain read-only.
+5. Open the external site and fill it only from approved Valedictorian state, selected materials, and user instructions.
+6. Verify persisted values page by page and record durable milestones with `runs step`.
+7. On a blocker or missing fact, record a run step, complete the run without `--outcome`, store the classification in `--blocker`/bounded metadata, and report that the Action Queue hold was not updated.
+8. After final review and before Submit, record a passed `verification_receipt` run step.
+9. Submit only with explicit approval. Do not rely on unavailable CLI policy state.
+10. After confirmation, record `submitted` and `confirmation_verified` run steps, update the Application status to `submitted` with current revision and rationale, and complete the run with outcome `submitted`.
+11. Re-read the Application, history, and run. Summarize Application id, run id, canonical status, confirmation evidence, and any projection the CLI could not update.
 
 ## Decision Gates
 
 Pause before continuing when:
 
-- The answer requires a fact not present in Valedictorian state, the resume/materials, or prior user instructions.
+- A required fact is absent or sources disagree.
+- Resume/material selection or final-submit authority is not explicit.
 - The site asks for MFA, CAPTCHA, identity verification, security challenge, payment, assessment, legal attestation, background-check authorization, or account recovery.
-- Salary, compensation, relocation, travel, start date, work authorization, sponsorship, clearance, export-control, EEO, veteran, disability, or accommodation questions lack a recorded policy.
-- The posting is suspicious, closed, duplicate, unofficial, pay-to-apply, or not tied to a credible employer recruiting channel.
-- The selected resume, cover letter, transcript, identity document, or other upload is missing or ambiguous.
-- The final review still has blank, stale, parser-damaged, or unsupported material fields.
+- Salary, relocation, travel, start date, work authorization, sponsorship, clearance, export-control, EEO, veteran, disability, or accommodation answers lack approved facts.
+- The posting is suspicious, closed, duplicate, unofficial, pay-to-apply, or tied to the wrong Job/Application.
+- The final review has blank, stale, parser-damaged, unsupported, or unverified material fields.
 
-## Outcome Classifier
+## Run Classifications
 
-Use precise Valedictorian outcomes:
+Use run steps plus `--blocker`/bounded metadata for operational classifications such as `ready_for_review`, `needs_user_info`, `manual_captcha`, `security_gate`, `login_needed`, `platform_error`, `closed`, `not_fit`, `not_pursued`, or `already_applied`. Do not send those values as Application status or run `--outcome`.
 
-- `submitted`: real confirmation page, dashboard status, or receipt email verified.
-- `already_applied`: the official portal says this exact posting was already applied to.
-- `ready_for_review`: filled and verified, but intentionally waiting for user review or final approval.
-- `needs_user_info`: a required answer is not available from approved sources.
-- `manual_captcha`: the form is reachable but requires human CAPTCHA/security completion.
-- `security_gate`: bot/security infrastructure prevents reaching the form.
-- `login_needed`: account, password, MFA, or verification remains after allowed recovery attempts.
-- `platform_error`: upload, save, validation, or submit fails due to unstable ATS behavior.
-- `closed`: the official posting is expired, removed, or no longer accepting applications.
-- `not_fit` or `not_pursued`: the role conflicts with policy, score, eligibility, user preferences, or application strategy.
+Only use run `--outcome submitted` after verified submission. For an exact already-applied portal state, update the canonical Application to `submitted` only when evidence proves the same posting was previously submitted; preserve `already_applied` in run metadata.
 
 ## Final Submit Guard
 
-Before clicking `Submit`, `Apply`, `Send`, or equivalent:
+Before recording the receipt and clicking Submit:
 
-- Verify employer, role, location/work mode, official URL, and account identity.
-- Verify selected resume and any cover letter/transcript/portfolio uploads.
-- Verify name, email, phone, education, work history, websites, skills, work authorization, sponsorship, salary/compensation, required screening answers, and required consents.
-- Verify voluntary sensitive disclosures follow recorded policy.
-- Verify no visible validation errors, disabled submit state, stale parser values, or unresolved material blanks remain.
-- Record a passed `verification_receipt` only after this final review is true.
+- Verify employer, role, Application/Job lineage, official URL, and account identity.
+- Verify the explicitly approved resume and every other upload.
+- Verify identity, contact, education, work history, websites, skills, authorization, sponsorship, compensation, screening answers, and required consents.
+- Verify sensitive disclosures follow explicit instructions.
+- Verify there are no visible errors, stale parser values, disabled controls, or unresolved material blanks.
 
-If submission is not authorized, complete or leave the attempt as `ready_for_review` with the required hold metadata rather than submitting.
+Record the passed `verification_receipt` on the workflow run after this review and before submission. A click is not proof of submission; require confirmation evidence.

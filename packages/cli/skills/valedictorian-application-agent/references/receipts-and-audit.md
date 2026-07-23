@@ -1,112 +1,128 @@
-# Receipts And Audit
+# Runs, Receipts, And Audit
 
-Read this before starting, resuming, stepping, or completing Valedictorian application attempts or workflow runs.
+Read this before starting, resuming, stepping, or completing browser application work.
+
+## Contents
+
+- State boundary and preflight
+- Start or resume
+- Blockers and holds
+- Verification receipt
+- Confirmed submission
+- Final verification
 
 ## State Boundary
 
-- Load and follow the `valedictorian-cli` skill before running commands.
-- Use `applications attempts` for the concrete application attempt lifecycle.
-- Use `runs --run-type application_attempt` for the broader agent audit trail.
-- Do not complete an attempt from memory. Re-read the relevant attempt/run/application after mutations.
-- Do not write directly to workspace databases or use ad hoc HTTP to patch state.
+- Load `valedictorian-cli` before commands.
+- Treat `applications attempts list` and `applications events list` as read-only diagnostics.
+- Use `runs --run-type application_attempt` for every agent-owned milestone and outcome.
+- Use `applications update-status` only when the canonical pursuit status truly changes.
+- Do not use direct database writes or ad hoc HTTP to fill missing CLI capabilities.
 
 ## Preflight Reads
-
-Use the CLI skill for exact syntax and target safety. Typical reads are:
 
 ```sh
 valedictorian-cli --json context
 valedictorian-cli --json doctor --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json action-queue list --workspace "$VALEDICTORIAN_WORKSPACE" --action-bucket apply_now --limit 25
-```
-
-For a selected application:
-
-```sh
 valedictorian-cli --json applications get <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
-valedictorian-cli --json applications attempts list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --limit 25
-valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --subject-application-id <application-id> --limit 25
+valedictorian-cli --json applications history <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json applications attempts list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json applications events list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --subject-application-id <application-id>
 valedictorian-cli --json profile agent-context --workspace "$VALEDICTORIAN_WORKSPACE"
 valedictorian-cli --json secrets list --workspace "$VALEDICTORIAN_WORKSPACE"
 ```
 
-Use populated DOB and self-identification facts from agent context when present; never invent missing facts. Credential secret summaries belong in normal agent context only as availability metadata. Keep SSN and credentials on the secret path. Prefer `secrets run` with `secret://` references when a trusted local child needs a credential; do not write values into temp files, argv, chat, or logs.
+Use attempts/events to understand existing technical activity, not as records the agent can mutate.
 
-## Starting Or Resuming Work
+## Start Or Resume
 
-- If a matching in-progress attempt/run exists, resume it or explain why a new one is required.
-- Start the run and attempt before external browser work.
-- Include the external entry URL when starting the attempt.
+Resume a matching in-progress run. Otherwise:
 
 ```sh
-valedictorian-cli --json runs start --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --actor-type agent --actor-name <agent-name> --subject-application-id <application-id> --summary "Started application agent work."
-valedictorian-cli --json applications attempts start <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --actor-type agent --actor-name <agent-name> --entry-url "<url>"
+valedictorian-cli --json runs start \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --run-type application_attempt \
+  --actor-type agent \
+  --actor-name <agent-name> \
+  --subject-application-id <application-id> \
+  --summary "Started browser application work."
 ```
 
-Record cross-reference details as a run step if the response ids are not otherwise linked.
+Record milestones with bounded, non-secret data:
 
-## Attempt Steps
+```sh
+valedictorian-cli --json runs step <run-id> \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --type page_verified \
+  --message "Verified contact and education page."
+```
 
-Use only valid attempt step types:
+Useful run step types include `resume_uploaded`, `page_verified`, `blocked`, `verification_receipt`, `submitted`, `confirmation_verified`, and `note`.
 
-- `attempt_started`
-- `resume_created`
-- `resume_uploaded`
-- `page_verified`
-- `verification_receipt`
-- `manual_review_hold_created`
-- `blocked`
-- `submitted`
-- `confirmation_verified`
-- `attempt_completed`
-- `note`
+## Blockers And Holds
 
-Use attempt steps for durable facts that should survive handoff: resume uploaded, page verified, manual-review hold created, blocker reached, final verification, submission, and confirmation verified. Use run steps for navigation notes, retry details, policy decisions, diagnostics, and non-secret evidence.
+For a CAPTCHA, missing fact, review hold, login/security gate, closed posting, or platform failure:
+
+1. Add a precise `blocked` or `note` run step without secret values.
+2. Complete the run with `--status completed`.
+3. Put the operational classification in `--blocker` and optionally bounded `--metadata-json`.
+4. Omit `--outcome`.
+5. Tell the user that alpha.18 could not update the Action Queue operational hold.
+
+```sh
+valedictorian-cli --json runs complete <run-id> \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --status completed \
+  --blocker needs_user_info \
+  --summary "A required sponsorship answer is missing." \
+  --metadata-json '{"classification":"needs_user_info"}'
+```
 
 ## Verification Receipt
 
-Before completing an attempt as `submitted`, add a passed `verification_receipt` step. The payload must summarize what was verified and what remains unresolved.
+After final review passes and before clicking Submit:
 
 ```sh
-valedictorian-cli --json applications attempts step <application-id> <attempt-id> --workspace "$VALEDICTORIAN_WORKSPACE" --type verification_receipt --message "Final review verification passed." --payload-json '{"version":1,"scope":"final_review","status":"passed","verified":["identity","contact_info","resume_attachment","work_authorization"],"unresolved":[],"evidence":"Final review screen matched the intended application payload before submit."}'
+valedictorian-cli --json runs step <run-id> \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --type verification_receipt \
+  --message "Final review verification passed." \
+  --payload-json '{"version":1,"scope":"final_review","status":"passed","verified":["identity","contact_info","resume_attachment","work_authorization"],"unresolved":[],"evidence":"Final review matched the intended application payload before submit."}'
 ```
 
-Good evidence includes confirmation-page text, confirmation URL, portal dashboard status, receipt email sender/subject/time, screenshot path when available, and the exact material fields verified. Do not include secret values or raw sensitive values.
+The receipt proves review, not submission. Keep sensitive values out of its payload.
 
-## Completing Attempts
+## Confirmed Submission
 
-Submitted attempts need confirmation evidence:
+After a confirmation page, portal state, or receipt proves submission:
 
 ```sh
-valedictorian-cli --json applications attempts complete <application-id> <attempt-id> --workspace "$VALEDICTORIAN_WORKSPACE" --outcome submitted --summary "Application submitted." --confirmation-url "<url>" --confirmation-text "<text>"
+valedictorian-cli --json runs step <run-id> --workspace "$VALEDICTORIAN_WORKSPACE" --type submitted --message "Submitted the application."
+valedictorian-cli --json runs step <run-id> --workspace "$VALEDICTORIAN_WORKSPACE" --type confirmation_verified --message "Verified confirmation page and final URL."
 ```
 
-`ready_for_review` requires hold metadata:
+Re-read the Application to obtain its current revision, then:
 
 ```sh
-valedictorian-cli --json applications attempts complete <application-id> <attempt-id> --workspace "$VALEDICTORIAN_WORKSPACE" --outcome ready_for_review --hold-started-at "<iso timestamp>" --manual-review-kind overridable --summary "Filled and verified for review."
+valedictorian-cli --json applications update-status <application-id> \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --input-json '{"expectedRevision":<revision>,"actor":{"id":"<agent-id>","type":"agent"},"status":"submitted","rationale":"Submission confirmation verified."}'
+
+valedictorian-cli --json runs complete <run-id> \
+  --workspace "$VALEDICTORIAN_WORKSPACE" \
+  --status completed \
+  --outcome submitted \
+  --summary "Application submission confirmed."
 ```
 
-Use `--manual-review-kind non_overridable` when policy requires explicit per-application approval.
-
-`needs_user_info` requires the missing information:
+## Final Verification
 
 ```sh
-valedictorian-cli --json applications attempts complete <application-id> <attempt-id> --workspace "$VALEDICTORIAN_WORKSPACE" --outcome needs_user_info --missing-user-info "<question or fact needed>" --summary "Required answer is missing."
-```
-
-Blocker outcomes require `--blocker-reason`: `manual_captcha`, `security_gate`, `login_needed`, `platform_error`, `closed`, `not_fit`, and `not_pursued`.
-
-Complete the workflow run with `--status completed` for resolved outcomes, or `--status failed` when the agent failed unexpectedly. Include `--outcome` and `--blocker` when useful for audit readers.
-
-## Mutation Verification
-
-After every mutation, re-read the smallest affected record:
-
-```sh
-valedictorian-cli --json applications attempts list <application-id> --workspace "$VALEDICTORIAN_WORKSPACE" --limit 25
-valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --subject-application-id <application-id> --limit 25
 valedictorian-cli --json applications get <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json applications history <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"
+valedictorian-cli --json runs list --workspace "$VALEDICTORIAN_WORKSPACE" --run-type application_attempt --subject-application-id <application-id>
 ```
 
-If verification disagrees with the mutation response, stop and report the mismatch. Do not retry mutations blindly.
+If readback disagrees with the mutation response, stop. Do not retry blindly.

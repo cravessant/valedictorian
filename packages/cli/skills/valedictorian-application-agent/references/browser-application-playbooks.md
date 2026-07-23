@@ -60,7 +60,7 @@ Read this before opening an external job site, job board, or ATS form.
 - After each continue/save/submit, scan for inline errors, toast messages, disabled buttons, required-field markers, focus jumps, and server errors.
 - Fix deterministic validation errors from approved data.
 - Retry transient navigation, upload, or save failures only after checking whether the previous action already succeeded.
-- Use precise outcomes for unresolved gates: `manual_captcha`, `security_gate`, `login_needed`, `platform_error`, `closed`, `needs_user_info`, `not_fit`, or `not_pursued`.
+- Classify unresolved gates precisely in the workflow run: `manual_captcha`, `security_gate`, `login_needed`, `platform_error`, `closed`, `needs_user_info`, `not_fit`, or `not_pursued`. Do not send these operational classifications as canonical Application statuses.
 
 ## Confirmation Capture
 

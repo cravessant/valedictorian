@@ -10,6 +10,27 @@ pnpm --registry=https://registry.npmjs.org/ --config.minimumReleaseAge=0 add -g 
 
 The CLI is currently published under the npm `alpha` dist-tag.
 
+## Agent skills
+
+The repository publishes two skills from its default branch: `valedictorian-cli` for canonical lifecycle operations and `valedictorian-application-agent` for browser-based work on an existing Application.
+
+Install them explicitly for Codex through `npx skills`:
+
+```sh
+npx --yes skills add cravessant/valedictorian \
+  --global \
+  --agent codex \
+  --skill valedictorian-cli \
+  --skill valedictorian-application-agent \
+  --yes
+
+npx skills list --global --agent codex --json
+```
+
+The repository is private, so the installing user must already have GitHub access. Start a fresh Codex task after installation so its skill catalog reloads.
+
+The lifecycle skills require the alpha.18 command surface. Verify `valedictorian-cli captures --help`; if the installed npm `alpha` lacks that group, use a current local build or wait for the matching CLI release instead of substituting legacy sourcing commands.
+
 ## Usage
 
 Point the CLI at a running Valedictorian API, then pass a workspace id or exact workspace name for workspace-scoped commands.

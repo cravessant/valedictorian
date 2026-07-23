@@ -1,4 +1,4 @@
 interface:
   display_name: "Valedictorian Application Agent"
-  short_description: "Apply to jobs with Valedictorian state"
-  default_prompt: "Use $valedictorian-application-agent to work the next queued job application safely."
+  short_description: "Run safe browser-based job applications"
+  default_prompt: "Use $valedictorian-application-agent to work an existing Valedictorian Application safely."

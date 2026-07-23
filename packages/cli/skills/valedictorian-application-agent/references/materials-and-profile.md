@@ -6,10 +6,10 @@ Read this before choosing application materials, profile facts, credential summa
 
 Prefer sources in this order:
 
-1. Application-specific Valedictorian notes, selected materials, and user instructions.
+1. Application-specific Valedictorian state and user instructions.
 2. `profile agent-context` and reusable answer-bank data.
-3. The selected resume, cover letter, transcript, portfolio, or other attached artifact.
-4. Prior attempt/run notes and receipts for the same application or employer.
+3. The explicitly approved resume path, cover letter, transcript, portfolio, or other artifact supplied for this work.
+4. Prior run notes and read-only technical attempts/events for the same Application.
 5. Credential secret summaries, used only to know whether a trusted value exists.
 
 If sources disagree, pause or follow the most application-specific explicit user instruction.
@@ -24,11 +24,10 @@ If sources disagree, pause or follow the most application-specific explicit user
 
 ## Resumes And Cover Letters
 
-- Use the resume variant selected by the application when one is recorded.
-- If no resume is selected, choose only when workspace policy makes the choice deterministic; otherwise pause.
-- Do not generate or attach a cover letter unless the application record, role policy, or user explicitly selects that path.
+- The alpha.18 Application/Profile CLI state does not select a resume. Require an explicitly approved resume path from the user or another authorized task input; otherwise pause.
+- Do not generate or attach a cover letter unless the user explicitly selects that path.
 - Do not upload transcripts, identity documents, references, writing samples, or portfolios unless they are explicitly selected or required and approved.
-- If a site rejects a file, record the rejection and use only approved conversion/sanitization workflows.
+- If a site rejects a file, record the rejection in the workflow run and use only approved conversion/sanitization workflows.
 
 ## Manual Entry
 

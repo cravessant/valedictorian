@@ -1,6 +1,6 @@
 ---
 name: valedictorian-cli
-description: Use when an AI coding agent needs to operate the Valedictorian job automation CLI for captures, jobs, opportunities, applications, the Action Queue, workflow runs, scoring, or agent-driven workflows. Helps agents locate and run the CLI safely, configure API environment variables, request JSON output when needed, and perform requested mutations without bypassing the CLI.
+description: Operate the Valedictorian CLI across the canonical Capture → Job → Opportunity → Application lifecycle, Action Queue, workflow runs, profiles, secrets, and scoring. Use when an agent must inspect lifecycle state, promote records safely, resolve warnings or duplicates, update pursuit state, or automate Valedictorian through its supported command surface without direct database or ad hoc HTTP access.
 ---
 
 # Valedictorian CLI
@@ -12,8 +12,10 @@ Use the Valedictorian CLI as the first-choice interface for Valedictorian job au
 Verify the CLI surface before using it in a new environment:
 
 ```sh
+valedictorian-cli --version
 valedictorian-cli doctor
 valedictorian-cli context
+valedictorian-cli captures --help
 ```
 
 If installing the npm package while Valedictorian is still in alpha, install the alpha dist-tag:
@@ -30,6 +32,17 @@ node dist/valedictorian.js doctor
 ```
 
 Commands default to human-readable output. Use `--json` when another tool, script, or agent needs structured diagnostics or record fields. Workspace-scoped commands require `--workspace <id-or-name>`; the flag may be placed before the command or on the command itself. Only root commands such as `doctor`, `context`, `workspaces list`, and `workspaces open/create` are workspace-neutral. If the API URL is not local, state the sanitized target URL and wait for clear user intent before changing data.
+
+The lifecycle commands require the alpha.18 command surface. If `captures`, `jobs`, and `opportunities` are absent from root help, stop and report that the installed CLI predates lifecycle parity; do not substitute legacy sourcing commands.
+
+## Lifecycle Model
+
+- **Capture** preserves an attributable observation: provenance, Evidence mode, payload, and evidence. Correct it by revision; never reinterpret it as canonical state.
+- **Job** owns canonical facts, availability, external identities, and exact Capture revision/evidence references. Provider ids and URLs never replace its internal Job id.
+- **Opportunity** records this workspace's evaluation and disposition for one Job. It does not copy Job facts.
+- **Application** records the decision to pursue one Opportunity and Job. It owns pursuit status, mutable links/display edits, and an intentionally frozen Job snapshot.
+
+The normal progression is `captures promote-to-job` → `jobs promote-to-opportunity` → `opportunities promote-to-application`. Do not skip a boundary merely to save commands. Direct downstream `create` commands are for an explicitly requested manual/import/repair path.
 
 ## Core Workflow
 
@@ -49,22 +62,26 @@ Commands default to human-readable output. Use `--json` when another tool, scrip
    - Use the `captures`, `jobs`, `opportunities`, and `applications` `list|get|history` commands to identify lifecycle records. Use `action-queue list`, `runs list`, `profile get|agent-context|validate`, and `secrets list` for the supporting surfaces.
    - Treat lifecycle `create`, `correct-*`, `update-*`, `remove`, `restore`, link mutations, and promotions as mutations. `scores record`, `runs start|step|complete`, `profile update|format|restore`, and `secrets upsert|delete` are also mutations.
    - Before any mutation, identify the sanitized target URL and whether it is local, staging, or production. Require clear user intent before mutating non-local data.
+   - Read the source record and its history before a promotion. Record the current revision and linked ids needed by optimistic guards.
    - Be especially cautious with lifecycle promotions and remove commands using `unlink_dependents` or `cascade_tombstone`.
 4. Run the smallest command that satisfies the user request.
-5. For mutations, verify by re-reading the changed record or listing the affected collection.
+5. For mutations, verify by re-reading the target, its history, and its upstream lineage.
 
 ## Common Workflows
 
 - Investigate an Action Queue item: list the queue, then read the referenced application with `applications get`, its immutable history with `applications history`, and technical records with `applications attempts list` or `applications events list`.
 - Record broader application work with `runs start|step|complete --run-type application_attempt`; application attempt and event lifecycle records are read-only in this client contract.
-- Create a capture with explicit `--evidence-mode`, `--adapter-id`, `--adapter-kind`, `--adapter-version`, and `--observed-at`. Then promote through `captures promote-to-job`, `jobs promote-to-opportunity`, and `opportunities promote-to-application` only when the user intends each mutation.
-- Supply complete contract-owned mutation payloads through strict `--input-json`. Promotion flags can explicitly override the idempotency key, warning override, and duplicate resolution. Remove commands require an actor, rationale, and deterministic dependent-resource choice.
+- Create a Capture with explicit `--evidence-mode`, `--adapter-id`, `--adapter-kind`, `--adapter-version`, and `--observed-at`. `reported` may allow Capture → Job retrieval; `ats_details_provided` prohibits that fallback. Later boundaries never retrieve the posting again.
+- Promote one boundary at a time with a stable idempotency key. A warning is nonterminal but must be reported; never invent an override. A blocker stops the workflow. For `deterministic_duplicate`, inspect the conflicting resource and obtain an exact `attach` or `merge` decision instead of guessing.
+- Supply complete contract-owned mutation payloads through strict `--input-json`. Omit the positional source id from the JSON. Remove commands require an actor, rationale, and deterministic dependent-resource choice.
 - Score an application: inspect the application first, then use `valedictorian-cli --json scores record <application-id> --workspace "$VALEDICTORIAN_WORKSPACE"`, then re-read the application or score output if available.
 - Migrate profile data: write the unified public profile document with `valedictorian-cli --json profile update --workspace "$VALEDICTORIAN_WORKSPACE" --input-json profile.json --expected-revision <revision>`, validate with `profile validate`, normalize with `profile format`, and use `profile restore` only with explicit confirmation. Write credential values with `valedictorian-cli --json secrets upsert <key> --workspace "$VALEDICTORIAN_WORKSPACE" --kind password --label "Label" --value-file "$SECRET_VALUE_FILE"`. Verify using `profile get`, `profile agent-context`, and `secrets list`; do not invent missing DOB or self-identification facts; keep SSN and credentials on the secret path; never print password values in chat or logs. Prefer `secrets run --workspace "$VALEDICTORIAN_WORKSPACE" --env NAME=secret://key -- <command>` (or `--stdin-secret` / `--fd`) for trusted local child commands instead of temp files or argv substitution.
 
 ## Command Reference
 
-Read `references/commands.md` before any mutation, first use in a session, structured JSON flag, local repository invocation, or unfamiliar command family.
+- Read `references/lifecycle.md` before creating, correcting, promoting, removing, restoring, or refreshing lifecycle records.
+- Read `references/promotion-payloads.md` when constructing strict JSON for any of the three promotion commands.
+- Read `references/commands.md` before any mutation, first use in a session, structured JSON flag, local repository invocation, or unfamiliar command family.
 
 ## Output Handling
 
@@ -73,6 +90,8 @@ Commands write human-readable output by default. Use leading `--json` (for examp
 ## Troubleshooting
 
 - Unknown command or option: run the nearest `--help`, then read `references/commands.md`.
+- Structured blocker or exit 4: inspect its code, conflict id, allowed resolutions, supported choices, and dependent ids. Do not retry blindly.
+- Revision conflict or HTTP 409: re-read the record and history, rebuild the decision against the current revision, and use a new operation only if the intended mutation changed.
 - API unreachable: check the sanitized `VALEDICTORIAN_API_URL`, confirm the service is running, and do not retry mutations blindly.
 - Unauthorized: set or refresh `VALEDICTORIAN_API_TOKEN` without printing the value.
 - Ambiguous record: re-list or search by company, role, URL, or ID; ask the user if the target is still unclear.

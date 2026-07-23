@@ -9,7 +9,7 @@ Read this before answering eligibility, work authorization, salary, EEO, consent
 - For yes/no eligibility questions, use exact known facts. If unknown, pause.
 - For years of experience, calculate from verifiable history and do not round up to satisfy requirements.
 - For skills, certifications, licenses, education, languages, clearances, and locations, answer affirmatively only when explicitly supported.
-- If a required answer is missing, complete or hold as `needs_user_info` with the exact question or fact needed.
+- If a required answer is missing, record `needs_user_info` as a workflow-run blocker with the exact question or fact needed. Report that alpha.18 cannot persist the corresponding Action Queue hold.
 
 ## Work Authorization And Sponsorship
 
@@ -48,7 +48,7 @@ Read this before answering eligibility, work authorization, salary, EEO, consent
 
 ## Saved Answer Feedback
 
-When a new recurring question appears, record a non-secret normalized version of:
+Only when the user explicitly requests profile/answer-bank maintenance, record a non-secret normalized version of:
 
 - Question text and answer choices.
 - Selected answer and source.
