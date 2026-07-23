@@ -176,6 +176,10 @@ jobs:
         working-directory: valedictorian-app
         run: pnpm install --frozen-lockfile
 
+      - name: Inspect Electron runtime
+        working-directory: valedictorian-app
+        run: pnpm run inspect:electron-runtime
+
       - name: Run macOS package checks
         if: runner.os == 'macOS'
         timeout-minutes: 5
