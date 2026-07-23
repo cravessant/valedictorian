@@ -25,7 +25,7 @@ env:
 jobs:
   verify:
     name: Verify Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     outputs:
       publish_update_feed: ${{ steps.release-mode.outputs.publish_update_feed }}
@@ -218,7 +218,7 @@ jobs:
   build-mac:
     name: Build Mac DMG
     needs: verify
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-latest
     timeout-minutes: 20
     permissions:
       contents: write

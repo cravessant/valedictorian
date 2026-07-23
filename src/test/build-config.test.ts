@@ -173,8 +173,8 @@ describe('build configuration', () => {
 
     expect(ciWorkflow).toContain('package-smoke:')
     expect(ciWorkflow.slice(ciWorkflow.indexOf('package-smoke:'))).not.toContain('needs: test')
-    expect(ciWorkflow).toContain('macos-latest')
-    expect(ciWorkflow).toContain('windows-latest')
+    expect(ciWorkflow).toContain('blacksmith-6vcpu-macos-latest')
+    expect(ciWorkflow).toContain('blacksmith-2vcpu-windows-2025')
     expect(ciWorkflow).toContain('pnpm exec electron-builder --win --publish never')
     expect(ciWorkflow).not.toContain('electron-builder --win --dir')
     expect(ciWorkflow).toContain('Verify Windows installer')

@@ -26,7 +26,7 @@ jobs:
   quality:
     name: Draft Quality
     if: github.event_name == 'pull_request' && github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - name: Check out repository
@@ -57,7 +57,7 @@ jobs:
   test:
     name: Test App (shard ${{ matrix.shard }}/2)
     if: github.event_name == 'push' || !github.event.pull_request.draft
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 7
     strategy:
       fail-fast: false
@@ -142,17 +142,17 @@ jobs:
   package-smoke:
     name: Package Smoke (${{ matrix.name }})
     if: github.event_name == 'push' || !github.event.pull_request.draft
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 5
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macOS
-            os: macos-latest
+            runner: blacksmith-6vcpu-macos-latest
             package_command: pnpm exec electron-builder --mac --dir --publish never -c.mac.identity=null -c.mac.notarize=false
           - name: Windows
-            os: windows-latest
+            runner: blacksmith-2vcpu-windows-2025
             package_command: pnpm exec electron-builder --win --publish never
     steps:
       - name: Check out repository
@@ -226,7 +226,7 @@ jobs:
       - package-smoke
       - quality
       - test
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - name: Verify required jobs
