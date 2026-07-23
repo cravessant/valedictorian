@@ -31,7 +31,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useToast } from '@/components/ui/use-toast'
-import { AlertCircle, CircleUserRound, Database, Download, Globe2, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
+import { AlertCircle, Building2, CircleUserRound, Database, Download, Globe2, Plug, Search, Server, Settings as SettingsIcon, X, PanelLeft, RefreshCw } from 'lucide-react'
 import { actionFailureToastInput } from './error-presentation'
 import type { UpdateState } from '../ipc/updates.preload'
 import type { AppSettings, AppSettingsPatch, RuntimePreference } from '../settings/app-settings'
@@ -304,6 +304,30 @@ function AppSidebar({
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
+              {isVisible(APP_VIEWS.COMPANIES) ? (
+                <SidebarGroup className="px-0 py-2">
+                  <SidebarGroupLabel className="h-auto px-2 py-1">
+                    Workspace data
+                  </SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          type="button"
+                          isActive={currentView === APP_VIEWS.COMPANIES}
+                          aria-current={
+                            currentView === APP_VIEWS.COMPANIES ? 'page' : undefined
+                          }
+                          onClick={() => onViewChange(APP_VIEWS.COMPANIES)}
+                        >
+                          <Building2 className="h-4 w-4" aria-hidden="true" />
+                          Companies
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ) : null}
             <SidebarMenu>
               {isVisible(APP_VIEWS.CONNECTORS) || isVisible(APP_VIEWS.CONNECTOR_RUNS) ? <Collapsible
                 asChild

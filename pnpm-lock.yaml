@@ -117,8 +117,8 @@ importers:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       sparxie:
-        specifier: 0.27.1
-        version: 0.27.1
+        specifier: 0.28.0
+        version: 0.28.0
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -3596,8 +3596,8 @@ packages:
     resolution: {integrity: sha512-SMUr2wZ4RwEvhjaJ8pQjXmHTpifw92mUmpHj19H0yQyMg5gRrL5rPhkSfA6HYQG6pt+h2sChOy83l7TJ2b9bmg==}
     engines: {node: '>=22.12.0'}
 
-  sparxie@0.27.1:
-    resolution: {integrity: sha512-UmE3/k3ya4zOh20ww2exPj9bwcfYXO78SZ7VfHgrEG8zMVSM7RulSOGDJ1jpJ+3syX1C8+/gVOCVjVBAR2h9wA==}
+  sparxie@0.28.0:
+    resolution: {integrity: sha512-XkH6kU5+95LYvvBiT8it9p4EI11Iu5aeeF6ODnIcFlgWMAI5UZXln9NpBu4+U463jQI6Rc9LRMzHFNqYu4seaQ==}
     engines: {node: '>=22.12.0'}
 
   sprintf-js@1.0.3:
@@ -6985,7 +6985,7 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  sparxie@0.27.1:
+  sparxie@0.28.0:
     dependencies:
       zod: 4.4.3
 

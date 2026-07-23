@@ -5,6 +5,7 @@ export const APP_VIEWS = {
   JOBS: 'jobs',
   OPPORTUNITIES: 'opportunities',
   APPLICATIONS: 'applications',
+  COMPANIES: 'companies',
   PROFILE: 'profile',
   CONNECTORS: 'connectors',
   CONNECTOR_RUNS: 'connector-runs',

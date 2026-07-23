@@ -136,6 +136,45 @@ describe('A308-1: navigation hierarchy and mode placement', () => {
     expect(all).toHaveAttribute('aria-checked', 'true')
     expect(queue).toHaveAttribute('aria-checked', 'false')
   })
+
+  it('derives Applications mode from location and routes mode changes back to it', async () => {
+    const user = userEvent.setup()
+    const { client } = makeClient()
+    const navigate = vi.fn()
+    const { rerender } = render(
+      <LifecycleWorkbench
+        client={client}
+        selectedPhase="applications"
+        workspaceEntry={{
+          location: { view: 'applications', mode: 'action-queue' },
+          cursorChain: [],
+        }}
+        onWorkspaceNavigate={navigate}
+      />,
+    )
+    const modeGroup = screen.getByRole('radiogroup', { name: 'Applications view mode' })
+    expect(within(modeGroup).getByRole('radio', { name: 'Action Queue' }))
+      .toHaveAttribute('aria-checked', 'true')
+
+    await user.click(within(modeGroup).getByRole('radio', { name: 'All' }))
+    expect(navigate).toHaveBeenCalledWith(
+      { view: 'applications', mode: 'all' },
+      { cursorChain: [] },
+    )
+
+    rerender(
+      <LifecycleWorkbench
+        client={client}
+        selectedPhase="applications"
+        workspaceEntry={{
+          location: { view: 'applications', mode: 'all' },
+          cursorChain: [],
+        }}
+        onWorkspaceNavigate={navigate}
+      />,
+    )
+    expect(screen.getByRole('table', { name: 'Applications' })).toBeInTheDocument()
+  })
 })
 
 describe('A308-2: All mode preserves the lifecycle table', () => {

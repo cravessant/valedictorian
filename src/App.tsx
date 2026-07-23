@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ValedictorianWorkspaceClient } from 'sparxie'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { useAppBootstrapLoads } from './app/use-app-bootstrap-loads'
@@ -38,6 +39,16 @@ import {
   rendererUpdatesApi,
 } from './app/renderer-settings-apis'
 import type { CaptureRunFilter, ConnectorProvenanceTarget } from './app/capture-navigation'
+import { useWorkspaceLocation } from './app/use-workspace-location'
+import {
+  workspaceViews,
+  type WorkspaceLocation,
+} from './app/workspace-location'
+import {
+  getRendererHttpWorkspaceClient,
+  onRendererBackendStateChanged,
+} from './app/renderer-http-client'
+import { CompaniesWorkspace } from './modules/workspace-resources/CompaniesWorkspace'
 
 interface AppProps {
   settingsApi?: SettingsPreloadApi
@@ -47,6 +58,7 @@ interface AppProps {
   policyApi?: PolicyPreloadApi
   profileApi?: ProfilePreloadApi
   updatesApi?: UpdatesPreloadApi
+  workspaceClient?: ValedictorianWorkspaceClient | null
   [key: string]: unknown
 }
 
@@ -101,6 +113,7 @@ function viewTitle(view: MainAppView): string {
   if (view === APP_VIEWS.JOBS) return 'Jobs'
   if (view === APP_VIEWS.OPPORTUNITIES) return 'Opportunities'
   if (view === APP_VIEWS.APPLICATIONS) return 'Applications'
+  if (view === APP_VIEWS.COMPANIES) return 'Companies'
   return 'Connector Runs'
 }
 
@@ -112,6 +125,7 @@ export default function App({
   policyApi = rendererPolicyApi(),
   profileApi = rendererProfileApi(),
   updatesApi = rendererUpdatesApi(),
+  workspaceClient,
 }: AppProps) {
   const {
     reloadSettings,
@@ -122,7 +136,10 @@ export default function App({
     workspace,
     workspaceLoadFailure,
   } = useAppBootstrapLoads({ settingsApi, workspaceApi })
-  const [currentView, setCurrentView] = useState<MainAppView>(APP_VIEWS.CAPTURES)
+  const workspaceNavigation = useWorkspaceLocation()
+  const [nonWorkspaceView, setNonWorkspaceView] = useState<MainAppView | null>(null)
+  const currentView: MainAppView =
+    nonWorkspaceView ?? workspaceNavigation.entry.location.view
   const [settingsPageOpen, setSettingsPageOpen] = useState(false)
   const [selectedSettingsPanel, setSelectedSettingsPanel] = useState<SettingsPanelId>(
     SETTINGS_PANELS.GENERAL,
@@ -130,11 +147,27 @@ export default function App({
   const [settingsRestartRequired, setSettingsRestartRequired] = useState(false)
   const [captureRunFilter, setCaptureRunFilter] = useState<CaptureRunFilter | null>(null)
   const [focusedConnectorProvenance, setFocusedConnectorProvenance] = useState<ConnectorProvenanceTarget | null>(null)
+  const [rendererWorkspaceClient, setRendererWorkspaceClient] = useState(
+    getRendererHttpWorkspaceClient,
+  )
   const { checkForUpdates, installUpdate, updateState } = useAppUpdates(updatesApi)
 
   useEffect(() => {
     applyResolvedTheme(resolveTheme(settings.theme))
   }, [settings.theme])
+
+  useEffect(() => {
+    if (workspaceClient !== undefined) return
+    const resolveClient = () => setRendererWorkspaceClient(getRendererHttpWorkspaceClient())
+    resolveClient()
+    return onRendererBackendStateChanged(resolveClient)
+  }, [workspaceClient])
+
+  useEffect(() => {
+    const returnToWorkspace = () => setNonWorkspaceView(null)
+    window.addEventListener('popstate', returnToWorkspace)
+    return () => window.removeEventListener('popstate', returnToWorkspace)
+  }, [])
 
   useEffect(() => {
     const openSettings = () => setSettingsPageOpen(true)
@@ -161,8 +194,17 @@ export default function App({
   function changeView(view: MainAppView) {
     setSettingsPageOpen(false)
     setFocusedConnectorProvenance(null)
-    setCurrentView(view)
+    if (workspaceViews.includes(view as WorkspaceLocation['view'])) {
+      setNonWorkspaceView(null)
+      workspaceNavigation.navigate({ view: view as WorkspaceLocation['view'] })
+    } else {
+      setNonWorkspaceView(view)
+    }
   }
+
+  const resolvedWorkspaceClient = workspaceClient === undefined
+    ? rendererWorkspaceClient
+    : workspaceClient
 
   return (
     <TooltipProvider>
@@ -196,7 +238,7 @@ export default function App({
                     kind: 'run',
                   })
                 }
-                setCurrentView(APP_VIEWS.CONNECTOR_RUNS)
+                setNonWorkspaceView(APP_VIEWS.CONNECTOR_RUNS)
               }}
               onSettingsPatch={updateSettings}
             />
@@ -226,15 +268,47 @@ export default function App({
         ) : null}
         {isLifecycleView(currentView) ? (
           <LifecycleWorkbench
+            client={resolvedWorkspaceClient}
             key={captureRunFilter?.connectorRunId ?? 'all-captures'}
             initialConnectorRunId={captureRunFilter?.connectorRunId ?? null}
             selectedPhase={currentView}
-            onSelectedPhaseChange={setCurrentView}
+            onSelectedPhaseChange={changeView}
+            selectedResourceId={currentView === APP_VIEWS.JOBS
+              ? workspaceNavigation.entry.location.resourceId
+              : undefined}
+            onOpenResource={(resourceId, focusAnchor) => workspaceNavigation.navigate({
+              ...workspaceNavigation.entry.location,
+              view: APP_VIEWS.JOBS,
+              resourceId,
+            }, {
+              cursorChain: workspaceNavigation.entry.cursorChain,
+              focusAnchor,
+            })}
+            onBackFromResource={() => backFromResource(
+              workspaceNavigation.entry.location,
+              workspaceNavigation.entry.focusAnchor,
+              workspaceNavigation.back,
+              workspaceNavigation.navigate,
+            )}
+            workspaceEntry={workspaceNavigation.entry}
+            onWorkspaceNavigate={workspaceNavigation.navigate}
             onConnectorRunFilterChange={setCaptureRunFilter}
             onOpenConnectorProvenance={(target) => {
               setFocusedConnectorProvenance(target)
-              setCurrentView(APP_VIEWS.CONNECTOR_RUNS)
+              setNonWorkspaceView(APP_VIEWS.CONNECTOR_RUNS)
             }}
+          />
+        ) : currentView === APP_VIEWS.COMPANIES ? (
+          <CompaniesWorkspace
+            client={resolvedWorkspaceClient?.companies ?? null}
+            entry={workspaceNavigation.entry}
+            onBack={() => backFromResource(
+              workspaceNavigation.entry.location,
+              workspaceNavigation.entry.focusAnchor,
+              workspaceNavigation.back,
+              workspaceNavigation.navigate,
+            )}
+            onNavigate={workspaceNavigation.navigate}
           />
         ) : (
           <ConnectorRunsPanel
@@ -243,7 +317,7 @@ export default function App({
             focusedProvenanceTarget={focusedConnectorProvenance}
             onViewCaptures={(filter) => {
               setCaptureRunFilter(filter)
-              setCurrentView(APP_VIEWS.CAPTURES)
+              changeView(APP_VIEWS.CAPTURES)
             }}
           />
         )}
@@ -251,4 +325,21 @@ export default function App({
       <Toaster />
     </TooltipProvider>
   )
+}
+
+function backFromResource(
+  location: WorkspaceLocation,
+  focusAnchor: string | undefined,
+  back: () => void,
+  navigate: (location: WorkspaceLocation, options?: { replace?: boolean }) => void,
+) {
+  if (focusAnchor) {
+    back()
+    return
+  }
+  const {
+    resourceId: _resourceId,
+    ...listLocation
+  } = location
+  navigate(listLocation, { replace: true })
 }

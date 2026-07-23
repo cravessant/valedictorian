@@ -2,6 +2,7 @@
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ValedictorianWorkspaceClient } from 'sparxie'
 
 import App from './App'
 import { createConnectorsApi, createUpdatesApi } from './App.test-helpers'
@@ -16,6 +17,7 @@ afterEach(() => {
   window.matchMedia = originalMatchMedia
   delete (window as Window & { valedictorianHttp?: unknown }).valedictorianHttp
   delete (window as Window & { valedictorianNavigation?: unknown }).valedictorianNavigation
+  window.history.replaceState(null, '', '/')
 })
 
 describe('App sidebar navigation', () => {
@@ -33,6 +35,9 @@ describe('App sidebar navigation', () => {
 
     await screen.findByRole('table', { name: 'Captures' })
     const sidebar = screen.getByRole('complementary', { name: 'Application navigation' })
+    expect(within(sidebar).getByText('Job lifecycle')).toBeInTheDocument()
+    expect(within(sidebar).getByText('Workspace data')).toBeInTheDocument()
+    expect(within(sidebar).getByRole('button', { name: 'Companies' })).toBeInTheDocument()
     expect(screen.getByRole('banner', { name: 'App chrome' })).toHaveTextContent('Pancake · Captures')
     expect(within(sidebar).getByRole('button', { name: 'Captures' })).toHaveAttribute(
       'aria-current',
@@ -51,6 +56,10 @@ describe('App sidebar navigation', () => {
       'aria-current',
       'page',
     )
+
+    await user.click(within(sidebar).getByRole('button', { name: 'Companies' }))
+    expect(await screen.findByRole('heading', { name: 'Companies' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Lifecycle phase' })).not.toBeInTheDocument()
   })
 
   it('persists desktop collapse and expand through the settings API', async () => {
@@ -183,6 +192,87 @@ describe('App sidebar navigation', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Check for updates' }))
     expect(updatesApi.check).toHaveBeenCalledOnce()
+  })
+
+  it('switches workspace surfaces atomically on popstate without a cross-type lookup', async () => {
+    const companyId = 'company-one'
+    const jobId = '01900000-0000-7000-8000-000000000001'
+    window.history.replaceState({
+      location: { view: 'companies', resourceId: companyId },
+      cursorChain: [],
+    }, '', `/?view=companies&resource=${companyId}`)
+    const companiesGet = vi.fn(async () => ({
+      lookup: {
+        requested: {
+          id: companyId,
+          displayName: 'Company One',
+          websiteUrl: null,
+          status: 'active',
+          aliases: [],
+          notes: null,
+        },
+        canonical: { id: companyId, displayName: 'Company One' },
+      },
+      assignedJobCount: 1,
+    }))
+    const jobsGet = vi.fn(async () => ({
+      id: jobId,
+      facts: {
+        roleTitle: 'Atomic Job',
+        companyName: 'Company One',
+        sourceName: 'Test',
+      },
+      availability: { state: 'active' },
+    }))
+    const emptyLifecyclePage = async () => ({
+      items: [],
+      limit: 50,
+      nextCursor: null,
+    })
+    const workspaceClient = {
+      captures: { list: vi.fn(emptyLifecyclePage) },
+      jobs: { list: vi.fn(emptyLifecyclePage), get: jobsGet },
+      opportunities: { list: vi.fn(emptyLifecyclePage) },
+      applications: { list: vi.fn(emptyLifecyclePage) },
+      companies: {
+        get: companiesGet,
+        directory: {
+          list: vi.fn(async () => ({
+            items: [],
+            pageInfo: {
+              startCursor: null,
+              endCursor: null,
+              hasPreviousPage: false,
+              hasNextPage: false,
+            },
+            totalCount: 0,
+          })),
+        },
+      },
+    } as unknown as ValedictorianWorkspaceClient
+    const { settingsApi, workspaceApi } = installAppApis()
+    render(
+      <App
+        settingsApi={settingsApi}
+        workspaceApi={workspaceApi}
+        connectorsApi={createConnectorsApi()}
+        workspaceClient={workspaceClient}
+      />,
+    )
+    await screen.findByRole('heading', { name: 'Company One' })
+
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate', {
+        state: {
+          location: { view: 'jobs', resourceId: jobId },
+          cursorChain: [],
+        },
+      }))
+    })
+
+    expect(await screen.findByRole('heading', { name: 'Atomic Job' })).toHaveFocus()
+    expect(companiesGet.mock.calls).toEqual([[companyId]])
+    expect(jobsGet.mock.calls).toEqual([[jobId]])
   })
 })
 

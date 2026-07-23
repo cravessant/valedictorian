@@ -331,7 +331,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     }))
     await waitFor(() => {
       expect(captures.list).toHaveBeenCalledTimes(2)
-      expect(jobs.list).toHaveBeenCalledTimes(2)
+      expect(jobs.list).toHaveBeenCalledTimes(4)
     })
   })
 
@@ -381,7 +381,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
       }),
     }))
     await waitFor(() => {
-      expect(jobs.list).toHaveBeenCalledTimes(2)
+      expect(jobs.list).toHaveBeenCalledTimes(4)
       expect(opportunities.list).toHaveBeenCalledTimes(2)
     })
   })
@@ -435,7 +435,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     await waitFor(() => expect(captures.remove).toHaveBeenCalledTimes(1))
     // Refresh should fire after the removal succeeds
     await waitFor(() => expect(captures.list).toHaveBeenCalledTimes(2))
-    expect(jobs.list).toHaveBeenCalledTimes(2)
+    expect(jobs.list).toHaveBeenCalledTimes(4)
     expect(opportunities.list).toHaveBeenCalledTimes(2)
     expect(applications.list).toHaveBeenCalledTimes(2)
     expect(screen.getByTestId('lifecycle-outcome-removed')).toHaveTextContent('dep-1')
@@ -549,7 +549,7 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
       override: { actor: DESKTOP_USER_ACTOR, rationale: 'Reviewed manually.', warningCodes: ['fit'] },
       evaluation: expect.objectContaining({ fit: 'fit', rank: 7 }),
     }))
-    await waitFor(() => expect(jobs.list).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(jobs.list).toHaveBeenCalledTimes(6))
     await waitFor(() => expect(opportunities.list).toHaveBeenCalledTimes(3))
   })
 
@@ -639,14 +639,14 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     window.dispatchEvent(new Event('focus'))
     await waitFor(() => {
       expect(captures.list).toHaveBeenCalledTimes(callsBefore.captures + 1)
-      expect(jobs.list).toHaveBeenCalledTimes(callsBefore.jobs + 1)
+      expect(jobs.list).toHaveBeenCalledTimes(callsBefore.jobs + 2)
       expect(opportunities.list).toHaveBeenCalledTimes(callsBefore.opportunities + 1)
     })
 
     await user.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => {
       expect(captures.list).toHaveBeenCalledTimes(callsBefore.captures + 2)
-      expect(jobs.list).toHaveBeenCalledTimes(callsBefore.jobs + 2)
+      expect(jobs.list).toHaveBeenCalledTimes(callsBefore.jobs + 4)
       expect(opportunities.list).toHaveBeenCalledTimes(callsBefore.opportunities + 2)
     })
   })

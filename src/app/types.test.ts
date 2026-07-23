@@ -9,6 +9,7 @@ describe('app navigation type constants', () => {
       JOBS: 'jobs',
       OPPORTUNITIES: 'opportunities',
       APPLICATIONS: 'applications',
+      COMPANIES: 'companies',
       PROFILE: 'profile',
       CONNECTORS: 'connectors',
       CONNECTOR_RUNS: 'connector-runs',

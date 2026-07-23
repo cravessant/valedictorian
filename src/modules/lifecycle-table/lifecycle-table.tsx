@@ -107,6 +107,7 @@ export interface LifecycleTableProps<Row> {
   readonly state: LifecycleLoadState
   readonly toolbar?: ReactElement
   readonly onRefresh?: () => Promise<void> | void
+  readonly focusLoadFailure?: boolean
 }
 
 type MutationStatus =
@@ -127,6 +128,7 @@ export function LifecycleTable<Row>({
   state,
   toolbar,
   onRefresh,
+  focusLoadFailure = true,
 }: LifecycleTableProps<Row>): ReactElement {
   const [pendingAction, setPendingAction] = useState<PendingAction<Row> | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -238,6 +240,7 @@ export function LifecycleTable<Row>({
 
       {state.status === 'failure' ? (
         <ScopedLoadFailure
+          autoFocus={focusLoadFailure}
           message={state.message}
           onRetry={state.onRetry}
         />

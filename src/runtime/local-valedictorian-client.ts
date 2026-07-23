@@ -280,6 +280,9 @@ export async function createLocalValedictorianClient({
   const client: LocalValedictorianClient = {
     connectorScheduling,
     ...lifecycle,
+    captureResolution: unavailableWorkspaceCapability('Capture resolution'),
+    companies: unavailableWorkspaceCapability('Companies'),
+    companyAssignments: unavailableWorkspaceCapability('Company assignments'),
     scores: {
       record: (input) => scoringRepository.recordScore(input),
     },
@@ -609,6 +612,17 @@ export async function createLocalValedictorianClient({
     await recoverInterruptedRuns()
   }
   return client
+}
+
+function unavailableWorkspaceCapability<T extends object>(name: string): T {
+  const unavailable = new Proxy(
+    () => Promise.reject(new Error(`${name} is not available in the local workspace runtime.`)),
+    {
+      apply: (target) => target(),
+      get: () => unavailable,
+    },
+  )
+  return unavailable as unknown as T
 }
 async function reconnectConnectorStatus({
   connectorRegistry,

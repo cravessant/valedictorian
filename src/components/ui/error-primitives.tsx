@@ -45,15 +45,17 @@ export function FormFailureAlert({
 }
 
 export function ScopedLoadFailure({
+  autoFocus = true,
   message,
   onRetry,
   title = 'Load failed',
 }: {
+  autoFocus?: boolean
   message: string
   onRetry?: () => void
   title?: string
 }) {
-  const ref = useFocusWhenPresented(Boolean(message))
+  const ref = useFocusWhenPresented(autoFocus && Boolean(message))
   return (
     <Alert
       ref={ref}
