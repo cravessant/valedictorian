@@ -41,7 +41,7 @@ tasks:
             echo "Remote tag $tag already exists on $remote. Fetch tags and inspect before releasing."
             exit 1
           fi
-          git tag -a "$tag" -m "Release $tag"
+          git tag -s "$tag" -m "Release $tag"
         fi
 
         git push "$remote" "$branch"
