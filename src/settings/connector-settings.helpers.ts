@@ -160,6 +160,26 @@ export function sanitizedConnectorCreateErrorMessage(error: unknown): string {
     : presentation.message
 }
 
+export function sanitizedConnectorSettingsSaveErrorMessage(error: unknown): string {
+  const detail = error instanceof Error ? error.message : ''
+  if (/\/jobTaxonomyList: is required/i.test(detail)) {
+    return 'Choose at least one Job taxonomy before enabling this connector.'
+  }
+
+  const rejectedField = /^Invalid connector (?:config|filters) field ([^:]+): (.+)$/i.exec(detail)
+  if (rejectedField) {
+    return `Review ${rejectedField[1]}: ${rejectedField[2]}.`
+  }
+
+  const presentation = classifyErrorPresentation(error, {
+    scope: 'form',
+    trigger: 'save',
+  })
+  return presentation.message === 'An unexpected error occurred.'
+    ? 'Changes could not be saved. Reload the connector and try again.'
+    : presentation.message
+}
+
 export function defaultConnectorSettingsDraft(
   instance: ConnectorSettingsInstance | undefined,
 ): ConnectorSettingsDraft {

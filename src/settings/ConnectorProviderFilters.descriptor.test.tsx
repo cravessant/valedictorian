@@ -72,7 +72,7 @@ describe('declarative connector provider descriptor coverage', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'Denver, CO' }))
     expect(within(card).getByRole('button', { name: 'Remove Denver, CO' })).toBeInTheDocument()
 
-    fireEvent.click(within(card).getByRole('button', { name: /Save .* settings/ }))
+    fireEvent.click(within(card).getByRole('button', { name: /Save changes/ }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith(expect.objectContaining({
       connectorInstanceId: INSTANCE_ID,
       filters: expect.objectContaining({
@@ -87,7 +87,7 @@ describe('declarative connector provider descriptor coverage', () => {
     expect(within(card).getByRole('button', { name: 'Remove Denver, CO' })).toBeInTheDocument()
 
     fireEvent.click(within(card).getByRole('button', { name: 'Remove Denver, CO' }))
-    fireEvent.click(within(card).getByRole('button', { name: /Save .* settings/ }))
+    fireEvent.click(within(card).getByRole('button', { name: /Save changes/ }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenLastCalledWith(expect.objectContaining({
       filters: expect.objectContaining({ locations: [] }),
     })))
@@ -180,7 +180,7 @@ describe('declarative connector provider descriptor coverage', () => {
     })
     fireEvent.click(within(card).getByRole('checkbox', { name: 'Contract' }))
     fireEvent.change(duration, { target: { value: '1.5' } })
-    fireEvent.click(within(card).getByRole('button', { name: /Save .* settings/ }))
+    fireEvent.click(within(card).getByRole('button', { name: /Save changes/ }))
 
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith(expect.objectContaining({
       connectorInstanceId: INSTANCE_ID,
@@ -225,7 +225,7 @@ describe('declarative connector provider descriptor coverage', () => {
     expect(compatibility).toHaveTextContent(/presentation|metadata|compatib/i)
     expect(within(card).queryByRole('checkbox', { name: '1' })).not.toBeInTheDocument()
     expect(within(card).queryByRole('spinbutton', { name: /max run elapsed/i })).not.toBeInTheDocument()
-    const save = within(card).getByRole('button', { name: /Save .* settings/ })
+    const save = within(card).getByRole('button', { name: /Save changes/ })
     expect(save).toBeDisabled()
     fireEvent.click(save)
     expect(connectorsApi.update).not.toHaveBeenCalled()
@@ -263,7 +263,7 @@ describe('declarative connector provider descriptor coverage', () => {
     const compatibility = within(card).getByRole('alert')
     expect(compatibility).toHaveTextContent(/presentation|metadata|compatib/i)
     expect(within(card).queryByRole('combobox', { name: /locations/i })).not.toBeInTheDocument()
-    const save = within(card).getByRole('button', { name: /Save .* settings/ })
+    const save = within(card).getByRole('button', { name: /Save changes/ })
     expect(save).toBeDisabled()
     fireEvent.click(save)
     expect(connectorsApi.update).not.toHaveBeenCalled()

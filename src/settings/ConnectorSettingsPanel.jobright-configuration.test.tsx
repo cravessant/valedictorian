@@ -48,7 +48,7 @@ async function openConnectorEditor(displayName = 'Jobright internslist') {
   }))
   const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
-  await within(dialog).findByRole('button', { name: 'Cancel editing' })
+  await within(dialog).findByRole('button', { name: 'Discard changes' })
   return dialog
 }
 
@@ -103,7 +103,7 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
 
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
     fireEvent.click(screen.getByRole('button', {
-      name: 'Save Jobright internslist connector settings',
+      name: 'Save changes',
     }))
 
     await waitFor(() => {
@@ -128,14 +128,14 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
 
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
     fireEvent.click(screen.getByRole('button', {
-      name: 'Save Jobright internslist connector settings',
+      name: 'Save changes',
     }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledTimes(1))
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
 
     fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
     fireEvent.click(screen.getByRole('button', {
-      name: 'Save Jobright internslist connector settings',
+      name: 'Save changes',
     }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledTimes(2))
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
@@ -185,7 +185,7 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
     const dialogB = await openConnectorEditor('Jobright B')
     expect(within(dialogB).getByTestId('connector-earliest-backfill-value-jobright-b'))
       .toHaveTextContent('2026-06-01')
-    fireEvent.click(within(dialogB).getByRole('button', { name: 'Cancel editing' }))
+    fireEvent.click(within(dialogB).getByRole('button', { name: 'Discard changes' }))
     fireEvent.click(within(dialogB).getByRole('button', { name: 'Close' }))
 
     const cardA = await openConnectorEditor('Jobright A')
@@ -209,7 +209,7 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
     })
     expect(within(cardA).getByRole('button', { name: 'Run Jobright now' })).toBeDisabled()
 
-    fireEvent.click(within(cardA).getByRole('button', { name: 'Save Jobright A connector settings' }))
+    fireEvent.click(within(cardA).getByRole('button', { name: 'Save changes' }))
     await waitFor(() => {
       expect(connectorsApi.update).toHaveBeenCalledWith(expect.objectContaining({
         connectorInstanceId: 'jobright-a',
@@ -232,7 +232,7 @@ describe('ConnectorSettingsPanel Jobright configuration', () => {
       expect(within(cardA).getByTestId('connector-earliest-backfill-value-jobright-a'))
         .toHaveTextContent('2026-07-02')
     })
-    fireEvent.click(within(cardA).getByRole('button', { name: 'Discard unsaved connector settings' }))
+    fireEvent.click(within(cardA).getByRole('button', { name: 'Discard changes' }))
     await waitFor(() => {
       expect(within(cardA).getByTestId('connector-earliest-backfill-value-jobright-a'))
         .toHaveTextContent('2026-07-01')

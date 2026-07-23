@@ -51,6 +51,7 @@ export function ConnectorScheduleControls({
   isLoading,
   loadFailure = null,
   readOnly = false,
+  showDraftActions = true,
   isSaving,
   onRetryLoad,
   statusMessage,
@@ -72,6 +73,7 @@ export function ConnectorScheduleControls({
   isLoading: boolean
   loadFailure?: ErrorPresentation | null
   readOnly?: boolean
+  showDraftActions?: boolean
   isSaving: boolean
   onRetryLoad?: () => void
   statusMessage: string | null
@@ -458,7 +460,7 @@ export function ConnectorScheduleControls({
         </p>
       ) : null}
 
-      {readOnly ? null : <div className="flex flex-wrap gap-2">
+      {readOnly || !showDraftActions ? null : <div className="flex flex-wrap gap-2">
         <Button
           variant="outline"
           size="sm"

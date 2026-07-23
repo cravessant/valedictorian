@@ -260,8 +260,8 @@ describe('connector select authorization and resolve accounting', () => {
     expect(await within(card).findByText('Alpha')).toBeInTheDocument()
     expect(within(card).getByText('Beta')).toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
-    ).toBeEnabled())
+      within(card).getByRole('button', { name: 'Save changes' }),
+    ).toBeDisabled())
 
     fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
       target: { value: 'CA' },
@@ -272,7 +272,7 @@ describe('connector select authorization and resolve accounting', () => {
     const compatibility = await within(card).findByRole('alert')
     expect(compatibility).toHaveTextContent(/beta/i)
     expect(compatibility).toHaveTextContent(/unknown|unavailable|compatib/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    expect(within(card).getByRole('button', { name: 'Save changes' }))
       .toBeDisabled()
   })
 
@@ -296,7 +296,7 @@ describe('connector select authorization and resolve accounting', () => {
     const compatibility = await within(card).findByRole('alert')
     expect(compatibility).toHaveTextContent(/beta/i)
     expect(compatibility).toHaveTextContent(/unknown|unavailable|compatib/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    expect(within(card).getByRole('button', { name: 'Save changes' }))
       .toBeDisabled()
   })
 
@@ -761,8 +761,8 @@ describe('connector select authorization and resolve accounting', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     expect(await within(card).findByText('Denver, CO')).toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
-    ).toBeEnabled())
+      within(card).getByRole('button', { name: 'Save changes' }),
+    ).toBeDisabled())
 
     fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
       target: { value: 'CA' },
@@ -775,7 +775,7 @@ describe('connector select authorization and resolve accounting', () => {
     expect(feedback).toHaveTextContent(/cleared|removed|unavailable/i)
     expect(within(card).queryByText('Denver, CO')).not.toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
+      within(card).getByRole('button', { name: 'Save changes' }),
     ).toBeEnabled())
   })
 
@@ -848,8 +848,8 @@ describe('connector select authorization and resolve accounting', () => {
     expect(await within(card).findByText('Denver, CO')).toBeInTheDocument()
     expect(within(card).getByText('Seattle, WA')).toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
-    ).toBeEnabled())
+      within(card).getByRole('button', { name: 'Save changes' }),
+    ).toBeDisabled())
 
     fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
       target: { value: 'CA' },

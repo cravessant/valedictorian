@@ -57,7 +57,7 @@ async function openConnectorEditor(displayName: string) {
   const dialog = await openConnectorDetails(displayName)
   const edit = within(dialog).queryByRole('button', { name: 'Edit connector' })
   if (edit) fireEvent.click(edit)
-  await within(dialog).findByRole('button', { name: 'Cancel editing' })
+  await within(dialog).findByRole('button', { name: 'Discard changes' })
   return dialog
 }
 
@@ -162,12 +162,10 @@ describe('ConnectorSettingsPanel instance applicability', () => {
     expect(fixtureCard).toHaveTextContent('fixture.jobs')
     expect(within(fixtureCard).queryByLabelText('Useful results target')).not.toBeInTheDocument()
     expect(within(fixtureCard).queryByText('Advanced connector limits')).not.toBeInTheDocument()
-    expect(within(fixtureCard).queryByRole('button', {
-      name: 'Save Jobright internslist connector settings',
-    })).not.toBeInTheDocument()
+    expect(within(fixtureCard).getByRole('button', { name: 'Save changes' })).toBeDisabled()
     expect(within(fixtureCard).queryByRole('button', { name: 'Run Jobright now' }))
       .not.toBeInTheDocument()
-    fireEvent.click(within(fixtureCard).getByRole('button', { name: 'Cancel editing' }))
+    fireEvent.click(within(fixtureCard).getByRole('button', { name: 'Discard changes' }))
     fireEvent.click(within(fixtureCard).getByRole('button', { name: 'Close' }))
     expect(screen.getByRole('button', { name: 'Add Jobright connector' })).toBeInTheDocument()
   })

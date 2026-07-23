@@ -129,7 +129,7 @@ describe('ConnectorSettingsPanel save/remove/run target ownership', () => {
     const card = await openEditor(instance.id)
     fireEvent.click(within(card).getByRole('switch', { name: 'Jobright connector enabled' }))
     fireEvent.click(within(card).getByRole('button', {
-      name: 'Save Jobright internslist connector settings',
+      name: 'Save changes',
     }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledTimes(1))
 

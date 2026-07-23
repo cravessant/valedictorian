@@ -44,14 +44,14 @@ describe('connector optional selects and dependency invalidation', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     await waitFor(() => expect(resolveInputs).toHaveLength(1))
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
-    ).toBeEnabled())
+      within(card).getByRole('button', { name: 'Save changes' }),
+    ).toBeDisabled())
     fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
       target: { value: 'CA' },
     })
     await waitFor(() => expect(resolveInputs).toHaveLength(2))
     expect(resolveInputs[1]?.body.dependencies).toEqual({ country: 'CA' })
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    expect(within(card).getByRole('button', { name: 'Save changes' }))
       .toBeDisabled()
 
     changedResolution.resolve(boundOptionResult(resolveInputs[1]!, {
@@ -65,7 +65,7 @@ describe('connector optional selects and dependency invalidation', () => {
     expect(within(card).queryByText('TypeScript')).not.toBeInTheDocument()
     expect(within(card).queryByText('typescript')).not.toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
+      within(card).getByRole('button', { name: 'Save changes' }),
     ).toBeEnabled())
   })
 
@@ -101,7 +101,7 @@ describe('connector optional selects and dependency invalidation', () => {
     fireEvent.change(employmentKind, { target: { value: '' } })
     expect(employmentKind).toHaveValue('')
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: INSTANCE_ID,
       enabled: true,
@@ -169,8 +169,8 @@ describe('connector optional selects and dependency invalidation', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     expect(await within(card).findByText('Denver, CO')).toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
-    ).toBeEnabled())
+      within(card).getByRole('button', { name: 'Save changes' }),
+    ).toBeDisabled())
 
     fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
       target: { value: 'CA' },
@@ -181,10 +181,10 @@ describe('connector optional selects and dependency invalidation', () => {
     expect(within(card).queryByText('Denver, CO')).not.toBeInTheDocument()
     expect(within(card).queryByRole('alert')).not.toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
+      within(card).getByRole('button', { name: 'Save changes' }),
     ).toBeEnabled())
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: INSTANCE_ID,
       enabled: true,
@@ -217,7 +217,7 @@ describe('connector optional selects and dependency invalidation', () => {
     await waitFor(() => expect(
       within(card).queryByRole('status'),
     ).not.toBeInTheDocument())
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    expect(within(card).getByRole('button', { name: 'Save changes' }))
       .toBeEnabled()
   })
 
@@ -248,7 +248,7 @@ describe('connector optional selects and dependency invalidation', () => {
       target: { value: 'CA' },
     })
     await waitFor(() => expect(resolveInputs).toHaveLength(2))
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard unsaved connector settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
 
     expect(within(card).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
     expect(await within(card).findByText('Denver, CO')).toBeInTheDocument()
@@ -300,7 +300,7 @@ describe('connector optional selects and dependency invalidation', () => {
     expect(within(card).queryByText('Denver, CO')).not.toBeInTheDocument()
 
     const resolveCountAfterClear = resolveInputs.length
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard unsaved connector settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
 
     expect(within(card).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
     expect(await within(card).findByText('Denver, CO')).toBeInTheDocument()
@@ -494,7 +494,7 @@ describe('connector optional selects and dependency invalidation', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     expect(await within(card).findByText('cobol')).toBeInTheDocument()
     expect(await within(card).findByRole('alert')).toHaveTextContent(/cobol/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    expect(within(card).getByRole('button', { name: 'Save changes' }))
       .toBeDisabled()
 
     fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
@@ -505,7 +505,7 @@ describe('connector optional selects and dependency invalidation', () => {
     const compatibility = await within(card).findByRole('alert')
     expect(compatibility).toHaveTextContent(/cobol/i)
     expect(compatibility).toHaveTextContent(/unknown|unavailable|compatib/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    expect(within(card).getByRole('button', { name: 'Save changes' }))
       .toBeDisabled()
   })
 
@@ -532,7 +532,7 @@ describe('connector optional selects and dependency invalidation', () => {
       target: { value: 'CA' },
     })
     expect(await within(card).findByText('cobol')).toBeInTheDocument()
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard unsaved connector settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
 
     expect(within(card).getByRole('combobox', { name: 'Country' })).toHaveValue('US')
     expect(await within(card).findByText('cobol')).toBeInTheDocument()
@@ -580,7 +580,7 @@ describe('connector optional selects and dependency invalidation', () => {
     expect(within(card).getByText('cobol')).toBeInTheDocument()
     expect(within(card).queryByText(/was cleared because/i)).not.toBeInTheDocument()
     expect(await within(card).findByRole('alert')).toHaveTextContent(/unknown|unavailable|compatib/i)
-    expect(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    expect(within(card).getByRole('button', { name: 'Save changes' }))
       .toBeDisabled()
   })
 
@@ -620,8 +620,8 @@ describe('connector optional selects and dependency invalidation', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     expect(await within(card).findByText('Denver, CO')).toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
-    ).toBeEnabled())
+      within(card).getByRole('button', { name: 'Save changes' }),
+    ).toBeDisabled())
 
     fireEvent.change(within(card).getByRole('combobox', { name: 'Country' }), {
       target: { value: 'CA' },
@@ -635,7 +635,7 @@ describe('connector optional selects and dependency invalidation', () => {
     expect(feedback).toHaveTextContent(/cleared|removed|unavailable/i)
     expect(within(card).queryByText('Denver, CO')).not.toBeInTheDocument()
     await waitFor(() => expect(
-      within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }),
+      within(card).getByRole('button', { name: 'Save changes' }),
     ).toBeEnabled())
     expect(within(card).queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -689,11 +689,13 @@ describe('connector optional selects and dependency invalidation', () => {
     expect(employmentKind).toHaveValue('')
     expect(daysAgo).toHaveValue('')
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Save Fixture provider connector settings' }))
+    fireEvent.click(within(card).getByRole('switch', {
+      name: 'Fixture provider connector enabled',
+    }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
       connectorInstanceId: INSTANCE_ID,
-      enabled: true,
-      filters: { country: 'US', skills: [] },
+      enabled: false,
     }))
 
     first.unmount()
@@ -743,7 +745,7 @@ describe('connector optional selects and dependency invalidation', () => {
     const employmentKind = within(card).getByRole('combobox', { name: 'Employment kind' })
     const daysAgo = within(card).getByRole('combobox', { name: 'Days ago' })
     const country = within(card).getByRole('combobox', { name: 'Country' })
-    const save = within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })
+    const save = within(card).getByRole('button', { name: 'Save changes' })
 
     expect(employmentKind).toHaveValue('')
     expect(daysAgo).toHaveValue('')

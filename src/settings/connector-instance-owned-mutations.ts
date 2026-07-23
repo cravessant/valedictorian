@@ -15,6 +15,7 @@ import {
   triggerManualConnectorRun,
 } from './connector-instance-settings-mutations'
 import { defaultConnectorSettingsDraft } from './connector-settings.helpers'
+import { sanitizedConnectorSettingsSaveErrorMessage } from './connector-settings.helpers'
 import type {
   ConnectorAuthUiState,
   ConnectorSettingsDraft,
@@ -39,7 +40,7 @@ export function isCurrentConnectorTargetEpoch(
   return createTargetEpochRef.current === epochAtStart
 }
 
-export function saveConnectorInstanceSettings({
+export async function saveConnectorInstanceSettings({
   connectorsApi,
   createTargetEpochRef,
   descriptors,
@@ -71,7 +72,7 @@ export function saveConnectorInstanceSettings({
   settingsSaveGenerations: MutableRefObject<Record<string, number>>
 }) {
   if (savingInstanceIds.has(instance.id)) {
-    return
+    return false
   }
 
   const draft = drafts[instance.id] ?? defaultConnectorSettingsDraft(instance)
@@ -83,59 +84,58 @@ export function saveConnectorInstanceSettings({
   const built = buildConnectorSettingsUpdate({ descriptor, draft, instance })
   if ('error' in built && built.error) {
     setConnectorActionError(built.error)
-    return
+    return false
   }
   if (!('update' in built) || !built.update) {
-    return
+    return false
   }
   setConnectorActionError(null)
   setSettingsSaveErrors((currentErrors) => omitRecordKey(currentErrors, instance.id))
   const epochAtStart = createTargetEpochRef.current
   const saveGeneration = beginTrackedMutation(settingsSaveGenerations, instance.id)
   setSavingInstanceIds((currentIds) => new Set(currentIds).add(instance.id))
-  void connectorsApi.update(built.update)
-    .then((updated) => {
-      if (
-        !isCurrentConnectorMutationTarget(isMountedRef, createTargetEpochRef, epochAtStart)
-        || !isCurrentMutation(settingsSaveGenerations, instance.id, saveGeneration)
-      ) {
-        return
-      }
-      setInstances((currentInstances) => currentInstances.map((currentInstance) =>
-        currentInstance.id === updated.id ? updated : currentInstance,
-      ))
-      setDrafts((currentDrafts) => ({
-        ...currentDrafts,
-        [updated.id]: defaultConnectorSettingsDraft(updated),
-      }))
-      setSettingsSaveErrors((currentErrors) => omitRecordKey(currentErrors, updated.id))
-      onConnectorChanged()
-    })
-    .catch(() => {
-      if (
-        !isCurrentConnectorMutationTarget(isMountedRef, createTargetEpochRef, epochAtStart)
-        || !isCurrentMutation(settingsSaveGenerations, instance.id, saveGeneration)
-      ) {
-        return
-      }
-      setSettingsSaveErrors((currentErrors) => ({
-        ...currentErrors,
-        [instance.id]: 'Connector settings could not be saved.',
-      }))
-    })
-    .finally(() => {
-      if (
-        !isCurrentConnectorMutationTarget(isMountedRef, createTargetEpochRef, epochAtStart)
-        || !isCurrentMutation(settingsSaveGenerations, instance.id, saveGeneration)
-      ) {
-        return
-      }
+  try {
+    const updated = await connectorsApi.update(built.update)
+    if (
+      !isCurrentConnectorMutationTarget(isMountedRef, createTargetEpochRef, epochAtStart)
+      || !isCurrentMutation(settingsSaveGenerations, instance.id, saveGeneration)
+    ) {
+      return false
+    }
+    setInstances((currentInstances) => currentInstances.map((currentInstance) =>
+      currentInstance.id === updated.id ? updated : currentInstance,
+    ))
+    setDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [updated.id]: defaultConnectorSettingsDraft(updated),
+    }))
+    setSettingsSaveErrors((currentErrors) => omitRecordKey(currentErrors, updated.id))
+    onConnectorChanged()
+    return true
+  } catch (error) {
+    if (
+      !isCurrentConnectorMutationTarget(isMountedRef, createTargetEpochRef, epochAtStart)
+      || !isCurrentMutation(settingsSaveGenerations, instance.id, saveGeneration)
+    ) {
+      return false
+    }
+    setSettingsSaveErrors((currentErrors) => ({
+      ...currentErrors,
+      [instance.id]: sanitizedConnectorSettingsSaveErrorMessage(error),
+    }))
+    return false
+  } finally {
+    if (
+      isCurrentConnectorMutationTarget(isMountedRef, createTargetEpochRef, epochAtStart)
+      && isCurrentMutation(settingsSaveGenerations, instance.id, saveGeneration)
+    ) {
       setSavingInstanceIds((currentIds) => {
         const nextIds = new Set(currentIds)
         nextIds.delete(instance.id)
         return nextIds
       })
-    })
+    }
+  }
 }
 
 export function removeConnectorInstance({

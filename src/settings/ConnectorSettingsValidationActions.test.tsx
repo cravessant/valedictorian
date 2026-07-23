@@ -45,7 +45,7 @@ describe('connector validation and action-state synchronization', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     const minimum = within(card).getByRole('spinbutton', { name: 'Minimum compensation' })
     const maximum = within(card).getByRole('spinbutton', { name: 'Maximum compensation' })
-    const save = within(card).getByRole('button', { name: 'Save Fixture provider connector settings' })
+    const save = within(card).getByRole('button', { name: 'Save changes' })
 
     fireEvent.change(minimum, { target: { value: '150000' } })
     fireEvent.change(maximum, { target: { value: '50000' } })
@@ -86,7 +86,7 @@ describe('connector validation and action-state synchronization', () => {
     const saveReason = card.querySelector(`#${CSS.escape(saveReasonId!)}`)
     expect(saveReason).toHaveTextContent(/range|minimum|maximum|compatib|valid/i)
 
-    const actions = within(card).getByTestId(`connector-settings-actions-${INSTANCE_ID}`)
+    const actions = within(card).getByTestId(`connector-edit-actions-${INSTANCE_ID}`)
     expect(actions).toHaveAttribute('tabIndex', '0')
     expect(actions.getAttribute('aria-describedby') ?? '').toContain(saveReasonId!)
 
@@ -106,7 +106,7 @@ describe('connector validation and action-state synchronization', () => {
       .toHaveAttribute('aria-invalid', 'true')
     expect(save).toBeDisabled()
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Discard unsaved connector settings' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Discard changes' }))
     await waitFor(() => {
       expect(minimum).toHaveValue(70_000)
       expect(maximum).toHaveValue(120_000)
@@ -153,7 +153,7 @@ describe('connector validation and action-state synchronization', () => {
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
     const minimum = within(card).getByRole('spinbutton', { name: 'Minimum years of experience' })
     const maximum = within(card).getByRole('spinbutton', { name: 'Maximum years of experience' })
-    const save = within(card).getByRole('button', { name: /Save .* settings/ })
+    const save = within(card).getByRole('button', { name: /Save changes/ })
     const run = within(card).getByRole('button', { name: 'Run Jobright now' })
 
     fireEvent.change(minimum, { target: { value: '10' } })
@@ -215,7 +215,7 @@ describe('connector validation and action-state synchronization', () => {
     renderPanel(connectorsApi)
 
     const card = await screen.findByTestId(`connector-instance-card-${INSTANCE_ID}`)
-    const save = within(card).getByRole('button', { name: /Save .* settings/ })
+    const save = within(card).getByRole('button', { name: /Save changes/ })
     const run = within(card).getByRole('button', { name: 'Run Jobright now' })
     expect(save).toBeDisabled()
     expect(run).toBeDisabled()

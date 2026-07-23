@@ -163,14 +163,14 @@ export function ConnectorSettingsInstanceCard({
   onSaveAndValidateCredentials: (instance: ConnectorSettingsInstance) => void
   onRevalidateCredentials: (instance: ConnectorSettingsInstance) => void
   onUpdateDraft: (instanceId: string, patch: Partial<ConnectorSettingsDraft>) => void
-  onSaveSettings: (instance: ConnectorSettingsInstance) => void
+  onSaveSettings: (instance: ConnectorSettingsInstance) => Promise<boolean>
   onDiscardSettings: (instance: ConnectorSettingsInstance) => void
   onRunNow: (instance: ConnectorSettingsInstance) => void
   onRemove: (instance: ConnectorSettingsInstance) => void
   isDraftDirty: (instance: ConnectorSettingsInstance) => boolean
   onOpenConnectorRuns?: (runId?: string) => void
   onScheduleDraftChange: (instanceId: string, patch: Partial<ConnectorScheduleDraft>) => void
-  onSaveSchedule: (instance: ConnectorSettingsInstance) => void
+  onSaveSchedule: (instance: ConnectorSettingsInstance) => Promise<boolean>
   onDiscardSchedule: (instance: ConnectorSettingsInstance) => void
   onPauseSchedule: (instance: ConnectorSettingsInstance) => void
   onResumeSchedule: (instance: ConnectorSettingsInstance) => void
@@ -178,6 +178,8 @@ export function ConnectorSettingsInstanceCard({
   const [providerFiltersCompatible, setProviderFiltersCompatible] = useState(true)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [isSavingAll, setIsSavingAll] = useState(false)
+  const [saveConfirmationOpen, setSaveConfirmationOpen] = useState(false)
   const [summaryOpen, setSummaryOpen] = useState(true)
   const authConfigured = isJobrightCredentialsConfigured(instance)
   const authReady = isConnectorAuthReady(authState)
@@ -275,8 +277,6 @@ export function ConnectorSettingsInstanceCard({
   const connectorSettingsHeadingId = `connector-settings-heading-${instance.id}`
   const executionHeadingId = `connector-execution-heading-${instance.id}`
   const managementHeadingId = `connector-management-heading-${instance.id}`
-  const saveButtonLabel = `Save ${instance.displayName} connector settings`
-  const settingsActionsDescribedBy = saveBlockReason ? saveReasonId : undefined
   const executionActionsDescribedBy = runBlockReason ? runReasonId : undefined
   const scheduleSummary = capabilityLoadError
     ? 'Schedule unavailable'
@@ -289,7 +289,14 @@ export function ConnectorSettingsInstanceCard({
           : 'Manual only'
   const latestRunSummary = latestSynchronization?.label
     ?? (latestRunStatus ? `Run ${latestRunStatus}` : 'No runs yet')
-  const interactionBusy = isSavingSettings || scheduleIsSaving
+  const interactionBusy = isSavingAll || isSavingSettings || scheduleIsSaving
+  const hasUnsavedChanges = draftDirty || scheduleIsDirty
+  const unifiedSaveBlockReason = isEditingAuth
+    ? 'Save or cancel the credential update before saving other changes.'
+    : saveBlockReason
+  const wouldRemovePersistedSchedule = scheduleIsDirty
+    && scheduleDraft.mode === 'manual'
+    && scheduleCanonical !== null
 
   function cancelEditing() {
     if (interactionBusy) return
@@ -297,6 +304,26 @@ export function ConnectorSettingsInstanceCard({
     onDiscardSchedule(instance)
     if (isEditingAuth) onCancelCredentialEdit(instance.id)
     setEditing(false)
+  }
+
+  async function persistChanges() {
+    if (interactionBusy || !hasUnsavedChanges || unifiedSaveBlockReason) return
+    setIsSavingAll(true)
+    try {
+      if (draftDirty && !(await onSaveSettings(instance))) return
+      if (scheduleIsDirty && !(await onSaveSchedule(instance))) return
+      setSaveConfirmationOpen(false)
+    } finally {
+      setIsSavingAll(false)
+    }
+  }
+
+  function saveChanges() {
+    if (wouldRemovePersistedSchedule) {
+      setSaveConfirmationOpen(true)
+      return
+    }
+    void persistChanges()
   }
 
   function handleDetailsOpenChange(open: boolean) {
@@ -374,14 +401,7 @@ export function ConnectorSettingsInstanceCard({
               </DialogDescription>
             </div>
             {editing ? (
-              <Button
-                disabled={interactionBusy}
-                onClick={cancelEditing}
-                type="button"
-                variant="outline"
-              >
-                Cancel editing
-              </Button>
+              <Badge variant="warning">Editing</Badge>
             ) : (
               <Button onClick={() => setEditing(true)} type="button">
                 <Pencil aria-hidden="true" className="size-4" />
@@ -554,8 +574,9 @@ export function ConnectorSettingsInstanceCard({
             Connector settings
           </h4>
           <p className="text-xs text-muted-foreground">
-            Synchronization, provider filters, enabled state
-            {isJobrightInstance ? ', and earliest backfill date' : ''} share one save and discard.
+            These changes
+            {isJobrightInstance ? ', including the earliest backfill date,' : ''}
+            {' '}are included when you save the connector.
           </p>
         </div>
 
@@ -626,43 +647,6 @@ export function ConnectorSettingsInstanceCard({
           />
         ) : null}
 
-        {editing ? <div
-          aria-describedby={settingsActionsDescribedBy}
-          aria-label={`${instance.displayName} connector settings actions`}
-          className="flex flex-wrap items-center gap-2"
-          data-testid={`connector-settings-actions-${instance.id}`}
-          role="group"
-          tabIndex={settingsActionsDescribedBy ? 0 : undefined}
-        >
-          {saveBlockReason ? (
-            <p className="basis-full text-xs text-warning" id={saveReasonId}>
-              {saveBlockReason}
-            </p>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            aria-describedby={saveBlockReason ? saveReasonId : undefined}
-            disabled={isSavingSettings || !settingsSaveAllowed}
-            onClick={() => onSaveSettings(instance)}
-          >
-            {isSavingSettings ? 'Saving...' : saveButtonLabel}
-          </Button>
-          {draftDirty && !isSavingSettings ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onDiscardSettings(instance)}
-            >
-              Discard unsaved connector settings
-            </Button>
-          ) : null}
-          {settingsSaveError ? (
-            <div className="basis-full">
-              <FormFailureAlert message={settingsSaveError} />
-            </div>
-          ) : null}
-        </div> : null}
       </section>
 
       <ConnectorScheduleControls
@@ -670,7 +654,7 @@ export function ConnectorSettingsInstanceCard({
         capabilityLoadError={capabilityLoadError}
         canonical={scheduleCanonical}
         connectorDisplayName={instance.displayName}
-        connectorEnabled={instance.enabled}
+        connectorEnabled={draft.enabled}
         draft={scheduleDraft}
         isDirty={scheduleIsDirty}
         isLoading={scheduleIsLoading}
@@ -680,6 +664,7 @@ export function ConnectorSettingsInstanceCard({
         statusTone={scheduleStatusTone}
         validationField={scheduleValidationField}
         readOnly={!editing}
+        showDraftActions={false}
         onDiscard={() => onDiscardSchedule(instance)}
         onDraftChange={(patch) => onScheduleDraftChange(instance.id, patch)}
         onPause={() => onPauseSchedule(instance)}
@@ -802,6 +787,74 @@ export function ConnectorSettingsInstanceCard({
       </section>
           </div>
         </div>
+        {editing ? (
+          <div
+            aria-describedby={unifiedSaveBlockReason ? saveReasonId : undefined}
+            aria-label={`${instance.displayName} edit actions`}
+            className="grid gap-3 border-t border-border bg-card px-6 py-4"
+            data-testid={`connector-edit-actions-${instance.id}`}
+            role="group"
+            tabIndex={unifiedSaveBlockReason ? 0 : undefined}
+          >
+            {settingsSaveError ? <FormFailureAlert message={settingsSaveError} /> : null}
+            {unifiedSaveBlockReason ? (
+              <p className="text-xs text-warning" id={saveReasonId}>
+                {unifiedSaveBlockReason}
+              </p>
+            ) : null}
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                disabled={interactionBusy}
+                onClick={cancelEditing}
+                type="button"
+                variant="outline"
+              >
+                Discard changes
+              </Button>
+              <Button
+                aria-describedby={unifiedSaveBlockReason ? saveReasonId : undefined}
+                disabled={
+                  interactionBusy
+                  || !hasUnsavedChanges
+                  || !settingsSaveAllowed
+                  || isEditingAuth
+                }
+                onClick={saveChanges}
+                type="button"
+              >
+                {interactionBusy ? 'Saving changes...' : 'Save changes'}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        <AlertDialog
+          open={saveConfirmationOpen}
+          onOpenChange={(open) => {
+            if (!interactionBusy) setSaveConfirmationOpen(open)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Save changes and remove the schedule?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Saving these changes permanently removes the persisted automatic schedule.
+                The connector will still support manual runs.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={interactionBusy}>Cancel</AlertDialogCancel>
+              <Button
+                disabled={interactionBusy}
+                onClick={() => void persistChanges()}
+                type="button"
+                variant="destructive"
+              >
+                {interactionBusy ? 'Saving changes...' : 'Save and remove schedule'}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   )

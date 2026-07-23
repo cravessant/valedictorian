@@ -347,21 +347,21 @@ export function useConnectorInstanceSchedules({
     }))
   }
 
-  async function saveConnectorSchedule(instance: ConnectorSettingsInstance) {
+  async function saveConnectorSchedule(instance: ConnectorSettingsInstance): Promise<boolean> {
     if (!schedulingCapability?.available) {
-      return
+      return false
     }
 
     const current = scheduleStatesRef.current[instance.id] ?? createInitialInstanceScheduleState()
     if (current.isLoading || current.isSaving) {
-      return
+      return false
     }
 
     const operation = beginInstanceOperation(instance.id)
     const validationError = validateConnectorScheduleDraft(current.draft, schedulingCapability)
     if (validationError) {
       if (!isCurrentInstanceOperation(instance.id, operation)) {
-        return
+        return false
       }
       setScheduleStates((states) => ({
         ...states,
@@ -372,7 +372,7 @@ export function useConnectorInstanceSchedules({
           validationField: validationError.field,
         },
       }))
-      return
+      return false
     }
 
     setScheduleStates((states) => ({
@@ -388,34 +388,32 @@ export function useConnectorInstanceSchedules({
     try {
       if (current.draft.mode === 'manual') {
         if (!current.canonical) {
-          applyOwnedCanonicalSchedule(
+          return applyOwnedCanonicalSchedule(
             instance.id,
             operation,
             null,
             'Schedule already manual only.',
             'success',
           )
-          return
         }
 
         await connectorScheduleApi.deleteSchedule({
           connectorInstanceId: instance.id,
           expectedRevision: current.canonical.revision,
         })
-        applyOwnedCanonicalSchedule(
+        return applyOwnedCanonicalSchedule(
           instance.id,
           operation,
           null,
           'Automatic schedule removed.',
           'success',
         )
-        return
       }
 
       const cadence = cadenceFromDraft(current.draft, schedulingCapability)
       if (!cadence) {
         if (!isCurrentInstanceOperation(instance.id, operation)) {
-          return
+          return false
         }
         setScheduleStates((states) => ({
           ...states,
@@ -426,7 +424,7 @@ export function useConnectorInstanceSchedules({
             statusTone: 'error',
           },
         }))
-        return
+        return false
       }
 
       const saved = await connectorScheduleApi.upsertSchedule({
@@ -436,9 +434,16 @@ export function useConnectorInstanceSchedules({
         cadence,
         timezone: current.draft.timezone,
       })
-      applyOwnedCanonicalSchedule(instance.id, operation, saved, 'Schedule saved.', 'success')
+      return applyOwnedCanonicalSchedule(
+        instance.id,
+        operation,
+        saved,
+        'Schedule saved.',
+        'success',
+      )
     } catch (error) {
       applyOwnedScheduleError(instance.id, operation, current, error)
+      return false
     }
   }
 

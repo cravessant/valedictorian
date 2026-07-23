@@ -3,11 +3,18 @@ import { ValedictorianHttpError, valedictorianFailureKindMessages } from 'sparxi
 import {
   sanitizedConnectorAuthErrorMessage,
   sanitizedConnectorCreateErrorMessage,
+  sanitizedConnectorSettingsSaveErrorMessage,
   sanitizedJobrightCredentialActionErrorMessage,
 } from './connector-settings.helpers'
 import { canonicalAlreadyConfiguredBody } from '../app/error-presentation'
 
 describe('connector settings error messages', () => {
+  it('turns connector upgrade validation failures into actionable save guidance', () => {
+    expect(sanitizedConnectorSettingsSaveErrorMessage(
+      new Error('Invalid connector filters field /jobTaxonomyList: is required'),
+    )).toBe('Choose at least one Job taxonomy before enabling this connector.')
+  })
+
   it('reports how far credential saving progressed without exposing error content', () => {
     const sensitiveError = new Error('demo@example.com secret-password')
 

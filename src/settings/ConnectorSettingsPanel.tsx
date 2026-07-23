@@ -674,7 +674,7 @@ export function ConnectorSettingsPanel({
   }
 
   function saveConnectorSettings(instance: ConnectorSettingsInstance) {
-    saveConnectorInstanceSettings({
+    return saveConnectorInstanceSettings({
       connectorsApi,
       createTargetEpochRef,
       descriptors,

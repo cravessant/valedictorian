@@ -77,7 +77,7 @@ async function openConnectorEditor(displayName = 'Jobright internslist') {
   }))
   const dialog = await screen.findByRole('dialog', { name: `${displayName} details` })
   fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
-  await within(dialog).findByRole('button', { name: 'Cancel editing' })
+  await within(dialog).findByRole('button', { name: 'Discard changes' })
   return dialog
 }
 
@@ -111,7 +111,7 @@ async function authenticateJobrightInPanel({
   expect(screen.queryByDisplayValue(password)).not.toBeInTheDocument()
   await selectSoftwareEngineeringTaxonomy()
   fireEvent.click(screen.getByLabelText('Jobright connector enabled'))
-  fireEvent.click(screen.getByRole('button', { name: 'Save Jobright internslist connector settings' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => {
     expect(screen.getByRole('button', { name: 'Run Jobright now' })).toBeEnabled()
   })

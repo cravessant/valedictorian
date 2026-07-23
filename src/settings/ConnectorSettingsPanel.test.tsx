@@ -88,17 +88,17 @@ describe('ConnectorSettingsPanel', () => {
     expect(within(dialog).getByRole('switch', { name: 'Jobright connector enabled' }))
       .toBeDisabled()
     expect(within(dialog).queryByRole('button', {
-      name: 'Save Jobright internslist connector settings',
+      name: 'Save changes',
     })).not.toBeInTheDocument()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Edit connector' }))
     expect(within(dialog).getByRole('switch', { name: 'Jobright connector enabled' }))
       .toBeEnabled()
     expect(within(dialog).getByRole('button', {
-      name: 'Save Jobright internslist connector settings',
+      name: 'Save changes',
     })).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel editing' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard changes' }))
     expect(within(dialog).getByRole('switch', { name: 'Jobright connector enabled' }))
       .toBeDisabled()
     expect(within(dialog).getByRole('button', { name: 'Edit connector' })).toBeInTheDocument()
@@ -277,15 +277,18 @@ describe('ConnectorSettingsPanel', () => {
       name: /management/i,
     })).toBeInTheDocument()
 
-    const save = within(connectorSettings).getByRole('button', {
-      name: /Save .* connector settings/i,
+    const editActions = within(card).getByRole('group', {
+      name: 'Jobright internslist edit actions',
     })
-    const discardLabel = /Discard unsaved connector settings/i
+    const save = within(editActions).getByRole('button', {
+      name: /Save changes/i,
+    })
+    const discardLabel = /Discard changes/i
     fireEvent.click(within(connectorSettings).getByRole('switch', {
       name: 'Jobright connector enabled',
     }))
-    expect(within(connectorSettings).getByRole('button', { name: discardLabel })).toBeInTheDocument()
-    expect(within(execution).queryByRole('button', { name: /Save .* connector settings/i }))
+    expect(within(editActions).getByRole('button', { name: discardLabel })).toBeInTheDocument()
+    expect(within(execution).queryByRole('button', { name: /Save changes/i }))
       .not.toBeInTheDocument()
     expect(within(execution).getByRole('button', { name: 'Run Jobright now' })).toBeInTheDocument()
     expect(within(management).getByRole('button', { name: 'Remove Jobright internslist' }))
@@ -374,30 +377,110 @@ describe('ConnectorSettingsPanel', () => {
 
     expect(discovery).toHaveValue(35)
     expect(within(card).getByText(/Draft:\s*Common preset/i)).toBeInTheDocument()
-    expect(within(card).getByRole('button', {
-      name: 'Discard unsaved connector settings',
-    })).toBeInTheDocument()
-    expect(within(card).getByRole('button', {
-      name: 'Discard unsaved schedule',
-    })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Discard changes' })).toBeInTheDocument()
 
     fireEvent.click(within(card).getByRole('button', {
-      name: 'Discard unsaved connector settings',
+      name: 'Discard changes',
     }))
     await waitFor(() => expect(discovery).toHaveValue(20))
     expect(within(card).getByLabelText('Schedule mode')).toHaveValue('preset')
-    expect(within(card).getByLabelText('Preset')).toHaveValue('interval-30')
-    expect(within(card).getByText(/Draft:\s*Common preset/i)).toBeInTheDocument()
+    expect(within(card).getByLabelText('Preset')).toHaveValue('interval-60')
+    expect(within(card).queryByText(/Draft:/i)).not.toBeInTheDocument()
 
+    fireEvent.click(within(card).getByRole('button', { name: 'Edit connector' }))
     fireEvent.change(discovery, { target: { value: '40' } })
     fireEvent.click(within(card).getByRole('button', {
-      name: 'Discard unsaved schedule',
+      name: 'Discard changes',
     }))
-    expect(discovery).toHaveValue(40)
+    expect(discovery).toHaveValue(20)
     expect(within(card).queryByText(/Draft:/i)).not.toBeInTheDocument()
-    expect(within(card).getByRole('button', {
-      name: 'Discard unsaved connector settings',
-    })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Discard changes' })).not.toBeInTheDocument()
+  })
+
+  it('saves connector settings and the schedule from one global action', async () => {
+    const instance = {
+      id: 'jobright-unified-save',
+      connectorId: 'jobright.resolver',
+      connectorVersion: '0.11.0',
+      displayName: 'Jobright internslist',
+      enabled: true,
+      auth: [],
+      config: { discoveryCount: 20 },
+      filters: {},
+      earliestBackfillDate: '2026-07-02',
+      createdAt: '2026-07-09T15:00:00.000Z',
+      updatedAt: '2026-07-09T15:00:00.000Z',
+    }
+    const connectorsApi = createConnectorsApi()
+    vi.mocked(connectorsApi.list).mockResolvedValue({ items: [instance] })
+    vi.mocked(connectorsApi.update).mockResolvedValue({
+      ...instance,
+      enabled: false,
+    })
+    const savedSchedule = {
+      id: 'schedule-unified',
+      connectorInstanceId: instance.id,
+      revision: 'rev-1',
+      state: 'enabled' as const,
+      cadence: { kind: 'interval' as const, everyMinutes: 30 },
+      timezone: 'UTC',
+      nextEligibleAt: '2026-07-12T13:00:00.000Z',
+      createdAt: '2026-07-12T12:00:00.000Z',
+      updatedAt: '2026-07-12T12:00:00.000Z',
+      lastOccurrence: null,
+      lastRun: null,
+    }
+    const scheduleApi = {
+      getCapabilities: vi.fn(async () => ({
+        connectorScheduling: {
+          available: true as const,
+          supportedCadences: ['interval', 'daily', 'weekly'] as const,
+          minimumIntervalMinutes: 15,
+          maximumCatchUpAgeMinutes: 24 * 60,
+          timezoneModel: 'iana' as const,
+          missedOccurrencePolicy: 'coalesce_one' as const,
+        },
+      })),
+      getSchedule: vi.fn(async () => null),
+      upsertSchedule: vi.fn(async () => savedSchedule),
+      pauseSchedule: vi.fn(),
+      resumeSchedule: vi.fn(),
+      deleteSchedule: vi.fn(),
+    }
+
+    render(
+      <ConnectorSettingsPanel
+        connectorsApi={connectorsApi}
+        connectorScheduleApi={scheduleApi}
+        onRunSettled={vi.fn()}
+        profileApi={createProfileApi()}
+        workspaceId="workspace-1"
+      />,
+    )
+
+    const card = await openConnectorEditor('Jobright internslist', instance.id)
+    fireEvent.click(within(card).getByRole('switch', { name: 'Jobright connector enabled' }))
+    fireEvent.change(within(card).getByLabelText('Schedule mode'), {
+      target: { value: 'preset' },
+    })
+    fireEvent.change(within(card).getByLabelText('Preset'), {
+      target: { value: 'interval-30' },
+    })
+
+    expect(within(card).queryByRole('button', { name: 'Save schedule' })).not.toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith(expect.objectContaining({
+      connectorInstanceId: instance.id,
+      enabled: false,
+    })))
+    await waitFor(() => expect(scheduleApi.upsertSchedule).toHaveBeenCalledWith({
+      connectorInstanceId: instance.id,
+      expectedRevision: null,
+      state: 'enabled',
+      cadence: { kind: 'interval', everyMinutes: 30 },
+      timezone: 'UTC',
+    }))
   })
 
   it('saves an accessible enabled switch for every connector type', async () => {
@@ -434,7 +517,7 @@ describe('ConnectorSettingsPanel', () => {
     expect(enabled).toBeChecked()
     fireEvent.click(enabled)
     fireEvent.click(within(card).getByRole('button', {
-      name: 'Save Fixture jobs connector settings',
+      name: 'Save changes',
     }))
 
     await waitFor(() => expect(connectorsApi.update).toHaveBeenCalledWith({
