@@ -235,6 +235,9 @@ describe('App sidebar navigation', () => {
       opportunities: { list: vi.fn(emptyLifecyclePage) },
       applications: { list: vi.fn(emptyLifecyclePage) },
       companies: {
+        capability: {
+          get: vi.fn(async () => ({ status: 'ready' as const })),
+        },
         get: companiesGet,
         directory: {
           list: vi.fn(async () => ({

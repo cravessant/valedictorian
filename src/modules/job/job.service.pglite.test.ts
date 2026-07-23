@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { UUID_V7_PATTERN } from '../../db/lifecycle-vocabulary'
-import { createPgliteJobService, type CreateJobInput, type JobService } from './job.service'
+import type { CreateJobInput, JobService } from './job.service'
+import { createCoveredPgliteJobService } from '../../test/covered-job-service'
 
 const resettableOwner = useResettablePgliteTestOwner()
 const uuidV7Regex = new RegExp(UUID_V7_PATTERN, 'i')
@@ -26,7 +27,7 @@ async function setup(workspaceIds: readonly string[] = ['ws-a', 'ws-b']) {
       .insert(workspaces)
       .values({ id, name: id, createdAt: '2026-07-20T00:00:00.000Z', updatedAt: '2026-07-20T00:00:00.000Z' })
   }
-  return createPgliteJobService(database, { now: monotonicClock() })
+  return createCoveredPgliteJobService(database, { now: monotonicClock() })
 }
 
 function createInput(overrides: Partial<CreateJobInput> = {}): CreateJobInput {

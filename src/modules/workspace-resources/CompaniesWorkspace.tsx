@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   companyDirectoryCursorSchema,
+  type CompanyCapability,
   type CompanyDetail,
   type CompanyDirectoryFilter,
   type CompanyDirectoryPage,
@@ -46,7 +47,7 @@ const emptyPage: CompanyDirectoryPage = {
 }
 
 interface CompaniesWorkspaceProps {
-  readonly client: Pick<WorkspaceCompaniesClient, 'directory' | 'get'> | null
+  readonly client: Pick<WorkspaceCompaniesClient, 'capability' | 'directory' | 'get'> | null
   readonly entry: WorkspaceHistoryEntry
   readonly onBack: () => void
   readonly onNavigate: (
@@ -65,6 +66,8 @@ export function CompaniesWorkspace({
   const filter = (location.filter ?? 'all') as CompanyDirectoryFilter
   const isNarrow = useMediaQuery('(max-width: 767px)')
   const [page, setPage] = useState<CompanyDirectoryPage>(emptyPage)
+  const [capability, setCapability] = useState<CompanyCapability | null>(null)
+  const [capabilityFailure, setCapabilityFailure] = useState<string | null>(null)
   const [selectedDetail, setSelectedDetail] = useState<{
     readonly resourceId: string
     readonly detail: CompanyDetail
@@ -76,11 +79,26 @@ export function CompaniesWorkspace({
 
   useEffect(() => {
     let current = true
+    setCapability(null)
+    setCapabilityFailure(null)
+    if (!client) {
+      setCapabilityFailure('Workspace Company data is unavailable.')
+      return
+    }
+    void client.capability.get().then((nextCapability) => {
+      if (current) setCapability(nextCapability)
+    }, () => {
+      if (current) setCapabilityFailure('Workspace Company capability could not be loaded.')
+    })
+    return () => { current = false }
+  }, [client])
+
+  useEffect(() => {
+    let current = true
     setPage(emptyPage)
     setListFailure(null)
     setListLoading(true)
-    if (!client) {
-      setListFailure('Workspace Company data is unavailable.')
+    if (!client || capability?.status !== 'ready') {
       setListLoading(false)
       return
     }
@@ -110,7 +128,7 @@ export function CompaniesWorkspace({
       setListLoading(false)
     })
     return () => { current = false }
-  }, [client, filter, location.cursor, location.cursorDirection])
+  }, [capability?.status, client, filter, location.cursor, location.cursorDirection])
 
   useEffect(() => {
     let current = true
@@ -119,8 +137,7 @@ export function CompaniesWorkspace({
     setDetailFailure(null)
     setDetailLoading(Boolean(resourceId))
     if (!resourceId) return
-    if (!client) {
-      setDetailFailure('Workspace Company data is unavailable.')
+    if (!client || capability?.status !== 'ready') {
       setDetailLoading(false)
       return
     }
@@ -136,7 +153,7 @@ export function CompaniesWorkspace({
       setDetailLoading(false)
     })
     return () => { current = false }
-  }, [client, location.resourceId])
+  }, [capability?.status, client, location.resourceId])
 
   const detail = selectedDetail && selectedDetail.resourceId === location.resourceId
     ? selectedDetail.detail
@@ -153,6 +170,34 @@ export function CompaniesWorkspace({
           Workspace Company identity is separate from the ordered Job lifecycle.
         </p>
       </header>
+      {capabilityFailure ? (
+        <p role="alert" className="text-sm text-destructive">{capabilityFailure}</p>
+      ) : null}
+      {!capability && !capabilityFailure ? (
+        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner aria-label="Loading Company capability" className="size-4" />
+          Checking Company availability…
+        </p>
+      ) : null}
+      {capability?.status === 'migrating' ? (
+        <section className="rounded-md border border-border bg-card/60 p-5" aria-live="polite">
+          <h3 className="font-semibold">Preparing Workspace Companies</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {capability.completed} of {capability.total} Jobs have Company coverage.
+            Company-backed actions remain unavailable until verification completes.
+          </p>
+        </section>
+      ) : null}
+      {capability?.status === 'blocked' ? (
+        <section className="rounded-md border border-destructive/40 bg-destructive/5 p-5" role="alert">
+          <h3 className="font-semibold">Workspace Companies are unavailable</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{capability.message}</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {capability.issueCount} integrity {capability.issueCount === 1 ? 'issue' : 'issues'} detected.
+          </p>
+        </section>
+      ) : null}
+      {capability?.status === 'ready' ? (
       <div className={location.resourceId && !isNarrow
         ? 'grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.75fr)]'
         : 'min-w-0'}>
@@ -239,6 +284,7 @@ export function CompaniesWorkspace({
           </ResourceDetailFrame>
         ) : null}
       </div>
+      ) : null}
     </div>
   )
 }

@@ -12,7 +12,8 @@ import { workspaces } from '../../db/workspaces.schema'
 import { jobCaptureEvidenceReferences, jobExternalIdentities } from '../../db/schema'
 import { createPgliteCaptureService } from '../capture/capture.service'
 import { insertJobCaptureEvidenceReferences } from './job.repository'
-import { createPgliteJobService, type JobService } from './job.service'
+import type { JobService } from './job.service'
+import { createCoveredPgliteJobService } from '../../test/covered-job-service'
 import { createPgliteJobIdentityService, type JobIdentityInput } from './job.identity'
 
 const resettableOwner = useResettablePgliteTestOwner()
@@ -32,7 +33,7 @@ async function setup(workspaceIds: readonly string[] = ['ws-a', 'ws-b']) {
   const clock = monotonicClock()
   return {
     database,
-    jobs: createPgliteJobService(database, { now: clock }),
+    jobs: createCoveredPgliteJobService(database, { now: clock }),
     identity: createPgliteJobIdentityService(database, { now: clock }),
     captures: createPgliteCaptureService(database, { now: clock }),
   }

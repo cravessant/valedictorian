@@ -1,7 +1,7 @@
 /**
  * In-process lifecycle facade — CAPTURE vertical, red-first pglite proofs (#304, task 4).
  *
- * The facade `createLocalLifecycleMethods(database, { workspaceId, now })` is the in-process
+ * The covered local lifecycle facade is the in-process
  * transport that both the HTTP routes and the rewired local client compose. It mirrors
  * sparxie's `createLifecycleHttpMethods`: contract inputs in (validated by the sparxie input
  * schema), contract results out (mapped by the Stage-3 DTOs), `get` returns null on miss, and
@@ -15,9 +15,10 @@
 import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import { workspaces } from '../db/workspaces.schema'
-import { createPgliteJobService } from '../modules/job/job.service'
+import { createCoveredPgliteJobService } from '../test/covered-job-service'
 import { jobCaptureEvidenceReferences } from '../modules/job/job.schema'
-import { createLocalLifecycleMethods, LifecycleHttpError } from './local-lifecycle-methods'
+import { LifecycleHttpError } from './local-lifecycle-methods'
+import { createCoveredLocalLifecycleMethods } from '../test/covered-lifecycle-methods'
 
 const resettableOwner = useResettablePgliteTestOwner()
 
@@ -37,7 +38,7 @@ async function setup(workspaceId = 'ws-a') {
     })
   }
   const now = monotonicClock()
-  const methods = createLocalLifecycleMethods(database, { workspaceId, now })
+  const methods = createCoveredLocalLifecycleMethods(database, { workspaceId, now })
   return { database, methods, now }
 }
 
@@ -170,7 +171,7 @@ describe.sequential('local lifecycle facade — captures', () => {
     if (created.status !== 'succeeded') throw new Error('unreachable')
     const captureId = created.resource.id
 
-    const jobService = createPgliteJobService(database, { now })
+    const jobService = createCoveredPgliteJobService(database, { now })
     const job = await jobService.create({ workspaceId: 'ws-a', facts: { title: 'Dependent' }, actor: USER })
     if (!job.ok) throw new Error('failed to seed dependent job')
     await database.insert(jobCaptureEvidenceReferences).values({
@@ -238,8 +239,8 @@ describe.sequential('local lifecycle facade — captures', () => {
 
   it('isolates captures across workspaces (a foreign workspace cannot read the capture)', async () => {
     const { database, now } = await setup()
-    const wsA = createLocalLifecycleMethods(database, { workspaceId: 'ws-a', now })
-    const wsB = createLocalLifecycleMethods(database, { workspaceId: 'ws-b', now })
+    const wsA = createCoveredLocalLifecycleMethods(database, { workspaceId: 'ws-a', now })
+    const wsB = createCoveredLocalLifecycleMethods(database, { workspaceId: 'ws-b', now })
     const created = await wsA.captures.create(CREATE_INPUT)
     if (created.status !== 'succeeded') throw new Error('unreachable')
 

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type {
   ConnectorAuthReferenceInput,
+  WorkspaceCompaniesClient,
 } from 'sparxie'
 import {
   connectorOverviewListQuerySchema,
@@ -96,6 +97,7 @@ import {
 } from './local-connector-overview.cursor'
 import { createPgliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 import { assertSeedOptions, seedLocalData } from './local-valedictorian-seeding'
+import { createCompanyCoverageService } from '../modules/company/company.coverage'
 export type {
   LocalValedictorianClientOptions,
   ValedictorianSeedDataMode,
@@ -140,9 +142,11 @@ export async function createLocalValedictorianClient({
   connectorRegistry = createDefaultLocalConnectorRegistry(),
   connectorRuntime,
   connectorScheduling: connectorSchedulingOption,
+  deferCompanyCoverageMigration = false,
   now = () => new Date(),
   onScheduledWorkChanged,
   registerScheduledWorkSource,
+  scheduleCompanyCoverageMigration = scheduleCompanyCoverageInBackground,
   referenceTrackerPath,
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
@@ -166,6 +170,11 @@ export async function createLocalValedictorianClient({
     referenceTrackerPath,
     seedDataMode,
   })
+  const companyCoverage = createCompanyCoverageService(database, { now })
+  await companyCoverage.prepare(workspaceId)
+  if (!deferCompanyCoverageMigration) {
+    await companyCoverage.migrateToReady(workspaceId)
+  }
   const scoringRepository = createPgliteScoringRepository(database)
   const profileService = preparedProfileService
     ?? createJsonProfileService(profilePath ?? path.join(path.dirname(pgliteDataPath ?? '.'), 'profile.json'))
@@ -276,12 +285,18 @@ export async function createLocalValedictorianClient({
       idempotencyKey: occurrence.idempotencyKey,
     })
   }
-  const lifecycle = createLocalLifecycleMethods(database, { workspaceId, now })
+  const lifecycle = createLocalLifecycleMethods(database, {
+    workspaceId,
+    now,
+    jobCreationCoverage: companyCoverage.jobCreationCoverage,
+  })
   const client: LocalValedictorianClient = {
     connectorScheduling,
     ...lifecycle,
     captureResolution: unavailableWorkspaceCapability('Capture resolution'),
-    companies: unavailableWorkspaceCapability('Companies'),
+    companies: createCapabilityGatedCompaniesClient(
+      () => companyCoverage.getCapability(workspaceId),
+    ),
     companyAssignments: unavailableWorkspaceCapability('Company assignments'),
     scores: {
       record: (input) => scoringRepository.recordScore(input),
@@ -611,7 +626,18 @@ export async function createLocalValedictorianClient({
   } else {
     await recoverInterruptedRuns()
   }
+  if (deferCompanyCoverageMigration) {
+    scheduleCompanyCoverageMigration(async () => {
+      await companyCoverage.migrateToReady(workspaceId)
+    })
+  }
   return client
+}
+
+function scheduleCompanyCoverageInBackground(run: () => Promise<void>) {
+  queueMicrotask(() => {
+    void run().catch(() => undefined)
+  })
 }
 
 function unavailableWorkspaceCapability<T extends object>(name: string): T {
@@ -623,6 +649,17 @@ function unavailableWorkspaceCapability<T extends object>(name: string): T {
     },
   )
   return unavailable as unknown as T
+}
+
+function createCapabilityGatedCompaniesClient(
+  getCapability: WorkspaceCompaniesClient['capability']['get'],
+): WorkspaceCompaniesClient {
+  const unavailable = unavailableWorkspaceCapability<WorkspaceCompaniesClient>('Companies')
+  return new Proxy(unavailable, {
+    get: (_target, property) => property === 'capability'
+      ? { get: getCapability }
+      : unavailable,
+  })
 }
 async function reconnectConnectorStatus({
   connectorRegistry,

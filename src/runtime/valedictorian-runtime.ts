@@ -204,6 +204,7 @@ export async function createValedictorianRuntime({
       connectorScheduling: config.mode === 'local-desktop'
         ? localDesktopConnectorSchedulingCapability
         : undefined,
+      deferCompanyCoverageMigration: true,
       localSecretResolutionEnabled,
       profilePath: config.profilePath,
       ...(preparedCapabilities === null

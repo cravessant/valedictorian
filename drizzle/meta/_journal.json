@@ -50,6 +50,13 @@
       "when": 1784752509993,
       "tag": "0006_capture_field_outcomes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784843094027,
+      "tag": "0007_ordinary_plazm",
+      "breakpoints": true
     }
   ]
 }

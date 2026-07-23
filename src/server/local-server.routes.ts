@@ -32,6 +32,7 @@ import type { LocalValedictorianClient } from '../runtime/local-connector-client
 import type { LocalWorkspaceManager } from './local-workspaces'
 import { handleConnectorRoutes } from './local-server.routes.connectors'
 import { handleLifecycleRoutes } from './local-server.routes.lifecycle'
+import { handleCompanyRoutes } from './local-server.routes.companies'
 import {
   handleHttpRequestError,
   type ValedictorianHttpRequestErrorLogger,
@@ -215,6 +216,10 @@ export async function handleRequest({
     }
 
     if (await handleLifecycleRoutes({ client, request, requestUrl, response })) {
+      return
+    }
+
+    if (await handleCompanyRoutes({ client, request, requestUrl, response })) {
       return
     }
 

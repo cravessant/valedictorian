@@ -22,6 +22,10 @@ import {
   normalizationWork, providerUrlResolutionWork,
 } from '../modules/scheduling/scheduling.schema'
 import { lifecycleMigrationReport, workspaces } from './workspaces.schema'
+import {
+  companyAliases, companyBackfillJournal, companyCapabilityState, companyHistory,
+  jobCompanyAssignmentHistory, jobCompanyAssignments, workspaceCompanies,
+} from '../modules/company/company.schema'
 
 export {
   connectorCheckpoints, connectorInstances, connectorObservations, connectorRuns,
@@ -44,6 +48,10 @@ export {
   normalizationWork, providerUrlResolutionWork,
 } from '../modules/scheduling/scheduling.schema'
 export { DEFAULT_WORKSPACE_ID, lifecycleMigrationReport, workspaces } from './workspaces.schema'
+export {
+  companyAliases, companyBackfillJournal, companyCapabilityState, companyHistory,
+  jobCompanyAssignmentHistory, jobCompanyAssignments, workspaceCompanies,
+} from '../modules/company/company.schema'
 
 const timestamps = {
   createdAt: text('created_at').notNull(),
@@ -164,4 +172,6 @@ export const schema = {
   applicationHistory, applicationScores, applicationWorkflowStates,
   connectorCaptureWork, normalizationWork, providerUrlResolutionWork,
   hostedSubmissionWork, hostedResultPollingWork, workspaces, lifecycleMigrationReport,
+  workspaceCompanies, companyAliases, companyHistory, jobCompanyAssignments,
+  jobCompanyAssignmentHistory, companyCapabilityState, companyBackfillJournal,
 }

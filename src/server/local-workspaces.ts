@@ -182,6 +182,7 @@ export function createLocalWorkspaceManager({
             ...(prepared ? { database: prepared.database } : {}),
             connectorRunRecovery,
             connectorRuntime: connectorPorts.connectorRuntime,
+            deferCompanyCoverageMigration: true,
             localSecretResolutionEnabled: isSecretCodecAvailable(secretCodec),
             profilePath: layout.profilePath,
             ...(prepared === null

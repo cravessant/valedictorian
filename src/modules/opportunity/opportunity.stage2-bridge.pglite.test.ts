@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
-import { createPgliteJobService } from '../job/job.service'
+import { createCoveredPgliteJobService } from '../../test/covered-job-service'
 import { createPgliteOpportunityService } from './opportunity.service'
 
 const resettableOwner = useResettablePgliteTestOwner()
@@ -25,12 +25,15 @@ async function setup() {
     await database.insert(workspaces).values({ id, name: id, createdAt: '2026-07-20T00:00:00.000Z', updatedAt: '2026-07-20T00:00:00.000Z' })
   }
   const clock = monotonicClock()
-  const jobs = createPgliteJobService(database, { now: clock })
+  const jobs = createCoveredPgliteJobService(database, { now: clock })
   const opportunities = createPgliteOpportunityService(database, { now: clock })
   return { jobs, opportunities }
 }
 
-async function makeJob(jobs: ReturnType<typeof createPgliteJobService>, workspaceId = 'ws-a') {
+async function makeJob(
+  jobs: ReturnType<typeof createCoveredPgliteJobService>,
+  workspaceId = 'ws-a',
+) {
   const r = await jobs.create({ workspaceId, facts: { title: 'Staff Engineer' }, actor: ACTOR })
   if (!r.ok) throw new Error('job create failed')
   return r.job.id

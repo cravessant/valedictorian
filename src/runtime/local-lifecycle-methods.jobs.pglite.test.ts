@@ -23,7 +23,8 @@ import {
 } from 'sparxie'
 import { useResettablePgliteTestOwner } from '../test/pglite-test-owner'
 import { workspaces } from '../db/workspaces.schema'
-import { createLocalLifecycleMethods, LifecycleHttpError } from './local-lifecycle-methods'
+import { LifecycleHttpError } from './local-lifecycle-methods'
+import { createCoveredLocalLifecycleMethods } from '../test/covered-lifecycle-methods'
 
 const resettableOwner = useResettablePgliteTestOwner()
 
@@ -38,7 +39,7 @@ async function setup(workspaceId = 'ws-a') {
     await database.insert(workspaces).values({ id, name: id, createdAt: '2026-07-20T00:00:00.000Z', updatedAt: '2026-07-20T00:00:00.000Z' })
   }
   const now = monotonicClock()
-  const methods = createLocalLifecycleMethods(database, { workspaceId, now })
+  const methods = createCoveredLocalLifecycleMethods(database, { workspaceId, now })
   return { database, methods, now }
 }
 
@@ -252,8 +253,8 @@ describe.sequential('local lifecycle facade — jobs', () => {
 
   it('isolates jobs across workspaces', async () => {
     const { database, now } = await setup()
-    const wsA = createLocalLifecycleMethods(database, { workspaceId: 'ws-a', now })
-    const wsB = createLocalLifecycleMethods(database, { workspaceId: 'ws-b', now })
+    const wsA = createCoveredLocalLifecycleMethods(database, { workspaceId: 'ws-a', now })
+    const wsB = createCoveredLocalLifecycleMethods(database, { workspaceId: 'ws-b', now })
     const capture = await wsA.captures.create(CAPTURE_INPUT)
     if (capture.status !== 'succeeded') throw new Error('unreachable')
     const created = await wsA.jobs.create({

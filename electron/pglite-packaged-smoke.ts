@@ -2,6 +2,7 @@ import { createPgliteClient, migratePgliteDatabase } from '../src/db/pglite'
 import { workspaces } from '../src/db/workspaces.schema'
 import { createPgliteCaptureReadModel } from '../src/modules/capture/capture.read-model'
 import { createPgliteCaptureService } from '../src/modules/capture/capture.service'
+import { createCompanyCoverageService } from '../src/modules/company/company.coverage'
 import { createLocalLifecycleMethods } from '../src/runtime/local-lifecycle-methods'
 
 const smokeProviderRecordId = 'packaged-pglite-smoke'
@@ -74,7 +75,12 @@ async function openPackagedPgliteSmokeOwner(dataDirectory: string): Promise<Pack
   }).onConflictDoNothing()
   const captures = createPgliteCaptureService(database)
   const readModel = createPgliteCaptureReadModel(database)
-  const lifecycle = createLocalLifecycleMethods(database, { workspaceId: smokeWorkspaceId })
+  const companyCoverage = createCompanyCoverageService(database)
+  await companyCoverage.migrateToReady(smokeWorkspaceId)
+  const lifecycle = createLocalLifecycleMethods(database, {
+    workspaceId: smokeWorkspaceId,
+    jobCreationCoverage: companyCoverage.jobCreationCoverage,
+  })
   const actor = { id: 'packaged-smoke', type: 'system' as const }
   return {
     close: () => client.close(),

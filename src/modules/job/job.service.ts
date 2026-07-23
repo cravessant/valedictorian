@@ -118,6 +118,18 @@ export type MutateJobResult = { readonly ok: true; readonly job: JobRecord } | J
 /** A read+write executor — the workspace database OR an open transaction. */
 export type JobExec = Pick<PgliteDatabase, 'select' | 'insert' | 'update'>
 
+export interface JobCreationCoveragePort {
+  ensureAssignmentOn(
+    exec: JobExec,
+    input: {
+      readonly workspaceId: string
+      readonly jobId: string
+      readonly facts: JsonValue
+      readonly createdAt: string
+    },
+  ): Promise<void>
+}
+
 export interface JobService {
   create(input: CreateJobInput): Promise<CreateJobResult>
   /**
@@ -151,6 +163,7 @@ export interface JobService {
 export interface JobServiceOptions {
   readonly now?: Clock
   readonly newId?: UuidV7Generator
+  readonly creationCoverage: JobCreationCoveragePort
 }
 
 const FACTS_MAX = 262_144
@@ -197,10 +210,14 @@ function toRecord(row: JobRow): JobRecord {
 
 type HeadUpdate = Partial<Pick<JobRow, 'factsJson' | 'factsRevision' | 'availabilityState' | 'availabilityObservedAt' | 'availabilityRevision' | 'removedAt'>>
 
-export function createPgliteJobService(database: PgliteDatabase, options: JobServiceOptions = {}): JobService {
+export function createPgliteJobService(
+  database: PgliteDatabase,
+  options: JobServiceOptions,
+): JobService {
   const clock = options.now ?? (() => new Date())
   const nowIso = () => clock().toISOString()
   const newId = options.newId ?? createUuidV7Generator(clock)
+  const creationCoverage = options.creationCoverage
 
   async function selectByIdOn(exec: JobExec, workspaceId: string, jobId: string): Promise<JobRow | null> {
     const [row] = await exec
@@ -410,7 +427,15 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
     // minting a new id, so re-issuing the same create converges (created:false).
     if (idempotencyKey !== null) {
       const existing = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
-      if (existing) return { ok: true, job: toRecord(existing), created: false }
+      if (existing) {
+        await creationCoverage.ensureAssignmentOn(exec, {
+          workspaceId,
+          jobId: existing.id,
+          facts: safeParse(existing.factsJson),
+          createdAt: existing.createdAt,
+        })
+        return { ok: true, job: toRecord(existing), created: false }
+      }
     }
     const createdAt = nowIso()
     const row: JobRow = {
@@ -444,6 +469,12 @@ export function createPgliteJobService(database: PgliteDatabase, options: JobSer
       kind: 'created',
       snapshotJson: factsJson,
       auditJson: auditJson(actor),
+      createdAt,
+    })
+    await creationCoverage.ensureAssignmentOn(exec, {
+      workspaceId,
+      jobId: row.id,
+      facts: input.facts,
       createdAt,
     })
     return { ok: true, job: toRecord(row), created: true }

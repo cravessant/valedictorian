@@ -18,7 +18,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
 import { createPgliteCaptureService, type CaptureService } from '../capture/capture.service'
-import { createPgliteJobService } from '../job/job.service'
+import { createCoveredPgliteJobService } from '../../test/covered-job-service'
 import { createPgliteJobIdentityService } from '../job/job.identity'
 import { jobCaptureEvidenceReferences, jobExternalIdentities } from '../job/job.schema'
 import { createLifecycleJobOrchestration, type JobEvidenceReferenceInput } from './job.orchestration'
@@ -39,7 +39,7 @@ async function setup() {
   }
   const now = monotonicClock()
   const captures = createPgliteCaptureService(database, { now })
-  const jobService = createPgliteJobService(database, { now })
+  const jobService = createCoveredPgliteJobService(database, { now })
   const jobIdentityService = createPgliteJobIdentityService(database, { now })
   const orchestration = createLifecycleJobOrchestration(database, { jobService, jobIdentityService, now })
   return { database, captures, jobService, jobIdentityService, orchestration }

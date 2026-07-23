@@ -49,14 +49,72 @@ const detail = {
 function makeClient() {
   const list = vi.fn(async () => page)
   const get = vi.fn(async (_companyId: string) => detail)
+  const capability = vi.fn(async () => ({ status: 'ready' as const }))
   return {
-    client: { directory: { list }, get } as unknown as WorkspaceCompaniesClient,
+    client: {
+      capability: { get: capability },
+      directory: { list },
+      get,
+    } as unknown as WorkspaceCompaniesClient,
+    capability,
     get,
     list,
   }
 }
 
 describe('CompaniesWorkspace', () => {
+  it('keeps Company data and writes unavailable while migration is incomplete', async () => {
+    const { client, capability, get, list } = makeClient()
+    capability.mockResolvedValueOnce({
+      status: 'migrating',
+      completed: 4,
+      total: 9,
+      issueCount: 0,
+    })
+    render(
+      <CompaniesWorkspace
+        client={client}
+        entry={{
+          location: { view: 'companies', resourceId: 'company-not-on-page' },
+          cursorChain: [],
+        }}
+        onBack={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText('Preparing Workspace Companies')).toBeInTheDocument()
+    expect(screen.getByText(/4 of 9 Jobs/)).toBeInTheDocument()
+    expect(list).not.toHaveBeenCalled()
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('renders bounded blocked capability information without repair controls', async () => {
+    const { client, capability, get, list } = makeClient()
+    capability.mockResolvedValueOnce({
+      status: 'blocked',
+      issueCount: 2,
+      reason: 'integrity_check_failed',
+      message: 'Workspace Company coverage verification failed.',
+      remediation: null,
+    })
+    render(
+      <CompaniesWorkspace
+        client={client}
+        entry={{ location: { view: 'companies' }, cursorChain: [] }}
+        onBack={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Workspace Company coverage verification failed.',
+    )
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(list).not.toHaveBeenCalled()
+    expect(get).not.toHaveBeenCalled()
+  })
+
   it('loads a directly addressed Company independent of the current page', async () => {
     const { client, get } = makeClient()
     render(

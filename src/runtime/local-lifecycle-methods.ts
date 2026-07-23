@@ -1,7 +1,7 @@
 /**
  * In-process lifecycle facade (#304, task 4).
  *
- * `createLocalLifecycleMethods(database, { workspaceId, now })` is the single in-process
+ * `createLocalLifecycleMethods` is the single in-process
  * transport that mirrors sparxie's `createLifecycleHttpMethods`. Both the local HTTP routes
  * (server side) and the rewired local client (in-process) compose it. Each method:
  *   1. validates the contract input via the sparxie input schema,
@@ -96,7 +96,7 @@ import {
   JOBRIGHT_PROVIDER_FIELD_RESOLVER_ID,
   JOBRIGHT_PROVIDER_FIELD_RESOLVER_VERSION,
 } from '../modules/connectors/jobright.constants'
-import { createPgliteJobService } from '../modules/job/job.service'
+import { createPgliteJobService, type JobCreationCoveragePort } from '../modules/job/job.service'
 import { createPgliteJobReadModel } from '../modules/job/job.read-model'
 import { createPgliteJobIdentityService } from '../modules/job/job.identity'
 import { createLifecycleJobOrchestration, type JobWriteFailure } from '../modules/lifecycle/job.orchestration'
@@ -183,6 +183,7 @@ function parseInput<T>(schema: { parse(value: unknown): T }, input: unknown): T 
 export interface LocalLifecycleMethodsOptions {
   readonly workspaceId: string
   readonly now?: () => Date
+  readonly jobCreationCoverage: JobCreationCoveragePort
 }
 
 /** The aggregate surface implemented so far (captures + jobs + opportunities + applications). */
@@ -197,7 +198,7 @@ export function createLocalLifecycleMethods(
   const nowIso = () => now().toISOString()
 
   const captureService = createPgliteCaptureService(database, { now })
-  const jobService = createPgliteJobService(database, { now })
+  const jobService = createPgliteJobService(database, { now, creationCoverage: options.jobCreationCoverage })
   const jobIdentityService = createPgliteJobIdentityService(database, { now })
   const opportunityService = createPgliteOpportunityService(database, { now })
   const applicationService = createPgliteApplicationAggregateService(database, { now })

@@ -7,7 +7,8 @@
 import { describe, expect, it } from 'vitest'
 import { useResettablePgliteTestOwner } from '../../test/pglite-test-owner'
 import { workspaces } from '../../db/workspaces.schema'
-import { createPgliteJobService, type CreateJobInput } from './job.service'
+import type { CreateJobInput } from './job.service'
+import { createCoveredPgliteJobService } from '../../test/covered-job-service'
 
 const resettableOwner = useResettablePgliteTestOwner()
 
@@ -21,7 +22,7 @@ async function setup(workspaceIds: readonly string[] = ['ws-a', 'ws-b']) {
   for (const id of workspaceIds) {
     await database.insert(workspaces).values({ id, name: id, createdAt: '2026-07-20T00:00:00.000Z', updatedAt: '2026-07-20T00:00:00.000Z' })
   }
-  return createPgliteJobService(database, { now: monotonicClock() })
+  return createCoveredPgliteJobService(database, { now: monotonicClock() })
 }
 
 function input(overrides: Partial<CreateJobInput> = {}): CreateJobInput {
