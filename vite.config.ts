@@ -6,6 +6,11 @@ import react from '@vitejs/plugin-react'
 import { DurationBalancedSequencer } from './src/test/duration-balanced-sequencer'
 
 export const mainExternals = ['@electric-sql/pglite', 'undici']
+export const maintainedTestIncludes = [
+  'electron/**/*.test.{ts,tsx}',
+  'scripts/**/*.test.{ts,mjs}',
+  'src/**/*.test.{ts,tsx}',
+]
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -17,6 +22,7 @@ export default defineConfig({
       ['src/theme/theme-applier.test.ts', 'jsdom'],
     ],
     exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
+    include: maintainedTestIncludes,
     globalSetup: './src/test/global-setup.ts',
     maxWorkers: 2,
     minWorkers: process.env.CI ? 2 : 1,
