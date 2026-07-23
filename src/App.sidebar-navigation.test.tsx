@@ -251,6 +251,18 @@ describe('App sidebar navigation', () => {
             totalCount: 0,
           })),
         },
+        assignedJobs: {
+          list: vi.fn(async () => ({
+            items: [],
+            pageInfo: {
+              startCursor: null,
+              endCursor: null,
+              hasPreviousPage: false,
+              hasNextPage: false,
+            },
+            totalCount: 0,
+          })),
+        },
       },
     } as unknown as ValedictorianWorkspaceClient
     const { settingsApi, workspaceApi } = installAppApis()

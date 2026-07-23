@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
@@ -8,7 +8,10 @@ import type {
 } from '@sparxie/sdk'
 import { CompaniesWorkspace } from './CompaniesWorkspace'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 const page = {
   items: [{
@@ -55,6 +58,18 @@ function makeClient() {
       capability: { get: capability },
       directory: { list },
       get,
+      assignedJobs: {
+        list: vi.fn(async () => ({
+          items: [],
+          pageInfo: {
+            startCursor: null,
+            endCursor: null,
+            hasPreviousPage: false,
+            hasNextPage: false,
+          },
+          totalCount: 0,
+        })),
+      },
     } as unknown as WorkspaceCompaniesClient,
     capability,
     get,
@@ -110,9 +125,57 @@ describe('CompaniesWorkspace', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Workspace Company coverage verification failed.',
     )
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New Company' })).toBeDisabled()
     expect(list).not.toHaveBeenCalled()
     expect(get).not.toHaveBeenCalled()
+  })
+
+  it('refreshes a migrating capability until the mounted workspace becomes ready', async () => {
+    vi.useFakeTimers()
+    const { client, capability, list } = makeClient()
+    capability
+      .mockResolvedValueOnce({
+        status: 'migrating',
+        completed: 4,
+        total: 9,
+        issueCount: 0,
+      })
+      .mockResolvedValueOnce({ status: 'ready' })
+    render(
+      <CompaniesWorkspace
+        client={client}
+        workspaceId="workspace-company"
+        entry={{ location: { view: 'companies' }, cursorChain: [] }}
+        onBack={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    )
+
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('Preparing Workspace Companies')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(capability).toHaveBeenCalledTimes(2)
+    expect(list).toHaveBeenCalledOnce()
+    expect(screen.getByText('On Page Inc.')).toBeInTheDocument()
+  })
+
+  it('returns focus to New Company when its modal unmounts on cancel', async () => {
+    const user = userEvent.setup()
+    const { client } = makeClient()
+    render(
+      <CompaniesWorkspace
+        client={client}
+        workspaceId="workspace-company"
+        entry={{ location: { view: 'companies' }, cursorChain: [] }}
+        onBack={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    )
+    const trigger = await screen.findByRole('button', { name: 'New Company' })
+    trigger.focus()
+    await user.click(trigger)
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(trigger).toHaveFocus())
   })
 
   it('loads a directly addressed Company independent of the current page', async () => {

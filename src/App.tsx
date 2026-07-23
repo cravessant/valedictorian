@@ -301,6 +301,7 @@ export default function App({
         ) : currentView === APP_VIEWS.COMPANIES ? (
           <CompaniesWorkspace
             client={resolvedWorkspaceClient?.companies ?? null}
+            workspaceId={workspace?.id ?? null}
             entry={workspaceNavigation.entry}
             onBack={() => backFromResource(
               workspaceNavigation.entry.location,

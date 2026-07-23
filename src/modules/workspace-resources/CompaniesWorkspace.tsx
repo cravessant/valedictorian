@@ -1,38 +1,27 @@
 import { useEffect, useState } from 'react'
 import {
   companyDirectoryCursorSchema,
+  type CompanyAssignedJobPage,
   type CompanyCapability,
   type CompanyDetail,
   type CompanyDirectoryFilter,
   type CompanyDirectoryPage,
   type WorkspaceCompaniesClient,
 } from '@sparxie/sdk'
-import { Building2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from '@/components/ui/pagination'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { useMediaQuery } from '@/app/useMediaQuery'
-import {
-  resetWorkspaceQuery,
-  type WorkspaceHistoryEntry,
-  type WorkspaceLocation,
+import type {
+  WorkspaceHistoryEntry,
+  WorkspaceLocation,
 } from '@/app/workspace-location'
-import { nextWorkspacePage, previousWorkspacePage } from '@/app/workspace-page'
+import { CompanyDetailView } from './CompanyDetailView'
+import { CompanyDirectoryView } from './CompanyDirectoryView'
+import {
+  CompanyMutationModal,
+  type CompanyModalAction,
+} from './CompanyMutationModal'
 import { ResourceDetailFrame } from './ResourceDetailFrame'
 
 const emptyPage: CompanyDirectoryPage = {
@@ -46,8 +35,22 @@ const emptyPage: CompanyDirectoryPage = {
   totalCount: 0,
 }
 
+const emptyAssignedJobs: CompanyAssignedJobPage = {
+  items: [],
+  pageInfo: {
+    startCursor: null,
+    endCursor: null,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  },
+  totalCount: 0,
+}
+
+const CAPABILITY_REFRESH_MS = 60_000
+
 interface CompaniesWorkspaceProps {
-  readonly client: Pick<WorkspaceCompaniesClient, 'capability' | 'directory' | 'get'> | null
+  readonly client: WorkspaceCompaniesClient | null
+  readonly workspaceId?: string | null
   readonly entry: WorkspaceHistoryEntry
   readonly onBack: () => void
   readonly onNavigate: (
@@ -58,6 +61,7 @@ interface CompaniesWorkspaceProps {
 
 export function CompaniesWorkspace({
   client,
+  workspaceId = null,
   entry,
   onBack,
   onNavigate,
@@ -71,26 +75,43 @@ export function CompaniesWorkspace({
   const [selectedDetail, setSelectedDetail] = useState<{
     readonly resourceId: string
     readonly detail: CompanyDetail
+    readonly assignedJobs: CompanyAssignedJobPage
   } | null>(null)
   const [listFailure, setListFailure] = useState<string | null>(null)
   const [listLoading, setListLoading] = useState(true)
   const [detailFailure, setDetailFailure] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [modalAction, setModalAction] = useState<CompanyModalAction | null>(null)
 
   useEffect(() => {
     let current = true
+    let refreshTimer: number | undefined
     setCapability(null)
     setCapabilityFailure(null)
     if (!client) {
       setCapabilityFailure('Workspace Company data is unavailable.')
       return
     }
-    void client.capability.get().then((nextCapability) => {
-      if (current) setCapability(nextCapability)
-    }, () => {
-      if (current) setCapabilityFailure('Workspace Company capability could not be loaded.')
-    })
-    return () => { current = false }
+    const loadCapability = async () => {
+      try {
+        const nextCapability = await client.capability.get()
+        if (!current) return
+        setCapability(nextCapability)
+        if (nextCapability.status === 'migrating') {
+          refreshTimer = window.setTimeout(loadCapability, CAPABILITY_REFRESH_MS)
+        }
+      } catch {
+        if (current) {
+          setCapabilityFailure('Workspace Company capability could not be loaded.')
+        }
+      }
+    }
+    void loadCapability()
+    return () => {
+      current = false
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer)
+    }
   }, [client])
 
   useEffect(() => {
@@ -124,11 +145,18 @@ export function CompaniesWorkspace({
       setListLoading(false)
     }, (error: unknown) => {
       if (!current) return
-      setListFailure(error instanceof Error ? error.message : 'Companies could not be loaded.')
+      setListFailure(message(error, 'Companies could not be loaded.'))
       setListLoading(false)
     })
     return () => { current = false }
-  }, [capability?.status, client, filter, location.cursor, location.cursorDirection])
+  }, [
+    capability?.status,
+    client,
+    filter,
+    location.cursor,
+    location.cursorDirection,
+    reloadKey,
+  ])
 
   useEffect(() => {
     let current = true
@@ -141,221 +169,183 @@ export function CompaniesWorkspace({
       setDetailLoading(false)
       return
     }
-    void client.get(resourceId).then((nextDetail) => {
+    void Promise.all([
+      client.get(resourceId),
+      client.assignedJobs.list(resourceId, {
+        filter: 'all',
+        sort: 'role_title_asc',
+        limit: 50,
+      }),
+    ]).then(([detail, assignedJobs]) => {
       if (!current) return
-      setSelectedDetail({ resourceId, detail: nextDetail })
+      setSelectedDetail({ resourceId, detail, assignedJobs })
       setDetailLoading(false)
     }, (error: unknown) => {
       if (!current) return
-      setDetailFailure(
-        error instanceof Error ? error.message : 'Company detail could not be loaded.',
-      )
+      setDetailFailure(message(error, 'Company detail could not be loaded.'))
       setDetailLoading(false)
     })
     return () => { current = false }
-  }, [capability?.status, client, location.resourceId])
+  }, [capability?.status, client, location.resourceId, reloadKey])
 
-  const detail = selectedDetail && selectedDetail.resourceId === location.resourceId
-    ? selectedDetail.detail
+  const selected = selectedDetail?.resourceId === location.resourceId
+    ? selectedDetail
     : null
+  const detail = selected?.detail ?? null
   const showList = !isNarrow || !location.resourceId
+  const ready = capability?.status === 'ready'
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Workspace data
-        </p>
-        <h2 className="text-xl font-semibold">Companies</h2>
-        <p className="text-sm text-muted-foreground">
-          Workspace Company identity is separate from the ordered Job lifecycle.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Workspace data
+          </p>
+          <h2 className="text-xl font-semibold">Companies</h2>
+          <p className="text-sm text-muted-foreground">
+            Maintain the workspace identities assigned to Jobs.
+          </p>
+        </div>
+        <Button
+          type="button"
+          disabled={!ready || !workspaceId || !client}
+          onClick={() => setModalAction({ kind: 'create' })}
+        >
+          <Plus className="size-4" aria-hidden="true" />
+          New Company
+        </Button>
       </header>
-      {capabilityFailure ? (
-        <p role="alert" className="text-sm text-destructive">{capabilityFailure}</p>
+      <CapabilityState capability={capability} failure={capabilityFailure} />
+      {ready ? (
+        <div className={location.resourceId && !isNarrow
+          ? 'grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.85fr)]'
+          : 'min-w-0'}>
+          {showList ? (
+            <CompanyDirectoryView
+              entry={entry}
+              failure={listFailure}
+              loading={listLoading}
+              onNavigate={onNavigate}
+              onOpen={(companyId, anchor) => onNavigate(
+                { ...location, resourceId: companyId },
+                { cursorChain: entry.cursorChain, focusAnchor: anchor },
+              )}
+              page={page}
+            />
+          ) : null}
+          {location.resourceId ? (
+            <ResourceDetailFrame
+              backLabel="Back to Companies"
+              heading={detail?.lookup.requested.displayName ?? 'Company'}
+              headingId="company-detail-heading"
+              isNarrow={isNarrow}
+              onBack={onBack}
+            >
+              {detailLoading ? <Spinner aria-label="Loading Company detail" /> : null}
+              {detailFailure ? (
+                <p role="alert" className="text-sm text-destructive">{detailFailure}</p>
+              ) : null}
+              {detail ? (
+                <CompanyDetailView
+                  assignedJobs={selected?.assignedJobs ?? emptyAssignedJobs}
+                  detail={detail}
+                  onAddAlias={() => setModalAction({
+                    kind: 'alias_add',
+                    company: detail.lookup.requested,
+                  })}
+                  onArchive={() => setModalAction({
+                    kind: 'archive',
+                    company: detail.lookup.requested,
+                  })}
+                  onEditAlias={(alias) => setModalAction({
+                    kind: 'alias_update',
+                    company: detail.lookup.requested,
+                    alias,
+                  })}
+                  onEditIdentity={() => setModalAction({
+                    kind: 'identity',
+                    company: detail.lookup.requested,
+                  })}
+                  onEditNotes={() => setModalAction({
+                    kind: 'notes',
+                    company: detail.lookup.requested,
+                  })}
+                  onOpenCompany={(companyId) => onNavigate({ view: 'companies', resourceId: companyId })}
+                  onOpenJob={(jobId) => onNavigate({ view: 'jobs', resourceId: jobId })}
+                  onRemoveAlias={(alias) => setModalAction({
+                    kind: 'alias_remove',
+                    company: detail.lookup.requested,
+                    alias,
+                  })}
+                  onRestore={() => setModalAction({
+                    kind: 'restore',
+                    company: detail.lookup.requested,
+                  })}
+                />
+              ) : null}
+            </ResourceDetailFrame>
+          ) : null}
+        </div>
       ) : null}
-      {!capability && !capabilityFailure ? (
-        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner aria-label="Loading Company capability" className="size-4" />
-          Checking Company availability…
-        </p>
-      ) : null}
-      {capability?.status === 'migrating' ? (
-        <section className="rounded-md border border-border bg-card/60 p-5" aria-live="polite">
-          <h3 className="font-semibold">Preparing Workspace Companies</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {capability.completed} of {capability.total} Jobs have Company coverage.
-            Company-backed actions remain unavailable until verification completes.
-          </p>
-        </section>
-      ) : null}
-      {capability?.status === 'blocked' ? (
-        <section className="rounded-md border border-destructive/40 bg-destructive/5 p-5" role="alert">
-          <h3 className="font-semibold">Workspace Companies are unavailable</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{capability.message}</p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {capability.issueCount} integrity {capability.issueCount === 1 ? 'issue' : 'issues'} detected.
-          </p>
-        </section>
-      ) : null}
-      {capability?.status === 'ready' ? (
-      <div className={location.resourceId && !isNarrow
-        ? 'grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.75fr)]'
-        : 'min-w-0'}>
-        {showList ? (
-          <section aria-label="Companies directory" className="min-w-0 space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <label className="w-48 text-sm font-medium">
-                Status
-                <NativeSelect
-                  className="mt-1"
-                  aria-label="Company status"
-                  value={filter}
-                  onChange={(event) => onNavigate(resetWorkspaceQuery(location, {
-                    filter: event.target.value,
-                    sort: 'display_name_asc',
-                  }))}
-                >
-                  <NativeSelectOption value="all">All</NativeSelectOption>
-                  <NativeSelectOption value="active">Active</NativeSelectOption>
-                  <NativeSelectOption value="archived">Archived</NativeSelectOption>
-                  <NativeSelectOption value="merged">Merged</NativeSelectOption>
-                </NativeSelect>
-              </label>
-              <p className="text-sm text-muted-foreground">{page.totalCount} Companies</p>
-            </div>
-            <CompanyTable page={page} onOpen={(companyId, anchor) => onNavigate(
-              { ...location, resourceId: companyId },
-              { cursorChain: entry.cursorChain, focusAnchor: anchor },
-            )} />
-            <Pagination aria-label="Companies pages" className="justify-end">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    disabled={!page.pageInfo.hasPreviousPage}
-                    onClick={() => {
-                      const transition = previousWorkspacePage(entry, page.pageInfo)
-                      if (transition) onNavigate(transition.location, {
-                        cursorChain: transition.cursorChain,
-                      })
-                    }}
-                  >
-                    Previous
-                  </PaginationPrevious>
-                </PaginationItem>
-                <PaginationItem>
-                  <PaginationNext
-                    disabled={!page.pageInfo.hasNextPage}
-                    onClick={() => {
-                      const transition = nextWorkspacePage(entry, page.pageInfo)
-                      if (transition) onNavigate(transition.location, {
-                        cursorChain: transition.cursorChain,
-                      })
-                    }}
-                  >
-                    Next
-                  </PaginationNext>
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-            {listLoading ? (
-              <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner aria-label="Loading Companies" className="size-4" />
-                Loading Companies…
-              </p>
-            ) : null}
-            {listFailure ? (
-              <p role="alert" className="text-sm text-destructive">{listFailure}</p>
-            ) : null}
-          </section>
-        ) : null}
-        {location.resourceId ? (
-          <ResourceDetailFrame
-            backLabel="Back to Companies"
-            heading={detail?.lookup.requested.displayName ?? 'Company'}
-            headingId="company-detail-heading"
-            isNarrow={isNarrow}
-            onBack={onBack}
-          >
-            {detailLoading ? <Spinner aria-label="Loading Company detail" /> : null}
-            {detailFailure ? (
-              <p role="alert" className="text-sm text-destructive">{detailFailure}</p>
-            ) : null}
-            {detail ? <CompanyDetailBody detail={detail} /> : null}
-          </ResourceDetailFrame>
-        ) : null}
-      </div>
+      {client && workspaceId ? (
+        <CompanyMutationModal
+          action={modalAction}
+          client={client}
+          workspaceId={workspaceId}
+          onClose={() => setModalAction(null)}
+          onChanged={(companyId) => {
+            setReloadKey((value) => value + 1)
+            if (modalAction?.kind === 'create') {
+              onNavigate({ view: 'companies', resourceId: companyId })
+            }
+          }}
+        />
       ) : null}
     </div>
   )
 }
 
-function CompanyTable({
-  page,
-  onOpen,
+function CapabilityState({
+  capability,
+  failure,
 }: {
-  page: CompanyDirectoryPage
-  onOpen: (companyId: string, anchor: string) => void
+  readonly capability: CompanyCapability | null
+  readonly failure: string | null
 }) {
-  return (
-    <Table aria-label="Companies">
-      <TableHeader>
-        <TableRow>
-          <TableHead>Company</TableHead>
-          <TableHead>Jobs</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Possible matches</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {page.items.map((company) => {
-          const anchor = `company-link-${company.companyId}`
-          return (
-            <TableRow key={company.companyId}>
-              <TableCell>
-                <Button
-                  id={anchor}
-                  type="button"
-                  variant="link"
-                  className="h-auto justify-start p-0 text-left"
-                  onClick={() => onOpen(company.companyId, anchor)}
-                >
-                  {company.displayName}
-                </Button>
-                {company.websiteHost ? (
-                  <span className="block text-xs text-muted-foreground">{company.websiteHost}</span>
-                ) : null}
-              </TableCell>
-              <TableCell>{company.assignedJobCount}</TableCell>
-              <TableCell>{company.status}</TableCell>
-              <TableCell>{company.openDuplicateCandidateCount}</TableCell>
-            </TableRow>
-          )
-        })}
-      </TableBody>
-    </Table>
-  )
+  if (failure) return <p role="alert" className="text-sm text-destructive">{failure}</p>
+  if (!capability) {
+    return (
+      <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner aria-label="Loading Company capability" className="size-4" />
+        Checking Company availability…
+      </p>
+    )
+  }
+  if (capability.status === 'migrating') {
+    return (
+      <section className="rounded-md border border-border bg-card/60 p-5" aria-live="polite">
+        <h3 className="font-semibold">Preparing Workspace Companies</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {capability.completed} of {capability.total} Jobs have Company coverage.
+          Company-backed actions remain unavailable until verification completes.
+        </p>
+      </section>
+    )
+  }
+  if (capability.status === 'blocked') {
+    return (
+      <section className="rounded-md border border-destructive/40 bg-destructive/5 p-5" role="alert">
+        <h3 className="font-semibold">Workspace Companies are unavailable</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{capability.message}</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {capability.issueCount} integrity {capability.issueCount === 1 ? 'issue' : 'issues'} detected.
+        </p>
+      </section>
+    )
+  }
+  return null
 }
 
-function CompanyDetailBody({ detail }: { detail: CompanyDetail }) {
-  const company = detail.lookup.requested
-  return (
-    <div className="space-y-4 text-sm">
-      {company.websiteUrl ? <p>{company.websiteUrl}</p> : null}
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-        <dt className="text-muted-foreground">Status</dt>
-        <dd>{company.status}</dd>
-        <dt className="text-muted-foreground">Assigned Jobs</dt>
-        <dd>{detail.assignedJobCount}</dd>
-        <dt className="text-muted-foreground">Aliases</dt>
-        <dd>{company.aliases.map((alias) => alias.value).join(', ') || 'None'}</dd>
-      </dl>
-      {company.notes ? <p className="rounded-md border border-border bg-muted/30 p-3">{company.notes}</p> : null}
-      {company.status === 'merged' ? (
-        <p className="flex items-center gap-2 text-muted-foreground">
-          <Building2 className="size-4" aria-hidden="true" />
-          Canonical Company: {detail.lookup.canonical.displayName}
-        </p>
-      ) : null}
-    </div>
-  )
+function message(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
 }

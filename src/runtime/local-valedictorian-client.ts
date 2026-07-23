@@ -1,7 +1,6 @@
 import path from 'node:path'
 import type {
   ConnectorAuthReferenceInput,
-  WorkspaceCompaniesClient,
 } from '@sparxie/sdk'
 import {
   connectorOverviewListQuerySchema,
@@ -98,6 +97,7 @@ import {
 import { createPgliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 import { assertSeedOptions, seedLocalData } from './local-valedictorian-seeding'
 import { createCompanyCoverageService } from '../modules/company/company.coverage'
+import { createPgliteCompanyService } from '../modules/company/company.service'
 export type {
   LocalValedictorianClientOptions,
   ValedictorianSeedDataMode,
@@ -291,12 +291,15 @@ export async function createLocalValedictorianClient({
     jobCreationCoverage: companyCoverage.jobCreationCoverage,
   })
   const client: LocalValedictorianClient = {
+    workspaceId,
     connectorScheduling,
     ...lifecycle,
     captureResolution: unavailableWorkspaceCapability('Capture resolution'),
-    companies: createCapabilityGatedCompaniesClient(
-      () => companyCoverage.getCapability(workspaceId),
-    ),
+    companies: createPgliteCompanyService(database, {
+      workspaceId,
+      coverage: companyCoverage,
+      now,
+    }),
     companyAssignments: unavailableWorkspaceCapability('Company assignments'),
     scores: {
       record: (input) => scoringRepository.recordScore(input),
@@ -651,16 +654,6 @@ function unavailableWorkspaceCapability<T extends object>(name: string): T {
   return unavailable as unknown as T
 }
 
-function createCapabilityGatedCompaniesClient(
-  getCapability: WorkspaceCompaniesClient['capability']['get'],
-): WorkspaceCompaniesClient {
-  const unavailable = unavailableWorkspaceCapability<WorkspaceCompaniesClient>('Companies')
-  return new Proxy(unavailable, {
-    get: (_target, property) => property === 'capability'
-      ? { get: getCapability }
-      : unavailable,
-  })
-}
 async function reconnectConnectorStatus({
   connectorRegistry,
   connectorRepository,

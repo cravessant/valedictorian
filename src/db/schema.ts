@@ -23,7 +23,8 @@ import {
 } from '../modules/scheduling/scheduling.schema'
 import { lifecycleMigrationReport, workspaces } from './workspaces.schema'
 import {
-  companyAliases, companyBackfillJournal, companyCapabilityState, companyHistory,
+  companyAliases, companyBackfillJournal, companyCapabilityState, companyCommandReceipts,
+  companyHistory,
   jobCompanyAssignmentHistory, jobCompanyAssignments, workspaceCompanies,
 } from '../modules/company/company.schema'
 
@@ -49,7 +50,8 @@ export {
 } from '../modules/scheduling/scheduling.schema'
 export { DEFAULT_WORKSPACE_ID, lifecycleMigrationReport, workspaces } from './workspaces.schema'
 export {
-  companyAliases, companyBackfillJournal, companyCapabilityState, companyHistory,
+  companyAliases, companyBackfillJournal, companyCapabilityState, companyCommandReceipts,
+  companyHistory,
   jobCompanyAssignmentHistory, jobCompanyAssignments, workspaceCompanies,
 } from '../modules/company/company.schema'
 
@@ -172,6 +174,7 @@ export const schema = {
   applicationHistory, applicationScores, applicationWorkflowStates,
   connectorCaptureWork, normalizationWork, providerUrlResolutionWork,
   hostedSubmissionWork, hostedResultPollingWork, workspaces, lifecycleMigrationReport,
-  workspaceCompanies, companyAliases, companyHistory, jobCompanyAssignments,
+  workspaceCompanies, companyAliases, companyHistory, companyCommandReceipts,
+  jobCompanyAssignments,
   jobCompanyAssignmentHistory, companyCapabilityState, companyBackfillJournal,
 }

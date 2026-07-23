@@ -452,7 +452,7 @@ export async function handleRequest({
 }
 
 function isDomainRoute(pathname: string) {
-  return /^\/v1\/(applications|captures|jobs|opportunities|action-queue|connector-descriptors|connectors|policy|profile|runs|scores|secrets)(?:\/|$)/.test(
+  return /^\/v1\/(applications|captures|companies|jobs|opportunities|action-queue|connector-descriptors|connectors|policy|profile|runs|scores|secrets)(?:\/|$)/.test(
     pathname,
   )
 }

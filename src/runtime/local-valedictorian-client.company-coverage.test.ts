@@ -101,12 +101,46 @@ describe.sequential('local client Workspace Company coverage', () => {
       .toEqual([{ value: 2 }])
   })
 
-  it('keeps Company mutations unavailable even after baseline readiness', async () => {
+  it('enables current Company mutations only after baseline readiness', async () => {
     const client = await createClient({ workspaceId: 'runtime-company-write-gate' })
     expect(await client.companies.capability.get()).toEqual({ status: 'ready' })
-    await expect(client.companies.create({} as never))
-      .rejects.toThrow('Companies is not available in the local workspace runtime.')
+    const created = await client.companies.create({
+      workspaceId: 'runtime-company-write-gate',
+      actor: ACTOR,
+      rationale: 'Create the workspace Company.',
+      idempotencyKey: 'create-runtime-company',
+      displayName: 'Runtime Company',
+      websiteUrl: null,
+      notes: null,
+    })
+    expect(created).toMatchObject({
+      status: 'created',
+      company: { displayName: 'Runtime Company', revision: 1 },
+    })
     await expect(client.companyAssignments.reassign({} as never))
       .rejects.toThrow('Company assignments is not available in the local workspace runtime.')
+  })
+
+  it('rejects Company writes while deferred coverage is still migrating', async () => {
+    const client = await createClient({
+      workspaceId: 'runtime-company-migrating-gate',
+      deferCompanyCoverageMigration: true,
+      scheduleCompanyCoverageMigration: () => undefined,
+    })
+    expect(await client.companies.create({
+      workspaceId: 'runtime-company-migrating-gate',
+      actor: ACTOR,
+      rationale: 'This must remain gated.',
+      idempotencyKey: 'blocked-during-migration',
+      displayName: 'Blocked Company',
+      websiteUrl: null,
+      notes: null,
+    })).toMatchObject({
+      status: 'blocked',
+      failure: {
+        kind: 'lifecycle_failure',
+        blocker: { code: 'impossible_state' },
+      },
+    })
   })
 })

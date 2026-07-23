@@ -167,6 +167,8 @@ export interface LocalConnectorClient {
 }
 
 export type LocalValedictorianClient = ValedictorianWorkspaceClient & {
+  /** Bound workspace identity used only by the local HTTP adapter. */
+  workspaceId: string
   connectors: LocalConnectorClient
   /** Authoritative scheduling capability for reporting and schedule enforcement. */
   connectorScheduling: ConnectorSchedulingCapability

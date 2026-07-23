@@ -201,6 +201,7 @@ export const companyHistory = pgTable(
     changedFieldsJson: text('changed_fields_json').notNull(),
     actorJson: text('actor_json').notNull(),
     rationale: text('rationale').notNull(),
+    aliasId: text('alias_id'),
     relatedCompanyId: text('related_company_id'),
     affectedJobIdsJson: text('affected_job_ids_json').notNull(),
     createdAt: text('created_at').notNull(),
@@ -279,6 +280,39 @@ export const companyCapabilityState = pgTable(
     messageCheck: check(
       'chk_company_capability_message',
       sql`${table.message} is null or length(btrim(${table.message})) between 1 and 500`,
+    ),
+  }),
+)
+
+export const companyCommandReceipts = pgTable(
+  'company_command_receipts',
+  {
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    operation: text('operation').notNull(),
+    requestFingerprint: text('request_fingerprint').notNull(),
+    resultJson: text('result_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    primaryKey: primaryKey({
+      columns: [table.workspaceId, table.idempotencyKey],
+    }),
+    keyCheck: check(
+      'chk_company_command_receipts_key',
+      sql`length(btrim(${table.idempotencyKey})) between 1 and 200`,
+    ),
+    operationCheck: check(
+      'chk_company_command_receipts_operation',
+      sql`${table.operation} in ('create','update','notes','alias_add','alias_update','alias_remove','archive','restore')`,
+    ),
+    fingerprintCheck: check(
+      'chk_company_command_receipts_fingerprint',
+      sql`length(${table.requestFingerprint}) = 64`,
+    ),
+    resultCheck: check(
+      'chk_company_command_receipts_result',
+      sql`length(${table.resultJson}) between 2 and 65536`,
     ),
   }),
 )

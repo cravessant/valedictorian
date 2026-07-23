@@ -64,6 +64,7 @@ export interface FormModalProps<T> {
   readonly submitLabel?: string
   readonly cancelLabel?: string
   readonly error?: string | null
+  readonly afterFields?: ReactNode
   readonly footerExtras?: ReactNode
 }
 
@@ -90,6 +91,7 @@ export function FormModal<T>({
   submitLabel = 'Save',
   cancelLabel = 'Cancel',
   error = null,
+  afterFields,
   footerExtras,
 }: FormModalProps<T>): ReactElement {
   const [draft, setDraft] = useState<T>(value)
@@ -116,7 +118,14 @@ export function FormModal<T>({
       const t = setTimeout(() => {
         formRef.current?.querySelector<HTMLElement>('input, textarea, select')?.focus()
       }, 0)
-      return () => clearTimeout(t)
+      return () => {
+        clearTimeout(t)
+        const opener = openerRef.current
+        openerRef.current = null
+        setTimeout(() => {
+          if (opener?.isConnected) opener.focus()
+        }, 0)
+      }
     }
     // When closing, restore opener focus after the dialog unmounts.
     const opener = openerRef.current
@@ -206,6 +215,7 @@ export function FormModal<T>({
                   </Field>
                 )
               })}
+              {afterFields}
             </form>
           </ScrollArea>
 
