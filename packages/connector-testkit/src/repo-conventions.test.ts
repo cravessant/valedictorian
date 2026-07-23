@@ -332,6 +332,8 @@ describe("connector repository conventions", () => {
     const publishWorkflow = readText(".github/workflows/publish.yml")
 
     expect(rootPackage.scripts?.["publish:public"]).toBeUndefined()
+    expect(ciWorkflow).toContain("pnpm/action-setup@v6")
+    expect(ciWorkflow).not.toContain("corepack enable")
     expect(ciWorkflow).toContain("pnpm install --frozen-lockfile")
     expect(ciWorkflow).toContain("cancel-in-progress: true")
     expect(ciWorkflow).toContain(
@@ -343,6 +345,8 @@ describe("connector repository conventions", () => {
     expect(ciWorkflow).toContain("pnpm exec tsc --noEmit")
     expect(ciWorkflow).toContain("pnpm --filter @sparxie/valedictorian-connectors-core pack --dry-run")
     expect(publishWorkflow).toContain("id-token: write")
+    expect(publishWorkflow).toContain("pnpm/action-setup@v6")
+    expect(publishWorkflow).not.toContain("corepack enable")
     expect(publishWorkflow).toContain("group: npm-publish-${{ github.ref }}")
     expect(publishWorkflow).toContain("registry-url: https://registry.npmjs.org")
     expect(publishWorkflow).toContain("Verify npm trusted publishing prerequisites")
