@@ -236,11 +236,12 @@ export function ConnectorSettingsInstanceCard({
     earliestMessage,
   })
   const draftDirty = isDraftDirty(instance)
+  const isRunning = runningInstanceIds.has(instance.id)
   const runBlocked = !instance.enabled
     || !draft.enabled
     || !authReady
     || isEditingAuth
-    || runningInstanceIds.has(instance.id)
+    || isRunning
     || isSavingSettings
     || draftDirty
     || !earliestValid
@@ -252,7 +253,7 @@ export function ConnectorSettingsInstanceCard({
   })
   const runBlockReason = runBlocked
     ? describeConnectorRunActionReason({
-      isRunning: runningInstanceIds.has(instance.id),
+      isRunning,
       isSavingSettings,
       isEditingAuth,
       draftDirty,
@@ -267,6 +268,7 @@ export function ConnectorSettingsInstanceCard({
     : null
   const saveReasonId = `connector-save-reason-${instance.id}`
   const runReasonId = `connector-run-reason-${instance.id}`
+  const summaryRunReasonId = `connector-summary-run-reason-${instance.id}`
   const credentialsReady = isConnectorCredentialDraftReady(credentialDraft)
   const credentialBlockReason = describeConnectorCredentialBlockReason(credentialDraft)
   const credentialReasonId = `connector-credential-reason-${instance.id}`
@@ -331,6 +333,10 @@ export function ConnectorSettingsInstanceCard({
     setDetailsOpen(open)
   }
 
+  function runNow() {
+    onRunNow(instance)
+  }
+
   return (
     <Dialog open={detailsOpen} onOpenChange={handleDetailsOpenChange}>
       <Collapsible
@@ -372,11 +378,31 @@ export function ConnectorSettingsInstanceCard({
               <Badge variant="outline">{latestRunSummary}</Badge>
               {draftDirty || scheduleIsDirty ? <Badge variant="warning">Unsaved changes</Badge> : null}
             </div>
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline">
-                View {instance.displayName} details
-              </Button>
-            </DialogTrigger>
+            <div className="grid justify-items-start gap-2 sm:justify-items-end">
+              {isJobrightInstance && runBlockReason ? (
+                <p className="text-xs text-warning" id={summaryRunReasonId}>
+                  {runBlockReason}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {isJobrightInstance ? (
+                  <Button
+                    aria-describedby={runBlockReason ? summaryRunReasonId : undefined}
+                    data-testid={`connector-summary-run-action-${instance.id}`}
+                    disabled={runBlocked}
+                    type="button"
+                    onClick={runNow}
+                  >
+                    {isRunning ? 'Running...' : 'Run Jobright now'}
+                  </Button>
+                ) : null}
+                <DialogTrigger asChild>
+                  <Button type="button" variant="outline">
+                    View {instance.displayName} details
+                  </Button>
+                </DialogTrigger>
+              </div>
+            </div>
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -689,27 +715,33 @@ export function ConnectorSettingsInstanceCard({
           <div
             aria-describedby={executionActionsDescribedBy}
             aria-label={`${instance.displayName} run actions`}
-            className="grid min-w-0 gap-3 lg:grid-cols-2"
+            className="grid min-w-0 gap-3"
             data-testid={`connector-run-actions-${instance.id}`}
             role="group"
             tabIndex={executionActionsDescribedBy ? 0 : undefined}
           >
-            <p className="text-xs text-muted-foreground lg:col-span-2">
+            <p className="text-xs text-muted-foreground">
               Run now advances the newest frontier, historical backfill, and pending link resolution.
             </p>
             {runBlockReason ? (
-              <p className="text-xs text-warning lg:col-span-2" id={runReasonId}>
+              <p className="text-xs text-warning" id={runReasonId}>
                 {runBlockReason}
               </p>
             ) : null}
-            <Button
-              type="button"
-              aria-describedby={runBlockReason ? runReasonId : undefined}
-              disabled={runBlocked}
-              onClick={() => onRunNow(instance)}
+            <div
+              className="flex justify-center"
+              data-testid={`connector-details-run-action-position-${instance.id}`}
             >
-              {runningInstanceIds.has(instance.id) ? 'Running...' : 'Run Jobright now'}
-            </Button>
+              <Button
+                aria-describedby={runBlockReason ? runReasonId : undefined}
+                data-testid={`connector-details-run-action-${instance.id}`}
+                disabled={runBlocked}
+                type="button"
+                onClick={runNow}
+              >
+                {isRunning ? 'Running...' : 'Run Jobright now'}
+              </Button>
+            </div>
           </div>
           {latestRunStatus ? (
             <div className="grid min-w-0 gap-2">
