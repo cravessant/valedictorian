@@ -66,6 +66,22 @@ export interface CreateJobInput {
   readonly idempotencyKey?: string
 }
 
+/**
+ * Lifecycle-only creation seam for a transaction that will establish this
+ * explicit assignment before commit. It intentionally skips coverage's default
+ * baseline Company rather than creating and immediately replacing one.
+ */
+export interface CreateJobForCompanyAssignmentInput extends CreateJobInput {
+  readonly selectedCompanyId: string
+  /** Invoked inside the same executor before this method can return success. */
+  readonly establishInitialAssignment: (input: {
+    readonly jobId: string
+    readonly workspaceId: string
+    readonly companyId: string
+    readonly createdAt: string
+  }) => Promise<void>
+}
+
 export interface CorrectJobFactsInput {
   readonly workspaceId: string
   readonly jobId: string
@@ -138,6 +154,10 @@ export interface JobService {
    * boundary. Same validation as `create` (one shared implementation).
    */
   createOn(exec: JobExec, input: CreateJobInput): Promise<CreateJobResult>
+  createForCompanyAssignmentOn(
+    exec: JobExec,
+    input: CreateJobForCompanyAssignmentInput,
+  ): Promise<CreateJobResult>
   get(workspaceId: string, jobId: string): Promise<JobRecord | null>
   list(workspaceId: string, query?: JobListQuery): Promise<readonly JobRecord[]>
   correctFacts(input: CorrectJobFactsInput): Promise<MutateJobResult>
@@ -398,7 +418,11 @@ export function createPgliteJobService(
   // Composable core: mint a Job on the caller's executor (no internal transaction)
   // so a promotion can create a Job atomically with a Capture. Same validation as
   // the standalone `create` (one shared implementation).
-  async function createOn(exec: JobExec, input: CreateJobInput): Promise<CreateJobResult> {
+  async function createOnInternal(
+    exec: JobExec,
+    input: CreateJobInput,
+    establishCoverage: boolean,
+  ): Promise<CreateJobResult> {
     let workspaceId: string
     let factsJson: string
     let actor: JobActor
@@ -428,12 +452,14 @@ export function createPgliteJobService(
     if (idempotencyKey !== null) {
       const existing = await selectByIdempotencyKey(exec, workspaceId, idempotencyKey)
       if (existing) {
-        await creationCoverage.ensureAssignmentOn(exec, {
-          workspaceId,
-          jobId: existing.id,
-          facts: safeParse(existing.factsJson),
-          createdAt: existing.createdAt,
-        })
+        if (establishCoverage) {
+          await creationCoverage.ensureAssignmentOn(exec, {
+            workspaceId,
+            jobId: existing.id,
+            facts: safeParse(existing.factsJson),
+            createdAt: existing.createdAt,
+          })
+        }
         return { ok: true, job: toRecord(existing), created: false }
       }
     }
@@ -471,17 +497,41 @@ export function createPgliteJobService(
       auditJson: auditJson(actor),
       createdAt,
     })
-    await creationCoverage.ensureAssignmentOn(exec, {
-      workspaceId,
-      jobId: row.id,
-      facts: input.facts,
-      createdAt,
-    })
+    if (establishCoverage) {
+      await creationCoverage.ensureAssignmentOn(exec, {
+        workspaceId,
+        jobId: row.id,
+        facts: input.facts,
+        createdAt,
+      })
+    }
     return { ok: true, job: toRecord(row), created: true }
+  }
+
+  async function createOn(exec: JobExec, input: CreateJobInput): Promise<CreateJobResult> {
+    return createOnInternal(exec, input, true)
+  }
+
+  async function createForCompanyAssignmentOn(
+    exec: JobExec,
+    input: CreateJobForCompanyAssignmentInput,
+  ): Promise<CreateJobResult> {
+    requireText(input.selectedCompanyId, 'selectedCompanyId', 1, WORKSPACE_MAX)
+    const result = await createOnInternal(exec, input, false)
+    if (result.ok) {
+      await input.establishInitialAssignment({
+        jobId: result.job.id,
+        workspaceId: result.job.workspaceId,
+        companyId: input.selectedCompanyId,
+        createdAt: result.job.createdAt,
+      })
+    }
+    return result
   }
 
   return {
     createOn,
+    createForCompanyAssignmentOn,
 
     async create(input) {
       return database.transaction((tx) => createOn(tx, input))

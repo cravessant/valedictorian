@@ -22,7 +22,7 @@ import {
   getRendererHttpWorkspaceClient,
   onRendererBackendStateChanged,
 } from '@/app/renderer-http-client'
-import { createCaptureConfig } from './configs/capture-config'
+import { createCaptureConfig, type CaptureCompletionIntent } from './configs/capture-config'
 import { jobConfig } from './configs/job-config'
 import { opportunityConfig } from './configs/opportunity-config'
 import { applicationConfig } from './configs/application-config'
@@ -41,6 +41,7 @@ import { useActionQueue } from './use-action-queue'
 import { ActionQueueMode } from './action-queue-mode'
 import { JobResourceDetail } from '@/modules/workspace-resources/JobResourceDetail'
 import { JobCompanyCell } from '@/modules/workspace-resources/JobCompanyCell'
+import { CaptureCompletionModal } from './CaptureCompletionModal'
 import {
   resetWorkspaceQuery,
   type WorkspaceHistoryEntry,
@@ -125,6 +126,10 @@ export function LifecycleWorkbench({
     hasNextPage: false,
   })
   const [captureTotalCount, setCaptureTotalCount] = useState(0)
+  const [completion, setCompletion] = useState<{
+    readonly captureId: string
+    readonly intent: CaptureCompletionIntent
+  } | null>(null)
   const [jobs, setJobs] = useState<PhaseState<Job>>(initial.jobs)
   const [jobAssignments, setJobAssignments] = useState<
     ReadonlyMap<string, JobCompanyAssignmentPresentation>
@@ -442,6 +447,7 @@ export function LifecycleWorkbench({
   const captureTable = useMemo<LifecycleTableConfig<CaptureListPresentation>>(
     () => createCaptureConfig({
       onOpenJob: onOpenResource,
+      onComplete: (captureId, intent) => setCompletion({ captureId, intent }),
     }).table,
     [onOpenResource],
   )
@@ -738,6 +744,18 @@ export function LifecycleWorkbench({
         </div>
       ) : null}
       {captureController.modalLayer}
+      <CaptureCompletionModal
+        captureId={completion?.captureId ?? null}
+        client={client}
+        intent={completion?.intent ?? null}
+        workspaceId={workspaceId}
+        onClose={() => setCompletion(null)}
+        onCreated={async () => {
+          await Promise.all([refreshCaptures(), refreshJobs()])
+        }}
+        onAssignmentChanged={refreshJobs}
+        onViewJob={(jobId) => onOpenResource?.(jobId, `capture-job-link-${completion?.captureId ?? ''}`)}
+      />
       {jobController.modalLayer}
       {jobCompanyAssignmentController.modalLayer}
       {opportunityController.modalLayer}

@@ -104,7 +104,7 @@ describe.sequential('Normalization work contract (#325)', () => {
     const [completed] = await database.select().from(normalizationWork)
     expect(completed?.status).toBe('completed')
 
-    expect(await fieldOutcomes.readResolvedLocation(WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION))
+    expect(await fieldOutcomes.readResolvedLocation(database, WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION))
       .toEqual({ country: 'US', display: 'San Francisco, CA, United States', city: null, region: null })
   })
 
@@ -130,7 +130,7 @@ describe.sequential('Normalization work contract (#325)', () => {
     const inserted = await fieldOutcomes.persistOutcomes(database, { captureId: seeded.capture.id, captureRevision: seeded.revision, resolverId: RESOLVER_ID, resolverVersion: RESOLVER_VERSION, inputHash: input.contentHash, outcomes, createdAt: clock().toISOString() })
     expect(inserted).toBe(0)
     expect((await database.select().from(captureFieldOutcomes)).length).toBe(countAfterFirst)
-    expect(await fieldOutcomes.readResolvedLocation(WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION)).toMatchObject({ country: 'CA' })
+    expect(await fieldOutcomes.readResolvedLocation(database, WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION)).toMatchObject({ country: 'CA' })
   })
 
   it('keeps conflicting, country-free, and remote-only evidence unknown (no resolved US/CA location)', async () => {
@@ -146,7 +146,7 @@ describe.sequential('Normalization work contract (#325)', () => {
     for (const seeded of cases) {
       await enqueueFor(repository, seeded)
       await runDueOnce(repository, executor, clock)
-      expect(await fieldOutcomes.readResolvedLocation(WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION)).toBeNull()
+      expect(await fieldOutcomes.readResolvedLocation(database, WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION)).toBeNull()
     }
   })
 
@@ -164,7 +164,7 @@ describe.sequential('Normalization work contract (#325)', () => {
     const count = (await database.select().from(captureFieldOutcomes)).length
     await runDueOnce(repository, executor, clock)
     expect((await database.select().from(captureFieldOutcomes)).length).toBe(count)
-    expect(await fieldOutcomes.readResolvedLocation(WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION)).toMatchObject({ country: 'US' })
+    expect(await fieldOutcomes.readResolvedLocation(database, WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION)).toMatchObject({ country: 'US' })
   })
 
   it('fails a claimed row whose resolver identity does not match the loaded resolver', async () => {

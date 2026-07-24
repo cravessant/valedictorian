@@ -12,6 +12,7 @@ import { createPgliteActionQueueRepository } from '../modules/action-queue/actio
 import { createPgliteCaptureService } from '../modules/capture/capture.service'
 import { createCaptureMaterializationService } from '../modules/capture/capture.materialization'
 import { createCaptureResolutionService } from '../modules/capture/capture.resolution'
+import { createManualCaptureCompletionService } from '../modules/capture/capture.manual-completion'
 import { createCaptureDestinationResolutionService } from '../modules/capture/capture.destination-resolution'
 import { createCaptureFieldOutcomeStore } from '../modules/capture/capture.field-outcomes'
 import { createScheduledWorkSource } from '../modules/scheduling/scheduled-work.source'
@@ -110,6 +111,9 @@ import { assertSeedOptions, seedLocalData } from './local-valedictorian-seeding'
 import { createCompanyCoverageService } from '../modules/company/company.coverage'
 import { createPgliteCompanyAssignmentService } from '../modules/company/company.assignment.service'
 import { createPgliteCompanyService } from '../modules/company/company.service'
+import { createPgliteJobIdentityService } from '../modules/job/job.identity'
+import { createPgliteJobService } from '../modules/job/job.service'
+import { createPgliteJobPromotion } from '../modules/lifecycle/capture-to-job.promotion'
 import { createSourceSessionExecutor } from '../modules/source-execution/source-session-executor'
 export type {
   LocalValedictorianClientOptions,
@@ -328,6 +332,21 @@ export async function createLocalValedictorianClient({
     now,
     jobCreationCoverage: companyCoverage.jobCreationCoverage,
   })
+  const manualCompletionJobService = createPgliteJobService(database, {
+    now,
+    creationCoverage: companyCoverage.jobCreationCoverage,
+  })
+  const manualCompletionJobIdentityService = createPgliteJobIdentityService(database, { now })
+  const manualCaptureCompletion = createManualCaptureCompletionService(database, {
+    workspaceId,
+    jobService: manualCompletionJobService,
+    promotion: createPgliteJobPromotion(database, captureService, manualCompletionJobService, {
+      now,
+      jobIdentityService: manualCompletionJobIdentityService,
+    }),
+    jobIdentityService: manualCompletionJobIdentityService,
+    now,
+  })
   const client: LocalValedictorianClient = {
     workspaceId,
     connectorScheduling,
@@ -336,6 +355,7 @@ export async function createLocalValedictorianClient({
       workspaceId,
       materialization: captureMaterialization,
       destination: captureDestination,
+      manualCompletion: manualCaptureCompletion,
     }),
     companies: createPgliteCompanyService(database, {
       workspaceId,

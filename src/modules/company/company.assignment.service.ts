@@ -28,6 +28,51 @@ export interface CompanyAssignmentServiceOptions {
   readonly newId?: UuidV7Generator
 }
 
+/** Company-owned initial assignment conversation for an atomically created Job. */
+export async function assignInitialCompanyOn(
+  tx: CompanyTx,
+  input: {
+    readonly workspaceId: string
+    readonly jobId: string
+    readonly companyId: string
+    readonly actor: { readonly id: string; readonly type: 'user' | 'agent' | 'system'; readonly displayName?: string }
+    readonly rationale: string
+    readonly now: string
+    readonly newId: () => string
+  },
+): Promise<void> {
+  const [created] = await tx.insert(jobCompanyAssignments).values({
+    jobId: input.jobId,
+    workspaceId: input.workspaceId,
+    companyId: input.companyId,
+    revision: 1,
+    createdAt: input.now,
+    updatedAt: input.now,
+  }).onConflictDoNothing().returning({ jobId: jobCompanyAssignments.jobId })
+  if (!created) {
+    const [existing] = await tx.select({
+      workspaceId: jobCompanyAssignments.workspaceId,
+      companyId: jobCompanyAssignments.companyId,
+    }).from(jobCompanyAssignments).where(eq(jobCompanyAssignments.jobId, input.jobId)).limit(1)
+    if (!existing || existing.workspaceId !== input.workspaceId || existing.companyId !== input.companyId) {
+      throw new Error('Initial Company assignment conflicts with the selected Company.')
+    }
+    return
+  }
+  await tx.insert(jobCompanyAssignmentHistory).values({
+    id: input.newId(),
+    workspaceId: input.workspaceId,
+    jobId: input.jobId,
+    assignmentRevision: 1,
+    priorCompanyId: null,
+    companyId: input.companyId,
+    kind: 'assigned',
+    actorJson: JSON.stringify(input.actor),
+    rationale: input.rationale,
+    createdAt: input.now,
+  })
+}
+
 type ReassignInput = ReturnType<typeof reassignJobCompanyInputSchema.parse>
 type AssignmentRow = typeof jobCompanyAssignments.$inferSelect
 type CompanyRow = typeof workspaceCompanies.$inferSelect

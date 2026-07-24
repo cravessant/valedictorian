@@ -215,8 +215,8 @@ export function createLocalLifecycleMethods(
     locationEvidence: {
       resolverId: JOBRIGHT_PROVIDER_FIELD_RESOLVER_ID,
       resolverVersion: JOBRIGHT_PROVIDER_FIELD_RESOLVER_VERSION,
-      readResolvedLocation: (ws, captureId, captureRevision, resolverId, resolverVersion) =>
-        captureFieldOutcomes.readResolvedLocation(ws, captureId, captureRevision, resolverId, resolverVersion),
+      readResolvedLocation: (exec, ws, captureId, captureRevision, resolverId, resolverVersion) =>
+        captureFieldOutcomes.readResolvedLocation(exec, ws, captureId, captureRevision, resolverId, resolverVersion),
     },
   })
   const jobPromotion = createPgliteJobToOpportunityPromotion(database, opportunityService, { now })

@@ -6,9 +6,13 @@ import type { CaptureListPresentation, Job, ValedictorianWorkspaceClient } from 
 import { LifecycleWorkbench } from './lifecycle-workbench'
 import { useWorkspaceLocation } from '@/app/use-workspace-location'
 
+const { toast } = vi.hoisted(() => ({ toast: vi.fn() }))
+vi.mock('@/components/ui/use-toast', () => ({ toast }))
+
 const originalMatchMedia = window.matchMedia
 afterEach(() => {
   cleanup()
+  toast.mockReset()
   delete (window as Window & { valedictorianHttp?: unknown }).valedictorianHttp
   window.matchMedia = originalMatchMedia
   window.history.replaceState(null, '', '/')
@@ -46,8 +50,27 @@ function makeClient() {
   }
   const client = {
     captures: { list: lists.captures },
-    captureResolution: { list: lists.captures },
-    jobs: { list: lists.jobs },
+    captureResolution: {
+      list: lists.captures,
+      get: vi.fn(),
+      complete: vi.fn(),
+    },
+    jobs: {
+      list: lists.jobs,
+      get: vi.fn(async (jobId: string) => ({ id: jobId, factsRevision: 1, removedAt: null })),
+    },
+    companies: {
+      previewMatches: vi.fn().mockResolvedValue({ items: [], truncated: false }),
+      search: vi.fn().mockResolvedValue({ items: [], truncated: false }),
+      lookup: vi.fn(async (companyId: string) => ({
+        requested: {
+          id: companyId,
+          revision: 1,
+          displayName: 'Assigned Company',
+          status: 'active',
+        },
+      })),
+    },
     companyAssignments: {
       get: vi.fn(async (jobId: string) => ({
         jobId,
@@ -278,6 +301,74 @@ describe('LifecycleWorkbench', () => {
       '01900000-0000-7000-8000-000000000001',
       'capture-job-link-capture-one',
     )
+  })
+
+  it('completes a Capture through the provenance modal, refreshes both rows, and wires View Job navigation', async () => {
+    const user = userEvent.setup()
+    const { client, lists } = makeClient()
+    const capture = {
+      captureId: 'capture-complete',
+      captureRevision: 1,
+      observedAt: '2026-07-23T00:00:00Z',
+      lead: { roleTitle: 'Platform Engineer', companyName: 'Acme', fallbackLabel: 'Acme lead' },
+      source: { displayName: 'Job board', provider: 'board' },
+      destination: { state: 'resolved', displayHost: 'jobs.example.com' },
+      readiness: 'ready',
+      processingSummary: 'awaiting_information',
+      activeProcessing: false,
+      linkedJob: null,
+      primaryIntent: { kind: 'complete_job_information' },
+    } as CaptureListPresentation
+    lists.captures.mockResolvedValue(capturePage([capture]))
+    const get = vi.fn().mockResolvedValue({
+      captureId: 'capture-complete', captureRevision: 1, expectedGenerationId: 'gen-1',
+      sourceSummary: { displayName: 'Job board', provider: 'board', observedAt: '2026-07-23T00:00:00.000Z' },
+      provenance: [], destination: { status: 'resolved', url: 'https://jobs.example.com/role' },
+      rawEvidence: [{ captureRevision: 1, evidenceIndex: 0, label: 'Title', displayValue: 'Engineer' }],
+      exactEvidenceReferences: [{ captureId: 'capture-complete', captureRevision: 1, evidenceIndexes: [0] }],
+      jobDefaults: { companyName: 'Acme', roleTitle: 'Platform Engineer' }, lastIssue: null,
+    })
+    const complete = vi.fn().mockResolvedValue({
+      status: 'created', jobId: 'job-created', companyId: 'company-created', createdJob: true,
+      existingJobComparison: 'not_compared',
+    })
+    Object.assign(client.captureResolution, { get, complete })
+    const openResource = vi.fn()
+    render(<LifecycleWorkbench client={client} onOpenResource={openResource} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Complete Job information' }))
+    await user.click(await screen.findByRole('button', { name: 'Create Job' }))
+
+    await waitFor(() => expect(complete).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(lists.captures).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(lists.jobs.mock.calls.length).toBeGreaterThanOrEqual(4))
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: 'Job created' }))
+    const toastInput = toast.mock.calls[0]?.[0] as { action: { onClick: () => void } }
+    toastInput.action.onClick()
+    expect(openResource).toHaveBeenCalledWith('job-created', 'capture-job-link-capture-complete')
+  })
+
+  it('opens both duplicate and Company-assignment intents in the completion modal with fresh Capture details', async () => {
+    const user = userEvent.setup()
+    const { client, lists } = makeClient()
+    lists.captures.mockResolvedValue(capturePage([
+      captureIntent('capture-duplicate', 'resolve_duplicate_job'),
+      captureIntent('capture-assignment', 'resolve_company_assignment'),
+    ]))
+    const get = vi.fn(async (captureId: string) => completionDetail(captureId))
+    Object.assign(client.captureResolution, { get })
+    render(<LifecycleWorkbench client={client} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Resolve duplicate Job' }))
+    expect(await screen.findByLabelText('Job facts company')).toHaveValue('Acme')
+    expect(get).toHaveBeenLastCalledWith('capture-duplicate')
+    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'Resolve company assignment' }))
+    expect(await screen.findByLabelText('Job facts company')).toHaveValue('Acme')
+    expect(get).toHaveBeenLastCalledWith('capture-assignment')
+    expect(get).toHaveBeenCalledTimes(2)
   })
 
   it('shows a terminal client-unavailable failure instead of loading forever', async () => {
@@ -526,6 +617,38 @@ describe('LifecycleWorkbench', () => {
     expect(await screen.findByText('No jobs')).toBeInTheDocument()
   })
 })
+
+function captureIntent(
+  captureId: string,
+  kind: 'resolve_duplicate_job' | 'resolve_company_assignment',
+): CaptureListPresentation {
+  return {
+    captureId,
+    captureRevision: 1,
+    observedAt: '2026-07-23T00:00:00Z',
+    lead: { roleTitle: 'Platform Engineer', companyName: 'Acme', fallbackLabel: 'Acme lead' },
+    source: { displayName: 'Job board', provider: 'board' },
+    destination: { state: 'resolved', displayHost: 'jobs.example.com' },
+    readiness: 'ready',
+    processingSummary: 'blocked',
+    activeProcessing: false,
+    linkedJob: null,
+    primaryIntent: kind === 'resolve_duplicate_job'
+      ? { kind, conflictingJobIds: ['job-conflict'], supportedActions: ['attach'] }
+      : { kind, jobId: 'job-conflict', currentCompanyId: '01900000-0000-7000-8000-000000000099' },
+  }
+}
+
+function completionDetail(captureId: string) {
+  return {
+    captureId, captureRevision: 1, expectedGenerationId: 'gen-1',
+    sourceSummary: { displayName: 'Job board', provider: 'board', observedAt: '2026-07-23T00:00:00.000Z' },
+    provenance: [], destination: { status: 'resolved', url: 'https://jobs.example.com/role' },
+    rawEvidence: [{ captureRevision: 1, evidenceIndex: 0, label: 'Title', displayValue: 'Engineer' }],
+    exactEvidenceReferences: [{ captureId, captureRevision: 1, evidenceIndexes: [0] }],
+    jobDefaults: { companyName: 'Acme', roleTitle: 'Platform Engineer' }, lastIssue: null,
+  }
+}
 
 function JobsHistoryHarness({ client }: { client: ValedictorianWorkspaceClient }) {
   const navigation = useWorkspaceLocation()

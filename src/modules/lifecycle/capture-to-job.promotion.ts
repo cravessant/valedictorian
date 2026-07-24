@@ -30,13 +30,14 @@
  * identity); missing optional facts and policy judgments are WARNINGS. A typed
  * inner failure rolls the whole transaction back (no partial state).
  */
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { jobLocationSchema } from '@sparxie/sdk'
 import type { PgliteDatabase } from '../../db/pglite'
 import { type Clock, createUuidV7Generator, type UuidV7Generator } from '../../db/uuidv7'
-import { jobCaptureEvidenceReferences, jobHistory, jobs } from '../../db/schema'
+import { jobCaptureEvidenceReferences, jobExternalIdentities, jobHistory, jobs } from '../../db/schema'
 import { lifecycleWarningCodes } from '../../db/lifecycle-vocabulary'
 import { captureEvidenceItems, captureRevisions, captures } from '../capture/capture.schema'
+import type { CaptureFieldOutcomeExec } from '../capture/capture.field-outcomes'
 import type { CaptureEvidenceInput, CaptureFailure, CaptureService, JsonValue } from '../capture/capture.service'
 import type { JobActor, JobActorType, JobService } from '../job/job.service'
 import {
@@ -140,8 +141,30 @@ export type PromotionResult =
   | { readonly ok: true; readonly jobId: string; readonly captureId: string; readonly attached: boolean; readonly created: boolean; readonly warnings: readonly PromotionWarning[] }
   | JobFailure
 
+/** Exact immutable evidence and identity lineage to finalize on an existing Job. */
+export interface CanonicalPromotionOnInput {
+  readonly workspaceId: string
+  readonly captureId: string
+  readonly jobId: string
+  readonly actor: JobActor
+  readonly evidenceReferences: readonly {
+    readonly captureId: string
+    readonly captureRevision: number
+    readonly evidenceIndexes: readonly number[]
+  }[]
+  readonly externalIdentities: readonly {
+    readonly kind: 'ats_job' | 'canonical_destination' | 'employer_job' | 'posting'
+    readonly provider: string
+    readonly account: string | null
+    readonly value: string
+    readonly strength: 'strong' | 'provisional'
+  }[]
+}
+
 export interface JobPromotionService {
   promoteCapture(input: PromoteCaptureInput): Promise<PromotionResult>
+  /** Shared transaction-composable canonical write core; never starts a transaction. */
+  promoteCaptureOn(tx: Tx, input: CanonicalPromotionOnInput): Promise<JobFailure | { readonly ok: true }>
   createManualJob(input: CreateManualJobInput): Promise<PromotionResult>
 }
 
@@ -165,6 +188,7 @@ export interface PromotionLocationEvidencePort {
   readonly resolverId: string
   readonly resolverVersion: string
   readResolvedLocation(
+    exec: CaptureFieldOutcomeExec,
     workspaceId: string,
     captureId: string,
     captureRevision: number,
@@ -305,8 +329,8 @@ export function createPgliteJobPromotion(
 
   // Evidence lives at observation revisions; a head-after-correction revision is
   // empty (inherited seam note). Select the greatest revision that bears evidence.
-  async function evidenceBearingRevision(captureId: string): Promise<{ revision: number; indexes: number[] } | null> {
-    const rows = await database
+  async function evidenceBearingRevision(tx: Tx, captureId: string): Promise<{ revision: number; indexes: number[] } | null> {
+    const rows = await tx
       .select({ revision: captureEvidenceItems.captureRevision, index: captureEvidenceItems.evidenceIndex })
       .from(captureEvidenceItems)
       .where(eq(captureEvidenceItems.captureId, captureId))
@@ -318,8 +342,8 @@ export function createPgliteJobPromotion(
   }
 
   /** The sorted evidence indexes recorded at a specific Capture revision (empty at a correction revision). */
-  async function evidenceIndexesAt(captureId: string, revision: number): Promise<number[]> {
-    const rows = await database
+  async function evidenceIndexesAt(tx: Tx, captureId: string, revision: number): Promise<number[]> {
+    const rows = await tx
       .select({ index: captureEvidenceItems.evidenceIndex })
       .from(captureEvidenceItems)
       .where(and(eq(captureEvidenceItems.captureId, captureId), eq(captureEvidenceItems.captureRevision, revision)))
@@ -327,13 +351,39 @@ export function createPgliteJobPromotion(
   }
 
   /** Whether a Capture revision exists (the lineage FK targets `capture_revisions`). */
-  async function revisionExists(captureId: string, revision: number): Promise<boolean> {
-    const [rev] = await database
+  async function revisionExists(tx: Tx, captureId: string, revision: number): Promise<boolean> {
+    const [rev] = await tx
       .select({ revision: captureRevisions.revision })
       .from(captureRevisions)
       .where(and(eq(captureRevisions.captureId, captureId), eq(captureRevisions.revision, revision)))
       .limit(1)
     return rev !== undefined
+  }
+
+  async function loadCaptureForPromotion(
+    tx: Tx,
+    workspaceId: string,
+    captureId: string,
+  ): Promise<{
+    readonly evidenceMode: string
+    readonly provenance: { readonly adapterId: string; readonly providerRecordId: string | null }
+  } | null> {
+    const [capture] = await tx.select({
+      evidenceMode: captures.evidenceMode,
+      adapterId: captures.adapterId,
+      providerRecordId: captures.providerRecordId,
+    }).from(captures).where(and(
+      eq(captures.workspaceId, workspaceId),
+      eq(captures.id, captureId),
+    )).limit(1).for('update')
+    if (!capture) return null
+    return {
+      evidenceMode: capture.evidenceMode,
+      provenance: {
+        adapterId: capture.adapterId,
+        providerRecordId: capture.providerRecordId,
+      },
+    }
   }
 
   async function appendHistory(tx: Tx, jobId: string, kind: string, snapshotJson: string, actor: JobActor, createdAt: string) {
@@ -405,40 +455,91 @@ export function createPgliteJobPromotion(
     }
   }
 
-  async function linkCapture(tx: Tx, jobId: string, captureId: string, revision: number, indexes: number[], createdAt: string) {
-    await insertJobCaptureEvidenceReferences(tx).values({
-      id: newId(),
-      jobId,
-      captureId,
-      captureRevision: revision,
-      evidenceIndexesJson: JSON.stringify(indexes.length > 0 ? indexes : [0]),
-      createdAt,
-    })
-  }
-
-  async function establishPromotionIdentity(tx: Tx, jobId: string, captureId: string, revision: number, identity: ResolvedIdentity, actor: JobActor, createdAt: string) {
-    await insertJobExternalIdentities(tx).values({
-      id: newId(),
-      jobId,
-      kind: identity.kind,
-      provider: identity.provider,
-      account: identity.account,
-      value: identity.value,
-      strength: identity.strength,
-      provenanceKind: 'promotion',
-      provenanceVersion: '1',
-      evidenceJson: JSON.stringify({ captureId, revision }),
-      createdAt,
-    })
-    await appendHistory(tx, jobId, 'identity_added', JSON.stringify({ kind: identity.kind, value: identity.value }), actor, createdAt)
-  }
-
   function mapCaptureFailure(failure: CaptureFailure): JobFailure {
     const code: JobFailureCode = failure.code === 'evidence_mode_conflict' ? 'invalid_input' : failure.code
     return fail(code, failure.message)
   }
 
+  /**
+   * Shared canonical finalization core. The caller owns Job creation/attachment
+   * and its outer transaction; this owner conversation validates exact Capture
+   * lineage, establishes external identities, records their history, and links
+   * the immutable evidence references without opening a nested transaction.
+   */
+  async function promoteCaptureOn(tx: Tx, input: CanonicalPromotionOnInput): Promise<JobFailure | { readonly ok: true }> {
+    if (input.evidenceReferences.length === 0) {
+      return fail('invalid_input', 'promotion requires at least one evidence reference')
+    }
+    for (const reference of input.evidenceReferences) {
+      if (reference.evidenceIndexes.length === 0) {
+        return fail('invalid_input', 'an evidence reference must name at least one evidence item')
+      }
+      const [capture] = await tx.select({ workspaceId: captures.workspaceId }).from(captures)
+        .where(eq(captures.id, reference.captureId)).limit(1)
+      if (!capture) return fail('invalid_input', 'an evidence reference names an unknown capture')
+      if (capture.workspaceId !== input.workspaceId) return fail('invalid_input', 'an evidence reference belongs to another workspace')
+      const [revision] = await tx.select({ revision: captureRevisions.revision }).from(captureRevisions)
+        .where(and(eq(captureRevisions.captureId, reference.captureId), eq(captureRevisions.revision, reference.captureRevision))).limit(1)
+      if (!revision) return fail('invalid_input', 'an evidence reference names an unknown capture revision')
+      const evidence = await tx.select({ index: captureEvidenceItems.evidenceIndex }).from(captureEvidenceItems)
+        .where(and(
+          eq(captureEvidenceItems.captureId, reference.captureId),
+          eq(captureEvidenceItems.captureRevision, reference.captureRevision),
+        ))
+      const availableIndexes = new Set(evidence.map((item) => item.index))
+      const requestedIndexes = new Set<number>()
+      for (const index of reference.evidenceIndexes) {
+        if (!Number.isSafeInteger(index) || index < 0 || !availableIndexes.has(index) || requestedIndexes.has(index)) {
+          return fail('invalid_input', 'an evidence reference names an unknown or repeated evidence item')
+        }
+        requestedIndexes.add(index)
+      }
+    }
+    const timestamp = nowIso()
+    for (const identity of input.externalIdentities) {
+      try {
+        requireText(identity.value, 'identity.value', 1, 2_048)
+        requireText(identity.provider, 'identity.provider', 1, 200)
+        if (identity.account !== null) requireText(identity.account, 'identity.account', 1, 500)
+      } catch (error) {
+        if (error instanceof JobInputError) return fail(error.code, error.message)
+        throw error
+      }
+      if (identity.strength === 'strong') {
+        const owner = await resolveStrongIdentityOwner(tx, input.workspaceId, identity)
+        if (owner && owner.jobId !== input.jobId) {
+          return fail('strong_identity_conflict', 'the strong identity is already owned by another Job')
+        }
+      }
+      const [existing] = await tx.select({ id: jobExternalIdentities.id }).from(jobExternalIdentities)
+        .where(and(
+          eq(jobExternalIdentities.jobId, input.jobId), eq(jobExternalIdentities.kind, identity.kind),
+          eq(jobExternalIdentities.provider, identity.provider),
+          sql`coalesce(${jobExternalIdentities.account}, '') = ${identity.account ?? ''}`,
+          eq(jobExternalIdentities.value, identity.value),
+        )).limit(1)
+      if (existing) continue
+      await insertJobExternalIdentities(tx).values({
+        id: newId(), jobId: input.jobId, kind: identity.kind, provider: identity.provider,
+        account: identity.account, value: identity.value, strength: identity.strength,
+        provenanceKind: 'promotion', provenanceVersion: '1',
+        evidenceJson: JSON.stringify({ captureId: input.captureId, evidenceReferences: input.evidenceReferences }),
+        createdAt: timestamp,
+      })
+      await appendHistory(tx, input.jobId, 'identity_added', JSON.stringify(identity), input.actor, timestamp)
+    }
+    for (const reference of input.evidenceReferences) {
+      await insertJobCaptureEvidenceReferences(tx).values({
+        id: newId(), jobId: input.jobId, captureId: reference.captureId,
+        captureRevision: reference.captureRevision,
+        evidenceIndexesJson: JSON.stringify(reference.evidenceIndexes), createdAt: timestamp,
+      }).onConflictDoNothing()
+    }
+    return { ok: true }
+  }
+
   return {
+    promoteCaptureOn,
     async promoteCapture(input) {
       let workspaceId: string
       let captureId: string
@@ -466,64 +567,61 @@ export function createPgliteJobPromotion(
       if (dedup?.action === 'merge' && !jobIdentityService) {
         return fail('invalid_input', 'duplicateResolution: merge requires a wired job identity service')
       }
-      const capture = await captureService.get(workspaceId, captureId)
-      if (!capture) return fail('not_found', 'capture not found in this workspace')
-      const bearing = await evidenceBearingRevision(captureId)
-      if (!bearing) return fail('invalid_input', 'capture has no observed evidence to promote')
       const expectedFactsRevision = input.expectedJobFactsRevision
-
-      // #304: bind the produced lineage to the caller's captureRevision (default: the
-      // evidence-bearing revision). A revision absent on the Capture is invalid_input.
-      let link = bearing
-      if (input.captureRevision !== undefined && input.captureRevision !== bearing.revision) {
-        if (!(await revisionExists(captureId, input.captureRevision))) {
-          return fail('invalid_input', 'captureRevision does not exist for this capture')
-        }
-        link = { revision: input.captureRevision, indexes: await evidenceIndexesAt(captureId, input.captureRevision) }
-      }
-      // #304: promote with the caller's contract-valid facts, or strict-schema-valid
-      // defaults plus a missing_optional_facts warning (fixes the #300 placeholder defect).
-      let promotionFacts = input.selectedFacts ?? deriveDefaultJobFacts(capture.provenance.adapterId)
-      // #325: prefill a null caller-selected location from the completed current-version
-      // provider-field outcome (resolved US/CA only). A non-null caller location is preserved;
-      // ambiguous/conflicting/country-free/remote-only/abstained evidence stays unknown.
-      const locationEvidence = options.locationEvidence
-      if (locationEvidence && isFactsRecord(promotionFacts) && promotionFacts.location === null) {
-        const evidence = await locationEvidence.readResolvedLocation(
-          workspaceId,
-          captureId,
-          link.revision,
-          locationEvidence.resolverId,
-          locationEvidence.resolverVersion,
-        )
-        if (evidence) {
-          const location = jobLocationSchema.safeParse({
-            display: evidence.display,
-            city: evidence.city,
-            region: evidence.region,
-            country: evidence.country,
-          })
-          if (location.success) promotionFacts = { ...promotionFacts, location: location.data }
-        }
-      }
-      const factsWarning: PromotionWarning | null = input.selectedFacts === undefined
-        ? { code: 'missing_optional_facts', message: 'promoted with derived default facts; no selected facts were provided' }
-        : null
-      const replayWarnings: PromotionWarning[] = []
-      if (!capture.provenance.providerRecordId) {
-        replayWarnings.push({ code: 'missing_optional_facts', message: 'manual/provider-less capture yields a provisional identity only' })
-      } else if (!resolutionPort && capture.evidenceMode !== 'ats_details_provided') {
-        replayWarnings.push({ code: 'retrieval_unavailable', message: 'no boundary destination resolver is configured' })
-      }
-      if (factsWarning) replayWarnings.push(factsWarning)
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const outcome = await database.transaction(async (tx) => {
-            // Serialize concurrent promotions of THIS capture on real Postgres.
-            await tx.select({ id: captures.id }).from(captures)
-              .where(and(eq(captures.workspaceId, workspaceId), eq(captures.id, captureId)))
-              .for('update')
+            // Load and lock every Capture fact that determines a Job write before
+            // consulting lineage or boundary resolution.
+            const capture = await loadCaptureForPromotion(tx, workspaceId, captureId)
+            if (!capture) throw new PromotionAbort(fail('not_found', 'capture not found in this workspace'))
+            const bearing = await evidenceBearingRevision(tx, captureId)
+            if (!bearing) throw new PromotionAbort(fail('invalid_input', 'capture has no observed evidence to promote'))
+
+            // Bind lineage to a validated, transaction-consistent evidence revision.
+            let link = bearing
+            if (input.captureRevision !== undefined && input.captureRevision !== bearing.revision) {
+              if (!(await revisionExists(tx, captureId, input.captureRevision))) {
+                throw new PromotionAbort(fail('invalid_input', 'captureRevision does not exist for this capture'))
+              }
+              link = {
+                revision: input.captureRevision,
+                indexes: await evidenceIndexesAt(tx, captureId, input.captureRevision),
+              }
+            }
+
+            let promotionFacts = input.selectedFacts ?? deriveDefaultJobFacts(capture.provenance.adapterId)
+            const locationEvidence = options.locationEvidence
+            if (locationEvidence && isFactsRecord(promotionFacts) && promotionFacts.location === null) {
+              const evidence = await locationEvidence.readResolvedLocation(
+                tx,
+                workspaceId,
+                captureId,
+                link.revision,
+                locationEvidence.resolverId,
+                locationEvidence.resolverVersion,
+              )
+              if (evidence) {
+                const location = jobLocationSchema.safeParse({
+                  display: evidence.display,
+                  city: evidence.city,
+                  region: evidence.region,
+                  country: evidence.country,
+                })
+                if (location.success) promotionFacts = { ...promotionFacts, location: location.data }
+              }
+            }
+            const factsWarning: PromotionWarning | null = input.selectedFacts === undefined
+              ? { code: 'missing_optional_facts', message: 'promoted with derived default facts; no selected facts were provided' }
+              : null
+            const replayWarnings: PromotionWarning[] = []
+            if (!capture.provenance.providerRecordId) {
+              replayWarnings.push({ code: 'missing_optional_facts', message: 'manual/provider-less capture yields a provisional identity only' })
+            } else if (!resolutionPort && capture.evidenceMode !== 'ats_details_provided') {
+              replayWarnings.push({ code: 'retrieval_unavailable', message: 'no boundary destination resolver is configured' })
+            }
+            if (factsWarning) replayWarnings.push(factsWarning)
             // Idempotency BEFORE any boundary retrieval.
             const linked = await existingLineageJob(tx, captureId)
             if (linked) {
@@ -545,7 +643,12 @@ export function createPgliteJobPromotion(
               if (expectedFactsRevision !== undefined && expectedFactsRevision !== target.factsRevision) {
                 throw new PromotionAbort(fail('revision_conflict', 'target job facts advanced since evaluation'))
               }
-              await linkCapture(tx, target.id, captureId, link.revision, link.indexes, nowIso())
+              const finalized = await promoteCaptureOn(tx, {
+                workspaceId, captureId, jobId: target.id, actor,
+                evidenceReferences: [{ captureId, captureRevision: link.revision, evidenceIndexes: link.indexes }],
+                externalIdentities: [],
+              })
+              if (!finalized.ok) throw new PromotionAbort(finalized)
               const invalidOverride = validateOverrideWarnings(input.override, replayWarnings)
               if (invalidOverride) throw new PromotionAbort(invalidOverride)
               return { ok: true as const, jobId: target.id, captureId, attached: true, created: false, warnings: replayWarnings }
@@ -560,7 +663,6 @@ export function createPgliteJobPromotion(
             const owner = validated.strength === 'strong'
               ? await resolveStrongIdentityOwner(tx, workspaceId, validated)
               : null
-            const createdAt = nowIso()
             if (owner) {
               if (expectedFactsRevision !== undefined) {
                 const target = await loadTargetJob(tx, workspaceId, owner.jobId)
@@ -570,7 +672,12 @@ export function createPgliteJobPromotion(
               }
               const invalidOverride = validateOverrideWarnings(input.override, warnings)
               if (invalidOverride) throw new PromotionAbort(invalidOverride)
-              await linkCapture(tx, owner.jobId, captureId, link.revision, link.indexes, createdAt)
+              const finalized = await promoteCaptureOn(tx, {
+                workspaceId, captureId, jobId: owner.jobId, actor,
+                evidenceReferences: [{ captureId, captureRevision: link.revision, evidenceIndexes: link.indexes }],
+                externalIdentities: [],
+              })
+              if (!finalized.ok) throw new PromotionAbort(finalized)
               return { ok: true as const, jobId: owner.jobId, captureId, attached: true, created: false, warnings }
             }
             if (factsWarning) warnings.push(factsWarning)
@@ -578,8 +685,12 @@ export function createPgliteJobPromotion(
             if (invalidOverride) throw new PromotionAbort(invalidOverride)
             const created = await jobService.createOn(tx, { workspaceId, facts: promotionFacts, actor, idempotencyKey })
             if (!created.ok) throw new PromotionAbort(created)
-            await establishPromotionIdentity(tx, created.job.id, captureId, link.revision, validated, actor, createdAt)
-            await linkCapture(tx, created.job.id, captureId, link.revision, link.indexes, createdAt)
+            const finalized = await promoteCaptureOn(tx, {
+              workspaceId, captureId, jobId: created.job.id, actor,
+              evidenceReferences: [{ captureId, captureRevision: link.revision, evidenceIndexes: link.indexes }],
+              externalIdentities: [validated],
+            })
+            if (!finalized.ok) throw new PromotionAbort(finalized)
             if (dedup?.action === 'merge') {
               const merged = await jobIdentityService!.mergeOn(tx, {
                 workspaceId,
@@ -638,7 +749,12 @@ export function createPgliteJobPromotion(
           // advances the revision, storing the new evidence there. Hardcoding
           // revision 1 would point the lineage at a stale revision whose evidence
           // indexes differ from the new array (a silent, FK-satisfied corruption).
-          await linkCapture(tx, created.job.id, accepted.capture.id, accepted.capture.revision, input.evidence.map((_, index) => index), createdAt)
+          const finalized = await promoteCaptureOn(tx, {
+            workspaceId, captureId: accepted.capture.id, jobId: created.job.id, actor,
+            evidenceReferences: [{ captureId: accepted.capture.id, captureRevision: accepted.capture.revision, evidenceIndexes: input.evidence.map((_, index) => index) }],
+            externalIdentities: [],
+          })
+          if (!finalized.ok) throw new PromotionAbort(finalized)
           return { ok: true as const, jobId: created.job.id, captureId: accepted.capture.id, attached: false, created: true, warnings: [] }
         })
       } catch (error) {

@@ -322,7 +322,7 @@ export function createCaptureDestinationResolutionService(input: {
     await materialization.ensureCapture(workspaceId, request.captureId)
     const requestFingerprint = fingerprint({ operation, request })
     const started = await database.transaction(async (tx) => {
-      const receipt = await readReceipt(tx, workspaceId, request.idempotencyKey)
+      const receipt = await readReceipt(tx, workspaceId, operation, request.idempotencyKey)
       if (receipt) {
         if (receipt.requestFingerprint === requestFingerprint) return parseReceipt(receipt.resultJson)
         return blocked(request, await currentGuard(tx, workspaceId, request.captureId), 'invalid_input', 'This idempotency key was already used for a different request.')
@@ -332,7 +332,7 @@ export function createCaptureDestinationResolutionService(input: {
         eq(captures.workspaceId, workspaceId),
       )).limit(1).for('update')
       if (!capture) return blocked(request, null, 'impossible_state', 'The Capture does not exist in this workspace.')
-      const concurrentReceipt = await readReceipt(tx, workspaceId, request.idempotencyKey)
+      const concurrentReceipt = await readReceipt(tx, workspaceId, operation, request.idempotencyKey)
       if (concurrentReceipt) {
         if (concurrentReceipt.requestFingerprint === requestFingerprint) {
           return parseReceipt(concurrentReceipt.resultJson)
@@ -534,9 +534,15 @@ function blocked(
   }
 }
 
-async function readReceipt(tx: Tx, workspaceId: string, idempotencyKey: string) {
+async function readReceipt(
+  tx: Tx,
+  workspaceId: string,
+  operation: 'retry' | 'replay',
+  idempotencyKey: string,
+) {
   const [row] = await tx.select().from(captureResolutionCommandReceipts).where(and(
     eq(captureResolutionCommandReceipts.workspaceId, workspaceId),
+    eq(captureResolutionCommandReceipts.operation, operation),
     eq(captureResolutionCommandReceipts.idempotencyKey, idempotencyKey),
   )).limit(1)
   return row

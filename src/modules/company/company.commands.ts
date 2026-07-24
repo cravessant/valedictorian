@@ -52,6 +52,61 @@ export interface CompanyCommandOptions {
   readonly newId?: UuidV7Generator
 }
 
+/**
+ * Company-owned composable creation conversation for a larger lifecycle
+ * transaction. The enclosing command owns idempotency; this writes only the
+ * canonical Company and its required history in the supplied transaction.
+ */
+export async function createInlineCompanyOn(
+  tx: CompanyTx,
+  input: {
+    readonly workspaceId: string
+    readonly displayName: string
+    readonly websiteUrl?: string
+    readonly actor: Parameters<typeof appendCompanyHistory>[1]['actor']
+    readonly rationale: string
+    readonly now: string
+    readonly newId: () => string
+  },
+) {
+  const parsed = createCompanyInputSchema.parse({
+    workspaceId: input.workspaceId,
+    displayName: input.displayName,
+    websiteUrl: input.websiteUrl ?? null,
+    notes: null,
+    actor: input.actor,
+    rationale: input.rationale,
+    // The outer lifecycle receipt owns deduplication. This value is validation-only.
+    idempotencyKey: 'inline-company-assignment',
+  })
+  const id = input.newId()
+  const [row] = await tx.insert(workspaceCompanies).values({
+    id,
+    workspaceId: parsed.workspaceId,
+    displayName: parsed.displayName,
+    normalizedDisplayName: normalizeCompanyText(parsed.displayName),
+    websiteUrl: parsed.websiteUrl,
+    websiteHost: websiteHost(parsed.websiteUrl),
+    notes: null,
+    revision: 1,
+    status: 'active',
+    mergedIntoCompanyId: null,
+    createdAt: input.now,
+    updatedAt: input.now,
+  }).returning()
+  if (!row) throw new Error('Company creation did not return a row.')
+  await appendCompanyHistory(tx, {
+    newId: input.newId,
+    row,
+    kind: 'created',
+    changedFields: parsed.websiteUrl ? ['display_name', 'website_url'] : ['display_name'],
+    actor: input.actor,
+    rationale: input.rationale,
+    occurredAt: input.now,
+  })
+  return row
+}
+
 export function createCompanyCommands(
   database: PgliteDatabase,
   workspaceId: string,

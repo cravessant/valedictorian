@@ -69,6 +69,7 @@ export interface CaptureFieldOutcomeStore {
   loadRevisionInput(workspaceId: string, captureId: string, captureRevision: number): Promise<CaptureResolverInput | null>
   listEligibleRevisions(workspaceId: string, adapterId: string): Promise<readonly EligibleRevision[]>
   readResolvedLocation(
+    exec: CaptureFieldOutcomeExec,
     workspaceId: string,
     captureId: string,
     captureRevision: number,
@@ -204,8 +205,8 @@ export function createCaptureFieldOutcomeStore(database: PgliteDatabase): Captur
         }))
     },
 
-    async readResolvedLocation(workspaceId, captureId, captureRevision, resolverId, resolverVersion) {
-      const [row] = await database
+    async readResolvedLocation(exec, workspaceId, captureId, captureRevision, resolverId, resolverVersion) {
+      const [row] = await exec
         .select({ outcomeJson: captureFieldOutcomes.outcomeJson })
         .from(captureFieldOutcomes)
         .innerJoin(captureRevisions, and(

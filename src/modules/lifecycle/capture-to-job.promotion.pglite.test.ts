@@ -74,6 +74,32 @@ describe.sequential('Capture→Job promotion (#300)', () => {
     expect(await countJobs(database, 'ws-a')).toBe(1)
   })
 
+  it('rejects a canonical finalization reference whose evidence index is not exact', async () => {
+    const { database, captures, jobs, promotion } = await setup()
+    const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided' })
+    const created = await jobs.create({
+      workspaceId: 'ws-a',
+      facts: { title: 'Evidence validation target' },
+      actor: ACTOR,
+    })
+    if (!created.ok) throw new Error(created.message)
+    const finalized = await database.transaction((tx) => promotion.promoteCaptureOn(tx, {
+      workspaceId: 'ws-a',
+      captureId: capture.id,
+      jobId: created.job.id,
+      actor: ACTOR,
+      evidenceReferences: [{
+        captureId: capture.id,
+        captureRevision: capture.revision,
+        evidenceIndexes: [99],
+      }],
+      externalIdentities: [],
+    }))
+    expect(finalized).toMatchObject({ ok: false, code: 'invalid_input' })
+    expect(await database.select().from(jobCaptureEvidenceReferences)
+      .where(eq(jobCaptureEvidenceReferences.captureId, capture.id))).toEqual([])
+  })
+
   it('is idempotent: re-promoting the same capture returns the same Job (lineage)', async () => {
     const { database, captures, promotion } = await setup()
     const capture = await acceptCapture(captures, { evidenceMode: 'ats_details_provided' })

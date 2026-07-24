@@ -1,6 +1,7 @@
 import type http from 'node:http'
 import {
   captureResolutionListInputSchema,
+  completeCaptureManuallyInputSchema,
   replayCaptureRevisionInputSchema,
   retryCaptureProcessingInputSchema,
 } from '@sparxie/sdk'
@@ -31,7 +32,7 @@ export async function handleCaptureResolutionRoutes(input: {
     return true
   }
   const match = requestUrl.pathname.match(
-    /^\/v1\/capture-resolution\/captures\/([^/]+)(?:\/(retry|replay))?$/,
+    /^\/v1\/capture-resolution\/captures\/([^/]+)(?:\/(retry|replay|completion))?$/,
   )
   if (!match) return false
   const captureId = decodeURIComponent(match[1]!)
@@ -42,6 +43,11 @@ export async function handleCaptureResolutionRoutes(input: {
     if (action === 'retry') {
       const parsed = parseLocalHttpInput(() => retryCaptureProcessingInputSchema.parse(requestInput))
       writeJson(response, 200, await client.captureResolution.retry(parsed))
+      return true
+    }
+    if (action === 'completion') {
+      const parsed = parseLocalHttpInput(() => completeCaptureManuallyInputSchema.parse(requestInput))
+      writeJson(response, 200, await client.captureResolution.complete(parsed))
       return true
     }
     const parsed = parseLocalHttpInput(() => replayCaptureRevisionInputSchema.parse(requestInput))

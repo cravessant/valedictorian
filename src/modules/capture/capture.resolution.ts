@@ -34,6 +34,7 @@ import {
 } from './capture.schema'
 import type { CaptureMaterializationService } from './capture.materialization'
 import type { CaptureDestinationResolutionService } from './capture.destination-resolution'
+import type { ManualCaptureCompletionService } from './capture.manual-completion'
 import {
   toCaptureCompletionDetail,
   toCaptureListPresentation,
@@ -67,9 +68,10 @@ export function createCaptureResolutionService(
     readonly workspaceId: string
     readonly materialization: CaptureMaterializationService
     readonly destination?: CaptureDestinationResolutionService
+    readonly manualCompletion?: ManualCaptureCompletionService
   },
 ): CaptureResolutionClient {
-  const { destination, materialization, workspaceId } = input
+  const { destination, manualCompletion, materialization, workspaceId } = input
 
   async function list(
     rawInput: CaptureResolutionListInput = {},
@@ -146,7 +148,12 @@ export function createCaptureResolutionService(
     retry: destination ? (request) => destination.retry(request) : unavailable,
     replay: destination ? (request) => destination.replay(request) : unavailable,
     correct: unavailable,
-    complete: unavailable,
+    complete: manualCompletion
+      ? async (request) => {
+        await materialization.ensureCapture(workspaceId, request.captureId)
+        return manualCompletion.complete(request)
+      }
+      : unavailable,
   } satisfies CaptureResolutionClient
 }
 

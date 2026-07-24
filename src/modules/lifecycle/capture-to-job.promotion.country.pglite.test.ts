@@ -88,8 +88,8 @@ function promotion(database: Database, fieldOutcomes: ReturnType<typeof createCa
       locationEvidence: {
         resolverId: RESOLVER_ID,
         resolverVersion: RESOLVER_VERSION,
-        readResolvedLocation: (ws, captureId, captureRevision, resolverId, resolverVersion) =>
-          fieldOutcomes.readResolvedLocation(ws, captureId, captureRevision, resolverId, resolverVersion),
+        readResolvedLocation: (exec, ws, captureId, captureRevision, resolverId, resolverVersion) =>
+          fieldOutcomes.readResolvedLocation(exec, ws, captureId, captureRevision, resolverId, resolverVersion),
       },
     }),
   }
@@ -149,7 +149,7 @@ describe.sequential('Capture -> Job country evidence (#325)', () => {
     const oversizedLocation = `${'A'.repeat(501)}, United States`
     const seeded = await seedJobrightCapture(database, { jobLocation: oversizedLocation }, 'rec-oversized')
     const { fieldOutcomes } = await resolveAndPersist(database, seeded)
-    expect(await fieldOutcomes.readResolvedLocation(WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION))
+    expect(await fieldOutcomes.readResolvedLocation(database, WS, seeded.capture.id, seeded.revision, RESOLVER_ID, RESOLVER_VERSION))
       .toMatchObject({ country: 'US', display: oversizedLocation })
     const { promotion: promo } = promotion(database, fieldOutcomes)
 

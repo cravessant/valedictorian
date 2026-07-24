@@ -14,8 +14,20 @@ import {
   captureResolutionStageResults,
 } from '../modules/capture/capture.schema'
 import { and, eq } from 'drizzle-orm'
+import { jobCaptureEvidenceReferences, jobs } from '../modules/job/job.schema'
+import { jobCompanyAssignments, workspaceCompanies } from '../modules/company/company.schema'
 
 const WORKSPACE = 'capture-resolution-http-workspace'
+
+function jobFacts(companyName: string, roleTitle: string) {
+  return {
+    companyName, roleTitle, sourceName: 'Manual completion', roleKind: 'experienced',
+    term: null, terms: [], timingMode: 'unknown', startDate: null, endDate: null,
+    location: null, workMode: 'unknown', employmentType: 'unknown', seniority: 'unknown',
+    compensation: null, postedAt: null,
+    destination: { class: 'employer_or_ats', url: 'https://jobs.completion.example/roles/engineer' },
+  } as const
+}
 
 describe.sequential('Capture resolution HTTP surface', () => {
   const fixture = createLocalServerHttpTestFixture()
@@ -100,6 +112,63 @@ describe.sequential('Capture resolution HTTP surface', () => {
     )).rejects.toMatchObject({
       status: 404,
     } satisfies Partial<ValedictorianHttpError>)
+  })
+
+  it('completes a Capture through the published HTTP command with exact lineage and one selected Company', async () => {
+    const { client, local } = await setup()
+    const database = getTestLocalValedictorianDatabase(local)
+    const created = await client.captures.create({
+      evidenceMode: 'reported',
+      adapter: { id: 'manual.capture', kind: 'manual', version: '1.0.0' },
+      observedAt: '2026-07-23T00:00:00.000Z', providerRecordId: null, providerSchema: null,
+      payload: { companyName: 'Completion Labs', roleTitle: 'Completion Engineer' },
+      evidence: [{ kind: 'title', label: 'Role title', value: 'Completion Engineer' }],
+    })
+    if (created.status !== 'succeeded') throw new Error('expected Capture creation')
+    const detail = await client.captureResolution.get(created.resource.id)
+    const result = await client.captureResolution.complete({
+      captureId: created.resource.id,
+      expectedCaptureRevision: detail.captureRevision,
+      expectedGenerationId: null,
+      idempotencyKey: 'complete-http-1', actor: { id: 'operator', type: 'user' },
+      jobFacts: jobFacts('Completion Labs', 'Completion Engineer'),
+      destination: { class: 'employer_or_ats', url: 'https://jobs.completion.example/roles/engineer' },
+      externalIdentities: [], evidenceReferences: detail.exactEvidenceReferences,
+      companyResolution: { action: 'create_local', displayName: 'Completion Labs' },
+    })
+    expect(result).toMatchObject({ status: 'created', createdJob: true })
+    if (result.status !== 'created') throw new Error('expected created result')
+    await expect(client.captureResolution.complete({
+      captureId: created.resource.id, expectedCaptureRevision: detail.captureRevision,
+      expectedGenerationId: null, idempotencyKey: 'complete-http-1', actor: { id: 'operator', type: 'user' },
+      jobFacts: jobFacts('Completion Labs', 'Completion Engineer'),
+      destination: { class: 'employer_or_ats', url: 'https://jobs.completion.example/roles/engineer' },
+      externalIdentities: [], evidenceReferences: detail.exactEvidenceReferences,
+      companyResolution: { action: 'create_local', displayName: 'Completion Labs' },
+    })).resolves.toEqual(result)
+    const changedFingerprint = await client.captureResolution.complete({
+      captureId: created.resource.id, expectedCaptureRevision: detail.captureRevision,
+      expectedGenerationId: null, idempotencyKey: 'complete-http-1', actor: { id: 'different-operator', type: 'user' },
+      jobFacts: jobFacts('Completion Labs', 'Completion Engineer'),
+      destination: { class: 'employer_or_ats', url: 'https://jobs.completion.example/roles/engineer' },
+      externalIdentities: [], evidenceReferences: detail.exactEvidenceReferences,
+      companyResolution: { action: 'create_local', displayName: 'Completion Labs' },
+    })
+    expect(changedFingerprint).toMatchObject({ status: 'blocked', failure: { kind: 'lifecycle_failure', blocker: { code: 'invalid_input' } } })
+    expect(await database.select({ id: jobs.id }).from(jobs)).toEqual([{ id: result.jobId }])
+    expect(await database.select({ jobId: jobCompanyAssignments.jobId, companyId: jobCompanyAssignments.companyId })
+      .from(jobCompanyAssignments)).toEqual([{ jobId: result.jobId, companyId: result.companyId }])
+    expect(await database.select({ captureId: jobCaptureEvidenceReferences.captureId, revision: jobCaptureEvidenceReferences.captureRevision })
+      .from(jobCaptureEvidenceReferences)).toEqual([{ captureId: created.resource.id, revision: detail.captureRevision }])
+    expect(await database.select({ id: workspaceCompanies.id }).from(workspaceCompanies)
+      .where(eq(workspaceCompanies.id, result.companyId))).toHaveLength(1)
+    const stages = await database.select({ stage: captureResolutionStageResults.stage, status: captureResolutionStageResults.status })
+      .from(captureResolutionStageResults).where(eq(captureResolutionStageResults.generationId, detail.expectedGenerationId!))
+    expect(stages).toEqual(expect.arrayContaining([
+      { stage: 'destination', status: 'not_required' },
+      { stage: 'information', status: 'resolved' },
+      { stage: 'promotion', status: 'promoted' },
+    ]))
   })
 
   it('starts retry and replay over real HTTP, keeps receipts immutable, and redacts sensitive rationale audit data', async () => {

@@ -15,8 +15,17 @@ export interface CaptureConfig {
   ) => Promise<CaptureResolutionListResult>
 }
 
+export type CaptureCompletionIntent =
+  Extract<NonNullable<CaptureListPresentation['primaryIntent']>, {
+    readonly kind:
+      | 'complete_job_information'
+      | 'resolve_company_assignment'
+      | 'resolve_duplicate_job'
+  }>
+
 export function createCaptureConfig(options: {
   readonly onOpenJob?: (jobId: string, focusAnchor: string) => void
+  readonly onComplete?: (captureId: string, intent: CaptureCompletionIntent) => void
 } = {}): CaptureConfig {
   const table: LifecycleTableConfig<CaptureListPresentation> = {
   caption: 'Captures',
@@ -84,7 +93,17 @@ export function createCaptureConfig(options: {
     {
       key: 'next-action',
       header: 'Next action',
-      render: (row) => primaryIntentLabel(row),
+      render: (row) => {
+        const intent = row.primaryIntent
+        if (!intent || !isCaptureCompletionIntent(intent) || !options.onComplete) {
+          return primaryIntentLabel(row)
+        }
+        return (
+          <Button type="button" variant="link" className="h-auto p-0" onClick={() => options.onComplete?.(row.captureId, intent)}>
+            {primaryIntentLabel(row)}
+          </Button>
+        )
+      },
     },
   ],
   actions: [],
@@ -98,6 +117,14 @@ export function createCaptureConfig(options: {
       limit: 50,
     }),
   }
+}
+
+function isCaptureCompletionIntent(
+  intent: NonNullable<CaptureListPresentation['primaryIntent']>,
+): intent is CaptureCompletionIntent {
+  return intent.kind === 'complete_job_information'
+    || intent.kind === 'resolve_company_assignment'
+    || intent.kind === 'resolve_duplicate_job'
 }
 
 function destinationLabel(row: CaptureListPresentation): string {

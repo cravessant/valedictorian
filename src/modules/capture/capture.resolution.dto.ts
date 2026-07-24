@@ -2,6 +2,7 @@ import {
   captureCompletionDetailSchema,
   captureListPresentationSchema,
   captureResolutionGenerationProjectionSchema,
+  completeCaptureManuallyResultSchema,
   createCaptureInputSchema,
   jobFactsSchema,
   jobIdSchema,
@@ -132,6 +133,7 @@ export function toCaptureListPresentation(
       connectorInstanceId: row.connectorInstanceId,
       linkedJob: linked,
       projection,
+      stages,
     }),
   })
 }
@@ -287,8 +289,9 @@ function primaryIntent(input: {
   readonly connectorInstanceId: string | null
   readonly linkedJob: CaptureListPresentation['linkedJob']
   readonly projection: ReturnType<typeof toCaptureResolutionProjection>
+  readonly stages: readonly ResolutionStageRow[]
 }): CapturePrimaryIntent | null {
-  const { connectorInstanceId, linkedJob, projection } = input
+  const { connectorInstanceId, linkedJob, projection, stages } = input
   if (projection.readiness === 'materialization_blocked') {
     return { kind: 'correct_capture' }
   }
@@ -301,6 +304,21 @@ function primaryIntent(input: {
   if (issue?.action === 'correct_capture') return { kind: 'correct_capture' }
   if (issue?.action === 'retry_now') return { kind: 'retry_now' }
   if (issue?.action === 'resolve_company') return { kind: 'resolve_company' }
+  const completionBlocker = manualCompletionBlocker(stages)
+  if (issue?.action === 'resolve_company_assignment' && completionBlocker?.status === 'company_assignment_blocked') {
+    return {
+      kind: 'resolve_company_assignment',
+      jobId: completionBlocker.existingJobId,
+      currentCompanyId: completionBlocker.currentCompanyId,
+    }
+  }
+  if (issue?.action === 'resolve_duplicate_job' && completionBlocker?.status === 'duplicate_blocked') {
+    return {
+      kind: 'resolve_duplicate_job',
+      conflictingJobIds: completionBlocker.conflictingJobs.map((job) => job.jobId),
+      supportedActions: completionBlocker.allowedDecisions,
+    }
+  }
   if (issue?.action === 'complete_job_information') {
     return { kind: 'complete_job_information' }
   }
@@ -308,6 +326,17 @@ function primaryIntent(input: {
     return { kind: 'complete_job_information' }
   }
   return null
+}
+
+function manualCompletionBlocker(stages: readonly ResolutionStageRow[]) {
+  const promotion = stages.find((stage) => stage.stage === 'promotion')
+  if (!promotion) return null
+  try {
+    const parsed = completeCaptureManuallyResultSchema.safeParse(JSON.parse(promotion.resultJson))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
 }
 
 function currentIssueFromGeneration(

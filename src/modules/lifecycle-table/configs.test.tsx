@@ -1,9 +1,10 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ValedictorianWorkspaceClient } from '@sparxie/sdk'
 
 import { LifecycleTable } from './lifecycle-table'
-import { captureConfig } from './configs/capture-config'
+import { captureConfig, createCaptureConfig } from './configs/capture-config'
 import { jobConfig, createJobConfig } from './configs/job-config'
 import { opportunityConfig, createOpportunityConfig } from './configs/opportunity-config'
 import { applicationConfig, createApplicationConfig } from './configs/application-config'
@@ -150,4 +151,55 @@ describe('lifecycle typed configs', () => {
     expect(within(table).getByText('Engineer')).toBeInTheDocument()
     expect(within(table).getByText('Jobright')).toBeInTheDocument()
   })
+
+  it('routes duplicate and Company-assignment resolution intents into the completion flow', async () => {
+    const user = userEvent.setup()
+    const onComplete = vi.fn()
+    const items = [
+      captureWithIntent('capture-duplicate', 'resolve_duplicate_job'),
+      captureWithIntent('capture-assignment', 'resolve_company_assignment'),
+    ]
+    render(
+      <LifecycleTable
+        config={createCaptureConfig({ onComplete }).table}
+        data={items}
+        state={{ status: 'loaded' }}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Resolve duplicate Job' }))
+    await user.click(screen.getByRole('button', { name: 'Resolve company assignment' }))
+
+    expect(onComplete).toHaveBeenNthCalledWith(1, 'capture-duplicate', {
+      kind: 'resolve_duplicate_job',
+      conflictingJobIds: ['job-duplicate'],
+      supportedActions: ['attach'],
+    })
+    expect(onComplete).toHaveBeenNthCalledWith(2, 'capture-assignment', {
+      kind: 'resolve_company_assignment',
+      jobId: 'job-assignment',
+      currentCompanyId: 'company-assignment',
+    })
+  })
 })
+
+function captureWithIntent(
+  captureId: string,
+  kind: 'resolve_duplicate_job' | 'resolve_company_assignment',
+) {
+  return {
+    captureId,
+    captureRevision: 1,
+    observedAt: '2025-01-01T00:00:00Z',
+    lead: { roleTitle: 'Engineer', companyName: 'Acme', fallbackLabel: 'Acme lead' },
+    source: { displayName: 'Jobright', provider: 'jobright' },
+    destination: { state: 'resolved' as const, displayHost: 'jobs.example.com' },
+    readiness: 'ready' as const,
+    processingSummary: 'blocked' as const,
+    activeProcessing: false,
+    linkedJob: null,
+    primaryIntent: kind === 'resolve_duplicate_job'
+      ? { kind, conflictingJobIds: ['job-duplicate'], supportedActions: ['attach'] }
+      : { kind, jobId: 'job-assignment', currentCompanyId: 'company-assignment' },
+  }
+}

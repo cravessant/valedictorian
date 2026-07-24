@@ -440,7 +440,7 @@ export const captureResolutionCommandReceipts = pgTable(
   (table) => ({
     pk: primaryKey({
       name: 'capture_resolution_command_receipts_pk',
-      columns: [table.workspaceId, table.idempotencyKey],
+      columns: [table.workspaceId, table.operation, table.idempotencyKey],
     }),
     operationCheck: check(
       'chk_capture_resolution_command_receipts_operation',
