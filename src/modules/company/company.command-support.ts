@@ -32,6 +32,7 @@ export type CompanyOperation =
   | 'archive'
   | 'restore'
   | 'reassign'
+  | 'mark_distinct'
 
 export class CompanyCommandConflictError extends Error {
   readonly statusCode = 409

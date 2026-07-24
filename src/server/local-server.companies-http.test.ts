@@ -164,4 +164,48 @@ describe.sequential('Workspace Company HTTP surface', () => {
     const unscoped = await fetch(`${server.url}/v1/companies`)
     expect(unscoped.status).toBe(404)
   })
+
+  it('serves only the canonical duplicate review routes and does not expose merge', async () => {
+    const { client, server } = await setup()
+    for (const [key, displayName] of [
+      ['left', 'Canonical Duplicate Company'],
+      ['right', 'Canonical Duplicate Co'],
+    ] as const) {
+      expect(await client.companies.create({
+        ...context(`http-duplicate-${key}`),
+        displayName,
+        websiteUrl: 'https://canonical-duplicate.example',
+        notes: null,
+      })).toMatchObject({ status: 'created' })
+    }
+    const candidate = (await client.companies.duplicates.list({
+      filter: 'open',
+      sort: 'score_desc',
+      limit: 10,
+    })).items[0]
+    if (!candidate) throw new Error('expected HTTP duplicate candidate')
+    expect(await client.companies.duplicates.get(candidate.candidateId)).toEqual(candidate)
+    expect(await client.companies.duplicates.markDistinct({
+      ...context('http-mark-distinct'),
+      candidateId: candidate.candidateId,
+      expectedCandidateRevision: candidate.candidateRevision,
+      leftCompanyId: candidate.left.companyId,
+      expectedLeftCompanyRevision: candidate.left.revision,
+      rightCompanyId: candidate.right.companyId,
+      expectedRightCompanyRevision: candidate.right.revision,
+    })).toMatchObject({
+      status: 'marked_distinct',
+      candidate: { status: 'marked_distinct' },
+    })
+
+    const merge = await fetch(
+      `${server.url}/v1/workspaces/${WORKSPACE}/companies/merge`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      },
+    )
+    expect(merge.status).toBe(404)
+  })
 })

@@ -34,6 +34,7 @@ import {
   normalizeCompanyText,
   websiteHost,
 } from './company.values'
+import { enqueueCompanyDuplicateReconsideration } from './company.duplicate-maintenance'
 
 export interface CompanyCommands {
   create(input: unknown): Promise<CreateCompanyResult>
@@ -106,6 +107,7 @@ export function createCompanyCommands(
         rationale: parsed.rationale,
         occurredAt: timestamp,
       })
+      await enqueueCompanyDuplicateReconsideration(tx, row, timestamp)
       return {
         status: 'created',
         workspaceId,
@@ -350,6 +352,7 @@ async function mutateCompany<Result extends UpdateCompanyResult | ArchiveCompany
       rationale: input.rationale,
       occurredAt: timestamp,
     })
+    await enqueueCompanyDuplicateReconsideration(tx, row, timestamp)
     return {
       status: options.kind === 'archived'
         ? 'archived'
@@ -415,6 +418,7 @@ async function mutateAlias(
       aliasId: alias.aliasId,
       occurredAt: timestamp,
     })
+    await enqueueCompanyDuplicateReconsideration(tx, row, timestamp)
     return {
       status: 'updated',
       workspaceId,

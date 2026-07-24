@@ -38,6 +38,9 @@ export const workspaceCompanies = pgTable(
       .on(table.workspaceId, table.normalizedDisplayName, table.id),
     statusIdx: index('idx_workspace_companies_status')
       .on(table.workspaceId, table.status, table.normalizedDisplayName, table.id),
+    websiteHostIdx: index('idx_workspace_companies_website_host')
+      .on(table.workspaceId, table.websiteHost, table.id)
+      .where(sql`${table.websiteHost} is not null`),
     canonicalFk: foreignKey({
       name: 'fk_workspace_companies_canonical',
       columns: [table.workspaceId, table.mergedIntoCompanyId],
@@ -100,6 +103,9 @@ export const companyAliases = pgTable(
     activeValueIdx: uniqueIndex('idx_company_aliases_active_value')
       .on(table.companyId, table.normalizedValue)
       .where(sql`${table.removedAt} is null`),
+    duplicateSignalIdx: index('idx_company_aliases_duplicate_signal')
+      .on(table.workspaceId, table.normalizedValue, table.companyId)
+      .where(sql`${table.removedAt} is null`),
     valueCheck: check(
       'chk_company_aliases_value',
       sql`length(btrim(${table.value})) between 1 and 500`,
@@ -107,6 +113,183 @@ export const companyAliases = pgTable(
     normalizedValueCheck: check(
       'chk_company_aliases_normalized_value',
       sql`length(${table.normalizedValue}) between 1 and 500`,
+    ),
+  }),
+)
+
+export const companyDuplicateCandidates = pgTable(
+  'company_duplicate_candidates',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull().references(() => workspaces.id),
+    lowerCompanyId: text('lower_company_id').notNull(),
+    higherCompanyId: text('higher_company_id').notNull(),
+    revision: integer('revision').notNull(),
+    score: integer('score').notNull(),
+    reasonCodesJson: text('reason_codes_json').notNull(),
+    matcherVersion: text('matcher_version').notNull(),
+    lowerInputFingerprint: text('lower_input_fingerprint').notNull(),
+    higherInputFingerprint: text('higher_input_fingerprint').notNull(),
+    status: text('status').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    workspaceCandidateKey: unique('uq_company_duplicate_candidates_workspace_id')
+      .on(table.workspaceId, table.id),
+    pairKey: uniqueIndex('idx_company_duplicate_candidates_pair')
+      .on(table.workspaceId, table.lowerCompanyId, table.higherCompanyId),
+    reviewQueueIdx: index('idx_company_duplicate_candidates_review_queue')
+      .on(
+        table.workspaceId,
+        table.status,
+        table.score.desc(),
+        table.updatedAt.desc(),
+        table.id,
+      ),
+    lowerIdx: index('idx_company_duplicate_candidates_lower')
+      .on(table.workspaceId, table.lowerCompanyId, table.status),
+    higherIdx: index('idx_company_duplicate_candidates_higher')
+      .on(table.workspaceId, table.higherCompanyId, table.status),
+    lowerCompanyFk: foreignKey({
+      name: 'fk_company_duplicate_candidates_lower',
+      columns: [table.workspaceId, table.lowerCompanyId],
+      foreignColumns: [workspaceCompanies.workspaceId, workspaceCompanies.id],
+    }),
+    higherCompanyFk: foreignKey({
+      name: 'fk_company_duplicate_candidates_higher',
+      columns: [table.workspaceId, table.higherCompanyId],
+      foreignColumns: [workspaceCompanies.workspaceId, workspaceCompanies.id],
+    }),
+    idCheck: check('chk_company_duplicate_candidates_id', sql`${table.id} ${sql.raw(UUID_V7)}`),
+    orderCheck: check(
+      'chk_company_duplicate_candidates_order',
+      sql`${table.lowerCompanyId} < ${table.higherCompanyId}`,
+    ),
+    revisionCheck: check(
+      'chk_company_duplicate_candidates_revision',
+      sql`${table.revision} > 0`,
+    ),
+    scoreCheck: check(
+      'chk_company_duplicate_candidates_score',
+      sql`${table.score} between 0 and 10000`,
+    ),
+    reasonCodesCheck: check(
+      'chk_company_duplicate_candidates_reasons',
+      sql`length(${table.reasonCodesJson}) between 2 and 2048`,
+    ),
+    matcherCheck: check(
+      'chk_company_duplicate_candidates_matcher',
+      sql`length(${table.matcherVersion}) between 1 and 100`,
+    ),
+    fingerprintCheck: check(
+      'chk_company_duplicate_candidates_fingerprints',
+      sql`length(${table.lowerInputFingerprint}) = 64
+        and length(${table.higherInputFingerprint}) = 64`,
+    ),
+    statusCheck: check(
+      'chk_company_duplicate_candidates_status',
+      sql`${table.status} in ('open','marked_distinct','resolved_by_merge')`,
+    ),
+  }),
+)
+
+export const companyDuplicateCandidateReviews = pgTable(
+  'company_duplicate_candidate_reviews',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull(),
+    candidateId: text('candidate_id').notNull(),
+    candidateRevision: integer('candidate_revision').notNull(),
+    decision: text('decision').notNull(),
+    actorJson: text('actor_json').notNull(),
+    rationale: text('rationale').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => ({
+    candidateFk: foreignKey({
+      name: 'fk_company_duplicate_candidate_reviews_candidate',
+      columns: [table.workspaceId, table.candidateId],
+      foreignColumns: [
+        companyDuplicateCandidates.workspaceId,
+        companyDuplicateCandidates.id,
+      ],
+    }),
+    candidateRevisionKey: uniqueIndex('idx_company_duplicate_candidate_reviews_revision')
+      .on(table.candidateId, table.candidateRevision),
+    decisionCheck: check(
+      'chk_company_duplicate_candidate_reviews_decision',
+      sql`${table.decision} = 'mark_distinct'`,
+    ),
+    revisionCheck: check(
+      'chk_company_duplicate_candidate_reviews_revision',
+      sql`${table.candidateRevision} > 0`,
+    ),
+    actorCheck: check(
+      'chk_company_duplicate_candidate_reviews_actor',
+      sql`length(${table.actorJson}) between 2 and 2048`,
+    ),
+    rationaleCheck: check(
+      'chk_company_duplicate_candidate_reviews_rationale',
+      sql`length(btrim(${table.rationale})) between 1 and 1000`,
+    ),
+  }),
+)
+
+export const companyDuplicateMaintenanceWork = pgTable(
+  'company_duplicate_maintenance_work',
+  {
+    workspaceId: text('workspace_id').notNull(),
+    companyId: text('company_id').notNull(),
+    requestedRevision: integer('requested_revision').notNull(),
+    processedRevision: integer('processed_revision'),
+    status: text('status').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    primaryKey: primaryKey({ columns: [table.workspaceId, table.companyId] }),
+    companyFk: foreignKey({
+      name: 'fk_company_duplicate_maintenance_work_company',
+      columns: [table.workspaceId, table.companyId],
+      foreignColumns: [workspaceCompanies.workspaceId, workspaceCompanies.id],
+    }),
+    pendingIdx: index('idx_company_duplicate_maintenance_work_pending')
+      .on(table.workspaceId, table.status, table.updatedAt, table.companyId),
+    requestedCheck: check(
+      'chk_company_duplicate_maintenance_work_requested',
+      sql`${table.requestedRevision} > 0`,
+    ),
+    processedCheck: check(
+      'chk_company_duplicate_maintenance_work_processed',
+      sql`${table.processedRevision} is null
+        or (${table.processedRevision} > 0
+          and ${table.processedRevision} <= ${table.requestedRevision})`,
+    ),
+    statusCheck: check(
+      'chk_company_duplicate_maintenance_work_status',
+      sql`${table.status} in ('pending','processing','idle')`,
+    ),
+  }),
+)
+
+export const companyDuplicateIndexState = pgTable(
+  'company_duplicate_index_state',
+  {
+    workspaceId: text('workspace_id').primaryKey().references(() => workspaces.id),
+    matcherVersion: text('matcher_version').notNull(),
+    afterCompanyId: text('after_company_id'),
+    status: text('status').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    statusCheck: check(
+      'chk_company_duplicate_index_state_status',
+      sql`${table.status} in ('indexing','ready')`,
+    ),
+    matcherCheck: check(
+      'chk_company_duplicate_index_state_matcher',
+      sql`length(${table.matcherVersion}) between 1 and 100`,
     ),
   }),
 )
@@ -304,7 +487,7 @@ export const companyCommandReceipts = pgTable(
     ),
     operationCheck: check(
       'chk_company_command_receipts_operation',
-      sql`${table.operation} in ('create','update','notes','alias_add','alias_update','alias_remove','archive','restore','reassign')`,
+      sql`${table.operation} in ('create','update','notes','alias_add','alias_update','alias_remove','archive','restore','reassign','mark_distinct')`,
     ),
     fingerprintCheck: check(
       'chk_company_command_receipts_fingerprint',

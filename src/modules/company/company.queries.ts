@@ -5,12 +5,14 @@ import {
   desc,
   eq,
   gt,
+  inArray,
   lt,
   ne,
   or,
   sql,
   type SQL,
 } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import {
   companyDirectoryListInputSchema,
   companyMatchPreviewInputSchema,
@@ -25,6 +27,7 @@ import {
 import type { PgliteDatabase } from '../../db/pglite'
 import {
   companyAliases,
+  companyDuplicateCandidates,
   companyHistory,
   jobCompanyAssignments,
   workspaceCompanies,
@@ -105,10 +108,13 @@ export function createCompanyQueries(
         eq(companyHistory.workspaceId, workspaceId),
         eq(companyHistory.companyId, companyId),
       ))
+    const duplicateCounts = await openDuplicateCounts(database, workspaceId, [companyId])
     return {
       lookup: companyLookup,
       assignedJobCount: Number(assignmentCount?.value ?? 0),
-      openDuplicateCandidateCount: 0,
+      openDuplicateCandidateCount: companyLookup.requested.status === 'active'
+        ? duplicateCounts.get(companyId) ?? 0
+        : 0,
       history: {
         lastEventAt: events[0]?.occurredAt ?? null,
         eventCount: Number(eventCount?.value ?? 0),
@@ -278,6 +284,11 @@ export function createCompanyQueries(
     const hasMore = rows.length > parsed.limit
     const pageRows = rows.slice(0, parsed.limit)
     if (before) pageRows.reverse()
+    const duplicateCounts = await openDuplicateCounts(
+      database,
+      workspaceId,
+      pageRows.filter((row) => row.status === 'active').map((row) => row.id),
+    )
     const [total] = await database
       .select({ value: count() })
       .from(workspaceCompanies)
@@ -290,7 +301,9 @@ export function createCompanyQueries(
         websiteHost: row.websiteHost,
         status: row.status as CompanyDirectoryPage['items'][number]['status'],
         assignedJobCount: Number(row.assignedJobCount),
-        openDuplicateCandidateCount: 0,
+        openDuplicateCandidateCount: row.status === 'active'
+          ? duplicateCounts.get(row.id) ?? 0
+          : 0,
         updatedAt: row.updatedAt,
         canonicalCompanyId: (row.mergedIntoCompanyId ?? row.id) as
           CompanyDirectoryPage['items'][number]['canonicalCompanyId'],
@@ -306,6 +319,65 @@ export function createCompanyQueries(
   }
 
   return { get, listDirectory, lookup, previewMatches, search }
+}
+
+async function openDuplicateCounts(
+  database: PgliteDatabase,
+  workspaceId: string,
+  companyIds: readonly string[],
+) {
+  const result = new Map<string, number>()
+  if (companyIds.length === 0) return result
+  const lowerCompanies = alias(workspaceCompanies, 'duplicate_lower_companies')
+  const higherCompanies = alias(workspaceCompanies, 'duplicate_higher_companies')
+  const lower = await database
+    .select({
+      companyId: companyDuplicateCandidates.lowerCompanyId,
+      value: count(),
+    })
+    .from(companyDuplicateCandidates)
+    .innerJoin(lowerCompanies, and(
+      eq(lowerCompanies.workspaceId, companyDuplicateCandidates.workspaceId),
+      eq(lowerCompanies.id, companyDuplicateCandidates.lowerCompanyId),
+      eq(lowerCompanies.status, 'active'),
+    ))
+    .innerJoin(higherCompanies, and(
+      eq(higherCompanies.workspaceId, companyDuplicateCandidates.workspaceId),
+      eq(higherCompanies.id, companyDuplicateCandidates.higherCompanyId),
+      eq(higherCompanies.status, 'active'),
+    ))
+    .where(and(
+      eq(companyDuplicateCandidates.workspaceId, workspaceId),
+      eq(companyDuplicateCandidates.status, 'open'),
+      inArray(companyDuplicateCandidates.lowerCompanyId, [...companyIds]),
+    ))
+    .groupBy(companyDuplicateCandidates.lowerCompanyId)
+  const higher = await database
+    .select({
+      companyId: companyDuplicateCandidates.higherCompanyId,
+      value: count(),
+    })
+    .from(companyDuplicateCandidates)
+    .innerJoin(lowerCompanies, and(
+      eq(lowerCompanies.workspaceId, companyDuplicateCandidates.workspaceId),
+      eq(lowerCompanies.id, companyDuplicateCandidates.lowerCompanyId),
+      eq(lowerCompanies.status, 'active'),
+    ))
+    .innerJoin(higherCompanies, and(
+      eq(higherCompanies.workspaceId, companyDuplicateCandidates.workspaceId),
+      eq(higherCompanies.id, companyDuplicateCandidates.higherCompanyId),
+      eq(higherCompanies.status, 'active'),
+    ))
+    .where(and(
+      eq(companyDuplicateCandidates.workspaceId, workspaceId),
+      eq(companyDuplicateCandidates.status, 'open'),
+      inArray(companyDuplicateCandidates.higherCompanyId, [...companyIds]),
+    ))
+    .groupBy(companyDuplicateCandidates.higherCompanyId)
+  for (const row of [...lower, ...higher]) {
+    result.set(row.companyId, (result.get(row.companyId) ?? 0) + Number(row.value))
+  }
+  return result
 }
 
 function directoryCursorCondition(

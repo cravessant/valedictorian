@@ -3,6 +3,7 @@ import type { PgliteDatabase } from '../../db/pglite'
 import type { Clock, UuidV7Generator } from '../../db/uuidv7'
 import type { CompanyCoverageService } from './company.coverage'
 import { createCompanyCommands } from './company.commands'
+import { createCompanyDuplicateService } from './company.duplicates'
 import { createCompanyQueries } from './company.queries'
 import { createCompanyRelatedQueries } from './company.related-queries'
 
@@ -23,8 +24,12 @@ export function createPgliteCompanyService(
   })
   const queries = createCompanyQueries(database, options.workspaceId)
   const related = createCompanyRelatedQueries(database, options.workspaceId)
-  const deferredDuplicateReview = () =>
-    Promise.reject(new Error('Company duplicate review is not implemented.'))
+  const duplicates = createCompanyDuplicateService(database, options.workspaceId, {
+    ...(options.now ? { now: options.now } : {}),
+    ...(options.newId ? { newId: options.newId } : {}),
+  })
+  const mergeUnavailable = () =>
+    Promise.reject(new Error('Company merging is not available.'))
 
   return {
     capability: {
@@ -46,10 +51,10 @@ export function createPgliteCompanyService(
     archive: (...args) => commands.archive(...args),
     restore: (...args) => commands.restore(...args),
     duplicates: {
-      list: deferredDuplicateReview,
-      get: deferredDuplicateReview,
-      markDistinct: deferredDuplicateReview,
-      merge: deferredDuplicateReview,
+      list: (...args) => duplicates.list(...args),
+      get: (...args) => duplicates.get(...args),
+      markDistinct: (...args) => duplicates.markDistinct(...args),
+      merge: mergeUnavailable,
     },
     assignedJobs: { list: (...args) => related.listAssignedJobs(...args) },
     history: { list: (...args) => related.listHistory(...args) },

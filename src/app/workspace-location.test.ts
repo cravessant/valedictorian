@@ -57,13 +57,31 @@ describe('workspace location', () => {
     'https://app.test/?view=companies&direction=after',
     'https://app.test/?view=companies&cursor=x&direction=sideways',
     'https://app.test/?view=captures&mode=processing',
-    'https://app.test/?view=companies&mode=duplicates',
+    'https://app.test/?view=companies&mode=duplicates&filter=archived',
+    'https://app.test/?view=companies&mode=duplicates&sort=display_name_asc',
+    'https://app.test/?view=companies&filter=open',
     'https://app.test/?view=jobs&cursor=x&direction=before',
     'https://app.test/?view=opportunities&cursor=x&direction=after',
     'https://app.test/?view=applications&resource=application-one',
     'https://app.test/?view=captures&filter=all',
   ])('falls back safely for invalid or incompatible input: %s', (address) => {
     expect(parseWorkspaceLocation(new URL(address))).toEqual({ view: 'captures' })
+  })
+
+  it('round-trips the separate possible-duplicate queue mode', () => {
+    const location = {
+      view: 'companies' as const,
+      mode: 'duplicates',
+      resourceId: 'candidate-1',
+      filter: 'open',
+      sort: 'score_desc',
+      cursor: 'opaque-candidate-cursor',
+      cursorDirection: 'after' as const,
+    }
+    expect(parseWorkspaceLocation(serializeWorkspaceLocation(
+      location,
+      new URL('https://app.test/workspace'),
+    ))).toEqual(location)
   })
 
   it('resets the cursor chain and selection when filtering or sorting', () => {

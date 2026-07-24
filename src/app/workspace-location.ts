@@ -30,21 +30,21 @@ const viewModes: Readonly<Record<WorkspaceView, ReadonlySet<string>>> = {
   jobs: new Set(),
   opportunities: new Set(),
   applications: new Set(['all', 'action-queue']),
-  companies: new Set(),
+  companies: new Set(['duplicates']),
 }
 const viewFilters: Readonly<Record<WorkspaceView, ReadonlySet<string>>> = {
   captures: new Set(),
   jobs: new Set(['all', 'include_removed']),
   opportunities: new Set(),
   applications: new Set(),
-  companies: new Set(['all', 'active', 'archived', 'merged']),
+  companies: new Set(['all', 'active', 'archived', 'merged', 'open']),
 }
 const viewSorts: Readonly<Record<WorkspaceView, ReadonlySet<string>>> = {
   captures: new Set(),
   jobs: new Set(),
   opportunities: new Set(),
   applications: new Set(),
-  companies: new Set(['display_name_asc']),
+  companies: new Set(['display_name_asc', 'score_desc']),
 }
 
 export function parseWorkspaceLocation(url: URL): WorkspaceLocation {
@@ -103,6 +103,7 @@ export function isWorkspaceLocation(value: unknown): value is WorkspaceLocation 
     || !optionalCursor(location.cursor)) {
     return false
   }
+  if (view === 'companies' && !validCompanyOptions(location)) return false
   if (location.resourceId !== undefined && view !== 'jobs' && view !== 'companies') {
     return false
   }
@@ -112,6 +113,21 @@ export function isWorkspaceLocation(value: unknown): value is WorkspaceLocation 
     return location.cursorDirection === 'after' || location.cursorDirection === 'before'
   }
   return false
+}
+
+function validCompanyOptions(location: Partial<WorkspaceLocation>) {
+  if (location.mode === 'duplicates') {
+    return (location.filter === undefined
+      || location.filter === 'open'
+      || location.filter === 'all')
+      && (location.sort === undefined || location.sort === 'score_desc')
+  }
+  return (location.filter === undefined
+    || location.filter === 'all'
+    || location.filter === 'active'
+    || location.filter === 'archived'
+    || location.filter === 'merged')
+    && (location.sort === undefined || location.sort === 'display_name_asc')
 }
 
 export function isWorkspaceHistoryEntry(value: unknown): value is WorkspaceHistoryEntry {

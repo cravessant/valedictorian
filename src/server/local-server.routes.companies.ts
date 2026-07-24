@@ -2,6 +2,7 @@ import type http from 'node:http'
 import {
   companyAssignedJobListInputSchema,
   companyDirectoryListInputSchema,
+  companyDuplicateListInputSchema,
   companyHistoryListInputSchema,
   companyMatchPreviewInputSchema,
   companySearchInputSchema,
@@ -9,6 +10,7 @@ import {
   addCompanyAliasInputSchema,
   archiveCompanyInputSchema,
   removeCompanyAliasInputSchema,
+  markCompaniesDistinctInputSchema,
   reassignJobCompanyInputSchema,
   restoreCompanyInputSchema,
   updateCompanyAliasInputSchema,
@@ -97,10 +99,34 @@ export async function handleCompanyRoutes({
     return false
   }
 
-  if (
-    pathname.startsWith('/v1/companies/duplicate-candidates')
-    || pathname === '/v1/companies/merge'
-  ) {
+  if (pathname === '/v1/companies/duplicate-candidates') {
+    if (method === 'GET') {
+      writeJson(response, 200, await client.companies.duplicates.list(
+        parseQuery(companyDuplicateListInputSchema, requestUrl),
+      ))
+      return true
+    }
+    return false
+  }
+  const duplicateMatch = pathname.match(
+    /^\/v1\/companies\/duplicate-candidates\/([^/]+)(?:\/(mark-distinct))?$/,
+  )
+  if (duplicateMatch) {
+    const candidateId = decode(duplicateMatch[1]!)
+    if (method === 'GET' && !duplicateMatch[2]) {
+      writeJson(response, 200, await client.companies.duplicates.get(candidateId))
+      return true
+    }
+    if (method === 'POST' && duplicateMatch[2] === 'mark-distinct') {
+      const body = await readJsonBody(request)
+      const input = parseLocalHttpInput(() => markCompaniesDistinctInputSchema.parse({
+        ...asRecord(body),
+        workspaceId,
+        candidateId,
+      }))
+      writeJson(response, 200, await client.companies.duplicates.markDistinct(input))
+      return true
+    }
     return false
   }
 

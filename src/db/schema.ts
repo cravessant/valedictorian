@@ -24,7 +24,8 @@ import {
 import { lifecycleMigrationReport, workspaces } from './workspaces.schema'
 import {
   companyAliases, companyBackfillJournal, companyCapabilityState, companyCommandReceipts,
-  companyHistory,
+  companyDuplicateCandidateReviews, companyDuplicateCandidates, companyDuplicateIndexState,
+  companyDuplicateMaintenanceWork, companyHistory,
   jobCompanyAssignmentHistory, jobCompanyAssignments, workspaceCompanies,
 } from '../modules/company/company.schema'
 
@@ -51,7 +52,8 @@ export {
 export { DEFAULT_WORKSPACE_ID, lifecycleMigrationReport, workspaces } from './workspaces.schema'
 export {
   companyAliases, companyBackfillJournal, companyCapabilityState, companyCommandReceipts,
-  companyHistory,
+  companyDuplicateCandidateReviews, companyDuplicateCandidates, companyDuplicateIndexState,
+  companyDuplicateMaintenanceWork, companyHistory,
   jobCompanyAssignmentHistory, jobCompanyAssignments, workspaceCompanies,
 } from '../modules/company/company.schema'
 
@@ -177,4 +179,6 @@ export const schema = {
   workspaceCompanies, companyAliases, companyHistory, companyCommandReceipts,
   jobCompanyAssignments,
   jobCompanyAssignmentHistory, companyCapabilityState, companyBackfillJournal,
+  companyDuplicateCandidates, companyDuplicateCandidateReviews,
+  companyDuplicateMaintenanceWork, companyDuplicateIndexState,
 }

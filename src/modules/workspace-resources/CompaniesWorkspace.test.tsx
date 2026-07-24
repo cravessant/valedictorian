@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   CompanyDetail,
   CompanyDirectoryPage,
+  CompanyDuplicateCandidateRow,
+  CompanyDuplicatePage,
   WorkspaceCompaniesClient,
 } from '@sparxie/sdk'
 import { CompaniesWorkspace } from './CompaniesWorkspace'
@@ -49,14 +51,62 @@ const detail = {
   assignedJobCount: 4,
 } as unknown as CompanyDetail
 
+const candidate = {
+  candidateId: 'candidate-one',
+  candidateRevision: 4,
+  left: {
+    companyId: 'company-left',
+    revision: 7,
+    displayName: 'Northstar Robotics',
+    websiteUrl: 'https://northstar.example',
+    status: 'active',
+    assignedJobCount: 3,
+  },
+  right: {
+    companyId: 'company-right',
+    revision: 5,
+    displayName: 'Northstar Robotix',
+    websiteUrl: null,
+    status: 'active',
+    assignedJobCount: 2,
+  },
+  score: 0.91,
+  reasons: [
+    { code: 'normalized_name_similarity', label: 'Company names are similar.' },
+  ],
+  status: 'open',
+  updatedAt: '2026-07-23T18:00:00.000Z',
+} as unknown as CompanyDuplicateCandidateRow
+
+const duplicatePage = {
+  items: [candidate],
+  pageInfo: {
+    startCursor: 'duplicate-start',
+    endCursor: 'duplicate-end',
+    hasPreviousPage: false,
+    hasNextPage: true,
+  },
+  totalCount: 1,
+} as unknown as CompanyDuplicatePage
+
 function makeClient() {
   const list = vi.fn(async () => page)
   const get = vi.fn(async (_companyId: string) => detail)
+  const duplicateList = vi.fn(async () => duplicatePage)
+  const duplicateGet = vi.fn(async (_candidateId: string) => candidate)
+  const markDistinct = vi.fn(async () => ({
+    status: 'marked_distinct',
+  }) as never)
   const capability = vi.fn(async () => ({ status: 'ready' as const }))
   return {
     client: {
       capability: { get: capability },
       directory: { list },
+      duplicates: {
+        list: duplicateList,
+        get: duplicateGet,
+        markDistinct,
+      },
       get,
       assignedJobs: {
         list: vi.fn(async () => ({
@@ -72,8 +122,11 @@ function makeClient() {
       },
     } as unknown as WorkspaceCompaniesClient,
     capability,
+    duplicateGet,
+    duplicateList,
     get,
     list,
+    markDistinct,
   }
 }
 
@@ -341,5 +394,161 @@ describe('CompaniesWorkspace', () => {
     await user.click(await screen.findByRole('button', { name: 'Back to Companies' }))
     expect(back).toHaveBeenCalledOnce()
     expect(screen.queryByRole('table', { name: 'Companies' })).not.toBeInTheDocument()
+  })
+
+  it('keeps possible duplicates in a separate paged workspace mode', async () => {
+    const user = userEvent.setup()
+    const { client, duplicateList, list } = makeClient()
+    const navigate = vi.fn()
+    render(
+      <CompaniesWorkspace
+        client={client}
+        workspaceId="workspace-company"
+        entry={{
+          location: {
+            view: 'companies',
+            mode: 'duplicates',
+            filter: 'open',
+            sort: 'score_desc',
+          },
+          cursorChain: [],
+        }}
+        onBack={vi.fn()}
+        onNavigate={navigate}
+      />,
+    )
+
+    expect(await screen.findByRole('table', {
+      name: 'Possible duplicate Companies',
+    })).toBeInTheDocument()
+    expect(screen.getByText('Northstar Robotics')).toBeInTheDocument()
+    expect(screen.getByText('and Northstar Robotix')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New Company' })).not.toBeInTheDocument()
+    expect(duplicateList).toHaveBeenCalledWith({
+      filter: 'open',
+      sort: 'score_desc',
+      limit: 50,
+    })
+    expect(list).not.toHaveBeenCalled()
+
+    await user.selectOptions(screen.getByLabelText('Duplicate review status'), 'all')
+    expect(navigate).toHaveBeenLastCalledWith({
+      view: 'companies',
+      mode: 'duplicates',
+      filter: 'all',
+      sort: 'score_desc',
+    })
+    await user.click(screen.getByRole('button', { name: /Northstar Robotics/ }))
+    expect(navigate).toHaveBeenLastCalledWith({
+      view: 'companies',
+      mode: 'duplicates',
+      filter: 'open',
+      sort: 'score_desc',
+      resourceId: candidate.candidateId,
+    }, {
+      cursorChain: [],
+      focusAnchor: `company-duplicate-link-${candidate.candidateId}`,
+    })
+    await user.click(screen.getByRole('button', { name: 'Go to next page' }))
+    expect(navigate).toHaveBeenLastCalledWith({
+      view: 'companies',
+      mode: 'duplicates',
+      filter: 'open',
+      sort: 'score_desc',
+      cursor: duplicatePage.pageInfo.endCursor,
+      cursorDirection: 'after',
+    }, {
+      cursorChain: [{
+        view: 'companies',
+        mode: 'duplicates',
+        filter: 'open',
+        sort: 'score_desc',
+      }],
+    })
+  })
+
+  it('submits exact candidate and Company revisions without offering merge', async () => {
+    const user = userEvent.setup()
+    const { client, duplicateGet, markDistinct } = makeClient()
+    const back = vi.fn()
+    render(
+      <CompaniesWorkspace
+        client={client}
+        workspaceId="workspace-company"
+        entry={{
+          location: {
+            view: 'companies',
+            mode: 'duplicates',
+            filter: 'open',
+            sort: 'score_desc',
+            resourceId: candidate.candidateId,
+          },
+          cursorChain: [],
+        }}
+        onBack={back}
+        onNavigate={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(duplicateGet).toHaveBeenCalledWith(candidate.candidateId)
+    expect(screen.getAllByText('Northstar Robotics')).toHaveLength(2)
+    expect(screen.getAllByText('Northstar Robotix')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument()
+    const rationale = screen.getByLabelText('Rationale')
+    expect(rationale).toHaveFocus()
+    await user.type(rationale, 'Separate legal entities.')
+    await user.click(screen.getByRole('button', { name: 'Mark distinct' }))
+    await waitFor(() => expect(markDistinct).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: 'workspace-company',
+      candidateId: candidate.candidateId,
+      expectedCandidateRevision: 4,
+      leftCompanyId: candidate.left.companyId,
+      expectedLeftCompanyRevision: 7,
+      rightCompanyId: candidate.right.companyId,
+      expectedRightCompanyRevision: 5,
+      rationale: 'Separate legal entities.',
+    })))
+    expect(back).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the review modal open when stale guards block the decision', async () => {
+    const user = userEvent.setup()
+    const { client, markDistinct } = makeClient()
+    markDistinct.mockResolvedValueOnce({
+      status: 'blocked',
+      failure: {
+        kind: 'stale_guard',
+        blocker: {
+          code: 'impossible_state',
+          message: 'The candidate or a Company changed. Refresh and review the pair again.',
+        },
+        recovery: { action: 'refresh_and_resubmit', guards: [] },
+      },
+    } as never)
+    const back = vi.fn()
+    render(
+      <CompaniesWorkspace
+        client={client}
+        workspaceId="workspace-company"
+        entry={{
+          location: {
+            view: 'companies',
+            mode: 'duplicates',
+            resourceId: candidate.candidateId,
+          },
+          cursorChain: [],
+        }}
+        onBack={back}
+        onNavigate={vi.fn()}
+      />,
+    )
+    await user.type(await screen.findByLabelText('Rationale'), 'Separate entities.')
+    await user.click(screen.getByRole('button', { name: 'Mark distinct' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The candidate or a Company changed. Refresh and review the pair again.',
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(back).not.toHaveBeenCalled()
   })
 })
