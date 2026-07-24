@@ -431,6 +431,10 @@ export function CompaniesWorkspace({
           workspaceId={workspaceId}
           onClose={onBack}
           onChanged={() => setReloadKey((value) => value + 1)}
+          onOpenCompany={(companyId) => onNavigate({
+            view: 'companies',
+            resourceId: companyId,
+          })}
         />
       ) : null}
     </div>

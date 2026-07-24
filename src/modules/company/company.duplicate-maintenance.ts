@@ -19,7 +19,10 @@ import {
   companyDuplicateMaintenanceWork,
   workspaceCompanies,
 } from './company.schema'
-import type { CompanyTx } from './company.command-support'
+import {
+  lockCompanyWorkspace,
+  type CompanyTx,
+} from './company.command-support'
 import {
   COMPANY_DUPLICATE_MATCHER_VERSION,
   companyDuplicateFingerprint,
@@ -85,6 +88,7 @@ async function seedMaintenanceBatch(
   timestamp: string,
 ) {
   await database.transaction(async (tx) => {
+    await lockCompanyWorkspace(tx, workspaceId)
     let [state] = await tx
       .select()
       .from(companyDuplicateIndexState)
@@ -154,6 +158,7 @@ async function processNextWork(
   },
 ): Promise<boolean> {
   return database.transaction(async (tx) => {
+    await lockCompanyWorkspace(tx, workspaceId)
     const [indexState] = await tx
       .select({ workspaceId: companyDuplicateIndexState.workspaceId })
       .from(companyDuplicateIndexState)

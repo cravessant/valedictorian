@@ -60,8 +60,8 @@ importers:
         specifier: ^1.2.12
         version: 1.2.12(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@sparxie/sdk':
-        specifier: 0.29.0
-        version: 0.29.0
+        specifier: 0.29.1
+        version: 0.29.1
       '@sparxie/valedictorian-connectors-jobright':
         specifier: 0.18.1
         version: 0.18.1
@@ -1833,6 +1833,10 @@ packages:
 
   '@sparxie/sdk@0.29.0':
     resolution: {integrity: sha512-ghTgwAVhBr/cVgE5z0m6chHt0C04784Wil+IRq6UmqY0nOMAg1afnDdQOXx367e8oYKBUfEDkVkvNoGIgar+MA==}
+    engines: {node: '>=22.12.0'}
+
+  '@sparxie/sdk@0.29.1':
+    resolution: {integrity: sha512-LfoX7FA0pJOQj7qkKOR2Epihk9zgRHbbhmXWtvGY0SXRzB/rEhaZhi2aQ63JAAvoYBKlMsOdEP2J4X+jl9n+6w==}
     engines: {node: '>=22.12.0'}
 
   '@sparxie/valedictorian-connectors-core@0.18.1':
@@ -5221,6 +5225,10 @@ snapshots:
       - '@types/node'
 
   '@sparxie/sdk@0.29.0':
+    dependencies:
+      zod: 4.4.3
+
+  '@sparxie/sdk@0.29.1':
     dependencies:
       zod: 4.4.3
 

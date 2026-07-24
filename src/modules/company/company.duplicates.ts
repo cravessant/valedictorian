@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm'
 import {
   companyDuplicateListInputSchema,
+  companySearchResultSchema,
   markCompaniesDistinctInputSchema,
   type CompanyCommandFailure,
   type CompanyDuplicateCandidateRow,
@@ -350,6 +351,26 @@ async function candidatePresentation(
   exec: Pick<PgliteDatabase, 'select'> | CompanyTx,
   candidate: CandidateRow,
 ): Promise<CompanyDuplicateCandidateRow> {
+  if (
+    candidate.status === 'resolved_by_merge'
+    && candidate.lowerResolvedSnapshotJson
+    && candidate.higherResolvedSnapshotJson
+  ) {
+    return {
+      candidateId: candidate.id,
+      candidateRevision: candidate.revision,
+      left: companySearchResultSchema.parse(
+        JSON.parse(candidate.lowerResolvedSnapshotJson),
+      ),
+      right: companySearchResultSchema.parse(
+        JSON.parse(candidate.higherResolvedSnapshotJson),
+      ),
+      score: candidate.score / 10_000,
+      reasons: reasonCodes(candidate.reasonCodesJson),
+      status: 'resolved_by_merge',
+      updatedAt: candidate.updatedAt,
+    }
+  }
   const companies = await exec
     .select({
       id: workspaceCompanies.id,

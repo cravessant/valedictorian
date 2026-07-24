@@ -4,6 +4,7 @@ import type { Clock, UuidV7Generator } from '../../db/uuidv7'
 import type { CompanyCoverageService } from './company.coverage'
 import { createCompanyCommands } from './company.commands'
 import { createCompanyDuplicateService } from './company.duplicates'
+import { createCompanyMergeService } from './company.merge'
 import { createCompanyQueries } from './company.queries'
 import { createCompanyRelatedQueries } from './company.related-queries'
 
@@ -28,8 +29,10 @@ export function createPgliteCompanyService(
     ...(options.now ? { now: options.now } : {}),
     ...(options.newId ? { newId: options.newId } : {}),
   })
-  const mergeUnavailable = () =>
-    Promise.reject(new Error('Company merging is not available.'))
+  const merge = createCompanyMergeService(database, options.workspaceId, {
+    ...(options.now ? { now: options.now } : {}),
+    ...(options.newId ? { newId: options.newId } : {}),
+  })
 
   return {
     capability: {
@@ -54,7 +57,7 @@ export function createPgliteCompanyService(
       list: (...args) => duplicates.list(...args),
       get: (...args) => duplicates.get(...args),
       markDistinct: (...args) => duplicates.markDistinct(...args),
-      merge: mergeUnavailable,
+      merge,
     },
     assignedJobs: { list: (...args) => related.listAssignedJobs(...args) },
     history: { list: (...args) => related.listHistory(...args) },

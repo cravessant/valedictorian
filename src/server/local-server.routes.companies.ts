@@ -11,6 +11,7 @@ import {
   archiveCompanyInputSchema,
   removeCompanyAliasInputSchema,
   markCompaniesDistinctInputSchema,
+  mergeCompaniesInputSchema,
   reassignJobCompanyInputSchema,
   restoreCompanyInputSchema,
   updateCompanyAliasInputSchema,
@@ -78,6 +79,15 @@ export async function handleCompanyRoutes({
     writeJson(response, 200, await client.companies.previewMatches(
       parseLocalHttpInput(() => companyMatchPreviewInputSchema.parse(body)),
     ))
+    return true
+  }
+  if (method === 'POST' && pathname === '/v1/companies/merge') {
+    const body = await readJsonBody(request)
+    const input = parseLocalHttpInput(() => mergeCompaniesInputSchema.parse({
+      ...asRecord(body),
+      workspaceId,
+    }))
+    writeJson(response, 200, await client.companies.duplicates.merge(input))
     return true
   }
   if (pathname === '/v1/companies') {

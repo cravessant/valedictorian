@@ -97,6 +97,24 @@ function makeClient() {
   const markDistinct = vi.fn(async () => ({
     status: 'marked_distinct',
   }) as never)
+  const merge = vi.fn(async () => ({
+    status: 'merged',
+    canonical: {
+      ...candidate.left,
+      id: candidate.left.companyId,
+      aliases: [],
+      notes: null,
+    },
+    merged: {
+      ...candidate.right,
+      id: candidate.right.companyId,
+      aliases: [],
+      notes: null,
+      status: 'merged',
+      mergedIntoCompanyId: candidate.left.companyId,
+    },
+    reassignedJobCount: 2,
+  }) as never)
   const capability = vi.fn(async () => ({ status: 'ready' as const }))
   return {
     client: {
@@ -106,6 +124,7 @@ function makeClient() {
         list: duplicateList,
         get: duplicateGet,
         markDistinct,
+        merge,
       },
       get,
       assignedJobs: {
@@ -127,6 +146,7 @@ function makeClient() {
     get,
     list,
     markDistinct,
+    merge,
   }
 }
 
@@ -467,7 +487,7 @@ describe('CompaniesWorkspace', () => {
     })
   })
 
-  it('submits exact candidate and Company revisions without offering merge', async () => {
+  it('submits exact candidate and Company revisions when marking distinct', async () => {
     const user = userEvent.setup()
     const { client, duplicateGet, markDistinct } = makeClient()
     const back = vi.fn()
@@ -494,7 +514,7 @@ describe('CompaniesWorkspace', () => {
     expect(duplicateGet).toHaveBeenCalledWith(candidate.candidateId)
     expect(screen.getAllByText('Northstar Robotics')).toHaveLength(2)
     expect(screen.getAllByText('Northstar Robotix')).toHaveLength(1)
-    expect(screen.queryByRole('button', { name: /merge/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Merge Companies' })).toBeDisabled()
     const rationale = screen.getByLabelText('Rationale')
     expect(rationale).toHaveFocus()
     await user.type(rationale, 'Separate legal entities.')
@@ -510,6 +530,98 @@ describe('CompaniesWorkspace', () => {
       rationale: 'Separate legal entities.',
     })))
     expect(back).toHaveBeenCalledOnce()
+  })
+
+  it('requires an explicit winner and no-undo confirmation before merging', async () => {
+    const user = userEvent.setup()
+    const { client, merge } = makeClient()
+    const navigate = vi.fn()
+    render(
+      <CompaniesWorkspace
+        client={client}
+        workspaceId="workspace-company"
+        entry={{
+          location: {
+            view: 'companies',
+            mode: 'duplicates',
+            resourceId: candidate.candidateId,
+          },
+          cursorChain: [],
+        }}
+        onBack={vi.fn()}
+        onNavigate={navigate}
+      />,
+    )
+
+    await user.type(await screen.findByLabelText('Rationale'), 'Same legal entity.')
+    await user.click(screen.getByLabelText('Keep Northstar Robotics'))
+    const confirmation = screen.getByLabelText('Type Northstar Robotix to confirm')
+    await user.type(confirmation, 'Northstar Robotix')
+    await user.click(screen.getByLabelText(/permanent and has no undo/i))
+    await user.click(screen.getByRole('button', { name: 'Merge Companies' }))
+
+    await waitFor(() => expect(merge).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: 'workspace-company',
+      winnerCompanyId: candidate.left.companyId,
+      expectedWinnerCompanyRevision: candidate.left.revision,
+      loserCompanyId: candidate.right.companyId,
+      expectedLoserCompanyRevision: candidate.right.revision,
+      rationale: 'Same legal entity.',
+      loserDisplayNameConfirmation: candidate.right.displayName,
+      acknowledgeNoUndo: true,
+    })))
+    expect(await screen.findByText('Companies merged')).toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: 'View canonical Company' }))
+    expect(navigate).toHaveBeenLastCalledWith({
+      view: 'companies',
+      resourceId: candidate.left.companyId,
+    })
+  })
+
+  it('keeps the review modal unchanged when a merge is stale', async () => {
+    const user = userEvent.setup()
+    const { client, merge } = makeClient()
+    merge.mockResolvedValueOnce({
+      status: 'blocked',
+      failure: {
+        kind: 'stale_guard',
+        blocker: {
+          code: 'impossible_state',
+          message: 'A Company changed. Refresh and review the merge again.',
+        },
+        recovery: { action: 'refresh_and_resubmit', guards: [] },
+      },
+    } as never)
+    render(
+      <CompaniesWorkspace
+        client={client}
+        workspaceId="workspace-company"
+        entry={{
+          location: {
+            view: 'companies',
+            mode: 'duplicates',
+            resourceId: candidate.candidateId,
+          },
+          cursorChain: [],
+        }}
+        onBack={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    )
+
+    await user.type(await screen.findByLabelText('Rationale'), 'Same entity.')
+    await user.click(screen.getByLabelText('Keep Northstar Robotics'))
+    await user.type(
+      screen.getByLabelText('Type Northstar Robotix to confirm'),
+      'Northstar Robotix',
+    )
+    await user.click(screen.getByLabelText(/permanent and has no undo/i))
+    await user.click(screen.getByRole('button', { name: 'Merge Companies' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'A Company changed. Refresh and review the merge again.',
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Northstar Robotix')).toBeInTheDocument()
   })
 
   it('keeps the review modal open when stale guards block the decision', async () => {

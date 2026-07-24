@@ -12,6 +12,7 @@ import {
   companyHistory,
   workspaceCompanies,
 } from './company.schema'
+import { workspaces } from '../../db/workspaces.schema'
 import {
   lifecycleFailure,
   selectCompany,
@@ -33,6 +34,7 @@ export type CompanyOperation =
   | 'restore'
   | 'reassign'
   | 'mark_distinct'
+  | 'merge'
 
 export class CompanyCommandConflictError extends Error {
   readonly statusCode = 409
@@ -188,6 +190,7 @@ export async function runCompanyCommand<Result extends { status: string }>(
   execute: (tx: CompanyTx) => Promise<Result>,
 ): Promise<Result> {
   return database.transaction(async (tx) => {
+    await lockCompanyWorkspace(tx, input.workspaceId)
     const [receipt] = await tx
       .select({
         operation: companyCommandReceipts.operation,
@@ -222,6 +225,19 @@ export async function runCompanyCommand<Result extends { status: string }>(
     }
     return result
   })
+}
+
+export async function lockCompanyWorkspace(
+  exec: Pick<PgliteDatabase, 'select'>,
+  workspaceId: string,
+): Promise<void> {
+  const [workspace] = await exec
+    .select({ id: workspaces.id })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1)
+    .for('update')
+  if (!workspace) throw new Error('Company workspace does not exist.')
 }
 
 function stableJson(value: unknown): string {

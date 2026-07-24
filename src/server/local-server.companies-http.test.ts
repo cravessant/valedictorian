@@ -165,8 +165,8 @@ describe.sequential('Workspace Company HTTP surface', () => {
     expect(unscoped.status).toBe(404)
   })
 
-  it('serves only the canonical duplicate review routes and does not expose merge', async () => {
-    const { client, server } = await setup()
+  it('serves the canonical duplicate review and manual merge routes', async () => {
+    const { client } = await setup()
     for (const [key, displayName] of [
       ['left', 'Canonical Duplicate Company'],
       ['right', 'Canonical Duplicate Co'],
@@ -198,14 +198,42 @@ describe.sequential('Workspace Company HTTP surface', () => {
       candidate: { status: 'marked_distinct' },
     })
 
-    const merge = await fetch(
-      `${server.url}/v1/workspaces/${WORKSPACE}/companies/merge`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
+    expect(await client.companies.duplicates.merge({
+      ...context('http-merge-whitespace-confirmation'),
+      winnerCompanyId: candidate.left.companyId,
+      expectedWinnerCompanyRevision: candidate.left.revision,
+      loserCompanyId: candidate.right.companyId,
+      expectedLoserCompanyRevision: candidate.right.revision,
+      loserDisplayNameConfirmation: ` ${candidate.right.displayName} `,
+      acknowledgeNoUndo: true,
+    })).toMatchObject({
+      status: 'blocked',
+      failure: {
+        kind: 'lifecycle_failure',
+        blocker: {
+          code: 'invalid_input',
+          field: 'loserDisplayNameConfirmation',
+        },
       },
-    )
-    expect(merge.status).toBe(404)
+    })
+
+    expect(await client.companies.duplicates.merge({
+      ...context('http-merge'),
+      winnerCompanyId: candidate.left.companyId,
+      expectedWinnerCompanyRevision: candidate.left.revision,
+      loserCompanyId: candidate.right.companyId,
+      expectedLoserCompanyRevision: candidate.right.revision,
+      loserDisplayNameConfirmation: candidate.right.displayName,
+      acknowledgeNoUndo: true,
+    })).toMatchObject({
+      status: 'merged',
+      canonical: { id: candidate.left.companyId, status: 'active' },
+      merged: {
+        id: candidate.right.companyId,
+        status: 'merged',
+        mergedIntoCompanyId: candidate.left.companyId,
+      },
+      redirectPath: [candidate.left.companyId],
+    })
   })
 })

@@ -130,6 +130,8 @@ export const companyDuplicateCandidates = pgTable(
     matcherVersion: text('matcher_version').notNull(),
     lowerInputFingerprint: text('lower_input_fingerprint').notNull(),
     higherInputFingerprint: text('higher_input_fingerprint').notNull(),
+    lowerResolvedSnapshotJson: text('lower_resolved_snapshot_json'),
+    higherResolvedSnapshotJson: text('higher_resolved_snapshot_json'),
     status: text('status').notNull(),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
@@ -187,6 +189,14 @@ export const companyDuplicateCandidates = pgTable(
       sql`length(${table.lowerInputFingerprint}) = 64
         and length(${table.higherInputFingerprint}) = 64`,
     ),
+    resolvedSnapshotCheck: check(
+      'chk_company_duplicate_candidates_resolved_snapshots',
+      sql`(${table.lowerResolvedSnapshotJson} is null
+          and ${table.higherResolvedSnapshotJson} is null)
+        or (${table.status} = 'resolved_by_merge'
+          and length(${table.lowerResolvedSnapshotJson}) between 2 and 4096
+          and length(${table.higherResolvedSnapshotJson}) between 2 and 4096)`,
+    ),
     statusCheck: check(
       'chk_company_duplicate_candidates_status',
       sql`${table.status} in ('open','marked_distinct','resolved_by_merge')`,
@@ -219,7 +229,7 @@ export const companyDuplicateCandidateReviews = pgTable(
       .on(table.candidateId, table.candidateRevision),
     decisionCheck: check(
       'chk_company_duplicate_candidate_reviews_decision',
-      sql`${table.decision} = 'mark_distinct'`,
+      sql`${table.decision} in ('mark_distinct','merge')`,
     ),
     revisionCheck: check(
       'chk_company_duplicate_candidate_reviews_revision',
@@ -487,7 +497,7 @@ export const companyCommandReceipts = pgTable(
     ),
     operationCheck: check(
       'chk_company_command_receipts_operation',
-      sql`${table.operation} in ('create','update','notes','alias_add','alias_update','alias_remove','archive','restore','reassign','mark_distinct')`,
+      sql`${table.operation} in ('create','update','notes','alias_add','alias_update','alias_remove','archive','restore','reassign','mark_distinct','merge')`,
     ),
     fingerprintCheck: check(
       'chk_company_command_receipts_fingerprint',

@@ -21,6 +21,7 @@ import {
   jobCompanyAssignments,
   workspaceCompanies,
 } from './company.schema'
+import { lockCompanyWorkspace } from './company.command-support'
 
 type Tx = Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0]
 type CapabilityReason =
@@ -75,6 +76,7 @@ export function createCompanyCoverageService(
     },
     backfill = false,
   ): Promise<void> {
+    await lockCompanyWorkspace(exec, input.workspaceId)
     const [existing] = await exec
       .select({ jobId: jobCompanyAssignments.jobId })
       .from(jobCompanyAssignments)
