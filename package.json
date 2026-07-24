@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "tsx scripts/run-supervised.ts dev",
+    "proof:dev": "tsx scripts/run-cli-ui-dev-proof.ts",
     "proof:electron": "tsx scripts/run-electron-native-ui-proof.ts",
     "validate:app": "tsx scripts/run-supervised.ts validation",
     "validate:isolated": "tsx scripts/run-isolated-validation.ts",
@@ -79,6 +80,7 @@
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
+    "@sparxie/valedictorian-cli": "file:vendor/valedictorian-cli",
     "@sparxie/valedictorian-connectors-core": "0.18.1",
     "@sparxie/valedictorian-connectors-test-harness": "0.18.1",
     "@testing-library/jest-dom": "^6.9.1",

@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 dist
+!vendor/valedictorian-cli/dist/
+!vendor/valedictorian-cli/dist/**
 dist-electron
 dist-ssr
 release

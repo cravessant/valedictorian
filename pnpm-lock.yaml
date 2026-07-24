@@ -138,6 +138,9 @@ importers:
       '@electron/asar':
         specifier: 3.4.1
         version: 3.4.1
+      '@sparxie/valedictorian-cli':
+        specifier: file:vendor/valedictorian-cli
+        version: file:vendor/valedictorian-cli(typescript@7.0.2)
       '@sparxie/valedictorian-connectors-core':
         specifier: 0.18.1
         version: 0.18.1
@@ -1839,6 +1842,11 @@ packages:
     resolution: {integrity: sha512-LfoX7FA0pJOQj7qkKOR2Epihk9zgRHbbhmXWtvGY0SXRzB/rEhaZhi2aQ63JAAvoYBKlMsOdEP2J4X+jl9n+6w==}
     engines: {node: '>=22.12.0'}
 
+  '@sparxie/valedictorian-cli@file:vendor/valedictorian-cli':
+    resolution: {directory: vendor/valedictorian-cli, type: directory}
+    engines: {node: '>=22.12.0'}
+    hasBin: true
+
   '@sparxie/valedictorian-connectors-core@0.18.1':
     resolution: {integrity: sha512-dwcfot9YO3h+dQi3K+ezqVFmydUONAL1V+Fg7s+9SZTrDbgsgWjmjGvx18W92YOSAeRDRUbPJWNqmHOF5asMWA==}
 
@@ -1847,6 +1855,9 @@ packages:
 
   '@sparxie/valedictorian-connectors-test-harness@0.18.1':
     resolution: {integrity: sha512-3l68O5KsscE5v5j3GowZRKEb2Lx1WI6jVshQ/BAOmSwZHrPz8Hwt74/29VdaFvnQOzUTbPcmLJp2PlGphKtFsQ==}
+
+  '@stricli/core@1.2.7':
+    resolution: {integrity: sha512-a0HxA/cSWjqHj/9GM+cfc/zGNmBdxVTQQpHIEvY1AbDEgo4ZU84cTCbtywYEQOHw2wIc6Vu+PKv+ZQoqZwkHnQ==}
 
   '@tailwindcss/node@4.3.0':
     resolution: {integrity: sha512-aFb4gUhFOgdh9AXo4IzBEOzBkkAxm9VigwDJnMIYv3lcfXCJVesNfbEaBl4BNgVRyid92AmdviqwBUBRKSeY3g==}
@@ -5232,6 +5243,14 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
+  '@sparxie/valedictorian-cli@file:vendor/valedictorian-cli(typescript@7.0.2)':
+    dependencies:
+      '@sparxie/sdk': 0.29.1
+      '@stricli/core': 1.2.7
+      cosmiconfig: 9.0.2(typescript@7.0.2)
+    transitivePeerDependencies:
+      - typescript
+
   '@sparxie/valedictorian-connectors-core@0.18.1':
     dependencies:
       '@sparxie/sdk': 0.29.0
@@ -5244,6 +5263,8 @@ snapshots:
     dependencies:
       '@sparxie/sdk': 0.29.0
       '@sparxie/valedictorian-connectors-core': 0.18.1
+
+  '@stricli/core@1.2.7': {}
 
   '@tailwindcss/node@4.3.0':
     dependencies:

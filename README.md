@@ -80,6 +80,27 @@ pnpm run validate:isolated -- --timeout-ms 20000
 Failures retain a bounded `diagnostics.json` in that evidence directory rather
 than the disposable workspace or user-data root.
 
+### Complete development proof
+
+```sh
+pnpm run proof:dev
+```
+
+This is the single deterministic cross-surface development proof. It owns an
+isolated fixture lifecycle, launches the current-worktree Electron renderer,
+and invokes the repository-pinned Valedictorian CLI directly from its local
+package—never from `PATH`. The CLI first reads the unresolved fixture Capture
+through the ready session manifest's exact loopback API and explicit workspace.
+The UI completes that Capture, the CLI verifies its exact revision and evidence
+lineage in the resulting Job and Workspace Company, then performs one guarded
+Company display-name mutation. Finally, the UI observes the CLI value.
+
+The retained `cli-ui-dev-proof.json` binds the run, workspace, fixture, app
+build, CLI `0.1.0-alpha.18` commit and executable hash, structured assertions,
+bounded diagnostics, and app-only before/after PNG hashes. The command uses no
+live provider or credentials and preserves the isolated lifecycle's teardown on
+success, failure, timeout, or signal. Headless Linux runs under Xvfb.
+
 ### Electron native UI proof
 
 ```sh

@@ -1,0 +1,39 @@
+{
+  "name": "@sparxie/valedictorian-cli",
+  "version": "0.1.0-alpha.18",
+  "description": "Command-line client for Valedictorian.",
+  "author": "Keni",
+  "license": "MIT",
+  "type": "module",
+  "valedictorianSourceCommit": "147eadc5fa84c560f32c0392e68f8c7627ccec47",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "bin": {
+    "valedictorian-cli": "dist/valedictorian.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cravessant/valedictorian.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cravessant/valedictorian/issues"
+  },
+  "homepage": "https://github.com/cravessant/valedictorian#readme",
+  "dependencies": {
+    "@sparxie/sdk": "0.29.1",
+    "@stricli/core": "1.2.7",
+    "cosmiconfig": "9.0.2"
+  }
+}

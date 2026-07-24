@@ -100,7 +100,7 @@ describe('CI workflow', () => {
     expect(workflow).toMatch(/quality:\n[\s\S]*?name: Draft Quality/)
     expect(workflow).toContain(draftOnly)
     expect(workflow.match(new RegExp(readyOrMain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')))
-      .toHaveLength(2)
+      .toHaveLength(3)
   })
 
   it('provides one stable aggregate gate for draft and fully verified runs', () => {

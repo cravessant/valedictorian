@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { isolatedValidationFixture } from '../src/runtime/isolated-validation.fixture-contract'
+import { cliUiDevProofCompanyName } from './cli-ui-dev-proof-cli'
 import {
   runElectronNativeUiProof,
   type ElectronNativeUiDriver,
@@ -89,11 +90,44 @@ describe('Electron native UI proof', () => {
     expect(result.outcome).toBe('failed')
     expect(result.diagnostics.assertionFailure).toContain('main window web contents')
   })
+
+  it('runs cross-surface hooks around completion and observes the mutated Company value', async () => {
+    const evidenceDirectory = temporaryDirectory()
+    const driver = new FakeNativeUiDriver()
+    let unresolvedRead = false
+    let cliMutation = false
+
+    const result = await runElectronNativeUiProof({
+      build: { branch: 'feat/dev-proof', commit: '1234567', worktree: { state: 'clean' } },
+      driver,
+      evidenceDirectory,
+      fixture: isolatedValidationFixture,
+      rendererConsole: rendererConsole(),
+      workflow: {
+        async afterJobVisible() {
+          cliMutation = true
+          driver.renameCompany(cliUiDevProofCompanyName)
+        },
+        async beforeCompletion() {
+          unresolvedRead = true
+        },
+        expectedCompanyName: cliUiDevProofCompanyName,
+      },
+      workspace: { id: 'workspace-proof', path: '/tmp/workspace-proof' },
+    })
+
+    expect(result.outcome).toBe('completed')
+    expect(unresolvedRead).toBe(true)
+    expect(cliMutation).toBe(true)
+    expect(driver.lastCompanyExpectation).toBe(cliUiDevProofCompanyName)
+  })
 })
 
 class FakeNativeUiDriver implements ElectronNativeUiDriver {
   populatedBeforeScreenshot = false
   readonly screenshots: ProofScreenshot['name'][] = []
+  lastCompanyExpectation = ''
+  private companyDisplayName = 'Validation Company'
   private companySelected = false
   private dialogOpen = false
   private jobCreated = false
@@ -149,7 +183,12 @@ class FakeNativeUiDriver implements ElectronNativeUiDriver {
     if (target.name === 'Complete Capture into a Job' && expectedText === 'Raw evidence (1)') {
       this.provenanceLoaded = true
     }
+    if (target.name === 'Companies') this.lastCompanyExpectation = expectedText
     await this.expectText(target, expectedText)
+  }
+
+  renameCompany(displayName: string) {
+    this.companyDisplayName = displayName
   }
 
   private provenanceLoaded = false
@@ -177,7 +216,7 @@ class FakeNativeUiDriver implements ElectronNativeUiDriver {
       return this.jobCreated ? 'Job created Validation Engineer · Validation Company' : 'Validation Engineer'
     }
     if (target.name === 'Jobs') return this.jobCreated ? 'Validation Engineer Validation Company' : ''
-    if (target.name === 'Companies') return this.jobCreated ? 'Validation Company' : ''
+    if (target.name === 'Companies') return this.jobCreated ? this.companyDisplayName : ''
     return ''
   }
 }

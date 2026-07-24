@@ -11,6 +11,10 @@ import {
   createElectronNativeUiDriver,
   runElectronNativeUiProof,
 } from './native-ui-proof'
+import {
+  assertCliUiDevProofSessionIdentity,
+  runCliUiDevProof,
+} from './cli-ui-dev-proof'
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
 import { createRuntimeQuitBarrier, stopRuntimeLifecycle } from './runtime-lifecycle'
@@ -317,6 +321,15 @@ function createMainWindow() {
             if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_FAIL_ELECTRON === '1') {
               reportValidationTerminalState('child_failure')
               app.exit(1)
+              return
+            }
+            if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_DEV_PROOF === '1') {
+              void runIsolatedCliUiDevProof(
+                mainWindow,
+                validationManifest,
+                validationWorkspace,
+                reportValidationTerminalState,
+              )
               return
             }
             if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_PROOF === '1') {
@@ -837,6 +850,41 @@ async function runIsolatedElectronNativeUiProof(
     app.exit(1)
   } catch (error) {
     console.error('Electron native UI proof failed.', error)
+    reportTerminalState('child_failure')
+    app.exit(1)
+  }
+}
+
+async function runIsolatedCliUiDevProof(
+  window: BrowserWindow,
+  manifest: IsolatedValidationManifest | null,
+  workspace: WorkspaceSummary,
+  reportTerminalState: (outcome: 'child_failure' | 'completed') => void,
+) {
+  try {
+    const session = readIsolatedValidationEnvironment()
+    if (!session || !manifest) throw new Error('Development proof requires an isolated session.')
+    assertCliUiDevProofSessionIdentity({
+      manifest,
+      session,
+      windowReady: !window.isDestroyed() && !window.webContents.isDestroyed(),
+      workspace,
+    })
+    const proof = await runCliUiDevProof({
+      driver: createElectronNativeUiDriver(window.webContents),
+      evidenceDirectory: session.evidenceDirectory,
+      manifest,
+      rendererConsole: captureRendererConsole(window.webContents),
+    })
+    if (proof.outcome === 'completed') {
+      reportTerminalState('completed')
+      window.close()
+      return
+    }
+    reportTerminalState('child_failure')
+    app.exit(1)
+  } catch (error) {
+    console.error('CLI/UI development proof failed.', error)
     reportTerminalState('child_failure')
     app.exit(1)
   }

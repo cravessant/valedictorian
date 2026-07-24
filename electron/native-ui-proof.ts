@@ -99,7 +99,14 @@ export interface RunElectronNativeUiProofOptions {
     readonly version: string
   }
   readonly rendererConsole: RendererConsoleCapture
+  readonly workflow?: ElectronNativeUiWorkflowHooks
   readonly workspace: ElectronNativeUiProofResult['workspace']
+}
+
+export interface ElectronNativeUiWorkflowHooks {
+  readonly afterJobVisible?: () => Promise<void>
+  readonly beforeCompletion?: () => Promise<void>
+  readonly expectedCompanyName?: string
 }
 
 export interface RendererConsoleCapture {
@@ -188,6 +195,7 @@ export async function runElectronNativeUiProof({
   evidenceDirectory,
   fixture,
   rendererConsole,
+  workflow,
   workspace,
 }: RunElectronNativeUiProofOptions): Promise<ElectronNativeUiProofResult> {
   const startedAt = Date.now()
@@ -202,7 +210,7 @@ export async function runElectronNativeUiProof({
   try {
     await runElectronNativeUiWorkflow(driver, assertions, async (screenshot) => {
       screenshots.push(writeScreenshot(evidenceDirectory, screenshot))
-    })
+    }, workflow)
   } catch (error) {
     failure = error
     try {
@@ -252,11 +260,13 @@ export async function runElectronNativeUiWorkflow(
   driver: ElectronNativeUiDriver,
   assertions: ElectronNativeUiProofAssertions,
   onScreenshot: (screenshot: ProofScreenshot) => Promise<void> | void,
+  hooks: ElectronNativeUiWorkflowHooks = {},
 ) {
   const captureTable: SemanticTarget = { name: 'Captures', role: 'table' }
   const jobsTable: SemanticTarget = { name: 'Jobs', role: 'table' }
   const companiesTable: SemanticTarget = { name: 'Companies', role: 'table' }
   await driver.waitFor({ name: 'Complete Job information', role: 'button' })
+  await hooks.beforeCompletion?.()
   await driver.click({ name: 'Complete Job information', role: 'button' })
   await driver.waitFor(completionDialog)
   await driver.waitForText(completionDialog, 'Validation Engineer')
@@ -299,10 +309,14 @@ export async function runElectronNativeUiWorkflow(
   await driver.waitForText(jobsTable, 'Validation Engineer')
   await driver.waitForText(jobsTable, 'Validation Company')
   assertions.jobVisible = true
+  await hooks.afterJobVisible?.()
 
   await driver.click({ name: 'Companies', role: 'button', within: applicationViews })
   await driver.waitFor(companiesTable)
-  await driver.waitForText(companiesTable, 'Validation Company')
+  await driver.waitForText(
+    companiesTable,
+    hooks.expectedCompanyName ?? 'Validation Company',
+  )
   assertions.workspaceCompanyVisible = true
   await onScreenshot(await driver.captureAppOnlyScreenshot('after-completion'))
 }

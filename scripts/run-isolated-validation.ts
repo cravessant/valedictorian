@@ -181,12 +181,13 @@ async function prepareEnvironment(options: ValidationOptions) {
     VALEDICTORIAN_ISOLATED_VALIDATION_WORKTREE_FINGERPRINT: build.fingerprint,
     VALEDICTORIAN_ISOLATED_VALIDATION_WORKTREE_STATE: build.state,
     ...(options.closeAfterReady ? { VALEDICTORIAN_ISOLATED_VALIDATION_CLOSE_AFTER_READY: '1' } : {}),
+    ...(options.devProof ? { VALEDICTORIAN_ISOLATED_VALIDATION_DEV_PROOF: '1' } : {}),
     ...(options.electronNativeProof ? { VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_PROOF: '1' } : {}),
     ...(options.failure === 'electron' ? { VALEDICTORIAN_ISOLATED_VALIDATION_FAIL_ELECTRON: '1' } : {}),
     ...(options.readinessDelayMs === 0
       ? {}
       : { VALEDICTORIAN_ISOLATED_VALIDATION_READINESS_DELAY_MS: String(options.readinessDelayMs) }),
-    VALEDICTORIAN_MODE: 'local-desktop',
+    VALEDICTORIAN_MODE: options.devProof ? 'local-shared' : 'local-desktop',
     VALEDICTORIAN_SEED_DATA: 'none',
     VALEDICTORIAN_USER_DATA_PATH: userDataPath,
     VITE_VALEDICTORIAN_BUILD_IDENTITY: `validation ${build.branch}@${build.commit} ${build.state}`,
@@ -258,6 +259,7 @@ function requireTemporaryRoot() {
 function readOptions(args: readonly string[]): ValidationOptions {
   let timeoutMs = 900_000
   let closeAfterReady = false
+  let devProof = false
   let electronNativeProof = false
   let failure: ValidationOptions['failure']
   let readinessDelayMs = 0
@@ -271,6 +273,8 @@ function readOptions(args: readonly string[]): ValidationOptions {
       closeAfterReady = true
     } else if (argument === '--proof-electron') {
       electronNativeProof = true
+    } else if (argument === '--proof-dev') {
+      devProof = true
     } else if (argument === '--test-failure') {
       const value = args[++index]
       if (
@@ -289,14 +293,17 @@ function readOptions(args: readonly string[]): ValidationOptions {
       throw new ValidationFailure('invalid_arguments', 'arguments', 'The isolated validation arguments are invalid.')
     }
   }
-  if (closeAfterReady && electronNativeProof) {
+  if (
+    (closeAfterReady && (devProof || electronNativeProof))
+    || (devProof && electronNativeProof)
+  ) {
     throw new ValidationFailure(
       'invalid_arguments',
       'arguments',
-      'The isolated validation proof cannot close before Electron completes.',
+      'The isolated validation proof modes are mutually exclusive and cannot close early.',
     )
   }
-  return { closeAfterReady, electronNativeProof, failure, readinessDelayMs, timeoutMs }
+  return { closeAfterReady, devProof, electronNativeProof, failure, readinessDelayMs, timeoutMs }
 }
 
 function readBoundedInteger(value: string | undefined, name: string, minimum: number, maximum: number) {
@@ -356,6 +363,7 @@ function sanitizeFailureText(value: string) {
 
 interface ValidationOptions {
   readonly closeAfterReady: boolean
+  readonly devProof: boolean
   readonly electronNativeProof: boolean
   readonly failure?: 'anchor' | 'electron' | 'fixture' | 'premature_completion' | 'setup'
   readonly readinessDelayMs: number
