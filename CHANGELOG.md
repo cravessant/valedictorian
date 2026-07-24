@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.0-alpha.54
+
+- Add addressable workspace resources and complete workspace Company management, including
+  reassignment, duplicate proposals, and irreversible manual merges.
+- Materialize Capture revisions, resolve provider destinations through durable host work, and
+  complete Captures into Jobs atomically with truthful next-action state.
+- Consume the organization-scoped Sparxie SDK and connector packages.
+- Add a packaged manual-workflow proof covering the release build's critical lifecycle path.
+
+## 0.1.0-alpha.53
+
+- Restore connector settings controls and dynamic provider option editing.
+
+## 0.1.0-alpha.52
+
+- Unify connector validation, settings, and schedule persistence behind a single save action.
+
+## 0.1.0-alpha.51
+
+- Restore desktop navigation and release controls around the lifecycle workbench.
+
 ## 0.1.0-alpha.50
 
 - Restore the desktop application chrome and persistent navigation sidebar around the canonical

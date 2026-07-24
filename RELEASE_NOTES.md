@@ -1,20 +1,16 @@
-# Valedictorian 0.1.0-alpha.50
+# Valedictorian 0.1.0-alpha.54
 
-This release restores the desktop application chrome around the canonical job
-lifecycle. Captures, Jobs, Opportunities, and Applications are again directly
-reachable from the persistent sidebar, with the active sidebar destination kept
-in sync with the lifecycle rail inside the workbench. Connector Runs remains a
-first-class navigation destination and continues to round-trip into run-filtered
-Captures and exact provenance targets.
+This release completes the next local lifecycle slice from captured provider
+evidence through a usable Job. Captures now materialize revisions, resolve
+provider destinations through durable host work, and complete into Jobs
+atomically while presenting truthful next actions.
 
-Desktop sidebar collapse/expand is persisted through workspace settings, narrow
-windows use the responsive drawer, and the temporary centered contract
-placeholder has been removed. The underlying lifecycle, Jobright country
-evidence, and clean PGlite cutover behavior from alpha.49 are unchanged.
+Workspace Company resources are addressable and manageable in the desktop app.
+Jobs can be reassigned, duplicate Company candidates can be reviewed, and an
+explicit irreversible merge preserves the chosen canonical Company.
 
-## Human-gated dependency order
-
-The app intentionally remains on the hosted-installable `sparxie@0.27.1` so a
-frozen install succeeds today; the adopted connector core `0.18.0` carries its
-exact `sparxie@0.27.0` ABI nested beneath it. A human must publish Sparxie
-`0.28.0` before any later Valedictorian change raises that dependency.
+The packaged application now carries an automated manual-workflow proof for the
+critical desktop path. The app also consumes the released organization-scoped
+`@sparxie/sdk@0.29.1` and Valedictorian connector packages at `0.18.1`; all
+exact pinned package versions are published and represented in the frozen
+lockfile.
