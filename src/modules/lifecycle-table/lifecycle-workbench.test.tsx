@@ -35,6 +35,21 @@ function makeClient() {
   const client = {
     captures: { list: lists.captures },
     jobs: { list: lists.jobs },
+    companyAssignments: {
+      get: vi.fn(async (jobId: string) => ({
+        jobId,
+        assignmentRevision: 1,
+        workspaceCompany: {
+          companyId: '01900000-0000-7000-8000-000000000099',
+          revision: 1,
+          displayName: 'Assigned Company',
+          status: 'active',
+        },
+        jobFactsCompanyName: 'Posting Company',
+        roleTitle: 'Role',
+        namesDiffer: true,
+      })),
+    },
     opportunities: { list: lists.opportunities },
     applications: { list: lists.applications },
   } as unknown as ValedictorianWorkspaceClient
@@ -88,6 +103,43 @@ describe('LifecycleWorkbench', () => {
     })).toHaveFocus()
     expect(get).toHaveBeenCalledWith(addressedJobId)
     expect(screen.getByRole('alert')).toHaveTextContent('Jobs page unavailable')
+  })
+
+  it('links the assigned Company as primary and keeps differing posting facts secondary', async () => {
+    const user = userEvent.setup()
+    const { client, lists } = makeClient()
+    const job = {
+      id: '01900000-0000-7000-8000-000000000001',
+      facts: {
+        companyName: 'Posting Company',
+        roleTitle: 'Engineer',
+        sourceName: 'Test source',
+      },
+      availability: { state: 'active' },
+      externalIdentities: [],
+      removedAt: null,
+    } as unknown as Job
+    lists.jobs.mockResolvedValue({
+      items: [job],
+      limit: 50,
+      nextCursor: null,
+    })
+    const navigate = vi.fn()
+    render(
+      <LifecycleWorkbench
+        client={client}
+        selectedPhase="jobs"
+        onWorkspaceNavigate={navigate}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: 'Assigned Company' }))
+
+    expect(screen.getByText('Posting says: Posting Company')).toBeInTheDocument()
+    expect(navigate).toHaveBeenCalledWith({
+      view: 'companies',
+      resourceId: '01900000-0000-7000-8000-000000000099',
+    })
   })
 
   it('keeps All and Processing as accessible modes on the same Capture surface', async () => {

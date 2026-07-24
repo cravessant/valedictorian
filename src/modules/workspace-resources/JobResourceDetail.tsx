@@ -1,23 +1,32 @@
 import { useEffect, useState } from 'react'
-import { jobIdSchema, type Job, type ValedictorianWorkspaceClient } from '@sparxie/sdk'
+import {
+  jobIdSchema,
+  type Job,
+  type JobCompanyAssignmentPresentation,
+  type ValedictorianWorkspaceClient,
+} from '@sparxie/sdk'
 import { Spinner } from '@/components/ui/spinner'
 import { useMediaQuery } from '@/app/useMediaQuery'
 import { ResourceDetailFrame } from './ResourceDetailFrame'
+import { JobCompanyCell } from './JobCompanyCell'
 
 interface JobResourceDetailProps {
-  readonly client: Pick<ValedictorianWorkspaceClient, 'jobs'> | null
+  readonly client: Pick<ValedictorianWorkspaceClient, 'jobs' | 'companyAssignments'> | null
   readonly jobId: string
   readonly onBack: () => void
+  readonly onOpenCompany?: (companyId: string) => void
 }
 
 export function JobResourceDetail({
   client,
   jobId,
   onBack,
+  onOpenCompany,
 }: JobResourceDetailProps) {
   const [selectedJob, setSelectedJob] = useState<{
     readonly jobId: string
     readonly job: Job
+    readonly assignment: JobCompanyAssignmentPresentation
   } | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const isNarrow = useMediaQuery('(max-width: 767px)')
@@ -35,10 +44,13 @@ export function JobResourceDetail({
       setFailure('The requested Job address is invalid.')
       return
     }
-    void client.jobs.get(parsedJobId.data).then((result) => {
+    void Promise.all([
+      client.jobs.get(parsedJobId.data),
+      client.companyAssignments.get(parsedJobId.data),
+    ]).then(([result, assignment]) => {
       if (!current) return
       if (!result) setFailure('The requested Job was not found.')
-      else setSelectedJob({ jobId, job: result })
+      else setSelectedJob({ jobId, job: result, assignment })
     }, (error: unknown) => {
       if (current) setFailure(error instanceof Error ? error.message : 'Job detail could not be loaded.')
     })
@@ -46,6 +58,7 @@ export function JobResourceDetail({
   }, [client, jobId])
 
   const job = selectedJob?.jobId === jobId ? selectedJob.job : null
+  const assignment = selectedJob?.jobId === jobId ? selectedJob.assignment : null
   return (
     <ResourceDetailFrame
       backLabel="Back to Jobs"
@@ -56,10 +69,15 @@ export function JobResourceDetail({
     >
       {!job && !failure ? <Spinner aria-label="Loading Job detail" /> : null}
       {failure ? <p role="alert" className="text-sm text-destructive">{failure}</p> : null}
-      {job ? (
+      {job && assignment ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">Company</dt>
-          <dd>{job.facts.companyName}</dd>
+          <dd>
+            <JobCompanyCell
+              assignment={assignment}
+              onOpenCompany={onOpenCompany}
+            />
+          </dd>
           <dt className="text-muted-foreground">Source</dt>
           <dd>{job.facts.sourceName}</dd>
           <dt className="text-muted-foreground">Availability</dt>

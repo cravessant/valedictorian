@@ -1,0 +1,2 @@
+ALTER TABLE "company_command_receipts" DROP CONSTRAINT "chk_company_command_receipts_operation";--> statement-breakpoint
+ALTER TABLE "company_command_receipts" ADD CONSTRAINT "chk_company_command_receipts_operation" CHECK ("company_command_receipts"."operation" in ('create','update','notes','alias_add','alias_update','alias_remove','archive','restore','reassign'));

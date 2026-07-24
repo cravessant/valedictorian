@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { ArrowRight } from 'lucide-react'
 import type {
   Application,
   Capture,
   Job,
+  JobCompanyAssignmentPresentation,
   Opportunity,
   ValedictorianWorkspaceClient,
 } from '@sparxie/sdk'
 
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Pagination,
   PaginationContent,
@@ -28,6 +27,7 @@ import { opportunityConfig } from './configs/opportunity-config'
 import { applicationConfig } from './configs/application-config'
 import { useCaptureController } from './configs/capture-controller'
 import { useJobController } from './configs/job-controller'
+import { useJobCompanyAssignmentController } from './job-company-assignment-controller'
 import { useOpportunityController } from './configs/opportunity-controller'
 import { useApplicationController } from './configs/application-controller'
 import {
@@ -45,6 +45,7 @@ import {
   type ConnectorProvenanceTarget,
 } from '@/app/capture-navigation'
 import { JobResourceDetail } from '@/modules/workspace-resources/JobResourceDetail'
+import { JobCompanyCell } from '@/modules/workspace-resources/JobCompanyCell'
 import {
   resetWorkspaceQuery,
   type WorkspaceHistoryEntry,
@@ -54,6 +55,11 @@ import {
   nextLegacyForwardCursorPage,
   previousLegacyForwardCursorPage,
 } from '@/app/workspace-page'
+import {
+  LifecycleRail,
+  RefreshToolbar,
+  phaseLabel,
+} from './lifecycle-workbench-presentation'
 
 export type LifecyclePhase = 'captures' | 'jobs' | 'opportunities' | 'applications'
 type ApplicationMode = 'all' | 'action-queue'
@@ -73,6 +79,7 @@ interface WorkbenchState {
 
 interface WorkbenchProps {
   readonly client?: ValedictorianWorkspaceClient | null
+  readonly workspaceId?: string | null
   readonly initialConnectorRunId?: string | null
   readonly onConnectorRunFilterChange?: (filter: CaptureRunFilter | null) => void
   readonly onOpenConnectorProvenance?: (target: ConnectorProvenanceTarget) => void
@@ -97,6 +104,7 @@ const initial: WorkbenchState = {
 
 export function LifecycleWorkbench({
   client: suppliedClient,
+  workspaceId = null,
   initialConnectorRunId = null,
   onConnectorRunFilterChange,
   onOpenConnectorProvenance,
@@ -119,6 +127,9 @@ export function LifecycleWorkbench({
   const [showRemoved, setShowRemoved] = useState(false)
   const [captures, setCaptures] = useState<PhaseState<Capture>>(initial.captures)
   const [jobs, setJobs] = useState<PhaseState<Job>>(initial.jobs)
+  const [jobAssignments, setJobAssignments] = useState<
+    ReadonlyMap<string, JobCompanyAssignmentPresentation>
+  >(new Map())
   const [allJobs, setAllJobs] = useState<PhaseState<Job>>(initial.jobs)
   const [jobNextCursor, setJobNextCursor] = useState<string | null>(null)
   const [opportunities, setOpportunities] = useState<PhaseState<Opportunity>>(initial.opportunities)
@@ -236,29 +247,35 @@ export function LifecycleWorkbench({
         data: null,
         load: { status: 'failure', message: 'Workspace HTTP client is unavailable.' },
       })
+      setJobAssignments(new Map())
       setJobNextCursor(null)
       return
     }
     setJobs((previous) => ({ data: previous.data, load: { status: 'loading' } }))
-    await jobConfig.list(client, {
-      includeRemoved: jobsShowRemoved,
-      limit: 50,
-      ...(jobsLocation.cursor === undefined ? {} : { cursor: jobsLocation.cursor }),
-    }).then(
-      (page) => {
-        if (generation !== phaseGenerations.current.jobs) return
-        setJobs({ data: page.items, load: { status: 'loaded' } })
-        setJobNextCursor(page.nextCursor)
-      },
-      (error: unknown) => {
-        if (generation !== phaseGenerations.current.jobs) return
-        setJobs((previous) => ({
-          data: previous.data,
-          load: loadFailure(error, () => void loadVisibleJobsPage()),
-        }))
-        setJobNextCursor(null)
-      },
-    )
+    try {
+      const page = await jobConfig.list(client, {
+        includeRemoved: jobsShowRemoved,
+        limit: 50,
+        ...(jobsLocation.cursor === undefined ? {} : { cursor: jobsLocation.cursor }),
+      })
+      const assignments = await Promise.all(
+        page.items.map((job) => client.companyAssignments.get(job.id)),
+      )
+      if (generation !== phaseGenerations.current.jobs) return
+      setJobs({ data: page.items, load: { status: 'loaded' } })
+      setJobAssignments(new Map(assignments.map((assignment) => [
+        assignment.jobId,
+        assignment,
+      ])))
+      setJobNextCursor(page.nextCursor)
+    } catch (error) {
+      if (generation !== phaseGenerations.current.jobs) return
+      setJobs((previous) => ({
+        data: previous.data,
+        load: loadFailure(error, () => void loadVisibleJobsPage()),
+      }))
+      setJobNextCursor(null)
+    }
   }, [client, jobsLocation.cursor, jobsShowRemoved])
 
   const loadAllJobs = useCallback(async function loadCompleteJobsProjection() {
@@ -406,6 +423,12 @@ export function LifecycleWorkbench({
     onOpenConnectorProvenance,
   })
   const jobController = useJobController({ client, refresh: refreshJobs, refreshDestination: refreshOpportunities, refreshAll })
+  const jobCompanyAssignmentController = useJobCompanyAssignmentController({
+    assignments: jobAssignments,
+    client,
+    refresh: refreshJobs,
+    workspaceId,
+  })
   const opportunityController = useOpportunityController({ client, refresh: refreshOpportunities, refreshDestination: refreshApplications, refreshAll })
   const applicationController = useApplicationController({ client, refresh: refreshApplicationPresentations, refreshAll })
 
@@ -416,8 +439,25 @@ export function LifecycleWorkbench({
   const jobTable = useMemo<LifecycleTableConfig<Job>>(
     () => ({
       ...jobConfig.table,
-      columns: jobConfig.table.columns.map((column) =>
-        column.key === 'role' && onOpenResource
+      columns: jobConfig.table.columns.map((column) => {
+        if (column.key === 'company') {
+          return {
+            ...column,
+            render: (row: Job) => {
+              const assignment = jobAssignments.get(row.id)
+              return assignment ? (
+                <JobCompanyCell
+                  assignment={assignment}
+                  onOpenCompany={(companyId) => onWorkspaceNavigate?.({
+                    view: 'companies',
+                    resourceId: companyId,
+                  })}
+                />
+              ) : null
+            },
+          }
+        }
+        return column.key === 'role' && onOpenResource
           ? {
               ...column,
               render: (row: Job) => {
@@ -435,10 +475,23 @@ export function LifecycleWorkbench({
                 )
               },
             }
-          : column),
-      extensions: jobController.extensions,
+          : column
+      }),
+      extensions: {
+        ...jobController.extensions,
+        formActions: [
+          ...(jobController.extensions.formActions ?? []),
+          jobCompanyAssignmentController.action,
+        ],
+      },
     }),
-    [jobController, onOpenResource],
+    [
+      jobAssignments,
+      jobCompanyAssignmentController.action,
+      jobController,
+      onOpenResource,
+      onWorkspaceNavigate,
+    ],
   )
   const opportunityTable = useMemo<LifecycleTableConfig<Opportunity>>(
     () => ({ ...opportunityConfig.table, extensions: opportunityController.extensions }),
@@ -592,6 +645,10 @@ export function LifecycleWorkbench({
               client={client}
               jobId={selectedResourceId}
               onBack={onBackFromResource ?? (() => undefined)}
+              onOpenCompany={(companyId) => onWorkspaceNavigate?.({
+                view: 'companies',
+                resourceId: companyId,
+              })}
             />
           ) : null}
         </div>
@@ -646,97 +703,9 @@ export function LifecycleWorkbench({
       ) : null}
       {captureController.modalLayer}
       {jobController.modalLayer}
+      {jobCompanyAssignmentController.modalLayer}
       {opportunityController.modalLayer}
       {applicationController.modalLayer}
-    </div>
-  )
-}
-
-interface LifecycleRailProps {
-  readonly selected: LifecyclePhase
-  readonly onSelect: (phase: LifecyclePhase) => void
-  readonly counts: Readonly<Record<LifecyclePhase, number>>
-}
-
-function LifecycleRail({ selected, onSelect, counts }: LifecycleRailProps): ReactElement {
-  const steps: ReadonlyArray<{ phase: LifecyclePhase; label: string }> = [
-    { phase: 'captures', label: 'Captures' },
-    { phase: 'jobs', label: 'Jobs' },
-    { phase: 'opportunities', label: 'Opportunities' },
-    { phase: 'applications', label: 'Applications' },
-  ]
-  return (
-    <nav aria-label="Lifecycle phase" className="flex flex-wrap items-center gap-2">
-      {steps.map((step, index) => {
-        const active = selected === step.phase
-        const count = counts[step.phase]
-        return (
-          <div key={step.phase} className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant={active ? 'default' : 'outline'}
-              size="sm"
-              aria-current={active ? 'step' : undefined}
-              aria-pressed={active}
-              onClick={() => onSelect(step.phase)}
-            >
-              {step.label}
-              <span className="ml-2 rounded-full bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
-                {count}
-              </span>
-            </Button>
-            {index < steps.length - 1 ? (
-              <ArrowRight className="size-4 text-muted-foreground" aria-hidden="true" />
-            ) : null}
-          </div>
-        )
-      })}
-    </nav>
-  )
-}
-
-function phaseLabel(phase: LifecyclePhase): string {
-  if (phase === 'captures') return 'Captures'
-  if (phase === 'jobs') return 'Jobs'
-  if (phase === 'opportunities') return 'Opportunities'
-  return 'Applications'
-}
-
-interface RefreshToolbarProps {
-  readonly caption: string
-  readonly total: number
-  readonly loading: boolean
-  readonly onRefresh: () => void
-  readonly showRemoved: boolean
-  readonly onShowRemovedChange: (next: boolean) => void
-  readonly onAdd?: () => void
-  readonly addLabel?: string
-}
-
-function RefreshToolbar({ caption, total, loading, onRefresh, showRemoved, onShowRemovedChange, onAdd, addLabel }: RefreshToolbarProps): ReactElement {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-muted-foreground">
-        {caption} · {total} record{total === 1 ? '' : 's'}
-      </p>
-      <div className="flex items-center gap-3">
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Checkbox
-            checked={showRemoved}
-            onCheckedChange={(value) => onShowRemovedChange(value === true)}
-            aria-label="Show removed"
-          />
-          Show removed
-        </label>
-        {onAdd ? (
-          <Button type="button" variant="default" size="sm" onClick={onAdd}>
-            {addLabel ?? 'Add'}
-          </Button>
-        ) : null}
-        <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={loading}>
-          Refresh
-        </Button>
-      </div>
     </div>
   )
 }

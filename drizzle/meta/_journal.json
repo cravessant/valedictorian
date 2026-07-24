@@ -64,6 +64,13 @@
       "when": 1784849376935,
       "tag": "0008_early_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784850410012,
+      "tag": "0009_gorgeous_the_hood",
+      "breakpoints": true
     }
   ]
 }

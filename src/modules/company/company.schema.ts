@@ -304,7 +304,7 @@ export const companyCommandReceipts = pgTable(
     ),
     operationCheck: check(
       'chk_company_command_receipts_operation',
-      sql`${table.operation} in ('create','update','notes','alias_add','alias_update','alias_remove','archive','restore')`,
+      sql`${table.operation} in ('create','update','notes','alias_add','alias_update','alias_remove','archive','restore','reassign')`,
     ),
     fingerprintCheck: check(
       'chk_company_command_receipts_fingerprint',

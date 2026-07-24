@@ -133,7 +133,7 @@ export function staleCompanyFailure(
 }
 
 export function lifecycleFailure(
-  code: 'impossible_state' | 'workspace_ownership' | 'invalid_input',
+  code: 'impossible_state' | 'workspace_ownership' | 'invalid_input' | 'missing_lineage',
   message: string,
 ): CompanyCommandFailure {
   return {

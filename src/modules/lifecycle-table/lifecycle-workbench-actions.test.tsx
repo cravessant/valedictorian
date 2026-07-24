@@ -138,6 +138,7 @@ interface MockClient {
   client: ValedictorianWorkspaceClient
   captures: Record<string, ReturnType<typeof vi.fn>>
   jobs: Record<string, ReturnType<typeof vi.fn>>
+  companyAssignments: Record<string, ReturnType<typeof vi.fn>>
   opportunities: Record<string, ReturnType<typeof vi.fn>>
   applications: Record<string, ReturnType<typeof vi.fn>>
 }
@@ -196,8 +197,33 @@ function makeClient(seed: {
     attempts: { list: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })) },
     events: { list: vi.fn(async () => ({ items: [], limit: 50, nextCursor: null })) },
   }
-  const client = { captures, jobs, opportunities, applications } as unknown as ValedictorianWorkspaceClient
-  return { client, captures, jobs, opportunities, applications }
+  const companyAssignments = {
+    get: vi.fn(async (jobId: string) => {
+      const job = seed.jobs?.find((candidate) => candidate.id === jobId)
+      return {
+        jobId,
+        assignmentRevision: 1,
+        workspaceCompany: {
+          companyId: '01900000-0000-7000-8000-000000000099',
+          revision: 1,
+          displayName: 'Assigned Company',
+          status: 'active' as const,
+        },
+        jobFactsCompanyName: job?.facts.companyName ?? 'Posting Company',
+        roleTitle: job?.facts.roleTitle ?? 'Role',
+        namesDiffer: true,
+      }
+    }),
+    reassign: vi.fn(),
+  }
+  const client = {
+    captures,
+    jobs,
+    companyAssignments,
+    opportunities,
+    applications,
+  } as unknown as ValedictorianWorkspaceClient
+  return { client, captures, jobs, companyAssignments, opportunities, applications }
 }
 
 async function openRowMenu(user: ReturnType<typeof userEvent.setup>, rowLabel: string | RegExp) {
@@ -384,6 +410,22 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
       expect(jobs.list).toHaveBeenCalledTimes(4)
       expect(opportunities.list).toHaveBeenCalledTimes(2)
     })
+  })
+
+  it('offers Company reassignment from the Job row only after its assignment loads', async () => {
+    const user = userEvent.setup()
+    const { client } = makeClient({ jobs: [makeJob('job-1')] })
+    render(<LifecycleWorkbench client={client} workspaceId="ws" />)
+    await user.click(await screen.findByRole('button', { name: /^Jobs/ }))
+
+    const menu = await openRowMenu(user, /Acme.*Engineer/)
+    await user.click(within(menu).getByRole('menuitem', { name: 'Reassign Company' }))
+
+    expect(await screen.findByRole('dialog', {
+      name: 'Reassign Job Company',
+    })).toHaveTextContent(
+      'Currently assigned to Assigned Company. Job facts will not change.',
+    )
   })
 
   it('Opportunity promote routes to opportunities.promoteToApplication', async () => {

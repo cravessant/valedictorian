@@ -269,6 +269,7 @@ export default function App({
         {isLifecycleView(currentView) ? (
           <LifecycleWorkbench
             client={resolvedWorkspaceClient}
+            workspaceId={workspace?.id ?? null}
             key={captureRunFilter?.connectorRunId ?? 'all-captures'}
             initialConnectorRunId={captureRunFilter?.connectorRunId ?? null}
             selectedPhase={currentView}

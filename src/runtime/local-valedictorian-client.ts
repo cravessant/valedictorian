@@ -97,6 +97,7 @@ import {
 import { createPgliteWorkflowRunRepository } from '../modules/workflow-runs/workflow-run.repository'
 import { assertSeedOptions, seedLocalData } from './local-valedictorian-seeding'
 import { createCompanyCoverageService } from '../modules/company/company.coverage'
+import { createPgliteCompanyAssignmentService } from '../modules/company/company.assignment.service'
 import { createPgliteCompanyService } from '../modules/company/company.service'
 export type {
   LocalValedictorianClientOptions,
@@ -300,7 +301,10 @@ export async function createLocalValedictorianClient({
       coverage: companyCoverage,
       now,
     }),
-    companyAssignments: unavailableWorkspaceCapability('Company assignments'),
+    companyAssignments: createPgliteCompanyAssignmentService(database, {
+      workspaceId,
+      now,
+    }),
     scores: {
       record: (input) => scoringRepository.recordScore(input),
     },

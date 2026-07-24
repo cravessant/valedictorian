@@ -232,6 +232,21 @@ describe('App sidebar navigation', () => {
     const workspaceClient = {
       captures: { list: vi.fn(emptyLifecyclePage) },
       jobs: { list: vi.fn(emptyLifecyclePage), get: jobsGet },
+      companyAssignments: {
+        get: vi.fn(async () => ({
+          jobId,
+          assignmentRevision: 1,
+          workspaceCompany: {
+            companyId,
+            revision: 1,
+            displayName: 'Company One',
+            status: 'active',
+          },
+          jobFactsCompanyName: 'Company One',
+          roleTitle: 'Atomic Job',
+          namesDiffer: false,
+        })),
+      },
       opportunities: { list: vi.fn(emptyLifecyclePage) },
       applications: { list: vi.fn(emptyLifecyclePage) },
       companies: {

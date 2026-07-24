@@ -262,7 +262,11 @@ function mapKnownHttpFailure(
   }
 
   const statusCode = readNumberProperty(error, 'statusCode')
-  if (pathname.startsWith('/v1/companies/') || pathname === '/v1/companies') {
+  if (
+    pathname.startsWith('/v1/companies/')
+    || pathname === '/v1/companies'
+    || /^\/v1\/jobs\/[^/]+\/company-assignment(?:\/|$)/.test(pathname)
+  ) {
     if (statusCode === 404) return { body: notFoundErrorBody, statusCode }
     if (statusCode === 409) return { body: conflictErrorBody, statusCode }
     if (statusCode === 400) return { body: validationErrorBody, statusCode }

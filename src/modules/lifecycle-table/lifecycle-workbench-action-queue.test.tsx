@@ -90,6 +90,21 @@ function makeClient(seed: {
   const client = {
     captures: { list: vi.fn(async () => emptyPage()) },
     jobs: { list: vi.fn(async () => emptyPage()) },
+    companyAssignments: {
+      get: vi.fn(async (jobId: string) => ({
+        jobId,
+        assignmentRevision: 1,
+        workspaceCompany: {
+          companyId: '01900000-0000-7000-8000-000000000099',
+          revision: 1,
+          displayName: 'Assigned Company',
+          status: 'active',
+        },
+        jobFactsCompanyName: 'Posting Company',
+        roleTitle: 'Role',
+        namesDiffer: true,
+      })),
+    },
     opportunities: { list: vi.fn(async () => emptyPage()) },
     applications,
     actionQueue,

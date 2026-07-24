@@ -117,8 +117,6 @@ describe.sequential('local client Workspace Company coverage', () => {
       status: 'created',
       company: { displayName: 'Runtime Company', revision: 1 },
     })
-    await expect(client.companyAssignments.reassign({} as never))
-      .rejects.toThrow('Company assignments is not available in the local workspace runtime.')
   })
 
   it('rejects Company writes while deferred coverage is still migrating', async () => {

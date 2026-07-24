@@ -9,6 +9,7 @@ import {
   addCompanyAliasInputSchema,
   archiveCompanyInputSchema,
   removeCompanyAliasInputSchema,
+  reassignJobCompanyInputSchema,
   restoreCompanyInputSchema,
   updateCompanyAliasInputSchema,
   updateCompanyInputSchema,
@@ -35,6 +36,27 @@ export async function handleCompanyRoutes({
   response,
 }: CompanyRouteContext): Promise<boolean> {
   const workspaceId = client.workspaceId
+  const assignmentMatch = requestUrl.pathname.match(
+    /^\/v1\/jobs\/([^/]+)\/company-assignment(?:\/(reassign))?$/,
+  )
+  if (assignmentMatch) {
+    const jobId = decode(assignmentMatch[1]!)
+    if (request.method === 'GET' && !assignmentMatch[2]) {
+      writeJson(response, 200, await client.companyAssignments.get(jobId))
+      return true
+    }
+    if (request.method === 'POST' && assignmentMatch[2] === 'reassign') {
+      const body = await readJsonBody(request)
+      const input = parseLocalHttpInput(() => reassignJobCompanyInputSchema.parse({
+        ...asRecord(body),
+        workspaceId,
+        jobId,
+      }))
+      writeJson(response, 200, await client.companyAssignments.reassign(input))
+      return true
+    }
+    return false
+  }
   if (!requestUrl.pathname.startsWith('/v1/companies')) return false
   const { method } = request
   const { pathname } = requestUrl
