@@ -56,6 +56,8 @@ export interface ValedictorianRuntimeConfig {
   apiPort: number
   apiToken?: string
   apiUrl: string
+  /** Isolated validation owns an explicitly allocated loopback port. */
+  bindConfiguredApiPort?: true
   mode: ValedictorianRuntimeMode
   profilePath: string
   referenceTrackerPath?: string
@@ -104,7 +106,10 @@ export function resolveValedictorianRuntimeConfig({
 }: ValedictorianRuntimeConfigInput): ValedictorianRuntimeConfig {
   const mode = readRuntimeMode(env.VALEDICTORIAN_MODE ?? settings.runtimeMode)
   const apiHost = env.VALEDICTORIAN_API_HOST ?? settings.localApiHost
-  const apiPort = parsePort(env.VALEDICTORIAN_API_PORT ?? String(settings.localApiPort))
+  const apiPort = parsePort(
+    env.VALEDICTORIAN_API_PORT ?? String(settings.localApiPort),
+    env.VALEDICTORIAN_ISOLATED_VALIDATION === '1',
+  )
   const defaultApiUrl = `http://${apiHost}:${apiPort}`
 
   return {
@@ -114,6 +119,7 @@ export function resolveValedictorianRuntimeConfig({
     apiUrl:
       env.VALEDICTORIAN_API_URL ??
       (mode === 'remote' ? settings.remoteApiUrl || defaultValedictorianApiBaseUrl : defaultApiUrl),
+    ...(env.VALEDICTORIAN_ISOLATED_VALIDATION === '1' ? { bindConfiguredApiPort: true as const } : {}),
     mode,
     profilePath:
       env.VALEDICTORIAN_PROFILE_PATH ?? path.join(workspaceDataPath ?? userDataPath, 'profile.json'),
@@ -231,7 +237,7 @@ export async function createValedictorianRuntime({
     client,
     host: config.apiHost,
     localSecretResolutionEnabled,
-    port: config.mode === 'local-desktop' ? 0 : config.apiPort,
+    port: config.mode === 'local-desktop' && !config.bindConfiguredApiPort ? 0 : config.apiPort,
     ...(config.apiToken === undefined ? {} : { token: config.apiToken }),
   }
 
@@ -334,14 +340,14 @@ function readSeedDataMode(value: string | undefined): ValedictorianSeedDataMode 
   throw new Error(`Unsupported VALEDICTORIAN_SEED_DATA mode: ${value}`)
 }
 
-function parsePort(value: string | undefined) {
+function parsePort(value: string | undefined, allowZero = false) {
   if (!value) {
     return 4317
   }
 
   const port = Number(value)
 
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  if (!Number.isInteger(port) || port < (allowZero ? 0 : 1) || port > 65535) {
     throw new Error(`Invalid VALEDICTORIAN_API_PORT: ${value}`)
   }
 

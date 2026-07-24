@@ -21,7 +21,7 @@ export default defineConfig({
       ['src/app/loaders*.test.ts', 'jsdom'],
       ['src/theme/theme-applier.test.ts', 'jsdom'],
     ],
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.local/**', '**/.worktrees/**'],
     include: maintainedTestIncludes,
     globalSetup: './src/test/global-setup.ts',
     maxWorkers: 2,

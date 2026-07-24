@@ -211,6 +211,17 @@ describe('supervised app launch', () => {
     expect(delay).toHaveBeenCalledOnce()
   })
 
+  it('accepts an unowned reused group only after the owned leader is gone', async () => {
+    const permissionDenied = Object.assign(new Error('permission denied'), { code: 'EPERM' })
+    const missing = Object.assign(new Error('missing leader'), { code: 'ESRCH' })
+    const probe = vi.fn()
+      .mockImplementationOnce(() => { throw permissionDenied })
+      .mockImplementationOnce(() => { throw missing })
+
+    await expect(waitForProcessGroupExit(43210, { probe })).resolves.toBeUndefined()
+    expect(probe.mock.calls).toEqual([[-43210], [43210]])
+  })
+
   it.each([
     ['graceful', (force: boolean) => !force],
     ['forced', (force: boolean) => force],

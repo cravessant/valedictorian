@@ -56,6 +56,20 @@ function createRootClient(
 }
 
 describe('Valedictorian runtime config', () => {
+  it('permits OS-assigned ports only for isolated validation', () => {
+    expect(resolveValedictorianRuntimeConfig({
+      env: {
+        VALEDICTORIAN_API_PORT: '0',
+        VALEDICTORIAN_ISOLATED_VALIDATION: '1',
+      },
+      userDataPath: '/tmp/isolated-validation',
+    })).toMatchObject({ apiPort: 0, bindConfiguredApiPort: true })
+    expect(() => resolveValedictorianRuntimeConfig({
+      env: { VALEDICTORIAN_API_PORT: '0' },
+      userDataPath: '/tmp/not-isolated',
+    })).toThrow(/API_PORT/i)
+  })
+
   it('defaults to local desktop mode without starting an HTTP server', () => {
     expect(
       resolveValedictorianRuntimeConfig({

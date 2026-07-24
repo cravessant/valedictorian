@@ -61,6 +61,12 @@ import {
   type WorkspaceFolderDialogOptions,
 } from '../src/workspace/workspace.dialog'
 import { createElectronUpdateService } from '../src/updates/update.service'
+import { isolatedValidationFixture } from '../src/runtime/isolated-validation.fixture-contract'
+import {
+  publishIsolatedValidationReadiness,
+  writeIsolatedValidationTerminalState,
+} from '../src/runtime/isolated-validation'
+import { createIsolatedValidationReadinessGate } from './isolated-validation-readiness'
 import {
   createFileMainWindowStateStore,
   createMainWindowStateSnapshot,
@@ -285,6 +291,38 @@ function createMainWindow() {
   const mainWindowStateStore = createFileMainWindowStateStore(getMainWindowStatePath())
   const savedMainWindowState = mainWindowStateStore.read()
 
+  const validationWorkspace = process.env.VALEDICTORIAN_ISOLATED_VALIDATION === '1'
+    ? currentWorkspace
+    : null
+  let validationTerminalState: 'child_failure' | 'completed' | null = null
+  const reportValidationTerminalState = (outcome: 'child_failure' | 'completed') => {
+    if (!validationWorkspace || validationTerminalState) return
+    validationTerminalState = outcome
+    writeIsolatedValidationTerminalState(outcome)
+  }
+  const validationReadiness = validationWorkspace
+    ? createIsolatedValidationReadinessGate({
+        delayMs: isolatedValidationReadinessDelayMs(),
+        onReady() {
+          if (!mainWindow || mainWindow.isDestroyed()) return
+          try {
+            publishValidationReadiness(validationWorkspace)
+            if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_FAIL_ELECTRON === '1') {
+              reportValidationTerminalState('child_failure')
+              app.exit(1)
+              return
+            }
+            if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_CLOSE_AFTER_READY === '1') {
+              mainWindow.close()
+            }
+          } catch {
+            reportValidationTerminalState('child_failure')
+            app.exit(1)
+          }
+        },
+      })
+    : null
+
   mainWindow = new BrowserWindow({
     ...resolveMainWindowStateOptions(savedMainWindowState, screen.getAllDisplays()),
     ...minimumMainWindowBounds,
@@ -307,6 +345,7 @@ function createMainWindow() {
   })
 
   mainWindow.on('closed', () => {
+    reportValidationTerminalState('completed')
     mainWindow = null
     refreshWorkspaceMenu()
   })
@@ -327,6 +366,7 @@ function createMainWindow() {
     }
 
     mainWindow.show()
+    validationReadiness?.windowReady()
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -353,6 +393,7 @@ function createMainWindow() {
       VALEDICTORIAN_BACKEND_STATE_CHANGED_CHANNEL,
       rendererBackendState,
     )
+    validationReadiness?.rendererLoaded()
   })
 
   loadRenderer(mainWindow)
@@ -578,7 +619,7 @@ const runtimeQuitBarrier = createRuntimeQuitBarrier({
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' || process.env.VALEDICTORIAN_ISOLATED_VALIDATION === '1') {
     app.quit()
     mainWindow = null
     workspaceLauncherWindow = null
@@ -661,7 +702,9 @@ app.whenReady().then(async () => {
   )
   ipcMain.handle(VALEDICTORIAN_BACKEND_RETRY_CHANNEL, () => backendSupervisor?.retry())
   registerUpdatesIpc(updateService, ipcMain, () => BrowserWindow.getAllWindows())
-  scheduleUpdatePolling()
+  if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION !== '1') {
+    scheduleUpdatePolling()
+  }
 
   const registryStore = createFileWorkspaceRegistryStore(
     getDefaultWorkspaceRegistryPath(app.getPath('userData')),
@@ -725,6 +768,24 @@ function scheduleUpdatePolling() {
       void pollForUpdates()
     }, updatePollIntervalMs)
   }, updatePollInitialDelayMs)
+}
+
+function publishValidationReadiness(workspace: WorkspaceSummary) {
+  if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION !== '1') return
+  if (!VITE_DEV_SERVER_URL || !rendererHttpBinding || rendererBackendState.status !== 'available') {
+    throw new Error('Isolated validation readiness requires local renderer and backend URLs.')
+  }
+  publishIsolatedValidationReadiness({
+    apiUrl: rendererHttpBinding.apiUrl,
+    rendererUrl: VITE_DEV_SERVER_URL,
+    workspace: { id: workspace.id, path: workspace.rootPath },
+    fixture: isolatedValidationFixture,
+  })
+}
+
+function isolatedValidationReadinessDelayMs() {
+  const value = Number(process.env.VALEDICTORIAN_ISOLATED_VALIDATION_READINESS_DELAY_MS ?? '0')
+  return Number.isSafeInteger(value) && value >= 0 && value <= 10_000 ? value : 0
 }
 
 async function pollForUpdates() {

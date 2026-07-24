@@ -91,7 +91,7 @@ export function terminateProcessTree(
     const code = error && typeof error === 'object' && 'code' in error
       ? (error as { code?: unknown }).code
       : undefined
-    if (code !== 'ESRCH') {
+    if (code !== 'ESRCH' && !(code === 'EPERM' && isProcessGone(processId))) {
       throw error
     }
   }
@@ -184,11 +184,36 @@ export async function waitForProcessGroupExit(
         ? (error as { code?: unknown }).code
         : undefined
       if (code === 'ESRCH') return
+      if (code === 'EPERM' && leaderIsGone(processId, probe)) return
       throw error
     }
     if (attempt + 1 < attempts) await delay(intervalMs)
   }
   throw new Error(`Process group ${String(processId)} did not exit after forced termination.`)
+}
+
+function leaderIsGone(processId: number, probe: (pid: number) => unknown) {
+  try {
+    probe(processId)
+    return false
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error
+      ? (error as { code?: unknown }).code
+      : undefined
+    return code === 'ESRCH'
+  }
+}
+
+function isProcessGone(processId: number) {
+  try {
+    process.kill(processId, 0)
+    return false
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error
+      ? (error as { code?: unknown }).code
+      : undefined
+    return code === 'ESRCH'
+  }
 }
 
 export function launchSupervisedAnchor({
@@ -220,11 +245,13 @@ export function createSupervisedLaunchLifecycle({
   }
 
   return {
-    anchorExited() {
+    anchorExited(treeAlreadyStopped = false) {
       if (finalization) return finalization
       finalization = (async () => {
-        if (!began) beginTermination()
-        processTreeShutdown.leaderExited()
+        if (!treeAlreadyStopped) {
+          if (!began) beginTermination()
+          processTreeShutdown.leaderExited()
+        }
         const exited = await processTreeShutdown.waitForExit()
         if (!exited) {
           setExitCode(1)
@@ -235,9 +262,9 @@ export function createSupervisedLaunchLifecycle({
       })()
       return finalization
     },
-    leaderExited(code: number | null, signal: NodeJS.Signals | null) {
+    leaderExited(code: number | null, signal: NodeJS.Signals | null, treeAlreadyStopped = false) {
       leaderExitCode ??= code ?? (signal ? 1 : 0)
-      beginTermination()
+      if (!treeAlreadyStopped) beginTermination()
     },
     shutdown: beginTermination,
   }

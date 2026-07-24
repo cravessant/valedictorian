@@ -168,6 +168,7 @@ export async function createLocalValedictorianClient({
   seedDataMode = 'none',
   secretCodec = unavailableSecretCodec,
   localSecretResolutionEnabled = false,
+  newId,
   profilePath,
   profileService: preparedProfileService,
   secretService: preparedSecretService,
@@ -187,7 +188,10 @@ export async function createLocalValedictorianClient({
     referenceTrackerPath,
     seedDataMode,
   })
-  const companyCoverage = createCompanyCoverageService(database, { now })
+  const companyCoverage = createCompanyCoverageService(database, {
+    now,
+    ...(newId ? { newId } : {}),
+  })
   await companyCoverage.prepare(workspaceId)
   if (!deferCompanyCoverageMigration) {
     await companyCoverage.migrateToReady(workspaceId)
@@ -213,7 +217,10 @@ export async function createLocalValedictorianClient({
   const connectorRepository = createPgliteConnectorRepository(database)
   const policyRepository = createPglitePolicyRepository(database)
   const workflowRunRepository = createPgliteWorkflowRunRepository(database)
-  const captureService = createPgliteCaptureService(database, { now })
+  const captureService = createPgliteCaptureService(database, {
+    now,
+    ...(newId ? { newId } : {}),
+  })
   const captureMaterialization = createCaptureMaterializationService(database, { now })
   await captureMaterialization.migrateToReady(workspaceId)
   const destinationRepository = createCaptureDestinationWorkRepository(database, { workspaceId, now })
@@ -361,6 +368,7 @@ export async function createLocalValedictorianClient({
       workspaceId,
       coverage: companyCoverage,
       now,
+      ...(newId ? { newId } : {}),
     }),
     companyAssignments: createPgliteCompanyAssignmentService(database, {
       workspaceId,

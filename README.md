@@ -51,6 +51,47 @@ pnpm typecheck
 pnpm lint
 ```
 
+`pnpm dev` is the normal interactive development command. It uses the selected
+Valedictorian workspace and app user-data location; it is not an isolated proof
+command.
+
+### Isolated validation
+
+```sh
+pnpm run validate:isolated
+```
+
+This launches the current worktree with a disposable user-data root and
+workspace, a fixed versioned unresolved Capture and Company fixture, a unique
+strict renderer port, and an operating-system-selected local API port. It
+never reads a prior workspace, inherits no token/secret environment variables,
+uses no live provider, and disables update polling only for this validation
+mode. On readiness Electron atomically writes a mode-`0600`, schema-validated,
+secret-free session manifest into the printed evidence directory. Closing the
+session, interrupting it, a child failure, or its timeout terminates the owned
+Vite/Electron process group and removes only that command's temporary root;
+the evidence directory remains. The default timeout is 15 minutes and may be
+shortened for a development check:
+
+```sh
+pnpm run validate:isolated -- --timeout-ms 20000
+```
+
+Failures retain a bounded `diagnostics.json` in that evidence directory rather
+than the disposable workspace or user-data root.
+
+### Packaged proof
+
+Packaged proof is separate from both interactive development and isolated
+validation. Build first, then run the package-only smoke commands against the
+produced application artifacts:
+
+```sh
+pnpm build
+pnpm run smoke:pglite-package
+pnpm run smoke:manual-workflow-package
+```
+
 ## Release
 
 Mac releases are built by `.github/workflows/release-mac.yml` from manual runs or `v*` tags.
