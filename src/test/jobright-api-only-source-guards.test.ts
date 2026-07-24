@@ -37,6 +37,7 @@ describe('Jobright API-only source guards', () => {
   it('keeps native BrowserWindow usage only for app/workspace chrome, not Jobright connector windows', () => {
     const mainSource = read('electron/main.ts')
     const productionSources = collectProductionSources()
+    const isolatedNativeUiProofPath = path.resolve('electron/native-ui-proof.ts')
 
     expect(mainSource).toContain('new BrowserWindow({')
     expect(mainSource).toContain('createMainWindow')
@@ -50,7 +51,9 @@ describe('Jobright API-only source guards', () => {
       expect(source).not.toContain('employer-site apply')
       expect(source).not.toContain('hidden Jobright')
       expect(source).not.toMatch(/partition:\s*['"`]persist:valedictorian-connector/)
-      expect(source).not.toContain('executeJavaScript')
+      if (filePath !== isolatedNativeUiProofPath) {
+        expect(source).not.toContain('executeJavaScript')
+      }
       expect(source).not.toContain('Playwright')
       expect(source).not.toContain('Puppeteer')
       expect(source).not.toContain('WebView')

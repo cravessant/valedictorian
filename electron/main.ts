@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { runPackagedManualWorkflowProof } from './packaged-manual-workflow-proof'
 import { runPackagedPgliteSmoke } from './pglite-packaged-smoke'
+import {
+  captureRendererConsole,
+  createElectronNativeUiDriver,
+  runElectronNativeUiProof,
+} from './native-ui-proof'
 import { createElectronSecretCodec } from './profile-secret-codec'
 import { removeRuntimeIpcHandlers } from './runtime-ipc'
 import { createRuntimeQuitBarrier, stopRuntimeLifecycle } from './runtime-lifecycle'
@@ -64,6 +69,8 @@ import { createElectronUpdateService } from '../src/updates/update.service'
 import { isolatedValidationFixture } from '../src/runtime/isolated-validation.fixture-contract'
 import {
   publishIsolatedValidationReadiness,
+  readIsolatedValidationEnvironment,
+  type IsolatedValidationManifest,
   writeIsolatedValidationTerminalState,
 } from '../src/runtime/isolated-validation'
 import { createIsolatedValidationReadinessGate } from './isolated-validation-readiness'
@@ -306,10 +313,19 @@ function createMainWindow() {
         onReady() {
           if (!mainWindow || mainWindow.isDestroyed()) return
           try {
-            publishValidationReadiness(validationWorkspace)
+            const validationManifest = publishValidationReadiness(validationWorkspace)
             if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_FAIL_ELECTRON === '1') {
               reportValidationTerminalState('child_failure')
               app.exit(1)
+              return
+            }
+            if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_PROOF === '1') {
+              void runIsolatedElectronNativeUiProof(
+                mainWindow,
+                validationManifest,
+                validationWorkspace,
+                reportValidationTerminalState,
+              )
               return
             }
             if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION_CLOSE_AFTER_READY === '1') {
@@ -771,16 +787,59 @@ function scheduleUpdatePolling() {
 }
 
 function publishValidationReadiness(workspace: WorkspaceSummary) {
-  if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION !== '1') return
+  if (process.env.VALEDICTORIAN_ISOLATED_VALIDATION !== '1') return null
   if (!VITE_DEV_SERVER_URL || !rendererHttpBinding || rendererBackendState.status !== 'available') {
     throw new Error('Isolated validation readiness requires local renderer and backend URLs.')
   }
-  publishIsolatedValidationReadiness({
+  return publishIsolatedValidationReadiness({
     apiUrl: rendererHttpBinding.apiUrl,
     rendererUrl: VITE_DEV_SERVER_URL,
     workspace: { id: workspace.id, path: workspace.rootPath },
     fixture: isolatedValidationFixture,
   })
+}
+
+async function runIsolatedElectronNativeUiProof(
+  window: BrowserWindow,
+  manifest: IsolatedValidationManifest | null,
+  workspace: WorkspaceSummary,
+  reportTerminalState: (outcome: 'child_failure' | 'completed') => void,
+) {
+  try {
+    const session = readIsolatedValidationEnvironment()
+    if (!session || !manifest) throw new Error('Electron proof requires an isolated validation session.')
+    if (
+      window.isDestroyed()
+      || window.webContents.isDestroyed()
+      || manifest.build.branch !== session.branch
+      || manifest.build.commit !== session.commit
+      || JSON.stringify(manifest.build.worktree) !== JSON.stringify(session.worktree)
+      || manifest.workspace.id !== workspace.id
+      || manifest.workspace.path !== workspace.rootPath
+      || manifest.fixture.version !== isolatedValidationFixture.version
+    ) {
+      throw new Error('Electron proof identity does not match the ready isolated session.')
+    }
+    const proof = await runElectronNativeUiProof({
+      build: manifest.build,
+      driver: createElectronNativeUiDriver(window.webContents),
+      evidenceDirectory: session.evidenceDirectory,
+      fixture: manifest.fixture,
+      rendererConsole: captureRendererConsole(window.webContents),
+      workspace: manifest.workspace,
+    })
+    if (proof.outcome === 'completed') {
+      reportTerminalState('completed')
+      window.close()
+      return
+    }
+    reportTerminalState('child_failure')
+    app.exit(1)
+  } catch (error) {
+    console.error('Electron native UI proof failed.', error)
+    reportTerminalState('child_failure')
+    app.exit(1)
+  }
 }
 
 function isolatedValidationReadinessDelayMs() {

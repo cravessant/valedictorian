@@ -181,6 +181,7 @@ async function prepareEnvironment(options: ValidationOptions) {
     VALEDICTORIAN_ISOLATED_VALIDATION_WORKTREE_FINGERPRINT: build.fingerprint,
     VALEDICTORIAN_ISOLATED_VALIDATION_WORKTREE_STATE: build.state,
     ...(options.closeAfterReady ? { VALEDICTORIAN_ISOLATED_VALIDATION_CLOSE_AFTER_READY: '1' } : {}),
+    ...(options.electronNativeProof ? { VALEDICTORIAN_ISOLATED_VALIDATION_ELECTRON_PROOF: '1' } : {}),
     ...(options.failure === 'electron' ? { VALEDICTORIAN_ISOLATED_VALIDATION_FAIL_ELECTRON: '1' } : {}),
     ...(options.readinessDelayMs === 0
       ? {}
@@ -257,6 +258,7 @@ function requireTemporaryRoot() {
 function readOptions(args: readonly string[]): ValidationOptions {
   let timeoutMs = 900_000
   let closeAfterReady = false
+  let electronNativeProof = false
   let failure: ValidationOptions['failure']
   let readinessDelayMs = 0
   for (let index = 0; index < args.length; index += 1) {
@@ -267,6 +269,8 @@ function readOptions(args: readonly string[]): ValidationOptions {
       timeoutMs = readBoundedInteger(args[++index], '--timeout-ms', 1_000, 3_600_000)
     } else if (argument === '--test-close-after-ready') {
       closeAfterReady = true
+    } else if (argument === '--proof-electron') {
+      electronNativeProof = true
     } else if (argument === '--test-failure') {
       const value = args[++index]
       if (
@@ -285,7 +289,14 @@ function readOptions(args: readonly string[]): ValidationOptions {
       throw new ValidationFailure('invalid_arguments', 'arguments', 'The isolated validation arguments are invalid.')
     }
   }
-  return { closeAfterReady, failure, readinessDelayMs, timeoutMs }
+  if (closeAfterReady && electronNativeProof) {
+    throw new ValidationFailure(
+      'invalid_arguments',
+      'arguments',
+      'The isolated validation proof cannot close before Electron completes.',
+    )
+  }
+  return { closeAfterReady, electronNativeProof, failure, readinessDelayMs, timeoutMs }
 }
 
 function readBoundedInteger(value: string | undefined, name: string, minimum: number, maximum: number) {
@@ -345,6 +356,7 @@ function sanitizeFailureText(value: string) {
 
 interface ValidationOptions {
   readonly closeAfterReady: boolean
+  readonly electronNativeProof: boolean
   readonly failure?: 'anchor' | 'electron' | 'fixture' | 'premature_completion' | 'setup'
   readonly readinessDelayMs: number
   readonly timeoutMs: number

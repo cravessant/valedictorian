@@ -80,6 +80,21 @@ pnpm run validate:isolated -- --timeout-ms 20000
 Failures retain a bounded `diagnostics.json` in that evidence directory rather
 than the disposable workspace or user-data root.
 
+### Electron native UI proof
+
+```sh
+pnpm run proof:electron
+```
+
+This uses the same isolated fixture lifecycle but drives the current-worktree
+Electron renderer through accessible roles and labels: it completes the fixed
+unresolved Capture through the visible completion dialog, then verifies the
+created Job and its Workspace Company in the rendered Jobs and Companies
+tables. The command prints a retained `electron-native-ui-proof.json` evidence
+path with build/worktree identity, bounded renderer diagnostics, and app-only
+before/after PNG hashes. It never uses live providers or credentials. On
+headless Linux it starts the proof under an isolated Xvfb display.
+
 ### Packaged proof
 
 Packaged proof is separate from both interactive development and isolated
