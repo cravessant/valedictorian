@@ -481,7 +481,9 @@ function destinationUrlFromResult(value: string | null) {
     const parsed = JSON.parse(value)
     if (!isRecord(parsed) || typeof parsed.url !== 'string') return null
     const url = new URL(parsed.url)
-    return url.protocol === 'https:' ? url.toString() : null
+    // Parsing validates the stored result; the public detail keeps the exact
+    // resolver-emitted URL instead of silently canonicalizing its evidence.
+    return url.protocol === 'https:' ? parsed.url : null
   } catch {
     return null
   }

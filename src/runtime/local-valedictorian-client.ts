@@ -12,8 +12,16 @@ import { createPgliteActionQueueRepository } from '../modules/action-queue/actio
 import { createPgliteCaptureService } from '../modules/capture/capture.service'
 import { createCaptureMaterializationService } from '../modules/capture/capture.materialization'
 import { createCaptureResolutionService } from '../modules/capture/capture.resolution'
+import { createCaptureDestinationResolutionService } from '../modules/capture/capture.destination-resolution'
 import { createCaptureFieldOutcomeStore } from '../modules/capture/capture.field-outcomes'
 import { createScheduledWorkSource } from '../modules/scheduling/scheduled-work.source'
+import {
+  createCaptureDestinationWorkExecutor,
+  createCaptureDestinationWorkRepository,
+  enqueueCaptureDestinationWork,
+  reconcileCaptureDestinationWork,
+} from '../modules/scheduling/capture-destination-work'
+import { retireProviderUrlResolutionWork } from '../modules/scheduling/provider-url-resolution-retirement'
 import {
   createNormalizationExecutor,
   createNormalizationWorkRepository,
@@ -59,6 +67,7 @@ import {
 import { createConnectorOptionQueryService } from '../modules/connectors/connector.option-query'
 import {
   createConnectorRunner,
+  createRunRuntime,
   type AppConnectorAuthGrant,
   type AppConnectorAuthValidationResult,
 } from '../modules/connectors/connector.runner'
@@ -101,6 +110,7 @@ import { assertSeedOptions, seedLocalData } from './local-valedictorian-seeding'
 import { createCompanyCoverageService } from '../modules/company/company.coverage'
 import { createPgliteCompanyAssignmentService } from '../modules/company/company.assignment.service'
 import { createPgliteCompanyService } from '../modules/company/company.service'
+import { createSourceSessionExecutor } from '../modules/source-execution/source-session-executor'
 export type {
   LocalValedictorianClientOptions,
   ValedictorianSeedDataMode,
@@ -202,13 +212,31 @@ export async function createLocalValedictorianClient({
   const captureService = createPgliteCaptureService(database, { now })
   const captureMaterialization = createCaptureMaterializationService(database, { now })
   await captureMaterialization.migrateToReady(workspaceId)
+  const destinationRepository = createCaptureDestinationWorkRepository(database, { workspaceId, now })
+  const captureDestination = createCaptureDestinationResolutionService({
+    database,
+    materialization: captureMaterialization,
+    publisher: {
+      async enqueue(identity) {
+        const created = await enqueueCaptureDestinationWork(destinationRepository, identity)
+        if (created) onScheduledWorkChanged?.()
+        return created
+      },
+    },
+    selectResolver: (adapterId, adapterVersion) => {
+      const resolver = connectorRegistry.getVersion(adapterId, adapterVersion)?.providerUrlResolver
+      return resolver ? { id: resolver.id, version: resolver.version } : null
+    },
+    workspaceId,
+    now,
+  })
   const captureFieldOutcomes = createCaptureFieldOutcomeStore(database)
   // Static resolver metadata (no connector loading); the resolver function resolves lazily so
   // client construction never loads connector implementations (retirement invariant).
   const providerFieldDeclaration = jobrightProviderFieldResolverDeclaration
   const getProviderFieldResolver = () =>
     connectorRegistry.get(JOBRIGHT_CONNECTOR_ID)?.providerFieldResolver ?? createJobrightProviderFieldResolver()
-  const normalizationRepository = createNormalizationWorkRepository(database, { now })
+  const normalizationRepository = createNormalizationWorkRepository(database, { workspaceId, now })
   const captureHost = createConnectorCaptureHost({
     captureService,
     now,
@@ -227,6 +255,7 @@ export async function createLocalValedictorianClient({
       })
       if (created) onScheduledWorkChanged?.()
     },
+    enqueueDestinationWork: ({ captureId }) => captureDestination.scheduleAcknowledged(captureId),
   })
   const trustedConnectorAuth = composeTrustedConnectorAuth(secretService)
   const connectorOptionQueries = createConnectorOptionQueryService({
@@ -236,6 +265,10 @@ export async function createLocalValedictorianClient({
     workspaceId,
   })
   const sourceExecutionGovernor = createSourceExecutionGovernor(database, secretCodec)
+  const destinationSessionExecutor = createSourceSessionExecutor({
+    governor: sourceExecutionGovernor,
+    now,
+  })
   const connectorRunner = createConnectorRunner({
     auth: trustedConnectorAuth,
     captureHost,
@@ -302,6 +335,7 @@ export async function createLocalValedictorianClient({
     captureResolution: createCaptureResolutionService(database, {
       workspaceId,
       materialization: captureMaterialization,
+      destination: captureDestination,
     }),
     companies: createPgliteCompanyService(database, {
       workspaceId,
@@ -611,10 +645,52 @@ export async function createLocalValedictorianClient({
     execute: (work) => normalizationExecutor(work),
     now,
   }))
+  const destinationExecutor = createCaptureDestinationWorkExecutor({
+    repository: destinationRepository,
+    state: captureDestination,
+    execute: async (context, signal) => {
+      const instance = await connectorRepository.getInstance(context.connectorInstanceId)
+      if (!instance || !instance.enabled || instance.executionScopeId !== context.executionScopeId) {
+        return { status: 'terminal', reason: 'provider_record_invalid' }
+      }
+      const connector = connectorRegistry.getVersion(instance.connectorId, instance.connectorVersion)
+      const resolver = connector?.providerUrlResolver
+      if (!resolver || resolver.id !== context.resolverId || resolver.version !== context.resolverVersion) {
+        return { status: 'terminal', reason: 'provider_schema_changed' }
+      }
+      const runtime = createRunRuntime(
+        { ...connectorRuntime, ...(signal ? { cancellation: { signal } } : {}) },
+        instance.auth,
+        connector.definition.auth?.requirements ?? [],
+        trustedConnectorAuth,
+        new Set<string>(),
+        instance.executionScopeId,
+        destinationSessionExecutor,
+        false,
+        undefined,
+      )
+      return resolver.resolve({
+        connectorInstanceId: instance.id,
+        executionScopeId: instance.executionScopeId,
+        providerRecordId: context.providerRecordId,
+        workspaceId,
+      }, runtime)
+    },
+  })
+  registerScheduledWorkSource?.(createScheduledWorkSource({
+    id: 'capture_destination_resolution',
+    repository: destinationRepository,
+    execute: (work, signal) => destinationExecutor(work, signal),
+    now,
+  }))
   // #325 startup reconciliation: recover orphaned normalization claims, cancel obsolete active
   // resolver-version work, and idempotently enqueue every eligible Jobright revision with an
   // available immutable payload for the current resolver version (closes the post-ack gap).
   await normalizationRepository.recoverClaimed(now().toISOString())
+  await retireProviderUrlResolutionWork(database, workspaceId, now().toISOString())
+  await destinationRepository.recoverClaimed(now().toISOString())
+  await reconcileCaptureDestinationWork(database, workspaceId, captureDestination)
+  await captureDestination.reconcile()
   const normalizationReconciliation = await reconcileNormalizationWork({
     database,
     fieldOutcomes: captureFieldOutcomes,

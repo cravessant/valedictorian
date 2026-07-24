@@ -432,6 +432,8 @@ export const captureResolutionCommandReceipts = pgTable(
     idempotencyKey: text('idempotency_key').notNull(),
     operation: text('operation').notNull(),
     requestFingerprint: text('request_fingerprint').notNull(),
+    /** Auditable, redacted command provenance for retry/replay requests. */
+    requestSnapshotJson: text('request_snapshot_json').notNull().default('{}'),
     resultJson: text('result_json').notNull(),
     createdAt: text('created_at').notNull(),
   },
@@ -455,6 +457,11 @@ export const captureResolutionCommandReceipts = pgTable(
     resultCheck: check(
       'chk_capture_resolution_command_receipts_result',
       sql`length(${table.resultJson}) between 2 and 16384`,
+    ),
+    requestSnapshotCheck: check(
+      'chk_capture_resolution_command_receipts_request_snapshot',
+      sql`length(${table.requestSnapshotJson}) between 2 and 4096
+        and ${table.requestSnapshotJson} ${sql.raw(FORBIDDEN_KEY)}`,
     ),
   }),
 )

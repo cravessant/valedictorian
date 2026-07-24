@@ -17,7 +17,11 @@
 import { sql } from 'drizzle-orm'
 import { check, foreignKey, index, integer, pgTable, type PgColumn, text, uniqueIndex } from 'drizzle-orm/pg-core'
 import { FORBIDDEN_JSON_KEY_PREDICATE } from '../../db/sensitive-keys'
-import { captureRevisions, captures } from '../capture/capture.schema'
+import {
+  captureResolutionGenerations,
+  captureRevisions,
+  captures,
+} from '../capture/capture.schema'
 import { connectorInstances } from '../../db/schema.connectors'
 import { workspaces } from '../../db/workspaces.schema'
 
@@ -158,6 +162,75 @@ export const providerUrlResolutionWork = pgTable(
     captureFk: foreignKey({ name: 'fk_provider_url_resolution_work_capture', columns: [table.captureId], foreignColumns: [captures.id] }),
     resolverCheck: check('chk_provider_url_resolution_work_resolver', sql`length(${table.resolverId}) between 1 and 256 and length(${table.resolverVersion}) between 1 and 128 and length(${table.intermediaryUrlHash}) between 1 and 256`),
     ...scheduledWorkChecks('provider_url_resolution_work', table),
+  }),
+)
+
+/**
+ * Capture-resolution work is intentionally distinct from the pre-generation
+ * provider URL work retained as migration history. A row identifies one exact
+ * Capture revision and orchestration generation, never an unbound URL.
+ */
+export const captureDestinationResolutionWork = pgTable(
+  'capture_destination_resolution_work',
+  {
+    ...scheduledWorkColumns(),
+    captureId: text('capture_id').notNull(),
+    captureRevision: integer('capture_revision').notNull(),
+    generationId: text('generation_id').notNull(),
+    resolverId: text('resolver_id').notNull(),
+    resolverVersion: text('resolver_version').notNull(),
+    inputFingerprint: text('input_fingerprint').notNull(),
+    // The retry policy is deliberately materialized into bounded scalar columns.
+    // A scheduler restart must execute the policy accepted with this generation,
+    // never whatever defaults a newer binary happens to carry.
+    retryDelay1Ms: integer('retry_delay_1_ms').notNull(),
+    retryDelay2Ms: integer('retry_delay_2_ms').notNull(),
+    retryDelay3Ms: integer('retry_delay_3_ms').notNull(),
+    retryDelay4Ms: integer('retry_delay_4_ms').notNull(),
+    retryDelay5Ms: integer('retry_delay_5_ms').notNull(),
+    retryDelay6Ms: integer('retry_delay_6_ms').notNull(),
+  },
+  (table) => ({
+    idempotencyIdx: uniqueIndex('idx_capture_destination_resolution_work_idempotency')
+      .on(table.idempotencyKey),
+    dueIdx: index('idx_capture_destination_resolution_work_due')
+      .on(table.status, table.nextEligibleAt),
+    generationIdx: index('idx_capture_destination_resolution_work_generation')
+      .on(table.generationId),
+    activeGenerationIdx: uniqueIndex('idx_capture_destination_resolution_work_active_generation')
+      .on(table.generationId)
+      .where(sql`${table.status} in ('scheduled','claimed')`),
+    revisionFk: foreignKey({
+      name: 'fk_capture_destination_resolution_work_revision',
+      columns: [table.captureId, table.captureRevision],
+      foreignColumns: [captureRevisions.captureId, captureRevisions.revision],
+    }),
+    generationFk: foreignKey({
+      name: 'fk_capture_destination_resolution_work_generation',
+      columns: [table.generationId],
+      foreignColumns: [captureResolutionGenerations.id],
+    }),
+    revisionCheck: check(
+      'chk_capture_destination_resolution_work_revision',
+      sql`${table.captureRevision} > 0`,
+    ),
+    resolverCheck: check(
+      'chk_capture_destination_resolution_work_resolver',
+      sql`length(${table.resolverId}) between 1 and 256
+        and length(${table.resolverVersion}) between 1 and 128
+        and length(${table.inputFingerprint}) = 64`,
+    ),
+    retryPolicyCheck: check(
+      'chk_capture_destination_resolution_work_retry_policy',
+      sql`${table.maxAttempts} between 1 and 7
+        and ${table.retryDelay1Ms} between 1 and 86400000
+        and ${table.retryDelay2Ms} between 1 and 86400000
+        and ${table.retryDelay3Ms} between 1 and 86400000
+        and ${table.retryDelay4Ms} between 1 and 86400000
+        and ${table.retryDelay5Ms} between 1 and 86400000
+        and ${table.retryDelay6Ms} between 1 and 86400000`,
+    ),
+    ...scheduledWorkChecks('capture_destination_resolution_work', table),
   }),
 )
 

@@ -30,14 +30,20 @@ export interface ProviderFieldWorkEnqueueInput {
   readonly providerSchema: string | null
 }
 
+export interface DestinationWorkEnqueueInput {
+  readonly captureId: string
+}
+
 export function createConnectorCaptureHost({
   captureService,
-  workspaceId,
+  enqueueDestinationWork,
   enqueueProviderFieldWork,
+  workspaceId,
 }: {
   captureService: CaptureService
   now?: () => Date
   workspaceId: string
+  enqueueDestinationWork?: (input: DestinationWorkEnqueueInput) => Promise<void>
   enqueueProviderFieldWork?: (input: ProviderFieldWorkEnqueueInput) => Promise<void>
 }): AppConnectorCaptureHost {
   return {
@@ -99,6 +105,13 @@ export function createConnectorCaptureHost({
           })
         } catch {
           // Enqueue failure must not undo acknowledgement or block the connector frontier.
+        }
+      }
+      if (enqueueDestinationWork) {
+        try {
+          await enqueueDestinationWork({ captureId })
+        } catch {
+          // Scheduling happens after acknowledgement; recovery closes an enqueue gap.
         }
       }
       return {

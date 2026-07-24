@@ -21,8 +21,8 @@ import {
   applicationScores, applicationWorkflowStates, applications, pursuitLinks,
 } from '../modules/application/application.schema'
 import {
-  connectorCaptureWork, hostedResultPollingWork, hostedSubmissionWork,
-  normalizationWork, providerUrlResolutionWork,
+  captureDestinationResolutionWork, connectorCaptureWork, hostedResultPollingWork,
+  hostedSubmissionWork, normalizationWork, providerUrlResolutionWork,
 } from '../modules/scheduling/scheduling.schema'
 import { lifecycleMigrationReport, workspaces } from './workspaces.schema'
 import {
@@ -52,8 +52,8 @@ export {
   applicationScores, applicationWorkflowStates, applications, pursuitLinks,
 } from '../modules/application/application.schema'
 export {
-  connectorCaptureWork, hostedResultPollingWork, hostedSubmissionWork,
-  normalizationWork, providerUrlResolutionWork,
+  captureDestinationResolutionWork, connectorCaptureWork, hostedResultPollingWork,
+  hostedSubmissionWork, normalizationWork, providerUrlResolutionWork,
 } from '../modules/scheduling/scheduling.schema'
 export { DEFAULT_WORKSPACE_ID, lifecycleMigrationReport, workspaces } from './workspaces.schema'
 export {
@@ -184,6 +184,7 @@ export const schema = {
   applications, pursuitLinks, applicationAttemptRecords, applicationEventRecords,
   applicationHistory, applicationScores, applicationWorkflowStates,
   connectorCaptureWork, normalizationWork, providerUrlResolutionWork,
+  captureDestinationResolutionWork,
   hostedSubmissionWork, hostedResultPollingWork, workspaces, lifecycleMigrationReport,
   workspaceCompanies, companyAliases, companyHistory, companyCommandReceipts,
   jobCompanyAssignments,

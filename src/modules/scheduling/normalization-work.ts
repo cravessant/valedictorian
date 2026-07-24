@@ -221,7 +221,10 @@ export async function reconcileNormalizationWork(options: ReconcileNormalization
 
 export function createNormalizationWorkRepository(
   database: PgliteDatabase,
-  options: { now?: () => Date } = {},
+  options: { workspaceId?: string; now?: () => Date } = {},
 ): NormalizationWorkRepository {
-  return createScheduledWorkRepository(database, normalizationOperation, { now: options.now })
+  return createScheduledWorkRepository(database, normalizationOperation, {
+    now: options.now,
+    workspaceId: options.workspaceId,
+  })
 }

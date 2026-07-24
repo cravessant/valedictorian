@@ -25,11 +25,10 @@ import {
 
 type Tx = Parameters<Parameters<PgliteDatabase['transaction']>[0]>[0]
 
-const RETRY_POLICY_ID = 'capture-resolution-v1'
+const RETRY_POLICY_ID = 'capture-destination-v1'
 const RETRY_POLICY = JSON.stringify({
-  initialDelayMs: 1000,
-  maximumDelayMs: 60_000,
-  multiplier: 2,
+  retryDelaysMs: [2_000, 4_000, 8_000, 16_000, 32_000, 60_000],
+  maximumAttempts: 7,
 })
 const SYSTEM_ACTOR = JSON.stringify({ id: 'capture-materializer', type: 'system' })
 const NO_RESOLVER = JSON.stringify({ resolverId: null, resolverVersion: null })

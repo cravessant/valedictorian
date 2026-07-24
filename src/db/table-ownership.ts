@@ -48,6 +48,7 @@ export const lifecycleTableOwnership = {
   connectorCaptureWork: 'connectors',
   normalizationWork: 'scheduling',
   providerUrlResolutionWork: 'scheduling',
+  captureDestinationResolutionWork: 'scheduling',
   hostedSubmissionWork: 'scheduling',
   hostedResultPollingWork: 'scheduling',
 } as const satisfies Record<string, LifecycleModule>
@@ -80,6 +81,7 @@ export const lifecyclePhysicalTableOwnership = {
   connector_capture_work: 'connectors',
   normalization_work: 'scheduling',
   provider_url_resolution_work: 'scheduling',
+  capture_destination_resolution_work: 'scheduling',
   hosted_submission_work: 'scheduling',
   hosted_result_polling_work: 'scheduling',
 } as const satisfies Record<string, LifecycleModule>
