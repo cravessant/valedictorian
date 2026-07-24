@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useState } from 'react'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -82,7 +82,7 @@ describe('FormModal', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 
-  it('shows an unsaved-change confirm dialog on cancel after edits, and restores focus on discard', async () => {
+  it('shows Discard changes and confirms before canceling a dirty draft', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()
     render(<FormModal {...makeProps({ onCancel })} />)
@@ -90,15 +90,17 @@ describe('FormModal', () => {
     nameField.focus()
     await user.type(nameField, 'Acme')
 
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }))
     expect(await screen.findByRole('alertdialog', { name: /discard/i })).toBeInTheDocument()
     expect(onCancel).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Discard changes',
+    }))
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
-  it('retains dirty state when the parent controls the updated value', async () => {
+  it('returns to clean when a controlled draft fully reverts to its initial values', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()
     function ControlledForm() {
@@ -107,11 +109,34 @@ describe('FormModal', () => {
     }
     render(<ControlledForm />)
 
-    await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Acme')
+    const name = screen.getByRole('textbox', { name: 'Name' })
+    await user.type(name, 'Acme')
+    await user.clear(name)
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
-    expect(await screen.findByRole('alertdialog', { name: /discard/i })).toBeInTheDocument()
-    expect(onCancel).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog', { name: /discard/i })).not.toBeInTheDocument()
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('cancels clean drafts once without confirmation via every exit route', async () => {
+    const user = userEvent.setup()
+    const exits = [
+      async () => user.click(screen.getAllByRole('button', { name: 'Close' })[0]!),
+      async () => user.click(document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')!),
+      async () => user.keyboard('{Escape}'),
+      async () => user.click(screen.getByRole('button', { name: 'Cancel' })),
+    ]
+
+    for (const exit of exits) {
+      cleanup()
+      const onCancel = vi.fn()
+      render(<FormModal {...makeProps({ onCancel })} />)
+
+      await exit()
+
+      expect(screen.queryByRole('alertdialog', { name: /discard/i })).not.toBeInTheDocument()
+      expect(onCancel).toHaveBeenCalledOnce()
+    }
   })
 
   it('closes via the unsaved discard path using ESC after confirming', async () => {
@@ -121,18 +146,75 @@ describe('FormModal', () => {
     await user.type(screen.getByRole('textbox', { name: 'Count' }), '5')
     await user.keyboard('{Escape}')
     expect(await screen.findByRole('alertdialog', { name: /discard/i })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Discard' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', {
+      name: 'Discard changes',
+    }))
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
-  it('announces pending state and disables submit while a submission is in flight', () => {
+  it('uses the same discard confirmation for dirty close, backdrop, Escape, and footer exits', async () => {
+    const user = userEvent.setup()
+    const exits = [
+      async () => user.click(screen.getAllByRole('button', { name: 'Close' })[0]!),
+      async () => user.click(document.querySelector('[data-slot="dialog-overlay"]')!),
+      async () => user.keyboard('{Escape}'),
+      async () => user.click(screen.getByRole('button', { name: 'Discard changes' })),
+    ]
+
+    for (const exit of exits) {
+      cleanup()
+      const onCancel = vi.fn()
+      render(<FormModal {...makeProps({ onCancel })} />)
+      await user.type(screen.getByRole('textbox', { name: 'Name' }), 'Acme')
+
+      await exit()
+
+      expect(await screen.findByRole('alertdialog', { name: /discard/i })).toBeInTheDocument()
+      expect(onCancel).not.toHaveBeenCalled()
+    }
+  })
+
+  it('resets to a new clean baseline on reopen and keeps a neutral custom cancel label', async () => {
+    const user = userEvent.setup()
+    const onCancel = vi.fn()
+    const { rerender } = render(<FormModal {...makeProps({
+      cancelLabel: 'Close form',
+      onCancel,
+      value: { name: 'Original', count: '' },
+    })} />)
+    await user.type(screen.getByRole('textbox', { name: 'Name' }), ' draft')
+    expect(screen.getByRole('button', { name: 'Discard changes' })).toBeInTheDocument()
+
+    rerender(<FormModal {...makeProps({
+      cancelLabel: 'Close form',
+      onCancel,
+      open: false,
+      value: { name: 'Replacement', count: '2' },
+    })} />)
+    rerender(<FormModal {...makeProps({
+      cancelLabel: 'Close form',
+      onCancel,
+      value: { name: 'Replacement', count: '2' },
+    })} />)
+
+    expect(await screen.findByRole('textbox', { name: 'Name' })).toHaveValue('Replacement')
+    await user.click(screen.getByRole('button', { name: 'Close form' }))
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('announces pending state and blocks every dismissal path while a submission is in flight', async () => {
+    const user = userEvent.setup()
     const onCancel = vi.fn()
     render(<FormModal {...makeProps({ pending: true, onCancel })} />)
     const save = screen.getByRole('button', { name: /Save/i })
     expect(save).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
     expect(screen.getByRole('status')).toHaveTextContent(/saving/i)
-    screen.getAllByRole('button', { name: 'Close' })[0]?.click()
+    await user.click(screen.getAllByRole('button', { name: 'Close' })[0]!)
+    await user.click(document.querySelector('[data-slot="dialog-overlay"]')!)
+    await user.keyboard('{Escape}')
     expect(onCancel).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog', { name: 'Edit row' })).toBeInTheDocument()
   })
 
   it('restores opener focus after close', async () => {

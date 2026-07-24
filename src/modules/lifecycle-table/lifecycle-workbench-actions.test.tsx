@@ -317,6 +317,26 @@ describe('LifecycleWorkbench action matrices and modal flows', () => {
     }))
   })
 
+  it('uses immediate clean Cancel exits for Capture, Job, Opportunity, and Application create forms', async () => {
+    const user = userEvent.setup()
+    const { client } = makeClient()
+    render(<LifecycleWorkbench client={client} />)
+    const forms = [
+      { trigger: 'Add capture', title: 'Add capture', tab: null },
+      { trigger: 'Add job', title: 'Add job', tab: /^Jobs/ },
+      { trigger: 'Add opportunity', title: 'Add opportunity', tab: /^Opportunities/ },
+      { trigger: 'Add application', title: 'Add application', tab: /^Applications/ },
+    ]
+
+    for (const form of forms) {
+      if (form.tab) await user.click(screen.getByRole('button', { name: form.tab }))
+      await user.click(await screen.findByRole('button', { name: form.trigger }))
+      const dialog = await screen.findByRole('dialog', { name: form.title })
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: form.title })).not.toBeInTheDocument())
+    }
+  })
+
   it('Job promote routes to jobs.promoteToOpportunity with the typed evaluation', async () => {
     const user = userEvent.setup()
     const { client, jobs, opportunities } = makeClient({ jobs: [makeJob('job-1')] })

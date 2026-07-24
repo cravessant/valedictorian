@@ -101,16 +101,18 @@ export function FormModal<T>({
   const openerRef = useRef<HTMLElement | null>(null)
   const formRef = useRef<HTMLFormElement | null>(null)
   const formId = useId()
-  const dirtyRef = useRef(false)
   const valueRef = useRef(value)
+  const fieldsRef = useRef(fields)
+  const initialValueRef = useRef(canonicalFormValue(value, fields))
   valueRef.current = value
+  fieldsRef.current = fields
 
   // Resync the internal draft when the modal (re)opens or the parent
   // explicitly replaces the value while the modal is closed.
   useEffect(() => {
     if (open) {
       setDraft(valueRef.current)
-      dirtyRef.current = false
+      initialValueRef.current = canonicalFormValue(valueRef.current, fieldsRef.current)
       setLocalErrors(null)
       setSubmitError(null)
       setConfirmDiscardOpen(false)
@@ -138,14 +140,16 @@ export function FormModal<T>({
 
   function handleFieldChange<K extends keyof T & string>(key: K, raw: string) {
     const next = { ...draft, [key]: raw } as T
-    dirtyRef.current = true
     setDraft(next)
     onChange(next)
   }
 
+  const dirty = canonicalFormValue(draft, fields) !== initialValueRef.current
+  const dismissLabel = dirty ? 'Discard changes' : cancelLabel
+
   function requestClose() {
     if (pending) return
-    if (dirtyRef.current) {
+    if (dirty) {
       setConfirmDiscardOpen(true)
     } else {
       onCancel()
@@ -180,14 +184,12 @@ export function FormModal<T>({
           {...(!description ? { 'aria-describedby': undefined } : {})}
           className="sm:max-w-md"
           onEscapeKeyDown={(event) => {
-            if (pending) {
-              event.preventDefault()
-              return
-            }
-            if (dirtyRef.current && !confirmDiscardOpen) {
-              event.preventDefault()
-              setConfirmDiscardOpen(true)
-            }
+            event.preventDefault()
+            requestClose()
+          }}
+          onPointerDownOutside={(event) => {
+            event.preventDefault()
+            requestClose()
           }}
         >
           <DialogHeader>
@@ -234,7 +236,7 @@ export function FormModal<T>({
           <DialogFooter>
             {footerExtras}
             <Button type="button" variant="outline" onClick={requestClose} disabled={pending}>
-              {cancelLabel}
+              {dismissLabel}
             </Button>
             <Button type="submit" form={formId} disabled={pending}>
               {pending ? 'Save…' : submitLabel}
@@ -259,19 +261,25 @@ export function FormModal<T>({
           <AlertDialogFooter>
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
             <AlertDialogAction
+              disabled={pending}
               variant="destructive"
               onClick={() => {
+                if (pending) return
                 setConfirmDiscardOpen(false)
                 onCancel()
               }}
             >
-              Discard
+              Discard changes
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
   )
+}
+
+function canonicalFormValue<T>(value: T, fields: ReadonlyArray<FieldSpec<T>>): string {
+  return JSON.stringify(fields.map((field) => [field.key, String(value[field.key] ?? '')]))
 }
 
 function renderFieldInput<T>(

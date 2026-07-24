@@ -123,6 +123,29 @@ describe('CompanyMutationModal', () => {
     expect(close).toHaveBeenCalledOnce()
   })
 
+  it('returns an edited Company form to its immediate Cancel exit after a full revert', async () => {
+    const user = userEvent.setup()
+    const close = vi.fn()
+    render(
+      <CompanyMutationModal
+        action={{ kind: 'identity', company }}
+        client={clientWith()}
+        workspaceId="workspace-modal"
+        onChanged={vi.fn()}
+        onClose={close}
+      />,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit Company identity' })
+    const displayName = within(dialog).getByLabelText('Display name')
+    await user.clear(displayName)
+    await user.type(displayName, company.displayName)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('alertdialog', { name: /discard/i })).not.toBeInTheDocument()
+    expect(close).toHaveBeenCalledOnce()
+  })
+
   it('keeps a stale edit modal open with the refresh-and-resubmit message', async () => {
     const user = userEvent.setup()
     const update = vi.fn(async () => ({
